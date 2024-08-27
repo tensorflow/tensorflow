@@ -767,6 +767,7 @@ BUILTIN_KERNEL_SRCS = [
     "stablehlo_gather.cc",
     "stablehlo_add.cc",
     "stablehlo_composite.cc",
+    "stablehlo_case.cc",
     "stablehlo_multiply.cc",
     "stablehlo_pad.cc",
     "stablehlo_reduce_window.cc",
@@ -1354,6 +1355,23 @@ cc_test(
         "//tensorflow/lite:cc_api_stable",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_hdrs_only",
+        "//tensorflow/lite/kernels/internal:tensor_ctypes",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "stablehlo_case_test",
+    srcs = ["stablehlo_case_test.cc"],
+    deps = [
+        ":kernel_util",
+        ":subgraph_test_util",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite:cc_api_stable",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/kernels/internal:tensor_ctypes",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
@@ -2990,6 +3008,7 @@ cc_library(
     hdrs = ["subgraph_test_util.h"],
     deps = [
         ":kernel_util",
+        ":test_util",
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:interpreter_test_util",

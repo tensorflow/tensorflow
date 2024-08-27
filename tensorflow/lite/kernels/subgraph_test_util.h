@@ -165,6 +165,13 @@ class SubgraphBuilder {
   // 1 output.
   void BuildIfSubgraph(Subgraph* subgraph);
 
+  // Build a subgraph with Case op.
+  // 3 inputs:
+  //   The 1st input is index of branch to be selected with int32 type.
+  //   The 2nd and 3rd inputs are feed input the branch subgraphs.
+  // 1 output.
+  void BuildCaseSubgraph(Subgraph* subgraph, int num_cases);
+
   // Build a subgraph with a single StableHLO Composite op.
   void BuildCompositeSubgraph(Subgraph* subgraph,
                               const Subgraph* decomposition);
@@ -196,6 +203,10 @@ class SubgraphBuilder {
   // Build a if subgraph with multiple inputs.
   void BuildMultiInputIfSubgraph(Subgraph* subgraph, int num_inputs);
 
+  // Build a case subgraph with multiple inputs.
+  void BuildMultiInputCaseSubgraph(Subgraph* subgraph, int num_branches,
+                                   int num_inputs);
+
   // Build a while subgraph with multiple inputs.
   void BuildMultiInputWhileSubgraph(Subgraph* subgraph, int num_inputs);
 
@@ -203,6 +214,9 @@ class SubgraphBuilder {
   // consumed.
   void BuildMultiInputIfSubgraphWithUnconsumedOutput(Subgraph* subgraph,
                                                      int num_inputs);
+  void BuildMultiInputCaseSubgraphWithUnconsumedOutput(Subgraph* subgraph,
+                                                       int num_branches,
+                                                       int num_inputs);
 
   // Build a while subgraph with multiple inputs and one output which is not
   // consumed.
@@ -279,6 +293,9 @@ class SubgraphBuilder {
   // outputs (str1, str2, int_val).
   void BuildIfSubgraphWithDynamicTensor(Subgraph* subgraph);
 
+  void BuildCaseSubgraphWithDynamicTensor(Subgraph* subgraph,
+                                                           int num_branches);
+
   // Build a subgraph with a single While op, that contains 3 inputs and 3
   // outputs (str1, str2, int_val).
   void BuildWhileSubgraphWithDynamicTensor(Subgraph* subgraph);
@@ -323,6 +340,8 @@ class ControlFlowOpTest : public InterpreterTest {
 //   the vector.
 void FillIntTensor(TfLiteTensor* tensor, const std::vector<int32_t>& data);
 
+void FillQuantizedTensor(TfLiteTensor* tensor, const std::vector<float>& data, float scale, int zero_point);
+
 // Fill a `TfLiteTensor` with a string value.
 // Preconditions:
 // * The tensor must have `kTfLitString` type.
@@ -340,6 +359,9 @@ void CheckStringTensor(const TfLiteTensor* tensor,
 // Check if the shape and int32 data of a tensor is as expected.
 void CheckIntTensor(const TfLiteTensor* tensor, const std::vector<int>& shape,
                     const std::vector<int32_t>& data);
+// Check if the shape and int8 data of a tensor is as expected.
+void CheckInt8Tensor(const TfLiteTensor* tensor, const std::vector<int>& shape,
+                    const std::vector<int8_t>& data);
 // Check if the shape and bool data of a tensor is as expected.
 void CheckBoolTensor(const TfLiteTensor* tensor, const std::vector<int>& shape,
                      const std::vector<bool>& data);

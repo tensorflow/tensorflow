@@ -325,6 +325,9 @@ TfLiteRegistration* Register_REDUCE_WINDOW();
 TfLiteRegistration*
 Register_STABLEHLO_COMPOSITE();  // WARNING: not implemented, using this
                                  // op will crash the runtime
+
+TfLiteRegistration* Register_STABLEHLO_CASE();
+
 }  // namespace builtin
 }  // namespace ops
 }  // namespace tflite

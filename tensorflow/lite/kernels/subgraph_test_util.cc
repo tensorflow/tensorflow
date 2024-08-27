@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/lite/core/kernels/builtin_op_kernels.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_util.h"
 
@@ -727,6 +728,49 @@ void SubgraphBuilder::BuildIfSubgraph(Subgraph* subgraph) {
   int node_index;
   subgraph->AddNodeWithParameters({kCondInput, kInput1, kInput2}, {kOutput}, {},
                                   nullptr, 0, params, if_reg, &node_index);
+}
+
+void SubgraphBuilder::BuildCaseSubgraph(Subgraph* subgraph, int num_branches) {
+  const int kSelectorInput = 0;  // Input to select which operation to perform
+  const int kInput1 = 1;         // First input tensor
+  const int kInput2 = 2;         // Second input tensor
+  const int kOutput = 3;         // Output tensor
+  const int kTensorCount = 4;    // Total number of tensors
+
+  // kSelectorInput(0) --> +------+
+  // kInput1(1)        ----> | CASE | --> kOutput(3)
+  // kInput2(2)        ----> +------+
+
+  int first_new_tensor_index;
+  ASSERT_EQ(subgraph->AddTensors(kTensorCount, &first_new_tensor_index),
+            kTfLiteOk);
+  ASSERT_EQ(first_new_tensor_index, 0);
+  ASSERT_EQ(subgraph->SetInputs({kSelectorInput, kInput1, kInput2}), kTfLiteOk);
+  ASSERT_EQ(subgraph->SetOutputs({kOutput}), kTfLiteOk);
+
+  SetupTensor(subgraph, kSelectorInput, kTfLiteInt32);  // Selector input
+  SetupTensor(subgraph, kInput1, kTfLiteInt32);         // First input
+  SetupTensor(subgraph, kInput2, kTfLiteInt32);         // Second input
+  SetupTensor(subgraph, kOutput, kTfLiteInt32);         // Output tensor
+
+  // Allocate memory for case parameters
+  TfLiteStablehloCaseParams* params =
+      reinterpret_cast<TfLiteStablehloCaseParams*>(
+          malloc(sizeof(TfLiteStablehloCaseParams)));
+  params->num_branches = num_branches;
+
+  for (int i = 0; i < num_branches; ++i) {
+    params->branch_subgraph_indices[i] =
+        i + 1;  // Assume subgraph indices start at 1
+  }
+
+  auto* case_reg = ops::builtin::Register_STABLEHLO_CASE();
+  case_reg->builtin_code = kTfLiteBuiltinStablehloCase;
+
+  int node_index;
+  subgraph->AddNodeWithParameters({kSelectorInput, kInput1, kInput2}, {kOutput},
+                                  {}, nullptr, 0, params, case_reg,
+                                  &node_index);
 }
 
 void SubgraphBuilder::BuildCompositeSubgraph(Subgraph* subgraph,
@@ -1591,6 +1635,52 @@ void SubgraphBuilder::BuildMultiInputIfSubgraphWithUnconsumedOutput(
   ASSERT_EQ(subgraph->SetOutputs(output_tensors), kTfLiteOk);
 }
 
+void SubgraphBuilder::BuildMultiInputCaseSubgraphWithUnconsumedOutput(
+    Subgraph* subgraph, int num_branches, int num_inputs) {
+  int num_outputs = num_inputs - 1;
+  int first_new_tensor_index;
+  ASSERT_EQ(
+      subgraph->AddTensors(num_inputs + num_outputs, &first_new_tensor_index),
+      kTfLiteOk);
+  ASSERT_EQ(first_new_tensor_index, 0);
+  std::vector<int> input_tensors(num_inputs);
+  std::vector<int> output_tensors(num_outputs);
+  for (int i = 0; i < num_inputs; ++i) {
+    input_tensors[i] = i;
+  }
+  for (int i = 0; i < num_outputs; ++i) {
+    output_tensors[i] = i + num_inputs;
+  }
+  SetupTensor(subgraph, input_tensors[0], kTfLiteInt32);
+  for (int i = 1; i < num_inputs; ++i) {
+    SetupTensor(subgraph, input_tensors[i], kTfLiteInt32);
+  }
+  for (int i = 0; i < num_outputs; ++i) {
+    SetupTensor(subgraph, output_tensors[i], kTfLiteInt32);
+  }
+
+  // Allocate memory for case parameters
+  TfLiteStablehloCaseParams* params =
+      reinterpret_cast<TfLiteStablehloCaseParams*>(
+          malloc(sizeof(TfLiteStablehloCaseParams)));
+  params->num_branches = num_branches;
+
+  for (int i = 0; i < num_branches; ++i) {
+    params->branch_subgraph_indices[i] =
+        i + 1;  // Assume subgraph indices start at 1
+  }
+  auto* case_reg = ops::builtin::Register_STABLEHLO_CASE();
+  case_reg->builtin_code = kTfLiteBuiltinStablehloCase;
+
+  int node_index;
+  subgraph->AddNodeWithParameters(input_tensors, output_tensors, {}, nullptr, 0,
+                                  params, case_reg, &node_index);
+
+  output_tensors.pop_back();
+  ASSERT_EQ(subgraph->SetInputs(input_tensors), kTfLiteOk);
+  ASSERT_EQ(subgraph->SetOutputs(output_tensors), kTfLiteOk);
+}
+
 void SubgraphBuilder::BuildMultiInputWhileSubgraphWithUnconsumedOutput(
     Subgraph* subgraph, int num_inputs) {
   // kInput1(0) --> +-------+ --> kOutput1(2)
@@ -1665,6 +1755,53 @@ void SubgraphBuilder::BuildMultiInputIfSubgraph(Subgraph* subgraph,
   int node_index;
   subgraph->AddNodeWithParameters(input_tensors, output_tensors, {}, nullptr, 0,
                                   params, if_reg, &node_index);
+}
+
+void SubgraphBuilder::BuildMultiInputCaseSubgraph(Subgraph* subgraph,
+                                                  int num_branches,
+                                                  int num_inputs) {
+  int num_outputs = num_inputs - 1;
+  int first_new_tensor_index;
+  ASSERT_EQ(
+      subgraph->AddTensors(num_inputs + num_outputs, &first_new_tensor_index),
+      kTfLiteOk);
+  ASSERT_EQ(first_new_tensor_index, 0);
+  std::vector<int> input_tensors(num_inputs);
+  std::vector<int> output_tensors(num_outputs);
+  for (int i = 0; i < num_inputs; ++i) {
+    input_tensors[i] = i;
+  }
+  for (int i = 0; i < num_outputs; ++i) {
+    output_tensors[i] = i + num_inputs;
+  }
+  ASSERT_EQ(subgraph->SetInputs(input_tensors), kTfLiteOk);
+  ASSERT_EQ(subgraph->SetOutputs(output_tensors), kTfLiteOk);
+
+  SetupTensor(subgraph, input_tensors[0], kTfLiteInt32);
+  for (int i = 1; i < num_inputs; ++i) {
+    SetupTensor(subgraph, input_tensors[i], kTfLiteInt32);
+  }
+  for (int i = 0; i < num_outputs; ++i) {
+    SetupTensor(subgraph, output_tensors[i], kTfLiteInt32);
+  }
+
+  // Allocate memory for case parameters
+  TfLiteStablehloCaseParams* params =
+      reinterpret_cast<TfLiteStablehloCaseParams*>(
+          malloc(sizeof(TfLiteStablehloCaseParams)));
+  params->num_branches = num_branches;
+
+  for (int i = 0; i < num_branches; ++i) {
+    params->branch_subgraph_indices[i] =
+        i + 1;  // Assume subgraph indices start at 1
+  }
+
+  auto* case_reg = ops::builtin::Register_STABLEHLO_CASE();
+  case_reg->builtin_code = kTfLiteBuiltinStablehloCase;
+
+  int node_index;
+  subgraph->AddNodeWithParameters(input_tensors, output_tensors, {}, nullptr, 0,
+                                  params, case_reg, &node_index);
 }
 
 void SubgraphBuilder::BuildMultiInputWhileSubgraph(Subgraph* subgraph,
@@ -1973,6 +2110,63 @@ void SubgraphBuilder::BuildIfSubgraphWithDynamicTensor(Subgraph* subgraph) {
                                   params, if_reg, &node_index);
 }
 
+void SubgraphBuilder::BuildCaseSubgraphWithDynamicTensor(Subgraph* subgraph,
+                                                         int num_branches) {
+  enum {
+    kIntInput0,
+    kStringInput1,
+    kStringInput2,
+    kIntegerInput,
+    kStringOutput1,
+    kStringOutput2,
+    kIntegerOutput,
+    kTensorCount
+  };
+
+  int num_inputs = 4;
+  int num_outputs = num_inputs - 1;
+  // Create a if op with 2 string tensor and 1 integer tensor.
+  int first_new_tensor_index;
+  std::vector<int> input_tensors(num_inputs);
+  std::vector<int> output_tensors(num_outputs);
+  for (int i = 0; i < num_inputs; ++i) {
+    input_tensors[i] = i;
+  }
+  for (int i = 0; i < num_outputs; ++i) {
+    output_tensors[i] = i + num_inputs;
+  }
+  ASSERT_EQ(subgraph->AddTensors(kTensorCount, &first_new_tensor_index),
+            kTfLiteOk);
+  ASSERT_EQ(first_new_tensor_index, 0);
+  ASSERT_EQ(subgraph->SetInputs(input_tensors), kTfLiteOk);
+  ASSERT_EQ(subgraph->SetOutputs(output_tensors), kTfLiteOk);
+
+  SetupTensor(subgraph, kIntInput0, kTfLiteInt32);
+  SetupTensor(subgraph, kStringInput1, kTfLiteString);
+  SetupTensor(subgraph, kStringInput2, kTfLiteString);
+  SetupTensor(subgraph, kIntegerInput, kTfLiteInt32);
+  SetupTensor(subgraph, kStringOutput1, kTfLiteString);
+  SetupTensor(subgraph, kStringOutput2, kTfLiteString);
+  SetupTensor(subgraph, kIntegerOutput, kTfLiteInt32);
+
+  // Allocate memory for case parameters
+  TfLiteStablehloCaseParams* params =
+      reinterpret_cast<TfLiteStablehloCaseParams*>(
+          malloc(sizeof(TfLiteStablehloCaseParams)));
+  params->num_branches = num_branches;
+
+  for (int i = 0; i < num_branches; ++i) {
+    params->branch_subgraph_indices[i] =
+        i + 1;  // Assume subgraph indices start at 1
+  }
+  auto* case_reg = ops::builtin::Register_STABLEHLO_CASE();
+  case_reg->builtin_code = kTfLiteBuiltinStablehloCase;
+
+  int node_index;
+  subgraph->AddNodeWithParameters(input_tensors, output_tensors, {}, nullptr, 0,
+                                  params, case_reg, &node_index);
+}
+
 void SubgraphBuilder::BuildWhileSubgraphWithDynamicTensor(Subgraph* subgraph) {
   const int kStringInput1 = 0;
   const int kStringInput2 = 1;
@@ -2022,6 +2216,23 @@ void FillIntTensor(TfLiteTensor* tensor, const std::vector<int32_t>& data) {
   }
 }
 
+void FillQuantizedTensor(TfLiteTensor* tensor, const std::vector<float>& data, float scale, int zero_point) {
+  ASSERT_TRUE(tensor->type == kTfLiteInt16 || tensor->type == kTfLiteInt8);
+  if (tensor->type == kTfLiteInt16) {
+    std::vector<int16_t> quantized_data; 
+    quantized_data = Quantize<int16_t>(data, scale, zero_point);
+    std::cout<<quantized_data[0]<<" "<<quantized_data[1]<<std::endl;
+    std::memcpy(tensor->data.i16, quantized_data.data(), quantized_data.size());
+  } else if (tensor->type == kTfLiteInt8) {
+    std::vector<int8_t> quantized_data_i8; 
+    quantized_data_i8 = Quantize<int8_t>(data, scale, zero_point);
+    std::cout<<"data  "<<int(quantized_data_i8[0])<<" "<<int(quantized_data_i8[1])<<std::endl;
+    std::memcpy(tensor->data.int8, quantized_data_i8.data(), quantized_data_i8.size());
+  }else {
+    FAIL() << "Unsupported tensor type for quantization.";
+  }
+}
+
 void FillScalarStringTensor(TfLiteTensor* tensor, const std::string& data) {
   StringRef str_ref;
   str_ref.str = data.c_str();
@@ -2065,6 +2276,20 @@ void CheckIntTensor(const TfLiteTensor* tensor, const std::vector<int>& shape,
   ASSERT_EQ(count, data.size());
   for (int i = 0; i < count; ++i) {
     EXPECT_EQ(tensor->data.i32[i], data[i]);
+  }
+}
+
+void CheckInt8Tensor(const TfLiteTensor* tensor, const std::vector<int>& shape,
+                    const std::vector<int8_t>& data) {
+  ASSERT_EQ(tensor->dims->size, shape.size());
+  for (int i = 0; i < tensor->dims->size; ++i) {
+    ASSERT_EQ(tensor->dims->data[i], shape[i]);
+  }
+  ASSERT_EQ(tensor->type, kTfLiteInt8);
+  int count = NumElements(tensor);
+  ASSERT_EQ(count, data.size());
+  for (int i = 0; i < count; ++i) {
+    EXPECT_EQ(tensor->data.int8[i], data[i]);
   }
 }
 
