@@ -1029,7 +1029,6 @@ cc_library(
 tf_proto_library(
     name = "trt_engine_instance_proto",
     srcs = ["utils/trt_engine_instance.proto"],
-    cc_api_version = 2,
     protodeps = tf_additional_all_protos(),
 )
 

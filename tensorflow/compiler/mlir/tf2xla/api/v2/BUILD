@@ -101,7 +101,6 @@ tf_cc_test(
 tf_proto_library(
     name = "device_type_proto",
     srcs = ["device_type.proto"],
-    cc_api_version = 2,
     visibility = [
         "//learning/serving/contrib/tfrt/mlir/saved_model_analysis:__pkg__",
     ],

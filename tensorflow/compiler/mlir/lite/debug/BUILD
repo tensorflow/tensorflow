@@ -10,7 +10,6 @@ load(
 tf_proto_library(
     name = "debug_options_proto",
     srcs = ["debug_options.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     visibility = ["//visibility:public"],
 )

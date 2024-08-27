@@ -255,5 +255,4 @@ cc_library(
 tf_proto_library(
     name = "compile_cache_item_proto",
     srcs = ["compile_cache_item.proto"],
-    cc_api_version = 2,
 )
