@@ -76,7 +76,6 @@ tf_proto_library(
     srcs = [
         "conv_parameters.proto",
     ],
-    cc_api_version = 2,
     protodeps = [
         "//tensorflow/core/framework:types_proto",
         "@local_tsl//tsl/protobuf:dnn_proto",
@@ -135,7 +134,6 @@ tf_proto_library(
     srcs = [
         "autotune_map.proto",
     ],
-    cc_api_version = 2,
     protodeps = [
         "//tensorflow/core/util/autotune_maps:conv_parameters_proto",
         "@local_tsl//tsl/protobuf:dnn_proto",

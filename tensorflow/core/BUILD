@@ -160,7 +160,6 @@ package_group(
 tf_proto_library(
     name = "protos_all",
     srcs = [],
-    cc_api_version = 2,
     create_go_proto = False,
     make_default_target_header_only = True,
     protodeps = [
