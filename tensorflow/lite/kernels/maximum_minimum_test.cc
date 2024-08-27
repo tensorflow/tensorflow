@@ -90,7 +90,11 @@ void TestModel(tflite::BuiltinOperator op, const TensorData& input1,
 
   ASSERT_EQ(m->Invoke(), kTfLiteOk);
   EXPECT_THAT(m->GetOutputShape(), ElementsAreArray(output.shape));
-  EXPECT_THAT(m->GetOutput(), ElementsAreArray(output_values));
+  if constexpr (std::is_same_v<data_type, float>) {
+    EXPECT_THAT(m->GetOutput(), Pointwise(FloatingPointEq(), output_values));
+  } else {
+    EXPECT_THAT(m->GetOutput(), ElementsAreArray(output_values));
+  }
 }
 
 TEST(MaximumOpTest, FloatTest) {
