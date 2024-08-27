@@ -25,7 +25,7 @@
 set -x
 
 # Get arguments (or defaults)
-ROCM_VERSION=6.1.0
+ROCM_VERSION=6.2.0
 DISTRO=focal
 if [[ -n $1 ]]; then
     ROCM_VERSION=$1
