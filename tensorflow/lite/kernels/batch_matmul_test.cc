@@ -137,7 +137,8 @@ TEST_P(BatchMatMulOpTest, Float32Test_Simple) {
                               {7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutput(),
-              ElementsAreArray({74., 80., 86., 92., 173., 188., 203., 218.}));
+              Pointwise(FloatingPointEq(),
+                        {74., 80., 86., 92., 173., 188., 203., 218.}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 4}));
 }
 
@@ -174,7 +175,8 @@ TEST_P(BatchMatMulOpTest, Float32Test_SimpleRHSAdjoint) {
                               {7, 11, 15, 8, 12, 16, 9, 13, 17, 10, 14, 18});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutput(),
-              ElementsAreArray({74., 80., 86., 92., 173., 188., 203., 218.}));
+              Pointwise(FloatingPointEq(),
+                        {74., 80., 86., 92., 173., 188., 203., 218.}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 4}));
 }
 
@@ -186,7 +188,8 @@ TEST_P(BatchMatMulOpTest, Float32Test_SimpleLHSAdjoint) {
                               {7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutput(),
-              ElementsAreArray({74., 80., 86., 92., 173., 188., 203., 218.}));
+              Pointwise(FloatingPointEq(),
+                        {74., 80., 86., 92., 173., 188., 203., 218.}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 4}));
 }
 
@@ -199,10 +202,10 @@ TEST_P(BatchMatMulOpTest, Float32Test_BatchSizeTwo) {
                               {7,  8,  9,  10, 11, 12, 13, 14, 15, 16, 17, 18,
                                19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
-  EXPECT_THAT(
-      model.GetOutput(),
-      ElementsAreArray({74., 80., 86., 92., 173., 188., 203., 218., 560., 584.,
-                        608., 632., 767., 800., 833., 866.}));
+  EXPECT_THAT(model.GetOutput(),
+              Pointwise(FloatingPointEq(),
+                        {74., 80., 86., 92., 173., 188., 203., 218., 560., 584.,
+                         608., 632., 767., 800., 833., 866.}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 2, 4}));
 }
 
@@ -215,10 +218,10 @@ TEST_P(BatchMatMulOpTest, Float32Test_Broadcast) {
                               {7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18});
 
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
-  EXPECT_THAT(
-      model.GetOutput(),
-      ElementsAreArray({74., 80., 86., 92., 173., 188., 203., 218., 272., 296.,
-                        320., 344., 371., 404., 437., 470.}));
+  EXPECT_THAT(model.GetOutput(),
+              Pointwise(FloatingPointEq(),
+                        {74., 80., 86., 92., 173., 188., 203., 218., 272., 296.,
+                         320., 344., 371., 404., 437., 470.}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 2, 4}));
 }
 
@@ -231,10 +234,10 @@ TEST_P(BatchMatMulOpTest, Float32Test_BroadcastLHSAdjoint) {
                               {7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18});
 
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
-  EXPECT_THAT(
-      model.GetOutput(),
-      ElementsAreArray({74., 80., 86., 92., 173., 188., 203., 218., 272., 296.,
-                        320., 344., 371., 404., 437., 470.}));
+  EXPECT_THAT(model.GetOutput(),
+              Pointwise(FloatingPointEq(),
+                        {74., 80., 86., 92., 173., 188., 203., 218., 272., 296.,
+                         320., 344., 371., 404., 437., 470.}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 2, 4}));
 }
 
@@ -250,14 +253,15 @@ TEST_P(BatchMatMulOpTest, Float32Test_Broadcast2) {
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       model.GetOutput(),
-      ElementsAreArray({29.,  32.,  35.,  38.,  65.,  72.,  79.,  86.,  101.,
-                        112., 123., 134., 53.,  56.,  59.,  62.,  121., 128.,
-                        135., 142., 189., 200., 211., 222., 77.,  80.,  83.,
-                        86.,  177., 184., 191., 198., 277., 288., 299., 310.,
-                        137., 152., 167., 182., 173., 192., 211., 230., 209.,
-                        232., 255., 278., 257., 272., 287., 302., 325., 344.,
-                        363., 382., 393., 416., 439., 462., 377., 392., 407.,
-                        422., 477., 496., 515., 534., 577., 600., 623., 646.}));
+      Pointwise(
+          FloatingPointEq(),
+          {29.,  32.,  35.,  38.,  65.,  72.,  79.,  86.,  101., 112., 123.,
+           134., 53.,  56.,  59.,  62.,  121., 128., 135., 142., 189., 200.,
+           211., 222., 77.,  80.,  83.,  86.,  177., 184., 191., 198., 277.,
+           288., 299., 310., 137., 152., 167., 182., 173., 192., 211., 230.,
+           209., 232., 255., 278., 257., 272., 287., 302., 325., 344., 363.,
+           382., 393., 416., 439., 462., 377., 392., 407., 422., 477., 496.,
+           515., 534., 577., 600., 623., 646.}));
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 3, 3, 4}));
 }
@@ -274,14 +278,15 @@ TEST_P(BatchMatMulOpTest, Float32Test_Broadcast2LHSAdjoint) {
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       model.GetOutput(),
-      ElementsAreArray({29.,  32.,  35.,  38.,  65.,  72.,  79.,  86.,  101.,
-                        112., 123., 134., 53.,  56.,  59.,  62.,  121., 128.,
-                        135., 142., 189., 200., 211., 222., 77.,  80.,  83.,
-                        86.,  177., 184., 191., 198., 277., 288., 299., 310.,
-                        137., 152., 167., 182., 173., 192., 211., 230., 209.,
-                        232., 255., 278., 257., 272., 287., 302., 325., 344.,
-                        363., 382., 393., 416., 439., 462., 377., 392., 407.,
-                        422., 477., 496., 515., 534., 577., 600., 623., 646.}));
+      Pointwise(
+          FloatingPointEq(),
+          {29.,  32.,  35.,  38.,  65.,  72.,  79.,  86.,  101., 112., 123.,
+           134., 53.,  56.,  59.,  62.,  121., 128., 135., 142., 189., 200.,
+           211., 222., 77.,  80.,  83.,  86.,  177., 184., 191., 198., 277.,
+           288., 299., 310., 137., 152., 167., 182., 173., 192., 211., 230.,
+           209., 232., 255., 278., 257., 272., 287., 302., 325., 344., 363.,
+           382., 393., 416., 439., 462., 377., 392., 407., 422., 477., 496.,
+           515., 534., 577., 600., 623., 646.}));
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 3, 3, 4}));
 }
@@ -297,14 +302,15 @@ TEST_P(BatchMatMulOpTest, Float32Test_Broadcast2RHSAdjoint) {
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       model.GetOutput(),
-      ElementsAreArray({29.,  32.,  35.,  38.,  65.,  72.,  79.,  86.,  101.,
-                        112., 123., 134., 53.,  56.,  59.,  62.,  121., 128.,
-                        135., 142., 189., 200., 211., 222., 77.,  80.,  83.,
-                        86.,  177., 184., 191., 198., 277., 288., 299., 310.,
-                        137., 152., 167., 182., 173., 192., 211., 230., 209.,
-                        232., 255., 278., 257., 272., 287., 302., 325., 344.,
-                        363., 382., 393., 416., 439., 462., 377., 392., 407.,
-                        422., 477., 496., 515., 534., 577., 600., 623., 646.}));
+      Pointwise(
+          FloatingPointEq(),
+          {29.,  32.,  35.,  38.,  65.,  72.,  79.,  86.,  101., 112., 123.,
+           134., 53.,  56.,  59.,  62.,  121., 128., 135., 142., 189., 200.,
+           211., 222., 77.,  80.,  83.,  86.,  177., 184., 191., 198., 277.,
+           288., 299., 310., 137., 152., 167., 182., 173., 192., 211., 230.,
+           209., 232., 255., 278., 257., 272., 287., 302., 325., 344., 363.,
+           382., 393., 416., 439., 462., 377., 392., 407., 422., 477., 496.,
+           515., 534., 577., 600., 623., 646.}));
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 3, 3, 4}));
 }
@@ -320,14 +326,15 @@ TEST_P(BatchMatMulOpTest, Float32Test_Broadcast2BothAdjoint) {
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       model.GetOutput(),
-      ElementsAreArray({29.,  32.,  35.,  38.,  65.,  72.,  79.,  86.,  101.,
-                        112., 123., 134., 53.,  56.,  59.,  62.,  121., 128.,
-                        135., 142., 189., 200., 211., 222., 77.,  80.,  83.,
-                        86.,  177., 184., 191., 198., 277., 288., 299., 310.,
-                        137., 152., 167., 182., 173., 192., 211., 230., 209.,
-                        232., 255., 278., 257., 272., 287., 302., 325., 344.,
-                        363., 382., 393., 416., 439., 462., 377., 392., 407.,
-                        422., 477., 496., 515., 534., 577., 600., 623., 646.}));
+      Pointwise(
+          FloatingPointEq(),
+          {29.,  32.,  35.,  38.,  65.,  72.,  79.,  86.,  101., 112., 123.,
+           134., 53.,  56.,  59.,  62.,  121., 128., 135., 142., 189., 200.,
+           211., 222., 77.,  80.,  83.,  86.,  177., 184., 191., 198., 277.,
+           288., 299., 310., 137., 152., 167., 182., 173., 192., 211., 230.,
+           209., 232., 255., 278., 257., 272., 287., 302., 325., 344., 363.,
+           382., 393., 416., 439., 462., 377., 392., 407., 422., 477., 496.,
+           515., 534., 577., 600., 623., 646.}));
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 3, 3, 4}));
 }
@@ -346,9 +353,10 @@ TEST_P(BatchMatMulOpTest, Float32Test_BroadcastFromRHS) {
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       model.GetOutput(),
-      ElementsAreArray({185., 200., 460.,  500.,  735.,  800.,  1010., 1100.,
-                        335., 350., 860.,  900.,  1385., 1450., 1910., 2000.,
-                        485., 500., 1260., 1300., 2035., 2100., 2810., 2900.}));
+      Pointwise(FloatingPointEq(),
+                {185., 200., 460.,  500.,  735.,  800.,  1010., 1100.,
+                 335., 350., 860.,  900.,  1385., 1450., 1910., 2000.,
+                 485., 500., 1260., 1300., 2035., 2100., 2810., 2900.}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({3, 1, 4, 2}));
 }
 
