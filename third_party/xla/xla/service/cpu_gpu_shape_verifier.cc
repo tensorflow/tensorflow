@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "xla/service/cpu_gpu_shape_verifier.h"
 
+#include <array>
+#include <string_view>
+
+#include "absl/algorithm/container.h"
+#include "absl/base/attributes.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -27,7 +32,35 @@ limitations under the License.
 namespace xla {
 
 namespace {
+
+bool IsAllowedS4U4CustomCall(const HloInstruction* instruction) {
+  // Compile-time XLA (and JAX) custom calls that are used only to encode
+  // operations metadata in the HLO module, and don't do any "real" compute.
+  static constexpr std::array<std::string_view, 1> kMetadataCustomCalls = {
+      "Sharding",
+  };
+  return absl::c_any_of(kMetadataCustomCalls, [&](std::string_view target) {
+    return target == instruction->custom_call_target();
+  });
+}
+
 absl::Status VerifyS4U4Usage(HloInstruction* instruction) {
+  // Checks that there is no S4/U4 in any of the sub shapes.
+  auto verify_subshape = [](const HloInstruction* instruction) {
+    return ShapeUtil::ForEachSubshapeWithStatus(
+        instruction->shape(), [&](const Shape& shape, const ShapeIndex&) {
+          if (primitive_util::IsSubByteNonPredType(shape.element_type())) {
+            return absl::InvalidArgumentError(absl::StrFormat(
+                "%s is currently only supported in convert instructions, "
+                "but got instruction: %s",
+                primitive_util::LowercasePrimitiveTypeName(
+                    shape.element_type()),
+                instruction->ToString()));
+          }
+          return absl::OkStatus();
+        });
+  };
+
   switch (instruction->opcode()) {
     case HloOpcode::kBitcast:
     case HloOpcode::kBroadcast:
@@ -43,20 +76,13 @@ absl::Status VerifyS4U4Usage(HloInstruction* instruction) {
     case HloOpcode::kTuple:
     case HloOpcode::kWhile:
       break;
+    case HloOpcode::kCustomCall:
+      if (IsAllowedS4U4CustomCall(instruction)) {
+        break;
+      }
+      ABSL_FALLTHROUGH_INTENDED;
     default:
-      TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
-          instruction->shape(), [&](const Shape& shape, const ShapeIndex&) {
-            if (primitive_util::IsSubByteNonPredType(shape.element_type())) {
-              return absl::InvalidArgumentError(absl::StrFormat(
-                  "%s is currently only supported in convert instructions, "
-                  "but got instruction: %s",
-                  primitive_util::LowercasePrimitiveTypeName(
-                      shape.element_type()),
-                  instruction->ToString()));
-            }
-            return absl::OkStatus();
-          }));
-      break;
+      return verify_subshape(instruction);
   }
 
   return absl::OkStatus();

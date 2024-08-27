@@ -82,5 +82,21 @@ TEST_F(CpuGpuShapeVerifierTest, Int4SupportedInstruction) {
   TF_EXPECT_OK(status);
 }
 
+TEST_F(CpuGpuShapeVerifierTest, Int4ShardingCustomCall) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  ENTRY main {
+    p0 = u4[] parameter(0)
+    ROOT sharded = u4[] custom-call(p0), custom_call_target="Sharding"
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  TF_EXPECT_OK(status);
+}
+
 }  // namespace
 }  // namespace xla
