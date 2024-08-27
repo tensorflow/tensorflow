@@ -335,8 +335,7 @@ ConvolutionThunk::HandleEigen2DConvolution(const ExecuteParams& params,
                                            se::DeviceMemoryBase kernel,
                                            se::DeviceMemoryBase output) {
   auto dispatch = [&](auto type_tag, const auto& eigen_device,
-                      std::optional<std::function<void()>> done_callback =
-                          std::nullopt) {
+                      std::function<void()> done_callback = nullptr) {
     using scalar_type = decltype(type_tag);
     internal::EigenConv2D(
         eigen_device, static_cast<scalar_type*>(output.opaque()),
@@ -375,8 +374,7 @@ ConvolutionThunk::HandleEigen3DConvolution(const ExecuteParams& params,
                                            se::DeviceMemoryBase kernel,
                                            se::DeviceMemoryBase output) {
   auto dispatch = [&](auto type_tag, const auto& eigen_device,
-                      std::optional<std::function<void()>> done_callback =
-                          std::nullopt) {
+                      std::function<void()> done_callback = nullptr) {
     using scalar_type = decltype(type_tag);
     internal::EigenConv3D(
         eigen_device, static_cast<scalar_type*>(output.opaque()),

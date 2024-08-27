@@ -28,7 +28,10 @@ filegroup(
 
 filegroup(
     name = "runtime_hdrs",
-    srcs = ["convolution_thunk_internal.h"],
+    srcs = [
+        "concurrency.h",
+        "convolution_thunk_internal.h",
+    ],
     visibility = internal_visibility([":friends"]),
 )
 
@@ -275,25 +278,8 @@ cc_library(
 )
 
 cc_library(
-    name = "convolution_thunk_internal",
-    srcs = [
-        "convolution_thunk_f16.cc",
-        "convolution_thunk_f32.cc",
-    ],
-    hdrs = ["convolution_thunk_internal.h"],
-    copts = runtime_copts(),
-    visibility = internal_visibility([":friends"]),
-    deps = [
-        "//xla/tsl/framework/contraction:eigen_contraction_kernel",
-        "//xla/tsl/framework/convolution:eigen_helpers",
-        "@eigen_archive//:eigen3",
-    ],
-)
-
-cc_library(
     name = "concurrency",
     hdrs = ["concurrency.h"],
-    copts = runtime_copts(),
     deps = [
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:logging",
@@ -313,6 +299,24 @@ xla_cc_test(
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_library(
+    name = "convolution_thunk_internal",
+    srcs = [
+        "convolution_thunk_f16.cc",
+        "convolution_thunk_f32.cc",
+    ],
+    hdrs = ["convolution_thunk_internal.h"],
+    copts = runtime_copts(),
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        ":concurrency",
+        "//xla/tsl/framework/contraction:eigen_contraction_kernel",
+        "//xla/tsl/framework/convolution:eigen_helpers",
+        "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:logging",
     ],
 )
 
