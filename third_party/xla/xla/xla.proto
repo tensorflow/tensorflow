@@ -114,6 +114,8 @@ message DebugOptions {
   //--------------------------------------------------------------------------//
   // go/keep-sorted start
 
+  // Specifies the behavior of per kernel autotuning cache.
+  AutotuneCacheMode xla_gpu_experimental_autotune_cache_mode = 324;
   // Internal debug/testing flag to switch Triton GEMM fusions on or off.
   bool xla_gpu_unsupported_enable_triton_gemm = 322;
 
@@ -942,7 +944,19 @@ message DebugOptions {
   // effort to parallelize matrix operations.
   bool xla_gpu_async_dot = 321;
 
-  // Next id: 324
+  enum AutotuneCacheMode {
+    AUTOTUNE_CACHE_MODE_UNSPECIFIED = 0;
+
+    // If the cache exists per fusion autotuner loads it and terminates,
+    // otherwise runs autotuner and dumps the result.
+    AUTOTUNE_CACHE_MODE_UPDATE = 1;
+
+    // Sets readonly access to the cache for the per fusion autotuner. Same as
+    // above, but doesn't dump anything.
+    AUTOTUNE_CACHE_MODE_READ = 2;
+  }
+
+  // Next id: 325
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

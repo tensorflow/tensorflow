@@ -278,6 +278,9 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_per_fusion_autotune_cache_dir("");
 
+  opts.set_xla_gpu_experimental_autotune_cache_mode(
+      DebugOptions::AUTOTUNE_CACHE_MODE_UPDATE);
+
   opts.set_xla_gpu_autotune_gemm_rtol(0.1f);
 
   opts.set_xla_enable_command_buffers_during_profiling(false);
@@ -637,6 +640,20 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
         // supported modes.
         return false;
       };
+
+  // Custom "sub-parser" for xla_gpu_experimental_autotune_cache_mode.
+  auto setter_for_xla_gpu_experimental_autotune_cache_mode =
+      [debug_options](const std::string& value) {
+        DebugOptions::AutotuneCacheMode autotune_cache_mode;
+        if (!DebugOptions::AutotuneCacheMode_Parse(value,
+                                                   &autotune_cache_mode)) {
+          return false;
+        }
+        debug_options->set_xla_gpu_experimental_autotune_cache_mode(
+            autotune_cache_mode);
+        return true;
+      };
+
   // Don't use an initializer list for initializing the vector; this would
   // create a temporary copy, and exceeds the stack space when compiling with
   // certain configurations.
@@ -1839,6 +1856,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "version checks must be done by the user (e.g. if you want to use "
       "separate caches for different versions of XLA, please use different "
       "directories). Default: no cache."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_autotune_cache_mode",
+      setter_for_xla_gpu_experimental_autotune_cache_mode,
+      DebugOptions::AutotuneCacheMode_Name(
+          debug_options->xla_gpu_experimental_autotune_cache_mode()),
+      "Experimental: Specify the behavior of per kernel autotuning "
+      "cache. Supported modes: read (provides readonly access to "
+      "the cache), update (loads if the cache exists, runs autotuning "
+      "and dumps the result otherwise). Default: update."));
   flag_list->push_back(tsl::Flag(
       "xla_enable_command_buffers_during_profiling",
       bool_setter_for(

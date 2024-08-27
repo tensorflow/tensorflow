@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/base64.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
@@ -132,11 +133,13 @@ int64_t GetNextUniqueId() {
   return ++id;
 }
 
-absl::Status AddResultToFileBasedCacheIfEnabled(const AutotuneCacheKey& key,
-                                                AutotuneResult result,
-                                                std::string_view cache_dir)
+absl::Status AddResultToFileBasedCacheIfEnabled(
+    const AutotuneCacheKey& key, AutotuneResult result,
+    std::string_view cache_dir,
+    DebugOptions::AutotuneCacheMode autotune_cache_mode)
     ABSL_LOCKS_EXCLUDED(autotune_cache_mu) {
-  if (cache_dir.empty()) {
+  if (cache_dir.empty() ||
+      autotune_cache_mode == DebugOptions::AUTOTUNE_CACHE_MODE_READ) {
     return absl::OkStatus();
   }
 
@@ -168,14 +171,15 @@ absl::Status AddResultToFileBasedCacheIfEnabled(const AutotuneCacheKey& key,
   return default_env->RenameFile(temp_file_path, file_path);
 }
 
-absl::StatusOr<ResultAndInserted> AddResultToCaches(const AutotuneCacheKey& key,
-                                                    AutotuneResult result,
-                                                    std::string_view cache_dir)
+absl::StatusOr<ResultAndInserted> AddResultToCaches(
+    const AutotuneCacheKey& key, AutotuneResult result,
+    std::string_view cache_dir,
+    DebugOptions::AutotuneCacheMode autotune_cache_mode)
     ABSL_LOCKS_EXCLUDED(autotune_cache_mu) {
   ResultAndInserted result_and_inserted = AddResultToInMemoryCache(key, result);
   if (result_and_inserted.inserted) {
     TF_RETURN_IF_ERROR(AddResultToFileBasedCacheIfEnabled(
-        key, result_and_inserted.result, cache_dir));
+        key, result_and_inserted.result, cache_dir, autotune_cache_mode));
   }
   return result_and_inserted;
 }
@@ -426,7 +430,8 @@ absl::StatusOr<std::optional<AutotuneResult>> TryFindInCache(
     const AutotuneConfig& config) {
   TF_ASSIGN_OR_RETURN(
       ResultAndInserted result_and_inserted,
-      AddResultToCaches(key, std::move(result), config.autotune_cache_dir()));
+      AddResultToCaches(key, std::move(result), config.autotune_cache_dir(),
+                        config.autotune_cache_mode()));
   return result_and_inserted.inserted;
 }
 
@@ -452,7 +457,8 @@ absl::StatusOr<std::optional<AutotuneResult>> TryFindInCache(
 
   TF_ASSIGN_OR_RETURN(ResultAndInserted result_and_inserted,
                       AddResultToCaches(key, std::move(autotune_result),
-                                        config.autotune_cache_dir()));
+                                        config.autotune_cache_dir(),
+                                        config.autotune_cache_mode()));
   return result_and_inserted.result;
 }
 

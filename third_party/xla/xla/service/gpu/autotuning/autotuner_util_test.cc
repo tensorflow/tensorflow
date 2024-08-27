@@ -58,6 +58,7 @@ using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::Not;
 using ::testing::TempDir;
+using ::testing::UnorderedElementsAre;
 using ::tsl::testing::StatusIs;
 
 class AutotunerUtilTest : public HloTestBase {
@@ -296,19 +297,33 @@ class FileBasedCacheTest : public AutotunerUtilTest {
     CHECK(default_env->LocalTempFilename(&cache_dir));
     return cache_dir;
   }();
-  AutotuneConfig config_ = AutotuneConfig(DeviceConfig{executor_}, [&] {
+
+  DebugOptions::AutotuneCacheMode GetCacheMode() const { return cache_mode_; }
+  void SetCacheMode(DebugOptions::AutotuneCacheMode cache_mode) {
+    cache_mode_ = cache_mode;
+  }
+
+  AutotuneConfig GetConfig() const {
     DebugOptions options;
     options.set_xla_gpu_per_fusion_autotune_cache_dir(cache_dir_);
-    return options;
-  }());
-  AutotuneCacheKey cache_key_ = AutotunerUtil::GetKey(dot_, config_);
-  std::string cache_filename_ = [&] {
+    options.set_xla_gpu_experimental_autotune_cache_mode(GetCacheMode());
+    return AutotuneConfig(DeviceConfig{executor_}, options);
+  }
+
+  AutotuneCacheKey GetCacheKey() const {
+    return AutotunerUtil::GetKey(dot_, GetConfig());
+  }
+
+  std::string GetCacheFilename() const {
     absl::StatusOr<std::string> key_hash =
-        GetBase64EncodedSha256Hash(cache_key_.ToString());
+        GetBase64EncodedSha256Hash(GetCacheKey().ToString());
     CHECK_OK(key_hash.status());
     return absl::StrCat(key_hash.value(), ".textproto");
-  }();
-  std::string cache_file_path_ = tsl::io::JoinPath(cache_dir_, cache_filename_);
+  }
+
+  std::string GetCacheFilePath() const {
+    return tsl::io::JoinPath(cache_dir_, GetCacheFilename());
+  }
   const AutotuneResult result1_ = [] {
     AutotuneResult result;
     result.set_scratch_bytes(1);
@@ -319,24 +334,28 @@ class FileBasedCacheTest : public AutotunerUtilTest {
     result.set_scratch_bytes(2);
     return result;
   }();
+
+ private:
+  DebugOptions::AutotuneCacheMode cache_mode_;
 };
 
 TEST_F(FileBasedCacheTest, AutotuneCreatesTmpAndWritesResultToTheCacheDir) {
   TF_ASSERT_OK_AND_ASSIGN(
       AutotuneResult result,
-      AutotunerUtil::Autotune(dot_, config_, [&] { return result1_; }));
+      AutotunerUtil::Autotune(dot_, GetConfig(), [&] { return result1_; }));
   EXPECT_EQ(ToString(result), ToString(result1_));
 
-  ASSERT_THAT(GetFilesInDir(cache_dir_), ElementsAre(cache_filename_, "tmp"));
-  EXPECT_EQ(Read(cache_file_path_), ToString(result1_));
+  ASSERT_THAT(GetFilesInDir(cache_dir_),
+              UnorderedElementsAre(GetCacheFilename(), "tmp"));
+  EXPECT_EQ(Read(GetCacheFilePath()), ToString(result1_));
 }
 
 TEST_F(FileBasedCacheTest, AutotuneReadsResultFromTheCacheDir) {
-  Write(cache_file_path_, ToString(result1_));
+  Write(GetCacheFilePath(), ToString(result1_));
 
   bool cache_hit = true;
   TF_ASSERT_OK_AND_ASSIGN(AutotuneResult result,
-                          AutotunerUtil::Autotune(dot_, config_, [&] {
+                          AutotunerUtil::Autotune(dot_, GetConfig(), [&] {
                             cache_hit = false;
                             return result2_;
                           }));
@@ -361,63 +380,71 @@ TEST_F(FileBasedCacheTest,
     EXPECT_TRUE(cache_hit);
     EXPECT_EQ(ToString(result), ToString(expected_result));
   };
+  const std::string cache_file_path = GetCacheFilePath();
+  const AutotuneConfig config = GetConfig();
 
-  Write(cache_file_path_, ToString(result1_));
-  check_autotune_cache_hit(dot_, config_, /*expected_result=*/result1_);
+  Write(cache_file_path, ToString(result1_));
+  check_autotune_cache_hit(dot_, config, /*expected_result=*/result1_);
 
   constexpr absl::string_view kPlaceholderContent = "placeholder content";
-  Write(cache_file_path_, kPlaceholderContent);
+  Write(cache_file_path, kPlaceholderContent);
   // File was not read again:
-  check_autotune_cache_hit(dot_, config_, /*expected_result=*/result1_);
+  check_autotune_cache_hit(dot_, config, /*expected_result=*/result1_);
   // File was not written again:
-  EXPECT_EQ(Read(cache_file_path_), kPlaceholderContent);
+  EXPECT_EQ(Read(cache_file_path), kPlaceholderContent);
 }
 
 TEST_F(FileBasedCacheTest,
        IsInCacheReturnsTrueIfTheResultIsInTheFileBasedCache) {
-  Write(cache_file_path_, ToString(result1_));
+  Write(GetCacheFilePath(), ToString(result1_));
 
   TF_ASSERT_OK_AND_ASSIGN(bool is_in_cache,
-                          AutotunerUtil::IsInCache(cache_key_, config_));
+                          AutotunerUtil::IsInCache(GetCacheKey(), GetConfig()));
 
   EXPECT_TRUE(is_in_cache);
 }
 
 TEST_F(FileBasedCacheTest, IsInCacheReturnsFalseIfTheResultIsNotInEitherCache) {
   TF_ASSERT_OK_AND_ASSIGN(bool is_in_cache,
-                          AutotunerUtil::IsInCache(cache_key_, config_));
+                          AutotunerUtil::IsInCache(GetCacheKey(), GetConfig()));
 
   EXPECT_FALSE(is_in_cache);
 }
 
 TEST_F(FileBasedCacheTest, AddResultAddsTheResultToTheFileBasedCache) {
   TF_ASSERT_OK_AND_ASSIGN(
-      bool added, AutotunerUtil::AddResult(cache_key_, result1_, config_));
+      bool added,
+      AutotunerUtil::AddResult(GetCacheKey(), result1_, GetConfig()));
   EXPECT_TRUE(added);
 
-  ASSERT_THAT(GetFilesInDir(cache_dir_), ElementsAre(cache_filename_, "tmp"));
-  EXPECT_EQ(Read(cache_file_path_), ToString(result1_));
+  ASSERT_THAT(GetFilesInDir(cache_dir_),
+              UnorderedElementsAre(GetCacheFilename(), "tmp"));
+  EXPECT_EQ(Read(GetCacheFilePath()), ToString(result1_));
 }
 
 TEST_F(FileBasedCacheTest, RepeatedAddResultDoesNotWriteTheFileAgain) {
+  const std::string cache_file_path = GetCacheFilePath();
+  const AutotuneCacheKey cache_key = GetCacheKey();
+  const AutotuneConfig config = GetConfig();
   {
     TF_ASSERT_OK_AND_ASSIGN(
-        bool added, AutotunerUtil::AddResult(cache_key_, result1_, config_));
+        bool added, AutotunerUtil::AddResult(cache_key, result1_, config));
     EXPECT_TRUE(added);
   }
-  ASSERT_THAT(GetFilesInDir(cache_dir_), ElementsAre(cache_filename_, "tmp"));
-  EXPECT_EQ(Read(cache_file_path_), ToString(result1_));
+  ASSERT_THAT(GetFilesInDir(cache_dir_),
+              UnorderedElementsAre(GetCacheFilename(), "tmp"));
+  EXPECT_EQ(Read(cache_file_path), ToString(result1_));
   constexpr absl::string_view kPlaceholderContent = "placeholder content";
-  Write(cache_file_path_, kPlaceholderContent);
+  Write(cache_file_path, kPlaceholderContent);
 
   {
     TF_ASSERT_OK_AND_ASSIGN(
-        bool added, AutotunerUtil::AddResult(cache_key_, result1_, config_));
+        bool added, AutotunerUtil::AddResult(cache_key, result1_, config));
     EXPECT_FALSE(added);
   }
 
   // File was not written again:
-  EXPECT_EQ(Read(cache_file_path_), kPlaceholderContent);
+  EXPECT_EQ(Read(cache_file_path), kPlaceholderContent);
 }
 
 TEST(AutotuneCacheKeyTest, DeviceDescriptionToCacheKey) {
@@ -449,6 +476,16 @@ TEST(AutotuneCacheKeyTest, DeviceDescriptionToCacheKey) {
                 device_description("mi200.txtpb")),
             "ROCM: gfx90a, Cores: 110, GPU clock: 1.7 GHz, Memory bandwidth: "
             "1638 GB/s, L2 cache: 8 MB");
+}
+
+TEST_F(FileBasedCacheTest, AddResultDoesNotWriteTheFileInReadMode) {
+  SetCacheMode(DebugOptions::AUTOTUNE_CACHE_MODE_READ);
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool added,
+      AutotunerUtil::AddResult(GetCacheKey(), result1_, GetConfig()));
+  EXPECT_TRUE(added);  // was added to in memory cache.
+  EXPECT_EQ(GetFilesInDir(cache_dir_).size(),
+            0);  // wasn't dumped to file based cache.
 }
 
 }  // namespace
