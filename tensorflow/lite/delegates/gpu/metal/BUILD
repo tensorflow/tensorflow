@@ -297,6 +297,7 @@ objc_library(
 
 ios_unit_test(
     name = "ComponentsTests",
+    families = ["iphone"],
     minimum_os_version = "12.0",
     runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + ["notap"],
