@@ -7677,7 +7677,6 @@ py_strict_test(
     python_version = "PY3",
     tags = [
         "no_oss",
-        "nopip",
     ],
     deps = [
         ":generate_test_hlo_checks",

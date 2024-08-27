@@ -2126,7 +2126,6 @@ xla_cc_test(
     name = "priority_fusion_test",
     srcs = ["priority_fusion_test.cc"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
-    tags = ["no_pip"],
     deps = [
         ":priority_fusion",
         "//xla:shape_util",

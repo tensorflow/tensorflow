@@ -26,7 +26,6 @@ cc_library(
     testonly = True,
     srcs = ["exhaustive_op_test_utils.cc"],
     hdrs = ["exhaustive_op_test_utils.h"],
-    tags = ["no_pip"],
     deps = [
         "//xla:bit_cast",
         "//xla:executable_run_options",
