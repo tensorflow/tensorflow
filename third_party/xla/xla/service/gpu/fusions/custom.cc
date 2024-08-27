@@ -220,6 +220,15 @@ static bool IsLoopIterationOffset(const HloInstruction* offset) {
   return true;
 }
 
+// Returns the constant literal, if the offset is from an offset array. Returns
+// `std::nullopt` otherwise.
+std::optional<const Literal*> GetOffsetArray(const HloInstruction* inst) {
+  if (Match(inst, m::Reshape(m::DynamicSlice(m::Constant(), m::Parameter())))) {
+    return &inst->operand(0)->operand(0)->literal();
+  }
+  return std::nullopt;
+}
+
 absl::Status CollectSliceInfo(
     const BufferAssignment& buffer_assignment,
     const HloInstruction& fusion_instr,
@@ -236,6 +245,12 @@ absl::Status CollectSliceInfo(
 
   std::vector<DynamicSliceThunk::Offset> arg_offsets;
   for (auto idx_op : arg_slice_instr->index_operands()) {
+    if (auto offset_array_literal = GetOffsetArray(idx_op);
+        offset_array_literal != std::nullopt) {
+      arg_offsets.emplace_back(
+          DynamicSliceThunk::OffsetArray(**offset_array_literal));
+      continue;
+    }
     const auto* param = Cast<HloParameterInstruction>(idx_op);
     const auto* offset_value = fusion_instr.operand(param->parameter_number());
 
