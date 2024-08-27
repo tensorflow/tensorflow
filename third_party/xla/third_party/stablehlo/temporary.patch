@@ -27,6 +27,231 @@ diff --ruN a/stablehlo/stablehlo/conversions/tosa/tests/lit.cfg.py b/stablehlo/s
  ]
  tool_dirs = [
    config.llvm_tools_dir,
+diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/Base.cpp
+--- stablehlo/stablehlo/dialect/Base.cpp
++++ stablehlo/stablehlo/dialect/Base.cpp
+@@ -21,12 +21,15 @@
+ #include <cstdint>
+ #include <functional>
+ #include <optional>
++#include <tuple>
+ #include <utility>
+ 
+ #include "llvm/ADT/APInt.h"
++#include "llvm/ADT/Hashing.h"
+ #include "llvm/ADT/STLExtras.h"
+ #include "llvm/ADT/Sequence.h"
+ #include "llvm/ADT/SmallVector.h"
++#include "llvm/Support/Debug.h"
+ #include "llvm/Support/ErrorHandling.h"
+ #include "mlir/Dialect/Quant/QuantTypes.h"
+ #include "mlir/Dialect/Shape/IR/Shape.h"
+@@ -42,9 +45,13 @@
+ #include "mlir/Interfaces/InferTypeOpInterface.h"
+ #include "mlir/Interfaces/SideEffectInterfaces.h"
+ #include "mlir/Support/LLVM.h"
++#include "mlir/Support/LogicalResult.h"
++#include "mlir/Support/TypeID.h"
+ 
+ // Include order matters
+ #include "stablehlo/dialect/BaseAttrInterfaces.cpp.inc"
++
++#define DEBUG_TYPE "stablehlo-base"
+ 
+ namespace mlir {
+ namespace hlo {
+@@ -624,6 +631,84 @@
+                      [val](int64_t x) { return x == val; });
+ }
+ 
++namespace detail {
++template <typename LHS, typename RHS, typename Accum, int64_t N>
++bool match(Type lhsPrecisionType, Type rhsPrecisionType, Type accumulationType,
++           int64_t numPrimitiveOperations) {
++  return isa<LHS>(lhsPrecisionType) && isa<RHS>(rhsPrecisionType) &&
++         isa<Accum>(accumulationType) && numPrimitiveOperations == N;
++}
++
++FailureOr<KnownDotAlgorithm> getKnownDotAlgorithm(
++    Type lhsPrecisionType, Type rhsPrecisionType, Type accumulationType,
++    int64_t lhsComponentCount, int64_t rhsComponentCount,
++    int64_t numPrimitiveOperations, bool allowImpreciseAccumulation) {
++  // Only support single component for now.
++  if (lhsComponentCount != 1 || rhsComponentCount != 1) return failure();
++
++  auto isAnyF8 = [](Type t) {
++    return llvm::isa<Float8E4M3FNType, Float8E5M2Type, Float8E4M3FNUZType,
++                     Float8E4M3B11FNUZType, Float8E5M2FNUZType>(t);
++  };
++  if (isAnyF8(lhsPrecisionType) && isAnyF8(rhsPrecisionType) &&
++      accumulationType.isF32() && numPrimitiveOperations == 1) {
++    if (allowImpreciseAccumulation)
++      return KnownDotAlgorithm::ANY_F8_ANY_F8_F32_FAST_ACCUM;
++    return KnownDotAlgorithm::ANY_F8_ANY_F8_F32;
++  }
++  if (allowImpreciseAccumulation) return failure();
++
++  // TypeID doesn't define a `<` operator so cannot use in map.
++  // Use its name instead.
++  auto key = std::make_tuple(lhsPrecisionType.getAbstractType().getName(),
++                             rhsPrecisionType.getAbstractType().getName(),
++                             accumulationType.getAbstractType().getName(),
++                             numPrimitiveOperations);
++
++  StringRef bf16 = BFloat16Type::name;
++  StringRef f16 = Float16Type::name;
++  StringRef f32 = Float32Type::name;
++  StringRef f64 = Float64Type::name;
++  StringRef tf32 = FloatTF32Type::name;
++  std::map<std::tuple<StringRef, StringRef, StringRef, int64_t>,
++           KnownDotAlgorithm>
++      knownDotAlgorithms{
++          {{f16, f16, f16, 1}, KnownDotAlgorithm::F16_F16_F16},
++          {{f16, f16, f32, 1}, KnownDotAlgorithm::F16_F16_F32},
++          {{bf16, bf16, bf16, 1}, KnownDotAlgorithm::BF16_BF16_BF16},
++          {{bf16, bf16, f32, 1}, KnownDotAlgorithm::BF16_BF16_F32},
++          {{bf16, bf16, f32, 3}, KnownDotAlgorithm::BF16_BF16_F32_X3},
++          {{bf16, bf16, f32, 6}, KnownDotAlgorithm::BF16_BF16_F32_X6},
++          {{tf32, tf32, f32, 1}, KnownDotAlgorithm::TF32_TF32_F32},
++          {{tf32, tf32, f32, 3}, KnownDotAlgorithm::TF32_TF32_F32_X3},
++          {{f32, f32, f32, 1}, KnownDotAlgorithm::F32_F32_F32},
++          {{f64, f64, f64, 1}, KnownDotAlgorithm::F64_F64_F64},
++      };
++
++  auto algorithm = knownDotAlgorithms.find(key);
++  if (algorithm != knownDotAlgorithms.end()) {
++    LLVM_DEBUG(llvm::dbgs()
++               << "Found known dot algorithm: "
++               << static_cast<int64_t>(algorithm->second) << " "
++               << std::get<0>(key) << ", " << std::get<1>(key) << ", "
++               << std::get<2>(key) << ", " << std::get<3>(key) << "\n");
++    return algorithm->second;
++  }
++  return failure();
++}
++}  // namespace detail
++
++// Check if the combination of a dot algorithm struct is known.
++bool isKnownDotAlgorithm(Type lhsPrecisionType, Type rhsPrecisionType,
++                         Type accumulationType, int64_t lhsComponentCount,
++                         int64_t rhsComponentCount,
++                         int64_t numPrimitiveOperations,
++                         bool allowImpreciseAccumulation) {
++  return succeeded(detail::getKnownDotAlgorithm(
++      lhsPrecisionType, rhsPrecisionType, accumulationType, lhsComponentCount,
++      rhsComponentCount, numPrimitiveOperations, allowImpreciseAccumulation));
++}
++
+ mlir::Speculation::Speculatability getShapedSpeculatability(
+     Operation* op, int64_t shapeCount) {
+   // If all inputs are static and the shape-related operands are constant
+diff --ruN a/stablehlo/stablehlo/dialect/Base.h b/stablehlo/stablehlo/dialect/Base.h
+--- stablehlo/stablehlo/dialect/Base.h
++++ stablehlo/stablehlo/dialect/Base.h
+@@ -235,6 +235,43 @@
+   virtual Attribute createTypeExtensions(ArrayRef<int64_t> bounds) const = 0;
+ };
+ 
++namespace detail {
++
++// An enum which tracks known supported dot algorithm pairs.
++// Note this implementation is a detail for now and the APIs are likely to
++// change once HLO broadens support for LHS/RHS components and num primitive
++// operations.
++//
++// It is best to not rely on these values until the API solidifies.
++// Instead use `isKnownDotAlgorithm`.
++enum class KnownDotAlgorithm {
++  ANY_F8_ANY_F8_F32 = 1,
++  ANY_F8_ANY_F8_F32_FAST_ACCUM = 2,
++  F16_F16_F16 = 3,
++  F16_F16_F32 = 4,
++  BF16_BF16_BF16 = 5,
++  BF16_BF16_F32 = 6,
++  BF16_BF16_F32_X3 = 7,
++  BF16_BF16_F32_X6 = 8,
++  TF32_TF32_F32 = 9,
++  TF32_TF32_F32_X3 = 10,
++  F32_F32_F32 = 11,
++  F64_F64_F64 = 12,
++};
++
++FailureOr<KnownDotAlgorithm> getKnownDotAlgorithm(
++    Type lhsPrecisionType, Type rhsPrecisionType, Type accumulationType,
++    int64_t lhsComponentCount, int64_t rhsComponentCount,
++    int64_t numPrimitiveOperations, bool allowImpreciseAccumulation);
++}  // namespace detail
++
++// Check if the combination of a dot algorithm struct is known.
++bool isKnownDotAlgorithm(Type lhsPrecisionType, Type rhsPrecisionType,
++                         Type accumulationType, int64_t lhsComponentCount,
++                         int64_t rhsComponentCount,
++                         int64_t numPrimitiveOperations,
++                         bool allowImpreciseAccumulation);
++
+ namespace bytecode {
+ // Helper methods for bytecode
+ // Enum reader and writer. Many attrs have a single enum type to serialize.
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
+--- stablehlo/stablehlo/dialect/TypeInference.cpp
++++ stablehlo/stablehlo/dialect/TypeInference.cpp
+@@ -27,7 +27,9 @@
+ #include <iterator>
+ #include <numeric>
+ #include <optional>
++#include <set>
+ #include <string>
++#include <tuple>
+ #include <type_traits>
+ #include <utility>
+ #include <vector>
+@@ -4057,24 +4059,6 @@
+     Type lhsPrecisionType, Type rhsPrecisionType, Type accumulationType,
+     int64_t lhsComponentCount, int64_t rhsComponentCount,
+     int64_t numPrimitiveOperations, bool allowImpreciseAccumulation) {
+-  auto isValidType = [](Type t) {
+-    // Only support float types for now
+-    // This can be extended as needed, as the RFC was for general support, but
+-    // only FP hardware support exists in the ecosystem today.
+-    return llvm::isa<FloatTF32Type, Float8E4M3FNType, Float8E5M2Type,
+-                     Float8E4M3FNUZType, Float8E4M3B11FNUZType,
+-                     Float8E5M2FNUZType, BFloat16Type, Float16Type, Float32Type,
+-                     Float64Type>(t);
+-  };
+-  // dot_general_i8
+-  if (!isValidType(lhsPrecisionType))
+-    return emitError() << "lhs precision type must be float";
+-  // dot_general_i9
+-  if (!isValidType(rhsPrecisionType))
+-    return emitError() << "rhs precision type must be float";
+-  // dot_general_i10
+-  if (!isValidType(accumulationType))
+-    return emitError() << "accumulation type must be float";
+   // dot_general_c22
+   if (lhsComponentCount < 1)
+     return emitError() << "lhs component count must be positive";
+@@ -4084,6 +4068,21 @@
+   // dot_general_c24
+   if (numPrimitiveOperations < 1)
+     return emitError() << "num primitive operations must be positive";
++
++  // Best effort algorithm verification, support algorithm combinations
++  // known to be supported on some hardware, not necessarily the target hardware
++  // dot_general_i8, dot_general_i9, dot_general_i10
++  if (!isKnownDotAlgorithm(lhsPrecisionType, rhsPrecisionType, accumulationType,
++                           lhsComponentCount, rhsComponentCount,
++                           numPrimitiveOperations, allowImpreciseAccumulation))
++    return emitError()
++           << "dot algorithm not known to be supported on any hardware: "
++           << "{lhs:" << lhsPrecisionType << ", rhs:" << rhsPrecisionType
++           << ", accum:" << accumulationType
++           << ", lhs_components:" << lhsComponentCount
++           << ", rhs_components:" << rhsComponentCount
++           << ", primitive_ops:" << numPrimitiveOperations
++           << ", imprecise:" << allowImpreciseAccumulation << "}";
+   return success();
+ }
+ 
 diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloApi.cpp b/stablehlo/stablehlo/integrations/python/StablehloApi.cpp
 --- stablehlo/stablehlo/integrations/python/StablehloApi.cpp
 +++ stablehlo/stablehlo/integrations/python/StablehloApi.cpp
@@ -98,4 +323,344 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/tests/stablehlo.py b/stable
      deserialized = stablehlo.deserialize_portable_artifact_str(serialized)
      deserialized_module = ir.Module.parse(deserialized)
      assert module_str == str(deserialized_module)
+diff --ruN a/stablehlo/stablehlo/tests/interpret/dot_general.mlir b/stablehlo/stablehlo/tests/interpret/dot_general.mlir
+--- stablehlo/stablehlo/tests/interpret/dot_general.mlir
++++ stablehlo/stablehlo/tests/interpret/dot_general.mlir
+@@ -29,7 +29,7 @@
+     algorithm = <
+       lhs_precision_type = tf32,
+       rhs_precision_type = tf32,
+-      accumulation_type = tf32,
++      accumulation_type = f32,
+       lhs_component_count = 1,
+       rhs_component_count = 1,
+       num_primitive_operations = 1,
+diff --ruN a/stablehlo/stablehlo/tests/ops_dot_general_algorithms.mlir b/stablehlo/stablehlo/tests/ops_dot_general_algorithms.mlir
+--- stablehlo/stablehlo/tests/ops_dot_general_algorithms.mlir
++++ stablehlo/stablehlo/tests/ops_dot_general_algorithms.mlir
+@@ -0,0 +1,262 @@
++// RUN: stablehlo-opt %s -verify-diagnostics -split-input-file -allow-unregistered-dialect | FileCheck %s
++
++// CHECK-LABEL: func @dot_algorithm_f8_f8_f32
++func.func @dot_algorithm_f8_f8_f32(%arg0: tensor<2x2x2xf32>, %arg1: tensor<2x2x2xf32>) -> tensor<2x2x2xf32> {
++  %0 = "stablehlo.dot_general"(%arg0, %arg1) <{
++    dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
++    precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>],
++    algorithm = #stablehlo.dot_algorithm<
++      lhs_precision_type = f8E4M3FNUZ,
++      rhs_precision_type = f8E4M3FNUZ,
++      accumulation_type = f32,
++      lhs_component_count = 1,
++      rhs_component_count = 1,
++      num_primitive_operations = 1,
++      allow_imprecise_accumulation = false
++    >
++  }> : (tensor<2x2x2xf32>, tensor<2x2x2xf32>) -> tensor<2x2x2xf32>  return %0 : tensor<2x2x2xf32>
++}
++
++// CHECK-LABEL: func @dot_algorithm_f8_f8_f32_fast_accum
++func.func @dot_algorithm_f8_f8_f32_fast_accum(%arg0: tensor<2x2x2xf32>, %arg1: tensor<2x2x2xf32>) -> tensor<2x2x2xf32> {
++  %0 = "stablehlo.dot_general"(%arg0, %arg1) <{
++    dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
++    precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>],
++    algorithm = #stablehlo.dot_algorithm<
++      lhs_precision_type = f8E4M3FNUZ,
++      rhs_precision_type = f8E4M3FNUZ,
++      accumulation_type = f32,
++      lhs_component_count = 1,
++      rhs_component_count = 1,
++      num_primitive_operations = 1,
++      allow_imprecise_accumulation = true
++    >
++  }> : (tensor<2x2x2xf32>, tensor<2x2x2xf32>) -> tensor<2x2x2xf32>  return %0 : tensor<2x2x2xf32>
++}
++
++// CHECK-LABEL: func @dot_algorithm_f16_f16_f16
++func.func @dot_algorithm_f16_f16_f16(%arg0: tensor<2x2x2xf32>, %arg1: tensor<2x2x2xf32>) -> tensor<2x2x2xf32> {
++  %0 = "stablehlo.dot_general"(%arg0, %arg1) <{
++    dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
++    precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>],
++    algorithm = #stablehlo.dot_algorithm<
++      lhs_precision_type = f16,
++      rhs_precision_type = f16,
++      accumulation_type = f16,
++      lhs_component_count = 1,
++      rhs_component_count = 1,
++      num_primitive_operations = 1,
++      allow_imprecise_accumulation = false
++    >
++  }> : (tensor<2x2x2xf32>, tensor<2x2x2xf32>) -> tensor<2x2x2xf32>  return %0 : tensor<2x2x2xf32>
++}
++
++// CHECK-LABEL: func @dot_algorithm_f16_f16_f32
++func.func @dot_algorithm_f16_f16_f32(%arg0: tensor<2x2x2xf32>, %arg1: tensor<2x2x2xf32>) -> tensor<2x2x2xf32> {
++  %0 = "stablehlo.dot_general"(%arg0, %arg1) <{
++    dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
++    precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>],
++    algorithm = #stablehlo.dot_algorithm<
++      lhs_precision_type = f16,
++      rhs_precision_type = f16,
++      accumulation_type = f32,
++      lhs_component_count = 1,
++      rhs_component_count = 1,
++      num_primitive_operations = 1,
++      allow_imprecise_accumulation = false
++    >
++  }> : (tensor<2x2x2xf32>, tensor<2x2x2xf32>) -> tensor<2x2x2xf32>  return %0 : tensor<2x2x2xf32>
++}
++
++// CHECK-LABEL: func @dot_algorithm_bf16_bf16_bf16
++func.func @dot_algorithm_bf16_bf16_bf16(%arg0: tensor<2x2x2xbf16>, %arg1: tensor<2x2x2xbf16>) -> tensor<2x2x2xbf16> {
++  %0 = "stablehlo.dot_general"(%arg0, %arg1) <{
++    dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
++    precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>],
++    algorithm = #stablehlo.dot_algorithm<
++      lhs_precision_type = bf16,
++      rhs_precision_type = bf16,
++      accumulation_type = bf16,
++      lhs_component_count = 1,
++      rhs_component_count = 1,
++      num_primitive_operations = 1,
++      allow_imprecise_accumulation = false
++    >
++  }> : (tensor<2x2x2xbf16>, tensor<2x2x2xbf16>) -> tensor<2x2x2xbf16>  return %0 : tensor<2x2x2xbf16>
++}
++
++// CHECK-LABEL: func @dot_algorithm_bf16_bf16_f32
++func.func @dot_algorithm_bf16_bf16_f32(%arg0: tensor<2x2x2xbf16>, %arg1: tensor<2x2x2xbf16>) -> tensor<2x2x2xbf16> {
++  %0 = "stablehlo.dot_general"(%arg0, %arg1) <{
++    dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
++    precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>],
++    algorithm = #stablehlo.dot_algorithm<
++      lhs_precision_type = bf16,
++      rhs_precision_type = bf16,
++      accumulation_type = f32,
++      lhs_component_count = 1,
++      rhs_component_count = 1,
++      num_primitive_operations = 1,
++      allow_imprecise_accumulation = false
++    >
++  }> : (tensor<2x2x2xbf16>, tensor<2x2x2xbf16>) -> tensor<2x2x2xbf16>  return %0 : tensor<2x2x2xbf16>
++}
++
++// CHECK-LABEL: func @dot_algorithm_bf16_bf16_f32_x3
++func.func @dot_algorithm_bf16_bf16_f32_x3(%arg0: tensor<2x2x2xbf16>, %arg1: tensor<2x2x2xbf16>) -> tensor<2x2x2xbf16> {
++  %0 = "stablehlo.dot_general"(%arg0, %arg1) <{
++    dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
++    precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>],
++    algorithm = #stablehlo.dot_algorithm<
++      lhs_precision_type = bf16,
++      rhs_precision_type = bf16,
++      accumulation_type = f32,
++      lhs_component_count = 1,
++      rhs_component_count = 1,
++      num_primitive_operations = 3,
++      allow_imprecise_accumulation = false
++    >
++  }> : (tensor<2x2x2xbf16>, tensor<2x2x2xbf16>) -> tensor<2x2x2xbf16>  return %0 : tensor<2x2x2xbf16>
++}
++
++// CHECK-LABEL: func @dot_algorithm_bf16_bf16_f32_x6
++func.func @dot_algorithm_bf16_bf16_f32_x6(%arg0: tensor<2x2x2xbf16>, %arg1: tensor<2x2x2xbf16>) -> tensor<2x2x2xbf16> {
++  %0 = "stablehlo.dot_general"(%arg0, %arg1) <{
++    dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
++    precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>],
++    algorithm = #stablehlo.dot_algorithm<
++      lhs_precision_type = bf16,
++      rhs_precision_type = bf16,
++      accumulation_type = f32,
++      lhs_component_count = 1,
++      rhs_component_count = 1,
++      num_primitive_operations = 6,
++      allow_imprecise_accumulation = false
++    >
++  }> : (tensor<2x2x2xbf16>, tensor<2x2x2xbf16>) -> tensor<2x2x2xbf16>  return %0 : tensor<2x2x2xbf16>
++}
++
++// CHECK-LABEL: func @dot_algorithm_tf32_tf32_f32
++func.func @dot_algorithm_tf32_tf32_f32(%arg0: tensor<2x2x2xf32>, %arg1: tensor<2x2x2xf32>) -> tensor<2x2x2xf32> {
++  %0 = "stablehlo.dot_general"(%arg0, %arg1) <{
++    dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
++    precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>],
++    algorithm = #stablehlo.dot_algorithm<
++      lhs_precision_type = tf32,
++      rhs_precision_type = tf32,
++      accumulation_type = f32,
++      lhs_component_count = 1,
++      rhs_component_count = 1,
++      num_primitive_operations = 1,
++      allow_imprecise_accumulation = false
++    >
++  }> : (tensor<2x2x2xf32>, tensor<2x2x2xf32>) -> tensor<2x2x2xf32>  return %0 : tensor<2x2x2xf32>
++}
++
++// CHECK-LABEL: func @dot_algorithm_tf32_tf32_f32_x3
++func.func @dot_algorithm_tf32_tf32_f32_x3(%arg0: tensor<2x2x2xf32>, %arg1: tensor<2x2x2xf32>) -> tensor<2x2x2xf32> {
++  %0 = "stablehlo.dot_general"(%arg0, %arg1) <{
++    dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
++    precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>],
++    algorithm = #stablehlo.dot_algorithm<
++      lhs_precision_type = tf32,
++      rhs_precision_type = tf32,
++      accumulation_type = f32,
++      lhs_component_count = 1,
++      rhs_component_count = 1,
++      num_primitive_operations = 3,
++      allow_imprecise_accumulation = false
++    >
++  }> : (tensor<2x2x2xf32>, tensor<2x2x2xf32>) -> tensor<2x2x2xf32>  return %0 : tensor<2x2x2xf32>
++}
++
++// CHECK-LABEL: func @dot_algorithm_f32_f32_f32
++func.func @dot_algorithm_f32_f32_f32(%arg0: tensor<2x2x2xf32>, %arg1: tensor<2x2x2xf32>) -> tensor<2x2x2xf32> {
++  %0 = "stablehlo.dot_general"(%arg0, %arg1) <{
++    dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
++    precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>],
++    algorithm = #stablehlo.dot_algorithm<
++      lhs_precision_type = f32,
++      rhs_precision_type = f32,
++      accumulation_type = f32,
++      lhs_component_count = 1,
++      rhs_component_count = 1,
++      num_primitive_operations = 1,
++      allow_imprecise_accumulation = false
++    >
++  }> : (tensor<2x2x2xf32>, tensor<2x2x2xf32>) -> tensor<2x2x2xf32>  return %0 : tensor<2x2x2xf32>
++}
++
++// CHECK-LABEL: func @dot_algorithm_f64_f64_f64
++func.func @dot_algorithm_f64_f64_f64(%arg0: tensor<2x2x2xf64>, %arg1: tensor<2x2x2xf64>) -> tensor<2x2x2xf64> {
++  %0 = "stablehlo.dot_general"(%arg0, %arg1) <{
++    dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
++    precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>],
++    algorithm = #stablehlo.dot_algorithm<
++      lhs_precision_type = f64,
++      rhs_precision_type = f64,
++      accumulation_type = f64,
++      lhs_component_count = 1,
++      rhs_component_count = 1,
++      num_primitive_operations = 1,
++      allow_imprecise_accumulation = false
++    >
++  }> : (tensor<2x2x2xf64>, tensor<2x2x2xf64>) -> tensor<2x2x2xf64>  return %0 : tensor<2x2x2xf64>
++}
++
++// -----
++
++func.func @dot_algorithm_f32_f32_f32_l3(%arg0: tensor<2x2x2xf32>, %arg1: tensor<2x2x2xf32>) -> tensor<2x2x2xf32> {
++  // expected-error@+4 {{dot algorithm not known to be supported on any hardware: {lhs:'f32', rhs:'f32', accum:'f32', lhs_components:3, rhs_components:1, primitive_ops:1, imprecise:0}}}
++  %0 = "stablehlo.dot_general"(%arg0, %arg1) <{
++    dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
++    precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>],
++    algorithm = #stablehlo.dot_algorithm<
++      lhs_precision_type = f32,
++      rhs_precision_type = f32,
++      accumulation_type = f32,
++      lhs_component_count = 3,
++      rhs_component_count = 1,
++      num_primitive_operations = 1,
++      allow_imprecise_accumulation = false
++    >
++  }> : (tensor<2x2x2xf32>, tensor<2x2x2xf32>) -> tensor<2x2x2xf32>  return %0 : tensor<2x2x2xf32>
++}
++
++// -----
++
++func.func @dot_algorithm_f32_f32_f32_r3(%arg0: tensor<2x2x2xf32>, %arg1: tensor<2x2x2xf32>) -> tensor<2x2x2xf32> {
++  // expected-error@+4 {{dot algorithm not known to be supported on any hardware: {lhs:'f32', rhs:'f32', accum:'f32', lhs_components:1, rhs_components:3, primitive_ops:1, imprecise:0}}}
++  %0 = "stablehlo.dot_general"(%arg0, %arg1) <{
++    dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
++    precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>],
++    algorithm = #stablehlo.dot_algorithm<
++      lhs_precision_type = f32,
++      rhs_precision_type = f32,
++      accumulation_type = f32,
++      lhs_component_count = 1,
++      rhs_component_count = 3,
++      num_primitive_operations = 1,
++      allow_imprecise_accumulation = false
++    >
++  }> : (tensor<2x2x2xf32>, tensor<2x2x2xf32>) -> tensor<2x2x2xf32>  return %0 : tensor<2x2x2xf32>
++}
++
++// -----
++
++func.func @dot_algorithm_f32_f32_f32_imprecise(%arg0: tensor<2x2x2xf32>, %arg1: tensor<2x2x2xf32>) -> tensor<2x2x2xf32> {
++  // expected-error@+4 {{dot algorithm not known to be supported on any hardware: {lhs:'f32', rhs:'f32', accum:'f32', lhs_components:1, rhs_components:1, primitive_ops:1, imprecise:1}}}
++  %0 = "stablehlo.dot_general"(%arg0, %arg1) <{
++    dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
++    precision_config = [#stablehlo<precision DEFAULT>, #stablehlo<precision DEFAULT>],
++    algorithm = #stablehlo.dot_algorithm<
++      lhs_precision_type = f32,
++      rhs_precision_type = f32,
++      accumulation_type = f32,
++      lhs_component_count = 1,
++      rhs_component_count = 1,
++      num_primitive_operations = 1,
++      allow_imprecise_accumulation = true
++    >
++  }> : (tensor<2x2x2xf32>, tensor<2x2x2xf32>) -> tensor<2x2x2xf32>  return %0 : tensor<2x2x2xf32>
++}
+diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo.mlir b/stablehlo/stablehlo/tests/ops_stablehlo.mlir
+--- stablehlo/stablehlo/tests/ops_stablehlo.mlir
++++ stablehlo/stablehlo/tests/ops_stablehlo.mlir
+@@ -3334,7 +3334,7 @@
+ // -----
+ 
+ func.func @dot_general_i8(%arg0: tensor<2x2x2xi64>, %arg1: tensor<2x2x2xi64>) -> tensor<2x2x2xi64> {
+-  // expected-error @+3 {{lhs precision type must be float}}
++  // expected-error @+3 {{dot algorithm not known to be supported on any hardware}}
+   %0 = "stablehlo.dot_general"(%arg0, %arg1) <{
+     dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
+     algorithm = #stablehlo.dot_algorithm<lhs_precision_type = i8, rhs_precision_type = f32, accumulation_type = f32, lhs_component_count = 1, rhs_component_count = 1, num_primitive_operations = 1, allow_imprecise_accumulation = false>
+@@ -3344,7 +3344,7 @@
+ // -----
+ 
+ func.func @dot_general_i9(%arg0: tensor<2x2x2xi64>, %arg1: tensor<2x2x2xi64>) -> tensor<2x2x2xi64> {
+-  // expected-error @+3 {{rhs precision type must be float}}
++  // expected-error @+3 {{dot algorithm not known to be supported on any hardware}}
+   %0 = "stablehlo.dot_general"(%arg0, %arg1) <{
+     dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
+     algorithm = #stablehlo.dot_algorithm<lhs_precision_type = f32, rhs_precision_type = i8, accumulation_type = f32, lhs_component_count = 1, rhs_component_count = 1, num_primitive_operations = 1, allow_imprecise_accumulation = false>
+@@ -3354,7 +3354,7 @@
+ // -----
+ 
+ func.func @dot_general_i10(%arg0: tensor<2x2x2xi64>, %arg1: tensor<2x2x2xi64>) -> tensor<2x2x2xi64> {
+-  // expected-error @+3 {{accumulation type must be float}}
++  // expected-error @+3 {{dot algorithm not known to be supported on any hardware}}
+   %0 = "stablehlo.dot_general"(%arg0, %arg1) <{
+     dot_dimension_numbers = #stablehlo.dot<lhs_batching_dimensions = [0], rhs_batching_dimensions = [0], lhs_contracting_dimensions = [2], rhs_contracting_dimensions = [1]>,
+     algorithm = #stablehlo.dot_algorithm<lhs_precision_type = f32, rhs_precision_type = f32, accumulation_type = i8, lhs_component_count = 1, rhs_component_count = 1, num_primitive_operations = 1, allow_imprecise_accumulation = false>
+diff --ruN a/stablehlo/stablehlo/tests/print_stablehlo.mlir b/stablehlo/stablehlo/tests/print_stablehlo.mlir
+--- stablehlo/stablehlo/tests/print_stablehlo.mlir
++++ stablehlo/stablehlo/tests/print_stablehlo.mlir
+@@ -315,8 +315,8 @@
+   // CHECK-NEXT: {{%.*}} = stablehlo.dot_general %arg0, %arg1, batching_dims = [0] x [0], contracting_dims = [2] x [1], precision = [DEFAULT, DEFAULT] : (tensor<2x2x2xi8>, tensor<2x2x3xi8>) -> tensor<2x2x3xi32>
+   // CHECK-NEXT: {{%.*}} = stablehlo.dot_general %arg2, %arg3, contracting_dims = [1] x [0] : (tensor<2x2xi8>, tensor<2x3xi8>) -> tensor<2x3xi32>
+   // CHECK-NEXT: {{%.*}} = stablehlo.dot_general %arg2, %arg3, contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT] : (tensor<2x2xi8>, tensor<2x3xi8>) -> tensor<2x3xi32>
+-  // CHECK-NEXT: {{%.*}} = stablehlo.dot_general %arg2, %arg3, contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT], algorithm = <lhs_precision_type = tf32, rhs_precision_type = tf32, accumulation_type = tf32, lhs_component_count = 1, rhs_component_count = 1, num_primitive_operations = 1, allow_imprecise_accumulation = false> : (tensor<2x2xi8>, tensor<2x3xi8>) -> tensor<2x3xi32>
+-  // CHECK-NEXT: {{%.*}} = stablehlo.dot_general %arg2, %arg3, contracting_dims = [1] x [0], algorithm = <lhs_precision_type = tf32, rhs_precision_type = tf32, accumulation_type = tf32, lhs_component_count = 1, rhs_component_count = 1, num_primitive_operations = 1, allow_imprecise_accumulation = false> : (tensor<2x2xi8>, tensor<2x3xi8>) -> tensor<2x3xi32>
++  // CHECK-NEXT: {{%.*}} = stablehlo.dot_general %arg2, %arg3, contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT], algorithm = <lhs_precision_type = tf32, rhs_precision_type = tf32, accumulation_type = f32, lhs_component_count = 1, rhs_component_count = 1, num_primitive_operations = 1, allow_imprecise_accumulation = false> : (tensor<2x2xi8>, tensor<2x3xi8>) -> tensor<2x3xi32>
++  // CHECK-NEXT: {{%.*}} = stablehlo.dot_general %arg2, %arg3, contracting_dims = [1] x [0], algorithm = <lhs_precision_type = tf32, rhs_precision_type = tf32, accumulation_type = f32, lhs_component_count = 1, rhs_component_count = 1, num_primitive_operations = 1, allow_imprecise_accumulation = false> : (tensor<2x2xi8>, tensor<2x3xi8>) -> tensor<2x3xi32>
+   %0 = "stablehlo.dot_general"(%arg0, %arg1) {
+     dot_dimension_numbers = #stablehlo.dot<
+       lhs_batching_dimensions = [0],
+@@ -362,7 +362,7 @@
+     algorithm = #stablehlo.dot_algorithm<
+       lhs_precision_type = tf32,
+       rhs_precision_type = tf32,
+-      accumulation_type = tf32,
++      accumulation_type = f32,
+       lhs_component_count = 1,
+       rhs_component_count = 1,
+       num_primitive_operations = 1,
+@@ -379,7 +379,7 @@
+     algorithm = #stablehlo.dot_algorithm<
+       lhs_precision_type = tf32,
+       rhs_precision_type = tf32,
+-      accumulation_type = tf32,
++      accumulation_type = f32,
+       lhs_component_count = 1,
+       rhs_component_count = 1,
+       num_primitive_operations = 1,
 

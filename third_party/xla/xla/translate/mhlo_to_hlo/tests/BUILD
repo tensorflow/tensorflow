@@ -11,6 +11,7 @@ lit_test_suite(
     srcs = enforce_glob(
         [
             "add.mlir",
+            "attributes.mlir",
             "case.mlir",
             "composite.mlir",
             "dynamic.mlir",

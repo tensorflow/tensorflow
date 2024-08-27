@@ -18,6 +18,7 @@ limitations under the License.
 #include <sys/types.h>
 
 #include <algorithm>
+#include <cassert>
 #include <cstdint>
 #include <optional>
 #include <utility>
@@ -58,7 +59,7 @@ mlir::ArrayAttr ConvertPrecisionConfig(const PrecisionConfig* config,
   return builder->getArrayAttr(operand_precision_attrs);
 }
 
-// Converts the gather dimensions to attributes.
+// Converts the gather dimensions to attribute.
 mlir::mhlo::GatherDimensionNumbersAttr ConvertGatherDimensionNumbers(
     const xla::GatherDimensionNumbers& dnums, mlir::Builder* builder) {
   std::vector<int64_t> offset_dims(dnums.offset_dims().begin(),
@@ -86,6 +87,82 @@ mlir::mhlo::ScatterDimensionNumbersAttr ConvertScatterDimensionNumbers(
       builder->getContext(), update_window_dims, inserted_window_dims,
       /*inputBatchingDims=*/{}, /*scatterIndicesBatchingDims=*/{},
       scatter_dims_to_operand_dims, dnums.index_vector_dim());
+}
+
+mlir::mhlo::DotAlgorithmAttr ConvertDotAlgorithm(
+    const PrecisionConfig::Algorithm algorithm, mlir::Builder* builder) {
+  mlir::Type lhs, rhs, accum;
+  int64_t lhsComponentCount = 1, rhsComponentCount = 1,
+          numPrimitiveOperations = 1;
+  bool allowImpreciseAccumulation = false;
+  switch (algorithm) {
+    case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32: {
+      lhs = rhs = builder->getFloat8E5M2Type();
+      accum = builder->getF32Type();
+      break;
+    }
+    case PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM: {
+      lhs = rhs = builder->getFloat8E5M2Type();
+      accum = builder->getF32Type();
+      allowImpreciseAccumulation = true;
+      break;
+    }
+    case PrecisionConfig::ALG_DOT_F16_F16_F16: {
+      lhs = rhs = accum = builder->getF16Type();
+      break;
+    }
+    case PrecisionConfig::ALG_DOT_F16_F16_F32: {
+      lhs = rhs = builder->getF16Type();
+      accum = builder->getF32Type();
+      break;
+    }
+    case PrecisionConfig::ALG_DOT_BF16_BF16_BF16: {
+      lhs = rhs = accum = builder->getBF16Type();
+      break;
+    }
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32: {
+      lhs = rhs = builder->getBF16Type();
+      accum = builder->getF32Type();
+      break;
+    }
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3: {
+      lhs = rhs = builder->getBF16Type();
+      accum = builder->getF32Type();
+      numPrimitiveOperations = 3;
+      break;
+    }
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6: {
+      lhs = rhs = builder->getBF16Type();
+      accum = builder->getF32Type();
+      numPrimitiveOperations = 6;
+      break;
+    }
+    case PrecisionConfig::ALG_DOT_TF32_TF32_F32: {
+      lhs = rhs = builder->getTF32Type();
+      accum = builder->getF32Type();
+      break;
+    }
+    case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3: {
+      lhs = rhs = builder->getTF32Type();
+      accum = builder->getF32Type();
+      numPrimitiveOperations = 3;
+      break;
+    }
+    case PrecisionConfig::ALG_DOT_F32_F32_F32: {
+      lhs = rhs = accum = builder->getF32Type();
+      break;
+    }
+    case PrecisionConfig::ALG_DOT_F64_F64_F64: {
+      lhs = rhs = accum = builder->getF64Type();
+      break;
+    }
+    default:
+      // Unset, sentinels
+      return mlir::mhlo::DotAlgorithmAttr{};
+  }
+  return mlir::mhlo::DotAlgorithmAttr::get(
+      builder->getContext(), lhs, rhs, accum, lhsComponentCount,
+      rhsComponentCount, numPrimitiveOperations, allowImpreciseAccumulation);
 }
 
 mlir::mhlo::DotDimensionNumbersAttr ConvertDotDimensionNumbers(

@@ -9,6 +9,7 @@ lit_test_suite(
     name = "all_tests",
     srcs = enforce_glob(
         [
+            "attributes.hlo",
             "bool_compare.hlo",
             "case_conditional.hlo",
             "composite_call.hlo",

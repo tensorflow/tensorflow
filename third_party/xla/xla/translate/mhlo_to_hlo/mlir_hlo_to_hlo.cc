@@ -524,11 +524,6 @@ static xla::DotDimensionNumbers Convert_dot_dimension_numbers(
   return dot_dimension_numbers;
 }
 
-static xla::ConvolutionDimensionNumbers Convert_dimension_numbers(
-    mlir::mhlo::ConvDimensionNumbersAttr input) {
-  return xla::ConvertConvDimensionNumbers(input);
-}
-
 static xla::SparsityDescriptor Convert_sparsity_descriptor(
     mlir::mhlo::SparsityDescriptorAttr sparsity_attr, bool is_lhs) {
   xla::SparsityDescriptor sparsity_descriptor;
@@ -1585,18 +1580,28 @@ LogicalResult ExportXlaOp(DotOp op, OpLoweringContext ctx) {
 LogicalResult ExportXlaOp(DotGeneralOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaOp lhs, rhs;
-  // TODO: Support algorithm lowering in followup.
-  if (op.getAlgorithm().has_value()) return mlir::failure();
   if (failed(GetXlaOp(op.getLhs(), value_map, &lhs, op)))
     return mlir::failure();
   if (failed(GetXlaOp(op.getRhs(), value_map, &rhs, op)))
     return mlir::failure();
   xla::PrimitiveType preferred_element_type =
       xla::ConvertMlirTypeToPrimitiveType(getElementTypeOrSelf(op.getType()));
-  value_map[op] = xla::DotGeneral(
+
+  // Precision Config / Algorithm
+  auto precision_config = Convert_precision_config(op.getPrecisionConfig());
+  if (op.getAlgorithmAttr()) {
+    absl::StatusOr<xla::PrecisionConfig::Algorithm> algorithm =
+        xla::ConvertDotAlgorithm(op.getAlgorithmAttr());
+    if (!algorithm.ok()) {
+      return op.emitError(algorithm.status().ToString());
+    }
+    precision_config->set_algorithm(algorithm.value());
+  }
+  auto xlaOp = xla::DotGeneral(
       lhs, rhs, Convert_dot_dimension_numbers(op.getDotDimensionNumbers()),
-      Unwrap(Convert_precision_config(op.getPrecisionConfig())),
-      preferred_element_type);
+      Unwrap(precision_config), preferred_element_type);
+
+  value_map[op] = xlaOp;
   return mlir::success();
 }
 
