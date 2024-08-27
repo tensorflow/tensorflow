@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"
+#include "mlir/Conversion/GPUToROCDL/GPUToROCDLPass.h"
 #include "mlir/Conversion/LLVMCommon/ConversionTarget.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // IWYU pragma: keep
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"  // IWYU pragma: keep
+#include "mlir/Dialect/LLVMIR/ROCDLDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
@@ -44,6 +46,7 @@ namespace xla {
 namespace gpu {
 
 #define GEN_PASS_DEF_LOWERTOLLVMPASS
+#define GEN_PASS_DECL_LOWERTOLLVMPASS
 #include "xla/service/gpu/fusions/transforms/passes.h.inc"
 
 namespace {
@@ -65,7 +68,12 @@ class LowerToLLVMPass : public impl::LowerToLLVMPassBase<LowerToLLVMPass> {
     mlir::arith::populateArithExpandOpsPatterns(patterns);
     mlir::arith::populateArithToLLVMConversionPatterns(type_converter,
                                                        patterns);
-    mlir::populateGpuToNVVMConversionPatterns(type_converter, patterns);
+    if (!this->is_amd_gpu_) {
+      mlir::populateGpuToNVVMConversionPatterns(type_converter, patterns);
+    } else {
+      mlir::populateGpuToROCDLConversionPatterns(
+          type_converter, patterns, mlir::gpu::amd::Runtime::Unknown);
+    }
     mlir::populateFuncToLLVMConversionPatterns(type_converter, patterns);
     mlir::populateVectorToLLVMConversionPatterns(type_converter, patterns);
     mlir::cf::populateControlFlowToLLVMConversionPatterns(type_converter,
@@ -74,7 +82,11 @@ class LowerToLLVMPass : public impl::LowerToLLVMPassBase<LowerToLLVMPass> {
     mlir::populateMathToLLVMConversionPatterns(type_converter, patterns);
 
     //  Setup target.
-    mlir::configureGpuToNVVMConversionLegality(target);
+    if (!this->is_amd_gpu_) {
+      mlir::configureGpuToNVVMConversionLegality(target);
+    } else {
+      mlir::configureGpuToROCDLConversionLegality(target);
+    }
     target.addIllegalDialect<mlir::arith::ArithDialect, mlir::func::FuncDialect,
                              mlir::complex::ComplexDialect,
                              mlir::math::MathDialect>();
@@ -89,8 +101,8 @@ class LowerToLLVMPass : public impl::LowerToLLVMPassBase<LowerToLLVMPass> {
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> CreateLowerToLLVMPass() {
-  return std::make_unique<LowerToLLVMPass>();
+std::unique_ptr<mlir::Pass> CreateLowerToLLVMPass(bool is_amd_gpu) {
+  return createLowerToLLVMPass(LowerToLLVMPassOptions{is_amd_gpu});
 }
 
 }  // namespace gpu

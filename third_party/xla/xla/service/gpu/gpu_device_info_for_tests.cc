@@ -64,5 +64,13 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::AMDMI210DeviceInfo() {
   return b.BuildObject();
 }
 
+stream_executor::DeviceDescription TestGpuDeviceInfo::CudaOrRocmDeviceInfo() {
+#if defined(TENSORFLOW_USE_ROCM)
+  return AMDMI210DeviceInfo();
+#else
+  return RTXA6000DeviceInfo();
+#endif  // GOOGLE_CUDA
+}
+
 }  // namespace gpu
 }  // namespace xla
