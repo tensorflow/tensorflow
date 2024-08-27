@@ -15,7 +15,6 @@ package_group(
 tf_proto_library(
     name = "xplane_proto",
     srcs = ["xplane.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     visibility = internal_visibility([":friends"]),
 )
@@ -23,7 +22,6 @@ tf_proto_library(
 tf_proto_library(
     name = "profiler_options_proto",
     srcs = ["profiler_options.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     visibility = ["//visibility:public"],
 )
@@ -31,7 +29,6 @@ tf_proto_library(
 tf_proto_library(
     name = "profiler_service_monitor_result_proto",
     srcs = ["profiler_service_monitor_result.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     visibility = ["//visibility:public"],
 )
@@ -40,7 +37,6 @@ tf_proto_library(
     name = "profiler_service_proto",
     srcs = ["profiler_service.proto"],
     has_services = 1,
-    cc_api_version = 2,
     create_grpc_library = True,
     create_java_proto = False,
     create_kotlin_proto = False,
@@ -57,7 +53,6 @@ tf_proto_library(
     name = "profiler_analysis_proto",
     srcs = ["profiler_analysis.proto"],
     has_services = 1,
-    cc_api_version = 2,
     create_grpc_library = True,
     create_java_proto = False,
     create_kotlin_proto = False,
@@ -70,7 +65,6 @@ tf_proto_library(
 tf_proto_library(
     name = "trace_events_proto",
     srcs = ["trace_events.proto"],
-    cc_api_version = 2,
     visibility = internal_visibility([":friends"]),
 )
 
@@ -95,7 +89,6 @@ exports_files(
 tf_proto_library(
     name = "profile_proto",
     srcs = ["profile.proto"],
-    cc_api_version = 2,
     visibility = internal_visibility([
         "@local_xla//xla/python:__pkg__",
         "//tsl/profiler:internal",
@@ -127,7 +120,6 @@ tf_proto_library(
 tf_proto_library(
     name = "profiled_instructions_proto",
     srcs = ["profiled_instructions.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     visibility = internal_visibility([":friends"]),
 )
