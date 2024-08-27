@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/Support/LLVM.h"
+#include "shardy/dialect/sdy/ir/register.h"
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/spmd/shardy/constants.h"
@@ -150,9 +151,11 @@ void removeFrontendAttribute(FuncOp funcOp, StringRef attributeName,
 
 void loadAllRequiredDialects(mlir::MLIRContext* context) {
   mlir::DialectRegistry registry;
+  mlir::func::registerAllExtensions(registry);
   registry.insert<mlir::mhlo::MhloDialect>();
+  mlir::sdy::registerAllDialects(registry);
   context->appendDialectRegistry(registry);
-  mlir::sdy::loadAllRequiredDialects(context);
+  context->loadAllAvailableDialects();
 }
 
 }  // namespace sdy
