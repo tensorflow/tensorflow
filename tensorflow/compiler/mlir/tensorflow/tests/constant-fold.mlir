@@ -482,6 +482,17 @@ func.func @DontFoldTileResultTooLarge() -> (tensor<3x350208xi8>) {
   // CHECK: return [[TILE]]
   func.return %result : tensor<3x350208xi8>
 }
+// Fold if the op follows the constant folding policy.
+// CHECK-LABEL: FoldTile
+func.func @FoldTile() -> (tensor<2x350208xi8>) {
+  %const_342kb_operand = "tf.Const"() {value = dense<42> : tensor<1x350208xi8>} : () -> tensor<1x350208xi8>
+  %const_tile_2x = "tf.Const"() {value = dense<[2, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+  %result = "tf.Tile"(%const_342kb_operand, %const_tile_2x) : (tensor<1x350208xi8>, tensor<2xi32>) -> tensor<2x350208xi8>
+  func.return %result : tensor<2x350208xi8>
+  // CHECK-NOT: "tf.Tile"
+  // CHECK: [[FOLDED:%.*]] = "tf.Const"() <{value = dense<42> : tensor<2x350208xi8>}> : () -> tensor<2x350208xi8>
+  // CHECK: return [[FOLDED]]
+}
 
 // Verifies that very large splat constants are not materialized as Tensors for
 // constant folding.
