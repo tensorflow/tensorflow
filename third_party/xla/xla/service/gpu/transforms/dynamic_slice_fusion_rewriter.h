@@ -70,7 +70,7 @@ namespace gpu {
 class DynamicSliceFusionRewriter : public HloModulePass {
  public:
   absl::string_view name() const override {
-    return "address-computation-fusion-rewriter";
+    return "dynamic-slice-fusion-rewriter";
   }
 
   explicit DynamicSliceFusionRewriter(std::string platform_name)

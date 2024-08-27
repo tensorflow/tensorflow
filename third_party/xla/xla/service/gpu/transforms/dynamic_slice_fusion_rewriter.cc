@@ -429,7 +429,7 @@ absl::Status CreateRootTuple(
 absl::StatusOr<HloComputation*> CreateFusionBody(
     HloModule* module, DataflowPathView sliced_operand_paths,
     DataflowPathsView sliced_user_paths, DataflowPathView captures) {
-  HloComputation::Builder builder("address-computation");
+  HloComputation::Builder builder("dynamic-slice-fusion");
 
   // A mapping from original instructions to instructions in the fusion body.
   absl::flat_hash_map<const HloInstruction*, HloInstruction*> instr_mapping;

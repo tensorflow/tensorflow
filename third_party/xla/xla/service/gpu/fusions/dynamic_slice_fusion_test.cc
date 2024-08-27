@@ -94,7 +94,7 @@ class DynamicSliceFusionTest : public HloTestBase {
     return config;
   }
 
-  std::vector<HloComputation*> GetAddressComputations(const HloModule& module) {
+  std::vector<HloComputation*> GetDynamicSliceFusions(const HloModule& module) {
     std::vector<HloComputation*> computations;
     for (auto computation : module.computations()) {
       if (!computation->IsFusionComputation()) {
@@ -188,7 +188,7 @@ TEST_F(DynamicSliceFusionTest, CublasGemmSimple) {
     %p0 = bf16[2,8,8]{2,1,0} parameter(0), sharding={replicated}
     %p1 = bf16[2,8,8]{2,1,0} parameter(1), sharding={replicated}
     ROOT %fusion.2 = bf16[8,8]{1,0} fusion(%p0, %p1), kind=kCustom, calls=%fused_computation,
-        backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}}}
+        backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"address_computation"}}}
   })";
 
   EXPECT_TRUE(RunAndCompareTwoModules(hlo_ref, hlo_opt, error_spec,
@@ -494,7 +494,7 @@ TEST_F(DynamicSliceFusionTest, OperandIsSlicedGetTupleElement) {
   const char* hlo_opt = R"(
   HloModule jit_slice
 
-  %address-computation {
+  %dynamic-slice-fusion {
     %p0.3 = f32[200,100]{1,0} parameter(0)
     %p1.3 = f32[100,100]{1,0} parameter(1)
     %slice.56 = f32[100,100]{1,0} slice(%p0.3), slice={[0:100], [0:100]}
@@ -551,9 +551,9 @@ TEST_F(DynamicSliceFusionTest, OperandIsSlicedGetTupleElement) {
         }
       }
     %get-tuple-element.97 = f32[200,100]{1,0} get-tuple-element(%custom-call.16), index=0
-    ROOT %address_computation.6 = (f32[100,100]{1,0}, s8[80000]{0}) fusion(%get-tuple-element.97, %get-tuple-element.240),
+    ROOT %dynamic-slice-fusion.6 = (f32[100,100]{1,0}, s8[80000]{0}) fusion(%get-tuple-element.97, %get-tuple-element.240),
       kind=kCustom,
-      calls=%address-computation,
+      calls=%dynamic-slice-fusion,
       backend_config={
         "fusion_backend_config":{
           "kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}
@@ -603,7 +603,7 @@ TEST_F(DynamicSliceFusionTest, ReversedOperandOrder) {
   const char* hlo_opt = R"(
   HloModule jit_slice
 
-  %address-computation {
+  %dynamic-slice-fusion {
     %p0.1 = f16[2,8,8]{2,1,0} parameter(0)
     %slice.1 = f16[1,8,8]{2,1,0} slice(%p0.1), slice={[1:2], [0:8], [0:8]}
     %bitcast.1 = f16[8,8]{1,0} bitcast(%slice.1)
@@ -636,9 +636,9 @@ TEST_F(DynamicSliceFusionTest, ReversedOperandOrder) {
   ENTRY %main {
     %p0 = f16[2,8,8]{2,1,0} parameter(0)
     %p1 = f16[2,8,8]{2,1,0} parameter(1)
-    ROOT %address_computation.6 = f16[8,8]{1,0} fusion(%p1, %p0),
+    ROOT %dynamic-slice-fusion.6 = f16[8,8]{1,0} fusion(%p1, %p0),
       kind=kCustom,
-      calls=%address-computation,
+      calls=%dynamic-slice-fusion,
       backend_config={
         "fusion_backend_config":{
           "kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}
@@ -710,7 +710,7 @@ TEST_F(DynamicSliceFusionTest, SingleOperandComputation) {
   const char* hlo_opt = R"(
   HloModule jit_slice
 
-  %address-computation {
+  %dynamic-slice-fusion {
     %p0.3 = f32[200,100]{1,0} parameter(0)
     %slice.56 = f32[100,100]{1,0} slice(%p0.3), slice={[0:100], [0:100]}
     %cublas-gemm.23 = (f32[100,100]{1,0}, s8[80000]{0}) custom-call(%slice.56, %slice.56),
@@ -766,9 +766,9 @@ TEST_F(DynamicSliceFusionTest, SingleOperandComputation) {
         }
       }
     %get-tuple-element.97 = f32[200,100]{1,0} get-tuple-element(%custom-call.16), index=0
-    ROOT %address_computation.6 = (f32[100,100]{1,0}, s8[80000]{0}) fusion(%get-tuple-element.97),
+    ROOT %dynamic-slice-fusion.6 = (f32[100,100]{1,0}, s8[80000]{0}) fusion(%get-tuple-element.97),
       kind=kCustom,
-      calls=%address-computation,
+      calls=%dynamic-slice-fusion,
       backend_config={
         "fusion_backend_config":{
           "kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}
@@ -818,7 +818,7 @@ TEST_F(DynamicSliceFusionTest, SlicedOperandAliasingOutput) {
   const char* hlo_opt = R"(
   HloModule jit_slice
 
-  %address-computation {
+  %dynamic-slice-fusion {
     %p0.1 = f32[100,100]{1,0} parameter(0)
     %p2 = f32[200,100]{1,0} parameter(2)
     %slice.0 = f32[100,100]{1,0} slice(f32[200,100]{1,0} %p2), slice={[20:120], [0:100]}
@@ -855,9 +855,9 @@ TEST_F(DynamicSliceFusionTest, SlicedOperandAliasingOutput) {
     %get-tuple-element.288 = f32[100,100]{1,0} get-tuple-element(%p0), index=1
     %concatenate.12 = f32[200,100]{1,0} concatenate(%get-tuple-element.287, %get-tuple-element.288), dimensions={0}
     %slice.34 = f32[100,100]{1,0} slice(%concatenate.12), slice={[99:199], [0:100]}
-    ROOT %address_computation.6 = (f32[100,100]{1,0}, s8[120000]{0}) fusion(%get-tuple-element.287, %slice.34, %concatenate.12),
+    ROOT %dynamic-slice-fusion.6 = (f32[100,100]{1,0}, s8[120000]{0}) fusion(%get-tuple-element.287, %slice.34, %concatenate.12),
       kind=kCustom,
-      calls=%address-computation,
+      calls=%dynamic-slice-fusion,
       output_to_operand_aliasing={{0}: (1, {})},
       backend_config={
         "fusion_backend_config":{
@@ -1612,7 +1612,7 @@ TEST_F(DynamicSliceFusionTest, DynamicOperandIsSlicedGetTupleElement) {
   const char* hlo_opt = R"(
   HloModule jit_slice
 
-  %address-computation {
+  %dynamic-slice-fusion {
     %p0.3 = f32[200,100]{1,0} parameter(0)
     %p1.3 = f32[100,100]{1,0} parameter(1)
     %c0_s32 = s32[] parameter(2)
@@ -1671,9 +1671,9 @@ TEST_F(DynamicSliceFusionTest, DynamicOperandIsSlicedGetTupleElement) {
         }
       }
     %get-tuple-element.97 = f32[200,100]{1,0} get-tuple-element(%custom-call.16), index=0
-    ROOT %address_computation.6 = (f32[100,100]{1,0}, s8[80000]{0}) fusion(%get-tuple-element.97, %get-tuple-element.240, %c0_s32),
+    ROOT %dynamic-slice-fusion.6 = (f32[100,100]{1,0}, s8[80000]{0}) fusion(%get-tuple-element.97, %get-tuple-element.240, %c0_s32),
       kind=kCustom,
-      calls=%address-computation,
+      calls=%dynamic-slice-fusion,
       backend_config={
         "fusion_backend_config":{
           "kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}
@@ -1725,7 +1725,7 @@ TEST_F(DynamicSliceFusionTest, DynamicReversedOperandOrder) {
   const char* hlo_opt = R"(
   HloModule jit_slice
 
-  %address-computation {
+  %dynamic-slice-fusion {
     %p0.1 = f16[2,8,8]{2,1,0} parameter(0)
     %p1.1 = f16[2,8,8]{2,1,0} parameter(1)
     %c0_s32 = s32[] parameter(2)
@@ -1762,9 +1762,9 @@ TEST_F(DynamicSliceFusionTest, DynamicReversedOperandOrder) {
     %p1 = f16[2,8,8]{2,1,0} parameter(1)
     %c0_s32 = s32[] constant(0)
     %c1_s32 = s32[] constant(1)
-    ROOT %address_computation.6 = f16[8,8]{1,0} fusion(%p1, %p0, %c0_s32, %c1_s32),
+    ROOT %dynamic-slice-fusion.6 = f16[8,8]{1,0} fusion(%p1, %p0, %c0_s32, %c1_s32),
       kind=kCustom,
-      calls=%address-computation,
+      calls=%dynamic-slice-fusion,
       backend_config={
         "fusion_backend_config":{
           "kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}
@@ -1837,7 +1837,7 @@ TEST_F(DynamicSliceFusionTest, DynamicSingleOperandComputation) {
   const char* hlo_opt = R"(
   HloModule jit_slice
 
-  %address-computation {
+  %dynamic-slice-fusion {
     %p0.3 = f32[200,100]{1,0} parameter(0)
     %c0_s32 = s32[] parameter(1)
     %slice.56 = f32[100,100]{1,0} dynamic-slice(%p0.3, %c0_s32, %c0_s32), dynamic_slice_sizes={100,100}
@@ -1895,9 +1895,9 @@ TEST_F(DynamicSliceFusionTest, DynamicSingleOperandComputation) {
         }
       }
     %get-tuple-element.97 = f32[200,100]{1,0} get-tuple-element(%custom-call.16), index=0
-    ROOT %address_computation.6 = (f32[100,100]{1,0}, s8[80000]{0}) fusion(%get-tuple-element.97, %c0_s32),
+    ROOT %dynamic-slice-fusion.6 = (f32[100,100]{1,0}, s8[80000]{0}) fusion(%get-tuple-element.97, %c0_s32),
       kind=kCustom,
-      calls=%address-computation,
+      calls=%dynamic-slice-fusion,
       backend_config={
         "fusion_backend_config":{
           "kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}
@@ -1950,7 +1950,7 @@ TEST_F(DynamicSliceFusionTest, DynamicSlicedOperandAliasingOutput) {
   const char* hlo_opt = R"(
   HloModule jit_slice
 
-  %address-computation {
+  %dynamic-slice-fusion {
     %p0.1 = f32[100,100]{1,0} parameter(0)
     %p1 = f32[100,100]{1,0} parameter(1)
     %p2 = f32[200,100]{1,0} parameter(2)
@@ -1992,9 +1992,9 @@ TEST_F(DynamicSliceFusionTest, DynamicSlicedOperandAliasingOutput) {
     %get-tuple-element.288 = f32[100,100]{1,0} get-tuple-element(%p0), index=1
     %concatenate.12 = f32[200,100]{1,0} concatenate(%get-tuple-element.287, %get-tuple-element.288), dimensions={0}
     %slice.34 = f32[100,100]{1,0} dynamic-slice(%concatenate.12, %c99_s32, %c0_s32), dynamic_slice_sizes={100,100}
-    ROOT %address_computation.6 = (f32[100,100]{1,0}, s8[120000]{0}) fusion(%get-tuple-element.287, %slice.34, %concatenate.12, %c0_s32, %c20_s32),
+    ROOT %dynamic-slice-fusion.6 = (f32[100,100]{1,0}, s8[120000]{0}) fusion(%get-tuple-element.287, %slice.34, %concatenate.12, %c0_s32, %c20_s32),
       kind=kCustom,
-      calls=%address-computation,
+      calls=%dynamic-slice-fusion,
       output_to_operand_aliasing={{0}: (1, {})},
       backend_config={
         "fusion_backend_config":{
@@ -2584,7 +2584,7 @@ TEST_F(DynamicSliceFusionTest, DynamicCustomCallWithTuple) {
   TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
   EXPECT_TRUE(*RunFileCheck(hlo_opt->ToString(), R"(
-    // CHECK: %address-computation{{.+}} {
+    // CHECK: %dynamic-slice-fusion{{.+}} {
     // CHECK:   {{.+}} = {{.+}} slice
     // CHECK:   {{.+}} = {{.+}} dynamic-slice
     // CHECK:   {{.+}} = {{.+}} custom-call
@@ -2830,7 +2830,7 @@ TEST_F(DynamicSliceFusionTest, ReduceScatterDUSConstant) {
     ROOT %add.1 = f16[] add(%param_0, %param_1)
   }
 
-  %address-computation {
+  %dynamic-slice-fusion {
     %p1 = f16[128,128]{1,0} parameter(1)
     %p0 = f16[128,128]{1,0} parameter(0)
     %reduce-scatter.1 = f16[64,128]{1,0} reduce-scatter(%p0), channel_id=64, replica_groups={{0,1}}, use_global_device_ids=true, dimensions={0}, to_apply=%add
@@ -2844,7 +2844,7 @@ TEST_F(DynamicSliceFusionTest, ReduceScatterDUSConstant) {
     %param_1.1 = f16[128,128]{1,0} parameter(1)
     %constant_20 = u32[] constant(20)
     %constant_0 = u32[] constant(0)
-    ROOT %address_computation = f16[128,128]{1,0} fusion(%param_0.1, %param_1.1, %constant_20, %constant_0), kind=kCustom, calls=%address-computation, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}},"force_earliest_schedule":false}
+    ROOT %dynamic-slice-fusion = f16[128,128]{1,0} fusion(%param_0.1, %param_1.1, %constant_20, %constant_0), kind=kCustom, calls=%dynamic-slice-fusion, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}},"force_earliest_schedule":false}
   })";
 
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
@@ -2881,7 +2881,7 @@ TEST_F(DynamicSliceFusionTest, ReduceScatterDUSParameterOffset) {
     ROOT %add.1 = f16[] add(f16[] %param_0, f16[] %param_1)
   }
 
-  %address-computation {
+  %dynamic-slice-fusion {
     %p1 = f16[128,128]{1,0} parameter(1)
     %p0 = f16[128,128]{1,0} parameter(0)
     %reduce-scatter.1 = f16[64,128]{1,0} reduce-scatter(%p0), channel_id=64, replica_groups={{0,1}}, use_global_device_ids=true, dimensions={0}, to_apply=%add
@@ -2895,7 +2895,7 @@ TEST_F(DynamicSliceFusionTest, ReduceScatterDUSParameterOffset) {
     %param_1 = f16[128,128]{1,0} parameter(1)
     %param_2 = u32[] parameter(2)
     %constant_0 = u32[] constant(0)
-    ROOT %address_computation = f16[128,128]{1,0} fusion(%param_0, %param_1, %param_2, %constant_0), kind=kCustom, calls=%address-computation, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}},"force_earliest_schedule":false}
+    ROOT %dynamic-slice-fusion = f16[128,128]{1,0} fusion(%param_0, %param_1, %param_2, %constant_0), kind=kCustom, calls=%dynamic-slice-fusion, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}},"force_earliest_schedule":false}
   })";
 
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
@@ -2974,9 +2974,9 @@ TEST_F(DynamicSliceFusionTest, ReduceScatterDUSLoopIterationOffset) {
       GetOptimizedModule(std::move(module_with_adddress_computation_flag)));
 
   std::vector<HloComputation*> address_computations_opt =
-      GetAddressComputations(*module_with_adddress_computation);
+      GetDynamicSliceFusions(*module_with_adddress_computation);
   std::vector<HloComputation*> address_computations_ref =
-      GetAddressComputations(*ref_module_opt);
+      GetDynamicSliceFusions(*ref_module_opt);
   EXPECT_EQ(address_computations_ref.size(), 0);
   ASSERT_EQ(address_computations_opt.size(), 1);
 
