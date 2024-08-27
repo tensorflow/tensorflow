@@ -129,9 +129,9 @@ void EigenConv2D(const EigenDevice& device, ScalarType* out, ScalarType* lhs,
     auto task_size = Eigen::numext::div_ceil(feature_group_count, max_tasks);
     auto num_tasks = Eigen::numext::div_ceil(feature_group_count, task_size);
 
-    ScheduleAll(&device, num_tasks, [=, &device](int64_t task_index) {
-      int64_t start = task_index * task_size;
-      int64_t end = std::min(start + task_size, feature_group_count);
+    ScheduleAll(&device, num_tasks, [=, &device](Eigen::Index task_index) {
+      Eigen::Index start = task_index * task_size;
+      Eigen::Index end = std::min(start + task_size, feature_group_count);
       for (Eigen::Index i = start; i < end; ++i) {
         auto [output, convolved] = convolve_group(i);
         output.device(device, done_callback) = convolved;
