@@ -317,6 +317,7 @@ MlirFusionEmitterBase::CreateLLVMModule(
   pm.addNestedPass<mlir::func::FuncOp>(CreateLowerXlaGpuLoopsToScfPass());
   pm.addPass(mlir::mhlo::createConvertToSignlessPass());
   pm.addPass(CreatePropagateSliceIndicesPass());
+  pm.addPass(CreateFlattenTensorsPass());
   // We need LICM before unswitching loops, because our loop unswitcher only
   // detects for loops with a single if inside them.
   pm.addPass(mlir::createLoopInvariantCodeMotionPass());
@@ -325,7 +326,6 @@ MlirFusionEmitterBase::CreateLLVMModule(
   // opportunities for LICM. This would not be necessary if LICM also moved
   // instructions over ifs.
   pm.addPass(mlir::createLoopInvariantCodeMotionPass());
-  pm.addPass(CreateFlattenTensorsPass());
   pm.addNestedPass<mlir::func::FuncOp>(CreateVectorizeLoadsAndStoresPass());
   pm.addNestedPass<mlir::func::FuncOp>(CreateOptimizeLoopsPass());
   pm.addNestedPass<mlir::func::FuncOp>(CreateConvertPureCallOpsPass());
