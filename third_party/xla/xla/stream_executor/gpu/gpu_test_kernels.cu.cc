@@ -17,10 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 
-#ifdef TENSORFLOW_USE_ROCM
-#include "rocm/include/hip/hip_runtime.h"
-#endif
-
 namespace stream_executor::gpu::internal {
 
 // We want to be able to load those kernels by symbol name, so let's make them
