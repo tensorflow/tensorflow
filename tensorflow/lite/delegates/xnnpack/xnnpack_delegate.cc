@@ -19,8 +19,8 @@ limitations under the License.
 #include <array>
 #include <cinttypes>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
-#include <cstdio>
 #include <cstring>
 #include <functional>
 #include <limits>
@@ -4296,9 +4296,6 @@ class Subgraph {
              filter_tensor.params.zero_point == 8)
                 ? 0x00000080 /*XNN_FLAG_MAYBE_PACK_FOR_GEMM*/
                 : 0;
-        if (convert_flags) {
-          printf("Delegating to qp8_f32_qc4w GEMM kernels.\n");
-        }
         status = xnn_define_convert(
             subgraph,
             /*input_id=*/input_output_tensors.at(node->inputs->data[0]),
