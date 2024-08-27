@@ -530,7 +530,6 @@ xla_cc_test(
 tf_proto_library(
     name = "run_hlo_module_proto",
     srcs = ["run_hlo_module.proto"],
-    cc_api_version = 2,
     protodeps = [
         "//xla:xla_data_proto",
     ],
