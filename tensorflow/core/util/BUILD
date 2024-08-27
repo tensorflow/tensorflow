@@ -958,10 +958,10 @@ tf_proto_library(
     name = "test_log_proto",
     srcs = ["test_log.proto"],
     make_default_target_header_only = True,
-    protodeps = ["@local_tsl//tsl/protobuf:test_log_proto"],
+    protodeps = ["@local_xla//xla/tsl/protobuf:test_log_proto"],
     # Not to be used outside of tensorflow/core.
     visibility = ["//tensorflow/core:__pkg__"],
-    exports = ["@local_tsl//tsl/protobuf:test_log_proto"],
+    exports = ["@local_xla//xla/tsl/protobuf:test_log_proto"],
 )
 
 tf_proto_library(
