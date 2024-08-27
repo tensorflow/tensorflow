@@ -91,7 +91,6 @@ tf_proto_library(
     srcs = [
         "function_type.proto",
     ],
-    cc_api_version = 2,
     protodeps = [
         "//tensorflow/core/function/trace_type:serialization_proto",
     ],

@@ -69,7 +69,6 @@ tf_proto_library(
 tf_proto_library(
     name = "conv_autotuning_proto",
     srcs = ["conv_autotuning.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         "@local_tsl//tsl/protobuf:dnn_proto",
@@ -79,7 +78,6 @@ tf_proto_library(
 tf_proto_library(
     name = "worker_proto",
     srcs = ["worker.proto"],
-    cc_api_version = 2,
     protodeps = tf_additional_all_protos(),
     visibility = if_google(
         ["//tensorflow:internal"],
@@ -91,7 +89,6 @@ tf_proto_library(
     name = "worker_service_proto",
     srcs = ["worker_service.proto"],
     has_services = 1,
-    cc_api_version = 2,
     cc_stubby_versions = ["2"],
     create_service = True,
     protodeps = [":worker_proto"],
@@ -100,7 +97,6 @@ tf_proto_library(
 tf_proto_library(
     name = "master_proto",
     srcs = ["master.proto"],
-    cc_api_version = 2,
     protodeps = tf_additional_all_protos(),
     visibility = ["//tensorflow:internal"],
 )
@@ -109,7 +105,6 @@ tf_proto_library(
     name = "master_service_proto",
     srcs = ["master_service.proto"],
     has_services = 1,
-    cc_api_version = 2,
     cc_stubby_versions = ["2"],
     create_service = True,
     protodeps = [":master_proto"],
@@ -119,7 +114,6 @@ tf_proto_library(
     name = "eager_service_proto",
     srcs = ["eager_service.proto"],
     has_services = 1,
-    cc_api_version = 2,
     cc_stubby_versions = ["2"],
     create_grpc_library = True,
     create_service = True,
@@ -129,7 +123,6 @@ tf_proto_library(
 tf_proto_library(
     name = "replay_log_proto",
     srcs = ["replay_log.proto"],
-    cc_api_version = 2,
     protodeps = [
         ":master_proto",
     ] + tf_additional_all_protos(),
@@ -205,7 +198,6 @@ tf_proto_library(
         "core_platform_payloads.proto",
         "fingerprint.proto",
     ],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         ":error_codes_proto_impl",

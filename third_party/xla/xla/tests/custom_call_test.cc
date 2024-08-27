@@ -1707,6 +1707,43 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$ffi_execution_state",
                              /*execute=*/kIncrementState,
                          });
 
+float last_value = 0.f;
+
+// Similar to InstantiateState above, but takes initial value as an attribute.
+static absl::StatusOr<std::unique_ptr<SomeState>> InstantiateStateWithAttribute(
+    float initial_value) {
+  last_value = initial_value;
+  return std::make_unique<SomeState>(initial_value);
+}
+
+// Similar to IncrementState above, but with attributes. No attribute is used
+// here, but still their type and number must match the instantiate callback.
+static absl::Status IncrementStateWithAttribute(
+    R0F32ResultBuffer out, SomeState* state,
+    [[maybe_unused]] float initial_value) {
+  return IncrementState(out, state);
+}
+
+XLA_FFI_DEFINE_HANDLER(
+    kInstantiateStateWithAttribute, InstantiateStateWithAttribute,
+    ffi::Ffi::BindInstantiate().Attr<float>("initial_value"));
+
+XLA_FFI_DEFINE_HANDLER(kIncrementStateWithAttribute,
+                       IncrementStateWithAttribute,
+                       ffi::Ffi::Bind()
+                           .Ret<R0F32Buffer>()
+                           .Ctx<ffi::State<SomeState>>()
+                           .Attr<float>("initial_value"));
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
+                         "__xla_test$$ffi_execution_state_with_attrs", "Host",
+                         {
+                             /*instantiate=*/kInstantiateStateWithAttribute,
+                             /*prepare=*/nullptr,
+                             /*initialize=*/nullptr,
+                             /*execute=*/kIncrementStateWithAttribute,
+                         });
+
 // This test doesn't care about execution results, its intent is just to test if
 // instantiate function was called.
 TEST_F(CustomCallTest, FfiExecutionStateInstantiate) {
@@ -1724,8 +1761,9 @@ TEST_F(CustomCallTest, FfiExecutionStateInstantiate) {
   instantiate_called_counter = 0;
   auto result = Execute(std::move(module), {});
 
-  // Check that instantiate callback was called.
-  EXPECT_EQ(instantiate_called_counter, 1);
+  // Check that instantiate callback was called. Even though we don't care about
+  // the result in this test, log it in case of failure to help debugging.
+  EXPECT_EQ(instantiate_called_counter, 1) << result.status();
 }
 
 TEST_F(CustomCallTest, FfiExecutionStateExecute) {
@@ -1756,6 +1794,32 @@ TEST_F(CustomCallTest, FfiExecutionStateExecute) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
   EXPECT_EQ(result, expected);
+}
+
+// Similarly to FfiExecutionStateInstantiate, this test doesn't care about
+// execution results, its intent is just to test if instantiate function was
+// called (with correct attributes).
+TEST_F(CustomCallTest, FfiExecutionStateInstantiateWithAttribute) {
+  const char* const kModuleStr = R"(
+    HloModule m
+    ENTRY test {
+      ROOT result = f32[] custom-call(), custom_call_target=
+        "__xla_test$$ffi_execution_state_with_attrs",
+        api_version=API_VERSION_TYPED_FFI,
+        backend_config="{initial_value = 43.0 : f32}"
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+
+  // Execute the module, but don't verify the results.
+  last_value = 0;
+  auto result = Execute(std::move(module), {});
+
+  // Check that the correct instantiate callback was called. Even though we
+  // don't care about the result in this test, log it in case of failure to help
+  // debugging.
+  EXPECT_EQ(last_value, 43.f) << result.status();
 }
 
 }  // namespace

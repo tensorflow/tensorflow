@@ -268,6 +268,7 @@ cc_library(
     srcs = ["gpu_device_info_for_tests.cc"],
     hdrs = ["gpu_device_info_for_tests.h"],
     compatible_with = get_compatible_with_portable(),
+    local_defines = if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
     deps = [
         "//xla/stream_executor:device_description",
     ],
@@ -2942,5 +2943,31 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "fusion_deduplication_cache",
+    srcs = ["fusion_deduplication_cache.cc"],
+    hdrs = ["fusion_deduplication_cache.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/hash",
+    ],
+)
+
+xla_cc_test(
+    name = "fusion_deduplication_cache_test",
+    srcs = ["fusion_deduplication_cache_test.cc"],
+    deps = [
+        ":fusion_deduplication_cache",
+        "//xla/hlo/ir:hlo",
+        "//xla/tests:hlo_test_base",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
     ],
 )

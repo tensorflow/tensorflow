@@ -220,7 +220,10 @@ def LowerToLLVMPass :
     "mlir::NVVM::NVVMDialect",
   ];
 
-  let constructor = "CreateLowerToLLVMPass()";
+  let options = [
+    Option<"is_amd_gpu_", "is_amd_gpu", "bool", /*default=*/"false",
+           "True if AMD GPU.">,
+  ];
 }
 
 def VectorizeLoadsAndStoresPass :

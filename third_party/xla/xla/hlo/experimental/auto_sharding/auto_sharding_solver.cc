@@ -139,17 +139,6 @@ void PrintLargestInstructions(
   }
 }
 
-// Applies deterministic noise to the coefficient using `name` and `saltiplier`
-// so that ties between equal terms can be broken in the solver's objective
-// function. We include both a multiplicative term (in case the coefficient is
-// large) and an additive term (in case the coefficient is zero).
-void AddSalt(const std::string& name, const double saltiplier, double* coeff) {
-  if (saltiplier <= 0.0) return;
-  const tsl::uint64 hash = tsl::Hash64(name);  // stable across runs & platforms
-  double salt = saltiplier * hash / std::numeric_limits<tsl::uint64>::max();
-  *coeff = *coeff * (1.0 + salt) + salt;
-}
-
 AutoShardingSolverResult SolveAndExtractSolution(
     const AutoShardingSolverRequest& request,
     const std::vector<std::vector<MPVariable*>>& s,
@@ -497,16 +486,14 @@ AutoShardingSolverResult CallORToolsSolver(
   absl::flat_hash_set<MPVariable*> infinity_vars;
   for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
     for (NodeStrategyIdx j = 0; j < s[node_idx].size(); ++j) {
-      double accumulated_coefficient =
-          solver->MutableObjective()->GetCoefficient(s[node_idx][j]);
       double coefficient = request.computation_costs(node_idx).costs(j) +
                            request.communication_costs(node_idx).costs(j);
       if (coefficient >= kInfinityCost) {
         infinity_vars.insert(s[node_idx][j]);
         continue;
       }
-      AddSalt(absl::StrCat(node_idx, "S", j), request.saltiplier(),
-              &coefficient);
+      double accumulated_coefficient =
+          solver->MutableObjective()->GetCoefficient(s[node_idx][j]);
       solver->MutableObjective()->SetCoefficient(
           s[node_idx][j], accumulated_coefficient + coefficient);
     }
@@ -514,15 +501,13 @@ AutoShardingSolverResult CallORToolsSolver(
   // Edge costs
   for (EdgeIdx edge_idx = 0; edge_idx < num_edges; ++edge_idx) {
     for (EdgeStrategyIdx j = 0; j < e[edge_idx].size(); ++j) {
-      double accumulated_coefficient =
-          solver->MutableObjective()->GetCoefficient(e[edge_idx][j]);
       double coefficient = request.resharding_costs(edge_idx).costs(j);
       if (coefficient >= kInfinityCost) {
         infinity_vars.insert(e[edge_idx][j]);
         continue;
       }
-      AddSalt(absl::StrCat(edge_idx, "E", j), request.saltiplier(),
-              &coefficient);
+      double accumulated_coefficient =
+          solver->MutableObjective()->GetCoefficient(e[edge_idx][j]);
       solver->MutableObjective()->SetCoefficient(
           e[edge_idx][j], accumulated_coefficient + coefficient);
     }
@@ -945,7 +930,7 @@ AutoShardingSolverResult SolveAndExtractSolution(
   }
   PrintLargestInstructions(chosen_node_strategy, request);
   const AutoShardingSolverOutput output = {std::move(chosen_node_strategy),
-                                           unsalted_objective};
+                                           solver.Objective().Value()};
   return AutoShardingSolverResult(output, false);
 }
 
