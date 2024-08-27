@@ -44,6 +44,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
+#include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/gpu/gpu_diagnostics.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
@@ -96,24 +97,30 @@ tsl::thread::ThreadPool* GetDriverExecutor() {
 namespace {
 
 thread_local struct ThreadLocalData {
-  GpuContext* context;
+  Context* context;
   int device_ordinal;
   int depth;
 } tls_data = {};
 
 }  // namespace
 
-ScopedActivateContext::ScopedActivateContext(GpuContext* cuda_context) {
+void GpuContext::SetActive() {
+  TF_CHECK_OK(
+      cuda::ToStatus(cuCtxSetCurrent(context_), "Failed setting context"));
+}
+
+bool GpuContext::IsActive() const { return CurrentContext() == context_; }
+
+ScopedActivateContext::ScopedActivateContext(gpu::Context* cuda_context) {
   auto* tls = &tls_data;
 
-  // If this is an outermost scope, we must not assume that the CUDA context has
-  // been left in the same state we left it. Other code may have run on this
-  // thread and altered the context.
+  // If this is an outermost scope, we must not assume that the CUDA context
+  // has been left in the same state we left it. Other code may have run on
+  // this thread and altered the context.
   if (tls->depth == 0) {
     VLOG(3) << "ScopedActivateContext switching to "
             << cuda_context->device_ordinal();
-    TF_CHECK_OK(cuda::ToStatus(cuCtxSetCurrent(cuda_context->context()),
-                               "Failed setting context"));
+    cuda_context->SetActive();
     tls->depth = 1;
     tls->device_ordinal = cuda_context->device_ordinal();
     tls->context = cuda_context;
@@ -123,7 +130,7 @@ ScopedActivateContext::ScopedActivateContext(GpuContext* cuda_context) {
 
   tls->depth++;
   if (tls->device_ordinal == cuda_context->device_ordinal()) {
-    DCHECK_EQ(CurrentContext(), cuda_context->context());
+    DCHECK(cuda_context->IsActive());
     return;
   }
 
@@ -132,8 +139,7 @@ ScopedActivateContext::ScopedActivateContext(GpuContext* cuda_context) {
 
   to_restore_ = tls->context;
   // Set the context and update thread local.
-  TF_CHECK_OK(cuda::ToStatus(cuCtxSetCurrent(cuda_context->context()),
-                             "Failed setting context"));
+  cuda_context->SetActive();
   tls->device_ordinal = cuda_context->device_ordinal();
   tls->context = cuda_context;
 }
@@ -149,8 +155,7 @@ ScopedActivateContext::~ScopedActivateContext() {
   }
 
   // Set context and update thread local.
-  TF_CHECK_OK(cuda::ToStatus(cuCtxSetCurrent(to_restore_->context()),
-                             "Failed setting context"));
+  to_restore_->SetActive();
   tls->device_ordinal = to_restore_->device_ordinal();
   tls->context = to_restore_;
 }
@@ -2271,7 +2276,6 @@ absl::StatusOr<int> GpuDriver::GetMaxOccupiedBlocksPerCore(
 }  // namespace gpu
 
 namespace cuda {
-
 CUcontext CurrentContextOrDie() {
   CUcontext current = nullptr;
   TF_CHECK_OK(cuda::ToStatus(cuCtxGetCurrent(&current),

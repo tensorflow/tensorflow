@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
+#include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 
 namespace stream_executor {
@@ -41,13 +42,15 @@ absl::StatusOr<CUresult> QueryEvent(GpuContext* context, CUevent event);
 
 // CUDAContext wraps a cuda CUcontext handle, and includes a unique id. The
 // unique id is positive, and ids are not repeated within the process.
-class GpuContext {
+class GpuContext : public Context {
  public:
   GpuContext(CUcontext context, int device_ordinal)
       : context_(context), device_ordinal_(device_ordinal) {}
 
+  void SetActive() override;
+  bool IsActive() const override;
   CUcontext context() const { return context_; }
-  int device_ordinal() const { return device_ordinal_; }
+  int device_ordinal() const override { return device_ordinal_; }
 
   // Disallow copying and moving.
   GpuContext(GpuContext&&) = delete;

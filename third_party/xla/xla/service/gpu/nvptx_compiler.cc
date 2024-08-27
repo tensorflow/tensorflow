@@ -962,12 +962,12 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
     }
   }
 
-  auto context = se::gpu::ExtractGpuExecutor(stream_exec)->gpu_context();
   if (linking_method == se::PtxLinkingMethod::kNvLink) {
-    return LinkUsingNvlink(cc, debug_options.xla_gpu_cuda_data_dir(), context,
+    return LinkUsingNvlink(cc, debug_options.xla_gpu_cuda_data_dir(),
                            cubin_images);
   }
-  return LinkGpuAsm(cc, context, cubin_images);
+  return LinkGpuAsm(cc, se::gpu::ExtractGpuExecutor(stream_exec)->gpu_context(),
+                    cubin_images);
 }
 
 }  // namespace gpu

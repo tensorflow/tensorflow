@@ -73,13 +73,12 @@ absl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
 // Links multiple relocatable GPU images (e.g. results of ptxas -c) into a
 // single image.
 absl::StatusOr<std::vector<uint8_t>> LinkGpuAsm(
-    stream_executor::CudaComputeCapability cc, gpu::GpuContext* context,
+    stream_executor::CudaComputeCapability cc, gpu::Context* context,
     std::vector<CubinOrPTXImage> images);
 
 absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
     stream_executor::CudaComputeCapability cc,
-    std::string_view preferred_cuda_dir, gpu::GpuContext* context,
-    std::vector<CubinOrPTXImage> images);
+    std::string_view preferred_cuda_dir, std::vector<CubinOrPTXImage> images);
 
 using ToolVersion = std::array<int64_t, 3>;
 absl::StatusOr<std::string> FindCudaExecutable(

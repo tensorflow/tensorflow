@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "tsl/platform/logging.h"
 
@@ -34,14 +35,16 @@ std::string ToString(hipError_t result);
 
 absl::StatusOr<hipError_t> QueryEvent(GpuContext* context, hipEvent_t event);
 
-// GpuContext wraps the device_ordinal and hipCtx_t handle.
-class GpuContext {
+// RocmContext implements the Context class for ROCm GPUs.
+class GpuContext : public Context {
  public:
   GpuContext(hipCtx_t context, const int ordinal)
       : context_(context), device_ordinal_(ordinal) {}
 
   hipCtx_t context() const { return context_; }
-  int device_ordinal() const { return device_ordinal_; }
+  void SetActive() override;
+  bool IsActive() const override;
+  int device_ordinal() const override { return device_ordinal_; }
 
   // Disallow copying and moving.
   GpuContext(GpuContext&&) = delete;

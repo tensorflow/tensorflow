@@ -55,6 +55,7 @@ cc_library(
         # keep sorted
         ":rocm_diagnostics",
         "//xla/stream_executor",
+        "//xla/stream_executor/gpu:context",
         "//xla/stream_executor/gpu:gpu_diagnostics_header",
         "//xla/stream_executor/gpu:gpu_driver_header",
         "//xla/stream_executor/platform",
@@ -86,6 +87,7 @@ cc_library(
     deps = if_rocm_is_configured([
         # keep sorted
         "//xla/stream_executor",
+        "//xla/stream_executor/gpu:context",
         "//xla/stream_executor/gpu:gpu_driver_header",
         "//xla/stream_executor/gpu:gpu_runtime_header",
         "//xla/stream_executor/gpu:gpu_types_header",
