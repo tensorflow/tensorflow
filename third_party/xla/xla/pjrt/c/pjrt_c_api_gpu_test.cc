@@ -276,6 +276,12 @@ TEST(PjrtCApiGpuAllocatorTest, ValidOptionsParsing) {
   std::vector<std::string> allocator_options = {"default", "platform", "bfc",
                                                 "cuda_async"};
   for (const std::string& allocator_option : allocator_options) {
+#ifdef TENSORFLOW_USE_ROCM
+    if (allocator_option == "cuda_async") {
+      VLOG(1) << "cuda_async allocator not available on ROCm!";
+      continue;
+    }
+#endif
     absl::flat_hash_map<std::string, xla::PjRtValueType> options = {
         {"allocator", allocator_option},
         {"visible_devices", xla::PjRtValueType(std::vector<int64_t>{0, 1})},
