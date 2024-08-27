@@ -1700,6 +1700,7 @@ cc_library(
     visibility = [
         "//tensorflow/compiler/mlir/lite/core:__pkg__",
         "//tensorflow/lite:__pkg__",
+        "//tensorflow/lite/core:__pkg__",
     ],
     deps = ["//tensorflow/compiler/mlir/lite/core/api:error_reporter"],
 )
