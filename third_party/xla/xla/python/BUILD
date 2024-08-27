@@ -890,7 +890,6 @@ py_strict_test(
 tf_proto_library(
     name = "pytree_proto",
     srcs = ["pytree.proto"],
-    cc_api_version = 2,
     visibility = ["//visibility:public"],
 )
 
@@ -1186,7 +1185,6 @@ cc_library(
 tf_proto_library(
     name = "py_host_callback_proto",
     srcs = ["py_host_callback.proto"],
-    cc_api_version = 2,
 )
 
 # If this flag is enabled, it sets RPATH on the xla_extension to values that are suitable for

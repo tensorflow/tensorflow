@@ -28,7 +28,6 @@ package_group(
 tf_proto_library(
     name = "memory_space_assignment_proto",
     srcs = ["memory_space_assignment.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
 )
 

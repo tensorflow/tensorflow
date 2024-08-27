@@ -485,7 +485,6 @@ xla_test(
 tf_proto_library(
     name = "gpu_autotuning_proto",
     srcs = ["gpu_autotuning.proto"],
-    cc_api_version = 2,
     protodeps = [
         "//xla/service/gpu:backend_configs",
         "//xla:xla_data_proto",

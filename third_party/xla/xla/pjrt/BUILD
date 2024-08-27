@@ -444,7 +444,6 @@ cc_library(
 tf_proto_library(
     name = "stream_executor_executable_proto",
     srcs = ["stream_executor_executable.proto"],
-    cc_api_version = 2,
     protodeps = [
         ":compile_options_proto",
         "//xla:xla_proto",
@@ -930,7 +929,6 @@ xla_cc_test(
 tf_proto_library(
     name = "compile_options_proto",
     srcs = ["compile_options.proto"],
-    cc_api_version = 2,
     protodeps = [
         "//xla:xla_data_proto",
         "//xla:xla_proto",
