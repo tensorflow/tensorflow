@@ -1307,8 +1307,8 @@ std::string HloDotDumper::GetInstructionNodeLabel(const HloInstruction* instr) {
                  ? ""
                  : StrCat(":", xla::ToString(instr->fusion_kind())));
   // If the name does not contain the opcode, render both.
-  return StrFormat("<b>%s</b><br/>%s", HtmlLikeStringSanitize(extended_opcode),
-                   HtmlLikeStringSanitize(instr->name()));
+  return StrFormat("<b>%s</b><br/>%s", HtmlLikeStringSanitize(instr->name()),
+                   HtmlLikeStringSanitize(extended_opcode));
 }
 
 std::string HloDotDumper::GetInstructionNodeMetadata(
