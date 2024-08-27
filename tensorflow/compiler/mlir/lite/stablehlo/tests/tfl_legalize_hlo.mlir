@@ -3146,6 +3146,97 @@ func.func @atan2(%arg0: tensor<4xf32>) -> tensor<4xf32> {
 
 // -----
 
+// CHECK-LABEL: broadcast_add
+func.func @broadcast_add(%arg0: tensor<1x1xf32>, %arg1: tensor<1x1000xf32>) -> (tensor<1x1000xf32>, tensor<1x1000xf32>) {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}> : (tensor<1x1xf32>) -> tensor<1x1000xf32>
+  %1 = mhlo.add %0, %arg1 : tensor<1x1000xf32>
+  %2 = mhlo.add %arg1, %0 : tensor<1x1000xf32>
+  func.return %1, %2 : tensor<1x1000xf32>, tensor<1x1000xf32>
+}
+
+// CHECK: tfl.add(%arg0, %arg1) <{fused_activation_function = "NONE"}> : (tensor<1x1xf32>, tensor<1x1000xf32>) -> tensor<1x1000xf32>
+// CHECK: tfl.add(%arg1, %arg0) <{fused_activation_function = "NONE"}> : (tensor<1x1000xf32>, tensor<1x1xf32>) -> tensor<1x1000xf32>
+
+// -----
+
+// CHECK-LABEL: broadcast_div
+func.func @broadcast_div(%arg0: tensor<1x1xf32>, %arg1: tensor<1x1000xf32>) -> (tensor<1x1000xf32>, tensor<1x1000xf32>) {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}> : (tensor<1x1xf32>) -> tensor<1x1000xf32>
+  %1 = mhlo.divide %0, %arg1 : tensor<1x1000xf32>
+  %2 = mhlo.divide %arg1, %0 : tensor<1x1000xf32>
+  func.return %1, %2 : tensor<1x1000xf32>, tensor<1x1000xf32>
+}
+
+// CHECK: tfl.div(%arg0, %arg1) <{fused_activation_function = "NONE"}> : (tensor<1x1xf32>, tensor<1x1000xf32>) -> tensor<1x1000xf32>
+// CHECK: tfl.div(%arg1, %arg0) <{fused_activation_function = "NONE"}> : (tensor<1x1000xf32>, tensor<1x1xf32>) -> tensor<1x1000xf32>
+
+// -----
+
+// CHECK-LABEL: broadcast_maximum
+func.func @broadcast_maximum(%arg0: tensor<1x1xf32>, %arg1: tensor<1x1000xf32>) -> (tensor<1x1000xf32>, tensor<1x1000xf32>) {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}> : (tensor<1x1xf32>) -> tensor<1x1000xf32>
+  %1 = mhlo.maximum %0, %arg1 : tensor<1x1000xf32>
+  %2 = mhlo.maximum %arg1, %0 : tensor<1x1000xf32>
+  func.return %1, %2 : tensor<1x1000xf32>, tensor<1x1000xf32>
+}
+
+// CHECK: "tfl.maximum"(%arg0, %arg1) : (tensor<1x1xf32>, tensor<1x1000xf32>) -> tensor<1x1000xf32>
+// CHECK: "tfl.maximum"(%arg1, %arg0) : (tensor<1x1000xf32>, tensor<1x1xf32>) -> tensor<1x1000xf32>
+
+// -----
+
+// CHECK-LABEL: broadcast_minimum
+func.func @broadcast_minimum(%arg0: tensor<1x1xf32>, %arg1: tensor<1x1000xf32>) -> (tensor<1x1000xf32>, tensor<1x1000xf32>) {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}> : (tensor<1x1xf32>) -> tensor<1x1000xf32>
+  %1 = mhlo.minimum %0, %arg1 : tensor<1x1000xf32>
+  %2 = mhlo.minimum %arg1, %0 : tensor<1x1000xf32>
+  func.return %1, %2 : tensor<1x1000xf32>, tensor<1x1000xf32>
+}
+
+// CHECK: "tfl.minimum"(%arg0, %arg1) : (tensor<1x1xf32>, tensor<1x1000xf32>) -> tensor<1x1000xf32>
+// CHECK: "tfl.minimum"(%arg1, %arg0) : (tensor<1x1000xf32>, tensor<1x1xf32>) -> tensor<1x1000xf32>
+
+// -----
+
+// CHECK-LABEL: broadcast_mul
+func.func @broadcast_mul(%arg0: tensor<1x1xf32>, %arg1: tensor<1x1000xf32>) -> (tensor<1x1000xf32>, tensor<1x1000xf32>) {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}> : (tensor<1x1xf32>) -> tensor<1x1000xf32>
+  %1 = mhlo.multiply %0, %arg1 : tensor<1x1000xf32>
+  %2 = mhlo.multiply %arg1, %0 : tensor<1x1000xf32>
+  func.return %1, %2 : tensor<1x1000xf32>, tensor<1x1000xf32>
+}
+
+// CHECK: tfl.mul(%arg0, %arg1) <{fused_activation_function = "NONE"}> : (tensor<1x1xf32>, tensor<1x1000xf32>) -> tensor<1x1000xf32>
+// CHECK: tfl.mul(%arg1, %arg0) <{fused_activation_function = "NONE"}> : (tensor<1x1000xf32>, tensor<1x1xf32>) -> tensor<1x1000xf32>
+
+// -----
+
+// CHECK-LABEL: broadcast_sub
+func.func @broadcast_sub(%arg0: tensor<1x1xf32>, %arg1: tensor<1x1000xf32>) -> (tensor<1x1000xf32>, tensor<1x1000xf32>) {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}> : (tensor<1x1xf32>) -> tensor<1x1000xf32>
+  %1 = mhlo.subtract %0, %arg1 : tensor<1x1000xf32>
+  %2 = mhlo.subtract %arg1, %0 : tensor<1x1000xf32>
+  func.return %1, %2 : tensor<1x1000xf32>, tensor<1x1000xf32>
+}
+
+// CHECK: tfl.sub(%arg0, %arg1) <{fused_activation_function = "NONE"}> : (tensor<1x1xf32>, tensor<1x1000xf32>) -> tensor<1x1000xf32>
+// CHECK: tfl.sub(%arg1, %arg0) <{fused_activation_function = "NONE"}> : (tensor<1x1000xf32>, tensor<1x1xf32>) -> tensor<1x1000xf32>
+
+// -----
+
+// CHECK-LABEL: broadcast_pow
+func.func @broadcast_pow(%arg0: tensor<1xi32>, %arg1: tensor<4xi32>) -> (tensor<4xi32>, tensor<4xi32>) {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<[0]> : tensor<1xi64>}> : (tensor<1xi32>) -> tensor<4xi32>
+  %1 = mhlo.power %0, %arg1 : tensor<4xi32>
+  %2 = mhlo.power %arg1, %0 : tensor<4xi32>
+  func.return %1, %2 : tensor<4xi32>, tensor<4xi32>
+}
+
+// CHECK: tfl.pow(%arg0, %arg1) : (tensor<1xi32>, tensor<4xi32>) -> tensor<4xi32>
+// CHECK: tfl.pow(%arg1, %arg0) : (tensor<4xi32>, tensor<1xi32>) -> tensor<4xi32>
+
+// -----
+
 //===----------------------------------------------------------------------===//
 // mhlo ternary ops
 //===----------------------------------------------------------------------===//
