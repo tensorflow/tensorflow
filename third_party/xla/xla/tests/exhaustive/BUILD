@@ -3,7 +3,7 @@
 
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla/tests:build_defs.bzl", "xla_test")
-load(":build_defs.bzl", "manual_partition_xla_test")
+load("//xla/tests/exhaustive:build_defs.bzl", "exhaustive_xla_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -79,7 +79,7 @@ filegroup(
     srcs = ["exhaustive_unary_test_f64_instantiation.cc"],
 )
 
-manual_partition_xla_test(
+exhaustive_xla_test(
     name = "exhaustive_unary_test",
     timeout = "long",
     srcs = [
@@ -92,6 +92,9 @@ manual_partition_xla_test(
     ],
     # Partition goal is to get under ~5 minute execution time without needlessly reserving hardware
     # for each shard.
+    #
+    # exhaustive_xla_test needs to have all partition names added to allow other build tools to
+    # function.
     partitions = {
         "f32_and_smaller": [":exhaustive_unary_test_f32_and_smaller_srcs"],
         "f64": [":exhaustive_unary_test_f64_srcs"],
