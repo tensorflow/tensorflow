@@ -1,6 +1,6 @@
 // RUN: sdy_opt %s -xla-sdy-mhlo-import-pipeline -split-input-file 2>&1 | FileCheck %s
 
-// CHECK-LABEL: sdy.mesh @mesh = <"axis_0"=8, "axis_1"=4>
+// CHECK-LABEL: sdy.mesh @mesh = <["axis_0"=8, "axis_1"=4]>
 
 // CHECK-LABEL: func @sharding_custom_call_no_unspecified_dims(
 // CHECK-SAME:      %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"axis_1"}, {"axis_0"}]>})
@@ -20,7 +20,7 @@ func.func @sharding_custom_call_with_unspecified_dims(%arg0: tensor<8x8xf32> {mh
 
 // -----
 
-// CHECK-LABEL: sdy.mesh @mesh = <"axis_0"=4, "axis_1"=2>
+// CHECK-LABEL: sdy.mesh @mesh = <["axis_0"=4, "axis_1"=2]>
 
 // CHECK-LABEL: func @manual(
 // CHECK-SAME:       %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}]>}
@@ -52,7 +52,7 @@ func.func @shmap_body(%arg0: tensor<1x8xf32>, %arg1: tensor<1x8xf32>) -> (tensor
 
 // -----
 
-// CHECK-LABEL: sdy.mesh @mesh = <"axis_0"=2, "axis_1"=2>
+// CHECK-LABEL: sdy.mesh @mesh = <["axis_0"=2, "axis_1"=2]>
 
 // CHECK-LABEL: func @while_with_free_variables
 func.func @while_with_free_variables(

@@ -220,6 +220,31 @@ TEST_F(TritonGemmTest, LHSInt4MinorContractingDim) {
       kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
 }
 
+TEST_F(TritonGemmTest, Int4ConvertPlusNegate) {
+  const std::string kHloText = R"(
+    HloModule t
+
+    triton_computation {
+      lhs = s4[8,1024]{1,0} parameter(0)
+      lhs_converted = bf16[8,1024]{1,0} convert(lhs)
+      lhs_negated = bf16[8,1024]{1,0} negate(lhs_converted)
+      rhs = bf16[1024,4]{1,0} parameter(1)
+      ROOT dot = bf16[8,4]{1,0} dot(lhs_negated, rhs),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+
+    ENTRY main {
+      lhs = s4[8,1024]{1,0} parameter(0)
+      rhs = bf16[1024,4]{1,0} parameter(1)
+      ROOT dot = bf16[8,4]{1,0} fusion(lhs, rhs), kind=kCustom,
+        calls=triton_computation,
+        backend_config={"fusion_backend_config": {"kind":"__triton_gemm"}}
+    }
+  )";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
+}
+
 TEST_F(TritonGemmTest, LHSInt4MinorContractingDimWithBatchDim0) {
   // We prove that triton can handle int4 dot with minor lhs_contracting_dim.
   const std::string kHloText = R"(
@@ -1780,7 +1805,7 @@ ENTRY e {
   p0 = bf16[8192,512]{1,0} parameter(0)
   p1 = bf16[512,512]{1,0} parameter(1)
   p2 = bf16[8192,512]{1,0} parameter(2)
-  ROOT fusion = bf16[8192,512]{1,0} fusion(p0,p1,p2), kind=kCustom, calls=triton_computation, 
+  ROOT fusion = bf16[8192,512]{1,0} fusion(p0,p1,p2), kind=kCustom, calls=triton_computation,
   backend_config={"fusion_backend_config":
       {"kind":"__triton_gemm", "triton_gemm_config":{"block_m":"64","block_n":"256","block_k":"32","split_k":"1","num_stages":"4","num_warps":"4","num_ctas":"1"}}}
 })";
@@ -2774,10 +2799,12 @@ ENTRY e {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           GetOptimizedModule(kHloText));
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Transpose(
-                  m::Fusion(m::Parameter(), m::Parameter())
-                      .WithFusionKind(HloInstruction::FusionKind::kCustom))));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Bitcast(
+          m::Fusion(m::Fusion(m::Parameter(), m::Parameter())
+                        .WithFusionKind(HloInstruction::FusionKind::kCustom))
+              .WithFusionKind(HloInstruction::FusionKind::kInput))));
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
@@ -2865,9 +2892,9 @@ TEST_F(TritonGemmTestAny,
 HloModule t
 
 ENTRY e {
-  parameter_0 = f32[32,4000] parameter(0)
-  parameter_1 = f32[32,4000,6400] parameter(1)
-  ROOT dot = f32[32,6400] dot(parameter_0, parameter_1), lhs_batch_dims={0},
+  parameter_0 = f32[1,40] parameter(0)
+  parameter_1 = f32[1,40,250000] parameter(1)
+  ROOT dot = f32[1,250000] dot(parameter_0, parameter_1), lhs_batch_dims={0},
     lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}
 })";
 
@@ -2887,9 +2914,9 @@ TEST_F(TritonGemmTestAny,
 HloModule t
 
 ENTRY e {
-  parameter_0 = f32[32,4000,6400] parameter(0)
-  parameter_1 = f32[32,4000] parameter(1)
-  ROOT dot = f32[32,6400] dot(parameter_0, parameter_1), lhs_batch_dims={0},
+  parameter_0 = f32[1,40,250000] parameter(0)
+  parameter_1 = f32[1,40] parameter(1)
+  ROOT dot = f32[1,250000] dot(parameter_0, parameter_1), lhs_batch_dims={0},
     lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}
 })";
 
@@ -5014,7 +5041,7 @@ ENTRY main {
 
   TF_ASSERT_OK(
       CreateTritonIrAndFileCheckForDot(this, hlo_text, "triton_dot", R"(
-CHECK: tt.dot {{.*}}{maxNumImpreciseAcc = 2147483647 : i32} : tensor<128x64xf8E4M3FNUZ> * tensor<64x32xf8E4M3FNUZ> -> tensor<128x32xf32>
+CHECK: tt.dot {{.*}}{maxNumImpreciseAcc = 2147483647 : i32} : tensor<128x64xf8E4M3FN> * tensor<64x32xf8E4M3FN> -> tensor<128x32xf32>
   )"));
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1.0, /*arel=*/1e-3}));

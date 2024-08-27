@@ -46,6 +46,31 @@ limitations under the License.
 
 namespace xla::ffi {
 
+struct PairOfI32AndF32 {
+  int32_t i32;
+  float f32;
+};
+
+struct TupleOfI32 {
+  int32_t i32_0;
+  int32_t i32_1;
+  int32_t i32_2;
+  int32_t i32_3;
+};
+
+}  // namespace xla::ffi
+
+XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(::xla::ffi::PairOfI32AndF32,
+                                      ::xla::ffi::StructMember<int32_t>("i32"),
+                                      ::xla::ffi::StructMember<float>("f32"));
+XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(
+    ::xla::ffi::TupleOfI32, ::xla::ffi::StructMember<int32_t>("i32_0"),
+    ::xla::ffi::StructMember<int32_t>("i32_1"),
+    ::xla::ffi::StructMember<int32_t>("i32_2"),
+    ::xla::ffi::StructMember<int32_t>("i32_3"));
+
+namespace xla::ffi {
+
 using ::testing::_;
 using ::testing::HasSubstr;
 using ::testing::Pair;
@@ -383,15 +408,6 @@ TEST(FfiTest, DictionaryAttr) {
 
   TF_ASSERT_OK(status);
 }
-
-struct PairOfI32AndF32 {
-  int32_t i32;
-  float f32;
-};
-
-XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(PairOfI32AndF32,
-                                      StructMember<int32_t>("i32"),
-                                      StructMember<float>("f32"));
 
 TEST(FfiTest, StructAttr) {
   CallFrameBuilder::FlatAttributesMap dict;
@@ -978,17 +994,15 @@ TEST(FfiTest, AllowRegisterDuplicateWhenEqual) {
   TF_ASSERT_OK(status);
 }
 
-TEST(FfiTest, ApiVersion) {
-  auto handler = Ffi::Bind().To([]() { return absl::OkStatus(); });
-  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
-  auto call_frame = builder.Build();
-  auto api = GetXlaFfiApi();
-  XLA_FFI_Api api_copy = *api;
-  api_copy.api_version.major_version += 1;
-  auto status = CallWithApi(&api_copy, *handler, call_frame);
-  EXPECT_TRUE(absl::StrContains(status.message(), "FFI handler's API version"))
-      << "status.message():\n"
-      << status.message() << "\n";
+TEST(FfiTest, Metadata) {
+  static constexpr auto* noop = +[] { return absl::OkStatus(); };
+  XLA_FFI_DEFINE_HANDLER(handler, noop, Ffi::Bind());
+  auto maybe_metadata = GetMetadata(handler);
+  EXPECT_TRUE(maybe_metadata.ok());
+  auto metadata = maybe_metadata.value();
+  EXPECT_EQ(metadata.traits, 0);
+  EXPECT_EQ(metadata.api_version.major_version, XLA_FFI_API_MAJOR);
+  EXPECT_EQ(metadata.api_version.minor_version, XLA_FFI_API_MINOR);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1173,19 +1187,6 @@ BENCHMARK(BM_BufferArgX8);
 //===----------------------------------------------------------------------===//
 // BM_TupleOfI32Attrs
 //===----------------------------------------------------------------------===//
-
-struct TupleOfI32 {
-  int64_t i32_0;
-  int64_t i32_1;
-  int64_t i32_2;
-  int64_t i32_3;
-};
-
-XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(TupleOfI32,
-                                      StructMember<int32_t>("i32_0"),
-                                      StructMember<int32_t>("i32_1"),
-                                      StructMember<int32_t>("i32_2"),
-                                      StructMember<int32_t>("i32_3"));
 
 void BM_TupleOfI32Attrs(benchmark::State& state) {
   CallFrameBuilder::AttributesBuilder attrs;

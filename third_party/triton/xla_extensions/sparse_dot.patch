@@ -57,7 +57,7 @@ diff --git a/lib/Dialect/TritonGPU/IR/Dialect.cpp b/lib/Dialect/TritonGPU/IR/Dia
 index 012786dae..6043b764a 100644
 --- a/lib/Dialect/TritonGPU/IR/Dialect.cpp
 +++ b/lib/Dialect/TritonGPU/IR/Dialect.cpp
-@@ -498,6 +498,119 @@ getDefaultBlockedEncoding(MLIRContext *context, ArrayRef<int64_t> shape,
+@@ -498,6 +498,123 @@ getDefaultBlockedEncoding(MLIRContext *context, ArrayRef<int64_t> shape,
    return encoding;
  }
  
@@ -172,6 +172,10 @@ index 012786dae..6043b764a 100644
 +SmallVector<unsigned> SparseDotMetaEncodingAttr::getShapePerCTATile(
 +    ArrayRef<int64_t> tensorShape) const {
 +  return ::getShapePerCTATile(getParent(), tensorShape);
++}
++std::optional<LinearLayout> SparseDotMetaEncodingAttr::toLinearLayout(
++    ArrayRef<int64_t> shape) const {
++  return ::toLinearLayout(shape, getParent());
 +}
 +
  } // namespace gpu

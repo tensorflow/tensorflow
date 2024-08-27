@@ -54,7 +54,7 @@ filegroup(
 alias(
   name = "nccl",
   actual = select({
-      "@local_config_cuda//cuda:hermetic_cuda_tools_and_libs": "@cuda_nccl//:nccl",
+      "@local_config_cuda//cuda:cuda_tools_and_libs": "@cuda_nccl//:nccl",
       "//conditions:default": "@nccl_archive//:nccl",
   }),
   visibility = ["//visibility:public"],
@@ -70,7 +70,7 @@ cc_library(
 alias(
   name = "nccl_config",
   actual = select({
-      "@local_config_cuda//cuda:hermetic_cuda_tools_and_libs": ":hermetic_nccl_config",
+      "@local_config_cuda//cuda:cuda_tools_and_libs": ":hermetic_nccl_config",
       "//conditions:default": "@nccl_archive//:nccl_config",
   }),
   visibility = ["//visibility:public"],
@@ -87,7 +87,7 @@ filegroup(
 alias(
   name = "nccl",
   actual = select({
-      "@local_config_cuda//cuda:hermetic_cuda_tools_and_libs": "@cuda_nccl//:nccl",
+      "@local_config_cuda//cuda:cuda_tools_and_libs": "@cuda_nccl//:nccl",
       "//conditions:default": "@nccl_archive//:nccl_via_stub",
   }),
   visibility = ["//visibility:public"],
@@ -96,7 +96,7 @@ alias(
 alias(
   name = "nccl_headers",
   actual = select({
-      "@local_config_cuda//cuda:hermetic_cuda_tools_and_libs": "@cuda_nccl//:headers",
+      "@local_config_cuda//cuda:cuda_tools_and_libs": "@cuda_nccl//:headers",
       "//conditions:default": "@nccl_archive//:nccl_headers",
   }),
   visibility = ["//visibility:public"],
@@ -112,7 +112,7 @@ cc_library(
 alias(
   name = "nccl_config",
   actual = select({
-      "@local_config_cuda//cuda:hermetic_cuda_tools_and_libs": ":hermetic_nccl_config",
+      "@local_config_cuda//cuda:cuda_tools_and_libs": ":hermetic_nccl_config",
       "//conditions:default": "@nccl_archive//:nccl_config",
   }),
   visibility = ["//visibility:public"],
@@ -170,6 +170,19 @@ nccl_configure = repository_rule(
         "build_defs_tpl": attr.label(default = Label("//third_party/nccl:build_defs.bzl.tpl")),
     },
 )
+
+remote_nccl_configure = repository_rule(
+    environ = _ENVIRONS,
+    implementation = _nccl_autoconf_impl,
+    remotable = True,
+    attrs = {
+        "environ": attr.string_dict(),
+        "nccl_version": attr.label(default = Label("@cuda_nccl//:version.txt")),
+        "generated_names_tpl": attr.label(default = Label("//third_party/nccl:generated_names.bzl.tpl")),
+        "build_defs_tpl": attr.label(default = Label("//third_party/nccl:build_defs.bzl.tpl")),
+    },
+)
+
 """Downloads and configures the hermetic NCCL configuration.
 
 Add the following to your WORKSPACE file:

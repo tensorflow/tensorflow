@@ -161,11 +161,12 @@ xla_test(
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream_executor_memory_allocator",
-        "//xla/stream_executor/gpu:gpu_test_kernels",
+        "//xla/stream_executor/gpu:gpu_test_kernels_fatbin",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
@@ -423,7 +424,6 @@ cc_library(
     name = "command_buffer_thunk",
     srcs = ["command_buffer_thunk.cc"],
     hdrs = ["command_buffer_thunk.h"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         ":annotation",
         ":command_buffer_cmd",
@@ -450,7 +450,7 @@ cc_library(
 
 xla_test(
     name = "command_buffer_thunk_test",
-    srcs = if_gpu_is_configured(["command_buffer_thunk_test.cc"]),
+    srcs = ["command_buffer_thunk_test.cc"],
     backend_tags = {
         "gpu_a100": if_google(["config-cuda-only"]),
         "gpu_v100": if_google(["config-cuda-only"]),
@@ -484,10 +484,12 @@ xla_test(
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream_executor_memory_allocator",
         "//xla/stream_executor/gpu:gpu_test_kernels",
+        "//xla/stream_executor/gpu:gpu_test_kernels_fatbin",
         "//xla/stream_executor/gpu:gpu_types_header",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",

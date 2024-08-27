@@ -3083,6 +3083,16 @@ ENTRY entry {
   const HloInstruction* all_reduce2 = find_all_reduce(all_reduce1);
   EXPECT_NE(all_reduce2, nullptr);
   EXPECT_THAT(all_reduce2, op::AllReduce(op::GetTupleElement(op::While())));
+  // The root of while body should have a dynamic-update-slice operand which has
+  // a custom call at operand index 1.
+  const HloInstruction* while_instr =
+      FindInstruction(module.get(), HloOpcode::kWhile);
+  CHECK_NE(while_instr, nullptr);
+  const HloInstruction* dynamic_update_slice =
+      while_instr->while_body()->root_instruction()->operands().back();
+  CHECK_EQ(dynamic_update_slice->opcode(), HloOpcode::kDynamicUpdateSlice);
+  const HloInstruction* custom_call = dynamic_update_slice->operand(1);
+  CHECK(custom_call->IsCustomCall("SunkByPreviousStep"));
 }
 
 TEST_F(CollectivePipelinerTest, ForwardSinkFirstDimNotMatchingLoopCount) {
@@ -3375,6 +3385,7 @@ ENTRY entry {
   XLA_VLOG_LINES(1, module->ToString());
   const HloInstruction* while_instr =
       FindInstruction(module.get(), HloOpcode::kWhile);
+  CHECK_NE(while_instr, nullptr);
   EXPECT_TRUE(
       absl::c_any_of(while_instr->users(), [](const HloInstruction* user) {
         return absl::c_any_of(
@@ -3394,6 +3405,13 @@ ENTRY entry {
                                return operand->opcode() == HloOpcode::kReshape;
                              }),
             2);
+  // The root of while body should have a dynamic-update-slice operand which has
+  // a custom call at operand index 1.
+  const HloInstruction* dynamic_update_slice =
+      while_instr->while_body()->root_instruction()->operand(4);
+  CHECK_EQ(dynamic_update_slice->opcode(), HloOpcode::kDynamicUpdateSlice);
+  const HloInstruction* custom_call = dynamic_update_slice->operand(1);
+  CHECK(custom_call->IsCustomCall("SunkByPreviousStep"));
 }
 
 TEST_F(CollectivePipelinerTest, CollectiveWithMultipleDUSSameBuffer) {
@@ -3670,6 +3688,22 @@ ENTRY entry {
                   op::Reshape(op::Multiply()), op::Reshape(op::Divide()),
                   op::Reshape(op::Abs()), op::GetTupleElement(op::While()),
                   op::GetTupleElement(op::While()))));
+  // The root of while body should have two dynamic-update-slice operands each
+  // of which has a custom call at operand index 1.
+  std::function<bool(const HloInstruction*)> is_dus_with_custom_call =
+      [&](const HloInstruction* inst) -> bool {
+    if (inst->opcode() != HloOpcode::kDynamicUpdateSlice) {
+      return false;
+    }
+    return inst->operand(1)->IsCustomCall("SunkByPreviousStep");
+  };
+  const HloInstruction* while_instr =
+      FindInstruction(module.get(), HloOpcode::kWhile);
+  CHECK_NE(while_instr, nullptr);
+  CHECK(is_dus_with_custom_call(
+      while_instr->while_body()->root_instruction()->operand(7)));
+  CHECK(is_dus_with_custom_call(
+      while_instr->while_body()->root_instruction()->operand(8)));
 }
 
 }  // namespace

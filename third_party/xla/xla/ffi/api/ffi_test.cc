@@ -63,6 +63,31 @@ XLA_FFI_REGISTER_ENUM_ATTR_DECODING(::xla::ffi::Int64BasedEnum);
 
 namespace xla::ffi {
 
+struct PairOfI32AndF32 {
+  int32_t i32;
+  float f32;
+};
+
+struct TupleOfI32 {
+  int32_t i32_0;
+  int32_t i32_1;
+  int32_t i32_2;
+  int32_t i32_3;
+};
+
+}  // namespace xla::ffi
+
+XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(::xla::ffi::PairOfI32AndF32,
+                                      ::xla::ffi::StructMember<int32_t>("i32"),
+                                      ::xla::ffi::StructMember<float>("f32"));
+XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(
+    ::xla::ffi::TupleOfI32, ::xla::ffi::StructMember<int32_t>("i32_0"),
+    ::xla::ffi::StructMember<int32_t>("i32_1"),
+    ::xla::ffi::StructMember<int32_t>("i32_2"),
+    ::xla::ffi::StructMember<int32_t>("i32_3"));
+
+namespace xla::ffi {
+
 using ::testing::HasSubstr;
 using ::tsl::testing::StatusIs;
 
@@ -542,16 +567,8 @@ TEST(FfiTest, AutoBindingResult) {
   TF_ASSERT_OK(status);
 }
 
-struct I32AndF32 {
-  int32_t i32;
-  float f32;
-};
-
-XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(I32AndF32, StructMember<int32_t>("i32"),
-                                      StructMember<float>("f32"));
-
 TEST(FfiTest, AutoBindingStructs) {
-  auto handler = Ffi::BindTo(+[](I32AndF32 attrs) {
+  auto handler = Ffi::BindTo(+[](PairOfI32AndF32 attrs) {
     EXPECT_EQ(attrs.i32, 42);
     EXPECT_EQ(attrs.f32, 42.0f);
     return Error::Success();
@@ -609,21 +626,29 @@ TEST(FfiTest, ArrayAttr) {
   attrs.Insert("arr1", std::vector<int16_t>({1, 2, 3, 4}));
   attrs.Insert("arr2", std::vector<int32_t>({1, 2, 3, 4}));
   attrs.Insert("arr3", std::vector<int64_t>({1, 2, 3, 4}));
-  attrs.Insert("arr4", std::vector<float>({1, 2, 3, 4}));
-  attrs.Insert("arr5", std::vector<double>({1, 2, 3, 4}));
+  attrs.Insert("arr4", std::vector<uint8_t>({1, 2, 3, 4}));
+  attrs.Insert("arr5", std::vector<uint16_t>({1, 2, 3, 4}));
+  attrs.Insert("arr6", std::vector<uint32_t>({1, 2, 3, 4}));
+  attrs.Insert("arr7", std::vector<uint64_t>({1, 2, 3, 4}));
+  attrs.Insert("arr8", std::vector<float>({1, 2, 3, 4}));
+  attrs.Insert("arr9", std::vector<double>({1, 2, 3, 4}));
 
   CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   builder.AddAttributes(attrs.Build());
   auto call_frame = builder.Build();
 
   auto fn = [&](auto arr0, auto arr1, auto arr2, auto arr3, auto arr4,
-                auto arr5) {
+                auto arr5, auto arr6, auto arr7, auto arr8, auto arr9) {
     EXPECT_EQ(arr0, Span<const int8_t>({1, 2, 3, 4}));
     EXPECT_EQ(arr1, Span<const int16_t>({1, 2, 3, 4}));
     EXPECT_EQ(arr2, Span<const int32_t>({1, 2, 3, 4}));
     EXPECT_EQ(arr3, Span<const int64_t>({1, 2, 3, 4}));
-    EXPECT_EQ(arr4, Span<const float>({1, 2, 3, 4}));
-    EXPECT_EQ(arr5, Span<const double>({1, 2, 3, 4}));
+    EXPECT_EQ(arr4, Span<const uint8_t>({1, 2, 3, 4}));
+    EXPECT_EQ(arr5, Span<const uint16_t>({1, 2, 3, 4}));
+    EXPECT_EQ(arr6, Span<const uint32_t>({1, 2, 3, 4}));
+    EXPECT_EQ(arr7, Span<const uint64_t>({1, 2, 3, 4}));
+    EXPECT_EQ(arr8, Span<const float>({1, 2, 3, 4}));
+    EXPECT_EQ(arr9, Span<const double>({1, 2, 3, 4}));
     return Error::Success();
   };
 
@@ -632,8 +657,12 @@ TEST(FfiTest, ArrayAttr) {
                      .Attr<Span<const int16_t>>("arr1")
                      .Attr<Span<const int32_t>>("arr2")
                      .Attr<Span<const int64_t>>("arr3")
-                     .Attr<Span<const float>>("arr4")
-                     .Attr<Span<const double>>("arr5")
+                     .Attr<Span<const uint8_t>>("arr4")
+                     .Attr<Span<const uint16_t>>("arr5")
+                     .Attr<Span<const uint32_t>>("arr6")
+                     .Attr<Span<const uint64_t>>("arr7")
+                     .Attr<Span<const float>>("arr8")
+                     .Attr<Span<const double>>("arr9")
                      .To(fn);
   auto status = Call(*handler, call_frame);
 
@@ -723,15 +752,6 @@ TEST(FfiTest, DictionaryAttr) {
 
   TF_ASSERT_OK(status);
 }
-
-struct PairOfI32AndF32 {
-  int32_t i32;
-  float f32;
-};
-
-XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(PairOfI32AndF32,
-                                      StructMember<int32_t>("i32"),
-                                      StructMember<float>("f32"));
 
 TEST(FfiTest, StructAttr) {
   CallFrameBuilder::FlatAttributesMap dict;
@@ -1019,6 +1039,17 @@ TEST(FfiTest, ScratchAllocatorUnimplemented) {
   TF_ASSERT_OK(status);
 }
 
+TEST(FfiTest, Metadata) {
+  auto api = GetXlaFfiApi();
+  auto handler = Ffi::BindTo([]() { return Error::Success(); });
+  auto maybe_metadata = GetMetadata(*handler);
+  EXPECT_TRUE(maybe_metadata.ok());
+  auto metadata = maybe_metadata.value();
+  EXPECT_EQ(metadata.api_version.major_version, api->api_version.major_version);
+  EXPECT_EQ(metadata.api_version.minor_version, api->api_version.minor_version);
+  EXPECT_EQ(metadata.traits, 0);
+}
+
 //===----------------------------------------------------------------------===//
 // Performance benchmarks are below.
 //===----------------------------------------------------------------------===//
@@ -1165,19 +1196,6 @@ BENCHMARK(BM_BufferArgX8);
 //===----------------------------------------------------------------------===//
 // BM_TupleOfI32Attrs
 //===----------------------------------------------------------------------===//
-
-struct TupleOfI32 {
-  int64_t i32_0;
-  int64_t i32_1;
-  int64_t i32_2;
-  int64_t i32_3;
-};
-
-XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(TupleOfI32,
-                                      StructMember<int32_t>("i32_0"),
-                                      StructMember<int32_t>("i32_1"),
-                                      StructMember<int32_t>("i32_2"),
-                                      StructMember<int32_t>("i32_3"));
 
 void BM_TupleOfI32Attrs(benchmark::State& state) {
   CallFrameBuilder::AttributesBuilder attrs;

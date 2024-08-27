@@ -154,6 +154,7 @@ pytype_strict_library(
     deps = [
         ":topology",
         "//tensorflow/python/platform:tf_logging",
+        "//tensorflow/python/util:numpy_compat",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
@@ -211,6 +212,7 @@ pytype_strict_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/core/protobuf/tpu:topology_proto_py",
+        "//tensorflow/python/util:numpy_compat",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],

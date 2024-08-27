@@ -15,9 +15,14 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/cudnn_custom_call_compiler.h"
 
+#include <cstdint>
 #include <optional>
+#include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -34,8 +39,12 @@ limitations under the License.
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_dnn.h"
 #include "xla/stream_executor/cuda/cudnn_frontend_helpers.h"
+#include "xla/stream_executor/dnn.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -93,30 +102,11 @@ absl::StatusOr<se::gpu::CudnnGraph> HloCustomCallToCuDnnGraph(
   if (IsFwdCustomCallTofMHA(*custom_call)) {
     TF_ASSIGN_OR_RETURN(const xla::gpu::CudnnfMHAKind kind,
                         xla::gpu::GetCudnnfMHAKind(custom_call));
-    std::optional<Shape> bias_shape;
-    {
-      bool has_bias = kind == CudnnfMHAKind::kScaleBiasSoftmax ||
-                      kind == CudnnfMHAKind::kScaleBiasSoftmaxDropout;
-      if (has_bias) {
-        const HloInstruction *bias = custom_call->operand(3);
-        bias_shape = bias->shape();
-      }
-    }
-
     TF_ASSIGN_OR_RETURN(
         const auto gpu_config,
         custom_call->backend_config<xla::gpu::GpuBackendConfig>());
     const xla::gpu::CudnnfMHABackendConfig &config =
         gpu_config.cudnn_fmha_backend_config();
-    absl::InlinedVector<Shape, 2> output_shapes = {
-        ShapeUtil::GetSubshape(custom_call->shape(), {0})};
-
-    bool has_activation =
-        xla::ShapeUtil::TupleElementCount(custom_call->shape()) == 3;
-    if (has_activation) {
-      output_shapes.push_back(
-          ShapeUtil::GetSubshape(custom_call->shape(), {1}));
-    }
 
     TF_ASSIGN_OR_RETURN(
         MatmulTensorDescriptor lhs_bmm1,
@@ -130,18 +120,24 @@ absl::StatusOr<se::gpu::CudnnGraph> HloCustomCallToCuDnnGraph(
         MatmulTensorDescriptor rhs_bmm2,
         MatmulTensorDescriptorFor(custom_call->operand(2)->shape(),
                                   config.bmm2_dot_dimension_numbers(), RHS));
-    TF_ASSIGN_OR_RETURN(TensorDescriptor output,
-                        TensorDescriptorFor(output_shapes[0]));
+    TF_ASSIGN_OR_RETURN(
+        TensorDescriptor output,
+        TensorDescriptorFor(ShapeUtil::GetSubshape(custom_call->shape(), {0})));
 
     std::optional<se::dnn::TensorDescriptor> activation;
-    if (output_shapes.size() > 1) {
-      const Shape &activation_shape = output_shapes.back();
-      TF_ASSIGN_OR_RETURN(activation, TensorDescriptorFor(activation_shape));
+    const bool has_activation =
+        xla::ShapeUtil::TupleElementCount(custom_call->shape()) == 3;
+    if (has_activation) {
+      TF_ASSIGN_OR_RETURN(
+          activation, TensorDescriptorFor(
+                          ShapeUtil::GetSubshape(custom_call->shape(), {1})));
     }
 
     std::optional<se::dnn::TensorDescriptor> bias;
-    if (bias_shape.has_value()) {
-      TF_ASSIGN_OR_RETURN(bias, TensorDescriptorFor(*bias_shape));
+    if (kind == CudnnfMHAKind::kScaleBiasSoftmax ||
+        kind == CudnnfMHAKind::kScaleBiasSoftmaxDropout) {
+      const HloInstruction &bias_hlo = *custom_call->operand(3);
+      TF_ASSIGN_OR_RETURN(bias, TensorDescriptorFor(bias_hlo.shape()));
     }
 
     const double dropout_rate = config.dropout_rate();
@@ -158,6 +154,49 @@ absl::StatusOr<se::gpu::CudnnGraph> HloCustomCallToCuDnnGraph(
             dnn_support, lhs_bmm1, rhs_bmm1, rhs_bmm2, output, bias, activation,
             static_cast<float>(config.fmha_scale()), dropout_rate > 0.0,
             dropout_rate, dnn_mask_type));
+    return std::move(graph);
+  } else if (IsFwdCustomCallTofMHAF8(*custom_call)) {
+    TF_ASSIGN_OR_RETURN(
+        const auto gpu_config,
+        custom_call->backend_config<xla::gpu::GpuBackendConfig>());
+    const xla::gpu::CudnnfMHABackendConfig &config =
+        gpu_config.cudnn_fmha_backend_config();
+    Shape intermediate_tensor_shape(config.intermediate_tensor_shape());
+
+    TF_ASSIGN_OR_RETURN(CudnnfMHAMaskKind cudnn_mask_type,
+                        AsCudnnFmhaMaskKind(config.mask_type()));
+    TF_ASSIGN_OR_RETURN(
+        se::dnn::FMHAMaskKind dnn_mask_type,
+        GetDNNFmhaMaskKindFromCudnnFmhaMaskKind(cudnn_mask_type));
+    TF_ASSIGN_OR_RETURN(
+        MatmulTensorDescriptor lhs_bmm1,
+        MatmulTensorDescriptorFor(custom_call->operand(0)->shape(),
+                                  config.bmm1_dot_dimension_numbers(), LHS));
+    TF_ASSIGN_OR_RETURN(
+        MatmulTensorDescriptor rhs_bmm1,
+        MatmulTensorDescriptorFor(custom_call->operand(1)->shape(),
+                                  config.bmm1_dot_dimension_numbers(), RHS));
+    TF_ASSIGN_OR_RETURN(
+        MatmulTensorDescriptor rhs_bmm2,
+        MatmulTensorDescriptorFor(custom_call->operand(2)->shape(),
+                                  config.bmm2_dot_dimension_numbers(), RHS));
+    TF_ASSIGN_OR_RETURN(
+        TensorDescriptor output,
+        TensorDescriptorFor(ShapeUtil::GetSubshape(custom_call->shape(), {0})));
+
+    std::optional<se::dnn::TensorDescriptor> activation;
+    bool has_activation =
+        xla::ShapeUtil::TupleElementCount(custom_call->shape()) == 5;
+    if (has_activation) {
+      TF_ASSIGN_OR_RETURN(
+          activation, TensorDescriptorFor(
+                          ShapeUtil::GetSubshape(custom_call->shape(), {3})));
+    }
+    TF_ASSIGN_OR_RETURN(
+        se::gpu::CudnnGraph graph,
+        se::gpu::GetCudnnFlashAttentionF8OperationGraph(
+            dnn_support, lhs_bmm1, rhs_bmm1, rhs_bmm2, output, activation,
+            static_cast<float>(config.fmha_scale()), dnn_mask_type));
     return std::move(graph);
   } else {
     TF_ASSIGN_OR_RETURN(
@@ -296,7 +335,7 @@ class CuDnnCustomCallVisitor : public DfsHloRewriteVisitor {
   }
 
   absl::Status HandleCustomCall(HloInstruction *hlo) override {
-    if (!IsCustomCallTofMHA(*hlo)) {
+    if (!IsCustomCallTofMHA(*hlo) && !IsCustomCallTofMHAF8(*hlo)) {
       return absl::OkStatus();
     }
 

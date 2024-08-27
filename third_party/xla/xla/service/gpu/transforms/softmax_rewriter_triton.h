@@ -67,7 +67,10 @@ class SoftmaxRewriterTriton : public HloModulePass {
   // Constructs a Softmax fusion containing all the instructions between the
   // root and the producer of a diamond chain. The producer is excluded from the
   // fusion.
-  absl::Status FuseDiamondChain(const DiamondChainDescriptor& diamond_chain);
+  // Returns `true` if the diamond chain was successfully fused. Otherwise,
+  // returns `false` if, for example, the resulting fusion cannot be tiled.
+  absl::StatusOr<bool> MaybeFuseDiamondChain(
+      const DiamondChainDescriptor& diamond_chain);
 
   // Return the producer of the following pattern:
   //

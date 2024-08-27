@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "Eigen/Core"
 #include "unsupported/Eigen/CXX11/Tensor"
+#include "xla/tsl/framework/convolution/eigen_spatial_convolutions.h"  // IWYU pragma: keep
 
 namespace xla::cpu::internal {
 

@@ -113,6 +113,7 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/custom_kernel_fusion_autotuner.h"
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/conv_layout_normalization.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/execution_stream_assignment.h"
 #include "xla/service/gpu/fusion_pipeline.h"
 #include "xla/service/gpu/gpu_executable.h"
@@ -175,6 +176,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/stream_attribute_async_wrapper.h"
 #include "xla/service/gpu/transforms/topk_specializer.h"
 #include "xla/service/gpu/transforms/topk_splitter.h"
+#include "xla/service/gpu/transforms/transpose_dimension_grouper.h"
 #include "xla/service/gpu/transforms/tree_reduction_rewriter.h"
 #include "xla/service/gpu/transforms/triton_fusion_numerics_verifier.h"
 #include "xla/service/gpu/transforms/windowed_einsum_handler.h"
@@ -409,6 +411,16 @@ GpuThunkAotCompilationResult::LoadExecutable(
       platform_name, gpu_device_info, mlir_context.get(), llvm_module.get(),
       /*llvm_module_constants=*/nullptr,
       /*emit_kernels=*/false);
+
+  absl::string_view cache_file_path =
+      hlo_module->config().debug_options().xla_gpu_kernel_cache_file();
+  if (!cache_file_path.empty() &&
+      hlo_module->config()
+          .debug_options()
+          .xla_gpu_enable_llvm_module_compilation_parallelism()) {
+    TF_RETURN_IF_ERROR(LoadCache(ir_emitter_context, cache_file_path));
+  }
+
   auto ir_emitter = IrEmitterUnnested::Create(&ir_emitter_context);
   TF_RETURN_IF_ERROR(
       ir_emitter->EmitHloComputation(hlo_module->entry_computation()));
@@ -890,7 +902,6 @@ absl::Status RunCollectiveOptimizationPasses(
   HloPassPipeline collectives_pipeline("collective-optimizations");
   collectives_pipeline.AddPass<AllReduceFolder>();
   collectives_pipeline.AddPass<AllReduceSplitter>();
-  collectives_pipeline.AddPass<ReduceScatterCreator>();
   collectives_pipeline.AddPass<AllGatherOptimizer>();
   collectives_pipeline.AddPass<AllReduceReassociate>(
       debug_options.xla_gpu_enable_reassociation_for_converted_ar());
@@ -904,6 +915,7 @@ absl::Status RunCollectiveOptimizationPasses(
     TF_RETURN_IF_ERROR(
         AddCollectivePipelinerPasses(debug_options, collectives_pipeline));
   }
+  collectives_pipeline.AddPass<ReduceScatterCreator>();
 
   collectives_pipeline.AddPass<CollectivePermuteCycleDecomposer>(
       hlo_module->config()
@@ -1291,6 +1303,19 @@ absl::Status GpuCompiler::OptimizeHloModule(
         });
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
+
+  {
+    HloPassPipeline pipeline("async-wrapper");
+    if (debug_options.xla_gpu_async_dot()) {
+      pipeline.AddPass<AsyncWrapper>([](HloInstruction* instruction) {
+        // TODO(b/339654953): Use a better heuristic to determine whether a
+        // `dot` operation should be wrapped in an async computation.
+        return IsCublasGemm(*instruction);
+      });
+    }
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  }
+
   return absl::OkStatus();
 }  // NOLINT(readability/fn_size)
 
@@ -1443,6 +1468,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     pipeline.AddPass<ScatterSimplifier>();
     pipeline.AddPass<BroadcastCanonicalizer>();
 
+    pipeline.AddPass<TransposeDimensionGrouper>();
     pipeline.AddPass<ReductionDegenerateDimRemover>();
     pipeline.AddPass<ReductionLayoutNormalizer>();
     // Run Softmax fusion after layout normalization. We expect a default layout
@@ -1501,17 +1527,6 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
   // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
   pipeline.AddPass<GemmBroadcastFoldingRewriter>();
-
-  // Wrap `dot` operations into async computations in an effort to parallelize
-  // matrix operations. This pass needs to run after the GEMM rewriter so that
-  // we still use the native GEMM implementation.
-  if (debug_options.xla_gpu_async_dot()) {
-    pipeline.AddPass<AsyncWrapper>([](HloInstruction* instruction) {
-      // TODO(b/339654953): Use a better heuristic to determine whether a
-      // `dot` operation should be wrapped in an async computation.
-      return instruction->opcode() == HloOpcode::kCustomCall;
-    });
-  }
 
   pipeline.AddPass<HostOffloadLegalize>(
       static_cast<int64_t>(stream_executor::MemoryType::kHost),

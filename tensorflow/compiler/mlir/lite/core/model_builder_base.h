@@ -54,6 +54,8 @@ std::unique_ptr<Allocation> GetAllocationFromFile(
 std::unique_ptr<Allocation> GetAllocationFromFile(
     int fd, ErrorReporter* error_reporter);
 
+namespace impl {
+
 /// An RAII object that represents a read-only tflite model, copied from disk,
 /// or mmapped. This uses flatbuffers as the serialization format.
 ///
@@ -81,8 +83,6 @@ std::unique_ptr<Allocation> GetAllocationFromFile(
 /// OpResolver must be defined to provide your kernel implementations to the
 /// interpreter. This is environment specific and may consist of just the
 /// builtin ops, or some custom operators you defined to extend tflite.
-namespace impl {
-
 template <typename T>
 class FlatBufferModelBase {
  public:

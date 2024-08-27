@@ -178,9 +178,8 @@ tsl::RCReference<ifrt::Array> CreateIfRtArrayFromSingleDeviceShardedPyArrays(
       throw nb::value_error(
           absl::StrFormat(
               "Memory kind mismatch between PjRtBuffers. Got one buffer with "
-              "memory kind '%s' and another with memory_kind '%s'",
-              first_memory_kind.DebugString(),
-              ifrt_arrays.back()->sharding().memory_kind().DebugString())
+              "memory kind '%v' and another with memory_kind '%v'",
+              first_memory_kind, ifrt_arrays.back()->sharding().memory_kind())
               .c_str());
     }
   }
@@ -633,10 +632,8 @@ absl::Status PyArray::set_arrays(nb::object obj) {
       throw nb::value_error(
           absl::StrFormat(
               "Memory kind mismatch between single-device arrays. Got one "
-              "array "
-              "with memory kind '%s' and another with memory_kind '%s'",
-              first_memory_kind.DebugString(),
-              ifrt_array->sharding().memory_kind().DebugString())
+              "array with memory kind '%v' and another with memory_kind '%v'",
+              first_memory_kind, ifrt_array->sharding().memory_kind())
               .c_str());
     }
   }

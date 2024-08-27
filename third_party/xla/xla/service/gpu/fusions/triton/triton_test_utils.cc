@@ -157,6 +157,23 @@ std::string TritonSupportTestTypeOpcodeAndDeviceToString(
                       absl::StrReplaceAll(cc_str, {{".", ""}}));
 }
 
+std::string TritonSupportTestTwoTypesAndDeviceToString(
+    const ::testing::TestParamInfo<
+        std::tuple<PrimitiveType, PrimitiveType, se::GpuComputeCapability>>&
+        data) {
+  auto [data_type_1, data_type_2, cc] = data.param;
+  std::string cc_str;
+  if (std::holds_alternative<se::CudaComputeCapability>(cc)) {
+    cc_str = std::get<se::CudaComputeCapability>(cc).ToString();
+  } else {
+    cc_str = "rocm";
+  }
+  return absl::StrCat(primitive_util::LowercasePrimitiveTypeName(data_type_1),
+                      "_",
+                      primitive_util::LowercasePrimitiveTypeName(data_type_2),
+                      "_", absl::StrReplaceAll(cc_str, {{".", ""}}));
+}
+
 namespace {
 
 // This function does nothing if the input module already has an entry
@@ -197,6 +214,14 @@ absl::Status ConvertEntryToTritonFusion(HloModule* module) {
 }
 
 }  // namespace
+
+DebugOptions TritonSupportTestBase::GetDebugOptionsForTest() {
+  auto options = HloTestBase::GetDebugOptionsForTest();
+  // It's necessary to set this manually, because it's disabled in optimized
+  // builds and there are some ASAN builds that run on TAP with -c opt.
+  options.set_xla_gpu_llvm_verification_level(1);
+  return options;
+}
 
 absl::StatusOr<TritonSupportTestBase::TestedInstruction>
 TritonSupportTestBase::ParseTemplateAndGetInstruction(

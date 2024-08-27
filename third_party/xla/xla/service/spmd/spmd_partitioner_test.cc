@@ -12083,6 +12083,38 @@ ENTRY %module {
                         _, _, _, _))));
 }
 
+TEST_P(SpmdPartitioningTest, b_356877097) {
+  absl::string_view hlo_string = R"(
+HloModule jit__init
+
+region_0.16 {
+  Arg_0.17 = f32[] parameter(0)
+  ROOT Arg_1.18 = f32[] parameter(1)
+}
+
+ENTRY main.22 {
+  constant.5 = f32[] constant(0), sharding={replicated}
+  broadcast.3 = f32[16,16]{1,0} broadcast(constant.5), dimensions={}, sharding={devices=[1,8]<=[8]}
+  constant.3 = s32[8,1]{1,0} constant({ {0}, {2}, {5}, {7}, {8}, {10}, {13}, {15} }), sharding={devices=[8,1]<=[8]}
+  iota = s32[8,1]{1,0} iota(), iota_dimension=0, sharding={devices=[8,1]<=[8]}
+  concatenate.15 = s32[8,2]{1,0} concatenate(constant.3, iota), dimensions={1}, sharding={devices=[8,1]<=[8]}
+  constant.2 = f32[] constant(1), sharding={replicated}
+  broadcast.1 = f32[8]{0} broadcast(constant.2), dimensions={}, sharding={devices=[8]<=[8]}
+  ROOT scatter.19 = f32[16,16]{1,0} scatter(broadcast.3, concatenate.15, broadcast.1),
+    update_window_dims={}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1},
+    index_vector_dim=1, to_apply=region_0.16, sharding={devices=[1,8]<=[8]}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  const auto root = module->entry_computation()->root_instruction();
+  auto operand = AllOf(op::Shape("f32[16,2]"), op::Broadcast());
+  auto indices = AllOf(op::Shape("s32[8,2]"), op::Subtract());
+  auto update = AllOf(op::Shape("f32[8]"), op::AllReduce());
+  EXPECT_THAT(root, AllOf(op::Shape("f32[16,2]"),
+                          op::Scatter(operand, indices, update)));
+}
+
 TEST_P(SpmdPartitioningTest, ScatterMergedIndexParallelAndOperandPassthrough) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -13317,6 +13349,31 @@ ENTRY entry {
   EXPECT_THAT(module_status.status().ToString(),
               ::testing::HasSubstr("Manual all-reduce across devices that "
                                    "belong to different manual subgroups"));
+}
+
+TEST_P(SpmdPartitioningTest, AllReduceNoSharding) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add = f32[] add(a, b)
+}
+
+ENTRY entry {
+  param = f32[2,2] parameter(0), sharding={devices=[2,2]<=[4]}
+  ROOT all-reduce = f32[2,2]{1,0} all-reduce(param), to_apply=sum,
+    replica_groups={{0,1,2,3}}, use_global_device_ids=true, channel_id=1
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  const auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::AllReduce(), op::Shape("f32[2,2]")));
+  EXPECT_EQ(root->replica_groups().size(), 1);
 }
 
 TEST_P(SpmdPartitioningTest, SubgroupManualReduce) {

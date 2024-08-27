@@ -349,7 +349,7 @@ cc_library(
         ":hlo_op_profiles",
         ":indexing_analysis",
         ":symbolic_tile_analysis",
-        ":tiled_hlo_computation",
+        ":tiled_hlo_instruction_or_computation",
         ":triton_emitter_constraints",
         "//xla:shape_util",
         "//xla:util",
@@ -627,13 +627,23 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "tiled_hlo_instruction",
-    srcs = ["tiled_hlo_instruction.cc"],
-    hdrs = ["tiled_hlo_instruction.h"],
+    name = "tiled_hlo_instruction_or_computation",
+    srcs = [
+        "tiled_hlo_computation.cc",
+        "tiled_hlo_instruction.cc",
+    ],
+    hdrs = [
+        "tiled_hlo_computation.h",
+        "tiled_hlo_instruction.h",
+    ],
     deps = [
         ":indexing_analysis",
         "//xla:util",
         "//xla/hlo/ir:hlo",
+        "//xla/service:name_uniquer",
+        "//xla/service/gpu:backend_configs_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
@@ -642,6 +652,8 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/lib/gtl:iterator_range",
+        "@local_tsl//tsl/platform:errors",
     ],
 )
 
@@ -651,7 +663,7 @@ xla_cc_test(
     deps = [
         ":indexing_analysis",
         ":indexing_test_utils",
-        ":tiled_hlo_instruction",
+        ":tiled_hlo_instruction_or_computation",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/tests:hlo_test_base",
@@ -661,30 +673,11 @@ xla_cc_test(
     ],
 )
 
-cc_library(
-    name = "tiled_hlo_computation",
-    srcs = ["tiled_hlo_computation.cc"],
-    hdrs = ["tiled_hlo_computation.h"],
-    deps = [
-        ":indexing_analysis",
-        ":tiled_hlo_instruction",
-        "//xla:util",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:name_uniquer",
-        "//xla/service/gpu:backend_configs_cc",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        "@local_tsl//tsl/lib/gtl:iterator_range",
-    ],
-)
-
 xla_cc_test(
     name = "tiled_hlo_computation_test",
     srcs = ["tiled_hlo_computation_test.cc"],
     deps = [
-        ":tiled_hlo_computation",
+        ":tiled_hlo_instruction_or_computation",
         "//xla/service/gpu:backend_configs_cc",
         "@com_google_googletest//:gtest_main",
     ],
@@ -700,8 +693,7 @@ cc_library(
         ":indexing_analysis",
         ":symbolic_tile",
         ":symbolic_tiled_hlo_instruction",
-        ":tiled_hlo_computation",
-        ":tiled_hlo_instruction",
+        ":tiled_hlo_instruction_or_computation",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla/hlo/ir:hlo",
@@ -734,8 +726,7 @@ xla_cc_test(
         ":symbolic_tile",
         ":symbolic_tile_analysis",
         ":symbolic_tiled_hlo_instruction",
-        ":tiled_hlo_computation",
-        ":tiled_hlo_instruction",
+        ":tiled_hlo_instruction_or_computation",
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/service:instruction_fusion",

@@ -180,20 +180,6 @@ def ModifyIONodesPass : Pass<"tfl-modify-io-nodes", "mlir::func::FuncOp"> {
   ];
 }
 
-def OptimizePass : Pass<"tfl-optimize", "mlir::func::FuncOp"> {
-  let summary = "Optimize within the TensorFlow Lite dialect";
-  let constructor = "CreateOptimizePass()";
-  let dependentDialects = ["TFL::TensorFlowLiteDialect"];
-  let options = [
-      Option<"enable_canonicalization_", "enable-canonicalization",
-             "bool", "true",
-             "Enable canonicalization during optimization pass.">,
-      Option<"disable_fuse_mul_and_fc_", "disable-fuse-mul-and-fc",
-             "bool", "false",
-             "Disable folding mul and fully connected ops during optimization pass.">,
-  ];
-}
-
 def OptimizeBatchMatmulPass : Pass<"tfl-optimize-batch-matmul", "mlir::func::FuncOp"> {
   let summary = "Optimize FC with BatchMatmul within the TensorFlow Lite dialect";
   let constructor = "CreateOptimizeBatchMatmulPass()";
@@ -457,6 +443,12 @@ def WhileOutlinePass : Pass<"tfl-while-loop-outline", "mlir::ModuleOp"> {
   let dependentDialects = ["TF::TensorFlowDialect"];
 }
 
+def IfOutlinePass : Pass<"tfl-if-outline", "mlir::ModuleOp"> {
+  let summary = "Hoist if op regions into functions";
+  let constructor = "CreateIfOutlinePass()";
+  let dependentDialects = ["TFL::TensorFlowLiteDialect"];
+}
+
 def LegalizeTensorListPass : Pass<"tfl-legalize-tensorlist", "mlir::ModuleOp"> {
   let summary = "Legalize TensorFlow tensorlist ops to TensorFlow Lite custom.";
   let constructor = "CreateLegalizeTensorListPass()";
@@ -478,4 +470,10 @@ def PushTransposeThroughEwisePass : Pass<"push-transpose-through-ewise", "mlir::
 def UnfreezeMutableGlobalTensorsPass : Pass<"unfreeze-mutable-global-tensors", "mlir::ModuleOp"> {
   let summary = "Pass to unfreeze mutable global tensor ops";
   let constructor = "CreateUnfreezeMutableGlobalTensorsPass()";
+}
+
+def CanonicalizeBoundaryValuePass : Pass<"canonicalize-boundary-value", "mlir::ModuleOp"> {
+  let summary = "Canonicalize the IR representations of boundary values";
+  let dependentDialects = ["mlir::stablehlo::StablehloDialect", "TF::TensorFlowDialect", "mlir::arith::ArithDialect"];
+  let constructor = "CreateCanonicalizeBoundaryValuePass()";
 }

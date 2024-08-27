@@ -230,6 +230,7 @@ xla_cc_test(
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
+        "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/client:xla_computation",

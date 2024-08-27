@@ -26,8 +26,10 @@ limitations under the License.
 #include <type_traits>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/attributes.h"
 #include "absl/base/optimization.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
@@ -109,9 +111,10 @@ template <int64_t num_arguments, int64_t num_results>
 KernelThunk<num_arguments, num_results>::KernelThunk(
     Info info, absl::Span<const BufferAllocation::Slice> arguments_buffers,
     absl::Span<const BufferAllocation::Slice> results_buffers,
-    std::string kernel_name, se::ThreadDim thread_dim,
-    std::optional<uint64_t> min_alignment)
+    absl::flat_hash_set<int64_t> invariant_arguments, std::string kernel_name,
+    se::ThreadDim thread_dim, std::optional<uint64_t> min_alignment)
     : Thunk(Kind::kKernel, std::move(info)),
+      invariant_arguments_(std::move(invariant_arguments)),
       num_kernel_args_(arguments_buffers.size() + results_buffers.size()),
       kernel_name_(std::move(kernel_name)),
       thread_dim_(thread_dim),
@@ -192,10 +195,13 @@ KernelThunk<num_arguments, num_results>::ExecuteInternal(
     VlogKernelArgs(arguments_buffers_, results_buffers_, kernel_args);
   }
 
-  // Сheck that all resolved buffers are properly aligned.
+  // Сheck that all resolved buffers are properly aligned, and that invariant
+  // property holds.
   if constexpr (ShouldCheckBufferSlices()) {
+    // TODO(abanas): Check also for overlapping buffers.
     TF_RETURN_IF_ERROR(
         CheckBufferAlignment(info(), min_alignment_.value_or(0), kernel_args));
+    TF_RETURN_IF_ERROR(CheckInvariantBuffersMemory(kernel_args));
   }
 
   // TODO(ezhulenev): Kernel ptr should be loaded as a part of Thunk
@@ -235,6 +241,53 @@ KernelThunk<num_arguments, num_results>::ExecuteInternal(
   return OkExecuteEvent();
 }
 
+static void VlogInvariantBuffers(
+    const absl::flat_hash_set<int64_t>& invariant_arguments) {
+  for (auto index : invariant_arguments) {
+    VLOG(3) << absl::StreamFormat("  invariant arg id: %d", index);
+  }
+}
+
+static bool Contains(absl::Span<const SE_HOST_KernelArg> container,
+                     const SE_HOST_KernelArg& memory) {
+  return absl::c_any_of(container, [&](const SE_HOST_KernelArg& element) {
+    return element.data == memory.data && element.size == memory.size;
+  });
+}
+
+template <int64_t num_arguments, int64_t num_results>
+absl::Status
+KernelThunk<num_arguments, num_results>::CheckInvariantBuffersMemory(
+    const KernelArgs& kernel_args) const {
+  if (ABSL_PREDICT_FALSE(VLOG_IS_ON(3))) {
+    VlogInvariantBuffers(invariant_arguments_);
+  }
+
+  auto arguments = absl::Span<const SE_HOST_KernelArg>(
+      kernel_args.data(), arguments_buffers_.size());
+  auto results = absl::Span<const SE_HOST_KernelArg>(
+      kernel_args.data() + arguments_buffers_.size(), results_buffers_.size());
+
+  // Verify all argument buffers.
+  for (int64_t i = 0; i < arguments.size(); ++i) {
+    const SE_HOST_KernelArg& argument = arguments[i];
+    if (invariant_arguments_.contains(i)) {
+      // This argument should be read only, i.e. not one of the results.
+      if (Contains(results, argument)) {
+        return Internal("Mismatch in invariant buffers metadata");
+      }
+    } else {
+      // For completeness, we check that a read write buffer is one of the
+      // results.
+      if (!Contains(results, argument)) {
+        return Internal("Mismatch in invariant buffers metadata");
+      }
+    }
+  }
+
+  return absl::OkStatus();
+}
+
 template <int64_t num_arguments, int64_t num_results>
 Thunk::BufferUses KernelThunk<num_arguments, num_results>::buffer_uses() const {
   return KernelBufferUses(arguments_buffers_, results_buffers_);
@@ -259,6 +312,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> KernelThunk::Create(
     absl::Span<const BufferAllocation::Slice> arguments_buffers,
     absl::Span<const BufferAllocation::Slice> results_buffers,
     std::string kernel_name, se::ThreadDim thread_dim,
+    absl::flat_hash_set<int64_t> invariant_arguments,
     std::optional<uint64_t> min_alignment) {
   if (min_alignment.has_value() && !absl::has_single_bit(*min_alignment)) {
     return Internal("Host kernel %s minimum alignment %d is not a power of 2",
@@ -269,7 +323,8 @@ absl::StatusOr<std::unique_ptr<Thunk>> KernelThunk::Create(
     return absl::WrapUnique(
         new SmallKernelThunk<num_arguments(), num_results()>(
             std::move(info), arguments_buffers, results_buffers,
-            std::move(kernel_name), thread_dim, min_alignment));
+            std::move(invariant_arguments), std::move(kernel_name), thread_dim,
+            min_alignment));
   };
 
   static constexpr auto _0 = std::integral_constant<size_t, 0>{};
@@ -295,7 +350,8 @@ absl::StatusOr<std::unique_ptr<Thunk>> KernelThunk::Create(
   // Return a generic KernelThunk for dynamic numbers of arguments and results.
   return absl::WrapUnique(
       new KernelThunk(std::move(info), arguments_buffers, results_buffers,
-                      std::move(kernel_name), thread_dim, min_alignment));
+                      std::move(invariant_arguments), std::move(kernel_name),
+                      thread_dim, min_alignment));
 }
 
 }  // namespace xla::cpu

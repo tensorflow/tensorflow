@@ -6958,7 +6958,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
   // Convert a dynamic slice into a slice if all offsets are constant, the
   // operand is not constant, and the input and output memory spaces are the
   // same.
-  if (operand->opcode() != HloOpcode::kConstant &&
+  if (!options_.disable_dynamic_slice_to_slice_conversion() &&
+      operand->opcode() != HloOpcode::kConstant &&
       absl::c_all_of(absl::MakeSpan(dynamic_slice->operands().begin() + 1,
                                     dynamic_slice->operands().end()),
                      [](HloInstruction* operand) {

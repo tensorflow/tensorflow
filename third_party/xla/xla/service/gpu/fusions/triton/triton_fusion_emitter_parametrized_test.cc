@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
-#include "xla/service/gpu/fusions/triton/triton_support.h"
+#include "xla/service/gpu/fusions/triton/triton_support_legacy.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"

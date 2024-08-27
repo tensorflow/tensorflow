@@ -39,7 +39,8 @@ Status ExecuteNodeArgs::InitPackedHandle(const int index, EagerContext* ctx,
                                          Device* input_device,
                                          TensorHandle* packed_handle) {
   int num_handles = packed_handle->NumPackedHandles();
-  packed_args_.emplace(index, gtl::InlinedVector<TensorValue, 4>(num_handles));
+  packed_args_.emplace(index,
+                       absl::InlinedVector<TensorValue, 4UL>(num_handles));
   TensorValue* packed_arg_flat = &(packed_args_[index][0]);
   for (int i = 0; i < num_handles; ++i) {
     TensorHandle* h = nullptr;
@@ -64,7 +65,7 @@ Status ExecuteNodeArgs::InitPackedHandle(const int index, EagerContext* ctx,
 }
 
 Status ExecuteNodeArgs::Init(
-    EagerContext* ctx, const gtl::InlinedVector<TensorHandle*, 4>& op_inputs,
+    EagerContext* ctx, const absl::InlinedVector<TensorHandle*, 4UL>& op_inputs,
     const core::RefCountPtr<KernelAndDevice>& kernel) {
   // If there are multiple references to a TensorHandle in 'op_inputs' we must
   // increment the reference count of the corresponding Tensor or risk it being

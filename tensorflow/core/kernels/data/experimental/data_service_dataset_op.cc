@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
+#include "xla/tsl/framework/allocator.h"
 #include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
@@ -340,8 +341,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(RegisterCancellationCallback(
           ctx->cancellation_manager(),
           [this]() { data_service_client_.Cancel(); }, &deregister_fn_));
+      tsl::AllocatorAttributes attrs;
+      attrs.set_gpu_compatible(ctx->options()->service_options().pinned());
       return data_service_client_.Initialize(ctx->accelerator_device_info(),
-                                             ctx->allocator(/*attrs=*/{}));
+                                             ctx->allocator(attrs));
     }
 
     Status GetNextInternal(IteratorContext* ctx,

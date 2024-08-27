@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_device_mesh.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -43,7 +44,7 @@ limitations under the License.
 #include "xla/service/call_graph.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace spmd {
@@ -82,7 +83,7 @@ inline std::string ToAdaptiveString(const HloInstruction* ins) {
 
 // Return whether the tensor shape is divisible by
 // the number of devices along multiple dimensions.
-bool IsDivisible(const HloInstruction* ins, const Array<int64_t>& device_mesh,
+bool IsDivisible(const HloInstruction* ins, const DeviceMesh& device_mesh,
                  absl::Span<const int64_t> tensor_dims,
                  absl::Span<const int64_t> mesh_dims);
 
@@ -346,6 +347,15 @@ inline bool IsFullyTiled(const HloSharding& sharding) {
   return sharding.NumTiles() == sharding.tile_assignment().num_elements();
 }
 
+// The sharding is replicated or the total number of tiles is over or equal to
+// the total number of devices. If returns true, this sharding is likely
+// provided by users.
+inline bool ShardingIsComplete(const HloSharding& sharding,
+                               size_t total_num_devices) {
+  return sharding.TotalNumTiles() >= total_num_devices ||
+         sharding.IsReplicated();
+}
+
 // Propagate sharding for dim-wise operations (e.g., slice, pad) which works
 // independently on each dimension.
 // The sharding can successfully propagate if the operation only happens on
@@ -376,26 +386,27 @@ int64_t NumTileDimensions(const HloSharding& spec);
 
 // When fixing mixed mesh resharding (see below), compute the correct
 // intermediate shape in order to insert copies.
-absl::StatusOr<Shape> ComputeIntermediateShape(
-    const HloSharding& src_sharding, const HloSharding& dst_sharding,
-    const Shape& shape, const Array<int64_t>& device_mesh);
+absl::StatusOr<Shape> ComputeIntermediateShape(const HloSharding& src_sharding,
+                                               const HloSharding& dst_sharding,
+                                               const Shape& shape,
+                                               const DeviceMesh& device_mesh);
 
 // Forcibly set the sharding of the operand of inst.
 // Also fix the resharding between 1d and 2d logical mesh.
 absl::Status FixMixedMeshShapeReshardingGetTupleElement(
     HloInstruction* inst, const HloSharding& dst_sharding,
-    const Array<int64_t>& device_mesh,
+    const DeviceMesh& device_mesh,
     absl::flat_hash_map<std::string, std::vector<HloSharding>>&
         preserve_shardings);
 
 absl::Status FixMixedMeshShapeReshardingGetTupleElementWithTupleOutput(
     HloInstruction* inst,
     const std::vector<std::optional<HloSharding>>& dst_sharding,
-    const Array<int64_t>& device_mesh);
+    const DeviceMesh& device_mesh);
 
 absl::Status FixMixedMeshShapeResharding(HloInstruction* inst, int operand_num,
                                          const HloSharding& dst_sharding,
-                                         const Array<int64_t>& device_mesh,
+                                         const DeviceMesh& device_mesh,
                                          ReshardingCache* resharding_cache);
 
 // Gets the mapping vector from dim_from to dim_to.
@@ -410,7 +421,7 @@ bool IsDivisible(int64_t numerator, int64_t denominator);
 // be any number of dimensions. |communication_dim| has to be one of
 // |device_mesh|'s dimension.
 std::vector<std::vector<int64_t>> GetReplicaGroupsAlongOneDimension(
-    const Array<int64_t>& device_mesh, int32_t communication_dim);
+    const DeviceMesh& device_mesh, int32_t communication_dim);
 
 // Gets values in |array| along |dim| while keeping indices at other
 // dimensions at 0, e.g., array is 2D and dim = 1, this returns array[0, 1],
@@ -424,8 +435,7 @@ absl::StatusOr<int64_t> CheckArithmeticSequence(
 
 // Checks if the number of sharded dimensions in the tile assignment matches the
 // device mesh.
-bool TileAssignmentMatchesMesh(const HloSharding& spec,
-                               const Array<int64_t>& mesh);
+bool TileAssignmentMatchesMesh(const HloSharding& spec, const DeviceMesh& mesh);
 
 // Get the mapped mesh dimension for every tensor dimension.
 // The returned value maps ith tensor dim to one mesh dim. -1 means the tensor
@@ -434,23 +444,21 @@ bool TileAssignmentMatchesMesh(const HloSharding& spec,
 // mesh dim, and 1st tensor dim maps to the 2nd mesh dim.
 std::vector<int64_t> GetTensorDimToMeshDim(
     int64_t tensor_shape_rank, const HloSharding& spec,
-    const Array<int64_t>& device_mesh,
-    bool consider_reverse_device_meshes = false);
+    const DeviceMesh& device_mesh, bool consider_reverse_device_meshes = false);
 
 absl::StatusOr<std::vector<int64_t>> GetTensorDimToMeshDimNoCrash(
     int64_t tensor_shape_rank, const HloSharding& spec,
-    const Array<int64_t>& device_mesh,
-    bool consider_reverse_device_meshes = false);
+    const DeviceMesh& device_mesh, bool consider_reverse_device_meshes = false);
 
 HloSharding Tile(const Shape& tensor_shape,
                  absl::Span<const int64_t> tensor_dims,
                  const std::vector<std::vector<int64_t>>& mesh_dims,
-                 const Array<int64_t>& device_mesh);
+                 const DeviceMesh& device_mesh);
 
 HloSharding Tile(const Shape& tensor_shape,
                  absl::Span<const int64_t> tensor_dims,
                  absl::Span<const int64_t> mesh_dims,
-                 const Array<int64_t>& device_mesh);
+                 const DeviceMesh& device_mesh);
 
 AliasMap BuildAliasMap(const HloModule* module,
                        const HloInputOutputAliasConfig& alias_config);
@@ -489,6 +497,9 @@ size_t VectorGreaterThanOneElementCount(absl::Span<const int64_t> span,
 std::vector<int64_t> VectorGreaterThanOneElementIndices(
     absl::Span<const int64_t> span, bool omit_last_dim = false);
 
+std::vector<int64_t> VectorGreaterThanOneElements(
+    absl::Span<const int64_t> span, bool omit_last_dim = false);
+
 // Computes bytes size of a shape recursively if it is sharded according to an
 // optionally provided sharding
 int64_t ByteSizeOfShapeWithSharding(const Shape& shape,
@@ -518,15 +529,17 @@ HloInstruction* FindInstruction(
 absl::StatusOr<bool> AdjustShardingsWithPartialMeshShape(
     const std::vector<HloInstruction*>& instructions,
     const absl::flat_hash_set<const HloInstruction*>& instructions_to_shard,
-    const std::vector<int64_t>& mesh_shape, int64_t total_num_devices,
-    bool crash_on_error);
+    const std::vector<int64_t>& mesh_shape,
+    const DeviceMesh& original_device_mesh, bool crash_on_error);
 
 inline bool AdjustShardingsWithPartialMeshShape(
     const std::vector<HloInstruction*>& instructions,
     const absl::flat_hash_set<const HloInstruction*>& instructions_to_shard,
-    const std::vector<int64_t>& mesh_shape, int64_t total_num_devices) {
+    const std::vector<int64_t>& mesh_shape,
+    const DeviceMesh& original_device_mesh) {
   absl::StatusOr<bool> result = AdjustShardingsWithPartialMeshShape(
-      instructions, instructions_to_shard, mesh_shape, total_num_devices, true);
+      instructions, instructions_to_shard, mesh_shape, original_device_mesh,
+      /*crash_on_error=*/true);
   CHECK_OK(result);
   return *result;
 }

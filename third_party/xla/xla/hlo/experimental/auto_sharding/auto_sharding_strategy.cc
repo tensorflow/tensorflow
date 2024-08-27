@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_device_mesh.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_wrapper.h"
@@ -56,6 +57,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace spmd {
@@ -77,7 +79,7 @@ std::optional<HloSharding> ConstructImprovedSharding(
 std::pair<HloSharding, double>
 ComputeSliceShardingAndCommunicationCostFromOperand(
     const HloSharding& input_spec, const Shape& old_shape,
-    const Shape& new_shape, const Array<int64_t>& device_mesh,
+    const Shape& new_shape, const DeviceMesh& device_mesh,
     const ClusterEnvironment& cluster_env) {
   if (input_spec.IsReplicated()) {
     return std::make_pair(input_spec, 0);
@@ -135,7 +137,7 @@ BuildStrategyAndCost(
     const ClusterEnvironment& cluster_env, AutoShardingOption& option,
     const CallGraph& call_graph, const HloCostAnalysis& hlo_cost_analysis,
     bool trying_multiple_mesh_shapes) {
-  // const Array<int64_t>& device_mesh = cluster_env.device_mesh_;
+  // const DeviceMesh& device_mesh = cluster_env.device_mesh_;
   StrategyMap strategy_map;
   // This map stores all of the trimmed strategies due to user specified
   // sharding. The key is the instruction id, the value is the strategies. This
@@ -692,15 +694,13 @@ BuildStrategyAndCost(
         break;
       }
       case HloOpcode::kReduce: {
-        auto strategies_status = FollowReduceStrategy(
-            ins, ins->shape(), ins->operand(0), ins->operand(1), instruction_id,
-            strategy_map, strategy_groups, cluster_env,
-            option.allow_mixed_mesh_shape, !trying_multiple_mesh_shapes);
-        if (strategies_status.ok()) {
-          strategy_group = std::move(strategies_status.value());
-        } else {
-          return strategies_status.status();
-        }
+        TF_ASSIGN_OR_RETURN(
+            std::unique_ptr<StrategyGroup> new_strategy_group,
+            FollowReduceStrategy(
+                ins, ins->shape(), ins->operand(0), ins->operand(1),
+                instruction_id, strategy_map, strategy_groups, cluster_env,
+                option.allow_mixed_mesh_shape, !trying_multiple_mesh_shapes));
+        strategy_group = std::move(new_strategy_group);
         break;
       }
       case HloOpcode::kDot: {
@@ -812,16 +812,16 @@ BuildStrategyAndCost(
                                         strategy_map, strategy_group,
                                         replicated_penalty);
                 }
-              } else {
-                strategy_group =
-                    CreateAllStrategiesGroup(
-                        ins, ins->shape(), instruction_id, strategy_groups,
-                        cluster_env, strategy_map, option, replicated_penalty,
-                        batch_dim_map, call_graph, only_allow_divisible,
-                        /* create_replicated_strategies */ true,
-                        /* create_partially_replicated_strategies */ true)
-                        .value();
+                return;
               }
+              strategy_group =
+                  CreateAllStrategiesGroup(
+                      ins, ins->shape(), instruction_id, strategy_groups,
+                      cluster_env, strategy_map, option, replicated_penalty,
+                      batch_dim_map, call_graph, only_allow_divisible,
+                      /* create_replicated_strategies */ true,
+                      /* create_partially_replicated_strategies */ true)
+                      .value();
             };
 
         if (IsSPMDFullToShardShapeCustomCall(ins)) {

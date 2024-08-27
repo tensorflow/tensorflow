@@ -3,7 +3,7 @@ load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "@local_xla//xla/tsl:tsl.bzl",
-    "if_hermetic_cuda_tools",
+    "if_cuda_tools",
     "if_not_fuchsia",
     "if_not_windows",
     "if_oss",
@@ -60,7 +60,7 @@ cc_library(
     srcs = ["cuda_libdevice_path.cc"],
     hdrs = ["//tsl/platform:cuda_libdevice_path.h"],
     compatible_with = [],
-    data = if_hermetic_cuda_tools([
+    data = if_cuda_tools([
         "@cuda_nvcc//:nvvm",
     ]),
     tags = [

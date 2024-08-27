@@ -36,6 +36,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/index.h"
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
@@ -255,9 +256,8 @@ absl::StatusOr<std::vector<IndexDomain>> SingleDeviceSharding::IndexDomains(
 
 std::string SingleDeviceSharding::DebugString() const {
   DCHECK(this);
-  return absl::StrFormat("SingleDeviceSharding(%s, memory_kind: %s)",
-                         devices_.front()->ToString(),
-                         memory_kind_.DebugString());
+  return absl::StrFormat("SingleDeviceSharding(%s, memory_kind: %v)",
+                         devices_.front()->ToString(), memory_kind_);
 }
 
 std::unique_ptr<OpaqueSharding> OpaqueSharding::Create(DeviceList devices,
@@ -322,12 +322,12 @@ absl::StatusOr<std::vector<IndexDomain>> OpaqueSharding::IndexDomains(
 std::string OpaqueSharding::DebugString() const {
   DCHECK(this);
   return absl::StrFormat(
-      "OpaqueSharding(devices: %s, memory_kind: %s)",
+      "OpaqueSharding(devices: %s, memory_kind: %v)",
       absl::StrJoin(devices_, ",",
                     [](std::string* out, const Device* device) {
                       absl::StrAppend(out, device->ToString());
                     }),
-      memory_kind_.DebugString());
+      memory_kind_);
 }
 
 std::unique_ptr<ConcreteSharding> ConcreteSharding::Create(
@@ -472,7 +472,7 @@ std::string ConcreteSharding::DebugString() const {
       [this](const auto& shape, const auto& shard_shapes) {
         return absl::StrFormat(
             "ConcreteSharding(devices: %s, shape: %s, shard_shapes: %s, "
-            "memory_kind: %s)",
+            "memory_kind: %v)",
             absl::StrJoin(devices_, ",",
                           [](std::string* out, const Device* device) {
                             absl::StrAppend(out, device->ToString());
@@ -482,7 +482,7 @@ std::string ConcreteSharding::DebugString() const {
                           [](std::string* out, const auto& shard_shape) {
                             absl::StrAppend(out, shard_shape.DebugString());
                           }),
-            memory_kind_.DebugString());
+            memory_kind_);
       },
       shape_, shard_shapes_);
 }
@@ -584,13 +584,12 @@ std::string ConcreteEvenSharding::DebugString() const {
   DCHECK(this);
   return absl::StrFormat(
       "ConcreteEvenSharding(devices: %s, shape: %s, shard_shape: %s, "
-      "memory_kind: %s)",
+      "memory_kind: %v)",
       absl::StrJoin(devices_, ",",
                     [](std::string* out, const Device* device) {
                       absl::StrAppend(out, device->ToString());
                     }),
-      shape_.DebugString(), shard_shape_.DebugString(),
-      memory_kind_.DebugString());
+      shape_.DebugString(), shard_shape_.DebugString(), memory_kind_);
 }
 
 absl::StatusOr<std::unique_ptr<ShardingParamSharding>>
@@ -731,13 +730,13 @@ absl::StatusOr<std::vector<IndexDomain>> ShardingParamSharding::IndexDomains(
 std::string ShardingParamSharding::DebugString() const {
   DCHECK(this);
   return absl::StrFormat(
-      "ShardingParamSharding(%s, devices: %s, memory_kind: %s)",
+      "ShardingParamSharding(%s, devices: %s, memory_kind: %v)",
       sharding_param_.DebugString(),
       absl::StrJoin(devices_, ",",
                     [](std::string* out, const Device* device) {
                       absl::StrAppend(out, device->ToString());
                     }),
-      memory_kind_.DebugString());
+      memory_kind_);
 }
 
 }  // namespace ifrt

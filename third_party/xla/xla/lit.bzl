@@ -1,7 +1,7 @@
 """Helper rules for writing LIT tests."""
 
 load("@bazel_skylib//lib:paths.bzl", "paths")
-load("//xla/tsl:tsl.bzl", "if_hermetic_cuda_tools", "if_oss")
+load("//xla/tsl:tsl.bzl", "if_cuda_tools", "if_oss")
 
 def enforce_glob(files, **kwargs):
     """A utility to enforce that a list matches a glob expression.
@@ -128,7 +128,7 @@ def lit_script_with_xla_gpu_cuda_data_dir(
         name = name,
         srcs = [input_file],
         outs = [output_file],
-        cmd = if_hermetic_cuda_tools(
+        cmd = if_cuda_tools(
             """echo -e '// RUN: export XLA_FLAGS=\"--xla_gpu_cuda_data_dir={}\"' > $@;
 cat $< >> $@;""".format(xla_gpu_cuda_data_dir),
             "cat $< >> $@;",

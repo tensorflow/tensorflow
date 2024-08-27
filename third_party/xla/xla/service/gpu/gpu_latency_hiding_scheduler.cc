@@ -49,7 +49,8 @@ bool IsNopInstruction(const HloInstruction& hlo) {
   return op == HloOpcode::kGetTupleElement || op == HloOpcode::kBitcast ||
          op == HloOpcode::kConstant || op == HloOpcode::kParameter ||
          op == HloOpcode::kTuple || op == HloOpcode::kPartitionId ||
-         op == HloOpcode::kReplicaId || hlo.IsEffectiveBitcast();
+         op == HloOpcode::kReplicaId || hlo.IsEffectiveBitcast() ||
+         op == HloOpcode::kOptimizationBarrier;
 }
 
 bool IsAsyncComputeOp(const HloInstruction& hlo) {

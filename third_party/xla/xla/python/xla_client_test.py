@@ -3144,6 +3144,15 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       executable_build_options.num_partitions = 2
       executable_build_options.debug_options.xla_cpu_enable_fast_math = True
       executable_build_options.debug_options.xla_test_all_input_layouts = True
+      executable_build_options.debug_options.xla_gpu_kernel_cache_file = (
+          "/foo/bar"
+      )
+      executable_build_options.debug_options.xla_gpu_enable_llvm_module_compilation_parallelism = (
+          True
+      )
+      executable_build_options.debug_options.xla_gpu_per_fusion_autotune_cache_dir = (
+          "/bar/foo/"
+      )
 
       b = options.SerializeAsString()
       restored = xla_client.CompileOptions.ParseFromString(b)
@@ -3158,7 +3167,13 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
                          getattr(restored.executable_build_options, name),
                          msg=name)
 
-      for name in ("xla_cpu_enable_fast_math", "xla_test_all_input_layouts"):
+      for name in (
+          "xla_cpu_enable_fast_math",
+          "xla_test_all_input_layouts",
+          "xla_gpu_kernel_cache_file",
+          "xla_gpu_enable_llvm_module_compilation_parallelism",
+          "xla_gpu_per_fusion_autotune_cache_dir",
+      ):
         self.assertEqual(
             getattr(options.executable_build_options.debug_options, name),
             getattr(restored.executable_build_options.debug_options, name),

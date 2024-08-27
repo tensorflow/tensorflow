@@ -734,7 +734,7 @@ static auto const ops_triggering_xla_compilation =
                                          "XlaVariadicSort",
                                          "XlaWhile"};
 
-static bool NodeCanTriggerXlaCompilation(const NodeDef& node) {
+bool NodeCanTriggerXlaCompilation(const NodeDef& node) {
   return node.attr().find(kXlaClusterIdAttr) != node.attr().end() ||
          HasBoolAttr(node, kXlaMustCompileAttr) ||
          HasBoolAttr(node, kXlaCompileAttr) ||

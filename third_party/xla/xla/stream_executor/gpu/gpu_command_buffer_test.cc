@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/gpu/gpu_types.h"  // IWYU pragma: keep
@@ -60,11 +61,7 @@ static Platform* GpuPlatform() {
 
 static MultiKernelLoaderSpec GetAddI32KernelSpec() {
   MultiKernelLoaderSpec spec(/*arity=*/3);
-#if defined(GOOGLE_CUDA)
-  spec.AddCudaPtxInMemory(internal::kAddI32Kernel, "add");
-#elif defined(TENSORFLOW_USE_ROCM)
-  spec.AddCudaCubinInMemory(internal::kAddI32KernelModule, "add");
-#endif
+  spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
   return spec;
 }
 
@@ -113,7 +110,7 @@ TEST(GpuCommandBufferTest, LaunchSingleKernel) {
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
   MultiKernelLoaderSpec spec(/*arity=*/3);
-  spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "add");
+  spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
   TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor, spec));
 
   int64_t length = 4;
@@ -183,7 +180,7 @@ TEST(CudaCommandBufferTest, TraceSingleKernel) {
                                                  cast(bufs[2]),
                                              });
   });
-  spec.AddInProcessSymbol(internal::GetAddI32Ptrs3Kernel(), "add");
+  spec.AddInProcessSymbol(internal::GetAddI32Ptrs3Kernel(), "AddI32Ptrs3");
 
   TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Ptrs3::Create(executor, spec));
 
@@ -701,7 +698,7 @@ TEST(GpuCommandBufferTest, ConditionalIf) {
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
   MultiKernelLoaderSpec spec(/*arity=*/3);
-  spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "add");
+  spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
   TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor, spec));
 
   int64_t length = 4;
@@ -851,12 +848,12 @@ TEST(GpuCommandBufferTest, ConditionalIfElse) {
 
   // Load addition kernel.
   MultiKernelLoaderSpec add_spec(/*arity=*/3);
-  add_spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "add");
+  add_spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
   TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor, add_spec));
 
   // Load multiplication kernel.
   MultiKernelLoaderSpec mul_spec(/*arity=*/3);
-  mul_spec.AddInProcessSymbol(internal::GetMulI32Kernel(), "mul");
+  mul_spec.AddInProcessSymbol(internal::GetMulI32Kernel(), "MulI32");
   TF_ASSERT_OK_AND_ASSIGN(auto mul, MulI32Kernel::Create(executor, mul_spec));
 
   int64_t length = 4;
@@ -947,12 +944,12 @@ TEST(GpuCommandBufferTest, ConditionalCase) {
 
   // Load addition kernel.
   MultiKernelLoaderSpec add_spec(/*arity=*/3);
-  add_spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "add");
+  add_spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
   TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor, add_spec));
 
   // Load multiplication kernel.
   MultiKernelLoaderSpec mul_spec(/*arity=*/3);
-  mul_spec.AddInProcessSymbol(internal::GetMulI32Kernel(), "mul");
+  mul_spec.AddInProcessSymbol(internal::GetMulI32Kernel(), "MulI32");
   TF_ASSERT_OK_AND_ASSIGN(auto mul, MulI32Kernel::Create(executor, mul_spec));
 
   int64_t length = 4;
@@ -1035,7 +1032,7 @@ TEST(GpuCommandBufferTest, ConditionalFor) {
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
   MultiKernelLoaderSpec spec(/*arity=*/3);
-  spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "add");
+  spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
   TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor, spec));
 
   int64_t length = 4;
@@ -1085,12 +1082,12 @@ TEST(GpuCommandBufferTest, ConditionalWhile) {
 
   // Load addition kernel.
   MultiKernelLoaderSpec add_spec(/*arity=*/3);
-  add_spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "add");
+  add_spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
   TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor, add_spec));
 
   // Load inc_and_cmp kernel.
   MultiKernelLoaderSpec icmp_spec(/*arity=*/3);
-  icmp_spec.AddInProcessSymbol(internal::GetIncAndCmpKernel(), "inc_and_cmp");
+  icmp_spec.AddInProcessSymbol(internal::GetIncAndCmpKernel(), "IncAndCmp");
   TF_ASSERT_OK_AND_ASSIGN(auto inc_and_cmp,
                           IncAndCmpKernel::Create(executor, icmp_spec));
 
@@ -1250,12 +1247,12 @@ TEST(GpuCommandBufferTest, ConditionalWhileInExecutionScope) {
 
   // Load addition kernel.
   MultiKernelLoaderSpec add_spec(/*arity=*/3);
-  add_spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "add");
+  add_spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
   TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor, add_spec));
 
   // Load inc_and_cmp kernel.
   MultiKernelLoaderSpec icmp_spec(/*arity=*/3);
-  icmp_spec.AddInProcessSymbol(internal::GetIncAndCmpKernel(), "inc_and_cmp");
+  icmp_spec.AddInProcessSymbol(internal::GetIncAndCmpKernel(), "IncAndCmp");
   TF_ASSERT_OK_AND_ASSIGN(auto inc_and_cmp,
                           IncAndCmpKernel::Create(executor, icmp_spec));
 
@@ -1352,7 +1349,7 @@ static void BM_CreateCommandBuffer(benchmark::State& state) {
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   MultiKernelLoaderSpec spec(/*arity=*/3);
-  spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "add");
+  spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
   TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor, spec));
 
   DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(1, 0);
@@ -1375,7 +1372,7 @@ static void BM_TraceCommandBuffer(benchmark::State& state) {
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
   MultiKernelLoaderSpec spec(/*arity=*/3);
-  spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "add");
+  spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
   TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor, spec));
 
   DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(1, 0);
@@ -1400,7 +1397,7 @@ static void BM_UpdateCommandBuffer(benchmark::State& state) {
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   MultiKernelLoaderSpec spec(/*arity=*/3);
-  spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "add");
+  spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
   TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor, spec));
 
   DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(1, 0);

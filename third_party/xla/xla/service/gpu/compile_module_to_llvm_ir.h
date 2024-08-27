@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/service/gpu/executable.pb.h"
 #include "xla/service/gpu/execution_stream_assignment.h"
 #include "xla/service/gpu/gpu_executable.h"
+#include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/runtime/sequential_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/hlo.pb.h"
@@ -65,6 +66,9 @@ struct CompileModuleResults {
 
 void ForAllThunks(const std::function<void(Thunk*)>& fn,
                   ThunkSequence* thunk_sequence);
+
+absl::Status LoadCache(IrEmitterContext& ir_emitter_context,
+                       absl::string_view cache_file_path);
 
 absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     HloModule* hlo_module, llvm::LLVMContext* llvm_context,

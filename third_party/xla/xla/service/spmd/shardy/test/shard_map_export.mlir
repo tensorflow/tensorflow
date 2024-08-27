@@ -1,7 +1,7 @@
 // RUN: sdy_opt %s -xla-sdy-shard-map-export 2>&1 | FileCheck %s
 
-sdy.mesh @mesh_0 = <"a"=4, "b"=2>
-sdy.mesh @mesh_1 = <"a"=2, "b"=2, "c"=2, "d"=2>
+sdy.mesh @mesh_0 = <["a"=4, "b"=2]>
+sdy.mesh @mesh_1 = <["a"=2, "b"=2, "c"=2, "d"=2]>
 
 // CHECK-LABEL: func @single_manual_comp
 func.func @single_manual_comp(%arg0: tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_0, [{"a", ?}, {"b", ?}]>}, %arg1: tensor<16x32xf32> {sdy.sharding = #sdy.sharding<@mesh_0, [{"b", ?}, {?}]>}) -> (tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh_0, [{"a"}, {}]>}) {

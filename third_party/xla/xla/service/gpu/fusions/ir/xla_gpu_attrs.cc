@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <string>
 #include <utility>
 
@@ -226,6 +227,8 @@ IndexingMap IndexingMapAttr::getIndexingMap() {
   return IndexingMap(getMap(), getDimVars(), getRangeVars(), /*rt_vars=*/{},
                      getConstraints());
 }
+
+int64_t IndexingMapAttr::getNumResults() { return getMap().getNumResults(); }
 
 }  // namespace gpu
 }  // namespace xla

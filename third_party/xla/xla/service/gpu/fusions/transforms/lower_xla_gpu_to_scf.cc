@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdint>
 #include <memory>
 #include <utility>
 
@@ -25,12 +26,14 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/Location.h"
+#include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
@@ -212,7 +215,10 @@ struct RewriteXlaGpuLoop : mlir::OpRewritePattern<LoopOp> {
           auto if_op = nested_b.create<mlir::scf::IfOp>(
               is_in_bounds,
               [&](OpBuilder& then_builder, Location then_loc) -> void {
+                ImplicitLocOpBuilder then_b(then_loc, then_builder);
                 SmallVector<Value, 4> bb_args(symbol_values);
+                bb_args.append(mlir_converter::ApplyIndexing(
+                    indexing_map, op.getDims(), symbol_values, then_b));
                 bb_args.append(iter_args.begin(), iter_args.end());
 
                 mlir::Block* then_block = then_builder.getInsertionBlock();
@@ -221,8 +227,8 @@ struct RewriteXlaGpuLoop : mlir::OpRewritePattern<LoopOp> {
                 rewriter.mergeBlocks(op.getBody(), then_block, bb_args);
 
                 auto old_terminator = then_block->getTerminator();
-                then_builder.create<mlir::scf::YieldOp>(
-                    then_loc, old_terminator->getOperands());
+                then_b.create<mlir::scf::YieldOp>(
+                    old_terminator->getOperands());
                 old_terminator->erase();
               },
               [&](OpBuilder& else_b, Location else_loc) {
@@ -235,6 +241,57 @@ struct RewriteXlaGpuLoop : mlir::OpRewritePattern<LoopOp> {
   }
 };
 
+struct RewriteMaterialize : mlir::OpRewritePattern<MaterializeOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      MaterializeOp op, mlir::PatternRewriter& rewriter) const override {
+    mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    SmallVector<int64_t> vector_dims;
+    IndexingMap out_map =
+        op.getResult().getType().getIndexingMapAttr().getIndexingMap();
+    for (auto bound : out_map.GetSymbolBounds()) {
+      vector_dims.push_back(bound.GetLoopTripCount());
+    }
+    auto data_type = op.getResult().getType().getElementType();
+    mlir::VectorType vec_type = mlir::VectorType::get(vector_dims, data_type);
+    Value init_vec;
+    if (mlir::isa<mlir::IntegerType>(data_type)) {
+      init_vec = b.create<mlir::arith::ConstantOp>(mlir::DenseElementsAttr::get(
+          vec_type, b.getIntegerAttr(data_type, 0)));
+    } else if (mlir::isa<mlir::FloatType>(data_type)) {
+      init_vec = b.create<mlir::arith::ConstantOp>(
+          mlir::DenseElementsAttr::get(vec_type, b.getFloatAttr(data_type, 0)));
+    } else {
+      return op->emitOpError("invalid data type");
+    }
+
+    auto loop = b.create<LoopOp>(
+        op.getMapAttr(), op.getIndices(), ValueRange{init_vec},
+        [&](mlir::OpBuilder&, mlir::Location, ValueRange ivs,
+            ValueRange map_results, ValueRange iter_args) {
+          auto args = SmallVector<Value, 4>(op.getInput());
+          args.insert(args.end(), map_results.begin(), map_results.end());
+          SmallVector<mlir::Type, 1> types{data_type};
+          auto call =
+              b.create<PureCallOp>(op.getCalleeAttr(), ValueRange{args}, types);
+          auto out_indexing =
+              b.create<ApplyIndexingOp>(op.getIndices(), ivs, out_map);
+          SmallVector<mlir::OpFoldResult> offset(out_indexing->getResults());
+          auto old_vec = iter_args.back();
+          auto new_vec = b.create<mlir::vector::InsertOp>(call.getResult(0),
+                                                          old_vec, offset);
+          b.create<YieldOp>(new_vec);
+        });
+    auto convert = b.create<mlir::UnrealizedConversionCastOp>(
+                        op.getResult().getType(), loop->getResults())
+                       .getResult(0);
+    rewriter.replaceOp(op, convert);
+    return success();
+  }
+};
+
 class LowerXlaGpuToScfPass
     : public impl::LowerXlaGpuToScfPassBase<LowerXlaGpuToScfPass> {
  public:
@@ -242,7 +299,7 @@ class LowerXlaGpuToScfPass
     auto* ctx = &getContext();
     mlir::RewritePatternSet patterns(ctx);
     patterns.add<RewritePredicatedInsert, RewritePredicatedExtract,
-                 RewriteShuffleReduce>(ctx);
+                 RewriteShuffleReduce, RewriteMaterialize>(ctx);
     if (mlir::failed(mlir::applyPatternsAndFoldGreedily(getOperation(),
                                                         std::move(patterns)))) {
       signalPassFailure();

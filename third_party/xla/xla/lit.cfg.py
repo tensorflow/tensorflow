@@ -56,7 +56,7 @@ config.test_exec_root = (
 )
 
 config.substitutions.extend([
-    ("%PYTHON", os.getenv("PYTHON", sys.executable)),
+    ("%PYTHON", os.getenv("PYTHON", sys.executable) or ""),
 ])
 
 if lit_config.params.get("PTX") == "GCN":

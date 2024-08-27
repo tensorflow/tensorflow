@@ -318,6 +318,9 @@ class DebugOptions:
   xla_gpu_dump_autotune_results_to: str
   xla_gpu_load_autotune_results_from: str
   xla_gpu_dump_autotune_logs_to: str
+  xla_gpu_kernel_cache_file: str
+  xla_gpu_enable_llvm_module_compilation_parallelism: bool
+  xla_gpu_per_fusion_autotune_cache_dir: str
 
 class CompiledMemoryStats:
   generated_code_size_in_bytes: int
@@ -929,7 +932,7 @@ def pjit(
     cache_miss: Callable,
     static_argnums: Sequence[int],
     static_argnames: Sequence[str],
-    donate_argnums: Sequence[int],
+    global_cache_key: Any,
     pytree_registry: pytree.PyTreeRegistry,
     shard_arg_fallback: Callable,
     cache: Optional[PjitFunctionCache] = ...,

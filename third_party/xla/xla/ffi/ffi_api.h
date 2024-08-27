@@ -76,10 +76,6 @@ struct CallOptions {
 // `error` if it's not nullptr; returns OK status otherwise.
 absl::Status TakeStatus(XLA_FFI_Error* error);
 
-absl::Status CallWithApi(const XLA_FFI_Api* api, Ffi& handler,
-                         CallFrame& call_frame, const CallOptions& options = {},
-                         ExecutionStage stage = ExecutionStage::kExecute);
-
 absl::Status Call(Ffi& handler, CallFrame& call_frame,
                   const CallOptions& options = {},
                   ExecutionStage stage = ExecutionStage::kExecute);
@@ -88,6 +84,14 @@ absl::Status Call(
     XLA_FFI_Handler* handler, CallFrame& call_frame,
     const CallOptions& options = {},
     XLA_FFI_ExecutionStage stage = XLA_FFI_ExecutionStage_EXECUTE);
+
+// Get metadata from the handler by calling it with a special call frame.
+absl::StatusOr<XLA_FFI_Metadata> GetMetadata(Ffi& handler);
+absl::StatusOr<XLA_FFI_Metadata> GetMetadata(XLA_FFI_Handler* handler);
+
+XLA_FFI_Metadata BuildMetadata();
+XLA_FFI_Metadata_Extension BuildMetadataExtension(XLA_FFI_Metadata* metadata);
+XLA_FFI_CallFrame BuildMetadataCallFrame(XLA_FFI_Metadata_Extension* extension);
 
 namespace internal {
 // This is an internal workaround to override FFI execution context for FFI

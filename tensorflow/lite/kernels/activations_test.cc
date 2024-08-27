@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/memory/memory.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
@@ -344,10 +345,11 @@ TEST(FloatActivationsOpTest, Relu0To1) {
       0.3, -2.0, 1.1, -0.1,  //
   });
   m.Invoke();
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({
-                                 0.0, 0.0, 0.2, 0.0,  //
-                                 0.3, 0.0, 1.0, 0.0,  //
-                             }));
+  EXPECT_THAT(m.GetOutput(),
+              Pointwise(FloatingPointEq(), {
+                                               0.0, 0.0, 0.2, 0.0,  //
+                                               0.3, 0.0, 1.0, 0.0,  //
+                                           }));
 }
 
 TEST(FloatActivationsOpTest, Relu1) {
@@ -359,10 +361,11 @@ TEST(FloatActivationsOpTest, Relu1) {
       0.3, -2.0, 1.1, -0.1,  //
   });
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({
-                                 0.0, -0.6, 0.2, -0.4,  //
-                                 0.3, -1.0, 1.0, -0.1,  //
-                             }));
+  EXPECT_THAT(m.GetOutput(),
+              Pointwise(FloatingPointEq(), {
+                                               0.0, -0.6, 0.2, -0.4,  //
+                                               0.3, -1.0, 1.0, -0.1,  //
+                                           }));
 }
 
 TEST(FloatActivationsOpTest, Relu6) {
@@ -2612,12 +2615,14 @@ TEST_P(PReluOpTest, PReluFloat32) {
   });
   m.SetAlpha({0.0f, 1.0f, 2.0f});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({
-                                 0.0f, 0.0f, 0.0f,    // Row 1, Column 1
-                                 1.0f, 1.0f, 1.0f,    // Row 1, Column 2
-                                 0.0f, -1.0f, -2.0f,  // Row 2, Column 1
-                                 0.0f, -2.0f, -4.0f,  // Row 2, Column 2
-                             }));
+  EXPECT_THAT(
+      m.GetOutput(),
+      Pointwise(FloatingPointEq(), {
+                                       0.0f, 0.0f, 0.0f,    // Row 1, Column 1
+                                       1.0f, 1.0f, 1.0f,    // Row 1, Column 2
+                                       0.0f, -1.0f, -2.0f,  // Row 2, Column 1
+                                       0.0f, -2.0f, -4.0f,  // Row 2, Column 2
+                                   }));
 }
 
 TEST_P(PReluOpTest, PReluFloat32SameShapes) {
@@ -2637,12 +2642,14 @@ TEST_P(PReluOpTest, PReluFloat32SameShapes) {
       0.0f, 1.0f, 2.0f,  // Row 2, Column 2
   });
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({
-                                 0.0f, 0.0f, 0.0f,    // Row 1, Column 1
-                                 1.0f, 1.0f, 1.0f,    // Row 1, Column 2
-                                 0.0f, -1.0f, -2.0f,  // Row 2, Column 1
-                                 0.0f, -2.0f, -4.0f,  // Row 2, Column 2
-                             }));
+  EXPECT_THAT(
+      m.GetOutput(),
+      Pointwise(FloatingPointEq(), {
+                                       0.0f, 0.0f, 0.0f,    // Row 1, Column 1
+                                       1.0f, 1.0f, 1.0f,    // Row 1, Column 2
+                                       0.0f, -1.0f, -2.0f,  // Row 2, Column 1
+                                       0.0f, -2.0f, -4.0f,  // Row 2, Column 2
+                                   }));
 }
 
 TEST_P(PReluOpTest, PReluUInt8) {
@@ -2797,10 +2804,11 @@ TEST(FloatActivationsOpTest, LeakyRelu) {
       1.0f, -1.0f, -2.0f,  // Row 2
   });
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({
-                                 0.0f, 1.0f, 3.0f,    // Row 1
-                                 1.0f, -0.5f, -1.0f,  // Row 2
-                             }));
+  EXPECT_THAT(m.GetOutput(),
+              Pointwise(FloatingPointEq(), {
+                                               0.0f, 1.0f, 3.0f,    // Row 1
+                                               1.0f, -0.5f, -1.0f,  // Row 2
+                                           }));
 }
 
 class GeluOpModel : public SingleOpModel {

@@ -596,6 +596,7 @@ cc_library(
         ":types",
         ":util",
         ":xla_data_proto_cc",
+        "//xla/tsl/lib/core:bitmap",
         "//xla/tsl/util:byte_swap_array",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
@@ -606,7 +607,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/lib/core:bitmap",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:macros",
@@ -666,11 +666,11 @@ cc_library(
         ":types",
         ":util",
         ":xla_data_proto_cc",
+        "//xla/tsl/lib/core:bitmap",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/lib/core:bitmap",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:ml_dtypes",
@@ -1316,11 +1316,6 @@ cc_library(
 # copybara:uncomment_end
 
 cc_library(
-    name = "empty",
-    visibility = ["//visibility:public"],
-)
-
-cc_library(
     name = "sort_json",
     srcs = ["sort_json.cc"],
     hdrs = ["sort_json.h"],
@@ -1345,13 +1340,6 @@ xla_cc_test(
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
-)
-
-# Needed to workaround https://github.com/bazelbuild/bazel/issues/21519
-alias(
-    name = "bazel_issue_21519",
-    actual = ":empty",
-    visibility = ["//visibility:public"],
 )
 
 bzl_library(

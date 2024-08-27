@@ -61,6 +61,7 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
+#include "mlir/Dialect/LLVMIR/Transforms/InlinerInterfaceImpl.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/ExecutionEngine/OptUtils.h"
@@ -194,10 +195,7 @@ absl::StatusOr<Type> TritonType(mlir::OpBuilder b, PrimitiveType t) {
     case F8E5M2:
       return b.getFloat8E5M2Type();
     case F8E4M3FN:
-      // TODO(b/345700241) Note that we return UZ type as Triton mistakenly uses
-      // this type for F8E4M3FN. The mapping must be changed when it's fixed in
-      // Triton.
-      return b.getFloat8E4M3FNUZType();
+      return b.getFloat8E4M3FNType();
     default:
       return absl::UnimplementedError(
           absl::StrCat("This type is not supported yet: ",
@@ -952,13 +950,37 @@ absl::StatusOr<Value> EmitTiledHloInstruction(
     absl::flat_hash_map<const TiledHloInstruction*, Value>& values) {
   const HloInstruction* hlo = tiled_hlo.hlo();
 
-  if (fusion->IsUserOf(tiled_hlo.hlo())) {
+  if (fusion->IsUserOf(hlo)) {
     TF_ASSIGN_OR_RETURN(auto make_tensor,
                         ir_emitter_triton_internal::CreateMakeTensorPtrOp(
                             b, tile_multi_index, tiled_hlo,
                             fn.getArgument(fusion->operand_index(hlo))));
 
-    return EmitParameterLoad(b, make_tensor.op, make_tensor.boundary_checks);
+    Value parameter =
+        EmitParameterLoad(b, make_tensor.op, make_tensor.boundary_checks);
+
+    // Some types are stored using different types, e.g. i1 is stored in memory
+    // as i8. It's important to type checking that we perform a conversion
+    // after loading if the type of the loaded parameter does not match what
+    // is expected.
+    Type loaded_element_type =
+        mlir::cast<ShapedType>(parameter.getType()).getElementType();
+    TF_ASSIGN_OR_RETURN(Type expected_element_type,
+                        TritonType(b, hlo->shape().element_type()));
+
+    if (expected_element_type != loaded_element_type) {
+      // Ensure that we didn't mess up somewhere else by checking that we
+      // indeed loaded the expected storage type for the expected element type.
+      if (loaded_element_type != StorageType(b, expected_element_type)) {
+        return absl::InternalError(absl::StrCat(
+            "Parameters were loaded with an unexpected element type "
+            "while lowering ",
+            fusion->called_computation()->ToString()));
+      }
+      parameter = Cast(b, parameter, expected_element_type);
+    }
+
+    return parameter;
   }
 
   if (hlo->opcode() == HloOpcode::kConstant &&
@@ -1507,6 +1529,46 @@ class MatMulEmitterHelper {
     }
   }
 
+  // Return the batch stride of the HLO passed as a parameter. If the
+  // parameter HLO has no batch dimension, a zero stride is returned.
+  // Also sets offset_batch and updates has_batch_offset as a side effect.
+  absl::StatusOr<Value> GetBatchStride(const Side& side,
+                                       const HloInstruction* hlo_param,
+                                       int64_t& offset_batch,
+                                       bool& has_batch_offset) {
+    int64_t stride_batch = 0;
+    if (side.scope != TritonFusionAnalysis::Scope::RHS &&
+        dims_.lhs_noncontracting_split) {
+      const TensorIterationSpec::DimIterationSpec* spec =
+          analysis_.IterSpec(side.scope, hlo_param, side.tiled_dims[0].index);
+      if (spec != nullptr) {
+        if (spec->size() > 1) {
+          // Support one specific kind of output transpose that splits the
+          // dimension originating from the split LHS non-contracting one.
+          stride_batch = spec->at(1).stride;
+        } else {
+          // Because the major part of the split is implemented using the
+          // batch logic stride_batch is populated here as the stride of
+          // the minor part times its size.
+          stride_batch = spec->at(0).stride *
+                         (spec->at(0).count / *dims_.lhs_noncontracting_split);
+        }
+        TF_RET_CHECK(stride_batch != 0);
+      }
+    } else if (side.batch_dim_idx.has_value()) {
+      const TensorIterationSpec::DimIterationSpec* spec =
+          analysis_.IterSpec(side.scope, hlo_param, *side.batch_dim_idx);
+      if (spec != nullptr) {
+        stride_batch = spec->at(0).stride;
+        offset_batch = spec->at(0).slice_start;
+        TF_RET_CHECK(stride_batch != 0);
+      }
+    }
+
+    has_batch_offset |= stride_batch != 0;
+    return Cst(stride_batch);
+  }
+
   // bases: The base pointers of each argument.
   absl::StatusOr<Value> EmitTensorPointer(
       const HloInstruction* hlo, const Side& side, ValueRange bases,
@@ -1725,58 +1787,21 @@ class MatMulEmitterHelper {
     bool has_batch_offset = false;
     Value batch_stride;
 
-    // Return the batch stride of the HLO passed as a parameter. If the
-    // parameter HLO has no batch dimension, a zero stride is returned.
-    // Also sets offset_batch and updates has_batch_offset as a side effect.
-    auto get_batch_stride =
-        [this, &side, &offset_batch, &has_batch_offset](
-            const HloInstruction* hlo_param) -> absl::StatusOr<Value> {
-      int64_t stride_batch = 0;
-      if (side.scope != TritonFusionAnalysis::Scope::RHS &&
-          dims_.lhs_noncontracting_split) {
-        const TensorIterationSpec::DimIterationSpec* spec =
-            analysis_.IterSpec(side.scope, hlo_param, side.tiled_dims[0].index);
-        if (spec != nullptr) {
-          if (spec->size() > 1) {
-            // Support one specific kind of output transpose that splits the
-            // dimension originating from the split LHS non-contracting one.
-            stride_batch = spec->at(1).stride;
-          } else {
-            // Because the major part of the split is implemented using the
-            // batch logic stride_batch is populated here as the stride of
-            // the minor part times its size.
-            stride_batch =
-                spec->at(0).stride *
-                (spec->at(0).count / *dims_.lhs_noncontracting_split);
-          }
-          TF_RET_CHECK(stride_batch != 0);
-        }
-      } else if (side.batch_dim_idx.has_value()) {
-        const TensorIterationSpec::DimIterationSpec* spec =
-            analysis_.IterSpec(side.scope, hlo_param, *side.batch_dim_idx);
-        if (spec != nullptr) {
-          stride_batch = spec->at(0).stride;
-          offset_batch = spec->at(0).slice_start;
-          TF_RET_CHECK(stride_batch != 0);
-        }
-      }
-
-      has_batch_offset |= stride_batch != 0;
-      return Cst(stride_batch);
-    };
-
     if (hlo->opcode() == HloOpcode::kConcatenate) {
       std::vector<Value> batch_strides;
       batch_strides.reserve(hlo->operands().size());
       for (const HloInstruction* operand : hlo->operands()) {
-        TF_ASSIGN_OR_RETURN(Value op_stride, get_batch_stride(operand));
+        TF_ASSIGN_OR_RETURN(
+            Value op_stride,
+            GetBatchStride(side, operand, offset_batch, has_batch_offset));
         batch_strides.push_back(op_stride);
       }
       TF_ASSIGN_OR_RETURN(batch_stride,
                           EmitMultiSelect(b_, concat_dim_pid_offset,
                                           concat_boundaries, batch_strides));
     } else {
-      TF_ASSIGN_OR_RETURN(batch_stride, get_batch_stride(hlo));
+      TF_ASSIGN_OR_RETURN(batch_stride, GetBatchStride(side, hlo, offset_batch,
+                                                       has_batch_offset));
     }
 
     // Avoid generating logic to compute batch offset if unnecessary.
@@ -2259,8 +2284,8 @@ class Scopes {
   static bool is_int4_param(const TritonFusionAnalysis& analysis,
                             TritonFusionAnalysis::Scope scope) {
     const ConstHloInstructionSet& params = analysis.ScopeParameters(scope);
-    const HloInstruction* first = *params.cbegin();
-    return params.size() == 1 && first->shape().element_type() == S4;
+    return params.size() == 1 &&
+           (*params.cbegin())->shape().element_type() == S4;
   }
 
  private:
@@ -2761,6 +2786,18 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
       EmitTiledScope(b, libdevice_path, device_info, fusion,
                      tiled_hlo_computation, fn, tile_multi_index));
 
+  // Some types are stored using different types, e.g. i1 is stored in memory
+  // as i8. It's important to type checking that we perform a conversion before
+  // storing if the type of the result does not match the type of the output
+  // pointer.
+  Type result_element_type =
+      mlir::cast<ShapedType>(result.getType()).getElementType();
+  Type result_storage_type = StorageType(b, result_element_type);
+
+  if (result_element_type != result_storage_type) {
+    result = Cast(b, result, result_storage_type);
+  }
+
   const auto& tiled_hlo = *tiled_hlo_computation.GetRoot();
   TF_ASSIGN_OR_RETURN(auto make_tensor,
                       ir_emitter_triton_internal::CreateMakeTensorPtrOp(
@@ -2773,11 +2810,13 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
 }
 
 void LoadMlirDialectsForTriton(mlir::MLIRContext& mlir_context) {
-  mlir_context.loadDialect<
-      mt::TritonDialect, mt::gpu::TritonGPUDialect, mlir::arith::ArithDialect,
-      mlir::affine::AffineDialect, xla::gpu::XlaGpuDialect>();
+  mlir_context
+      .loadDialect<mt::TritonDialect, mt::gpu::TritonGPUDialect,
+                   mlir::arith::ArithDialect, mlir::affine::AffineDialect,
+                   mlir::LLVM::LLVMDialect, xla::gpu::XlaGpuDialect>();
   mlir::DialectRegistry registry;
   mlir::func::registerInlinerExtension(registry);
+  mlir::LLVM::registerInlinerInterface(registry);
   mlir_context.appendDialectRegistry(registry);
 }
 

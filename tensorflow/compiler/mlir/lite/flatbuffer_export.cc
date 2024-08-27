@@ -635,6 +635,11 @@ class Translator {
       mlir::TFL::WhileOp op, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
 
+  // Build while operator where then & else are regions.
+  std::optional<BufferOffset<tflite::Operator>> BuildIfOperator(
+      mlir::TFL::IfOp op, const std::vector<int32_t>& operands,
+      const std::vector<int32_t>& results);
+
   // Build call once operator.
   BufferOffset<tflite::Operator> BuildCallOnceOperator(
       mlir::TFL::CallOnceOp op, const std::vector<int32_t>& operands,
@@ -1332,6 +1337,54 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildWhileOperator(
   auto outputs = builder_.CreateVector(results);
   return tflite::CreateOperator(builder_, opcode_index, inputs, outputs,
                                 tflite::BuiltinOptions_WhileOptions,
+                                builtin_options);
+}
+
+std::optional<BufferOffset<tflite::Operator>> Translator::BuildIfOperator(
+    mlir::TFL::IfOp op, const std::vector<int32_t>& operands,
+    const std::vector<int32_t>& results) {
+  auto opcode_index = GetOpcodeIndex("if", tflite::BuiltinOperator_IF);
+  auto get_call_op = [&](mlir::Block& b) -> std::optional<mlir::func::CallOp> {
+    if (b.getOperations().size() != 2) return std::nullopt;
+    if (auto call_op = dyn_cast<mlir::func::CallOp>(b.front())) return call_op;
+    return std::nullopt;
+  };
+  auto then_call_op = get_call_op(op.getThenRegion().front());
+  auto else_call_op = get_call_op(op.getElseRegion().front());
+  if (!then_call_op || !else_call_op)
+    return op.emitOpError("only single call then/else while export supported"),
+           std::nullopt;
+  auto then_subgraph_index =
+      subgraph_index_map_.at(then_call_op.value().getCallee().str());
+  auto else_subgraph_index =
+      subgraph_index_map_.at(else_call_op.value().getCallee().str());
+  auto builtin_options = tflite::CreateIfOptions(builder_, then_subgraph_index,
+                                                 else_subgraph_index)
+                             .Union();
+
+  // Get the subgraph index of IF op.
+  auto subgraph_func = op->getParentOfType<mlir::func::FuncOp>();
+  auto subgraph_idx = subgraph_index_map_[subgraph_func.getSymName().str()];
+  auto new_operands = operands;
+
+  // Then/Else region shares the same operands, only adding once as the new
+  // operands for the IF op.
+  if (then_call_op.value().getOperands() !=
+      else_call_op.value().getOperands()) {
+    return op.emitOpError("Then/Else region does not contain same operands."),
+           std::nullopt;
+  }
+
+  for (auto call_arg : then_call_op.value().getOperands()) {
+    auto name_of_call_arg = name_mapper_.GetUniqueName(call_arg);
+    const auto call_arg_tensor_id =
+        tensor_index_map_[subgraph_idx][name_of_call_arg];
+    new_operands.push_back(call_arg_tensor_id);
+  }
+  auto inputs = builder_.CreateVector(new_operands);
+  auto outputs = builder_.CreateVector(results);
+  return tflite::CreateOperator(builder_, opcode_index, inputs, outputs,
+                                tflite::BuiltinOptions_IfOptions,
                                 builtin_options);
 }
 
@@ -2101,6 +2154,9 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
           return std::nullopt;
         }
         return BuildWhileOperator(whileOp, operands, results);
+      }
+      if (auto ifOp = dyn_cast<mlir::TFL::IfOp>(inst)) {
+        return BuildIfOperator(ifOp, operands, results);
       }
 
       inst->emitOpError("is not a supported TFLite op");

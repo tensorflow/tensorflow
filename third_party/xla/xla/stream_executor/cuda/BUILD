@@ -31,8 +31,8 @@ load(
 load("//xla/tests:build_defs.bzl", "xla_test")
 load(
     "//xla/tsl:tsl.bzl",
+    "if_cuda_tools",
     "if_google",
-    "if_hermetic_cuda_tools",
     "if_nccl",
     "internal_visibility",
     "tsl_copts",
@@ -143,7 +143,7 @@ cuda_only_cc_library(
 # an intermediate target.
 cc_library(
     name = "ptxas_wrapper",
-    data = if_hermetic_cuda_tools(
+    data = if_cuda_tools(
         ["@cuda_nvcc//:ptxas"],
         [],
     ),
@@ -151,7 +151,7 @@ cc_library(
 
 cc_library(
     name = "nvlink_wrapper",
-    data = if_hermetic_cuda_tools(
+    data = if_cuda_tools(
         ["@cuda_nvcc//:nvlink"],
         [],
     ),
@@ -247,6 +247,7 @@ xla_test(
     backends = ["gpu"],
     tags = ["no_rocm"],
     deps = [
+        ":cuda_diagnostics",
         ":cuda_driver",
         ":cuda_status",
         "//xla/stream_executor/gpu:gpu_driver_header",
@@ -508,17 +509,12 @@ cuda_only_cc_library(
 cuda_only_cc_library(
     name = "cuda_kernel",
     srcs = ["cuda_kernel.cc"],
-    hdrs = ["cuda_kernel.h"],
     deps = [
-        ":cuda_driver",
         "//xla/stream_executor",
         "//xla/stream_executor/gpu:gpu_driver_header",
         "//xla/stream_executor/gpu:gpu_kernel_header",
-        "//xla/stream_executor/platform",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
-        "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -782,7 +778,7 @@ cuda_only_cc_library(
     # ],
     # copybara:uncomment_end
     # copybara:comment_begin
-    data = if_hermetic_cuda_tools([
+    data = if_cuda_tools([
         "@cuda_nvcc//:fatbinary",
         "@cuda_nvcc//:nvlink",
         "@cuda_nvcc//:ptxas",
@@ -883,6 +879,7 @@ cuda_only_cc_library(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:fingerprint",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:statusor",
     ] + if_cuda_is_configured([":delay_kernel_cuda"]),
     alwayslink = True,

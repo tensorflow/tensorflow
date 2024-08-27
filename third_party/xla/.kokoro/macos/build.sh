@@ -37,32 +37,6 @@ function install_build_env_tools(){
   sudo wget --no-verbose -O "/usr/local/bin/bazel" \
       "https://github.com/bazelbuild/bazelisk/releases/download/v1.11.0/bazelisk-darwin-amd64" \
       && chmod +x "/usr/local/bin/bazel"
-
-  echo "===== Installing Pyenv ====="
-  # Install pyenv; Set up a virtual environment to control dependencies and their
-  # versions
-  git clone --branch v2.3.17 https://github.com/pyenv/pyenv.git /Users/kbuilder/.tf_pyenv
-  export PYENV_ROOT=/Users/kbuilder/.tf_pyenv
-  export PATH="$PYENV_ROOT/bin:$PATH"    # if `pyenv` is not already on PATH
-  eval "$(pyenv init --path)"
-  eval "$(pyenv init -)"
-
-  echo "===== Installing Python ====="
-  # Install Python and set the local python version
-  pyenv install -s "${TF_PYENV_VERSION}"
-  pyenv rehash
-  pyenv local "${TF_PYENV_VERSION}"
-  # Do a sanity check to make sure that we using the correct Python version
-  echo "===== Python version ====="
-  python --version
-  # Set up virtual environment and activate it
-  python -m venv /Users/kbuilder/.tf-venv && source /Users/kbuilder/.tf-venv/bin/activate
-
-  # Setup links to Python. Referenced in ./macos.bazelrc
-  ln -s /Users/kbuilder/.tf-venv/lib/python* /Users/kbuilder/.tf-venv/lib/python
-
-  echo "===== Upgrading to latest pip ====="
-  python -m pip install --upgrade pip
 }
 
 # Run the tests under /Volumes/BuildData/ so that we don't run into VM
@@ -72,10 +46,10 @@ export TEST_TMPDIR=/Volumes/BuildData/bazel_output
 
 install_build_env_tools
 
-python -m pip install numpy==1.21.4
-
 TARGET_FILTER="-//xla/hlo/experimental/... -//xla/python_api/... -//xla/python/... -//xla/service/gpu/..."
 TAGS_FILTER="-no_oss,-oss_excluded,-gpu,-no_mac,-nomac,-mac_excluded,-requires-gpu-nvidia,-requires-gpu-amd"
+
+bazel --version
 
 bazel test \
     --output_filter="" \

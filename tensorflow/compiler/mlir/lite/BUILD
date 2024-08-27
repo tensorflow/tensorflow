@@ -91,7 +91,7 @@ gentbl_cc_library(
         (
             [
                 "-gen-pass-decls",
-                "-name=TensorFlowLite",
+                "-name=TensorFlowLiteTd",
             ],
             "transforms/passes.h.inc",
         ),
@@ -350,9 +350,42 @@ gentbl_cc_library(
 )
 
 cc_library(
-    name = "tensorflow_lite",
+    name = "utils",
+    hdrs = ["utils/utils.h"],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "attribute_utils",
+    srcs = ["utils/attribute_utils.cc"],
+    hdrs = ["utils/attribute_utils.h"],
+    deps = [
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "pass",
+    hdrs = ["transforms/pass.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "tensorflow_lite_ops",
     srcs = [
-        "ir/tfl_canonicalize.inc",
         "ir/tfl_ops.cc",
         "ir/tfl_ops.cc.inc",
         "ir/tfl_ops.h.inc",
@@ -364,13 +397,9 @@ cc_library(
         "ir/tfl_ops_interface.cc.inc",
         "ir/tfl_ops_interface.h.inc",
         "runtime_verifiers.inc",
-        "utils/attribute_utils.cc",
     ],
     hdrs = [
         "ir/tfl_ops.h",
-        "transforms/passes.h",
-        "utils/attribute_utils.h",
-        "utils/utils.h",
     ],
     deps = [
         ":converter_inc",
@@ -380,6 +409,65 @@ cc_library(
         ":tensorflow_lite_op_enums_inc_gen",
         ":tensorflow_lite_op_interfaces_inc_gen",
         ":tensorflow_lite_ops_inc_gen",
+        ":utils",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
+        "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
+        "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_op_interfaces",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_traits",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@eigen_archive//:eigen3",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:ControlFlowInterfaces",
+        "@llvm-project//mlir:DerivedAttributeOpInterface",
+        "@llvm-project//mlir:Dialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:InliningUtils",
+        "@llvm-project//mlir:LoopLikeInterface",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:SideEffectInterfaces",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+cc_library(
+    name = "tensorflow_lite",
+    srcs = [
+        "ir/tfl_canonicalize.inc",
+    ],
+    hdrs = [
+        "ir/tfl_ops.h",
+        "transforms/optimize_pass.h",
+        "transforms/passes.h",
+        "utils/attribute_utils.h",
+        "utils/utils.h",
+    ],
+    deps = [
+        ":attribute_utils",
+        ":converter_inc",
+        ":cost_estimators",
+        ":optimize_pass_options",
+        ":pass",
+        ":size_utils",
+        ":tensorflow_lite_canonicalize_inc_gen",
+        ":tensorflow_lite_op_enums_inc_gen",
+        ":tensorflow_lite_op_interfaces_inc_gen",
+        ":tensorflow_lite_ops",
+        ":tensorflow_lite_ops_inc_gen",
+        ":tensorflow_lite_optimize",
         ":tensorflow_lite_passes_inc_gen",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
@@ -406,6 +494,7 @@ cc_library(
         "@llvm-project//mlir:InliningUtils",
         "@llvm-project//mlir:LoopLikeInterface",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
@@ -668,6 +757,32 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "canonicalize_boundary_value",
+    srcs = [
+        "transforms/canonicalize_boundary_value_pass.cc",
+    ],
+    hdrs = [
+        "transforms/passes.h",
+    ],
+    deps = [
+        ":tensorflow_lite",
+        ":tensorflow_lite_passes_inc_gen",
+        "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:DialectUtils",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+cc_library(
     name = "tensorflow_lite_legalize_tf",
     srcs = [
         "transforms/analyze_variables.cc",
@@ -678,6 +793,7 @@ cc_library(
         "transforms/generated_lower_static_tensor_list.inc",
         "transforms/generated_prepare_tf.inc",
         "transforms/get_arithmetic_count.cc",
+        "transforms/if_outline.cc",
         "transforms/insert_call_once_op.cc",
         "transforms/legalize_hashtables.cc",
         "transforms/legalize_jax_random.cc",
@@ -706,6 +822,7 @@ cc_library(
         "transforms/passes.h",
     ],
     deps = [
+        ":attribute_utils",
         ":constant_utils",
         ":convert_type",
         ":cost_estimators",
@@ -786,17 +903,20 @@ cc_library(
     name = "tensorflow_lite_optimize",
     srcs = [
         "transforms/generated_optimize.inc",
-        "transforms/optimize.cc",
+        "transforms/optimize_pass.cc",
     ],
     hdrs = [
-        "transforms/passes.h",
+        "transforms/optimize_pass.h",
     ],
     deps = [
+        ":attribute_utils",
         ":constant_utils",
         ":convert_type",
-        ":tensorflow_lite",
+        ":optimize_pass_options",
+        ":pass",
+        ":tensorflow_lite_ops",
         ":tensorflow_lite_optimize_inc_gen",
-        ":tensorflow_lite_passes_inc_gen",
+        ":utils",
         ":validators",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
@@ -877,6 +997,7 @@ cc_library(
         "transforms/passes.h",
     ],
     deps = [
+        ":pass",
         ":tensorflow_lite",
         ":tensorflow_lite_passes_inc_gen",
         "//tensorflow/compiler/mlir/lite/stablehlo:optimize_layout",
@@ -1137,6 +1258,7 @@ cc_library(
         "flatbuffer_export_flags.h",
     ],
     deps = [
+        ":control_edges",
         ":convert_type",
         ":flatbuffer_tflite_operator_lib",
         ":lite_version",
@@ -1145,7 +1267,6 @@ cc_library(
         ":string_utils",
         ":tensorflow_lite",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
-        "//tensorflow/compiler/mlir/lite:control_edges",
         "//tensorflow/compiler/mlir/lite/core:macros",
         "//tensorflow/compiler/mlir/lite/core/c:tflite_common",
         "//tensorflow/compiler/mlir/lite/delegates/flex:allowlisted_flex_ops_lib",
@@ -1253,7 +1374,7 @@ cc_library(
         "utils/convert_type.h",
     ],
     deps = [
-        ":tensorflow_lite",
+        ":tensorflow_lite_ops",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/core:protos_all_cc",
@@ -1262,6 +1383,15 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "optimize_pass_options",
+    hdrs = ["transforms/optimize_pass_options.h"],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Pass",
     ],
 )
 
@@ -1397,8 +1527,11 @@ cc_library(
         "tf_tfl_passes.h",
     ],
     deps = [
+        ":canonicalize_boundary_value",
         ":common",
         ":fake_quant_utils",
+        ":optimize_pass_options",
+        ":pass",
         ":tensorflow_lite_d2s",  # buildcleaner: keep
         ":tensorflow_lite_legalize_tf",  # buildcleaner: keep
         ":tensorflow_lite_optimize",  # buildcleaner: keep
@@ -1503,22 +1636,6 @@ cc_library(
         "@local_tsl//tsl/platform:statusor",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:vhlo_ops",
-    ],
-)
-
-cc_library(
-    name = "empty_passes",
-    hdrs = ["transforms/passes.h"],
-    visibility = [
-        "//configs/devtools/hawkeye/tflite:__subpackages__",
-        "//learning/brain/models/app_benchmarks:__subpackages__",
-    ],
-    deps = [
-        ":tensorflow_lite_passes_inc_gen",
-        "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:Pass",
     ],
 )
 

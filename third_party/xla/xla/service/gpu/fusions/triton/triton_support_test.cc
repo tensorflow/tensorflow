@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/fusions/triton/triton_support.h"
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <tuple>
@@ -26,8 +27,10 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/fusions/triton/triton_fusion_emitter.h"
@@ -145,7 +148,7 @@ auto AllDevicesToTest() {
 
 // Generates all the possible test combinations for a given opcodes. A test
 // combination is a tuple of the form (data_type, opcode, compute_capability).
-auto AllTestCombinationsForOpcodes(std::vector<HloOpcode>&& opcodes) {
+auto AllTestCombinationsForOpcodes(absl::Span<const HloOpcode> opcodes) {
   std::vector<std::tuple<PrimitiveType, HloOpcode, se::GpuComputeCapability>>
       test_combinations;
   for (PrimitiveType data_type : AllXlaDataTypes()) {
@@ -226,10 +229,13 @@ ENTRY triton_computation {
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{16}, cc);
 }
 
-INSTANTIATE_TEST_SUITE_P(BitcastOrReshapeTestSuite, BitcastOrReshapeTest,
-                         AllTestCombinationsForOpcodes({HloOpcode::kBitcast,
-                                                        HloOpcode::kReshape}),
-                         TritonSupportTestTypeOpcodeAndDeviceToString);
+constexpr std::array kTestedOpsBitcastReshape = {HloOpcode::kBitcast,
+                                                 HloOpcode::kReshape};
+
+INSTANTIATE_TEST_SUITE_P(
+    BitcastOrReshapeTestSuite, BitcastOrReshapeTest,
+    AllTestCombinationsForOpcodes(kTestedOpsBitcastReshape),
+    TritonSupportTestTypeOpcodeAndDeviceToString);
 
 using UnaryElementwiseTest = TritonSupportTestWithParam;
 
@@ -280,37 +286,112 @@ ENTRY triton_computation {
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 32}, cc);
 }
 
+constexpr std::array kTestedOpsUnaryElementwise = {HloOpcode::kAbs,
+                                                   HloOpcode::kCbrt,
+                                                   HloOpcode::kCeil,
+                                                   HloOpcode::kClz,
+                                                   HloOpcode::kCos,
+                                                   HloOpcode::kErf,
+                                                   HloOpcode::kExp,
+                                                   HloOpcode::kExpm1,
+                                                   HloOpcode::kFloor,
+                                                   HloOpcode::kImag,
+                                                   HloOpcode::kIsFinite,
+                                                   HloOpcode::kLog,
+                                                   HloOpcode::kLog1p,
+                                                   HloOpcode::kLogistic,
+                                                   HloOpcode::kNegate,
+                                                   HloOpcode::kNot,
+                                                   HloOpcode::kPopulationCount,
+                                                   HloOpcode::kReal,
+                                                   HloOpcode::kReducePrecision,
+                                                   HloOpcode::kRoundNearestAfz,
+                                                   HloOpcode::kRoundNearestEven,
+                                                   HloOpcode::kRsqrt,
+                                                   HloOpcode::kSign,
+                                                   HloOpcode::kSin,
+                                                   HloOpcode::kSqrt,
+                                                   HloOpcode::kTan,
+                                                   HloOpcode::kTanh};
+
 INSTANTIATE_TEST_SUITE_P(
     UnaryElementwiseTestSuite, UnaryElementwiseTest,
-    AllTestCombinationsForOpcodes({HloOpcode::kAbs,
-                                   HloOpcode::kCbrt,
-                                   HloOpcode::kCeil,
-                                   HloOpcode::kClz,
-                                   HloOpcode::kConvert,
-                                   HloOpcode::kCos,
-                                   HloOpcode::kErf,
-                                   HloOpcode::kExp,
-                                   HloOpcode::kExpm1,
-                                   HloOpcode::kFloor,
-                                   HloOpcode::kImag,
-                                   HloOpcode::kIsFinite,
-                                   HloOpcode::kLog,
-                                   HloOpcode::kLog1p,
-                                   HloOpcode::kLogistic,
-                                   HloOpcode::kNegate,
-                                   HloOpcode::kNot,
-                                   HloOpcode::kPopulationCount,
-                                   HloOpcode::kReal,
-                                   HloOpcode::kReducePrecision,
-                                   HloOpcode::kRoundNearestAfz,
-                                   HloOpcode::kRoundNearestEven,
-                                   HloOpcode::kRsqrt,
-                                   HloOpcode::kSign,
-                                   HloOpcode::kSin,
-                                   HloOpcode::kSqrt,
-                                   HloOpcode::kTan,
-                                   HloOpcode::kTanh}),
+    AllTestCombinationsForOpcodes(kTestedOpsUnaryElementwise),
     TritonSupportTestTypeOpcodeAndDeviceToString);
+
+class ConvertTest
+    : public TritonSupportTest,
+      public ::testing::WithParamInterface<
+          std::tuple<PrimitiveType, PrimitiveType, se::GpuComputeCapability>> {
+};
+
+TEST_P(ConvertTest, Convert) {
+  auto [data_type_in, data_type_out, cc] = GetParam();
+
+  const std::string hlo_text = absl::Substitute(
+      R"(
+ENTRY triton_computation {
+  parameter_0 = $0[33,68]{1,0} parameter(0)
+  ROOT convert = $1[33,68]{1,0} convert(parameter_0)
+})",
+      primitive_util::LowercasePrimitiveTypeName(data_type_in),
+      primitive_util::LowercasePrimitiveTypeName(data_type_out));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(
+          hlo_text, data_type_in,  // The type provided here is irrelevant.
+          HloOpcode::kConvert));
+
+  bool skip_failure_branch_to_avoid_crash = false;
+
+  // The two variables below are only needed prior to C++20 as capturing
+  // structured bindings is not supported.
+  // TODO(b/328238952): remove this indirection after XLA moves to C++20.
+  PrimitiveType captured_in = data_type_in;
+  PrimitiveType captured_out = data_type_out;
+
+  auto any_is = [=](PrimitiveType compare) {
+    return captured_in == compare || captured_out == compare;
+  };
+
+  if (data_type_in != data_type_out && any_is(PrimitiveType::F8E4M3FN) &&
+      std::holds_alternative<se::CudaComputeCapability>(cc) &&
+      !std::get<se::CudaComputeCapability>(cc).IsAtLeastHopper()) {
+    skip_failure_branch_to_avoid_crash |=
+        any_is(F16) || any_is(BF16) || any_is(F32);
+
+    // Crashes due to unsupported/unspecified rounding mode.
+    skip_failure_branch_to_avoid_crash |=
+        (data_type_in == PrimitiveType::F8E4M3FN &&
+         data_type_out == PrimitiveType::F64);
+  }
+
+  // Crashes due to unsupported/unspecified rounding mode.
+  skip_failure_branch_to_avoid_crash |=
+      (any_is(PrimitiveType::F8E4M3FN) && any_is(PrimitiveType::F8E5M2)) ||
+      (data_type_in == PrimitiveType::F64 &&
+       (data_type_out == PrimitiveType::F8E4M3FN ||
+        data_type_out == PrimitiveType::F8E5M2));
+
+  // Crashes due to unsupported conversion.
+  skip_failure_branch_to_avoid_crash |=
+      (data_type_out == PrimitiveType::F64 &&
+       (data_type_in == PrimitiveType::F8E4M3FN ||
+        data_type_in == PrimitiveType::F8E5M2));
+
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 32}, cc,
+                 skip_failure_branch_to_avoid_crash);
+}
+
+constexpr std::array kTestedOpsConvert = {HloOpcode::kConvert};
+
+INSTANTIATE_TEST_SUITE_P(
+    ConvertTestSuite, ConvertTest,
+    ::testing::Combine(::testing::ValuesIn(AllXlaDataTypes()),
+                       ::testing::ValuesIn(AllXlaDataTypes()),
+                       ::testing::ValuesIn(AllDevicesToTest())),
+    TritonSupportTestTwoTypesAndDeviceToString);
 
 using BinaryElementwiseTest = TritonSupportTestWithParam;
 
@@ -323,17 +404,11 @@ ENTRY triton_computation {
   ROOT binary = $0[11,63]{1,0} $1(parameter_0, parameter_1)
 })";
 
-  // TODO(b/345763510): Investigate why the convert below is needed. If removed
-  // the test fails because `pm.run(triton_module.get())` returns this error:
-  //
-  //    loc("compare"): error: 'tt.store' op failed to
-  //    verify that value type matches ptr type
   const std::string kHloCompareTestTemplate = R"(
 ENTRY triton_computation {
   parameter_0 = $0[11,63]{1,0} parameter(0)
   parameter_1 = $0[11,63]{1,0} parameter(1)
-  compare = pred[11,63]{1,0} $1(parameter_0, parameter_1), direction=GE
-  ROOT convert = f32[11,63]{1,0} convert(compare)
+  ROOT compare = pred[11,63]{1,0} $1(parameter_0, parameter_1), direction=GE
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -353,15 +428,27 @@ ENTRY triton_computation {
                  skip_failure_branch_to_avoid_crash);
 }
 
+constexpr std::array kTestedOpsBinaryElementwise = {
+    HloOpcode::kAnd,
+    HloOpcode::kOr,
+    HloOpcode::kXor,
+    HloOpcode::kAdd,
+    HloOpcode::kMultiply,
+    HloOpcode::kMaximum,
+    HloOpcode::kMinimum,
+    HloOpcode::kSubtract,
+    HloOpcode::kAtan2,
+    HloOpcode::kDivide,
+    HloOpcode::kRemainder,
+    HloOpcode::kPower,
+    HloOpcode::kShiftLeft,
+    HloOpcode::kShiftRightArithmetic,
+    HloOpcode::kShiftRightLogical,
+    HloOpcode::kCompare};
+
 INSTANTIATE_TEST_SUITE_P(
     BinaryElementwiseTestSuite, BinaryElementwiseTest,
-    AllTestCombinationsForOpcodes(
-        {HloOpcode::kAnd, HloOpcode::kOr, HloOpcode::kXor, HloOpcode::kAdd,
-         HloOpcode::kMultiply, HloOpcode::kMaximum, HloOpcode::kMinimum,
-         HloOpcode::kSubtract, HloOpcode::kAtan2, HloOpcode::kDivide,
-         HloOpcode::kRemainder, HloOpcode::kPower, HloOpcode::kShiftLeft,
-         HloOpcode::kShiftRightArithmetic, HloOpcode::kShiftRightLogical,
-         HloOpcode::kCompare}),
+    AllTestCombinationsForOpcodes(kTestedOpsBinaryElementwise),
     TritonSupportTestTypeOpcodeAndDeviceToString);
 
 using TernaryElementwiseTest = TritonSupportTestWithParam;
@@ -387,10 +474,13 @@ ENTRY triton_computation {
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 32}, cc);
 }
 
-INSTANTIATE_TEST_SUITE_P(TernaryElementwiseTestSuite, TernaryElementwiseTest,
-                         AllTestCombinationsForOpcodes({HloOpcode::kSelect,
-                                                        HloOpcode::kClamp}),
-                         TritonSupportTestTypeOpcodeAndDeviceToString);
+constexpr std::array kTestedOpsTernaryElementwise = {HloOpcode::kSelect,
+                                                     HloOpcode::kClamp};
+
+INSTANTIATE_TEST_SUITE_P(
+    TernaryElementwiseTestSuite, TernaryElementwiseTest,
+    AllTestCombinationsForOpcodes(kTestedOpsTernaryElementwise),
+    TritonSupportTestTypeOpcodeAndDeviceToString);
 
 using ReduceTest = TritonSupportTestWithParam;
 
@@ -569,8 +659,10 @@ ENTRY triton_computation {
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc);
 }
 
+constexpr std::array kTestedOpsReduction = {HloOpcode::kReduce};
+
 INSTANTIATE_TEST_SUITE_P(ReduceTestSuite, ReduceTest,
-                         AllTestCombinationsForOpcodes({HloOpcode::kReduce}),
+                         AllTestCombinationsForOpcodes(kTestedOpsReduction),
                          TritonSupportTestTypeOpcodeAndDeviceToString);
 
 using CollectiveTest = TritonSupportTestWithParam;
@@ -642,13 +734,120 @@ TEST_P(CollectiveTest, UnsupportedCollectivesFailGracefullyWithTriton) {
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc);
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    CollectiveTestSuite, CollectiveTest,
-    AllTestCombinationsForOpcodes({HloOpcode::kAllGather, HloOpcode::kAllReduce,
-                                   HloOpcode::kAllToAll,
-                                   HloOpcode::kCollectivePermute,
-                                   HloOpcode::kReduceScatter}),
-    TritonSupportTestTypeOpcodeAndDeviceToString);
+constexpr std::array kTestedOpsCollectives = {
+    HloOpcode::kAllGather, HloOpcode::kAllReduce, HloOpcode::kAllToAll,
+    HloOpcode::kCollectivePermute, HloOpcode::kReduceScatter};
+
+INSTANTIATE_TEST_SUITE_P(CollectiveTestSuite, CollectiveTest,
+                         AllTestCombinationsForOpcodes(kTestedOpsCollectives),
+                         TritonSupportTestTypeOpcodeAndDeviceToString);
+
+absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
+  // The return set is initialized with ops that are implicitly tested.
+  absl::flat_hash_set<HloOpcode> ret{HloOpcode::kParameter};
+
+  ret.insert(kTestedOpsBitcastReshape.begin(), kTestedOpsBitcastReshape.end());
+  ret.insert(kTestedOpsUnaryElementwise.begin(),
+             kTestedOpsUnaryElementwise.end());
+  ret.insert(kTestedOpsConvert.begin(), kTestedOpsConvert.end());
+  ret.insert(kTestedOpsBinaryElementwise.begin(),
+             kTestedOpsBinaryElementwise.end());
+  ret.insert(kTestedOpsTernaryElementwise.begin(),
+             kTestedOpsTernaryElementwise.end());
+  ret.insert(kTestedOpsReduction.begin(), kTestedOpsReduction.end());
+  ret.insert(kTestedOpsCollectives.begin(), kTestedOpsCollectives.end());
+  return ret;
+}
+
+absl::flat_hash_set<HloOpcode> AllUntestedOpcodes() {
+  return absl::flat_hash_set<HloOpcode>{HloOpcode::kAddDependency,
+                                        HloOpcode::kAfterAll,
+                                        HloOpcode::kAllGatherDone,
+                                        HloOpcode::kAllGatherStart,
+                                        HloOpcode::kAllReduceDone,
+                                        HloOpcode::kAllReduceStart,
+                                        HloOpcode::kAsyncDone,
+                                        HloOpcode::kAsyncStart,
+                                        HloOpcode::kAsyncUpdate,
+                                        HloOpcode::kBatchNormGrad,
+                                        HloOpcode::kBatchNormInference,
+                                        HloOpcode::kBatchNormTraining,
+                                        HloOpcode::kBitcastConvert,
+                                        HloOpcode::kBroadcast,
+                                        HloOpcode::kCall,
+                                        HloOpcode::kCholesky,
+                                        HloOpcode::kCollectiveBroadcast,
+                                        HloOpcode::kCollectivePermuteDone,
+                                        HloOpcode::kCollectivePermuteStart,
+                                        HloOpcode::kComplex,
+                                        HloOpcode::kConcatenate,
+                                        HloOpcode::kConditional,
+                                        HloOpcode::kConstant,
+                                        HloOpcode::kConvolution,
+                                        HloOpcode::kCopy,
+                                        HloOpcode::kCopyDone,
+                                        HloOpcode::kCopyStart,
+                                        HloOpcode::kCustomCall,
+                                        HloOpcode::kDomain,
+                                        HloOpcode::kDot,
+                                        HloOpcode::kDynamicReshape,
+                                        HloOpcode::kDynamicSlice,
+                                        HloOpcode::kDynamicUpdateSlice,
+                                        HloOpcode::kFft,
+                                        HloOpcode::kFusion,
+                                        HloOpcode::kGather,
+                                        HloOpcode::kGetDimensionSize,
+                                        HloOpcode::kGetTupleElement,
+                                        HloOpcode::kInfeed,
+                                        HloOpcode::kIota,
+                                        HloOpcode::kMap,
+                                        HloOpcode::kOptimizationBarrier,
+                                        HloOpcode::kOutfeed,
+                                        HloOpcode::kPad,
+                                        HloOpcode::kPartitionId,
+                                        HloOpcode::kRecv,
+                                        HloOpcode::kRecvDone,
+                                        HloOpcode::kReduceWindow,
+                                        HloOpcode::kReplicaId,
+                                        HloOpcode::kReverse,
+                                        HloOpcode::kRng,
+                                        HloOpcode::kRngBitGenerator,
+                                        HloOpcode::kRngGetAndUpdateState,
+                                        HloOpcode::kScatter,
+                                        HloOpcode::kSelectAndScatter,
+                                        HloOpcode::kSend,
+                                        HloOpcode::kSendDone,
+                                        HloOpcode::kSetDimensionSize,
+                                        HloOpcode::kSlice,
+                                        HloOpcode::kSort,
+                                        HloOpcode::kStochasticConvert,
+                                        HloOpcode::kTopK,
+                                        HloOpcode::kTranspose,
+                                        HloOpcode::kTriangularSolve,
+                                        HloOpcode::kTuple,
+                                        HloOpcode::kWhile};
+}
+
+TEST(OpCoverage, TestedAndUntestedDoNotOverlap) {
+  absl::flat_hash_set<HloOpcode> untested_opcodes = AllUntestedOpcodes();
+  for (HloOpcode tested : AllTestedOpcodes()) {
+    EXPECT_FALSE(untested_opcodes.contains(tested))
+        << "Opcode `" << HloOpcodeString(tested)
+        << "` appears in both tested and untested opcodes.";
+  }
+}
+
+TEST(OpCoverage, AllOpcodesAppearInTestedOrUntested) {
+  absl::flat_hash_set<HloOpcode> untested_opcodes = AllUntestedOpcodes();
+  absl::flat_hash_set<HloOpcode> tested_opcodes = AllTestedOpcodes();
+  for (int opcode_index = 0; opcode_index < HloOpcodeCount(); ++opcode_index) {
+    auto opcode = static_cast<HloOpcode>(opcode_index);
+    EXPECT_TRUE(untested_opcodes.contains(opcode) ||
+                tested_opcodes.contains(opcode))
+        << "Opcode `" << HloOpcodeString(opcode)
+        << "` does not appear in tested or untested opcodes.";
+  }
+}
 
 }  // namespace
 }  // namespace gpu

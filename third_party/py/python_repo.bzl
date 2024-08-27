@@ -255,8 +255,12 @@ def _basic_wildcard_match(name, patterns, expected_match_result, match_all):
 
 def _custom_python_interpreter_impl(ctx):
     version = ctx.attr.version
-    strip_prefix = ctx.attr.strip_prefix.format(version = version)
-    urls = [url.format(version = version) for url in ctx.attr.urls]
+    version_variant = ctx.attr.version_variant
+    strip_prefix = ctx.attr.strip_prefix.format(
+        version = version,
+        version_variant = version_variant,
+    )
+    urls = [url.format(version = version, version_variant = version_variant) for url in ctx.attr.urls]
     binary_name = ctx.attr.binary_name
     if not binary_name:
         ver_chunks = version.split(".")
@@ -272,13 +276,12 @@ def _custom_python_interpreter_impl(ctx):
         output = srcs_dir,
     )
 
-    configure_params = []
+    configure_params = list(ctx.attr.configure_params)
     if "CC" in ctx.os.environ:
         configure_params.append("CC={}".format(ctx.os.environ["CC"]))
     if "CXX" in ctx.os.environ:
         configure_params.append("CXX={}".format(ctx.os.environ["CXX"]))
 
-    configure_params.append("--enable-optimizations")
     configure_params.append("--prefix=%s" % install_path.realpath)
     _exec_and_check(
         ctx,
@@ -361,6 +364,11 @@ custom_python_interpreter = repository_rule(
         "strip_prefix": attr.string(),
         "binary_name": attr.string(mandatory = False),
         "version": attr.string(),
+        "version_variant": attr.string(),
+        "configure_params": attr.string_list(
+            mandatory = False,
+            default = ["--enable-optimizations"],
+        ),
     },
 )
 

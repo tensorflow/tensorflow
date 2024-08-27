@@ -1,5 +1,5 @@
 load("@bazel_skylib//lib:selects.bzl", "selects")
-load("@local_xla//xla/tsl:tsl.bzl", "if_hermetic_cuda_libs")
+load("@local_xla//xla/tsl:tsl.bzl", "if_cuda_libs")
 load(
     "//tensorflow:tensorflow.bzl",
     "clean_dep",
@@ -144,7 +144,7 @@ filegroup(
 cc_library(
     name = "gpu_runtime_hermetic_cuda_deps",
     visibility = ["//visibility:public"],
-    deps = if_hermetic_cuda_libs([
+    deps = if_cuda_libs([
         "@local_xla//xla/tsl/cuda:cudart",
         "@local_xla//xla/tsl/cuda:cublas",
         "@local_xla//xla/tsl/cuda:cufft",

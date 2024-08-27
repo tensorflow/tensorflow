@@ -20,6 +20,7 @@ limitations under the License.
 #include <string_view>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "xla/backends/cpu/runtime/buffer_allocations.h"
@@ -55,8 +56,9 @@ class AddF32HostKernel : public Thunk::FunctionRegistry {
 };
 
 TEST(KernelThunkTest, CheckAlignment) {
-  auto thunk = KernelThunk::Create({"test"}, {}, {}, "test", se::ThreadDim(),
-                                   /*min_alignment=*/3);
+  auto thunk =
+      KernelThunk::Create({"test"}, {}, {}, "test", se::ThreadDim(), {},
+                          /*min_alignment=*/3);
   EXPECT_TRUE(absl::StrContains(thunk.status().message(),
                                 "minimum alignment 3 is not a power of 2"));
 }
@@ -79,8 +81,36 @@ TEST(KernelThunkTest, AddF32) {
   BufferAllocation::Slice out_slice(&out_alloc, 0, size_in_bytes);
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto thunk, KernelThunk::Create({"add_f32"}, {in_slice}, {out_slice},
-                                      "add_f32", se::ThreadDim(4)));
+      auto thunk,
+      KernelThunk::Create({"add_f32"}, {in_slice}, {out_slice}, "add_f32",
+                          se::ThreadDim(4), /*invariant_arguments=*/{0}));
+
+  AddF32HostKernel host_kernels;
+  Thunk::ExecuteParams params = {&host_kernels, &allocations};
+
+  auto execute_event = thunk->Execute(params);
+  tsl::BlockUntilReady(execute_event);
+  ASSERT_FALSE(execute_event.IsError()) << execute_event.GetError();
+
+  std::vector<float> expected = {2.0, 4.0, 6.0, 8.0};
+  EXPECT_EQ(out, expected);
+}
+
+TEST(KernelThunkTest, AddF32Inline) {
+  std::vector<MaybeOwningDeviceMemory> buffers;
+  std::vector<float> in_out = {1.0, 2.0, 3.0, 4.0};
+
+  size_t size_in_bytes = in_out.size() * sizeof(float);
+  buffers.emplace_back(se::DeviceMemoryBase(in_out.data(), size_in_bytes));
+
+  BufferAllocations allocations(buffers);
+  BufferAllocation in_out_alloc(0, size_in_bytes, 0);
+  BufferAllocation::Slice in_out_slice(&in_out_alloc, 0, size_in_bytes);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto thunk, KernelThunk::Create(
+                      {"add_f32"}, {in_out_slice}, {in_out_slice}, "add_f32",
+                      se::ThreadDim(4), /*invariant_arguments=*/{}));
 
   AddF32HostKernel host_kernels;
   Thunk::ExecuteParams params = {&host_kernels, &allocations};
@@ -90,7 +120,129 @@ TEST(KernelThunkTest, AddF32) {
   ASSERT_FALSE(execute_event.IsError());
 
   std::vector<float> expected = {2.0, 4.0, 6.0, 8.0};
-  EXPECT_EQ(out, expected);
+  EXPECT_EQ(in_out, expected);
+}
+
+TEST(KernelThunkInvariantBuffersTest, MissingBufferSlice) {
+#ifdef NDEBUG
+  GTEST_SKIP() << "Invariant buffers check is disabled in optimized build.";
+#endif
+
+  std::vector<MaybeOwningDeviceMemory> buffers;
+  std::vector<float> in = {1.0, 2.0, 3.0, 4.0};
+  std::vector<float> out(4, 0.0);
+
+  size_t size_in_bytes = in.size() * sizeof(float);
+  buffers.emplace_back(se::DeviceMemoryBase(in.data(), size_in_bytes));
+  buffers.emplace_back(se::DeviceMemoryBase(out.data(), size_in_bytes));
+
+  BufferAllocations allocations(buffers);
+
+  BufferAllocation in_alloc(0, size_in_bytes, 0);
+  BufferAllocation out_alloc(1, size_in_bytes, 0);
+
+  BufferAllocation::Slice in_slice(&in_alloc, 0, size_in_bytes);
+  BufferAllocation::Slice out_slice(&out_alloc, 0, size_in_bytes);
+
+  // Invariant buffer set is incorrect - should include in_slice, but is empty.
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto thunk,
+      KernelThunk::Create({"add_f32"}, {in_slice}, {out_slice}, "add_f32",
+                          se::ThreadDim(4), /*invariant_arguments=*/{}));
+
+  AddF32HostKernel host_kernels;
+  Thunk::ExecuteParams params = {&host_kernels, &allocations};
+
+  auto execute_event = thunk->Execute(params);
+  tsl::BlockUntilReady(execute_event);
+  ASSERT_TRUE(execute_event.IsError());
+
+  auto status = execute_event.GetError();
+  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
+  EXPECT_TRUE(absl::StrContains(status.message(),
+                                "Mismatch in invariant buffers metadata"));
+}
+
+TEST(KernelThunkInvariantBuffersTest, ExtraInputOutputBufferSlice) {
+#ifdef NDEBUG
+  GTEST_SKIP() << "Invariant buffers check is disabled in optimized build.";
+#endif
+
+  std::vector<MaybeOwningDeviceMemory> buffers;
+  std::vector<float> in_out = {1.0, 2.0, 3.0, 4.0};
+
+  size_t size_in_bytes = in_out.size() * sizeof(float);
+  buffers.emplace_back(se::DeviceMemoryBase(in_out.data(), size_in_bytes));
+
+  BufferAllocations allocations(buffers);
+  BufferAllocation in_out_alloc(0, size_in_bytes, 0);
+  BufferAllocation::Slice in_out_slice(&in_out_alloc, 0, size_in_bytes);
+
+  // Invariant buffer set is incorrect - should be empty, but contains input
+  // buffer that's not invariant.
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto thunk, KernelThunk::Create(
+                      {"add_f32"}, {in_out_slice}, {in_out_slice}, "add_f32",
+                      se::ThreadDim(4), /*invariant_arguments=*/{0}));
+
+  AddF32HostKernel host_kernels;
+  Thunk::ExecuteParams params = {&host_kernels, &allocations};
+
+  auto execute_event = thunk->Execute(params);
+  tsl::BlockUntilReady(execute_event);
+  ASSERT_TRUE(execute_event.IsError());
+
+  auto status = execute_event.GetError();
+  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
+  EXPECT_TRUE(absl::StrContains(status.message(),
+                                "Mismatch in invariant buffers metadata"));
+}
+
+// This case should never happen in practice, it simulates a bug in the code
+// that incorrectly sets up aliases.
+TEST(KernelThunkInvariantBuffersTest,
+     MemorySectionIncorrectlyMarkedAsInvariant) {
+#ifdef NDEBUG
+  GTEST_SKIP() << "Invariant buffers check is disabled in optimized build.";
+#endif
+
+  // We've got only one memory section
+  std::vector<MaybeOwningDeviceMemory> buffers;
+  std::vector<float> in_out = {1.0, 2.0, 3.0, 4.0};
+
+  // We've got two buffer slices with different indexes, but both pointing to
+  // the same memory section.
+  size_t size_in_bytes = in_out.size() * sizeof(float);
+  buffers.emplace_back(se::DeviceMemoryBase(in_out.data(), size_in_bytes));
+  buffers.emplace_back(se::DeviceMemoryBase(in_out.data(), size_in_bytes));
+
+  BufferAllocations allocations(buffers);
+
+  BufferAllocation in_0_alloc(0, size_in_bytes, 0);
+  BufferAllocation in_1_alloc(1, size_in_bytes, 0);
+
+  BufferAllocation::Slice in_0_slice(&in_0_alloc, 0, size_in_bytes);
+  BufferAllocation::Slice in_1_slice(&in_1_alloc, 0, size_in_bytes);
+
+  // Invariant buffer set is incorrect. in_1_slice is not aliased to any output,
+  // but it points to the same memory section as in_0_slice (which is not
+  // invariant, because is aliased with the output).
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto thunk, KernelThunk::Create({"add_f32"}, {in_0_slice, in_1_slice},
+                                      {in_0_slice}, "add_f32", se::ThreadDim(4),
+                                      /*invariant_arguments=*/{1}));
+
+  AddF32HostKernel host_kernels;
+  Thunk::ExecuteParams params = {&host_kernels, &allocations};
+
+  auto execute_event = thunk->Execute(params);
+  tsl::BlockUntilReady(execute_event);
+  ASSERT_TRUE(execute_event.IsError());
+
+  auto status = execute_event.GetError();
+  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
+  EXPECT_TRUE(absl::StrContains(status.message(),
+                                "Mismatch in invariant buffers metadata"));
 }
 
 }  // namespace

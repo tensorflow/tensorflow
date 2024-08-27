@@ -570,7 +570,7 @@ class HloScheduleGraph {
 
   void InitializeGraphAnalysis(const AsyncTracker* async_tracker);
 
-  // l of instructions in the original scheduled order. (Before scheduling).
+  // List of instructions in the original scheduled order. (Before scheduling).
   absl::Span<const HloInstruction* const> GetOriginalInstrList() const {
     return absl::MakeConstSpan(original_order_);
   }

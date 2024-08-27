@@ -291,6 +291,32 @@ cc_library(
 )
 
 cc_library(
+    name = "concurrency",
+    hdrs = ["concurrency.h"],
+    copts = runtime_copts(),
+    deps = [
+        "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:logging",
+    ],
+)
+
+xla_cc_test(
+    name = "concurrency_test",
+    srcs = ["concurrency_test.cc"],
+    deps = [
+        ":concurrency",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
+        "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_library(
     name = "convolution_thunk",
     srcs = ["convolution_thunk.cc"],
     hdrs = ["convolution_thunk.h"],
@@ -562,7 +588,9 @@ cc_library(
         "//xla:util",
         "//xla/ffi:attribute_map",
         "//xla/ffi:call_frame",
+        "//xla/ffi:execution_state",
         "//xla/ffi:ffi_api",
+        "//xla/ffi/api:c_api",
         "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
         "//xla/service:custom_call_status",
@@ -571,8 +599,10 @@ cc_library(
         "//xla/stream_executor",
         "//xla/tsl/concurrency:async_value",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
@@ -783,7 +813,9 @@ cc_library(
         "//xla/stream_executor/host:host_kernel",
         "//xla/stream_executor/host:host_kernel_c_api",
         "//xla/tsl/concurrency:async_value",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/numeric:bits",
@@ -814,6 +846,7 @@ xla_cc_test(
         "//xla/stream_executor/host:host_kernel_c_api",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:statusor",

@@ -432,6 +432,7 @@ xla_test(
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_googletest//:gtest",
+        "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
@@ -456,7 +457,7 @@ cc_library(
         "//xla/service/gpu:matmul_utils",
         "//xla/service/gpu:triton_fusion_analysis",
         "//xla/service/gpu/fusions/triton:triton_fusion_emitter",
-        "//xla/service/gpu/model:tiled_hlo_computation",
+        "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
         "//xla/service/gpu/runtime:kernel_thunk",
         "//xla/service/llvm_ir:ir_array",
         "//xla/service/llvm_ir:llvm_util",

@@ -420,6 +420,80 @@ struct DeferredExecutor : public AsyncValue::Executor {
   std::vector<Task> tasks;
 };
 
+TEST(AsyncValueRefTest, MakeAsyncValueRef) {
+  DeferredExecutor executor;
+
+  {  // Make AsyncValueRef from a function that returns a value.
+    AsyncValueRef<float> ref =
+        MakeAsyncValueRef<float>(executor, []() -> float { return 42.0f; });
+
+    EXPECT_FALSE(ref.IsAvailable());
+    EXPECT_EQ(executor.Quiesce(), 1);
+
+    EXPECT_TRUE(ref.IsAvailable());
+    EXPECT_EQ(ref.get(), 42.0f);
+  }
+
+  {  // Make AsyncValueRef with automatic type inference.
+    AsyncValueRef<float> ref =
+        MakeAsyncValueRef(executor, []() -> float { return 42.0f; });
+
+    EXPECT_FALSE(ref.IsAvailable());
+    EXPECT_EQ(executor.Quiesce(), 1);
+
+    EXPECT_TRUE(ref.IsAvailable());
+    EXPECT_EQ(ref.get(), 42.0f);
+  }
+
+  {  // Make AsyncValueRef from a function that returns a StatusOr value.
+    AsyncValueRef<float> ref = TryMakeAsyncValueRef<float>(
+        executor, []() -> absl::StatusOr<float> { return 42.0f; });
+
+    EXPECT_FALSE(ref.IsAvailable());
+    EXPECT_EQ(executor.Quiesce(), 1);
+
+    EXPECT_TRUE(ref.IsAvailable());
+    EXPECT_EQ(ref.get(), 42.0f);
+  }
+
+  {  // Make AsyncValueRef from a function that returns a StatusOr value with
+     // automatic type inference.
+    AsyncValueRef<float> ref = TryMakeAsyncValueRef(
+        executor, []() -> absl::StatusOr<float> { return 42.0f; });
+
+    EXPECT_FALSE(ref.IsAvailable());
+    EXPECT_EQ(executor.Quiesce(), 1);
+
+    EXPECT_TRUE(ref.IsAvailable());
+    EXPECT_EQ(ref.get(), 42.0f);
+  }
+
+  {  // Make AsyncValueRef from a function that returns a StatusOr error.
+    AsyncValueRef<float> ref = TryMakeAsyncValueRef<float>(
+        executor,
+        []() -> absl::StatusOr<float> { return absl::InternalError("test"); });
+
+    EXPECT_FALSE(ref.IsAvailable());
+    EXPECT_EQ(executor.Quiesce(), 1);
+
+    EXPECT_TRUE(ref.IsError());
+    EXPECT_EQ(ref.GetError(), absl::InternalError("test"));
+  }
+
+  {  // Make AsyncValueRef from a function that returns a StatusOr error with
+     // automatic type inference.
+    AsyncValueRef<float> ref = TryMakeAsyncValueRef(
+        executor,
+        []() -> absl::StatusOr<float> { return absl::InternalError("test"); });
+
+    EXPECT_FALSE(ref.IsAvailable());
+    EXPECT_EQ(executor.Quiesce(), 1);
+
+    EXPECT_TRUE(ref.IsError());
+    EXPECT_EQ(ref.GetError(), absl::InternalError("test"));
+  }
+}
+
 TEST(AsyncValueRefTest, MapAvailableOnExecutor) {
   AsyncValueRef<int32_t> ref = MakeAvailableAsyncValueRef<int32_t>(42);
 
@@ -519,6 +593,52 @@ TEST(AsyncValueRefTest, FlatMapAvailableOnExecutor) {
 
   EXPECT_TRUE(fmapped_to_float.IsAvailable());
   EXPECT_EQ(fmapped_to_float.get(), 42.0f);
+}
+
+TEST(AsyncValueRefTest, FlatMapDeferredAsyncValueOnExecutor) {
+  DeferredExecutor executor0;
+  DeferredExecutor executor1;
+
+  // Use non-copyable std::unique_ptr<int32_t> to make sure that we don't
+  // accidentally copy the value into the FlatMap functor.
+
+  {  // Use a regular FlatMap.
+    AsyncValueRef<float> fmapped_to_float =
+        MakeAsyncValueRef<std::unique_ptr<int32_t>>(executor0, [] {
+          return std::make_unique<int32_t>(42);
+        }).FlatMap([&](AsyncValuePtr<std::unique_ptr<int32_t>> ptr) {
+          return MakeAsyncValueRef<float>(
+              executor1, [ref = ptr.CopyRef()] { return **ref; });
+        });
+
+    EXPECT_FALSE(fmapped_to_float.IsAvailable());
+    EXPECT_EQ(executor0.Quiesce(), 1);
+
+    EXPECT_FALSE(fmapped_to_float.IsAvailable());
+    EXPECT_EQ(executor1.Quiesce(), 1);
+
+    EXPECT_TRUE(fmapped_to_float.IsAvailable());
+    EXPECT_EQ(fmapped_to_float.get(), 42.0f);
+  }
+
+  {  // Use a FlatMap that itself executed on given executor.
+    AsyncValueRef<float> fmapped_to_float =
+        MakeAsyncValueRef<std::unique_ptr<int32_t>>(executor0, [] {
+          return std::make_unique<int32_t>(42);
+        }).FlatMap(executor1, [&](AsyncValuePtr<std::unique_ptr<int32_t>> ptr) {
+          return MakeAsyncValueRef<float>(
+              executor1, [ref = ptr.CopyRef()] { return **ref; });
+        });
+
+    EXPECT_FALSE(fmapped_to_float.IsAvailable());
+    EXPECT_EQ(executor0.Quiesce(), 1);
+
+    EXPECT_FALSE(fmapped_to_float.IsAvailable());
+    EXPECT_EQ(executor1.Quiesce(), 2);
+
+    EXPECT_TRUE(fmapped_to_float.IsAvailable());
+    EXPECT_EQ(fmapped_to_float.get(), 42.0f);
+  }
 }
 
 TEST(AsyncValueRefTest, BlockUntilReady) {

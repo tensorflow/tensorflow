@@ -34,9 +34,11 @@ limitations under the License.
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/FloatingPointMode.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Casting.h"
@@ -45,6 +47,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -65,6 +68,7 @@ limitations under the License.
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/utils/arithmetic_count_util.h"
 #include "tensorflow/compiler/mlir/lite/utils/size_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_traits.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
@@ -620,46 +624,49 @@ void IncrementIndex(ArrayRef<int64_t> result_shape,
 /// attributes `operand1` and `operand2` and returns the result if possible.
 /// This function assumes the both operands are verified to have value
 /// attributes of broadcastable types.
-template <class AttrElementT,
-          class ElementValueT = typename AttrElementT::ValueType,
-          class CalculationT =
-              llvm::function_ref<ElementValueT(ElementValueT, ElementValueT)>>
-Attribute ConstFoldBinaryOpDenseDense(Type result_type, DenseElementsAttr lhs,
+template <class DenseElementsT,
+          class ElementT = typename DenseElementsT::ValueType,
+          class ResultT = ElementT,
+          class CalculationT = llvm::function_ref<ResultT(ElementT, ElementT)>>
+Attribute ConstFoldBinaryOpDenseDense(ShapedType result_type,
+                                      DenseElementsAttr lhs,
                                       DenseElementsAttr rhs,
                                       const CalculationT& calculate) {
-  auto type = OpTrait::util::getBroadcastedType(lhs.getType(), rhs.getType())
-                  .dyn_cast_or_null<ShapedType>();
+  auto type = llvm::dyn_cast_or_null<ShapedType>(
+      OpTrait::util::getBroadcastedType(lhs.getType(), rhs.getType()));
   if (!type) {
     return {};
   }
 
+  type = type.clone(result_type.getElementType());
+
   const bool rhs_is_splat = rhs.isSplat();
   const bool lhs_is_splat = lhs.isSplat();
 
+  auto lhs_values = lhs.try_value_begin<ElementT>();
+  auto rhs_values = rhs.try_value_begin<ElementT>();
+  if (failed(lhs_values) || failed(rhs_values)) {
+    return {};
+  }
+
   // If both of them are splat, compute and return.
   if (lhs_is_splat && rhs_is_splat) {
-    auto element_result = AttrElementT::get(
-        type.getElementType(), calculate(lhs.getSplatValue<ElementValueT>(),
-                                         rhs.getSplatValue<ElementValueT>()));
-    if (!element_result) return {};
-
-    return DenseElementsAttr::get(type, element_result);
+    return DenseElementsT::get(
+        type, calculate(*lhs_values.value(), *rhs_values.value()));
   }
 
   auto num_elements = type.getNumElements();
 
-  SmallVector<ElementValueT, 16> new_values;
+  SmallVector<ResultT> new_values;
   new_values.reserve(num_elements);
   const auto result_shape = type.getShape();
   std::vector<int64_t> current_index(type.getRank(), 0);
-  // Create the new shape with ones padded to the left.
-  const std::vector<int64_t> lhs_new_shape =
-      GetPaddedShape(lhs.getType().getShape(), type.getRank());
-  const std::vector<int64_t> rhs_new_shape =
-      GetPaddedShape(rhs.getType().getShape(), type.getRank());
 
-  auto lhs_old_values = lhs.getValues<ElementValueT>();
-  auto rhs_old_values = rhs.getValues<ElementValueT>();
+  // Create the new shape with ones padded to the left.
+  const auto lhs_new_shape =
+      GetPaddedShape(lhs.getType().getShape(), type.getRank());
+  const auto rhs_new_shape =
+      GetPaddedShape(rhs.getType().getShape(), type.getRank());
 
   // Add each pair of the corresponding values in the dense elements
   // attributes.
@@ -673,26 +680,27 @@ Attribute ConstFoldBinaryOpDenseDense(Type result_type, DenseElementsAttr lhs,
     const int64_t rhs_index =
         rhs_is_splat ? 0 : GetElementIndex(rhs_new_shape, current_index);
 
-    new_values.push_back(calculate(*(lhs_old_values.begin() + lhs_index),
-                                   *(rhs_old_values.begin() + rhs_index)));
+    new_values.push_back(calculate(*(lhs_values.value() + lhs_index),
+                                   *(rhs_values.value() + rhs_index)));
     IncrementIndex(result_shape, &current_index);
   }
-  return DenseElementsAttr::get(type, ArrayRef<ElementValueT>(new_values));
+  return DenseElementsT::get(type, new_values);
 }
 
 /// Performs const folding `calculate` with broadcast behavior on the two
 /// attributes `operand1` and `operand2` and returns the result if possible.
 /// This function assumes the two operands are verified to have value
 /// attributes of broadcastable types.
-template <class AttrElementT,
-          class ElementValueT = typename AttrElementT::ValueType,
-          class CalculationT =
-              llvm::function_ref<ElementValueT(ElementValueT, ElementValueT)>>
-Attribute ConstFoldBinaryOp(Type result_type, Attribute operand1,
+template <class DenseElementsT,
+          class ElementT = typename DenseElementsT::ValueType,
+          class ResultT = ElementT,
+          class CalculationT = llvm::function_ref<ResultT(ElementT, ElementT)>>
+Attribute ConstFoldBinaryOp(ShapedType result_type, Attribute operand1,
                             Attribute operand2, const CalculationT& calculate) {
   if (operand1.dyn_cast_or_null<DenseElementsAttr>() &&
       operand2.dyn_cast_or_null<DenseElementsAttr>()) {
-    return ConstFoldBinaryOpDenseDense<AttrElementT, ElementValueT>(
+    return ConstFoldBinaryOpDenseDense<DenseElementsT, ElementT, ResultT,
+                                       CalculationT>(
         result_type, operand1.cast<DenseElementsAttr>(),
         operand2.cast<DenseElementsAttr>(), calculate);
   }
@@ -707,23 +715,18 @@ Attribute ConstFoldBinaryOp(Type result_type, Attribute operand1,
 /// Depending on the given `resultType`, either `floatCalculate` or
 /// `intCalculate` is chosen to conduct the calculate.
 Attribute ConstFoldBinaryOp(
-    Type result_type, ArrayRef<Attribute> operands,
+    ShapedType type, ArrayRef<Attribute> operands,
     llvm::function_ref<APFloat(APFloat, APFloat)> float_calculate,
     llvm::function_ref<APInt(APInt, APInt)> int_calculate) {
-  // Note: All types are wrapped in tensor types in TFlite. E.g., f32 is
-  // represented as tensor<f32>. So we are only handling tensor types here.
-  auto type = result_type.dyn_cast<ShapedType>();
-  if (!type) return {};
-
   auto elemType = type.getElementType();
 
   if (elemType.isa<FloatType>())
-    return ConstFoldBinaryOp<FloatAttr>(result_type, operands[0], operands[1],
-                                        float_calculate);
+    return ConstFoldBinaryOp<DenseFPElementsAttr, APFloat, APFloat>(
+        type, operands[0], operands[1], float_calculate);
 
   if (elemType.isSignlessInteger())
-    return ConstFoldBinaryOp<IntegerAttr>(result_type, operands[0], operands[1],
-                                          int_calculate);
+    return ConstFoldBinaryOp<DenseIntElementsAttr, APInt, APInt>(
+        type, operands[0], operands[1], int_calculate);
 
   return {};
 }
@@ -829,6 +832,20 @@ OpFoldResult FloorOp::fold(FoldAdaptor adaptor) {
   };
 
   return ConstFoldUnaryOp(result_type, operands[0], compute);
+}
+
+//===----------------------------------------------------------------------===//
+// BitwiseXorOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult BitwiseXorOp::fold(FoldAdaptor adaptor) {
+  auto compute = [](APInt lhs, APInt rhs) -> APInt {
+    lhs ^= rhs;
+    return lhs;
+  };
+
+  return ConstFoldBinaryOp<DenseElementsAttr, APInt>(
+      getType(), adaptor.getLhs(), adaptor.getRhs(), compute);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1738,6 +1755,38 @@ OpFoldResult MulOp::fold(FoldAdaptor adaptor) {
   // TODO(b/142478136): Handle fused ops.
   if (getFusedActivationFunction() != "NONE") return {};
 
+  auto is_zero = [](Attribute a) {
+    return matchPattern(a, m_Zero()) || matchPattern(a, m_AnyZeroFloat());
+  };
+  auto is_one = [](Attribute a) {
+    return matchPattern(a, m_One()) || matchPattern(a, m_OneFloat());
+  };
+
+  // Quantized folding not supported.
+  const bool is_quantized =
+      llvm::isa<quant::QuantizedType>(getType().getElementType());
+
+  auto lhs = llvm::dyn_cast_or_null<DenseElementsAttr>(adaptor.getLhs());
+  auto rhs = llvm::dyn_cast_or_null<DenseElementsAttr>(adaptor.getRhs());
+
+  if (lhs && !is_quantized) {
+    if (is_zero(lhs) && lhs.getType() == getType()) {
+      return lhs;
+    }
+    if (is_one(lhs) && getRhs().getType() == getType()) {
+      return getRhs();
+    }
+  }
+
+  if (rhs && !is_quantized) {
+    if (is_zero(rhs) && rhs.getType() == getType()) {
+      return rhs;
+    }
+    if (is_one(rhs) && getLhs().getType() == getType()) {
+      return getLhs();
+    }
+  }
+
   // This function is performance critical for op fusion patterns, e.g.
   // FuseBinaryOpToPrecedingAffine and FuseMulOrDivWithConv2dOrDepthwiseConv2d.
   // So a few specializations are provided to evaluate the math operation
@@ -1745,14 +1794,15 @@ OpFoldResult MulOp::fold(FoldAdaptor adaptor) {
 
   // Specialization for f32 type.
   if (getType().cast<ShapedType>().getElementType().isF32()) {
-    return ConstFoldBinaryOp<FloatAttr, float>(
+    return ConstFoldBinaryOp<DenseFPElementsAttr, float, float>(
         getType(), operands[0], operands[1],
         [](float a, float b) { return a * b; });
   }
 
   // Specialization for bf16 type.
   if (getType().cast<ShapedType>().getElementType().isBF16()) {
-    return ConstFoldBinaryOp<FloatAttr, Eigen::bfloat16>(
+    return ConstFoldBinaryOp<DenseFPElementsAttr, Eigen::bfloat16,
+                             Eigen::bfloat16>(
         getType(), operands[0], operands[1],
         [](Eigen::bfloat16 a, Eigen::bfloat16 b) { return a * b; });
   }
@@ -1771,6 +1821,24 @@ int64_t MulOp::GetArithmeticCount(Operation* op) {
 }
 
 //===----------------------------------------------------------------------===//
+// PowOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult PowOp::fold(FoldAdaptor adaptor) {
+  if (getType().getElementType().isF32()) {
+    return ConstFoldBinaryOp<DenseFPElementsAttr, float>(
+        getType(), adaptor.getLhs(), adaptor.getRhs(),
+        [](float lhs, float rhs) { return std::pow(lhs, rhs); });
+  }
+  if (getType().getElementType().isInteger(32)) {
+    return ConstFoldBinaryOp<DenseIntElementsAttr, int32_t>(
+        getType(), adaptor.getLhs(), adaptor.getRhs(),
+        [](int32_t lhs, int32_t rhs) { return std::pow(lhs, rhs); });
+  }
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
 // DivOp
 //===----------------------------------------------------------------------===//
 
@@ -1778,9 +1846,30 @@ OpFoldResult DivOp::fold(FoldAdaptor adaptor) {
   auto operands = adaptor.getOperands();
   // TODO(b/142478136): Handle fused ops.
   if (getFusedActivationFunction() != "NONE") return {};
-  return ConstFoldBinaryOp(
-      getType(), operands, [](APFloat a, APFloat b) { return a / b; },
-      [](APInt a, APInt b) { return a.sdiv(b); });
+
+  auto rhs = llvm::dyn_cast_or_null<DenseElementsAttr>(adaptor.getRhs());
+  auto lhs = llvm::dyn_cast_or_null<DenseElementsAttr>(adaptor.getLhs());
+
+  if (rhs && lhs) {
+    return ConstFoldBinaryOp(
+        getType(), operands, [](APFloat a, APFloat b) { return a / b; },
+        [](APInt a, APInt b) { return a.sdiv(b); });
+  }
+
+  if (llvm::isa<quant::QuantizedType>(getType().getElementType())) {
+    // Quantized folding not supported for the following.
+    return {};
+  }
+
+  auto is_one = [](Attribute a) {
+    return matchPattern(a, m_One()) || matchPattern(a, m_OneFloat());
+  };
+
+  if (rhs && is_one(rhs) && getLhs().getType() == getType()) {
+    return getLhs();
+  }
+
+  return {};
 }
 
 int64_t DivOp::GetArithmeticCount(Operation* op) {
@@ -2400,9 +2489,30 @@ OpFoldResult SubOp::fold(FoldAdaptor adaptor) {
   auto operands = adaptor.getOperands();
   // TODO(b/142478136): Handle fused ops.
   if (getFusedActivationFunction() != "NONE") return {};
-  return ConstFoldBinaryOp(
-      getType(), operands, [](APFloat a, APFloat b) { return a - b; },
-      [](APInt a, APInt b) { return a - b; });
+
+  auto lhs = llvm::dyn_cast_or_null<DenseElementsAttr>(adaptor.getLhs());
+  auto rhs = llvm::dyn_cast_or_null<DenseElementsAttr>(adaptor.getRhs());
+
+  if (lhs && rhs) {
+    return ConstFoldBinaryOp(
+        getType(), operands, [](APFloat a, APFloat b) { return a - b; },
+        [](APInt a, APInt b) { return a - b; });
+  }
+
+  auto is_zero = [](Attribute a) {
+    return matchPattern(a, m_Zero()) || matchPattern(a, m_AnyZeroFloat());
+  };
+
+  if (llvm::isa<quant::QuantizedType>(getType().getElementType())) {
+    // Quant types not supported for the following.
+    return {};
+  }
+
+  if (rhs && is_zero(rhs) && getLhs().getType() == getType()) {
+    return getLhs();
+  }
+
+  return {};
 }
 
 int64_t SubOp::GetArithmeticCount(Operation* op) {
@@ -3123,6 +3233,36 @@ OpFoldResult SquareOp::fold(FoldAdaptor adaptor) {
 }
 
 //===----------------------------------------------------------------------===//
+// ReluOp
+//===----------------------------------------------------------------------===//
+
+template <typename T>
+T ComputeRelu(T val) {
+  return std::max(static_cast<T>(0), val);
+}
+
+// TODO: b/361137571 - Add folding for quantized types if it is needed.
+OpFoldResult ReluOp::fold(FoldAdaptor adaptor) {
+  auto data = mlir::dyn_cast_or_null<DenseElementsAttr>(adaptor.getX());
+  if (!data) {
+    return {};
+  }
+
+  if (getType().getElementType().isSignlessInteger(32)) {
+    return DenseIntElementsAttr::get(
+        data.getType(),
+        llvm::map_to_vector(data.getValues<int32_t>(), ComputeRelu<int32_t>));
+  }
+  if (getType().getElementType().isF32()) {
+    return DenseFPElementsAttr::get(
+        data.getType(),
+        llvm::map_to_vector(data.getValues<float>(), ComputeRelu<float>));
+  }
+
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
 // MaximumOp
 //===----------------------------------------------------------------------===//
 
@@ -3137,12 +3277,12 @@ OpFoldResult MaximumOp::fold(FoldAdaptor adaptor) {
   if (lhs && lhs.isSplat()) {
     APFloat lhs_value = lhs.getSplatValue<APFloat>();
     lhs_value.changeSign();
-    if (lhs_value.isLargest()) return getRhs();
+    if (lhs_value.isLargest() || lhs_value.isInfinity()) return getRhs();
   }
   if (rhs && rhs.isSplat()) {
     APFloat rhs_value = rhs.getSplatValue<APFloat>();
     rhs_value.changeSign();
-    if (rhs_value.isLargest()) return getLhs();
+    if (rhs_value.isLargest() || rhs_value.isInfinity()) return getLhs();
   }
   return nullptr;
 }
@@ -3159,11 +3299,182 @@ OpFoldResult MinimumOp::fold(FoldAdaptor adaptor) {
 
   auto lhs = adaptor.getLhs().dyn_cast_or_null<DenseElementsAttr>();
   auto rhs = adaptor.getRhs().dyn_cast_or_null<DenseElementsAttr>();
-  if (lhs && lhs.isSplat() && lhs.getSplatValue<APFloat>().isLargest())
-    return getRhs();
-  if (rhs && rhs.isSplat() && rhs.getSplatValue<APFloat>().isLargest())
-    return getLhs();
+  if (lhs && lhs.isSplat()) {
+    auto splat = lhs.getSplatValue<APFloat>();
+    if (splat.isLargest() || splat.isInfinity()) return getRhs();
+  }
+  if (rhs && rhs.isSplat()) {
+    auto splat = rhs.getSplatValue<APFloat>();
+    if (splat.isLargest() || splat.isInfinity()) return getLhs();
+  }
   return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
+// Comparison and Logical Ops
+//===----------------------------------------------------------------------===//
+
+OpFoldResult LessOp::fold(FoldAdaptor adaptor) {
+  if (getLhs().getType().getElementType().isInteger(32)) {
+    return ConstFoldBinaryOp<DenseIntElementsAttr, int32_t, bool>(
+        getType(), adaptor.getLhs(), adaptor.getRhs(),
+        [](int32_t lhs, int32_t rhs) { return lhs < rhs; });
+  }
+  if (getLhs().getType().getElementType().isF32()) {
+    return ConstFoldBinaryOp<DenseIntElementsAttr, float, bool>(
+        getType(), adaptor.getLhs(), adaptor.getRhs(),
+        [](float lhs, float rhs) { return lhs < rhs; });
+  }
+  return {};
+}
+
+OpFoldResult LessEqualOp::fold(FoldAdaptor adaptor) {
+  if (getLhs().getType().getElementType().isInteger(32)) {
+    return ConstFoldBinaryOp<DenseIntElementsAttr, int32_t, bool>(
+        getType(), adaptor.getLhs(), adaptor.getRhs(),
+        [](int32_t lhs, int32_t rhs) { return lhs <= rhs; });
+  }
+  if (getLhs().getType().getElementType().isF32()) {
+    return ConstFoldBinaryOp<DenseIntElementsAttr, float, bool>(
+        getType(), adaptor.getLhs(), adaptor.getRhs(),
+        [](float lhs, float rhs) { return lhs <= rhs; });
+  }
+  return {};
+}
+
+OpFoldResult GreaterOp::fold(FoldAdaptor adaptor) {
+  if (getLhs().getType().getElementType().isInteger(32)) {
+    return ConstFoldBinaryOp<DenseIntElementsAttr, int32_t, bool>(
+        getType(), adaptor.getLhs(), adaptor.getRhs(),
+        [](int32_t lhs, int32_t rhs) { return lhs > rhs; });
+  }
+  if (getLhs().getType().getElementType().isF32()) {
+    return ConstFoldBinaryOp<DenseIntElementsAttr, float, bool>(
+        getType(), adaptor.getLhs(), adaptor.getRhs(),
+        [](float lhs, float rhs) { return lhs > rhs; });
+  }
+  return {};
+}
+
+OpFoldResult GreaterEqualOp::fold(FoldAdaptor adaptor) {
+  if (getLhs().getType().getElementType().isInteger(32)) {
+    return ConstFoldBinaryOp<DenseIntElementsAttr, int32_t, bool>(
+        getType(), adaptor.getLhs(), adaptor.getRhs(),
+        [](int32_t lhs, int32_t rhs) { return lhs >= rhs; });
+  }
+  if (getLhs().getType().getElementType().isF32()) {
+    return ConstFoldBinaryOp<DenseIntElementsAttr, float, bool>(
+        getType(), adaptor.getLhs(), adaptor.getRhs(),
+        [](float lhs, float rhs) { return lhs >= rhs; });
+  }
+  return {};
+}
+
+OpFoldResult EqualOp::fold(FoldAdaptor adaptor) {
+  if (getX().getType().getElementType().isInteger(32)) {
+    return ConstFoldBinaryOp<DenseIntElementsAttr, int32_t, bool>(
+        getType(), adaptor.getX(), adaptor.getY(),
+        [](int32_t lhs, int32_t rhs) { return lhs == rhs; });
+  }
+  if (getX().getType().getElementType().isF32()) {
+    return ConstFoldBinaryOp<DenseIntElementsAttr, float, bool>(
+        getType(), adaptor.getX(), adaptor.getY(),
+        [](float lhs, float rhs) { return lhs == rhs; });
+  }
+  return {};
+}
+
+OpFoldResult NotEqualOp::fold(FoldAdaptor adaptor) {
+  if (getLhs().getType().getElementType().isInteger(32)) {
+    return ConstFoldBinaryOp<DenseIntElementsAttr, int32_t, bool>(
+        getType(), adaptor.getLhs(), adaptor.getRhs(),
+        [](int32_t lhs, int32_t rhs) { return lhs != rhs; });
+  }
+  if (getLhs().getType().getElementType().isF32()) {
+    return ConstFoldBinaryOp<DenseIntElementsAttr, float, bool>(
+        getType(), adaptor.getLhs(), adaptor.getRhs(),
+        [](float lhs, float rhs) { return lhs != rhs; });
+  }
+  return {};
+}
+
+OpFoldResult LogicalAndOp::fold(FoldAdaptor adaptor) {
+  return ConstFoldBinaryOp<DenseIntElementsAttr, bool, bool>(
+      getType(), adaptor.getLhs(), adaptor.getRhs(),
+      [](bool lhs, bool rhs) { return lhs && rhs; });
+}
+
+OpFoldResult LogicalOrOp::fold(FoldAdaptor adaptor) {
+  return ConstFoldBinaryOp<DenseIntElementsAttr, bool, bool>(
+      getType(), adaptor.getLhs(), adaptor.getRhs(),
+      [](bool lhs, bool rhs) { return lhs || rhs; });
+}
+
+//===----------------------------------------------------------------------===//
+// SelectOp
+//===----------------------------------------------------------------------===//
+
+// TODO: b/359275356 - Expand this to handle the broadcast case similar
+// to `ConstFoldBinaryOpDense`.
+OpFoldResult SelectOp::fold(FoldAdaptor adaptor) {
+  auto lhs_type = getX().getType();
+  auto rhs_type = getY().getType();
+  auto condition_type = getCondition().getType();
+  auto out_type = getType();
+
+  if (lhs_type != rhs_type) {
+    return {};
+  }
+
+  if (lhs_type.getShape() != condition_type.getShape()) {
+    // "broadcasted" condition not yet supported.
+    return {};
+  }
+
+  auto condition_vals =
+      llvm::dyn_cast_or_null<DenseIntElementsAttr>(adaptor.getCondition());
+  if (!condition_vals || !condition_vals.getElementType().isInteger(1)) {
+    return {};
+  }
+
+  if (condition_vals.isSplat()) {
+    const bool val = condition_vals.getSplatValue<bool>();
+    return val ? adaptor.getX() : adaptor.getY();
+  }
+
+  auto lhs_vals = llvm::dyn_cast_or_null<DenseElementsAttr>(adaptor.getX());
+  auto rhs_vals = llvm::dyn_cast_or_null<DenseElementsAttr>(adaptor.getY());
+  if (!lhs_vals || !rhs_vals) {
+    return {};
+  }
+
+  llvm::SmallVector<Attribute> results;
+  results.reserve(condition_type.getNumElements());
+
+  auto lhs_it = lhs_vals.getValues<Attribute>().begin();
+  auto lhs_end = lhs_vals.getValues<Attribute>().end();
+  auto rhs_it = rhs_vals.getValues<Attribute>().begin();
+  auto rhs_end = rhs_vals.getValues<Attribute>().end();
+
+  auto condition_it = condition_vals.getValues<bool>().begin();
+  auto condition_end = condition_vals.getValues<bool>().end();
+
+  while (condition_it < condition_end && lhs_it < lhs_end && rhs_it < rhs_end) {
+    if (*condition_it++) {
+      results.push_back(*lhs_it);
+    } else {
+      results.push_back(*rhs_it);
+    }
+
+    if (!lhs_vals.isSplat()) {
+      lhs_it++;
+    }
+    if (!rhs_vals.isSplat()) {
+      rhs_it++;
+    }
+  }
+
+  return DenseElementsAttr::get(out_type, results);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3248,35 +3559,12 @@ void ConstOp::getCanonicalizationPatterns(RewritePatternSet& results,
 // CastOp
 //===----------------------------------------------------------------------===//
 
-OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
-  auto operands = adaptor.getOperands();
-  assert(operands.size() == 1);
-  if (getInput().getType() == getType()) {
-    return getInput();
-  }
-
-  // For now, only supports cast between integer types.
-  auto elements_attr = operands[0].dyn_cast_or_null<DenseIntElementsAttr>();
-  if (!elements_attr) {
-    return nullptr;
-  }
-
-  auto result_element_type =
-      getType().cast<ShapedType>().getElementType().dyn_cast<IntegerType>();
-  auto operand_element_type = getInput()
-                                  .getType()
-                                  .cast<ShapedType>()
-                                  .getElementType()
-                                  .dyn_cast<IntegerType>();
-  // Returns nullptr if either result/operand element type is not integer.
-  if (!result_element_type || !operand_element_type) {
-    return nullptr;
-  }
-
-  const bool is_unsigned = operand_element_type.isUnsigned();
-  const bool involves_bool = operand_element_type.getWidth() == 1 ||
-                             result_element_type.getWidth() == 1;
-  const int output_bitwidth = result_element_type.getWidth();
+OpFoldResult CastIntToInt(DenseIntElementsAttr data, IntegerType in_type,
+                          IntegerType out_type) {
+  const bool is_unsigned = in_type.isUnsigned();
+  const bool involves_bool =
+      in_type.getWidth() == 1 || out_type.getWidth() == 1;
+  const int output_bitwidth = out_type.getWidth();
   // The integer cast op is the same as C integer cast. Depends on the operand
   // type's signedness, we will determine whether or not sign extension is
   // needed.
@@ -3287,13 +3575,114 @@ OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
       // true input should always be cast to 1 and not -1 as the sign extension
       // would do for signed outputs. Similarly, non-zero inputs should be cast
       // to true. Truncating even numbers to one bit will result in `false`.
-      return APInt(result_element_type.getWidth(), value != 0);
+      return APInt(out_type.getWidth(), value != 0);
     }
     return is_unsigned ? value.zextOrTrunc(output_bitwidth)
                        : value.sextOrTrunc(output_bitwidth);
   };
 
-  return elements_attr.mapValues(result_element_type, cast);
+  return data.mapValues(out_type, cast);
+}
+
+OpFoldResult CastFloatToInt(DenseFPElementsAttr data, FloatType in_type,
+                            IntegerType out_type) {
+  const bool from_f32 = in_type.isF32();
+  const bool to_i32 = out_type.isSignlessInteger(32);
+  if (!from_f32 || !to_i32) {
+    return {};
+  }
+
+  auto cast = [&](APFloat value) -> APInt {
+    APSInt result(32, false);
+    bool is_exact;
+    value.convertToInteger(result, llvm::RoundingMode::TowardZero, &is_exact);
+    return result;
+  };
+
+  return data.mapValues(out_type, cast);
+}
+
+template <typename InType, typename OutType>
+llvm::SmallVector<OutType> MapStaticCast(DenseElementsAttr data) {
+  return llvm::map_to_vector(data.getValues<InType>(),
+                             [](InType v) { return static_cast<OutType>(v); });
+}
+
+OpFoldResult CastIntToFloat(DenseIntElementsAttr data, IntegerType in_type,
+                            FloatType out_type) {
+  auto result_type = data.getType().clone(out_type);
+  if (!out_type.isF32()) {
+    return {};
+  }
+
+  if (in_type.isSignlessInteger(32)) {
+    return DenseFPElementsAttr::get(result_type,
+                                    MapStaticCast<int32_t, float>(data));
+  }
+  if (in_type.isSignlessInteger(1)) {
+    return DenseFPElementsAttr::get(result_type,
+                                    MapStaticCast<bool, float>(data));
+  }
+
+  return {};
+}
+
+OpFoldResult CastFloatToFloat(DenseFPElementsAttr data, FloatType in_type,
+                              FloatType out_type) {
+  auto result_type = data.getType().clone(out_type);
+  if (in_type.isF32() && out_type.isF64()) {
+    return DenseFPElementsAttr::get(result_type,
+                                    MapStaticCast<float, double>(data));
+  }
+
+  if (in_type.isF64() && out_type.isF32()) {
+    return DenseFPElementsAttr::get(result_type,
+                                    MapStaticCast<double, float>(data));
+  }
+  return {};
+}
+
+OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
+  auto operands = adaptor.getOperands();
+  if (operands.size() != 1) {
+    return {};
+  }
+  if (getInput().getType() == getType()) {
+    return getInput();
+  }
+
+  auto input = operands[0];
+
+  auto in_type = getInput().getType().getElementType();
+  auto out_type = getType().getElementType();
+
+  if (auto int_in_type = llvm::dyn_cast_or_null<IntegerType>(in_type)) {
+    auto in_data = llvm::dyn_cast_or_null<DenseIntElementsAttr>(input);
+    if (!in_data) {
+      return {};
+    }
+    if (auto float_out_type = llvm::dyn_cast_or_null<FloatType>(out_type)) {
+      return CastIntToFloat(in_data, int_in_type, float_out_type);
+    }
+    if (auto int_out_type = llvm::dyn_cast_or_null<IntegerType>(out_type)) {
+      return CastIntToInt(in_data, int_in_type, int_out_type);
+    }
+  }
+
+  if (auto float_in_type = llvm::dyn_cast_or_null<FloatType>(in_type)) {
+    auto in_data = llvm::dyn_cast_or_null<DenseFPElementsAttr>(input);
+    if (!in_data) {
+      return {};
+    }
+    if (auto float_out_type = llvm::dyn_cast_or_null<FloatType>(out_type)) {
+      return CastFloatToFloat(in_data, float_in_type, float_out_type);
+    }
+    if (auto int_out_type = llvm::dyn_cast_or_null<IntegerType>(out_type)) {
+      return CastFloatToInt(in_data, float_in_type, int_out_type);
+    }
+  }
+
+  return {};
 }
 
 //===----------------------------------------------------------------------===//

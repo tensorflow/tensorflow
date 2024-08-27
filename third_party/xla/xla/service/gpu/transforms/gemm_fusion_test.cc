@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/gemm_fusion.h"
 
 #include <memory>
+#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -1327,6 +1328,85 @@ ENTRY main {
                     .value();
   auto result = GemmFusion(gpu_version_).Run(module.get());
   EXPECT_FALSE(result.ok());
+}
+
+constexpr auto kInt4Dot = R"(
+ENTRY e {
+  p0 = s8[16,16] parameter(0)
+  p1 = s4[16,16] parameter(1)
+  p1c = bf16[16,16] convert(p1)
+  ROOT dot = bf16[16,16] dot(p0, p1c),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+TEST_F(SmallDotGemmFusionTest, Int4DotIsRewritten) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kInt4Dot));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_enable_triton_gemm_int4(true);
+  EXPECT_TRUE(GemmFusion(gpu_version_).Run(module.get()).value());
+}
+
+TEST_F(SmallDotGemmFusionTest, Int4DotIsNotRewritten) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kInt4Dot));
+  EXPECT_FALSE(GemmFusion(gpu_version_).Run(module.get()).value());
+}
+
+TEST_F(SmallDotGemmFusionTest, Int4ConcatPlusConvertIsRewritten) {
+  const std::string kInt4Dot = R"(
+    ENTRY main {
+      lhs1 = s4[4,1024]{1,0} parameter(0)
+      lhs2 = s4[4,1024]{1,0} parameter(1)
+      rhs = bf16[1024,4]{1,0} parameter(2)
+      lhs_concat = s4[8,1024]{1,0} concatenate(lhs1, lhs2), dimensions={0}
+      lhs_converted = bf16[8,1024]{1,0} convert(lhs_concat)
+      ROOT dot = bf16[8,4]{1,0} dot(lhs_converted, rhs),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kInt4Dot));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_enable_triton_gemm_int4(true);
+  EXPECT_TRUE(GemmFusion(gpu_version_).Run(module.get()).value());
+
+  // Check that the fusion is present and that the lhs is not converted.
+  MatchHloModule(*module, R"(
+CHECK: gemm_fusion_dot_computation
+CHECK:  %parameter_0 = s4[8,1024]{1,0} parameter(0)
+CHECK: ENTRY
+CHECK-DAG: ROOT {{.*}} = bf16[8,4]{1,0} fusion(s4[8,1024]{1,0} %lhs_concat, bf16[1024,4]{1,0} %rhs)
+})");
+}
+
+TEST_F(SmallDotGemmFusionTest, Int4ConvertPlusNegateIsRewritten) {
+  const std::string kInt4Dot = R"(
+    ENTRY main {
+      lhs = s4[8,1024]{1,0} parameter(0)
+      rhs = f32[1024,4]{1,0} parameter(1)
+      lhs_converted = f32[8,1024]{1,0} convert(lhs)
+      lhs_negated = f32[8,1024]{1,0} negate(lhs_converted)
+      ROOT dot = f32[8,4]{1,0} dot(lhs_negated, rhs),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kInt4Dot));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_enable_triton_gemm_int4(true);
+  EXPECT_TRUE(GemmFusion(gpu_version_).Run(module.get()).value());
+  // Check that the fusion is present and that convert and negation is fused in
+  // it.
+  MatchHloModule(*module, R"(
+CHECK: gemm_fusion_dot_computation
+CHECK:  %parameter_0 = s4[8,1024]{1,0} parameter(0)
+CHECK: ENTRY
+CHECK-DAG: ROOT {{.*}} = f32[8,4]{1,0} fusion(s4[8,1024]{1,0} %lhs, f32[1024,4]{1,0} %rhs)
+})");
 }
 
 }  // namespace

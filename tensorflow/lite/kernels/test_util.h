@@ -60,11 +60,36 @@ limitations under the License.
 
 namespace tflite {
 
-// A gmock matcher that check that elements of a float vector match to a given
-// tolerance.
-std::vector<::testing::Matcher<float>> ArrayFloatNear(
-    const std::vector<float>& values, float max_abs_error = 1e-5);
+// This constant indicates the error bound is derived automatically in functions
+// like ArrayFloatNear.
+constexpr float kFpErrorAuto = -1;
 
+// Returns whether we allow FP16 precision for FP32 operations, i.e. in FP16
+// mode.
+bool AllowFp16PrecisionForFp32();
+
+// It checks if the actual number almost equals the expected number with the
+// tolerance of 4 FP16 ULPs in FP16 mode; 4 FP32 ULPs in FP32 mode.
+// Given float x, 2^e <= |x| <= 2^(e+1), then ULP(x) = 2^(max(e, e_min)-p+1)
+// where e_min is -24 for FP16, -126 for FP32; p is 10 for FP16, 23 for FP32.
+::testing::Matcher<std::tuple<float, float>> FloatingPointAlmostEq();
+
+// In FP32 mode, it equals to Eq(), which means the error bound is zero (no
+// error allowed); in FP16 mode, it checks if the actual number almost equals
+// the expected number with the tolerance of 4 FP16 ULPs.
+::testing::Matcher<std::tuple<float, float>> FloatingPointEq();
+
+// A gmock matcher that check that elements of a float vector match to a given
+// tolerance. In FP32 mode, the tolerance is max(max_abs_err, value *
+// max_rel_err). In FP16 mode, the tolerance is max(fp16_max_abs_err, value *
+// fp16_max_rel_err). If fp16_max_abs_err is kFpErrorAuto, it is set to
+// std::max(max_abs_err, sqrt(max_abs_err)) automatically.
+std::vector<::testing::Matcher<float>> ArrayFloatNear(
+    const std::vector<float>& values, float max_abs_err = 1e-5,
+    float fp16_max_abs_err = kFpErrorAuto, float max_rel_err = 0,
+    float fp16_max_rel_err = 0.01);
+
+// TODO(b/280061335): Add FP16 logic as ArrayFloatNear does.
 // A gmock matcher that check that elements of a complex vector match to a given
 // tolerance.
 std::vector<::testing::Matcher<std::complex<float>>> ArrayComplex64Near(

@@ -8,11 +8,6 @@ load(
     "//xla/stream_executor:build_defs.bzl",
     "stream_executor_friends",
 )
-
-# copybara:comment_begin(oss-only)
-load("//xla/stream_executor/rocm:build_defs.bzl", "rocm_embedded_test_modules")
-
-# copybara:comment_end
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_hipblaslt",
@@ -705,10 +700,3 @@ cc_library(
         [":all_runtime"],
     ),
 )
-
-# copybara:comment_begin(oss-only)
-rocm_embedded_test_modules(
-    name = "add_i32_kernel",
-    srcs = if_rocm_is_configured(["add_i32_kernel.cu.cc"]),
-)
-# copybara:comment_end

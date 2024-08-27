@@ -50,7 +50,7 @@ struct GpuAllocatorConfig {
   Kind kind = Kind::kDefault;
 
   // Only used if kind == kBFC. The maximum fraction of available memory to
-  // allocate. This is the default value of XLA_PYTHON_CLIENT_MEM_FRACTION.
+  // allocate. This is the default value of XLA_CLIENT_MEM_FRACTION.
   //
   // If `gpu_system_memory_size` is set, it determines memory allocation.
   // `memory_fraction` won't be used in this case.

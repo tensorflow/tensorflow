@@ -21,7 +21,6 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <unordered_map>
-#include <vector>
 
 #include "xnnpack.h"  // from @XNNPACK
 #include "tensorflow/lite/c/common.h"
@@ -75,6 +74,13 @@ struct PackIdentifier {
 struct BufferLocation {
   uint64_t offset;
   uint64_t size;
+
+  static constexpr BufferLocation Invalid() { return {SIZE_MAX, SIZE_MAX}; }
+
+  constexpr bool IsInvalid() const {
+    constexpr BufferLocation invalid = Invalid();
+    return offset == invalid.offset && size == invalid.size;
+  }
 };
 
 // Handles MMap allocations lifetime.

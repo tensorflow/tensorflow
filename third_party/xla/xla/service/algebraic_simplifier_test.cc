@@ -11970,5 +11970,60 @@ TEST_F(AlgebraicSimplifierTest, SinkCbrtThroughMax) {
       root, GmockMatch(m::Cbrt(m::Maximum(m::Parameter(0), m::Parameter(1)))));
 }
 
+TEST_F(AlgebraicSimplifierTest,
+       DynamicSlicePreservedWithTrivialConstantIndices) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY f {
+      %operand = s32[2,2] parameter(0)
+      %constant = u32[] constant(0)
+      ROOT %dynamic-slice = s32[2,1] dynamic-slice(%operand, %constant, %constant),
+        dynamic_slice_sizes={2,1}
+    }
+    )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  // Disable dynamic-slice to slice conversion
+  default_options_.set_disable_dynamic_slice_to_slice_conversion(true);
+
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_FALSE(simplifier.Run(module.get()).value());
+
+  // Expect the dynamic-slice to be preserved
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::DynamicSlice(m::Parameter(0), m::Constant(),
+                                         m::Constant())));
+}
+
+TEST_F(AlgebraicSimplifierTest,
+       DynamicSliceConvertedToConstantSliceWithConstantIndices) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY f {
+      %operand = s32[2,2] parameter(0)
+      %constant = u32[] constant(0)
+      ROOT %dynamic-slice = s32[2,1] dynamic-slice(%operand, %constant, %constant),
+        dynamic_slice_sizes={2,1}
+    }
+    )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  // Enable dynamic-slice to slice conversion (default behavior)
+  ASSERT_FALSE(default_options_.disable_dynamic_slice_to_slice_conversion());
+
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
+
+  // Expect the dynamic-slice to be converted to a constant slice
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Slice(m::Parameter(0))));
+}
+
 }  // namespace
 }  // namespace xla

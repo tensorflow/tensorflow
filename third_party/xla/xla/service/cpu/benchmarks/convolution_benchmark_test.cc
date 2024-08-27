@@ -80,7 +80,32 @@ static void BM_Conv2D(benchmark::State& state) {
                                                  padding_w, "_", padding_w)}}));
 }
 
-}  // namespace
+static void BM_GroupedConv2D(benchmark::State& state) {
+  std::string hlo_module = R"(
+    HloModule TestModule
+
+    ENTRY TestComputation {
+      %p0 = f32[1,45,45,1024] parameter(0)
+      %p1 = f32[5,5,1,1024] parameter(1)
+      ROOT conv = convolution(p0, p1), window={size=5x5 pad=2_2x2_2},
+        dim_labels=b01f_01io->b01f, feature_group_count=1024
+    }
+  )";
+
+  std::minstd_rand0 engine;
+
+  auto input_shape = ShapeUtil::MakeShape(F32, {1, 45, 45, 1024});
+  auto kernel_shape = ShapeUtil::MakeShape(F32, {5, 5, 1, 1024});
+
+  auto input =
+      *LiteralUtil::CreateRandomLiteral<F32>(input_shape, &engine, 1.0f, 0.1f);
+  auto kernel =
+      *LiteralUtil::CreateRandomLiteral<F32>(kernel_shape, &engine, 1.0f, 0.1f);
+
+  std::vector<const Literal*> args = {&input, &kernel};
+
+  CHECK_OK(RunHloBenchmark(state, hlo_module, args));
+}
 
 // -------------------------------------------------------------------------- //
 // Pixel CNN convolutions.
@@ -134,4 +159,11 @@ BENCHMARK(BM_Conv2D<PrimitiveType::F32>)
     ->Args({32, 64, 64, 4, 3, 3, 16})
     ->Args({32, 32, 32, 96, 3, 3, 96});
 
+// -------------------------------------------------------------------------- //
+// Grouped convolution
+// -------------------------------------------------------------------------- //
+
+BENCHMARK(BM_GroupedConv2D)->MeasureProcessCPUTime();
+
+}  // namespace
 }  // namespace xla::cpu

@@ -103,6 +103,10 @@ struct PassConfig {
   // Specifies the framework of the original model.
   toco::TocoFlags::ModelOriginFramework model_origin_framework =
       toco::TocoFlags::UNSET;
+
+  // When set to true, convert +Inf/-Inf to MIN/MAX float value and output of
+  // convert only contains finite values.
+  bool canonicalizing_inf_as_min_max_float = true;
 };
 
 inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,

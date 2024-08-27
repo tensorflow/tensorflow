@@ -166,16 +166,6 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
   //   "It is guaranteed that [...] 0  <=  %ctaid.x <  %nctaid.x"
   //
   // %nctaid.x is currently specified as 2147483647.
-  if (launch_dimensions_.thread_counts_per_block().y > 1) {
-    // When blockDim.y > 1, then we are in the small row case. Each
-    // blockDim.x do exatly to one row and blockDim.y map to some
-    // consecutive row. This prevents too small block size that isn't
-    // efficient.
-    CHECK(launch_config_.row_vectorized);
-    CHECK_EQ(shape_.dimensions().back(),
-             launch_dimensions_.thread_counts_per_block().x *
-                 launch_config_.unroll_factor);
-  }
   CHECK_EQ(launch_dimensions_.thread_counts_per_block().z, 1);
   CHECK_EQ(launch_dimensions_.block_counts().y, 1);
   CHECK_EQ(launch_dimensions_.block_counts().z, 1);
@@ -189,14 +179,6 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
 
   llvm::Value* linear_index_base = linear_base_and_thread_idx.linear_base;
 
-  llvm::Value* row_index =
-      launch_config_.row_vectorized
-          ? b_->CreateMul(linear_base_and_thread_idx.thread_idx,
-                          llvm::ConstantInt::get(index_type,
-                                                 launch_config_.unroll_factor),
-                          "row_index", /*HasNUW=*/true, /*HasNSW=*/true)
-          : nullptr;
-
   std::vector<llvm::Value*> multidim(shape_.rank(), nullptr);
   for (int i = 0; i < launch_config_.unroll_factor; ++i) {
     // The add operation is needed even if the offset is 0, since when the
@@ -207,17 +189,6 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
         b_->CreateAdd(linear_index_base, llvm::ConstantInt::get(index_type, i),
                       absl::StrCat("linear_index", i),
                       /*HasNUW=*/true, /*HasNSW=*/true);
-    if (launch_config_.row_vectorized) {
-      // This lets us avoid emitting the division for the last dimension of the
-      // index. The check for i > 0 is here for historical reasons, it might not
-      // do anything.
-      multidim.back() =
-          i == 0 ? row_index
-                 : b_->CreateAdd(
-                       row_index, llvm::ConstantInt::get(index_type, i),
-                       absl::StrCat("row_index_plus", i), /*HasNUW=*/true,
-                       /*HasNSW=*/true);
-    }
     array_indices.emplace_back(linear_index, multidim, shape_, b_);
   }
 

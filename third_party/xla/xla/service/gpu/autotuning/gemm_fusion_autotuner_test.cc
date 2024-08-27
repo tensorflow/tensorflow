@@ -468,23 +468,23 @@ ENTRY %e {
 })";
 
   auto module = ParseAndReturnVerifiedModule(kHloText).value();
-  EXPECT_THAT(
-      backend().compiler()->RunBackend(std::move(module),
-                                       backend().default_stream_executor(),
-                                       {/*device_allocator=*/nullptr,
-                                        /*thread_pool=*/nullptr,
-                                        /*layout_canonicalization_callback=*/{},
-                                        /*is_autotuning_compilation=*/true}),
-      ::testing::AnyOf(
-          tsl::testing::StatusIs(
-              tsl::error::CANCELLED,
-              absl::StrFormat(
-                  "Compilation result discarded due to register spilling")),
-          // Hopper can't spill registers since wgmma instructions are
-          // asynchronous, instead it just runs out of them.
-          tsl::testing::StatusIs(
-              tsl::error::RESOURCE_EXHAUSTED,
-              absl::StrFormat("Register allocation failed"))));
+  EXPECT_THAT(backend().compiler()->RunBackend(
+                  std::move(module), backend().default_stream_executor(),
+                  {/*device_allocator=*/nullptr,
+                   /*thread_pool=*/nullptr,
+                   /*layout_canonicalization_callback=*/{},
+                   /*is_autotuning_compilation=*/true}),
+              ::testing::AnyOf(
+                  tsl::testing::StatusIs(
+                      tsl::error::CANCELLED,
+                      "Compilation result discarded due to register spilling"),
+                  // Hopper can't spill registers since wgmma instructions are
+                  // asynchronous, instead it just runs out of them.
+                  tsl::testing::StatusIs(tsl::error::RESOURCE_EXHAUSTED,
+                                         "Register allocation failed"),
+                  tsl::testing::StatusIs(
+                      tsl::error::INTERNAL,
+                      ::testing::HasSubstr("Insufficient registers"))));
 }
 
 // Modify block_k back to 16 once b/337839570 is fixed.

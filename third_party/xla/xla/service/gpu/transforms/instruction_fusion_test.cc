@@ -126,12 +126,14 @@ TEST_F(InstructionFusionTest,
 TEST_F(InstructionFusionTest,
        CostlyProducerAndNonOperandElementReusingConsumerFused_Transpose) {
   HloComputation::Builder builder(TestName());
-  HloInstruction* const0 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0(5.0f)));
-  HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeShape(F32, {}), HloOpcode::kExp, const0));
-  HloInstruction* transpose2 = builder.AddInstruction(
-      HloInstruction::CreateTranspose(ShapeUtil::MakeShape(F32, {}), exp1, {}));
+  Shape operand_shape = ShapeUtil::MakeShape(F32, {64, 32});
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, operand_shape, "param0"));
+  HloInstruction* exp1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(operand_shape, HloOpcode::kExp, param));
+  HloInstruction* transpose2 =
+      builder.AddInstruction(HloInstruction::CreateTranspose(
+          ShapeUtil::MakeShape(F32, {32, 64}), exp1, {1, 0}));
 
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());

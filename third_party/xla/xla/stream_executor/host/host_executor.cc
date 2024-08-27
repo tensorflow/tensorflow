@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/stream_executor/host/host_event.h"
 #include "xla/stream_executor/host/host_kernel.h"
 #include "xla/stream_executor/host/host_stream.h"
+#include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"

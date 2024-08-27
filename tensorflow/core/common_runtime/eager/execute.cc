@@ -597,7 +597,7 @@ Status BuildWrappedOpName(EagerOperation* op, const OpDef& opdef,
                            absl::btree_map<string, int>* attr_to_len) {
     for (const auto& arg : args) {
       if (!arg.type_list_attr().empty()) {
-        gtl::InlinedVector<DataType, 4> type_list;
+        absl::InlinedVector<DataType, 4UL> type_list;
         TF_RETURN_IF_ERROR(
             op_attrs->GetTypeList(arg.type_list_attr(), &type_list));
         (*attr_to_len)[arg.type_list_attr()] = type_list.size();
@@ -761,7 +761,7 @@ Status BuildWrappedOpSignature(EagerOperation* op, const OpDef& opdef,
                                absl::flat_hash_set<string>& new_attrs) {
     for (const auto& arg : opdef_args) {
       if (!arg.type_list_attr().empty()) {
-        gtl::InlinedVector<DataType, 4> type_list;
+        absl::InlinedVector<DataType, 4UL> type_list;
         TF_RETURN_IF_ERROR(
             op_attrs->GetTypeList(arg.type_list_attr(), &type_list));
         for (size_t i = 0; i < type_list.size(); i++) {
@@ -822,7 +822,7 @@ Status AddMixedTypeListAttrs(EagerOperation* wrapped_op,
                  absl::flat_hash_map<string, DataType>* attrs_to_add) {
         for (const auto& arg : opdef_args) {
           if (!arg.type_list_attr().empty()) {
-            gtl::InlinedVector<DataType, 4> type_list;
+            absl::InlinedVector<DataType, 4UL> type_list;
             TF_RETURN_IF_ERROR(
                 op_attrs->GetTypeList(arg.type_list_attr(), &type_list));
             for (size_t i = 0; i < type_list.size(); i++) {
@@ -853,7 +853,7 @@ Status PopulateRetMap(FunctionDef* fdef, const AbstractOpAttrs* op_attrs,
   for (size_t i = 0; i < opdef.output_arg_size(); i++) {
     const auto& output_arg = opdef.output_arg(i);
     if (!output_arg.type_list_attr().empty()) {
-      gtl::InlinedVector<DataType, 4> type_list;
+      absl::InlinedVector<DataType, 4UL> type_list;
       TF_RETURN_IF_ERROR(
           op_attrs->GetTypeList(output_arg.type_list_attr(), &type_list));
       for (int j = 0; j < type_list.size(); j++) {

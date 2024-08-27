@@ -60,8 +60,9 @@ TEST(NegOpModel, NegFloat32) {
   NegOpModel m({TensorType_FLOAT32, {2, 3}}, {TensorType_FLOAT32, {2, 3}});
   m.SetInput<float>({-2.0f, -1.0f, 0.f, 1.0f, 2.0f, 3.0f});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput<float>(),
-              ElementsAreArray({2.0f, 1.0f, 0.f, -1.0f, -2.0f, -3.0f}));
+  EXPECT_THAT(
+      m.GetOutput<float>(),
+      Pointwise(FloatingPointEq(), {2.0f, 1.0f, 0.f, -1.0f, -2.0f, -3.0f}));
 }
 
 TEST(NegOpModel, NegFloat16) {

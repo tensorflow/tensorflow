@@ -113,7 +113,9 @@ class IrEmitter::CpuElementalIrEmitter : public ElementalIrEmitter {
  public:
   CpuElementalIrEmitter(const HloModuleConfig& module_config,
                         IrEmitter* ir_emitter, llvm::Module* module)
-      : ElementalIrEmitter(module, ir_emitter->b()),
+      : ElementalIrEmitter(
+            module, ir_emitter->b(),
+            Options{/*xla_cpu_use_truncate_f32_to_bf16_conversion=*/true}),
         hlo_module_config_(module_config),
         ir_emitter_(ir_emitter) {}
 

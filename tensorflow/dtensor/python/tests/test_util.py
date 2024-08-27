@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Utility methods for DTensor testing."""
+
 import collections
 import copy
 import itertools
@@ -22,7 +23,6 @@ import typing
 
 from absl import flags
 from absl.testing import parameterized
-
 import numpy as np
 
 # pylint: disable=g-direct-tensorflow-import
@@ -45,6 +45,9 @@ from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test as tf_test
+from tensorflow.python.util import numpy_compat
+
+
 # pylint: enable=g-direct-tensorflow-import
 
 # DTensor only runs with TF V2.
@@ -76,7 +79,7 @@ def create_device_ids_array(shape):
 
 def create_device_array(shape, device_type):
   device_count = np.prod(shape)
-  return np.asarray([
+  return numpy_compat.np_asarray([
       tf_device.DeviceSpec(  # pylint: disable=g-complex-comprehension
           job='localhost/replica:0/task:0',
           device_type=device_type,

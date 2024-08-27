@@ -31,6 +31,7 @@ cc_library(
     srcs = [
         "ifrt_duplicated_callee_elimination_pass.cc",
         "ifrt_merge_reshards_pass.cc",
+        "ifrt_outline_atom_program_to_module_pass.cc",
         "ifrt_verify_donation_pass.cc",
         "ifrt_verify_sharding_specified_pass.cc",
         "spmd_expandable_interface_verification_pass.cc",
@@ -39,8 +40,8 @@ cc_library(
     hdrs = ["passes.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":constants",
         ":passes_inc_gen",
+        ":utils",
         "//xla/python/ifrt/ir",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
@@ -67,8 +68,14 @@ cc_library(
 )
 
 cc_library(
-    name = "constants",
-    hdrs = ["constants.h"],
+    name = "utils",
+    srcs = ["utils.cc"],
+    hdrs = ["utils.h"],
     compatible_with = get_compatible_with_portable(),
-    deps = ["@llvm-project//llvm:Support"],
+    deps = [
+        "@com_google_absl//absl/log:check",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
 )

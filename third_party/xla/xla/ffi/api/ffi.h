@@ -719,6 +719,10 @@ XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(int8_t, XLA_FFI_DataType_S8);
 XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(int16_t, XLA_FFI_DataType_S16);
 XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(int32_t, XLA_FFI_DataType_S32);
 XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(int64_t, XLA_FFI_DataType_S64);
+XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(uint8_t, XLA_FFI_DataType_U8);
+XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(uint16_t, XLA_FFI_DataType_U16);
+XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(uint32_t, XLA_FFI_DataType_U32);
+XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(uint64_t, XLA_FFI_DataType_U64);
 XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(float, XLA_FFI_DataType_F32);
 XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(double, XLA_FFI_DataType_F64);
 
@@ -799,7 +803,7 @@ namespace internal {
 inline XLA_FFI_Error* CreateError(const XLA_FFI_Api* api, const Error& error) {
   XLA_FFI_Error_Create_Args args;
   args.struct_size = XLA_FFI_Error_Create_Args_STRUCT_SIZE;
-  args.priv = nullptr;
+  args.extension_start = nullptr;
   args.errc = static_cast<XLA_FFI_Error_Code>(*error.errc());
   args.message = error.message().c_str();
   return api->XLA_FFI_Error_Create(&args);
@@ -808,7 +812,7 @@ inline XLA_FFI_Error* CreateError(const XLA_FFI_Api* api, const Error& error) {
 inline void DestroyError(const XLA_FFI_Api* api, XLA_FFI_Error* error) {
   XLA_FFI_Error_Destroy_Args args;
   args.struct_size = XLA_FFI_Error_Destroy_Args_STRUCT_SIZE;
-  args.priv = nullptr;
+  args.extension_start = nullptr;
   args.error = error;
   api->XLA_FFI_Error_Destroy(&args);
 }
@@ -817,7 +821,7 @@ inline const char* GetErrorMessage(const XLA_FFI_Api* api,
                                    XLA_FFI_Error* error) {
   XLA_FFI_Error_GetMessage_Args args;
   args.struct_size = XLA_FFI_Error_GetMessage_Args_STRUCT_SIZE;
-  args.priv = nullptr;
+  args.extension_start = nullptr;
   args.error = error;
   api->XLA_FFI_Error_GetMessage(&args);
   return args.message;
@@ -855,7 +859,7 @@ struct ResultEncoding<ExecutionStage::kInstantiate,
     if (XLA_FFI_PREDICT_TRUE(state.has_value())) {
       XLA_FFI_State_Set_Args args;
       args.struct_size = XLA_FFI_State_Set_Args_STRUCT_SIZE;
-      args.priv = nullptr;
+      args.extension_start = nullptr;
       args.ctx = ctx;
       args.type_id = &T::id;
       args.state = state.value().release();
@@ -889,7 +893,7 @@ struct CtxDecoding<PlatformStream<T>> {
                                     DiagnosticEngine& diagnostic) {
     XLA_FFI_Stream_Get_Args args;
     args.struct_size = XLA_FFI_Stream_Get_Args_STRUCT_SIZE;
-    args.priv = nullptr;
+    args.extension_start = nullptr;
     args.ctx = ctx;
     args.stream = nullptr;
 
@@ -957,7 +961,7 @@ inline std::optional<void*> ScratchAllocator::Allocate(size_t size,
                                                        size_t alignment) {
   XLA_FFI_DeviceMemory_Allocate_Args args;
   args.struct_size = XLA_FFI_DeviceMemory_Allocate_Args_STRUCT_SIZE;
-  args.priv = nullptr;
+  args.extension_start = nullptr;
   args.ctx = ctx_;
   args.size = size;
   args.alignment = alignment;
@@ -981,7 +985,7 @@ inline ScratchAllocator::~ScratchAllocator() {
   for (Allocation& alloc : allocations_) {
     XLA_FFI_DeviceMemory_Free_Args args;
     args.struct_size = XLA_FFI_DeviceMemory_Free_Args_STRUCT_SIZE;
-    args.priv = nullptr;
+    args.extension_start = nullptr;
     args.ctx = ctx_;
     args.size = alloc.size;
     args.data = alloc.data;
@@ -1004,7 +1008,7 @@ inline XLA_FFI_Error* RegisterType(const XLA_FFI_Api* api,
                                    XLA_FFI_TypeId* type_id) {
   XLA_FFI_TypeId_Register_Args args;
   args.struct_size = XLA_FFI_TypeId_Register_Args_STRUCT_SIZE;
-  args.priv = nullptr;
+  args.extension_start = nullptr;
   args.name = XLA_FFI_ByteSpan{name.data(), name.size()};
   args.type_id = type_id;
   return api->XLA_FFI_TypeId_Register(&args);
@@ -1047,7 +1051,7 @@ struct CtxDecoding<UserData<T>> {
                                     DiagnosticEngine& diagnostic) {
     XLA_FFI_ExecutionContext_Get_Args args;
     args.struct_size = XLA_FFI_ExecutionContext_Get_Args_STRUCT_SIZE;
-    args.priv = nullptr;
+    args.extension_start = nullptr;
     args.ctx = ctx;
     args.type_id = &T::id;
     args.data = nullptr;
@@ -1090,7 +1094,7 @@ struct CtxDecoding<State<T>> {
                                     DiagnosticEngine& diagnostic) {
     XLA_FFI_State_Get_Args args;
     args.struct_size = XLA_FFI_State_Get_Args_STRUCT_SIZE;
-    args.priv = nullptr;
+    args.extension_start = nullptr;
     args.ctx = ctx;
     args.type_id = &T::id;
     args.state = nullptr;

@@ -39,9 +39,9 @@ bazel build --config=cuda <target> \
 --repo_env=HERMETIC_CUDA_VERSION="12.3.2" \
 --repo_env=HERMETIC_CUDNN_VERSION="9.1.1"
 
-# OR set the environment variable globally in your shell:
+# If .bazelrc doesn't have corresponding entries and the environment variables
+# are not passed to bazel command, you can set them globally in your shell:
 export HERMETIC_CUDA_VERSION="12.3.2"
-export LOCAL_CUDNN_PATH="/foo/bar/nvidia/cudnn"
 export HERMETIC_CUDNN_VERSION="9.1.1"
 ```
 
@@ -104,7 +104,8 @@ bazel build --config=cuda <target> \
 --repo_env=LOCAL_CUDNN_PATH="/foo/bar/nvidia/cudnn" \
 --repo_env=LOCAL_NCCL_PATH="/foo/bar/nvidia/nccl"
 
-# OR set the environment variable globally in your shell:
+# If .bazelrc doesn't have corresponding entries and the environment variables
+# are not passed to bazel command, you can set them globally in your shell:
 export LOCAL_CUDA_PATH="/foo/bar/nvidia/cuda"
 export LOCAL_CUDNN_PATH="/foo/bar/nvidia/cudnn"
 export LOCAL_NCCL_PATH="/foo/bar/nvidia/nccl"
@@ -532,12 +533,12 @@ projects:
    build:cuda --repo_env=HERMETIC_CUDA_COMPUTE_CAPABILITIES="sm_50,sm_60,sm_70,sm_80,compute_90"
    ```
 
-3. To enable Hermetic CUDA during test execution, or when running a binary via
-   bazel, make sure to add `--@local_config_cuda//cuda:include_hermetic_cuda_libs=true`
+3. To enable hermetic CUDA during test execution, or when running a binary via
+   bazel, make sure to add `--@local_config_cuda//cuda:include_cuda_libs=true`
    flag to your bazel command. You can provide it either directly in a shell or
    in `.bazelrc`:
    ```
-   test:cuda --@local_config_cuda//cuda:include_hermetic_cuda_libs=true
+   build:cuda --@local_config_cuda//cuda:include_cuda_libs=true
    ```
    The flag is needed to make sure that CUDA dependencies are properly provided
    to test executables. The flag is false by default to avoid unwanted coupling

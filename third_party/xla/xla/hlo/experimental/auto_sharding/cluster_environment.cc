@@ -195,7 +195,7 @@ double ClusterEnvironment::CollectivePermuteCost(
 // operation as an all-gather on all mesh dimensions.
 double ClusterEnvironment::OverestimateReplicationCost(
     const Shape& shape, const HloSharding& src_spec,
-    const Array<int64_t>& device_mesh) const {
+    const DeviceMesh& device_mesh) const {
   if (src_spec.IsTileMaximal() || src_spec.IsManual()) {
     // TODO(b/238210866) Do not use kInfinityCost.
     return kInfinityCost;

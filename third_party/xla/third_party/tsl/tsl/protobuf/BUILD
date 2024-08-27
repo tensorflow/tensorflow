@@ -21,13 +21,6 @@ package(
 )
 
 tf_proto_library(
-    name = "bfc_memory_map_proto",
-    srcs = ["bfc_memory_map.proto"],
-    make_default_target_header_only = True,
-    visibility = ["//visibility:public"],
-)
-
-tf_proto_library(
     name = "dnn_proto",
     srcs = ["dnn.proto"],
     make_default_target_header_only = True,
@@ -123,7 +116,7 @@ tf_proto_library(
     protodeps = [
         # TODO(tlongeri): Conceptually, these fit into protos_all but adding them currently causes
         # breakages (and they are not actually used).
-        ":bfc_memory_map_proto",
+        "@local_xla//xla/tsl/protobuf:bfc_memory_map_proto",
         ":coordination_config_proto",
         ":distributed_runtime_payloads_proto",
         ":error_codes_proto_impl",
