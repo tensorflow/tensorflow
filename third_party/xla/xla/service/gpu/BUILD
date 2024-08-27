@@ -2734,7 +2734,7 @@ xla_test(
         "gpu_amd_any",
     ],
     tags = [
-        "nomac",
+        "no_mac",
     ],
     deps = [
         "//xla:shape_util",

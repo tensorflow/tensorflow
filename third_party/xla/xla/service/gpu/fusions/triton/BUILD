@@ -201,8 +201,8 @@ xla_test(
     ],
     shard_count = 20,
     tags = [
+        "no_mac",
         "no_rocm",
-        "nomac",
     ],
     deps = [
         ":triton_fusion_emitter",
@@ -252,8 +252,8 @@ xla_test(
         "gpu_amd_any",
     ],
     tags = [
+        "no_mac",
         "no_rocm",
-        "nomac",
     ],
     deps = [
         ":triton_fusion_emitter",
@@ -361,8 +361,8 @@ xla_test(
     ],
     tags = [
         "large",
+        "no_mac",
         "no_oss",  # requires-mem:16g tag doesn't work in open source
-        "nomac",
         "nozapfhahn",  # Times out under coverage
         "requires-mem:16g",
     ],
@@ -386,7 +386,7 @@ xla_test(
         "gpu_amd_any",
     ],
     shard_count = 10,
-    tags = ["nomac"],
+    tags = ["no_mac"],
     deps = [
         ":triton_support",
         "//xla:comparison_util",
@@ -472,7 +472,7 @@ xla_test(
         "gpu_h100",
         "gpu_amd_any",
     ],
-    tags = ["nomac"],
+    tags = ["no_mac"],
     deps = [
         ":triton_fusion_emitter",
         ":triton_support",

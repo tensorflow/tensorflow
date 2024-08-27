@@ -1746,7 +1746,7 @@ xla_test(
     srcs = ["select_and_scatter_test.cc"],
     shard_count = 25,
     tags = [
-        "nomac",  # b/194731834
+        "no_mac",  # b/194731834
         "nozapfhahn",
         "optonly",
         "test_xla_cpu_thunks",
@@ -2059,8 +2059,8 @@ xla_test(
     shard_count = 20,
     # TODO(b/148276347) The test fails on macOS.
     tags = [
+        "no_mac",
         "noasan",
-        "nomac",
         "nosan",
         "test_xla_cpu_thunks",
     ],

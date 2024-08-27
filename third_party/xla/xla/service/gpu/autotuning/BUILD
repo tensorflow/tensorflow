@@ -109,8 +109,8 @@ xla_test(
         "gpu",
     ],
     tags = [
+        "no_mac",
         "no_rocm",
-        "nomac",
     ],
     deps = [
         ":autotuner_compile_util",
