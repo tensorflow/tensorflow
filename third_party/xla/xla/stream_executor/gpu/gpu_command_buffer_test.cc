@@ -1137,6 +1137,89 @@ TEST(GpuCommandBufferTest, ConditionalWhile) {
   ASSERT_EQ(dst, expected);
 }
 
+// TODO(b/339653343): Re-enable when not failing.
+TEST(GpuCommandBufferTest, DISABLED_WhileNestedConditional) {
+  if (!IsAtLeastCuda12300()) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
+
+  Platform* platform = GpuPlatform();
+  StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+
+  // Load addition kernel.
+  MultiKernelLoaderSpec add_spec(/*arity=*/3);
+  add_spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
+  TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor, add_spec));
+
+  // Load inc_and_cmp kernel.
+  MultiKernelLoaderSpec icmp_spec(/*arity=*/3);
+  icmp_spec.AddInProcessSymbol(internal::GetIncAndCmpKernel(), "IncAndCmp");
+  TF_ASSERT_OK_AND_ASSIGN(auto inc_and_cmp,
+                          IncAndCmpKernel::Create(executor, icmp_spec));
+
+  int64_t length = 4;
+  int64_t byte_length = sizeof(int32_t) * length;
+
+  // Prepare arguments: a=1, b=0, loop_counter=0, pred=false
+  // Value of `pred` is not important, as it will be updated by `cond_builder`
+  // below.
+  DeviceMemory<bool> pred = executor->AllocateArray<bool>(1, 0);
+  DeviceMemory<bool> pred_then = executor->AllocateArray<bool>(1, 0);
+  DeviceMemory<int32_t> loop_counter = executor->AllocateArray<int32_t>(1, 0);
+  DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+  DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
+
+  static constexpr bool kFalse = false;
+  static constexpr bool kTrue = true;
+  TF_ASSERT_OK(stream->Memcpy(&pred, &kFalse, 1));
+  TF_ASSERT_OK(stream->Memcpy(&pred_then, &kTrue, 1));
+  TF_ASSERT_OK(stream->Memset32(&loop_counter, 0, sizeof(int32_t)));
+  TF_ASSERT_OK(stream->Memset32(&a, 1, byte_length));
+  TF_ASSERT_OK(stream->MemZero(&b, byte_length));
+
+  int32_t num_iters = 10;
+
+  CommandBuffer::Builder then_builder =
+      // Then body: b = a + b
+      [&](CommandBuffer* then_cmd) {
+        return then_cmd->Launch(add, ThreadDim(), BlockDim(length), a, b, b);
+      };
+
+  auto nested_cmd = executor->CreateCommandBuffer(nested).value();
+  // TODO(b/339653343): Adding this If condition causes AddNestedCommandBuffer
+  // to fail.
+  TF_ASSERT_OK(nested_cmd->If(pred_then, then_builder));
+
+  // Loop cond: loop_counter++ < num_iters;
+  CommandBuffer::ExecutionScopeBuilder cond_builder =
+      [&](ExecutionScopeId id, CommandBuffer* cond_cmd) {
+        return cond_cmd->Launch(inc_and_cmp, id, ThreadDim(), BlockDim(length),
+                                loop_counter, pred, num_iters);
+      };
+
+  CommandBuffer::Builder body_builder =
+      [&](CommandBuffer* body_cmd) -> absl::Status {
+    CHECK_OK(body_cmd->AddNestedCommandBuffer(*nested_cmd));
+    return absl::OkStatus();
+  };
+
+  // Create a command buffer with a single conditional operation.
+  auto cmd_buffer = executor->CreateCommandBuffer(primary).value();
+  TF_ASSERT_OK(cmd_buffer->While(pred, cond_builder, body_builder));
+  TF_ASSERT_OK(cmd_buffer->Finalize());
+
+  TF_ASSERT_OK(cmd_buffer->Submit(stream.get()));
+
+  // Copy `b` data back to host.
+  std::vector<int32_t> dst(4, 42);
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), b, byte_length));
+
+  std::vector<int32_t> expected = {10, 10, 10, 10};
+  ASSERT_EQ(dst, expected);
+}
+
 TEST(GpuCommandBufferTest, ConditionalIfInExecutionScope) {
   if (!IsAtLeastCuda12300()) {
     GTEST_SKIP() << "CUDA graph conditionals are not supported";
