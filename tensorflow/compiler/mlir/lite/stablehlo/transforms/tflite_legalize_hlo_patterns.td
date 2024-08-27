@@ -232,6 +232,7 @@ foreach pair = [
 // Binary ops with fused activiation attr.
 foreach pair = [
   [MHLO_DivOp, TFL_DivOp],
+  [MHLO_AddOp, TFL_AddOp],
   [MHLO_MulOp, TFL_MulOp],
   [MHLO_SubtractOp, TFL_SubOp],
 ] in {

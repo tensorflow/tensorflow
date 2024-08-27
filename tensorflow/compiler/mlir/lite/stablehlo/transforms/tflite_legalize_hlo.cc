@@ -294,7 +294,6 @@ void AddRoundingOpsAsUnknown(ConversionTarget& target) {
   target.addDynamicallyLegalOp<
       // go/keep-sorted start
       // clang-format off
-      mhlo::AddOp,
       mhlo::ConstantOp,
       mhlo::FloorOp,
       mhlo::MulOp,
@@ -378,6 +377,7 @@ void LegalizeHloToTfLitePass::runOnOperation() {
   target.addIllegalOp<
       // go/keep-sorted start
       // clang-format off
+      mhlo::AddOp,
       mhlo::Atan2Op,
       mhlo::BroadcastInDimOp,
       mhlo::ClampOp,
