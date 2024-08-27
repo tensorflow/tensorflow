@@ -368,7 +368,9 @@ def XLAGPU_MaterializeOp : XLAGPU_Op<"materialize", [AttrSizedOperandSegments]> 
   }];
 }
 
-def XLAGPU_InsertOp : XLAGPU_Op<"insert", []> {
+def XLAGPU_InsertOp : XLAGPU_Op<"insert", [TypesMatchWith<
+                   "expected result type to match dest type",
+                   "result", "dest", "$_self">]> {
   let summary = "Inserts an indexed vector into a tensor";
   let arguments = (ins XLAGPU_IndexedVectorType:$source,
                        Variadic<Index>:$indices,
@@ -376,7 +378,7 @@ def XLAGPU_InsertOp : XLAGPU_Op<"insert", []> {
                        XLAGPU_IndexingMapAttr:$map);
   let results = (outs AnyRankedTensor:$result);
   let assemblyFormat = [{
-    $source `into` $dest `at` $map `(` $indices `)` attr-dict `:` type($source) `->` type($dest) `into` type($result)
+    $source `into` $dest `at` $map `(` $indices `)` attr-dict `:` type($source) `->` type($result)
   }];
 }
 
