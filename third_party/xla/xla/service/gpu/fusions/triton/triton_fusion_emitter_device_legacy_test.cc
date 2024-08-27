@@ -138,6 +138,66 @@ class TritonGemmTestWithoutTritonGemmAny : public TritonGemmTest {
   }
 };
 
+TEST_F(TritonGemmTest, LHSInt4WithMinorDimEqualTo1) {
+  // We prove that triton can handle int4 dot with non contracting dim size
+  // equal to 1.
+  const std::string kHloText = R"(
+    HloModule t
+
+    triton_computation {
+      lhs = s4[16,32,1]{2,1,0} parameter(0)
+      lhs_converted = bf16[16,32,1]{2,1,0} convert(lhs)
+      rhs = bf16[16,64,32]{2,1,0} parameter(1)
+      ROOT dot = bf16[16,1,64]{2,1,0} dot(lhs_converted, rhs),
+          lhs_contracting_dims={1},
+          rhs_contracting_dims={2},
+          lhs_batch_dims={0},
+          rhs_batch_dims={0}
+    }
+
+    ENTRY main {
+      lhs = s4[16,32,1]{2,1,0} parameter(0)
+      rhs = bf16[16,64,32]{2,1,0} parameter(1)
+      ROOT dot = bf16[16,1,64]{2,1,0} fusion(lhs, rhs), kind=kCustom,
+        calls=triton_computation,
+        backend_config={"fusion_backend_config": {"kind":"__triton_gemm"}}
+    }
+  )";
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_F(TritonGemmTest, RHSInt4WithMinorDimEqualTo1) {
+  // We prove that triton can handle int4 dot with non contracting dim size
+  // equal to 1.
+  const std::string kHloText = R"(
+    HloModule t
+
+    triton_computation {
+      lhs = bf16[16,32,64]{2,1,0} parameter(0)
+      rhs = s4[16,32,1]{2,1,0} parameter(1)
+      rhs_converted = bf16[16,32,1]{2,1,0} convert(rhs)
+      ROOT dot = bf16[16,64,1]{2,1,0} dot(lhs, rhs_converted),
+          lhs_contracting_dims={1},
+          rhs_contracting_dims={1},
+          lhs_batch_dims={0},
+          rhs_batch_dims={0}
+    }
+
+    ENTRY main {
+      lhs = bf16[16,32,64]{2,1,0} parameter(0)
+      rhs = s4[16,32,1]{2,1,0} parameter(1)
+      ROOT dot = bf16[16,64,1]{2,1,0} fusion(lhs, rhs), kind=kCustom,
+        calls=triton_computation,
+        backend_config={"fusion_backend_config": {"kind":"__triton_gemm"}}
+    }
+  )";
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
 TEST_F(TritonGemmTest, LHSInt4NonMinorContractingDim) {
   // We prove that triton can handle int4 dot with non minor
   // lhs_contracting_dim.

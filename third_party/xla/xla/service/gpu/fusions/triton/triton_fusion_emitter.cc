@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/fusions/triton/triton_fusion_emitter.h"
 
+#include <algorithm>
 #include <array>
 #include <climits>
 #include <cstddef>
@@ -1065,11 +1066,11 @@ absl::StatusOr<Value> EmitUnpackInt4(ImplicitLocOpBuilder& b,
   Value lo = b.create<ma::ShRSIOp>(b.create<ma::ShLIOp>(value, shift4), shift4);
   Value hi = b.create<ma::ShRSIOp>(value, shift4);
   Value result = b.create<mt::JoinOp>(hi, lo);
-  SmallVector<int64_t> result_shape(input_type.getShape());
-  result_shape[side.unpack_dim_idx] *= 2;
   if (side.unpack_dim_idx == 0) {
     result = b.create<mt::TransOp>(result, b.getDenseI32ArrayAttr({0, 2, 1}));
   }
+  SmallVector<int64_t> result_shape(input_type.getShape());
+  result_shape[side.unpack_dim_idx] *= 2;
   auto type = mlir::RankedTensorType::get(result_shape, b.getI8Type());
   return b.create<mt::ReshapeOp>(type, result, /*allow_reorder=*/false);
 }
@@ -1760,18 +1761,32 @@ class MatMulEmitterHelper {
       } else {
         tensor_offsets.push_back(Cst32(specs.front()->at(0).slice_start));
         block_offsets.push_back(pid_offset);
-        int64_t count = specs.front()->at(0).count;
+        int64_t dim_bound = specs.front()->at(0).count;
         if (side.scope == TritonFusionAnalysis::Scope::OUTPUT &&
             properties.index == dims_.out_lhs_noncontracting_dim_idx &&
             specs.front()->size() == 1 &&
             dims_.lhs_noncontracting_split.has_value()) {
           // Dimension of the output produced by the non-contracting LHS one
           // is logically split, major part is addressed using pid_batch.
-          count /= *dims_.lhs_noncontracting_split;
+          dim_bound /= *dims_.lhs_noncontracting_split;
         }
-        bounds.push_back(Cst64(count));
-        if (count % (properties.block_size * properties.split_value) != 0) {
+        bounds.push_back(Cst64(dim_bound));
+        if (dim_bound % (properties.block_size * properties.split_value) != 0) {
           boundary_checks.push_back(bounds.size() - 1);
+        }
+        if (hlo->shape().element_type() == PrimitiveType::S4) {
+          // For s4 type we need to divide the minor dim bound by 2 because it
+          // is the packing dimension. But if the minor dim has length == 1 then
+          // the major dim stride is also 1 and it is the packing dimension.
+          if (strides_sizes.back() == 1) {
+            // For the odd bounds we need to add 1 in advance.
+            // Otherwise we will loose the last element.
+            bounds[bounds.size() - 1] = Cst64((dim_bound + 1) / 2);
+          } else {
+            int last_stride_index = strides.size() - 1;
+            strides[last_stride_index] =
+                b_.create<ma::DivSIOp>(strides[last_stride_index], Cst64(2));
+          }
         }
       }
       block_dims.push_back(properties.block_size);
@@ -1833,18 +1848,6 @@ class MatMulEmitterHelper {
     if (block_dims.empty()) {
       // Load of a scalar.
       return base;
-    }
-    if (hlo->shape().element_type() == PrimitiveType::S4) {
-      // Divide the stride by 2 for S4 inputs except for the minor dimension.
-      for (int i = 0; i < strides.size(); ++i) {
-        // We assume that the pack happens along the minor dimension.
-        if (strides_sizes[i] == 1) {  // minor dimension
-          auto s4_bound = b_.create<ma::DivSIOp>(bounds[i], Cst64(2));
-          bounds[i] = s4_bound;
-          continue;
-        }
-        strides[i] = b_.create<ma::DivSIOp>(strides[i], Cst64(2));
-      }
     }
     auto tensor_ptr = mlir::cast<Value>(
         b_.create<mt::MakeTensorPtrOp>(base, bounds, strides, tensor_offsets,
@@ -2167,9 +2170,10 @@ absl::Status CheckGemmTilingComplexityHeuristic(
 
 class Scopes {
  public:
-  Scopes(ImplicitLocOpBuilder& b, const TritonFusionAnalysis& analysis,
-         const MatMulDims& dims, const TritonGemmConfig& config,
-         const MatMulLaunchConfig launch_config, bool is_sparse)
+  Scopes(ImplicitLocOpBuilder& b, const HloInstruction* dot_instr,
+         const TritonFusionAnalysis& analysis, const MatMulDims& dims,
+         const TritonGemmConfig& config, const MatMulLaunchConfig launch_config,
+         bool is_sparse)
       : lhs_(TritonFusionAnalysis::Scope::LHS),
         rhs_(TritonFusionAnalysis::Scope::RHS),
         out_(TritonFusionAnalysis::Scope::OUTPUT) {
@@ -2200,16 +2204,28 @@ class Scopes {
 
     int lhs_non_contracting_block_size = config.block_m;
     int lhs_contracting_block_size = config.block_k;
-    int lhs_unpack_dim_idx = 0;
+    int lhs_unpack_bound_idx = 0;
     if (is_int4_param(analysis, TritonFusionAnalysis::Scope::LHS)) {
-      if (dims.lhs_contracting_dim_idx > dims.lhs_noncontracting_dim_idx) {
+      auto minor_dim = std::max(dims.lhs_contracting_dim_idx,
+                                dims.lhs_noncontracting_dim_idx);
+      auto minor_bound = analysis
+                             .IterSpec(TritonFusionAnalysis::Scope::LHS,
+                                       dot_instr->operand(0), minor_dim)
+                             ->at(0)
+                             .count;
+      if (minor_bound ==
+          1) {  // Assuming that the contracting dimension is major.
+        lhs_contracting_block_size /= 2;
+        lhs_unpack_bound_idx = 1;
+      } else if (dims.lhs_contracting_dim_idx >
+                 dims.lhs_noncontracting_dim_idx) {
         // lhs is int4 and the contracting dimension is minor.
         lhs_contracting_block_size /= 2;
-        lhs_unpack_dim_idx = 1;
+        lhs_unpack_bound_idx = 1;
       } else {
         // lhs is int4 and the contracting dimension is major.
         lhs_non_contracting_block_size /= 2;
-        lhs_unpack_dim_idx = 0;
+        lhs_unpack_bound_idx = 0;
       }
     }
     if (is_sparse) {
@@ -2222,20 +2238,30 @@ class Scopes {
         DimProperties(dims.lhs_contracting_dim_idx, pid_k_,
                       lhs_contracting_block_size, config.split_k)};
     lhs_.batch_dim_idx = dims.lhs_batch_dim_idx;
-    lhs_.unpack_dim_idx = lhs_unpack_dim_idx;
+    lhs_.unpack_dim_idx = lhs_unpack_bound_idx;
 
     int rhs_contracting_block_size = config.block_k;
     int rhs_non_contracting_block_size = config.block_n;
-    int rhs_unpack_dim_idx = 0;
+    int rhs_unpack_bound_idx = 0;
     if (is_int4_param(analysis, TritonFusionAnalysis::Scope::RHS)) {
-      if (dims.rhs_contracting_dim_idx > dims.rhs_noncontracting_dim_idx) {
+      auto minor_dim = std::max(dims.rhs_contracting_dim_idx,
+                                dims.rhs_noncontracting_dim_idx);
+      auto minor_bound = analysis
+                             .IterSpec(TritonFusionAnalysis::Scope::RHS,
+                                       dot_instr->operand(1), minor_dim)
+                             ->at(0)
+                             .count;
+
+      if (minor_bound == 1) {  // rhs is int4 and the _minor_ bound is 1.
+        rhs_contracting_block_size /= 2;
+      } else if (dims.rhs_contracting_dim_idx >
+                 dims.rhs_noncontracting_dim_idx) {
         // rhs is int4 and the contracting dimension is minor.
         rhs_contracting_block_size /= 2;
-        rhs_unpack_dim_idx = 0;
       } else {
         // rhs is int4 and the contracting dimension is major.
         rhs_non_contracting_block_size /= 2;
-        rhs_unpack_dim_idx = 1;
+        rhs_unpack_bound_idx = 1;
       }
     }
     rhs_.tiled_dims = {
@@ -2245,7 +2271,7 @@ class Scopes {
                       rhs_non_contracting_block_size,
                       /*split_value=*/1)};
     rhs_.batch_dim_idx = dims.rhs_batch_dim_idx;
-    rhs_.unpack_dim_idx = rhs_unpack_dim_idx;
+    rhs_.unpack_dim_idx = rhs_unpack_bound_idx;
 
     out_.tiled_dims = {DimProperties(dims.out_lhs_noncontracting_dim_idx,
                                      pid_m_, config.block_m,
@@ -2394,7 +2420,7 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
   absl::flat_hash_map<int, std::vector<int32_t>> iter_args_to_boundary_checks;
 
   // Calculate the sizes of the lhs, rhs, meta, and output sides.
-  Scopes scopes(b, analysis, dims, config, launch_config, is_sparse);
+  Scopes scopes(b, dot_instr, analysis, dims, config, launch_config, is_sparse);
 
   auto c32 = [&](int64_t v) { return CreateConst(b, b.getI32Type(), v); };
 
