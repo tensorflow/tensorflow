@@ -375,8 +375,6 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
                   std::vector<nb::object>& keep_alive_objects) {
   const auto& addressable_devices =
       executable.ifrt_loaded_executable()->addressable_devices();
-  const auto& num_global_devices =
-      executable.ifrt_loaded_executable()->num_devices();
   int num_args = flat_dynamic_args.size();
 
   std::vector<tsl::RCReference<xla::ifrt::Array>> num_args_arrays;
@@ -469,7 +467,7 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
       continue;
     }
 
-    if (py_array.num_shards() != num_global_devices) {
+    if (py_array.num_shards() != addressable_devices.size()) {
       CHECK(in_device_local_layout.is_none());
       CallShardArgFallback(arg.ptr(), in_shardings[dce_index],
                            in_device_local_layout, shard_arg_fallback,
