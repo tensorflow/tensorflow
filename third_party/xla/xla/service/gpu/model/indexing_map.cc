@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <cassert>
-#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <numeric>
@@ -25,6 +24,7 @@ limitations under the License.
 #include <ostream>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -36,6 +36,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/AffineExpr.h"
@@ -779,6 +780,50 @@ SmallVector<AffineExpr, 4> MapSymbolsToComposedSymbolsList(
 }
 
 }  // namespace
+
+static constexpr std::string_view kVarKindDefault = "default";
+static constexpr std::string_view kVarKindThreadX = "thread_x";
+static constexpr std::string_view kVarKindThreadY = "thread_y";
+static constexpr std::string_view kVarKindThreadZ = "thread_z";
+static constexpr std::string_view kVarKindBlockX = "block_x";
+static constexpr std::string_view kVarKindBlockY = "block_y";
+static constexpr std::string_view kVarKindBlockZ = "block_z";
+
+std::string_view ToString(VariableKind type) {
+  switch (type) {
+    case VariableKind::kDefault:
+      return kVarKindDefault;
+    case VariableKind::kThreadX:
+      return kVarKindThreadX;
+    case VariableKind::kThreadY:
+      return kVarKindThreadY;
+    case VariableKind::kThreadZ:
+      return kVarKindThreadZ;
+    case VariableKind::kBlockX:
+      return kVarKindBlockX;
+    case VariableKind::kBlockY:
+      return kVarKindBlockY;
+    case VariableKind::kBlockZ:
+      return kVarKindBlockZ;
+  }
+  llvm_unreachable("Unknown VariableType");
+}
+
+VariableKind ToVariableType(std::string_view type_name) {
+  if (type_name == kVarKindDefault) return VariableKind::kDefault;
+  if (type_name == kVarKindThreadX) return VariableKind::kThreadX;
+  if (type_name == kVarKindThreadY) return VariableKind::kThreadY;
+  if (type_name == kVarKindThreadZ) return VariableKind::kThreadZ;
+  if (type_name == kVarKindBlockX) return VariableKind::kBlockX;
+  if (type_name == kVarKindBlockY) return VariableKind::kBlockY;
+  if (type_name == kVarKindBlockZ) return VariableKind::kBlockZ;
+  llvm_unreachable("Unknown VariableType name");
+}
+
+std::ostream& operator<<(std::ostream& out, VariableKind var_type) {
+  out << ToString(var_type);
+  return out;
+}
 
 // Returns the output-to-input indexing map of the first output of `instr`
 IndexingMap GetIndexingMapForInstruction(const HloInstruction* instr,

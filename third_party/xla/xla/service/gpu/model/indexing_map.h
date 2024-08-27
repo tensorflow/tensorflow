@@ -23,6 +23,7 @@ limitations under the License.
 #include <optional>
 #include <ostream>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -31,6 +32,7 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
@@ -40,6 +42,22 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+
+enum class VariableKind : char {
+  kDefault = 0,
+  // GPU Block IDs.
+  kBlockX,
+  kBlockY,
+  kBlockZ,
+  // GPU Thread IDs.
+  kThreadX,
+  kThreadY,
+  kThreadZ,
+};
+
+std::string_view ToString(VariableKind type);
+VariableKind ToVariableType(std::string_view type_name);
+std::ostream& operator<<(std::ostream& out, VariableKind var_type);
 
 // Interval represents a closed interval [lower_bound, upper_bound].
 struct Interval {
