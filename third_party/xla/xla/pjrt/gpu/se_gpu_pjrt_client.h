@@ -76,13 +76,10 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
 
   StreamExecutorGpuTopologyDescription(
       const PjRtPlatformId platform_id, const absl::string_view platform_name,
-      std::shared_ptr<const GpuTopology> gpu_topology,
-      const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& attributes =
-          {})
+      std::shared_ptr<const GpuTopology> gpu_topology)
       : platform_id_(platform_id),
         platform_name_(platform_name),
-        gpu_topology_(std::move(gpu_topology)),
-        attributes_(attributes) {}
+        gpu_topology_(std::move(gpu_topology)) {}
 
   bool operator==(const StreamExecutorGpuTopologyDescription& other) const {
     return this->platform_id() == other.platform_id() &&
@@ -141,7 +138,9 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
   // Returns vendor specific attributes about the topology.
   const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
       const override {
-    return attributes_;
+    static absl::flat_hash_map<std::string, PjRtDeviceAttribute>* empty =
+        new absl::flat_hash_map<std::string, PjRtDeviceAttribute>();
+    return *empty;
   }
 
   absl::StatusOr<Layout> GetDefaultLayout(
@@ -152,7 +151,6 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
   const PjRtPlatformId platform_id_;
   const std::string platform_name_;
   std::shared_ptr<const GpuTopology> gpu_topology_;
-  absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute> attributes_;
 };
 
 class StreamExecutorGpuDevice : public PjRtStreamExecutorDevice {

@@ -205,10 +205,7 @@ PJRT_Error* PJRT_GpuDeviceTopology_Create(
 
   auto pjrt_topology =
       std::make_unique<xla::StreamExecutorGpuTopologyDescription>(
-          platform_id, platform_name, std::move(gpu_topology),
-          absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute>{
-              {"target_config",
-               gpu_target_config.ToProto().SerializeAsString()}});
+          platform_id, platform_name, std::move(gpu_topology));
   args->topology = CreateWrapperDeviceTopology(std::move(pjrt_topology));
   return nullptr;
 }
