@@ -402,11 +402,13 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
         return tf.quantization.fake_quant_with_min_max_args(x, -3.0, 3.0)
 
     x = _FakeQuantArgsLayer()(input_tensor)
-    x = tf.keras.layers.Conv2D(1, (3, 3))(x)
+    x = tf.keras.layers.Conv2D(1, (3, 3), bias_initializer='ones')(x)
     x = _FakeQuantArgsLayer()(x)
     # Exclude the quantization of the following Dense layer by not putting
     # fake quant layer after the dense layer.
-    output_tensor = tf.keras.layers.Dense(1, activation='sigmoid')(x)
+    output_tensor = tf.keras.layers.Dense(
+        1, activation='sigmoid', bias_initializer='ones'
+    )(x)
     model = tf.keras.Model(input_tensor, output_tensor)
     model.save(saved_model_dir)
     return saved_model_dir
@@ -3025,9 +3027,11 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
   ):
     num_filters = 1024
     conv_name = 'sequential/conv2d/Conv2D'
-    model = tf.keras.models.Sequential(
-        [tf.keras.layers.Conv2D(num_filters, (3, 3), activation='relu')]
-    )
+    model = tf.keras.models.Sequential([
+        tf.keras.layers.Conv2D(
+            num_filters, (3, 3), activation='relu', bias_initializer='ones'
+        )
+    ])
     model.build(input_shape=(1, 32, 32, 3))
     saved_model_dir = self.create_tempdir()
     save.save(model, saved_model_dir.full_path)
@@ -3376,7 +3380,9 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
     conv_name = 'sequential/conv2d/Conv2D'
     model = tf.keras.models.Sequential([
         tf.keras.Input(shape=(32, 32, 3)),
-        tf.keras.layers.Conv2D(num_filters, (3, 3), activation='relu'),
+        tf.keras.layers.Conv2D(
+            num_filters, (3, 3), activation='relu', bias_initializer='ones'
+        ),
     ])
     model.build()
 

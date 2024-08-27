@@ -509,6 +509,74 @@ func.func @add_dense_dense_float_mixfng_1_n() -> tensor<2x2xf32> {
 // CHECK:  return %[[CST]]
 }
 
+// CHECK-LABEL: @add_zero
+func.func @add_zero(%arg0: tensor<4xi32>, %arg1: tensor<4xf32>) -> (tensor<4xi32>, tensor<4xf32>) {
+  %zero_int = arith.constant dense<0> : tensor<4xi32>
+  %zero_float = arith.constant dense<0.0> : tensor<4xf32>
+
+  // CHECK-NOT: tfl.add
+  // CHECK: return %arg0, %arg1
+
+  %0 = "tfl.add"(%arg0, %zero_int) {fused_activation_function = "NONE"} : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  %1 = "tfl.add"(%arg1, %zero_float) {fused_activation_function = "NONE"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+
+  func.return %0, %1 : tensor<4xi32>, tensor<4xf32>
+}
+
+// CHECK-LABEL: @add_zero_broadcast
+func.func @add_zero_broadcast(%arg0: tensor<4xi32>, %arg1: tensor<4xf32>) -> (tensor<4xi32>, tensor<4xf32>) {
+  %zero_int = arith.constant dense<0> : tensor<1xi32>
+  %zero_float = arith.constant dense<0.0> : tensor<1xf32>
+
+  // CHECK-NOT: tfl.add
+  // CHECK: return %arg0, %arg1
+
+  %0 = "tfl.add"(%arg0, %zero_int) {fused_activation_function = "NONE"} : (tensor<4xi32>, tensor<1xi32>) -> tensor<4xi32>
+  %1 = "tfl.add"(%arg1, %zero_float) {fused_activation_function = "NONE"} : (tensor<4xf32>, tensor<1xf32>) -> tensor<4xf32>
+
+  func.return %0, %1 : tensor<4xi32>, tensor<4xf32>
+}
+
+// CHECK-LABEL: @add_zero_dynamic
+func.func @add_zero_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<?xf32>) -> (tensor<?xi32>, tensor<?xf32>) {
+  %zero_int = arith.constant dense<0> : tensor<1xi32>
+  %zero_float = arith.constant dense<0.0> : tensor<1xf32>
+
+  // CHECK-NOT: tfl.add
+  // CHECK: return %arg0, %arg1
+
+  %0 = "tfl.add"(%arg0, %zero_int) {fused_activation_function = "NONE"} : (tensor<?xi32>, tensor<1xi32>) -> tensor<?xi32>
+  %1 = "tfl.add"(%arg1, %zero_float) {fused_activation_function = "NONE"} : (tensor<?xf32>, tensor<1xf32>) -> tensor<?xf32>
+
+  func.return %0, %1 : tensor<?xi32>, tensor<?xf32>
+}
+
+// CHECK-LABEL: @add_zero_lhs
+func.func @add_zero_lhs(%arg0: tensor<4xi32>, %arg1: tensor<4xf32>) -> (tensor<4xi32>, tensor<4xf32>) {
+  %zero_int = arith.constant dense<0> : tensor<4xi32>
+  %zero_float = arith.constant dense<0.0> : tensor<4xf32>
+
+  // CHECK-NOT: tfl.add
+  // CHECK: return %arg0, %arg1
+
+  %0 = "tfl.add"(%zero_int, %arg0) {fused_activation_function = "NONE"} : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  %1 = "tfl.add"(%zero_float, %arg1) {fused_activation_function = "NONE"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+
+  func.return %0, %1 : tensor<4xi32>, tensor<4xf32>
+}
+
+// CHECK-LABEL: @add_zero_quant
+func.func @add_zero_quant(%arg0: tensor<32x!quant.uniform<u8:f32, 1.0>>) -> tensor<32x!quant.uniform<u8:f32, 1.0>> {
+  %zero = "tfl.pseudo_qconst"() {qtype = tensor<32x!quant.uniform<u8:f32, 1.0>>, value = dense<0> : tensor<32xi8>} : () -> tensor<32x!quant.uniform<u8:f32, 1.0>>
+
+  // CHECK: %[[ADD:.*]] = tfl.add
+  // CHECK: return %[[ADD]]
+
+  %0 = "tfl.add"(%zero, %arg0) {fused_activation_function = "NONE"} : (tensor<32x!quant.uniform<u8:f32, 1.0>>, tensor<32x!quant.uniform<u8:f32, 1.0>>) -> tensor<32x!quant.uniform<u8:f32, 1.0>>
+
+  func.return %0 : tensor<32x!quant.uniform<u8:f32, 1.0>>
+}
+
 // CHECK-LABEL: @rank
 func.func @rank() -> tensor<1xi32> {
   %cst = arith.constant dense<[[1], [2]]> : tensor<2x1xi32>

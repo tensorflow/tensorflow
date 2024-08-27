@@ -819,9 +819,35 @@ OpFoldResult AddOp::fold(FoldAdaptor adaptor) {
   auto operands = adaptor.getOperands();
   // TODO(b/142478136): Handle fused ops.
   if (getFusedActivationFunction() != "NONE") return {};
-  return ConstFoldBinaryOp(
-      getType(), operands, [](APFloat a, APFloat b) { return a + b; },
-      [](APInt a, APInt b) { return a + b; });
+
+  auto lhs_elements = mlir::dyn_cast_or_null<DenseElementsAttr>(operands[0]);
+  auto rhs_elements = mlir::dyn_cast_or_null<DenseElementsAttr>(operands[1]);
+  if (lhs_elements && rhs_elements) {
+    return ConstFoldBinaryOp(
+        getType(), operands, [](APFloat a, APFloat b) { return a + b; },
+        [](APInt a, APInt b) { return a + b; });
+  }
+
+  auto is_zero = [](Attribute a) {
+    return matchPattern(a, m_Zero()) || matchPattern(a, m_AnyZeroFloat());
+  };
+
+  if (llvm::isa<quant::QuantizedType>(getType().getElementType())) {
+    // Quantized folding not supported for the following.
+    return {};
+  }
+
+  if (lhs_elements && is_zero(lhs_elements) &&
+      getRhs().getType() == getType()) {
+    return getRhs();
+  }
+
+  if (rhs_elements && is_zero(rhs_elements) &&
+      getLhs().getType() == getType()) {
+    return getLhs();
+  }
+
+  return {};
 }
 
 int64_t AddOp::GetArithmeticCount(Operation* op) {
