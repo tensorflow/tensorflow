@@ -4974,7 +4974,7 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
     const std::optional<dnn::TensorDescriptor> bias_descriptor,
     const std::optional<dnn::TensorDescriptor> stats_descriptor, double scale,
     const bool use_dropout, const std::optional<double> dropout_rate,
-    const dnn::FMHAMaskKind mask_type) {
+    const dnn::FMHAMaskKind mask_type, const int sliding_window_length) {
   using cudnn_frontend::graph::Tensor_attributes;
 
 #if CUDNN_VERSION >= 90000
@@ -5093,6 +5093,9 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
                              offset_tensor);
   }
 
+  if (sliding_window_length > 0) {
+    sdpa_options.set_sliding_window_length(sliding_window_length);
+  }
   // Add SDPA to the graph.
   auto [o_tensor, stats_tensor] =
       graph.sdpa(q_tensor, k_tensor, v_tensor, sdpa_options);
@@ -5287,7 +5290,7 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
     const std::optional<dnn::TensorDescriptor> bias_descriptor,
     std::optional<double> dropout_rate, std::optional<int64_t> seed,
     double scale, bool use_dropout, bool use_bias, dnn::FMHAMaskKind mask_type,
-    bool force_deterministic) {
+    bool force_deterministic, const int sliding_window_length) {
 #if CUDNN_VERSION >= 90000
   if (VLOG_IS_ON(4)) {
     VLOG(4) << "\n bmm1_grad_gemm1_rhs(q): " << q_desc.ToString()
@@ -5458,6 +5461,10 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
 
   if (force_deterministic) {
     sdpa_backward_options.set_deterministic_algorithm(true);
+  }
+
+  if (sliding_window_length > 0) {
+    sdpa_backward_options.set_sliding_window_length(sliding_window_length);
   }
 
   auto [dQ, dK, dV] =

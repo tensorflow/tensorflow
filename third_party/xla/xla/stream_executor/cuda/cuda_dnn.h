@@ -697,7 +697,7 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
     const std::optional<dnn::TensorDescriptor> bias_descriptor,
     const std::optional<dnn::TensorDescriptor> stats_descriptor, double scale,
     const bool use_dropout, const std::optional<double> dropout_rate,
-    const dnn::FMHAMaskKind mask_type);
+    const dnn::FMHAMaskKind mask_type, const int sliding_window_length);
 
 absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionF8OperationGraph(
     dnn::DnnSupport& dnn_support,
@@ -719,7 +719,8 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
     const std::optional<dnn::TensorDescriptor> bias_descriptor,
     std::optional<double> dropout_rate, std::optional<int64_t> seed,
     double scale, bool use_dropout, bool use_bias,
-    const dnn::FMHAMaskKind mask_type, bool force_deterministic);
+    const dnn::FMHAMaskKind mask_type, bool force_deterministic,
+    const int sliding_window_length);
 
 }  // namespace gpu
 }  // namespace stream_executor

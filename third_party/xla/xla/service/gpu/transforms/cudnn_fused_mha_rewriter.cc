@@ -1270,6 +1270,8 @@ absl::StatusOr<HloInstruction*> FuseFwdMultiHeadedAttentionBlock(
   fmha_config.set_mask_type(is_causal_mask ? CudnnfMHABackendConfig::CAUSAL
                                            : CudnnfMHABackendConfig::NO_MASK);
 
+  // disable sliding window length here
+  fmha_config.set_sliding_window_length(0);
   const Shape& output_shape = bmm_2->shape();
 
   Shape call_shape;
@@ -1496,7 +1498,8 @@ absl::StatusOr<bool> FuseBwdMultiHeadedAttentionBlock(
   bwd_fmha_config.set_mask_type(is_causal_mask
                                     ? CudnnfMHABackendConfig::CAUSAL
                                     : CudnnfMHABackendConfig::NO_MASK);
-
+  // disable sliding window length here
+  bwd_fmha_config.set_sliding_window_length(0);
   *bwd_fmha_config.mutable_intermediate_tensor_shape() =
       fwd_config.intermediate_tensor_shape();
   {
