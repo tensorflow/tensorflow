@@ -165,6 +165,7 @@ cuda_only_cc_library(
         ":cuda_diagnostics",  # buildcleaner: keep
         ":cuda_status",
         "//xla/stream_executor",
+        "//xla/stream_executor/gpu:context",
         "//xla/stream_executor/gpu:gpu_diagnostics_header",
         "//xla/stream_executor/gpu:gpu_driver_header",
         "//xla/stream_executor/gpu:gpu_types_header",
@@ -799,6 +800,7 @@ cuda_only_cc_library(
         "//xla:status_macros",
         "//xla:util",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor/gpu:context",
         "//xla/stream_executor/gpu:gpu_asm_opts",
         "//xla/stream_executor/gpu:gpu_driver_header",
         "//xla/stream_executor/gpu:gpu_types_header",
@@ -852,6 +854,7 @@ cuda_only_cc_library(
         "//xla/stream_executor:module_spec",
         "//xla/stream_executor:plugin_registry",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/gpu:context",
         "//xla/stream_executor/gpu:gpu_collectives_header",
         "//xla/stream_executor/gpu:gpu_command_buffer",
         "//xla/stream_executor/gpu:gpu_diagnostics_header",

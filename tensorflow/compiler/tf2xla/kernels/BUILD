@@ -515,7 +515,6 @@ tf_kernel_library(
 tf_proto_library(
     name = "callback_proto",
     srcs = ["callback.proto"],
-    cc_api_version = 2,
     protodeps = tf_additional_all_protos(),
 )
 

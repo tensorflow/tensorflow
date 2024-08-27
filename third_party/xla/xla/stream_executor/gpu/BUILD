@@ -67,11 +67,17 @@ cc_library(
     hdrs = ["gpu_activation.h"],
 )
 
+cc_library(
+    name = "context",
+    hdrs = ["context.h"],
+)
+
 gpu_only_cc_library(
     name = "gpu_activation",
     srcs = ["gpu_activation.cc"],
     hdrs = ["gpu_activation.h"],
     deps = [
+        ":context",
         ":gpu_activation_header",
         ":gpu_driver_header",
         ":gpu_executor_header",
@@ -89,6 +95,7 @@ gpu_only_cc_library(
     name = "gpu_collectives_header",
     hdrs = ["gpu_collectives.h"],
     deps = [
+        ":context",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
     ],
@@ -104,6 +111,7 @@ gpu_only_cc_library(
         "//tensorflow/core/util/autotune_maps:__subpackages__",
     ]),
     deps = [
+        ":context",
         ":gpu_types_header",
         "//xla/stream_executor",
         "@com_google_absl//absl/status",

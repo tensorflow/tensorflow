@@ -329,6 +329,7 @@ cc_library(
         ":sequential_thunk",
         ":thunk",
         ":while_thunk",
+        "//xla:literal",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla/service:buffer_assignment",

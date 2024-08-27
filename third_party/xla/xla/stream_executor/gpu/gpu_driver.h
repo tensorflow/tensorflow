@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -925,14 +926,14 @@ class ScopedActivateContext {
   // active context (a la cuCtxGetCurrent). Note the alternative push/pop
   // mechanism is said by NVIDIA to be relatively slow and deprecated.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1gbe562ee6258b4fcc272ca6478ca2a2f7
-  explicit ScopedActivateContext(GpuContext* context);
+  explicit ScopedActivateContext(gpu::Context* context);
 
   // Checks that the context has remained activated for the duration of the
   // scope.
   ~ScopedActivateContext();
 
  private:
-  GpuContext* to_restore_ = nullptr;
+  Context* to_restore_ = nullptr;
 };
 
 }  // namespace gpu

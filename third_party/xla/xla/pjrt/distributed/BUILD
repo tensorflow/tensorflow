@@ -13,7 +13,6 @@ package(
 tf_proto_library(
     name = "protocol_proto",
     srcs = ["protocol.proto"],
-    cc_api_version = 2,
 )
 
 cc_library(

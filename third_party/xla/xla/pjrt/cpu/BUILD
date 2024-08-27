@@ -104,7 +104,6 @@ cc_library(
 tf_proto_library(
     name = "cpu_topology_proto",
     srcs = ["cpu_topology.proto"],
-    cc_api_version = 2,
     visibility = ["//visibility:public"],
 )
 

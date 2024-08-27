@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/IRMapping.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -547,6 +548,8 @@ Value RecursivelyWalkUp(Value op) {
 class LegalizeAvgPool : public OpConversionPattern<mhlo::DivOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
+  explicit LegalizeAvgPool(MLIRContext* context)
+      : OpConversionPattern<mhlo::DivOp>(context, 10) {}
   LogicalResult matchAndRewrite(
       mhlo::DivOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final;

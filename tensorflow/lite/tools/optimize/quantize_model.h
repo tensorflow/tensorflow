@@ -64,6 +64,18 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
                            bool disable_per_channel,
                            ErrorReporter* error_reporter);
 
+// Same as above but with added option of handling quantization of external
+// state tensors. This assumes first input and output tensors are ouputs and
+// rest are state tensors which are quantized later with type as
+// activation type (hence no fake quant ops).
+// Note: This is a private API, subject to change.
+TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
+                           ModelT* input_model, const TensorType& input_type,
+                           const TensorType& output_type, bool allow_float,
+                           bool disable_per_channel,
+                           ErrorReporter* error_reporter,
+                           bool handle_external_state);
+
 // Same as above, but enables only quantizing an allowlist of operations,
 // specified by their operator output name.
 //
@@ -117,7 +129,8 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
                            const TensorType& activations_type,
                            const TensorType& bias_type,
                            bool disable_per_channel,
-                           ErrorReporter* error_reporter);
+                           ErrorReporter* error_reporter,
+                           bool handle_external_state);
 
 }  // namespace optimize
 }  // namespace tflite

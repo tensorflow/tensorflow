@@ -3013,6 +3013,7 @@ xla_test(
     srcs = ["iota_test.cc"],
     shard_count = 30,
     tags = [
+        "noasan",  # Times out on certain platforms.
         # Require optimized builds, iota_test_cpu is very slow in fastbuild.
         "optonly",
         "test_xla_cpu_thunks",
