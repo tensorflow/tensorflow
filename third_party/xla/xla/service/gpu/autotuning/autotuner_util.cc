@@ -58,6 +58,7 @@ limitations under the License.
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/mutex.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 #include "tsl/platform/statusor.h"
@@ -123,6 +124,14 @@ ResultAndInserted AddResultToInMemoryCache(const AutotuneCacheKey& key,
   return {it->second, inserted};
 }
 
+// Returns a unique number every time it is called.
+int64_t GetNextUniqueId() {
+  static tsl::mutex mu(tsl::LINKER_INITIALIZED);
+  static int64_t id = 0;
+  tsl::mutex_lock l(mu);
+  return ++id;
+}
+
 absl::Status AddResultToFileBasedCacheIfEnabled(const AutotuneCacheKey& key,
                                                 AutotuneResult result,
                                                 std::string_view cache_dir)
@@ -145,10 +154,15 @@ absl::Status AddResultToFileBasedCacheIfEnabled(const AutotuneCacheKey& key,
   }
 
   // Rename trick: Write to a temporary file, then rename it to the final file
-  // to avoid mingled files when multiple processes are writing to the same
+  // to avoid mingled files when multiple threads are writing to the same
   // file. Also avoids reading incomplete files. (This may not work on all file
   // systems.)
-  std::string temp_file_path = tsl::io::GetTempFilename(".textproto");
+  std::string tmp_dir = tsl::io::JoinPath(cache_dir, "tmp");
+  TF_RETURN_IF_ERROR(CreateDirIfNeeded(tmp_dir, default_env));
+  std::string temp_file_path = tsl::io::JoinPath(
+      tmp_dir,
+      absl::StrCat("tmp_per_fusion_cache_", GetNextUniqueId(), ".textproto"));
+
   TF_RETURN_IF_ERROR(
       tsl::WriteStringToFile(default_env, temp_file_path, result_str));
   return default_env->RenameFile(temp_file_path, file_path);

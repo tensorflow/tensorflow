@@ -321,13 +321,13 @@ class FileBasedCacheTest : public AutotunerUtilTest {
   }();
 };
 
-TEST_F(FileBasedCacheTest, AutotuneWritesResultToTheCacheDir) {
+TEST_F(FileBasedCacheTest, AutotuneCreatesTmpAndWritesResultToTheCacheDir) {
   TF_ASSERT_OK_AND_ASSIGN(
       AutotuneResult result,
       AutotunerUtil::Autotune(dot_, config_, [&] { return result1_; }));
   EXPECT_EQ(ToString(result), ToString(result1_));
 
-  ASSERT_THAT(GetFilesInDir(cache_dir_), ElementsAre(cache_filename_));
+  ASSERT_THAT(GetFilesInDir(cache_dir_), ElementsAre(cache_filename_, "tmp"));
   EXPECT_EQ(Read(cache_file_path_), ToString(result1_));
 }
 
@@ -395,7 +395,7 @@ TEST_F(FileBasedCacheTest, AddResultAddsTheResultToTheFileBasedCache) {
       bool added, AutotunerUtil::AddResult(cache_key_, result1_, config_));
   EXPECT_TRUE(added);
 
-  ASSERT_THAT(GetFilesInDir(cache_dir_), ElementsAre(cache_filename_));
+  ASSERT_THAT(GetFilesInDir(cache_dir_), ElementsAre(cache_filename_, "tmp"));
   EXPECT_EQ(Read(cache_file_path_), ToString(result1_));
 }
 
@@ -405,7 +405,7 @@ TEST_F(FileBasedCacheTest, RepeatedAddResultDoesNotWriteTheFileAgain) {
         bool added, AutotunerUtil::AddResult(cache_key_, result1_, config_));
     EXPECT_TRUE(added);
   }
-  ASSERT_THAT(GetFilesInDir(cache_dir_), ElementsAre(cache_filename_));
+  ASSERT_THAT(GetFilesInDir(cache_dir_), ElementsAre(cache_filename_, "tmp"));
   EXPECT_EQ(Read(cache_file_path_), ToString(result1_));
   constexpr absl::string_view kPlaceholderContent = "placeholder content";
   Write(cache_file_path_, kPlaceholderContent);
