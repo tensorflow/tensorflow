@@ -1216,6 +1216,28 @@ ENTRY e {
       "foo");
 }
 
+TEST_F(GemmFusionTest, FusesBroadcastOfScalarEpilogues) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule m
+ENTRY e {
+  p0 = f16[2,18] parameter(0)
+  p1 = f16[256,2] parameter(1)
+  d = f16[18,256] dot(p0, p1),
+    lhs_contracting_dims={0}, rhs_contracting_dims={1}
+  p2 = f16[1] parameter(2)
+  p3 = f16[1] parameter(3)
+  m0 = f16[1] multiply(f16[1] p2, f16[1] p3)
+  bc = f16[] bitcast(m0)
+  b = f16[18,256] broadcast(f16[] bc)
+  ROOT m = f16[18,256] multiply(d, b)
+})")
+                    .value();
+  EXPECT_TRUE(GemmFusion(gpu_version_).Run(module.get()).value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch((m::Fusion(m::Parameter(), m::Parameter(),
+                                    m::Parameter(), m::Parameter()))));
+}
+
 // A test fixture class for testing the threshold for small matrices.
 class SmallDotGemmFusionTest : public GemmFusionTest {
  public:

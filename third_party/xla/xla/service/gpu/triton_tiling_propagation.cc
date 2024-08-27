@@ -1075,10 +1075,10 @@ GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
       if (i == *src_operand_index) {
         continue;
       }
-      // Currently only broadcasts of scalar constants or parameters
-      // are accepted as other inputs of non-unary operations
-      // in the output fusion.
-      if (hlo_query::IsBroadcastOfScalarConstant(*operand) ||
+      // Currently only broadcasts of scalars or parameters are accepted as
+      // other inputs of non-unary operations in the output fusion.
+      if ((operand->opcode() == HloOpcode::kBroadcast &&
+           ShapeUtil::IsScalar(operand->operand(0)->shape())) ||
           operand->opcode() == HloOpcode::kParameter) {
         continue;
       }
