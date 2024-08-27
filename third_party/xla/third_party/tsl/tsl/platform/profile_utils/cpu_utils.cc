@@ -19,6 +19,9 @@ limitations under the License.
 #include <limits>
 #include <mutex>
 
+#include "tsl/platform/profile_utils/i_cpu_utils_helper.h"
+#include "tsl/platform/types.h"
+
 #if defined(_WIN32)
 #include <windows.h>
 #endif
@@ -29,7 +32,6 @@ limitations under the License.
 
 #include "absl/base/call_once.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/profile_utils/android_armv7a_cpu_utils_helper.h"
 
 namespace tsl {
 namespace profile_utils {
