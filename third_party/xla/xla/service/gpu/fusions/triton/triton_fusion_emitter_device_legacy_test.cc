@@ -5041,7 +5041,7 @@ ENTRY main {
 
   TF_ASSERT_OK(
       CreateTritonIrAndFileCheckForDot(this, hlo_text, "triton_dot", R"(
-CHECK: tt.dot {{.*}}{maxNumImpreciseAcc = 2147483647 : i32} : tensor<128x64xf8E4M3FNUZ> * tensor<64x32xf8E4M3FNUZ> -> tensor<128x32xf32>
+CHECK: tt.dot {{.*}}{maxNumImpreciseAcc = 2147483647 : i32} : tensor<128x64xf8E4M3FN> * tensor<64x32xf8E4M3FN> -> tensor<128x32xf32>
   )"));
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1.0, /*arel=*/1e-3}));
