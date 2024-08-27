@@ -111,6 +111,9 @@ bool DoesOpSupportType(HloOpcode opcode, PrimitiveType type) {
     case HloOpcode::kReducePrecision:
       return pu::IsFloatingPointType(type);
     case HloOpcode::kClz:
+    case HloOpcode::kShiftRightArithmetic:
+    case HloOpcode::kShiftRightLogical:
+    case HloOpcode::kShiftLeft:
     case HloOpcode::kPopulationCount:
       return pu::IsIntegralType(type);
     case HloOpcode::kAbs:
@@ -122,9 +125,6 @@ bool DoesOpSupportType(HloOpcode opcode, PrimitiveType type) {
     case HloOpcode::kDivide:
     case HloOpcode::kRemainder:
     case HloOpcode::kSubtract:
-    case HloOpcode::kShiftRightArithmetic:
-    case HloOpcode::kShiftRightLogical:
-    case HloOpcode::kShiftLeft:
     case HloOpcode::kNegate:
       return type != PRED;
     default:
@@ -485,7 +485,6 @@ INSTANTIATE_TEST_SUITE_P(
 using ReduceTest = TritonSupportTestWithParam;
 
 TEST_P(ReduceTest, IsTritonSupportedReduction) {
-  GTEST_SKIP() << "TODO(b/348565795): this test is currently broken.";
   auto [data_type, opcode, cc] = GetParam();
   bool dtype_is_complex = data_type == C64 || data_type == C128;
   const std::string kHloTestTemplate =
@@ -506,7 +505,14 @@ ENTRY triton_computation {
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
-  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc);
+
+  bool skip_failure_branch_to_avoid_crash =
+      data_type == PrimitiveType::F8E4M3FN &&
+      std::holds_alternative<se::CudaComputeCapability>(cc) &&
+      !std::get<se::CudaComputeCapability>(cc).IsAtLeastHopper();
+
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc,
+                 skip_failure_branch_to_avoid_crash);
 }
 
 TEST_F(ReduceTest, IsTritonSupportedReductionWithMultidimensionalTile) {
@@ -558,7 +564,6 @@ ENTRY triton_computation {
 }
 
 TEST_P(ReduceTest, IsTritonSupportedReduceWithNonLastReduceDimension) {
-  GTEST_SKIP() << "TODO(b/348565795): this test is currently broken.";
   auto [data_type, opcode, cc] = GetParam();
   bool dtype_is_complex = data_type == C64 || data_type == C128;
   const std::string kHloTestTemplate =
@@ -578,7 +583,14 @@ ENTRY triton_computation {
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
-  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc);
+
+  bool skip_failure_branch_to_avoid_crash =
+      data_type == PrimitiveType::F8E4M3FN &&
+      std::holds_alternative<se::CudaComputeCapability>(cc) &&
+      !std::get<se::CudaComputeCapability>(cc).IsAtLeastHopper();
+
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc,
+                 skip_failure_branch_to_avoid_crash);
 }
 
 TEST_P(ReduceTest,
@@ -664,6 +676,73 @@ constexpr std::array kTestedOpsReduction = {HloOpcode::kReduce};
 INSTANTIATE_TEST_SUITE_P(ReduceTestSuite, ReduceTest,
                          AllTestCombinationsForOpcodes(kTestedOpsReduction),
                          TritonSupportTestTypeOpcodeAndDeviceToString);
+
+using ReductionComputationTest = TritonSupportTestWithParam;
+
+// The test below tests what kind of binary element-wise operations are
+// supported within a reduction's computation.
+//
+// Note that there is a difference in what is supported inside the reduction
+// computation and in regular HLO. See triton_support.cc for more details.
+TEST_P(ReductionComputationTest, DifferentBinaryOps) {
+  auto [data_type, opcode, cc] = GetParam();
+  bool dtype_is_complex = data_type == C64 || data_type == C128;
+  const std::string kHloTestTemplate = absl::Substitute(
+      R"(
+reduce_computation {
+  Arg_0 = $0[] parameter(0)
+  Arg_1 = $0[] parameter(1)
+  ROOT output = $0[] $1(Arg_0, Arg_1)
+}
+
+ENTRY triton_computation {
+  parameter_0 = $0[125,127]{1,0} parameter(0)
+  constant_0 = $0[] constant($2)
+  ROOT reduce = $0[125]{0} reduce(parameter_0, constant_0),
+    dimensions={1}, to_apply=reduce_computation
+})",
+      "$0", HloOpcodeString(opcode), dtype_is_complex ? "(0, 0)" : "0");
+
+  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
+                          ParseTemplateAndGetInstruction(
+                              kHloTestTemplate, data_type, HloOpcode::kReduce));
+
+  // TODO(b/361526623): Reduce the cases where setting
+  // skip_failure_branch_to_avoid_crash is needed.
+  bool skip_failure_branch_to_avoid_crash =
+      data_type == PrimitiveType::F8E4M3FN &&
+      std::holds_alternative<se::CudaComputeCapability>(cc) &&
+      !std::get<se::CudaComputeCapability>(cc).IsAtLeastHopper();
+
+  skip_failure_branch_to_avoid_crash |=
+      (data_type == S8 || data_type == S16 || data_type == S32 ||
+       data_type == S64 || data_type == PrimitiveType::F16 ||
+       data_type == PrimitiveType::BF16 ||
+       data_type == PrimitiveType::F8E4M3FN ||
+       data_type == PrimitiveType::F8E5M2) &&
+      (opcode == HloOpcode::kRemainder || opcode == HloOpcode::kPower ||
+       opcode == HloOpcode::kAtan2);
+
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc,
+                 skip_failure_branch_to_avoid_crash);
+}
+
+std::vector<HloOpcode> ExcludeOps(absl::Span<const HloOpcode> all_ops,
+                                  absl::Span<const HloOpcode> ops_to_exclude) {
+  std::vector<HloOpcode> ret;
+  for (HloOpcode op : all_ops) {
+    if (!absl::c_linear_search(ops_to_exclude, op)) {
+      ret.push_back(op);
+    }
+  }
+  return ret;
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ReductionComputationTestSuite, ReductionComputationTest,
+    AllTestCombinationsForOpcodes(ExcludeOps(kTestedOpsBinaryElementwise,
+                                             {HloOpcode::kCompare})),
+    TritonSupportTestTypeOpcodeAndDeviceToString);
 
 using CollectiveTest = TritonSupportTestWithParam;
 
