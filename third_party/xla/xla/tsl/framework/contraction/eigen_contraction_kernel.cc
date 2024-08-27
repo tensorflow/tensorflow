@@ -17,8 +17,6 @@ limitations under the License.
 
 #include <mutex>  // NOLINT(build/c++11)
 
-#include "absl/base/call_once.h"
-
 // We need a pair of compile time and runtime flags to disable compilation of
 // custom contraction kernels for unsupported architectures (e.g. Android,
 // iOS, ARM and PPC CPUs, etc...), and to be able to fallback on default Eigen
