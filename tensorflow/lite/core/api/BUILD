@@ -43,6 +43,7 @@ cc_library(
         ":op_resolver",
         "@flatbuffers//:runtime_cc",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite:builtin_op_data",
         # TODO(b/158301698): consider moving internal:compatibility to a more
         # central location.
         "//tensorflow/lite/kernels/internal:compatibility",

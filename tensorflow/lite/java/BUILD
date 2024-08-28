@@ -888,7 +888,9 @@ tflite_cc_library_with_c_headers_test(
     srcs = [],
     hdrs = TFLITE_HEADERS,
     visibility = ["//visibility:private"],
-    deps = [],
+    deps = [
+        "//tensorflow/compiler/mlir/lite/core/c:c_api_types",
+    ],
 )
 
 #-----------------------------------------------------------------------------

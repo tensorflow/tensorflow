@@ -248,17 +248,6 @@ cc_test(
     ],
 )
 
-cc_test(
-    name = "builtin_op_data_test",
-    size = "small",
-    srcs = ["builtin_op_data_test.cc"],
-    copts = ["-Wno-unused-variable"],
-    deps = [
-        ":common",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
 # This is a private target, its visibility is set to public only to be
 # used by "tflite_custom_c_library".
 # Do not use this target directly and don't consider it as a part of the public API.
@@ -279,6 +268,9 @@ tflite_cc_library_with_c_headers_test(
     visibility = [
         "//tensorflow/lite:__subpackages__",
     ] + c_api_visibility_allowlist(),
+    deps = [
+        "//tensorflow/compiler/mlir/lite/core/c:c_api_types",
+    ],
 )
 
 # Test the C extension API code.
@@ -336,6 +328,7 @@ tflite_cc_library_with_c_headers_test(
     ] + common_header_visibility_allowlist(),
     deps = [
         ":c_api_types",
+        "//tensorflow/compiler/mlir/lite/core/c:builtin_op_data",
         "//tensorflow/lite:tflite_kernel_use_xnnpack_optional",
     ] + select({
         "//tensorflow/lite:tensorflow_profiler_config": [

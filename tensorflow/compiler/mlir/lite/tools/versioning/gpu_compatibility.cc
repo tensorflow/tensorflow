@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/tools/versioning/gpu_compatibility.h"
+#include "tensorflow/compiler/mlir/lite/tools/versioning/gpu_compatibility.h"
 
 #include <algorithm>
 #include <string>
@@ -21,17 +21,18 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/mlir/lite/builtin_ops.h"
 #include "tensorflow/compiler/mlir/lite/core/c/builtin_op_data.h"
-#include "tensorflow/compiler/mlir/lite/core/c/c_api_types.h"
-#include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/core/c/common.h"
-#include "tensorflow/lite/tools/versioning/op_signature.h"
+#include "tensorflow/compiler/mlir/lite/core/c/common.h"
+#include "tensorflow/compiler/mlir/lite/tools/versioning/op_signature.h"
+
+// LINT.IfChange
 
 namespace tflite {
 
 namespace {
 
-const std::string GetOpName(const OpSignature& op_sig) {
+const std::string GetOpName(const tflite_migration::OpSignature& op_sig) {
   if (op_sig.op == tflite::BuiltinOperator_CUSTOM) {
     return op_sig.custom_name;
   }
@@ -56,7 +57,7 @@ int NumElements(const std::vector<int32_t>& dims) {
   }
 
 template <typename ParamsT>
-absl::Status RetrieveBuiltinData(const OpSignature& op_sig,
+absl::Status RetrieveBuiltinData(const tflite_migration::OpSignature& op_sig,
                                  const ParamsT** tf_options) {
   *tf_options = static_cast<const ParamsT*>(op_sig.builtin_data);
   if (!*tf_options) {
@@ -66,8 +67,8 @@ absl::Status RetrieveBuiltinData(const OpSignature& op_sig,
 }
 
 template <typename ParamsT>
-absl::Status RetrieveCustomInitialData(const OpSignature& op_sig,
-                                       const ParamsT** tf_options) {
+absl::Status RetrieveCustomInitialData(
+    const tflite_migration::OpSignature& op_sig, const ParamsT** tf_options) {
   *tf_options = static_cast<const ParamsT*>(op_sig.custom_initial_data);
   if (!*tf_options) {
     return absl::InternalError("Unable to retrieve custom_initial_data.");
@@ -95,7 +96,7 @@ absl::Status IsActivationSupported(TfLiteFusedActivation fused_activation) {
 
 // Returns the number of runtime inputs of the given OpSignature.
 // runtime inputs are input tensors which are not constant or optional tensors.
-int GetNumberOfRuntimeInputs(const OpSignature& op_sig) {
+int GetNumberOfRuntimeInputs(const tflite_migration::OpSignature& op_sig) {
   int number_of_runtime_inputs = 0;
   for (auto& input : op_sig.inputs) {
     if (!input.is_const && input.type != kTfLiteNoType) {
@@ -108,7 +109,7 @@ int GetNumberOfRuntimeInputs(const OpSignature& op_sig) {
 // Checks if the given OpSignature has required number of inputs and outputs.
 // - required_runtime_inputs: number of inputs which are not constants.
 // - required_outputs: number of outputs
-absl::Status CheckInputsOutputs(const OpSignature& op_sig,
+absl::Status CheckInputsOutputs(const tflite_migration::OpSignature& op_sig,
                                 const int required_runtime_inputs,
                                 const int required_outputs) {
   const int runtime_inputs_from_model = GetNumberOfRuntimeInputs(op_sig);
@@ -131,10 +132,9 @@ absl::Status CheckInputsOutputs(const OpSignature& op_sig,
 // - required_runtime_inputs: number of inputs which are not constants.
 // - required_const_inputs: number of inputs which are constants.
 // - required_outputs: number of outputs
-absl::Status CheckInputsConstsOutputs(const OpSignature& op_sig,
-                                      int required_runtime_inputs,
-                                      int required_const_inputs,
-                                      int required_outputs) {
+absl::Status CheckInputsConstsOutputs(
+    const tflite_migration::OpSignature& op_sig, int required_runtime_inputs,
+    int required_const_inputs, int required_outputs) {
   int const_inputs_from_model = 0;
   for (auto& input : op_sig.inputs) {
     if (input.is_const) {
@@ -150,7 +150,8 @@ absl::Status CheckInputsConstsOutputs(const OpSignature& op_sig,
   return CheckInputsOutputs(op_sig, required_runtime_inputs, required_outputs);
 }
 
-absl::Status CheckTensorIsAvailable(const OpSignature& op_sig, int idx) {
+absl::Status CheckTensorIsAvailable(const tflite_migration::OpSignature& op_sig,
+                                    int idx) {
   // If tensor id is in range, it's guaranteed that it'll be available.
   if (idx >= op_sig.inputs.size()) {
     return absl::OutOfRangeError(
@@ -163,7 +164,8 @@ absl::Status CheckTensorIsAvailable(const OpSignature& op_sig, int idx) {
 // Checks if the given OpSignature has required number of inputs and outputs for
 // convolution operators. The number of input should be either 2 runtime inputs
 // or 1 runtime and 1 constant input. The number of output should be one.
-absl::Status CheckConvoultionInputOutput(const OpSignature& op_sig) {
+absl::Status CheckConvoultionInputOutput(
+    const tflite_migration::OpSignature& op_sig) {
   const int runtime_inputs = GetNumberOfRuntimeInputs(op_sig);
   if (runtime_inputs > 2) {
     return absl::InternalError(
@@ -224,7 +226,8 @@ absl::Status CheckKernelsAndStrides(int kernel_h, int kernel_w, int strides_h,
 }
 
 // Checks if the axes tensor at the given index is a integer32 constant tensor.
-absl::Status CheckAxesAreInt32Const(const OpSignature& op_sig, int idx) {
+absl::Status CheckAxesAreInt32Const(const tflite_migration::OpSignature& op_sig,
+                                    int idx) {
   auto axes = op_sig.inputs.at(idx);
   if (!axes.is_const) {
     return absl::UnimplementedError(GetOpName(op_sig) +
@@ -238,7 +241,8 @@ absl::Status CheckAxesAreInt32Const(const OpSignature& op_sig, int idx) {
   return absl::OkStatus();
 }
 
-absl::Status CheckPooling2DGpuDelegateCompatibility(const OpSignature& op_sig) {
+absl::Status CheckPooling2DGpuDelegateCompatibility(
+    const tflite_migration::OpSignature& op_sig) {
   const TfLitePoolParams* tf_options;
   if (op_sig.custom_initial_data) {  // custom case with indices as a second
                                      // output
@@ -259,7 +263,7 @@ absl::Status CheckPooling2DGpuDelegateCompatibility(const OpSignature& op_sig) {
 }
 
 absl::Status CheckDepthwiseConvGpuDelegateCompatibility(
-    const OpSignature& op_sig) {
+    const tflite_migration::OpSignature& op_sig) {
   RETURN_IF_ERROR(CheckConvoultionInputOutput(op_sig));
   const TfLiteDepthwiseConvParams* tf_options;
   RETURN_IF_ERROR(RetrieveBuiltinData(op_sig, &tf_options));
@@ -302,7 +306,8 @@ absl::Status CheckDepthwiseConvGpuDelegateCompatibility(
   return absl::OkStatus();
 }
 
-absl::Status CheckCumsumGpuDelegateCompatibility(const OpSignature& op_sig) {
+absl::Status CheckCumsumGpuDelegateCompatibility(
+    const tflite_migration::OpSignature& op_sig) {
   if (op_sig.inputs.size() != 2) {
     return absl::InvalidArgumentError("Expects 2 inputs and 1 output");
   }
@@ -319,7 +324,8 @@ absl::Status CheckCumsumGpuDelegateCompatibility(const OpSignature& op_sig) {
   return absl::OkStatus();
 }
 
-absl::Status CheckOneHotGpuDelegateCompatibility(const OpSignature& op_sig) {
+absl::Status CheckOneHotGpuDelegateCompatibility(
+    const tflite_migration::OpSignature& op_sig) {
   if (op_sig.inputs.size() != 4 && op_sig.outputs.size() != 1) {
     return absl::InvalidArgumentError("Expects 4 inputs and 1 output");
   }
@@ -365,7 +371,8 @@ absl::Status CheckOneHotGpuDelegateCompatibility(const OpSignature& op_sig) {
   return absl::OkStatus();
 }
 
-absl::Status CheckSelectV2GpuDelegateCompatibility(const OpSignature& op_sig) {
+absl::Status CheckSelectV2GpuDelegateCompatibility(
+    const tflite_migration::OpSignature& op_sig) {
   if (op_sig.inputs.size() != 3 || op_sig.outputs.size() != 1) {
     return absl::InvalidArgumentError("Expected 3 inputs and 1 output");
   }
@@ -406,7 +413,8 @@ absl::Status CheckSelectV2GpuDelegateCompatibility(const OpSignature& op_sig) {
   return absl::OkStatus();
 }
 
-absl::Status CheckCustomOpsGpuDelegateCompatibility(const OpSignature& op_sig) {
+absl::Status CheckCustomOpsGpuDelegateCompatibility(
+    const tflite_migration::OpSignature& op_sig) {
   if (op_sig.custom_name == "Convolution2DTransposeBias") {
     RETURN_IF_ERROR(CheckTensorIsAvailable(op_sig, 1));
     const TfLiteTransposeConvParams* tf_options;
@@ -458,7 +466,8 @@ bool CheckIsBroadcastable(const std::vector<int32_t>* longer_dims,
 }
 
 absl::Status CheckAddMulBroadcastCompatibility(
-    const OpSignatureTensorSpec& input0, const OpSignatureTensorSpec& input1,
+    const tflite_migration::OpSignatureTensorSpec& input0,
+    const tflite_migration::OpSignatureTensorSpec& input1,
     GpuCompatibilityFlags flags) {
   if (input0.dims.size() > 1 && input1.dims.size() > 1 &&
       input0.dims.size() != input1.dims.size()) {
@@ -507,8 +516,8 @@ absl::Status CheckAddMulBroadcastCompatibility(
 // Logics here used to be in TFLiteOperationParser:IsSupported()
 // of tensorflow/lite/delegates/gpu/common/model_builder.cc but they're all
 // migrated into here.
-absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
-                                           GpuCompatibilityFlags flags) {
+absl::Status CheckGpuDelegateCompatibility(
+    const tflite_migration::OpSignature& op_sig, GpuCompatibilityFlags flags) {
   TfLiteBuiltinOperator opcode = static_cast<TfLiteBuiltinOperator>(op_sig.op);
   switch (opcode) {
     case kTfLiteBuiltinAdd: {
@@ -629,9 +638,11 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
 
     case kTfLiteBuiltinEmbeddingLookup: {
       const int num_inputs = op_sig.inputs.size();
-      const OpSignatureTensorSpec ids_spec = op_sig.inputs[0];
-      const OpSignatureTensorSpec value_spec = op_sig.inputs[1];
-      const OpSignatureTensorSpec output_spec = op_sig.outputs[0];
+      const tflite_migration::OpSignatureTensorSpec ids_spec = op_sig.inputs[0];
+      const tflite_migration::OpSignatureTensorSpec value_spec =
+          op_sig.inputs[1];
+      const tflite_migration::OpSignatureTensorSpec output_spec =
+          op_sig.outputs[0];
       if (num_inputs != 2) {
         return absl::InvalidArgumentError(
             absl::StrCat("Expected 2, but got ", num_inputs, " inputs."));
@@ -680,9 +691,9 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
         return absl::UnimplementedError(
             "DynamicUpdateSlice requires 3 inputs.");
       }
-      OpSignatureTensorSpec operand = op_sig.inputs[0];
-      OpSignatureTensorSpec update_slice = op_sig.inputs[1];
-      OpSignatureTensorSpec start_indices = op_sig.inputs[2];
+      tflite_migration::OpSignatureTensorSpec operand = op_sig.inputs[0];
+      tflite_migration::OpSignatureTensorSpec update_slice = op_sig.inputs[1];
+      tflite_migration::OpSignatureTensorSpec start_indices = op_sig.inputs[2];
       if (operand.dims.size() == 4 && operand.dims[0] != 1) {
         return absl::UnimplementedError(
             "DynamicUpdateSlice only support 4D operand with batch size 1.");
@@ -1162,7 +1173,8 @@ absl::Status CheckGpuDelegateCompatibility(const OperatorCode* op_code,
                                            const Operator* op,
                                            const SubGraph* subgraph,
                                            const Model* model) {
-  OpSignature op_sig = GetOpSignature(op_code, op, subgraph, model);
+  tflite_migration::OpSignature op_sig =
+      tflite_migration::GetOpSignature(op_code, op, subgraph, model);
   // Offline compatibility assumes enhanced broadcast is enabled.
   auto status = CheckGpuDelegateCompatibility(
       op_sig, GpuCompatibilityFlags::kEnhancedBroadcast);
@@ -1176,7 +1188,9 @@ absl::Status CheckGpuDelegateCompatibility(
     const TfLiteContext* context, const TfLiteNode* node,
     const TfLiteRegistration* registration, GpuCompatibilityFlags flags) {
   return CheckGpuDelegateCompatibility(
-      GetOpSignature(context, node, registration), flags);
+      tflite_migration::GetOpSignature(context, node, registration), flags);
 }
 
 }  // namespace tflite
+
+// LINT.ThenChange(//tensorflow/lite/tools/versioning/gpu_compatibility.cc)

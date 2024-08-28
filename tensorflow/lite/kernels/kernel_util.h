@@ -22,7 +22,7 @@ limitations under the License.
 #include <string>
 #endif  // TF_LITE_STATIC_MEMORY
 
-#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/compiler/mlir/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
 #ifndef NDEBUG
 #include "tensorflow/lite/kernels/op_macros.h"

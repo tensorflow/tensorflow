@@ -12,14 +12,27 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-/// WARNING: Users of TensorFlow Lite should not include this file directly,
-/// but should instead include
-/// "third_party/tensorflow/lite/c/builtin_op_data.h".
-/// Only the TensorFlow Lite implementation itself should include this
-/// file directly.
-#ifndef TENSORFLOW_LITE_CORE_C_BUILTIN_OP_DATA_H_
-#define TENSORFLOW_LITE_CORE_C_BUILTIN_OP_DATA_H_
+#include "tensorflow/compiler/mlir/lite/kernels/kernel_util.h"
 
-#include "tensorflow/compiler/mlir/lite/core/c/builtin_op_data.h"  // IWYU pragma: export
+#include "tensorflow/compiler/mlir/lite/context_util.h"
 
-#endif  // TENSORFLOW_LITE_CORE_C_BUILTIN_OP_DATA_H_
+#if defined(__APPLE__)
+#include "TargetConditionals.h"
+#endif
+
+namespace tflite {
+
+bool HasUnspecifiedDimension(const TfLiteTensor* tensor) {
+#ifndef TF_LITE_STATIC_MEMORY
+  if (tensor->dims_signature) {
+    for (int i : TfLiteIntArrayView(tensor->dims_signature)) {
+      if (i == -1) return true;
+    }
+  }
+#endif  // TF_LITE_STATIC_MEMORY
+  return false;
+}
+
+}  // namespace tflite
+
+// LINT.ThenChange(//tensorflow/lite/kernels/kernel_util.cc)
