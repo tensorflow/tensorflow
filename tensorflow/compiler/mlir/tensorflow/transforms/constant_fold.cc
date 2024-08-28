@@ -67,13 +67,8 @@ static bool IsFoldedByDefaultPolicy(Operation* inst) {
   int64_t operands_size = get_size(inst->getOperandTypes());
 
   constexpr int kSizeFactor = 2;
-// TODO(b/233827625): Remove TF_DISABLE_CONSTANT_FOLDING macro.
-#ifdef TF_DISABLE_CONSTANT_FOLDING
-  constexpr int64_t kResultsSizeThreshold = 0;
-#else
-  constexpr int64_t kResultsSizeThreshold = (1 << 23);  // 1 MiB
-#endif
-  constexpr int64_t kOperandsSizeThreshold = (1 << 30);  // 128 MiB
+  constexpr int64_t kResultsSizeThreshold = (1 << 16);   // 64 Kib =   8 KiB
+  constexpr int64_t kOperandsSizeThreshold = (1 << 30);  //  1 Gib = 128 MiB
 
   return (operands_size <= kOperandsSizeThreshold) &&
          ((results_size <= kResultsSizeThreshold) ||
