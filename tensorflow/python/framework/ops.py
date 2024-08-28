@@ -1939,9 +1939,9 @@ class Graph(pywrap_tf_session.PyGraph):
   """A TensorFlow computation, represented as a dataflow graph.
 
   
-   In TensorFlow, tf.function creates a graph to represent computations. 
-   This graph consists of tf.Operation objects, which are the computational steps, and tf.Tensor objects,
-   which are the data flowing between these steps.
+  In TensorFlow, tf.function creates a graph to represent computations. 
+  This graph consists of tf.Operation objects, which are the computational steps, and tf.Tensor objects,
+  which are the data flowing between these steps.
 
   ### Using graphs directly (deprecated)
 
