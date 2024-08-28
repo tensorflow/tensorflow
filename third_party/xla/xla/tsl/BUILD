@@ -1,6 +1,7 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla/tsl:package_groups.bzl", "tsl_package_groups")
 load("//xla/tsl:tsl.bzl", "if_google", "if_oss")
 load(
