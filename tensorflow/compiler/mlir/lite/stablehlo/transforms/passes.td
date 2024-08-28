@@ -148,6 +148,7 @@ def PrepareHloPass
   let dependentDialects = [
     "mlir::mhlo::MhloDialect",
     "func::FuncDialect",
+    "TFL::TensorFlowLiteDialect"
   ];
 }
 
