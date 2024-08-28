@@ -295,30 +295,6 @@ absl::Status NVPTXTargetModuleLinker(llvm::Module* module,
   return absl::OkStatus();
 }
 
-#ifdef GOOGLE_CUDA
-namespace {
-constexpr int kFallbackPtxVersion = 65;
-
-int DetermineHighestSupportedPtxVersionFromCudaVersion(
-    stream_executor::ToolVersion cuda_version) {
-  if (cuda_version[0] < 11) {
-    // For everything below CUDA 11 we just fall back to PTX 6.5.
-    // We don't support CUDA below 11 anymore.
-    return kFallbackPtxVersion;
-  }
-
-  // Mapping determined from
-  // https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#release-notes
-  // Examples:
-  // CUDA 11.0 -> PTX 7.0
-  // CUDA 11.1 -> PTX 7.1
-  // CUDA 12.0 -> PTX 8.0
-  // CUDA 12.4 -> PTX 8.4 etc.
-  return (cuda_version[0] - 4) * 10 + cuda_version[1];
-}
-}  // namespace
-#endif
-
 std::unique_ptr<llvm::TargetMachine> NVPTXGetTargetMachine(
     llvm::Triple target_triple, se::CudaComputeCapability compute_capability,
     const DebugOptions& debug_options) {
@@ -338,9 +314,12 @@ std::unique_ptr<llvm::TargetMachine> NVPTXGetTargetMachine(
     return kCompileTimeCudaVersion;
   }();
 
-  auto highest_supported_ptx_version =
-      DetermineHighestSupportedPtxVersionFromCudaVersion(
-          highest_supported_cuda_version);
+  nvptx::Version cuda_version{highest_supported_cuda_version[0],
+                              highest_supported_cuda_version[1]};
+  nvptx::Version ptx_version =
+      nvptx::DetermineHighestSupportedPtxVersionFromCudaVersion(cuda_version);
+  int highest_supported_ptx_version =
+      ptx_version.first * 10 + ptx_version.second;
 
   VLOG(1) << "Targeting PTX version: " << highest_supported_ptx_version;
   std::string feature_str =
@@ -708,6 +687,34 @@ absl::StatusOr<std::string> CompileToPtx(
   return ptx;
 }
 
+namespace {
+constexpr nvptx::Version kFallbackPtxVersion{6, 5};
+constexpr nvptx::Version kMaxPtxVersion{8, 5};
+}  // namespace
+
+Version DetermineHighestSupportedPtxVersionFromCudaVersion(
+    Version cuda_version) {
+  if (cuda_version < Version{11, 0}) {
+    // For everything below CUDA 11 we just fall back to PTX 6.5.
+    // We don't support CUDA below 11 anymore.
+    return kFallbackPtxVersion;
+  }
+
+  // Mapping determined from
+  // https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#release-notes
+  // Examples:
+  // CUDA 11.0 -> PTX 7.0
+  // CUDA 11.1 -> PTX 7.1
+  // CUDA 12.0 -> PTX 8.0
+  // CUDA 12.4 -> PTX 8.4
+  // This versioning scheme is valid until CUDA 12.6
+  if (cuda_version < Version{12, 6}) {
+    return {cuda_version.first - 4, cuda_version.second};
+  }
+
+  // Return maximum known PTX version.
+  return kMaxPtxVersion;
+}
 }  // namespace nvptx
 
 namespace {
