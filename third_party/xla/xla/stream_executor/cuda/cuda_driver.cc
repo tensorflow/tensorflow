@@ -21,13 +21,13 @@ limitations under the License.
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <new>
 #include <string>
 #include <utility>
 #include <variant>
 #include <vector>
 
 #include "absl/base/casts.h"
-#include "absl/base/const_init.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/debugging/leak_check.h"
 #include "absl/log/check.h"
@@ -37,13 +37,13 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
+#include "xla/stream_executor/gpu/context_map.h"
 #include "xla/stream_executor/gpu/gpu_diagnostics.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
@@ -62,16 +62,32 @@ limitations under the License.
 namespace stream_executor {
 namespace gpu {
 
-absl::Mutex CreatedContexts::mu_{absl::kConstInit};
-
 namespace {
+
+// Returns the singleton ContextMap.
+ContextMap<CUcontext, GpuContext>* GetContextMap() {
+  static ContextMap<CUcontext, GpuContext>* context_map =
+      new ContextMap<CUcontext, GpuContext>([](void* ptr) {
+        int device_ordinal;
+        absl::Status status = cuda::ToStatus(
+            cuPointerGetAttribute(static_cast<void*>(&device_ordinal),
+                                  CU_POINTER_ATTRIBUTE_DEVICE_ORDINAL,
+                                  reinterpret_cast<CUdeviceptr>(ptr)));
+        if (!status.ok()) {
+          LOG(FATAL) << "Not able to get the device_ordinal for ptr: " << ptr
+                     << ". Error: " << status;
+        }
+        return device_ordinal;
+      });
+  return context_map;
+}
 
 // Returns the current context and checks that it is in the set of CUDA contexts
 // created by StreamExecutor (to ensure that the CUDA runtime didn't create a
 // context behind our backs).
 CUcontext CurrentContext() {
   CUcontext current = cuda::CurrentContextOrDie();
-  if (current != nullptr && !CreatedContexts::Has(current)) {
+  if (current != nullptr && !GetContextMap()->Has(current)) {
     LOG(FATAL) << "current context was not created by the StreamExecutor "
                   "cuda_driver API: "
                << current
@@ -286,7 +302,7 @@ absl::Status GpuDriver::CreateContext(int device_ordinal, CUdevice device,
   }
   TF_RETURN_IF_ERROR(cuda::ToStatus(cuCtxSetCurrent(former_context)));
 
-  *context = CreatedContexts::Add(new_context, device_ordinal);
+  *context = GetContextMap()->Add(new_context, device_ordinal);
   CHECK(*context != nullptr)
       << "success in this call must entail non-null result";
   VLOG(2) << "created or reused context " << new_context << " for this thread";
@@ -311,7 +327,7 @@ void GpuDriver::DestroyContext(GpuContext* context) {
     LOG(ERROR) << "failed to release CUDA context; leaking: " << status;
   }
 
-  CreatedContexts::Remove(context->context());
+  GetContextMap()->Remove(context->context());
 }
 
 absl::Status GpuDriver::FuncGetAttribute(CUfunction_attribute attribute,
@@ -1748,16 +1764,16 @@ absl::Status GpuDriver::SynchronousMemcpyD2D(GpuContext* context,
   ScopedActivateContext activation(context);
 
   CUresult result;
-  // CreatedContexts::GetAnyContext() doesn't works when ptr == 0.
+  // GetContextMap()->GetAnyContext() doesn't works when ptr == 0.
   // This happens when the size is 0.
   if (gpu_dst == 0 || gpu_src == 0) {
     result = cuMemcpyDtoD(gpu_dst, gpu_src, size);
   } else {
     // Any context work here.
     CUcontext dst_context =
-        CreatedContexts::GetAnyContext(absl::bit_cast<void*>(gpu_dst));
+        GetContextMap()->GetAnyContext(absl::bit_cast<void*>(gpu_dst));
     CUcontext src_context =
-        CreatedContexts::GetAnyContext(absl::bit_cast<void*>(gpu_src));
+        GetContextMap()->GetAnyContext(absl::bit_cast<void*>(gpu_src));
 
     if (static_cast<void*>(dst_context) == nullptr) {
       absl::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_dst);
@@ -1842,15 +1858,15 @@ bool GpuDriver::AsynchronousMemcpyD2D(GpuContext* context, CUdeviceptr gpu_dst,
   }
 
   if ((gpu_dst == 0 || gpu_src == 0) || (*is_capturing)) {
-    // CreatedContexts::GetAnyContext() doesn't works when ptr == 0.
+    // GetContextMap()->GetAnyContext() doesn't works when ptr == 0.
     // This happens when the size is 0.
     result = cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream);
   } else {
     // Any context work here.
     CUcontext dst_context =
-        CreatedContexts::GetAnyContext(absl::bit_cast<void*>(gpu_dst));
+        GetContextMap()->GetAnyContext(absl::bit_cast<void*>(gpu_dst));
     CUcontext src_context =
-        CreatedContexts::GetAnyContext(absl::bit_cast<void*>(gpu_src));
+        GetContextMap()->GetAnyContext(absl::bit_cast<void*>(gpu_src));
 
     if (static_cast<void*>(dst_context) == nullptr) {
       absl::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_dst);

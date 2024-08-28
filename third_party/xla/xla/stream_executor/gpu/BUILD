@@ -75,6 +75,28 @@ cc_library(
 )
 
 cc_library(
+    name = "context_map",
+    hdrs = ["context_map.h"],
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+xla_cc_test(
+    name = "context_map_test",
+    srcs = ["context_map_test.cc"],
+    deps = [
+        ":context_map",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_library(
     name = "mock_context",
     testonly = True,
     hdrs = ["mock_context.h"],
