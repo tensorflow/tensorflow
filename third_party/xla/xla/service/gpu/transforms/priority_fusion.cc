@@ -1047,15 +1047,38 @@ HloInstruction::FusionKind PriorityFusion::ChooseKind(
   }
 }
 
-HloInstruction* PriorityFusion::FuseInstruction(
-    HloInstruction* fusion_instruction, HloInstruction* producer) {
-  HloInstruction* result = fusion_instruction;
+HloInstruction* PriorityFusion::Fuse(HloInstruction* producer,
+                                     HloInstruction* consumer,
+                                     HloComputation* computation) {
+  VLOG(2) << "Fusing " << producer->ToString() << " into "
+          << consumer->ToString();
+
+  auto kind = ChooseKind(producer, consumer);
+  HloInstruction* fusion_instruction = consumer;
+
+  if (fusion_instruction->opcode() != HloOpcode::kFusion) {
+    fusion_instruction = computation->AddInstruction(
+        HloInstruction::CreateFusion(consumer->shape(), kind, consumer));
+    TF_CHECK_OK(computation->ReplaceInstruction(consumer, fusion_instruction));
+  } else if (kind != fusion_instruction->fusion_kind()) {
+    fusion_instruction->set_fusion_kind(kind);
+  }
+
+  fusion_instruction->set_called_computations_execution_thread(
+      computation->execution_thread(),
+      /*skip_async_execution_thread_overwrite=*/false);
+
   if (producer->opcode() == HloOpcode::kFusion) {
     fusion_instruction->MergeFusionInstruction(producer);
   } else {
-    result = InstructionFusion::FuseInstruction(fusion_instruction, producer);
+    fusion_instruction->FuseInstruction(producer);
   }
-  return result;
+
+  if (fusion_instruction != consumer) {
+    VLOG(2) << "       created new fusion: " << fusion_instruction->ToString();
+  }
+
+  return fusion_instruction;
 }
 
 std::unique_ptr<FusionQueue> PriorityFusion::GetFusionQueue(

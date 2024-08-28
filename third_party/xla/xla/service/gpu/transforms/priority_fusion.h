@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/threadpool.h"
 
 namespace xla {
@@ -71,10 +72,10 @@ class PriorityFusion : public InstructionFusion {
   HloInstruction::FusionKind ChooseKind(
       const HloInstruction* producer, const HloInstruction* consumer) override;
 
- private:
-  HloInstruction* FuseInstruction(HloInstruction* fusion_instruction,
-                                  HloInstruction* producer) override;
+  HloInstruction* Fuse(HloInstruction* producer, HloInstruction* consumer,
+                       HloComputation* computation) override;
 
+ private:
   // Consumes a unit of compiler fuel and returns true if we should
   // continue with the transformation.
   bool ConsumeFuel(HloInstruction* producer, HloInstruction* consumer);
