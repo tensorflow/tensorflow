@@ -61,8 +61,8 @@ cc_library(
         "//tensorflow/lite/delegates/hexagon/builders:op_builder",
         "//tensorflow/lite/delegates/hexagon/hexagon_nn:hexagon_nn_header",
         "//tensorflow/lite/delegates/utils:simple_delegate",
-        "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/schema:schema_fbs",
+        "@hexagon_nn//:hexagon_nn_header",
         "@hexagon_nn//:hexagon_nn_ops",
     ],
 )
