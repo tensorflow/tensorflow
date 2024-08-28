@@ -1,0 +1,37 @@
+
+--- a/include/triton/Analysis/Alias.h	2024-08-27 12:43:55.000000000 -0700
++++ b/include/triton/Analysis/Alias.h	2024-08-28 10:40:01.000000000 -0700
+@@ -81,7 +81,7 @@
+   void setToEntryState(dataflow::Lattice<AliasInfo> *lattice) override {
+     propagateIfChanged(
+         lattice, lattice->join(
+-                     AliasInfo::getPessimisticValueState(lattice->getPoint())));
++                     AliasInfo::getPessimisticValueState(lattice->getAnchor())));
+   }
+ 
+   /// Computes if the alloc set of the results are changed.
+
+--- a/lib/Analysis/AxisInfo.cpp	2024-08-27 12:43:55.000000000 -0700
++++ b/lib/Analysis/AxisInfo.cpp	2024-08-28 10:40:01.000000000 -0700
+@@ -173,7 +173,7 @@
+   void setToEntryState(dataflow::Lattice<AxisInfo> *lattice) override {
+     propagateIfChanged(
+         lattice,
+-        lattice->join(AxisInfo::getPessimisticValueState(lattice->getPoint())));
++        lattice->join(AxisInfo::getPessimisticValueState(lattice->getAnchor())));
+   }
+ 
+   void visitNonControlFlowArguments(
+
+--- a/lib/Target/LLVMIR/LLVMDIScope.cpp	2024-05-14 06:33:36.000000000 -0700
++++ b/lib/Target/LLVMIR/LLVMDIScope.cpp	2024-08-28 14:48:11.000000000 -0700
+@@ -105,7 +105,8 @@
+         context, distinctId, compileUnitAttr, fileAttr, funcNameAttr,
+         funcNameAttr, fileAttr,
+         /*line=*/line,
+-        /*scopeline=*/line, subprogramFlags, subroutineTypeAttr);
++        /*scopeline=*/line, subprogramFlags, subroutineTypeAttr,
++        /*retainedNodes=*/{});
+     funcOp->setLoc(FusedLoc::get(context, {loc}, subprogramAttr));
+   }
+ 
