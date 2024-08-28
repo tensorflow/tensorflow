@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
+#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/util.h"
 #include "tsl/platform/cuda_libdevice_path.h"
 #include "tsl/platform/env.h"

@@ -58,6 +58,7 @@ cc_library(
         "//xla/stream_executor/gpu:context",
         "//xla/stream_executor/gpu:gpu_diagnostics_header",
         "//xla/stream_executor/gpu:gpu_driver_header",
+        "//xla/stream_executor/gpu:scoped_activate_context",
         "//xla/stream_executor/platform",
         "//xla/stream_executor/platform:dso_loader",
         "@com_google_absl//absl/base",

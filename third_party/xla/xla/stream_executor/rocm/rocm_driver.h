@@ -144,8 +144,6 @@ class CreatedContexts {
 
 namespace rocm {
 
-using ScopedActivateContext = gpu::ScopedActivateContext;
-
 // TODO: this function shall be added to the GpuDriver API as well
 absl::Status OccupancyGetMaxPotentialBlockSize(int* gridSize, int* blockSize,
                                                hipFunction_t func,

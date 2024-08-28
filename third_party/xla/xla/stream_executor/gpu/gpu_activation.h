@@ -23,6 +23,7 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_GPU_GPU_ACTIVATION_H_
 #define XLA_STREAM_EXECUTOR_GPU_GPU_ACTIVATION_H_
 
+#include "xla/stream_executor/gpu/scoped_activate_context.h"
 
 namespace stream_executor {
 
@@ -31,7 +32,6 @@ class StreamExecutor;
 namespace gpu {
 
 class GpuExecutor;
-class ScopedActivateContext;
 
 // Activates a CUDA context within an enclosing scope.
 class ScopedActivateExecutorContext {

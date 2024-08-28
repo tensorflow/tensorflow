@@ -26,6 +26,7 @@ load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
+load("//xla:xla.bzl", "xla_cc_test")
 load(
     "//xla/service/gpu:build_defs.bzl",
     "gpu_kernel_library",
@@ -65,11 +66,46 @@ package(
 cc_library(
     name = "gpu_activation_header",
     hdrs = ["gpu_activation.h"],
+    deps = [":scoped_activate_context"],
 )
 
 cc_library(
     name = "context",
     hdrs = ["context.h"],
+)
+
+cc_library(
+    name = "mock_context",
+    testonly = True,
+    hdrs = ["mock_context.h"],
+    deps = [
+        ":context",
+        "//xla:test",
+    ],
+)
+
+cc_library(
+    name = "scoped_activate_context",
+    srcs = ["scoped_activate_context.cc"],
+    hdrs = ["scoped_activate_context.h"],
+    deps = [
+        ":context",
+        "@com_google_absl//absl/log:check",
+        "@local_tsl//tsl/platform:logging",
+    ],
+)
+
+xla_cc_test(
+    name = "scoped_activate_context_test",
+    srcs = ["scoped_activate_context_test.cc"],
+    deps = [
+        ":mock_context",
+        ":scoped_activate_context",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
 )
 
 gpu_only_cc_library(
@@ -81,6 +117,7 @@ gpu_only_cc_library(
         ":gpu_activation_header",
         ":gpu_driver_header",
         ":gpu_executor_header",
+        ":scoped_activate_context",
         "//xla/stream_executor",
     ],
 )
@@ -111,7 +148,6 @@ gpu_only_cc_library(
         "//tensorflow/core/util/autotune_maps:__subpackages__",
     ]),
     deps = [
-        ":context",
         ":gpu_types_header",
         "//xla/stream_executor",
         "@com_google_absl//absl/status",

@@ -159,8 +159,6 @@ namespace cuda {
 
 using CUDADriver = gpu::GpuDriver;
 
-using ScopedActivateContext = gpu::ScopedActivateContext;
-
 using CudaContext = gpu::GpuContext;
 
 // Returns the current context set in CUDA. This is done by calling the cuda

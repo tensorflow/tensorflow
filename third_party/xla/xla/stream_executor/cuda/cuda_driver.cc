@@ -44,10 +44,10 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
-#include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/gpu/gpu_diagnostics.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
+#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/env.h"
@@ -94,71 +94,12 @@ tsl::thread::ThreadPool* GetDriverExecutor() {
 
 }  // namespace
 
-namespace {
-
-thread_local struct ThreadLocalData {
-  Context* context;
-  int device_ordinal;
-  int depth;
-} tls_data = {};
-
-}  // namespace
-
 void GpuContext::SetActive() {
   TF_CHECK_OK(
       cuda::ToStatus(cuCtxSetCurrent(context_), "Failed setting context"));
 }
 
 bool GpuContext::IsActive() const { return CurrentContext() == context_; }
-
-ScopedActivateContext::ScopedActivateContext(gpu::Context* cuda_context) {
-  auto* tls = &tls_data;
-
-  // If this is an outermost scope, we must not assume that the CUDA context
-  // has been left in the same state we left it. Other code may have run on
-  // this thread and altered the context.
-  if (tls->depth == 0) {
-    VLOG(3) << "ScopedActivateContext switching to "
-            << cuda_context->device_ordinal();
-    cuda_context->SetActive();
-    tls->depth = 1;
-    tls->device_ordinal = cuda_context->device_ordinal();
-    tls->context = cuda_context;
-    to_restore_ = nullptr;
-    return;
-  }
-
-  tls->depth++;
-  if (tls->device_ordinal == cuda_context->device_ordinal()) {
-    DCHECK(cuda_context->IsActive());
-    return;
-  }
-
-  VLOG(3) << "ScopedActivateContext switching context from "
-          << tls->device_ordinal << " to " << cuda_context->device_ordinal();
-
-  to_restore_ = tls->context;
-  // Set the context and update thread local.
-  cuda_context->SetActive();
-  tls->device_ordinal = cuda_context->device_ordinal();
-  tls->context = cuda_context;
-}
-
-ScopedActivateContext::~ScopedActivateContext() {
-  auto* tls = &tls_data;
-
-  tls->depth--;
-  DCHECK_GE(tls->depth, 0);
-  if (to_restore_ == nullptr) {
-    // Leave context, tls->device_ordinal, and tls->context set.
-    return;
-  }
-
-  // Set context and update thread local.
-  to_restore_->SetActive();
-  tls->device_ordinal = to_restore_->device_ordinal();
-  tls->context = to_restore_;
-}
 
 namespace {
 

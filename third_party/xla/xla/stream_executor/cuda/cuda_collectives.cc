@@ -21,6 +21,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_driver.h"
 #include "xla/stream_executor/gpu/gpu_collectives.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
+#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/numbers.h"
 

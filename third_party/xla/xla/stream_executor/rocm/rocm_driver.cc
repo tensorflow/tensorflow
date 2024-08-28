@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "xla/stream_executor/gpu/gpu_diagnostics.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
+#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -192,69 +193,15 @@ void SynchronizeOrDie() {
   }
 }
 
-thread_local struct ThreadLocalData {
-  int current_device_ordinal;
-  Context* context;  // Only valid if id == a known good context.
-  int depth;
-} tls_data = {};
-
 }  // namespace
 
 void GpuContext::SetActive() {
+  if (FLAGS_gpuexec_rocm_sync_around_driver_calls) SynchronizeOrDie();
   FAIL_IF_ROCM_ERROR(wrap::hipCtxSetCurrent(context_),
                      "Failed setting context");
 }
 
 bool GpuContext::IsActive() const { return CurrentContext() == context_; }
-
-ScopedActivateContext::ScopedActivateContext(Context* hip_context) {
-  if (FLAGS_gpuexec_rocm_sync_around_driver_calls) SynchronizeOrDie();
-
-  auto* tls = &tls_data;
-  if (tls->depth == 0) {
-    VLOG(3) << "ScopedActivateContext switching to "
-            << hip_context->device_ordinal();
-    hip_context->SetActive();
-    tls->depth = 1;
-    tls->current_device_ordinal = hip_context->device_ordinal();
-    tls->context = hip_context;
-    to_restore_ = nullptr;
-    return;
-  }
-
-  tls->depth++;
-  if (tls->current_device_ordinal == hip_context->device_ordinal()) {
-    DCHECK(hip_context->IsActive());
-    return;
-  }
-  VLOG(3) << "ScopedActivateContext switching device from "
-          << tls->current_device_ordinal << " to "
-          << hip_context->device_ordinal();
-
-  to_restore_ = tls->context;
-  // Set the device and update thread local.
-  hip_context->SetActive();
-  tls->current_device_ordinal = hip_context->device_ordinal();
-  tls->context = hip_context;
-}
-
-ScopedActivateContext::~ScopedActivateContext() {
-  if (FLAGS_gpuexec_rocm_sync_around_driver_calls) SynchronizeOrDie();
-
-  auto* tls = &tls_data;
-
-  tls->depth--;
-  DCHECK_GE(tls->depth, 0);
-
-  if (to_restore_ == nullptr) {
-    return;  // Leave context, tls->current_device_ordinal, and tls->context set
-  }
-
-  // Set context and update thread local.
-  to_restore_->SetActive();
-  tls->current_device_ordinal = to_restore_->device_ordinal();
-  tls->context = to_restore_;
-}
 
 namespace {
 
