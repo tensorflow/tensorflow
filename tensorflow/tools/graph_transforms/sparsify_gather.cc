@@ -17,16 +17,28 @@ limitations under the License.
 #include <memory>
 #include <unordered_map>
 
-#include "tensorflow/c/checkpoint_reader.h"
-#include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "absl/log/check.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_join.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/graph/node_builder.h"
-#include "tensorflow/core/graph/subgraph.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/platform/init_main.h"
-#include "tensorflow/core/public/session.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_slice.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/saved_tensor_slice_util.h"
 #include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/str_util.h"
+#include "tsl/platform/strcat.h"
 
 namespace tensorflow {
 using str_util::Split;
