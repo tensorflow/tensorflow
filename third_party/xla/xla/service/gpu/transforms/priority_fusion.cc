@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <iterator>
-#include <limits>
 #include <map>
 #include <memory>
 #include <string>
@@ -44,7 +43,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/dump.h"
-#include "xla/service/fusion_queue.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/fusion_deduplication_cache.h"
 #include "xla/service/gpu/fusion_process_dump.pb.h"
@@ -58,7 +56,6 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/gpu/model/gpu_performance_model.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
-#include "xla/service/gpu/model/symbolic_tile_analysis.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/hlo_graph_dumper.h"
@@ -78,10 +75,6 @@ namespace xla {
 namespace gpu {
 
 namespace {
-bool ElementIsF32OrF16(const Shape& shape) {
-  PrimitiveType type = shape.element_type();
-  return type == F32 || type == F16;
-}
 
 bool IsFusible(const HloInstruction& instr) {
   // Side-effecting operations are not fusible.
@@ -886,26 +879,6 @@ class PriorityFusionQueue {
 
 }  // namespace
 
-/*static*/ bool PriorityFusion::IsExpensive(const HloInstruction& instruction) {
-  // Some floating-point math ops are cheap on the GPU.
-  switch (instruction.opcode()) {
-    case HloOpcode::kDivide:
-    case HloOpcode::kSqrt:
-    case HloOpcode::kRsqrt:
-    case HloOpcode::kExp:
-      if (ElementIsF32OrF16(instruction.shape())) {
-        return false;
-      }
-      break;
-    // Loop fusions are cheap.
-    case HloOpcode::kFusion:
-      return false;
-    default:
-      break;
-  }
-  return InstructionFusion::IsExpensive(instruction);
-}
-
 // Return true, if instr is a small constant.
 //
 // There is not single definition for what is a small constant in XLA.
@@ -1003,7 +976,7 @@ absl::StatusOr<bool> PriorityFusion::Run(
         int64_t consumer_operand_index = consumer->operand_index(producer);
 
         fusion_queue->PreFusion(producer, consumer);
-        auto fusion_instruction = Fuse(producer, consumer, computation);
+        auto fusion_instruction = Fuse(producer, consumer);
         fusion_deduplication_cache.UpdateFusedInstructionId(
             *fusion_instruction, *producer, *consumer, consumer_operand_index);
         fusion_queue->OnFusingInstruction(fusion_instruction, producer,
@@ -1051,7 +1024,7 @@ absl::StatusOr<bool> PriorityFusion::Run(
       auto users = constant->users();
       for (auto* user : users) {
         if (IsFusible(*user) && CanEmitInputFusedScatter(*constant, *user)) {
-          Fuse(constant, user, computation);
+          Fuse(constant, user);
           changed = true;
         }
       }
@@ -1070,15 +1043,6 @@ absl::StatusOr<bool> PriorityFusion::Run(
   }
 
   return changed;
-}
-
-FusionDecision PriorityFusion::ShouldFuse(HloInstruction* consumer,
-                                          int64_t operand_index) {
-  // This method is called in `InstructionFusion::Run` right before fusion, but
-  // it will always return true. Fusion decision are fully controlled by the
-  // PriorityQueue. If the queue returns a producer that shouldn't be fused,
-  // it's a bug and should be fixed in the queue logic.
-  return {};
 }
 
 HloInstruction::FusionKind PriorityFusion::ChooseKind(
@@ -1104,11 +1068,11 @@ HloInstruction::FusionKind PriorityFusion::ChooseKind(
 }
 
 HloInstruction* PriorityFusion::Fuse(HloInstruction* producer,
-                                     HloInstruction* consumer,
-                                     HloComputation* computation) {
+                                     HloInstruction* consumer) {
   VLOG(2) << "Fusing " << producer->ToString() << " into "
           << consumer->ToString();
 
+  HloComputation* computation = consumer->parent();
   auto kind = ChooseKind(producer, consumer);
   HloInstruction* fusion_instruction = consumer;
 
@@ -1135,11 +1099,6 @@ HloInstruction* PriorityFusion::Fuse(HloInstruction* producer,
   }
 
   return fusion_instruction;
-}
-
-std::unique_ptr<FusionQueue> PriorityFusion::GetFusionQueue(
-    HloComputation* computation) {
-  return nullptr;
 }
 
 }  // namespace gpu

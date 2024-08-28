@@ -2075,7 +2075,6 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:dump",
-        "//xla/service:fusion_queue",
         "//xla/service:hlo_cost_analysis",
         "//xla/service:hlo_graph_dumper",
         "//xla/service:hlo_pass",
@@ -2093,7 +2092,6 @@ cc_library(
         "//xla/service/gpu/model:gpu_indexing_performance_model",
         "//xla/service/gpu/model:gpu_performance_model",
         "//xla/service/gpu/model:gpu_performance_model_base",
-        "//xla/service/gpu/model:symbolic_tile_analysis",
         "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
         "//xla/service/gpu/model:triton_emitter_constraints",
         "//xla/stream_executor:device_description",
@@ -2906,7 +2904,10 @@ cc_library(
 xla_test(
     name = "triton_fusion_numerics_verifier_test",
     srcs = ["triton_fusion_numerics_verifier_test.cc"],
-    backends = ["gpu_a100"],
+    backends = [
+        "gpu_a100",
+        "gpu_h100",
+    ],
     deps = [
         ":triton_fusion_numerics_verifier",
         "//xla:shape_util",
