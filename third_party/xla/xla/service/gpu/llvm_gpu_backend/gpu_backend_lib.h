@@ -63,6 +63,12 @@ absl::StatusOr<std::string> CompileToPtx(
     llvm::Module* module, se::GpuComputeCapability gpu_version,
     const DebugOptions& debug_options,
     std::function<void(llvm::TargetMachine*)> configure_target = nullptr);
+
+// Determine PTX version from CUDA version.
+using Version = std::pair<int, int>;
+Version DetermineHighestSupportedPtxVersionFromCudaVersion(
+    Version cuda_version);
+
 }  // namespace nvptx
 
 namespace amdgpu {
