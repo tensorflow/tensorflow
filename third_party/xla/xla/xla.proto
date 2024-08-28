@@ -817,7 +817,7 @@ message DebugOptions {
   // Current levels:
   // 0: Disabled.
   // 1: Fusions of GEMM, elementwise, transpose/reshape operations.
-  // 2: + Broadcasts.
+  // 2: + Broadcasts, slicing.
   // 3: + Nontrivial noncontracting dimension reshapes/transposes.
   int32 xla_gpu_cudnn_gemm_fusion_level = 285;
 
