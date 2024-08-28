@@ -33,6 +33,42 @@ TEST(UtilsTest, TestGetSmName) {
   ASSERT_EQ(nvptx::GetSmName(cc_next), "sm_90");
 }
 
+using VersionPair = std::pair<nvptx::Version, nvptx::Version>;
+using PtxVersionFromCudaVersionTest = ::testing::TestWithParam<VersionPair>;
+
+TEST_P(PtxVersionFromCudaVersionTest, VerifyMapping) {
+  EXPECT_EQ(nvptx::DetermineHighestSupportedPtxVersionFromCudaVersion(
+                GetParam().first),
+            GetParam().second);
+}
+
+INSTANTIATE_TEST_SUITE_P(VersionTest, PtxVersionFromCudaVersionTest,
+                         ::testing::ValuesIn<VersionPair>({
+                             // CUDA 11
+                             {{11, 0}, {7, 0}},
+                             {{11, 1}, {7, 1}},
+                             {{11, 2}, {7, 2}},
+                             {{11, 3}, {7, 3}},
+                             {{11, 4}, {7, 4}},
+                             {{11, 5}, {7, 5}},
+                             {{11, 6}, {7, 6}},
+                             {{11, 7}, {7, 7}},
+                             {{11, 8}, {7, 8}},
+                             // CUDA 12
+                             {{12, 0}, {8, 0}},
+                             {{12, 1}, {8, 1}},
+                             {{12, 2}, {8, 2}},
+                             {{12, 3}, {8, 3}},
+                             {{12, 4}, {8, 4}},
+                             {{12, 5}, {8, 5}},
+                             {{12, 6}, {8, 5}},
+                         }),
+                         [](::testing::TestParamInfo<VersionPair> data) {
+                           nvptx::Version cuda_version = data.param.first;
+                           return absl::StrCat("cuda", cuda_version.first,
+                                               cuda_version.second);
+                         });
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

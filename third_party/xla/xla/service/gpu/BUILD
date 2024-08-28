@@ -1653,7 +1653,6 @@ xla_test(
         "//xla/service:hlo_cost_analysis",
         "//xla/service:hlo_memory_scheduler",
         "//xla/service:hlo_rematerialization",
-        "//xla/service/gpu/transforms:stream_attribute_annotator",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
