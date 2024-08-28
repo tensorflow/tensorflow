@@ -1406,6 +1406,7 @@ cc_library(
         "//xla/hlo/ir:hlo_module_group",
         "//xla/service/gpu/autotuning:autotuner_util",
         "//xla/service/gpu/autotuning:custom_kernel_fusion_autotuner",
+        "//xla/service/gpu/fusions/triton:triton_support",
         "//xla/service/gpu/model:gpu_cost_model_stats_collection",
         "//xla/service/gpu/model:gpu_hlo_cost_analysis",
         "//xla/service/gpu/runtime:thunk",

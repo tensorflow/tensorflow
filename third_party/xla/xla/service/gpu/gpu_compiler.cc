@@ -116,6 +116,7 @@ limitations under the License.
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/execution_stream_assignment.h"
 #include "xla/service/gpu/fusion_pipeline.h"
+#include "xla/service/gpu/fusions/triton/triton_support.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_float_support.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
@@ -1310,7 +1311,15 @@ absl::Status GpuCompiler::OptimizeHloModule(
       pipeline.AddPass<AsyncWrapper>([](HloInstruction* instruction) {
         // TODO(b/339654953): Use a better heuristic to determine whether a
         // `dot` operation should be wrapped in an async computation.
-        return IsCublasGemm(*instruction);
+        if (IsCublasGemm(*instruction)) {
+          return true;
+        }
+        if (instruction->called_computations().size() == 1 &&
+            IsTritonFusedComputation(
+                *instruction->called_computations().front())) {
+          return true;
+        }
+        return false;
       });
     }
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
