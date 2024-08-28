@@ -2081,6 +2081,7 @@ cc_library(
         "//xla/service:hlo_pass",
         "//xla/service:instruction_fusion",
         "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:fusion_deduplication_cache",
         "//xla/service/gpu:fusion_process_dump_proto_cc",
         "//xla/service/gpu:gpu_fusible",
         "//xla/service/gpu:hlo_fusion_analysis",
