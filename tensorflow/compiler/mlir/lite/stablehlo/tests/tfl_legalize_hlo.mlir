@@ -2120,6 +2120,20 @@ func.func @slice(%arg0: tensor<1x4672xf32>) -> tensor<1x519xf32> {
 // -----
 
 //===----------------------------------------------------------------------===//
+// mhlo.real_dynamic_slice
+//===----------------------------------------------------------------------===//
+
+func.func @real_dynamic_slice(%arg0: tensor<1x?x4x256xf32>, %arg1: tensor<4xi32>, %arg2: tensor<4xi32>) -> tensor<1x?x4x128xf32> {
+  %cst = mhlo.constant dense<1> : tensor<4xi32>
+  %0 = mhlo.real_dynamic_slice %arg0, %arg1, %arg2, %cst : (tensor<1x?x4x256xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x?x4x128xf32>
+  func.return %0 : tensor<1x?x4x128xf32>
+}
+
+// CHECK: "tfl.strided_slice"(%arg0, %1, %2, %3) <{begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, offset = false, shrink_axis_mask = 0 : i32}> : (tensor<1x?x4x256xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x?x4x128xf32>
+
+// -----
+
+//===----------------------------------------------------------------------===//
 // mhlo.sort
 //===----------------------------------------------------------------------===//
 
