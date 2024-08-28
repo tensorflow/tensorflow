@@ -224,6 +224,10 @@ std::vector<const HloInstruction*> GetFusionRoots(
 // Whether the instruction is a generic Triton fusion.
 bool IsGenericTritonFusion(const HloInstruction& instr);
 
+// Whether the fusion will likely behave poorly with vectorization due to the
+// instructions it contains.
+bool MayPreventVectorization(const HloFusionAdaptor& fusion);
+
 LaunchDimensionsConfig ComputeLoopFusionConfig(
     const HloFusionAnalysis& analysis);
 
