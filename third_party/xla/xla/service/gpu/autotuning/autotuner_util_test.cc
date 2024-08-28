@@ -336,7 +336,8 @@ class FileBasedCacheTest : public AutotunerUtilTest {
   }();
 
  private:
-  DebugOptions::AutotuneCacheMode cache_mode_;
+  DebugOptions::AutotuneCacheMode cache_mode_ =
+      DebugOptions::AUTOTUNE_CACHE_MODE_UPDATE;
 };
 
 TEST_F(FileBasedCacheTest, AutotuneCreatesTmpAndWritesResultToTheCacheDir) {
