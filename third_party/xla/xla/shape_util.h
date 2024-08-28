@@ -1011,42 +1011,6 @@ class ShapeUtil {
       const Shape& shape,
       const ForEachParallelVisitorFunction& visitor_function);
 
-  // In this case, we care about transposes that permute dimensions of a shape
-  // that can be viewed as several logical components in the order of major to
-  // minor. As an example, let's consider a 0-2-1 transpose:
-  //
-  // If a shape can be viewed as three logical components 0-1-2 in the order of
-  // major to minor, a 0-2-1-transpose changes the order of such logical
-  // components to 0-2-1. We call the shape being transposed the input shape and
-  // the transposed shape the output shape. The logical view of the input/output
-  // shapes for the transpose are called the 0-1-2/0-2-1 shapes or the
-  // normalized shapes. The original input/output shapes are called unnormalized
-  // shapes.
-  //
-  // 'output_shape' should have the default layout (descending minor to major),
-  // otherwise std::nullopt is returned.
-  //
-  // 'dimensions' specifies the kind of the unnormalized transpose and defines
-  // the permutation of the input shape that will result in the provided output
-  // shape. So to compute the input shape, we need to apply the inverse
-  // permutation of 'dimensions'.
-  //
-  // 'permutation' is an output parameter and specifies the kind of the
-  // normalized transpose. If the derived permutation is the identity
-  // permutation, std::nullopt is returned.
-  //
-  // The method returns the dimensions for the normalized transpose shape, or
-  // std::nullopt in the cases mentioned above.
-  //
-  // Example: Suppose the unnormalized output shape is [32, 1, 10, 11], and
-  // 'dimensions' is set to {3, 1, 0, 2}. This means the corresponding input
-  // shape is [10, 1, 11, 32]. The normalized output shape is [32, 110] with
-  // 'permutation' set to {1,0}.
-  static std::optional<absl::InlinedVector<int64_t, 3>>
-  GetNormalizedLogicalTransposeShape(
-      const Shape& output_shape, absl::Span<int64_t const> dimensions,
-      absl::InlinedVector<int64_t, 3>& permutation);
-
   // Strips device-specific information, namely tiling and memory-space
   // information, from a shape.
   static Shape DeviceShapeToHostShape(Shape s);
