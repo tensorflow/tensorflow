@@ -468,13 +468,12 @@ void PrintMismatch(int64_t* mismatches, const ErrorGenerator& err_generator) {
 //
 // If we are not in debug mode, we will continue to the next loop iteration.
 #define EXPECT_NEAR_FAIL_OR_CONTINUE() \
-  do {                                 \
-    if (should_emit_debug_logging_) {  \
-      ASSERT_TRUE(false);              \
-    } else {                           \
-      continue;                        \
-    }                                  \
-  } while (false)
+  if (should_emit_debug_logging_) {    \
+    FAIL();                            \
+  } else {                             \
+    continue;                          \
+  }                                    \
+  static_assert(true, "")
 
 template <PrimitiveType T, size_t N>
 void ExhaustiveOpTestBase<T, N>::ExpectNear(
