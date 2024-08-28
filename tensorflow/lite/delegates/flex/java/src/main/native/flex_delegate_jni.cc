@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <jni.h>
 
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/flex/delegate.h"
 #include "tensorflow/lite/delegates/utils/simple_delegate.h"
 #include "tensorflow/lite/testing/init_tensorflow.h"

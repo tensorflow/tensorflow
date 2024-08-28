@@ -333,7 +333,7 @@ CheckStoreIntoSliceIsCompatible(HloInstruction* instr,
                             HloOpcode::kPad, HloOpcode::kCollectivePermute,
                             HloOpcode::kConvert, HloOpcode::kReshape,
                             HloOpcode::kAllReduce, HloOpcode::kTranspose,
-                            HloOpcode::kBroadcast>(i) ||
+                            HloOpcode::kBroadcast, HloOpcode::kBitcast>(i) ||
            (multi_uses_pipelining && i->IsElementwise()) ||
            i->IsCustomCall(CollectivePipeliner::kInsertedByPreviousStep) ||
            i->IsCustomCall(CollectivePipeliner::kSunkByPreviousStep);
