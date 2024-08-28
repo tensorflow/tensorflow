@@ -1,4 +1,5 @@
-// RUN: fusion_to_mlir %s | mlir_fusions_opt --xla-gpu-test-to-inline | FileCheck %s
+// RUN: fusion_to_mlir %s |\
+// RUN:   mlir_fusions_opt --xla-gpu-test-optimize | FileCheck %s
 // RUN: test_correctness %s
 
 fused_computation {

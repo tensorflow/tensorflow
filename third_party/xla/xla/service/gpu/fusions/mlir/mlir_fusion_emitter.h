@@ -113,6 +113,17 @@ class MlirFusionEmitterBase : public KernelFusionInterface {
       mlir::interpreter::MlirCompilationTrace* trace) const;
 };
 
+// Adds passes that simplify arithmetic operations and remove dead code.
+void AddXlaGpuOpsOptimizationPasses(mlir::OpPassManager& pm);
+
+// Adds passes that transform XLA_GPU and SCF loops, e.g. peel, pipeline,
+// vectorize.
+void AddLoopTransformationPasses(mlir::OpPassManager& pm);
+
+// Adds passes that lower transformed loops to LLVM.
+void AddLoweringPasses(mlir::OpPassManager& pm,
+                       const se::DeviceDescription& device);
+
 }  // namespace gpu
 }  // namespace xla
 
