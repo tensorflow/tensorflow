@@ -200,7 +200,14 @@ class TritonSupportTest : public TritonSupportTestBase {
       EXPECT_THAT(run_triton_codegen(), IsOk());
     } else {
       if (skip_failure_branch_to_avoid_crash) {
-        EXPECT_DEATH(run_triton_codegen().IgnoreError(), "");
+        EXPECT_DEATH(
+            // We need to catch exceptions and abort(), because in OSS there
+            // seem to be cases where exceptions are used instead of terminating
+            // the program.
+            try { run_triton_codegen().IgnoreError(); } catch (...) {
+              abort();
+            },
+            "");
 
       } else {
         EXPECT_THAT(run_triton_codegen(), Not(IsOk()));
