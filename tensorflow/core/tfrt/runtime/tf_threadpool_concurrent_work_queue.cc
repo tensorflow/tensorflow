@@ -18,13 +18,11 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/threadpool.h"
+#include "absl/status/statusor.h"
 #include "tensorflow/core/platform/threadpool_interface.h"
+#include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/tfrt/utils/thread_pool.h"
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
-#include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 #include "tfrt/host_context/task_function.h"  // from @tf_runtime
 #include "tfrt/support/forward_decls.h"  // from @tf_runtime
 #include "tfrt/support/latch.h"  // from @tf_runtime

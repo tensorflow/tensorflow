@@ -16,14 +16,11 @@ limitations under the License.
 
 #include <memory>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status_matchers.h"
-#include "tensorflow/core/tfrt/utils/thread_pool.h"
-#include "tfrt/host_context/host_allocator.h"  // from @tf_runtime
-#include "tfrt/host_context/host_context.h"  // from @tf_runtime
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tfrt/host_context/execution_context.h"  // from @tf_runtime
+#include "tfrt/host_context/task_function.h"  // from @tf_runtime
 #include "tfrt/support/latch.h"  // from @tf_runtime
 
 namespace tensorflow {
