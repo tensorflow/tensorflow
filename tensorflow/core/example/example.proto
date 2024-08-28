@@ -6,6 +6,12 @@ package tensorflow;
 
 import "tensorflow/core/example/feature.proto";
 
+// Begin google-internal
+import "java/com/google/apps/jspb/jspb_generate_object_format.proto";
+
+option (.jspb.generate_object_format_accessors) = true;
+// End google-internal
+
 option cc_enable_arenas = true;
 option java_outer_classname = "ExampleProtos";
 option java_multiple_files = true;
