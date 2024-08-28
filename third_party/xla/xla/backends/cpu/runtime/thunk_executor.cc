@@ -168,12 +168,17 @@ tsl::AsyncValueRef<ThunkExecutor::ExecuteEvent> ThunkExecutor::Execute(
   // Create async execution state on heap and kick-off execution.
   auto state = std::make_unique<ExecuteState>(this, params.task_runner);
 
+  // When we kick-off execution we don't have to grab the session lock, as the
+  // main thread is not counted towards the number of concurrent workers limit.
+  // This also works for thunks with nested thunk executors (i.e., WhileThunk),
+  // as launching nested thunk sequence must not reduce the available
+  // concurrency for the other thunks executing in parallel.
   if (options_.use_priority_ready_queue) {
     Execute(state.get(), params, PriorityReadyQueue(nodes_defs_, source_),
-            /*lock=*/params.session.Join());
+            /*lock=*/nullptr);
   } else {
     Execute(state.get(), params, FifoReadyQueue(source_),
-            /*lock=*/params.session.Join());
+            /*lock=*/nullptr);
   }
 
   // If execution already completed (all kernels executed in the caller thread),
@@ -278,12 +283,16 @@ void ThunkExecutor::Execute(ExecuteState* state,
 
   tsl::profiler::TraceMe trace("ThunkExecutor::Execute");
   bool has_runner = state->runner != nullptr;
+  bool has_lock = static_cast<bool>(lock);
 
   // Threshold for splitting ready queue into separate thunk executor tasks.
   int64_t split_threshold = params.session.split_threshold();
 
   while (!ready_queue.Empty()) {
-    DCHECK(lock) << "Execute session lock must be held";
+    // If we had and execution lock passed to us by the caller, we must not
+    // lose it in the middle of the loop (donate to one of the callbacks).
+    DCHECK_EQ(static_cast<bool>(lock), has_lock)
+        << "Execute session lock must not be lost in the middle of the loop";
 
     NodeId id = ready_queue.Pop();
     ExecuteState::Node& node = state->node(id);
@@ -320,7 +329,8 @@ void ThunkExecutor::Execute(ExecuteState* state,
       // lock to the callback, because having a pending execute event means
       // that we have at least one more thread that is processing the same
       // execute session. If we happen to process the last thunk in the ready
-      // queue, we will forward the lock that we already hold.
+      // queue, we will forward the lock that we already hold (note that the
+      // lock might be empty, if `Execute` was called by the main thread).
       execute_event.AndThen(
           [&params, &node, state, execute_event = execute_event.AsPtr(),
            ready_queue = ready_queue.CreateEmptyReadyQueue(),

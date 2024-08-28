@@ -232,6 +232,9 @@ class Thunk {
   // on non-atomic pair of compare and add operations for efficiency), and don't
   // guarantee that the number of concurrent workers is always below the limit,
   // in some cases it can temporarily go above the limit.
+  //
+  // Execution session only controls the number of additional workers, and the
+  // main thread that kicks off the execution is not counted towards the limit.
   class ExecuteSession {
    public:
     // TODO(ezhulenev): Number of workers and split threshold should be
