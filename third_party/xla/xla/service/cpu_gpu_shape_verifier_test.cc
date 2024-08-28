@@ -58,7 +58,7 @@ TEST_F(CpuGpuShapeVerifierTest, Int4UnsupportedInstruction) {
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(
       status.message(),
-      HasSubstr("u4 is currently only supported in convert instructions"));
+      HasSubstr("u4 is currently only supported in allow-listed instructions"));
 }
 
 TEST_F(CpuGpuShapeVerifierTest, Int4SupportedInstruction) {

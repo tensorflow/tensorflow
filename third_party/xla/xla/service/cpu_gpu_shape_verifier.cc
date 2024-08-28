@@ -24,7 +24,9 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout_util.h"
 #include "xla/primitive_util.h"
+#include "xla/service/hlo_verifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "tsl/platform/errors.h"
@@ -51,7 +53,7 @@ absl::Status VerifyS4U4Usage(HloInstruction* instruction) {
         instruction->shape(), [&](const Shape& shape, const ShapeIndex&) {
           if (primitive_util::IsSubByteNonPredType(shape.element_type())) {
             return absl::InvalidArgumentError(absl::StrFormat(
-                "%s is currently only supported in convert instructions, "
+                "%s is currently only supported in allow-listed instructions, "
                 "but got instruction: %s",
                 primitive_util::LowercasePrimitiveTypeName(
                     shape.element_type()),
@@ -69,6 +71,8 @@ absl::Status VerifyS4U4Usage(HloInstruction* instruction) {
     case HloOpcode::kConcatenate:
     case HloOpcode::kConvert:
     case HloOpcode::kCopy:
+    case HloOpcode::kDynamicSlice:
+    case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kFusion:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kParameter:
