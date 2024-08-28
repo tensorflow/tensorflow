@@ -202,7 +202,6 @@ xla_test(
     shard_count = 20,
     tags = [
         "no_mac",
-        "no_rocm",
     ],
     deps = [
         ":triton_fusion_emitter",
@@ -253,7 +252,6 @@ xla_test(
     ],
     tags = [
         "no_mac",
-        "no_rocm",
     ],
     deps = [
         ":triton_fusion_emitter",
