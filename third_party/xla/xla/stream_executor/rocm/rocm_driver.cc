@@ -43,10 +43,6 @@ limitations under the License.
 #include "tsl/platform/stacktrace.h"
 #include "tsl/platform/threadpool.h"
 
-static constexpr bool FLAGS_gpuexec_rocm_driver_inject_init_error = false;
-static constexpr bool FLAGS_gpuexec_rocm_sync_around_driver_calls = false;
-static constexpr bool FLAGS_gpuexec_rocm_device_0_only = false;
-
 #define RETURN_IF_ROCM_ERROR(expr, ...)                                  \
   do {                                                                   \
     hipError_t _res = (expr);                                            \
@@ -68,10 +64,6 @@ static constexpr bool FLAGS_gpuexec_rocm_device_0_only = false;
                  << ::stream_executor::gpu::ToString(_res); \
     }                                                       \
   } while (0)
-
-// Debugging: on each push and pop of a rocm context, verify the current device
-// matches the expected one.
-constexpr bool kVerifyGpuContext = false;
 
 namespace stream_executor {
 namespace gpu {
@@ -217,7 +209,6 @@ void SynchronizeOrDie() {
 }  // namespace
 
 void GpuContext::SetActive() {
-  if (FLAGS_gpuexec_rocm_sync_around_driver_calls) SynchronizeOrDie();
   FAIL_IF_ROCM_ERROR(wrap::hipCtxSetCurrent(context_),
                      "Failed setting context");
 }
@@ -277,12 +268,7 @@ std::string ROCMPointersToCanAccessString(hipDeviceptr_t from,
 // Actually performs the work of ROCM initialization. Wrapped up in one-time
 // execution guard.
 static absl::Status InternalInit() {
-  hipError_t res = hipErrorNoDevice;
-  if (FLAGS_gpuexec_rocm_driver_inject_init_error) {
-    LOG(ERROR) << "injecting ROCM init error; initialization will fail";
-  } else {
-    res = wrap::hipInit(0 /* = flags */);
-  }
+  hipError_t res = wrap::hipInit(0 /* = flags */);
 
   if (res == hipSuccess) {
     return absl::OkStatus();
@@ -1720,9 +1706,6 @@ absl::Status GpuDriver::LaunchKernel(
     return 0;
   }
 
-  if (FLAGS_gpuexec_rocm_device_0_only && device_count > 1) {
-    device_count = 1;
-  }
   return device_count;
 }
 
