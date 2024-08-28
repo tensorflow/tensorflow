@@ -834,7 +834,6 @@ tf_cuda_library(
     ],
     visibility = [
         "//tensorflow:__pkg__",
-        "//tensorflow/cc/saved_model:__subpackages__",
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/runtime_fallback:__subpackages__",
         "//tensorflow/core/tfrt:__subpackages__",
@@ -1673,7 +1672,6 @@ tf_proto_library(
     visibility = [
         "//tensorflow/core:__subpackages__",
         "//tensorflow/python:__pkg__",
-        "//tensorflow/security/fuzzing:__subpackages__",
     ],
 )
 
