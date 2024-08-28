@@ -522,11 +522,8 @@ cc_library(
 xla_test(
     name = "cudnn_test",
     srcs = if_cuda_is_configured(["cudnn_test.cc"]),
-    backend_tags = {"gpu": [
-        "requires-gpu-sm90",
-    ]},
     backends = [
-        "gpu",
+        "gpu_h100",
     ],
     deps = [
         "//xla:comparison_util",

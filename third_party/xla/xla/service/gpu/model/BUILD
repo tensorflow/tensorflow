@@ -45,11 +45,10 @@ cc_library(
 xla_test(
     name = "analytical_latency_estimator_test",
     srcs = ["analytical_latency_estimator_test.cc"],
-    backend_tags = {"gpu": [
-        "requires-gpu-sm70",
-    ]},
     backends = [
-        "gpu",
+        "gpu_v100",
+        "gpu_a100",
+        "gpu_h100",
     ],
     deps = [
         ":analytical_latency_estimator",

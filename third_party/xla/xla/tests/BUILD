@@ -1184,7 +1184,6 @@ CONVOLUTION_TEST_DEPS = [
     "//xla/client:local_client",
     "//xla/client:padding",
     "//xla/client:xla_builder",
-    "//xla/service/gpu:gpu_executable",
     "//xla/tests:client_library_test_base",
     "//xla/tests:hlo_test_base",
     "//xla/tests:literal_test_util",
@@ -2635,10 +2634,6 @@ xla_test(
 xla_test(
     name = "llvm_compiler_test",
     srcs = ["llvm_compiler_test.cc"],
-    backend_tags = {
-        # TODO(b/317293391) Remove once Bazel test_suite handles tags correctly.
-        "gpu": ["gpu"],
-    },
     backends = [
         "cpu",
         "gpu",

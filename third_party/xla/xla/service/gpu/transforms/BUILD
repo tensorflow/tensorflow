@@ -716,7 +716,6 @@ xla_test(
         "gpu_a100": [
             "noasan",
             "nomsan",
-            "no_rocm",
         ],
     },
     backends = [
@@ -808,12 +807,8 @@ cc_library(
 xla_test(
     name = "cudnn_fused_mha_rewriter_test",
     srcs = ["cudnn_fused_mha_rewriter_test.cc"],
-    backend_tags = {"gpu": [
-        "requires-gpu-nvidia",
-        "no_rocm",
-    ]},
     backends = [
-        "gpu",
+        "gpu_any",
     ],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
@@ -2910,10 +2905,7 @@ cc_library(
 xla_test(
     name = "triton_fusion_numerics_verifier_test",
     srcs = ["triton_fusion_numerics_verifier_test.cc"],
-    backend_tags = {"gpu": [
-        "requires-gpu-sm80",
-    ]},
-    backends = ["gpu"],
+    backends = ["gpu_a100"],
     deps = [
         ":triton_fusion_numerics_verifier",
         "//xla:shape_util",

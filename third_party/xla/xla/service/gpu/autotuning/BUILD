@@ -102,15 +102,12 @@ xla_test(
     name = "gemm_fusion_autotuner_test",
     timeout = "long",
     srcs = ["gemm_fusion_autotuner_test.cc"],
-    backend_tags = {"gpu": [
-        "requires-gpu-sm80",
-    ]},
     backends = [
-        "gpu",
+        "gpu_a100",
+        "gpu_h100",
     ],
     tags = [
         "no_mac",
-        "no_rocm",
     ],
     deps = [
         ":autotuner_compile_util",
