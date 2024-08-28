@@ -1938,10 +1938,10 @@ def resource_creator_scope(resource_type, resource_creator) -> Iterator[None]:
 class Graph(pywrap_tf_session.PyGraph):
   """A TensorFlow computation, represented as a dataflow graph.
 
-  Graphs are used by `tf.function`s to represent the function's computations.
-  Each graph contains a set of `tf.Operation` objects, which represent units of
-  computation; and `tf.Tensor` objects, which represent the units of data that
-  flow between operations.
+  
+   In TensorFlow, tf.function creates a graph to represent computations. 
+   This graph consists of tf.Operation objects, which are the computational steps, and tf.Tensor objects,
+   which are the data flowing between these steps.
 
   ### Using graphs directly (deprecated)
 
