@@ -3536,7 +3536,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_unstacker_test",
     srcs = ["hlo_unstacker_test.cc"],
-    tags = ["requires-net:external"],
+    tags = if_google(["requires-net:external"]),
     deps = [
         ":hlo_unstacker",
         "//xla/hlo/ir:hlo",
