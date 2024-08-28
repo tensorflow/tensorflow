@@ -2904,7 +2904,10 @@ cc_library(
 xla_test(
     name = "triton_fusion_numerics_verifier_test",
     srcs = ["triton_fusion_numerics_verifier_test.cc"],
-    backends = ["gpu_a100"],
+    backends = [
+        "gpu_a100",
+        "gpu_h100",
+    ],
     deps = [
         ":triton_fusion_numerics_verifier",
         "//xla:shape_util",
