@@ -97,6 +97,13 @@ struct XlaGpuInlinerInterface : public mlir::DialectInlinerInterface {
     // We allow any op from the xla_gpu dialect to be inlined.
     return true;
   }
+  // We don't have any special restrictions on what can be inlined into
+  // destination regions (e.g. while/conditional bodies). Always allow it.
+  bool isLegalToInline(mlir::Region* dest, mlir::Region* src,
+                       bool wouldBeCloned,
+                       mlir::IRMapping& valueMapping) const final {
+    return true;
+  }
 };
 
 struct XlaGpuOpAsmDialectInterface : public mlir::OpAsmDialectInterface {

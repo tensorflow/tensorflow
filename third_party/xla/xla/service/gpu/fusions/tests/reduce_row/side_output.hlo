@@ -16,9 +16,7 @@ fused_computation {
 }
 
 // CHECK:     @fused_computation
-// CHECK:     scf.for
-// CHECK:       scf.for
+// CHECK:       xla_gpu.loop
 // CHECK:         %[[SIDE_OUTPUT:.*]] = xla_gpu.pure_call @fused_computation_exp
 // CHECK-NEXT:    tensor.insert %[[SIDE_OUTPUT]]
-// CHECK:         scf.yield
-// CHECK:       scf.yield
+// CHECK:         xla_gpu.yield

@@ -83,11 +83,11 @@ int main(int argc, char** argv) {
         if (!options.empty()) return mlir::failure();
         pm.addNestedPass<mlir::func::FuncOp>(
             xla::gpu::CreateLowerXlaGpuLoopsToScfPass());
+        pm.addPass(xla::gpu::CreateFlattenTensorsPass());
         pm.addPass(mlir::createLoopInvariantCodeMotionPass());
         pm.addNestedPass<mlir::func::FuncOp>(
             xla::gpu::CreateUnswitchLoopsPass());
         pm.addPass(mlir::createLoopInvariantCodeMotionPass());
-        pm.addPass(xla::gpu::CreateFlattenTensorsPass());
         pm.addNestedPass<mlir::func::FuncOp>(
             xla::gpu::CreateVectorizeLoadsAndStoresPass());
         return mlir::success();

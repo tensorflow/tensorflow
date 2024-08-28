@@ -187,8 +187,7 @@ TEST_F(MlirScatterFusionTest, Scatter_UniqueIndices) {
     }
   )";
   TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
-    // CHECK: #[[$MAP0:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 floordiv 2)
-    // CHECK: #[[$MAP1:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 mod 2)
+    // CHECK: #[[$MAP:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 floordiv 2)
 
     // CHECK-LABEL: func.func @fused_computation(
     // CHECK-SAME:    %[[OPERAND:[a-zA-Z0-9]*]]: tensor<10x5xf32>
@@ -201,7 +200,7 @@ TEST_F(MlirScatterFusionTest, Scatter_UniqueIndices) {
 
     // CHECK:      %[[TH_X:.*]] = gpu.thread_id  x
 
-    // CHECK:      %[[SLICE_ID:.*]] = xla_gpu.apply_indexing #[[$MAP0]](%[[TH_X]]
+    // CHECK:      %[[SLICE_ID:.*]] = xla_gpu.apply_indexing #[[$MAP]](%[[TH_X]]
 
     // CHECK:      %[[IND0_I32:.*]] = xla_gpu.pure_call @scatter_indices
     // CHECK-SAME:  (%[[OPERAND]], %[[INDICES]],
@@ -212,22 +211,21 @@ TEST_F(MlirScatterFusionTest, Scatter_UniqueIndices) {
     // CHECK:      %[[IN_BOUNDS:.*]] = arith.cmpi ule
     // CHECK:      scf.if %[[IN_BOUNDS]] -> (tensor<10x5xf32>) {
 
-    // CHECK:      %[[SLICE_X:.*]] = xla_gpu.apply_indexing #[[$MAP1]](%[[TH_X]]
+    // CHECK:      xla_gpu.loop
+    // CHECK:      -> (%[[RA:.*]], %[[RB:.*]], %[[RC:.*]]) in
 
     // CHECK:      %[[UPD_ELEM:.*]] = xla_gpu.pure_call @scatter_update(
     // CHECK-SAME:  %[[OPERAND]], %[[INDICES]], %[[UPDATES]],
-    // CHECK-SAME:  %[[SLICE_ID]], %[[C0]], %[[SLICE_X]])
+    // CHECK-SAME:  %[[RA]], %[[RB]], %[[RC]])
 
+    // CHECK:       %[[IND0_RB:.*]] = arith.addi %[[RB]], %[[IND0]]
     // CHECK:       %[[CURRENT:.*]] = xla_gpu.pure_call @scatter_operand(
-    // CHECK-SAME:    %[[OPERAND]], %[[INDICES]], %[[UPDATES]], %[[IND0]],
-    // CHECK-SAME:    %[[SLICE_X]])
+    // CHECK-SAME:    %[[OPERAND]], %[[INDICES]], %[[UPDATES]], %[[IND0_RB]],
+    // CHECK-SAME:    %[[RC]])
     // CHECK:        %[[COMBINED:.*]] = arith.addf %[[CURRENT]], %[[UPD_ELEM]]
     // CHECK:        %[[UPDATED:.*]] = tensor.insert %[[COMBINED]]
-    // CHECK-SAME:     into %[[OUT]][%{{.*}}, %[[SLICE_X]]] : tensor<10x5xf32>
-    // CHECK:        scf.yield %[[UPDATED]] : tensor<10x5xf32>
-    // CHECK:      } else {
-    // CHECK:        scf.yield %[[OUT]] : tensor<10x5xf32>
-    // CHECK:      }
+    // CHECK-SAME:     into %{{[a-z0-9]+}}[%{{.*}}, %[[RC]]] : tensor<10x5xf32>
+    // CHECK:        xla_gpu.yield %[[UPDATED]] : tensor<10x5xf32>
   )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
@@ -315,16 +313,14 @@ TEST_F(MlirScatterFusionTest, Scatter_Add) {
 
     // CHECK: %[[IN_BOUNDS:.*]] = arith.cmpi ule
     // CHECK: scf.if %[[IN_BOUNDS]] -> (tensor<10x5xf32>) {
-    // CHECK:   %[[UPD_ELEM:.*]] = xla_gpu.pure_call @scatter_update
-    // CHECK:   %[[RMW:.*]] = xla_gpu.atomic_rmw %[[OUT]]
-    // CHECK:   ^bb0(%[[CUR_VALUE:.*]]: f32):
-    // CHECK:     %[[SUM:.*]] = arith.addf %[[CUR_VALUE]], %[[UPD_ELEM]]
-    // CHECK:     xla_gpu.yield %[[SUM]] : f32
-    // CHECK:   }
-    // CHECK:   scf.yield %[[RMW]] : tensor<10x5xf32>
-    // CHECK: } else {
-    // CHECK:   scf.yield %[[OUT]] : tensor<10x5xf32>
-    // CHECK: }
+    // CHECK:   xla_gpu.loop
+    // CHECK:     %[[UPD_ELEM:.*]] = xla_gpu.pure_call @scatter_update
+    // CHECK:     %[[RMW:.*]] = xla_gpu.atomic_rmw %{{[a-z0-9]+}}
+    // CHECK:     ^bb0(%[[CUR_VALUE:.*]]: f32):
+    // CHECK:       %[[SUM:.*]] = arith.addf %[[CUR_VALUE]], %[[UPD_ELEM]]
+    // CHECK:       xla_gpu.yield %[[SUM]] : f32
+    // CHECK:     }
+    // CHECK:     xla_gpu.yield %[[RMW]] : tensor<10x5xf32>
   )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
@@ -373,14 +369,11 @@ TEST_F(MlirScatterFusionTest, Scatter_Overwrite) {
     // CHECK: %[[IN_BOUNDS:.*]] = arith.cmpi ule
     // CHECK: scf.if %[[IN_BOUNDS]] -> (tensor<10x5xf32>) {
     // CHECK:   %[[UPD_ELEM:.*]] = xla_gpu.pure_call @scatter_update
-    // CHECK:   %[[RMW:.*]] = xla_gpu.atomic_rmw %[[OUT]]
+    // CHECK:   %[[RMW:.*]] = xla_gpu.atomic_rmw %{{[a-z0-9]+}}
     // CHECK:   ^bb0(%[[CUR_VALUE:.*]]: f32):
     // CHECK:     xla_gpu.yield %[[UPD_ELEM]] : f32
     // CHECK:   }
-    // CHECK:   scf.yield %[[RMW]] : tensor<10x5xf32>
-    // CHECK: } else {
-    // CHECK:   scf.yield %[[OUT]] : tensor<10x5xf32>
-    // CHECK: }
+    // CHECK:   xla_gpu.yield %[[RMW]] : tensor<10x5xf32>
   )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }

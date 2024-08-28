@@ -14,8 +14,8 @@ fused_computation {
 // CHECK: #[[MAJOR:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 floordiv 4),
 // CHECK: #[[MINOR:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 mod 4),
 
-// CHECK: %[[TID:.*]] = gpu.thread_id
-// CHECK-DAG: %[[MAJOR_IDX:.*]] = xla_gpu.apply_indexing #[[MAJOR]]
-// CHECK-DAG: %[[MINOR_IDX:.*]] = xla_gpu.apply_indexing #[[MINOR]]
-// CHECK-DAG: tensor.insert {{.*}}[%[[MAJOR_IDX]], %[[MINOR_IDX]]]
-// CHECK-DAG: tensor.insert {{.*}}[%[[TID]]]
+// CHECK:     xla_gpu.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]]) in
+// CHECK-DAG:   %[[MAJOR_IDX:.*]] = xla_gpu.apply_indexing #[[MAJOR]]
+// CHECK-DAG:   %[[MINOR_IDX:.*]] = xla_gpu.apply_indexing #[[MINOR]]
+// CHECK-DAG:   tensor.insert {{.*}}[%[[MAJOR_IDX]], %[[MINOR_IDX]]]
+// CHECK-DAG:   tensor.insert {{.*}}[%[[RA]]]

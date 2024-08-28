@@ -114,6 +114,16 @@ mlir::ValueRange EmitLoopNest(
         create_body,
     bool vectorize = false);
 
+// Same as EmitLoopNest, but uses xla_gpu.loop.
+mlir::ValueRange EmitXlaLoopOp(
+    mlir::ImplicitLocOpBuilder& b, mlir::ValueRange dim_values,
+    mlir::ValueRange iter_args_inits, const IndexingMap& indexing_map,
+    mlir::function_ref<llvm::SmallVector<mlir::Value>(
+        mlir::ValueRange ivs, mlir::ValueRange map_results,
+        mlir::ValueRange iter_args)>
+        create_body,
+    bool vectorize = false);
+
 // Same as EmitLoopNest, but the body building function can return an error
 // which gets returned from EmitLoopNestWithStatus.
 absl::StatusOr<mlir::ValueRange> EmitLoopNestWithStatus(
