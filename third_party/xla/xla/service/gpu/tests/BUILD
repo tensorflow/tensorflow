@@ -20,7 +20,7 @@ load(
 )
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load("//xla/tests:build_defs.bzl", "xla_test")
-load("//xla/tsl:tsl.bzl", "if_oss")
+load("//xla/tsl:tsl.bzl", "if_google", "if_oss")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 
 package(
@@ -118,7 +118,7 @@ xla_cc_test(
     name = "async_kernel_launch_test",
     srcs = ["async_kernel_launch_test.cc"],
     # "requires-net:external" tag allows uploading `xprof` results.
-    tags = ["requires-net:external"] + tf_cuda_tests_tags(),
+    tags = if_google(["requires-net:external"]) + tf_cuda_tests_tags(),
     deps = [
         "//xla:debug_options_flags",
         "//xla:literal",
