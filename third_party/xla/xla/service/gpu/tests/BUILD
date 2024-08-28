@@ -498,8 +498,8 @@ xla_test(
     deps = [
         ":gpu_codegen_test",
         "//xla:shape_util",
+        "//xla/hlo/pass:hlo_pass_pipeline",
         "//xla/service:hlo_cost_analysis",
-        "//xla/service:hlo_pass_pipeline",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu/transforms:fusion_merger",
         "//xla/service/gpu/transforms:instruction_fusion",

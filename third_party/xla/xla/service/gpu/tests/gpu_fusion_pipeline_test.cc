@@ -18,13 +18,13 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/string_view.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/gpu/transforms/fusion_merger.h"
 #include "xla/service/gpu/transforms/instruction_fusion.h"
 #include "xla/service/gpu/transforms/multi_output_fusion.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/service/hlo_pass_pipeline.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"

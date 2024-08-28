@@ -17,8 +17,8 @@ limitations under the License.
 #define XLA_SERVICE_BFLOAT16_CONVERSION_FOLDING_H_
 
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/float_support.h"
-#include "xla/service/hlo_pass_interface.h"
 
 namespace xla {
 
