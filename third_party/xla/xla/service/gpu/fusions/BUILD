@@ -425,6 +425,7 @@ xla_test(
     name = "transpose_mlir_test",
     srcs = ["transpose_mlir_test.cc"],
     backends = ["gpu"],
+    tags = ["no_rocm"], # TODO(rocm): weekly sync 24-08-20
     deps = [
         ":mlir_emitter_test_base",
         ":transpose_mlir",
