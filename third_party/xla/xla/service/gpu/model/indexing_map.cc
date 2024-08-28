@@ -30,6 +30,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/optimization.h"
+#include "absl/numeric/int128.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
