@@ -62,24 +62,11 @@ def CastElementsToI64Elements : NativeCodeCall<
 
 def EmptyDotAlgorithmAttr : NativeCodeCall<"mlir::mhlo::DotAlgorithmAttr{}">;
 
-//===----------------------------------------------------------------------===//
-// ApproximateEqual op pattern.
-//===----------------------------------------------------------------------===//
-
 class MHLO_ComparisonDirectionValue<string enumStr> :
   ConstantAttr<MHLO_ComparisonDirectionAttr, "::mlir::mhlo::ComparisonDirection::" # enumStr>;
 
 class CHLO_ComparisonDirectionValue<string enumStr> :
   ConstantAttr<CHLO_ComparisonDirectionAttr, "::mlir::chlo::ComparisonDirection::" # enumStr>;
-
-// TODO(b/228291745): Assert that $x and $y have the same shape.
-def : Pat<(TF_ApproximateEqualOp:$result $x, $y, $tolerance),
-          (CHLO_BroadcastCompareOp
-           (MHLO_AbsOp:$abs (MHLO_SubtractOp $x, $y)),
-           (CastValueToElementType $result, (MHLO_ConstantOp $tolerance), $abs),
-           (NullDenseI64ArrayAttr),
-           CHLO_ComparisonDirectionValue<"LT">,
-           (CHLO_DEFAULT_COMPARISON_TYPE))>;
 
 //===----------------------------------------------------------------------===//
 // Assert op pattern.
