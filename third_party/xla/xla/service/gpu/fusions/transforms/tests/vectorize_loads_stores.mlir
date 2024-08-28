@@ -280,14 +280,14 @@ func.func @multiple(%arg0: tensor<131072xf32>, %arg1: tensor<4096xbf16>,
   }
   return %0#0, %0#1 : tensor<131072xf32>, f32
 }
-// CHECK-DAG: #[[$MAP:.*]] = #xla_gpu.indexing_map<(d0)[s0] -> (d0 * 2 + s0 * 512), domain: d0 in [0, 255], s0 in [0, 7]>
-// CHECK-DAG: #[[$MAP1:.*]] = #xla_gpu.indexing_map<(d0, d1)[s0] -> (d0 * 32 + d1 * 2 + s0 * 512), domain: d0 in [0, 7], d1 in [0, 255], s0 in [0, 7]>
+// CHECK-DAG: #[[$MAP:.*]] = #xla_gpu.indexing_map<(d0, d1) -> (d0 * 2 + d1 * 512), domain: d0 in [0, 255], d1 in [0, 7]>
+// CHECK-DAG: #[[$MAP1:.*]] = #xla_gpu.indexing_map<(d0, d1, d2) -> (d0 * 32 + d1 * 2 + d2 * 512), domain: d0 in [0, 7], d1 in [0, 255], d2 in [0, 7]>
 // CHECK-LABEL: @multiple
 // CHECK-SAME: (%[[ARG0:.*]]: tensor{{.*}}, %[[ARG1:.*]]: tensor{{.*}}, %[[ARG2:.*]]: tensor{{.*}}, %[[ARG3:.*]]: tensor{{.*}}, %[[ARG4:.*]]: index)
 // CHECK:      %[[C0:.*]] = arith.constant 0 : index
 // CHECK:      scf.for %[[I:.*]] = %[[C0]]
-// CHECK-DAG:  %[[BASE:.*]] = xla_gpu.apply_indexing #[[$MAP]](%[[ARG4]])[%[[I]]]
-// CHECK-DAG:  %[[IDX:.*]] = xla_gpu.apply_indexing #[[$MAP1]](%[[I]], %[[ARG4]])[%[[I]]]
+// CHECK-DAG:  %[[BASE:.*]] = xla_gpu.apply_indexing #[[$MAP]](%[[ARG4]], %[[I]])
+// CHECK-DAG:  %[[IDX:.*]] = xla_gpu.apply_indexing #[[$MAP1]](%[[I]], %[[ARG4]], %[[I]])
 // CHECK:      %[[READ1:.*]] = vector.transfer_read %[[ARG1]][%[[BASE]]]
 // CHECK:      %[[READ2:.*]] = vector.transfer_read %[[ARG0]][%[[IDX]]]
 // CHECK:      %[[INNER:.*]]:2 = scf.for %[[J:.*]] = %[[C0]] {{.*}} iter_args(%[[F:.*]] = {{.*}}, %[[V:.*]] = {{.*}}) -> (f32, vector<2xf32>)
