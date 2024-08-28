@@ -586,6 +586,7 @@ cc_library(
     deps = [
         ":op_macros",
         "//tensorflow/lite:array",
+        "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/internal:cppmath",

@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
+#include "xla/stream_executor/gpu/context_map.h"
 #include "xla/stream_executor/gpu/gpu_diagnostics.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/scoped_activate_context.h"
@@ -75,7 +76,27 @@ constexpr bool kVerifyGpuContext = false;
 namespace stream_executor {
 namespace gpu {
 
-/* static */ absl::Mutex CreatedContexts::mu_{absl::kConstInit};
+namespace {
+
+// Returns the singleton ContextMap.
+ContextMap<hipCtx_t, GpuContext>* GetContextMap() {
+  static ContextMap<hipCtx_t, GpuContext>* context_map =
+      new ContextMap<hipCtx_t, GpuContext>([](void* ptr) {
+        int device_ordinal;
+        hipError_t result =
+            hipPointerGetAttribute(static_cast<void*>(&device_ordinal),
+                                   HIP_POINTER_ATTRIBUTE_DEVICE_ORDINAL,
+                                   reinterpret_cast<hipDeviceptr_t>(ptr));
+        if (result != hipSuccess) {
+          LOG(FATAL) << "Not able to get the device_ordinal for ptr: " << ptr
+                     << ". Error: " << ToString(result);
+        }
+        return device_ordinal;
+      });
+  return context_map;
+}
+
+}  // namespace
 
 // Formats hipError_t to output prettified values into a log stream.
 // Error summaries taken from:
@@ -159,7 +180,7 @@ namespace {
 // context behind our backs).
 hipCtx_t CurrentContext() {
   hipCtx_t current = rocm::CurrentContextOrDie();
-  if (current != nullptr && !CreatedContexts::Has(current)) {
+  if (current != nullptr && !GetContextMap()->Has(current)) {
     LOG(FATAL) << "current context was not created by the StreamExecutor "
                   "rocm_driver API: "
                << current
@@ -361,7 +382,7 @@ static absl::Status InternalInit() {
   CHECK_EQ(hipSuccess, wrap::hipCtxSetCurrent(former_context));
 
   if (res == hipSuccess) {
-    *context = CreatedContexts::Add(new_context, device_ordinal);
+    *context = GetContextMap()->Add(new_context, device_ordinal);
     CHECK(*context != nullptr)
         << "success in this call must entail non-null result";
     VLOG(2) << "created or reused context " << new_context
@@ -399,7 +420,7 @@ static absl::Status InternalInit() {
     LOG(ERROR) << "failed to release HIP context; leaking: " << ToString(res);
   }
 
-  CreatedContexts::Remove(context->context());
+  GetContextMap()->Remove(context->context());
 }
 
 /* static */ absl::Status GpuDriver::FuncGetAttribute(

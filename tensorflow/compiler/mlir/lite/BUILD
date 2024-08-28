@@ -1277,6 +1277,8 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/lite/schema:schema_conversion_utils",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs_with_mutable",
+        "//tensorflow/compiler/mlir/lite/tools/versioning",
+        "//tensorflow/compiler/mlir/lite/tools/versioning:gpu_compatibility",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
@@ -1286,8 +1288,6 @@ cc_library(
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/lite/toco:toco_flags_proto_cc",
-        "//tensorflow/lite/tools/versioning",
-        "//tensorflow/lite/tools/versioning:gpu_compatibility",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -1794,3 +1794,25 @@ cc_library(
     copts = tflite_copts_warnings(),
 )
 # LINT.ThenChange(//tensorflow/lite:version)
+
+# LINT.IfChange(kernel_api)
+cc_library(
+    name = "kernel_api",
+    hdrs = [
+        "context_util.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/compiler/mlir/lite/core/c:common",
+    ],
+)
+# LINT.ThenChange(//tensorflow/lite:kernel_api)
+
+# LINT.IfChange(builtin_ops)
+cc_library(
+    name = "builtin_ops",
+    hdrs = ["builtin_ops.h"],
+    aspect_hints = ["//tools/build_defs/swift:auto_module"],
+    compatible_with = get_compatible_with_portable(),
+)
+# LINT.ThenChange(//tensorflow/lite:builtin_ops)

@@ -250,7 +250,7 @@ absl::Status GpuExecutor::Init() {
   return GpuDriver::GetGpuISAVersion(&version_, device_);
 }
 
-absl::StatusOr<bool> GpuExecutor::DelayKernelIsSupported(GpuStream* stream) {
+absl::StatusOr<bool> GpuExecutor::DelayKernelIsSupported() {
   // Delay kernel is not supported on ROCm.
   return false;
 }

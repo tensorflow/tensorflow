@@ -441,13 +441,9 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
+alias(
     name = "builtin_op_data",
-    hdrs = ["builtin_op_data.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        "//tensorflow/lite/core/c:common",
-    ],
+    actual = "//tensorflow/compiler/mlir/lite/core/c:builtin_op_data",
 )
 
 cc_library(
@@ -459,6 +455,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":builtin_op_data",
         "//tensorflow/lite/core/c:common",
     ],
 )

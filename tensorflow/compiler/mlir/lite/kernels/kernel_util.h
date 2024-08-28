@@ -12,14 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-/// WARNING: Users of TensorFlow Lite should not include this file directly,
-/// but should instead include
-/// "third_party/tensorflow/lite/c/builtin_op_data.h".
-/// Only the TensorFlow Lite implementation itself should include this
-/// file directly.
-#ifndef TENSORFLOW_LITE_CORE_C_BUILTIN_OP_DATA_H_
-#define TENSORFLOW_LITE_CORE_C_BUILTIN_OP_DATA_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_LITE_KERNELS_KERNEL_UTIL_H_
+#define TENSORFLOW_COMPILER_MLIR_LITE_KERNELS_KERNEL_UTIL_H_
 
-#include "tensorflow/compiler/mlir/lite/core/c/builtin_op_data.h"  // IWYU pragma: export
+#include "tensorflow/compiler/mlir/lite/core/c/common.h"
 
-#endif  // TENSORFLOW_LITE_CORE_C_BUILTIN_OP_DATA_H_
+namespace tflite {
+
+// Returns whether there is unspecified dimension in the tensor's dim signature.
+bool HasUnspecifiedDimension(const TfLiteTensor* tensor);
+
+}  // namespace tflite
+
+#endif  // TENSORFLOW_COMPILER_MLIR_LITE_KERNELS_KERNEL_UTIL_H_

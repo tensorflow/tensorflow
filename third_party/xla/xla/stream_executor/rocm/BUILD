@@ -56,6 +56,7 @@ cc_library(
         ":rocm_diagnostics",
         "//xla/stream_executor",
         "//xla/stream_executor/gpu:context",
+        "//xla/stream_executor/gpu:context_map",
         "//xla/stream_executor/gpu:gpu_diagnostics_header",
         "//xla/stream_executor/gpu:gpu_driver_header",
         "//xla/stream_executor/gpu:scoped_activate_context",

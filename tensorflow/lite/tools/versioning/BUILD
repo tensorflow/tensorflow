@@ -106,8 +106,8 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":op_signature",
-        "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
