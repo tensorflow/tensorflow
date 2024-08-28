@@ -932,8 +932,7 @@ TEST(GpuCommandBufferTest, ConditionalIfElse) {
   ASSERT_EQ(dst, expected_mul);
 }
 
-// TODO(b/362769658): Enable when fixed.
-TEST(GpuCommandBufferTest, DISABLED_ConditionalCaseEmptyGraph) {
+TEST(GpuCommandBufferTest, ConditionalCaseEmptyGraph) {
   // See b/362769658.
   if (!IsAtLeastCuda12300()) {
     GTEST_SKIP() << "CUDA graph conditionals are not supported";
