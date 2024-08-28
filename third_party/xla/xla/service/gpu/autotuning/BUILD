@@ -108,6 +108,7 @@ xla_test(
     ],
     tags = [
         "no_mac",
+        "no_rocm",
     ],
     deps = [
         ":autotuner_compile_util",
@@ -389,6 +390,7 @@ xla_test(
     ],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     tags = [
+        "no_rocm",
         "noasan",
         "nomsan",
     ],
