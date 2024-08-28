@@ -29,12 +29,10 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
-#include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
@@ -66,7 +64,6 @@ using ::mlir::Pass;
 using ::mlir::PassWrapper;
 using ::mlir::SmallVector;
 using ::mlir::StringRef;
-using ::mlir::SymbolTable;
 using ::mlir::Value;
 using ::mlir::func::FuncOp;
 
@@ -154,11 +151,8 @@ class SdyRoundTripExportShardingsPass
     SmallVector<NamedAttribute> mhloMeshes;
     // Saves the MeshOps for MHLO<->HLO round-trip and removes them from the
     // ModuleOp.
-    for (MeshOp meshOp :
-         llvm::make_early_inc_range(moduleOp.getOps<MeshOp>())) {
-      mhloMeshes.emplace_back(
-          meshOp.getSymNameAttr(),
-          getStringAttribute(meshOp.getMeshAttr(), builder));
+    for (MeshOp meshOp : moduleOp.getOps<MeshOp>()) {
+      mhloMeshes.emplace_back(meshOp.getSymNameAttr(), meshOp.getMeshAttr());
     }
     addFrontendAttribute(moduleOp, kMeshesRoundTripAttr,
                          DictionaryAttr::get(context, mhloMeshes));

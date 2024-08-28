@@ -28,10 +28,6 @@ limitations under the License.
 namespace xla {
 namespace sdy {
 
-// Converts `attr` to a `StringAttr` using the `builder`.
-mlir::StringAttr getStringAttribute(mlir::Attribute attr,
-                                    mlir::OpBuilder& builder);
-
 // Gets the "frontend_attributes" `DictionaryAttr` from `op`. If it doesn't
 // exist, return nullptr.
 mlir::DictionaryAttr getFrontendAttrs(mlir::Operation* op);

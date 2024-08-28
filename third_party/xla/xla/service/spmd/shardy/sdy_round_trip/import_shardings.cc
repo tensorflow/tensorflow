@@ -18,7 +18,10 @@ limitations under the License.
 #include <cassert>
 #include <cstdint>
 #include <memory>
+#include <string>
 
+#include "absl/log/check.h"
+#include "absl/strings/escaping.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/AsmParser/AsmParser.h"
@@ -77,8 +80,13 @@ using ::mlir::sdy::TensorShardingPerValueAttr;
 // NOTE: assumes `stringAttr` is of type `StringAttr`.
 template <typename AttrTy>
 AttrTy parseStringAttr(Attribute stringAttr) {
-  return mlir::cast<AttrTy>(mlir::parseAttribute(
-      mlir::cast<StringAttr>(stringAttr), stringAttr.getContext()));
+  std::string value;
+  std::string error;
+  CHECK(absl::CUnescape(mlir::cast<StringAttr>(stringAttr).getValue(), &value,
+                        &error))
+      << error;
+  return mlir::cast<AttrTy>(
+      mlir::parseAttribute(value, stringAttr.getContext()));
 }
 
 // Parses `attrName` from `dictAttr` to an attribute of type `AttrTy`.
@@ -188,7 +196,7 @@ class SdyRoundTripImportShardingsPass
     // Insert the meshes before any functions.
     builder.setInsertionPointToStart(moduleOp.getBody());
     for (NamedAttribute mesh : sdyMeshes) {
-      auto meshAttr = parseStringAttr<MeshAttr>(mesh.getValue());
+      auto meshAttr = mlir::cast<MeshAttr>(mesh.getValue());
       symbolTable.insert(builder.create<mlir::sdy::MeshOp>(
           moduleOp.getLoc(), mesh.getName(), meshAttr));
     }

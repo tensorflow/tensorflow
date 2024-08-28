@@ -19,10 +19,10 @@ limitations under the License.
 #include <functional>
 #include <string>
 
+#include "absl/strings/escaping.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
@@ -51,13 +51,6 @@ using xla::sdy::kFrontendAttributesAttr;
 
 using ::mlir::func::FuncOp;
 
-StringAttr getStringAttribute(mlir::Attribute attr, mlir::OpBuilder& builder) {
-  if (auto stringAttr = mlir::dyn_cast<StringAttr>(attr)) {
-    return stringAttr;
-  }
-  return builder.getStringAttr(mlir::sdy::attributeToString(attr));
-}
-
 DictionaryAttr getFrontendAttrs(Operation* op) {
   return op->getAttrOfType<DictionaryAttr>(kFrontendAttributesAttr);
 }
@@ -68,6 +61,16 @@ DictionaryAttr getFuncArgFrontendAttrs(FuncOp funcOp, unsigned int index) {
 }
 
 namespace {
+
+mlir::StringAttr getStringAttribute(Attribute attr, mlir::OpBuilder& builder) {
+  std::string value;
+  if (auto stringAttr = mlir::dyn_cast<StringAttr>(attr)) {
+    value = stringAttr.getValue().str();
+  } else {
+    value = mlir::sdy::attributeToString(attr);
+  }
+  return builder.getStringAttr(absl::CEscape(value));
+}
 
 SmallVector<NamedAttribute> getExistingFrontendAttributes(
     DictionaryAttr frontendAttributes, StringRef excludedAttribute) {
