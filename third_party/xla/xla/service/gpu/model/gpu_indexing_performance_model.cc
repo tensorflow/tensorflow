@@ -372,7 +372,7 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledFusion(
   SymbolicTileAnalysisOrError analysis_or_error =
       SymbolicTileAnalysis::AnalyzeFusion(
           fusion_adaptor, mlir_context_,
-          TritonEmitterConstraints::GetBuilder());
+          /*emitter_specific_constraints_builder=*/nullptr);
   if (const auto* fusion_decision =
           std::get_if<FusionDecision>(&analysis_or_error)) {
     return absl::FailedPreconditionError(absl::StrCat(
@@ -434,7 +434,7 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindBestTilingForFusion(
   SymbolicTileAnalysisOrError analysis_or_error =
       SymbolicTileAnalysis::AnalyzeFusion(
           fusion_adaptor, mlir_context_,
-          TritonEmitterConstraints::GetBuilder());
+          TritonEmitterConstraints::GetBuilder(*device_info_));
 
   if (const auto* fusion_decision =
           std::get_if<FusionDecision>(&analysis_or_error)) {
