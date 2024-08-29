@@ -101,11 +101,9 @@ int GetVectorSize(const HloFusionAnalysis& analysis,
   return 1;
 }
 
-int GetVectorSizeForMlir(const HloFusionAnalysis& analysis,
-                         const ReductionDimensions& reduction_dimensions,
+int GetVectorSizeForMlir(const HloFusionAnalysis& analysis, int64_t minor_dim,
                          int num_threads) {
   // If the minor dimension is not divisible by 2, we can't currently vectorize.
-  int64_t minor_dim = reduction_dimensions.dimensions.back();
   if (minor_dim % 2 != 0) {
     return 1;
   }
