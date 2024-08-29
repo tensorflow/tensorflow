@@ -722,7 +722,7 @@ xla_cc_test(
 cc_library(
     name = "driver",
     srcs = ["driver.cc"],
-    tags = ["nofixdeps"],
+    tags = if_google(["nofixdeps"]),
     deps = [],
 )
 
