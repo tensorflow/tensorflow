@@ -2249,6 +2249,35 @@ func.func @iota_3d() -> tensor<5x7x9xi32> {
 
 // -----
 
+// CHECK-LABEL dynamic_iota_i32_1d
+func.func @dynamic_iota_i32_1d(%arg0: tensor<1xi32>) -> tensor<?xi32> {
+  %cst = arith.constant dense<0> : tensor<i32>
+  %cst_0 = arith.constant dense<1> : tensor<i32>
+  %cst_1 = arith.constant dense<> : tensor<0xi32>
+  %0 = "tfl.reshape"(%arg0, %cst_1) : (tensor<1xi32>, tensor<0xi32>) -> tensor<i32>
+  %1 = "tfl.range"(%cst, %0, %cst_0) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<?xi32>
+  return %1 : tensor<?xi32>
+}
+
+// CHECK: "tfl.range"(%cst, %0, %cst_0) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<?xi32>
+
+// -----
+
+// CHECK-LABEL dynamic_iota_f32_1d
+func.func @dynamic_iota_f32_1d(%arg0: tensor<1xi32>) -> tensor<?xf32> {
+  %cst = arith.constant dense<0.000000e+00> : tensor<f32>
+  %cst_0 = arith.constant dense<1.000000e+00> : tensor<f32>
+  %0 = "tfl.cast"(%arg0) : (tensor<1xi32>) -> tensor<1xf32>
+  %cst_1 = arith.constant dense<> : tensor<0xi32>
+  %1 = "tfl.reshape"(%0, %cst_1) : (tensor<1xf32>, tensor<0xi32>) -> tensor<f32>
+  %2 = "tfl.range"(%cst, %1, %cst_0) : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<?xf32>
+  return %2 : tensor<?xf32>
+}
+
+// CHECK: "tfl.range"(%cst, %1, %cst_0) : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<?xf32>
+
+// -----
+
 //===----------------------------------------------------------------------===//
 // mhlo.dynamic_slice
 //===----------------------------------------------------------------------===//
