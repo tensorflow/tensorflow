@@ -55,6 +55,7 @@ limitations under the License.
 #include "stablehlo/dialect/Register.h"
 #include "stablehlo/dialect/Serialization.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "stablehlo/dialect/Version.h"
 #include "stablehlo/transforms/Passes.h"
 #include "xla/debug_options_flags.h"
 #include "xla/mlir/utils/error_util.h"
@@ -247,9 +248,9 @@ absl::Status UpgradeVersionedStablehlo(mlir::ModuleOp mlir_module) {
 
 std::string GetDefaultStablehloVersion() {
   // This version must be >=12w old.
-  // See https://github.com/openxla/stablehlo/tags
-  //   0.19.0 - Mar 13, 2024
-  return "0.19.0";
+  return mlir::vhlo::Version::fromCompatibilityRequirement(
+             mlir::vhlo::Version::CompatibilityRequirement::WEEK_12)
+      .toString();
 }
 
 absl::StatusOr<std::string> Serialize(mlir::ModuleOp module,
