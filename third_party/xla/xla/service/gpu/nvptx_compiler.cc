@@ -112,6 +112,7 @@ limitations under the License.
 #include "xla/tsl/util/env_var.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
