@@ -327,6 +327,7 @@ xla_cc_test(
     deps = [
         ":triton_fusion_emitter",
         "//xla/hlo/ir:hlo",
+        "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:hlo_traversal",
         "//xla/service/gpu/model:symbolic_tile_analysis",
         "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",

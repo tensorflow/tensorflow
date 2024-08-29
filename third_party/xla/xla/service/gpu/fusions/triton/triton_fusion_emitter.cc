@@ -2784,7 +2784,7 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
   SymbolicTileAnalysisOrError symbolic_tile_analysis_or =
       SymbolicTileAnalysis::AnalyzeComputation(
           *computation, builder.getContext(),
-          TritonEmitterConstraints::GetBuilder());
+          TritonEmitterConstraints::GetBuilder(device_info));
   if (std::holds_alternative<FusionDecision>(symbolic_tile_analysis_or)) {
     return Internal(
         "Unsupported fusion in EmitGeneric: %s",

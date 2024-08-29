@@ -17,17 +17,20 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir/IR/AffineMap.h"
 #include "xla/service/gpu/model/affine_map_evaluator.h"
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
 #include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -41,18 +44,22 @@ constexpr int64_t kMaxTensorNumElements = 1048576;
 }  // namespace
 
 /*static*/ EmitterSpecificConstraintsBuilder
-TritonEmitterConstraints::GetBuilder() {
-  return [](const std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>&
-                instructions) {
+TritonEmitterConstraints::GetBuilder(
+    const se::DeviceDescription& device_description) {
+  return [=](const std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>&
+                 instructions) {
     llvm::DenseSet<mlir::AffineMap> unique_tile_size_maps;
     for (const auto& tiled_hlo_instruction : instructions) {
       unique_tile_size_maps.insert(
           tiled_hlo_instruction->symbolic_tile().size_map());
     }
 
+    llvm::SmallVector<mlir::AffineMap, 4> tile_size_maps(
+        unique_tile_size_maps.begin(), unique_tile_size_maps.end());
+
     return std::make_unique<TritonEmitterConstraints>(
-        llvm::SmallVector<mlir::AffineMap, 4>(unique_tile_size_maps.begin(),
-                                              unique_tile_size_maps.end()));
+        std::move(tile_size_maps),
+        /*root_shape=*/instructions.back()->hlo()->shape(), device_description);
   };
 }
 
@@ -70,6 +77,20 @@ absl::StatusOr<bool> TritonEmitterConstraints::ParametersSatisfyConstraints(
       return false;
     }
   }
+
+  int64_t num_tiles = 1;
+  for (auto [dim_size, tile_size] :
+       llvm::zip(root_shape_.dimensions(), tile_parameters)) {
+    num_tiles *= (dim_size + tile_size - 1) / tile_size;
+  }
+
+  // Number of blocks will excede the hardware limit. This limitation comes from
+  // the fact that one tile is mapped to one block. This constraint can be
+  // potentially hoisted to more generic "gpu-specific constraint".
+  if (num_tiles >= device_info_.block_dim_limit().x) {
+    return false;
+  }
+
   return true;
 }
 

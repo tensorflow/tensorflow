@@ -21,6 +21,8 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/AffineMap.h"
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
+#include "xla/shape.h"
+#include "xla/stream_executor/device_description.h"
 
 #ifndef XLA_SERVICE_GPU_MODEL_TRITON_EMITTER_CONSTRAINTS_H_
 #define XLA_SERVICE_GPU_MODEL_TRITON_EMITTER_CONSTRAINTS_H_
@@ -31,11 +33,15 @@ namespace gpu {
 // Triton-specific constraints on tile sizes.
 class TritonEmitterConstraints : public EmitterSpecificConstraints {
  public:
-  static EmitterSpecificConstraintsBuilder GetBuilder();
+  static EmitterSpecificConstraintsBuilder GetBuilder(
+      const se::DeviceDescription& device_description);
 
   explicit TritonEmitterConstraints(
-      llvm::SmallVector<mlir::AffineMap, 4> tile_size_maps)
-      : tile_size_maps_(std::move(tile_size_maps)) {}
+      llvm::SmallVector<mlir::AffineMap, 4> tile_size_maps,
+      const Shape& root_shape, const se::DeviceDescription& device_info)
+      : tile_size_maps_(std::move(tile_size_maps)),
+        root_shape_(root_shape),
+        device_info_(device_info) {}
 
   absl::StatusOr<bool> ParametersSatisfyConstraints(
       absl::Span<const int64_t> tile_parameters) const override;
@@ -46,6 +52,11 @@ class TritonEmitterConstraints : public EmitterSpecificConstraints {
   // Different TiledHloInstructions often have the same size map, so we keep a
   // collection of unique maps to improve compilation time.
   llvm::SmallVector<mlir::AffineMap, 4> tile_size_maps_;
+
+  // Shape of the root instruction.
+  Shape root_shape_;
+
+  se::DeviceDescription device_info_;
 };
 
 }  // namespace gpu

@@ -44,6 +44,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/fusions/triton/triton_fusion_emitter.h"
+#include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
@@ -115,7 +116,8 @@ TritonMakeTensorPtrTest::CreateAndTileParameterHloInstruction(
   SymbolicTileAnalysisOrError symbolic_tile_analysis_or =
       SymbolicTileAnalysis::AnalyzeFusion(
           *fusion_adaptor, &mlir_context_,
-          TritonEmitterConstraints::GetBuilder());
+          TritonEmitterConstraints::GetBuilder(
+              TestGpuDeviceInfo::RTXA6000DeviceInfo()));
   CHECK(
       std::holds_alternative<SymbolicTileAnalysis>(symbolic_tile_analysis_or));
 

@@ -373,6 +373,9 @@ void SortTiledHloInstructionsInPostOrder(
   std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>
       tiled_hlo_instructions = tiled_hlo_instructions_set.ExtractData();
 
+  // Order instructions in def-before-use order.
+  SortTiledHloInstructionsInPostOrder(tiled_hlo_instructions, root_tiled_hlo);
+
   // Set symbolic tiles for each tiled hlo instruction and compute combined
   // constraints.
   std::variant<ConstraintExpression, FusionDecision> constraints_or =
@@ -387,9 +390,6 @@ void SortTiledHloInstructionsInPostOrder(
     emitter_specific_constraints =
         emitter_specific_constraints_builder(tiled_hlo_instructions);
   }
-
-  // Order instructions in def-before-use order.
-  SortTiledHloInstructionsInPostOrder(tiled_hlo_instructions, root_tiled_hlo);
 
   return SymbolicTileAnalysis(
       std::move(tiled_hlo_instructions),
