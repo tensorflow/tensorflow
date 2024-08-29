@@ -175,6 +175,7 @@ absl::Status MlrtIfrtRestoreVariableKernel::InvokeHelper() {
   if (!checkpoint_loader) {
     return absl::InternalError("CheckpointLoader must not be null.");
   }
+  TF_RETURN_IF_ERROR(ValidateInput());
   return checkpoint_loader->Load(prefix(), var_handles(), tensor_names(),
                                  shape_and_slices(), restored_dtypes(),
                                  truncate_in_cast(), context());
