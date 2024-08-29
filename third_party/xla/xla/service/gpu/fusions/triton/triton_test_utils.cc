@@ -134,9 +134,27 @@ std::string PrimitiveTypeAndHloOpcodeToString(PrimitiveType data_type,
       absl::StrReplaceAll(HloOpcodeString(opcode), {{"-", "_"}}));
 }
 
+std::string ComputeCapabilityToString(
+    const stream_executor::GpuComputeCapability& cc) {
+  if (auto cuda_cc = std::get_if<se::CudaComputeCapability>(&cc)) {
+    return absl::StrReplaceAll(cuda_cc->ToString(), {{".", ""}});
+  } else {
+    CHECK(std::holds_alternative<se::RocmComputeCapability>(cc));
+    return "rocm";
+  }
+}
+
 }  // namespace
 
-std::string TritonSupportTestParamsToString(
+std::string TritonSupportTestTypeAndDeviceToString(
+    const ::testing::TestParamInfo<
+        std::tuple<PrimitiveType, se::GpuComputeCapability>>& data) {
+  auto [data_type, cc] = data.param;
+  return absl::StrCat(primitive_util::LowercasePrimitiveTypeName(data_type),
+                      "_", ComputeCapabilityToString(cc));
+}
+
+std::string TritonSupportTestTypeAndOpcodeToString(
     const ::testing::TestParamInfo<std::tuple<PrimitiveType, HloOpcode>>&
         data) {
   auto [data_type, opcode] = data.param;
@@ -147,14 +165,8 @@ std::string TritonSupportTestTypeOpcodeAndDeviceToString(
     const ::testing::TestParamInfo<
         std::tuple<PrimitiveType, HloOpcode, se::GpuComputeCapability>>& data) {
   auto [data_type, opcode, cc] = data.param;
-  std::string cc_str;
-  if (std::holds_alternative<se::CudaComputeCapability>(cc)) {
-    cc_str = std::get<se::CudaComputeCapability>(cc).ToString();
-  } else {
-    cc_str = "rocm";
-  }
   return absl::StrCat(PrimitiveTypeAndHloOpcodeToString(data_type, opcode), "_",
-                      absl::StrReplaceAll(cc_str, {{".", ""}}));
+                      ComputeCapabilityToString(cc));
 }
 
 std::string TritonSupportTestTwoTypesAndDeviceToString(
@@ -162,16 +174,10 @@ std::string TritonSupportTestTwoTypesAndDeviceToString(
         std::tuple<PrimitiveType, PrimitiveType, se::GpuComputeCapability>>&
         data) {
   auto [data_type_1, data_type_2, cc] = data.param;
-  std::string cc_str;
-  if (std::holds_alternative<se::CudaComputeCapability>(cc)) {
-    cc_str = std::get<se::CudaComputeCapability>(cc).ToString();
-  } else {
-    cc_str = "rocm";
-  }
   return absl::StrCat(primitive_util::LowercasePrimitiveTypeName(data_type_1),
                       "_",
                       primitive_util::LowercasePrimitiveTypeName(data_type_2),
-                      "_", absl::StrReplaceAll(cc_str, {{".", ""}}));
+                      "_", ComputeCapabilityToString(cc));
 }
 
 namespace {

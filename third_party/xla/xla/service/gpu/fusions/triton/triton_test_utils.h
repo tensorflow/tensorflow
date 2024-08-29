@@ -133,8 +133,12 @@ class TritonSupportTestBaseWithParam
       public ::testing::WithParamInterface<
           std::tuple<PrimitiveType, HloOpcode>> {};
 
-std::string TritonSupportTestParamsToString(
+std::string TritonSupportTestTypeAndOpcodeToString(
     const ::testing::TestParamInfo<std::tuple<PrimitiveType, HloOpcode>>& data);
+
+std::string TritonSupportTestTypeAndDeviceToString(
+    const ::testing::TestParamInfo<
+        std::tuple<PrimitiveType, se::GpuComputeCapability>>& data);
 
 std::string TritonSupportTestTypeOpcodeAndDeviceToString(
     const ::testing::TestParamInfo<
