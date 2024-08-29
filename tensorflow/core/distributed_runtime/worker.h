@@ -18,12 +18,17 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/graph_mgr.h"
+#include "tensorflow/core/distributed_runtime/message_wrappers.h"
 #include "tensorflow/core/distributed_runtime/partial_run_mgr.h"
 #include "tensorflow/core/distributed_runtime/recent_request_ids.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/rendezvous.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/worker.pb.h"
 
 namespace tensorflow {
 
