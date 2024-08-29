@@ -939,6 +939,20 @@ absl::StatusOr<bool> HostOffloader::HandleRedundantCopiesBackToHost(
       InstructionAndShapeIndex instruction_and_shape_index = queue.front();
       queue.pop();
 
+      // TODO(b/347101407): GetSuccessors only follows parameters that alias in
+      // async computations. In the cases where it does not, the async
+      // computation (start & done) are not returned as we stop before going
+      // through the host computation. For now, since we bail if outputs of host
+      // computations flow into another host computation, check outside of
+      // GetSuccessors and if we do have async-starts successors, bail.
+      for (HloInstruction* user :
+           instruction_and_shape_index.instruction->users()) {
+        if (user->opcode() == HloOpcode::kAsyncStart) {
+          host_only = false;
+          break;
+        }
+      }
+
       TF_ASSIGN_OR_RETURN(
           std::vector<InstructionAndShapeIndex> successors,
           host_offload_utils::GetSuccessors(InstructionAndShapeIndex(

@@ -3680,6 +3680,58 @@ ENTRY %main {
               ::testing::UnorderedElementsAreArray(expected));
 }
 
+TEST_F(HostOffloaderTest,
+       AsyncHostOffloadedCall_passedToAsyncHostOffloadedCall_NoCopiesRemoved) {
+  const std::string& hlo_string = R"(
+HloModule m, entry_computation_layout={(f32[4096]{0:S(5)})->(f32[4096]{0:S(5)}, f32[4096]{0:S(5)}, f32[4096]{0:S(0)}, f32[4096]{0:S(0)})}
+
+%async_computation {
+  %param_0 = f32[4096] parameter(0)
+  ROOT %offloaded-custom-call = (f32[4096], f32[4096]) custom-call(%param_0), custom_call_target="HostExecute"
+}, execution_thread="host"
+
+%extra_async_computation {
+  %param_0_extra_async = f32[4096] parameter(0)
+  %param_1_extra_async = f32[4096] parameter(1)
+  ROOT %offloaded-extra-custom-call = (f32[4096], f32[4096]) custom-call(%param_0_extra_async, %param_1_extra_async), custom_call_target="HostExecute"
+}, execution_thread="host"
+
+ENTRY %main {
+  %a = f32[4096] parameter(0)
+  %async-start = ((f32[4096]), (f32[4096], f32[4096]), u32[]) async-start(%a), async_execution_thread="host", calls=%async_computation
+  %async-done = (f32[4096], f32[4096]) custom-call-done(%async-start)
+  %gte_0 = f32[4096] get-tuple-element(%async-done), index=0
+  %gte_1 = f32[4096] get-tuple-element(%async-done), index=1
+  %extra-async-start = ((f32[4096], f32[4096]), (f32[4096], f32[4096]), u32[]) async-start(%gte_0, %gte_1), async_execution_thread="host", calls=%extra_async_computation
+  %extra-async-done = (f32[4096], f32[4096]) custom-call-done(%extra-async-start)
+  %call_0 = f32[4096] get-tuple-element(%extra-async-done), index=0
+  %call_1 = f32[4096] get-tuple-element(%extra-async-done), index=1
+  %gte_0_host = f32[4096] custom-call(%gte_0), custom_call_target="MoveToHost"
+  %gte_1_host = f32[4096] custom-call(%gte_1), custom_call_target="MoveToHost"
+  ROOT %tuple = (f32[4096], f32[4096], f32[4096], f32[4096]) tuple(%gte_0_host, %gte_1_host, %call_0, %call_1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+
+  HloInstruction* async_start = FindInstruction(module.get(), "async-start");
+  ASSERT_NE(async_start, nullptr);
+  HloInstruction* async_done = FindInstruction(module.get(), "async-done");
+  ASSERT_NE(async_done, nullptr);
+
+  // No changes are made since both outputs flow into an async call...
+  HloInstruction* gte_0 = FindInstruction(module.get(), "gte_0");
+  ASSERT_NE(gte_0, nullptr);
+  TestShapeHasMemorySpace(gte_0->shape(), Layout::kDefaultMemorySpace);
+  HloInstruction* gte_1 = FindInstruction(module.get(), "gte_1");
+  ASSERT_NE(gte_1, nullptr);
+  TestShapeHasMemorySpace(gte_1->shape(), Layout::kDefaultMemorySpace);
+}
+
 }  // namespace
 
 }  // namespace xla
