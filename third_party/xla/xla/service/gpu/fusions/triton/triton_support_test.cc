@@ -183,6 +183,14 @@ class TritonSupportTest : public TritonSupportTestBase {
                       std::vector<int64_t> output_tile_sizes,
                       se::GpuComputeCapability cc,
                       bool skip_failure_branch_to_avoid_crash = false) {
+    // Ensure that the caller provided the right number of output tile sizes.
+    // If that is not the case, codegen could fail for that reason---which
+    // wouldn't give any valuable signal here.  We skip the check for non-array
+    // output shapes, since we have no meaningful way of providing tile sizes
+    // for them at the moment.
+    if (ti.Instruction().shape().IsArray()) {
+      ASSERT_EQ(output_tile_sizes.size(), ti.Instruction().shape().rank());
+    }
     BlockLevelParameters block_level_parameters =
         FromOutputTileSizes(std::move(output_tile_sizes));
     const se::DeviceDescription dev_info =
