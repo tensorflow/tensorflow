@@ -94,7 +94,7 @@ limitations under the License.
 #include "xla/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/translate/mhlo_to_hlo/layout_util.h"
 #include "xla/translate/mhlo_to_hlo/location_exporter.h"
-#include "xla/translate/mhlo_to_hlo/module_config_exporter.h"
+#include "xla/translate/mhlo_to_hlo/module_attributes_exporter.h"
 #include "xla/translate/mhlo_to_hlo/stack_frame_index_builder.h"
 #include "xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/xla_data.pb.h"
@@ -147,6 +147,14 @@ constexpr char kMhloSpmdParametersShardings[] =
     "mhlo.spmd_parameters_shardings";
 constexpr char kMhloUseAutoSpmdPartitioning[] =
     "mhlo.use_auto_spmd_partitioning";
+constexpr char kMhloXlaEntryComputationParameterLayouts[] =
+    "mhlo.xla_entry_computation_parameter_layouts";
+constexpr char kMhloXlaEntryComputationParameterTiles[] =
+    "mhlo.xla_entry_computation_parameter_tiles";
+constexpr char kMhloXlaEntryComputationResultLayout[] =
+    "mhlo.xla_entry_computation_result_layout";
+constexpr char kMhloXlaEntryComputationResultTiles[] =
+    "mhlo.xla_entry_computation_result_tiles";
 
 // Miscellaneous string literals.
 constexpr char kArgEmptyTuple[] = "arg_empty_tuple";
@@ -3852,7 +3860,7 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
   xla::XlaBuilder module_builder(kMain);
   ConvertToHloModule converter(module, module_builder, options);
   if (failed(converter.Run())) return diag_handler.ConsumeStatus();
-  auto hlo_module = converter.ConsumeMainProto();
+  xla::HloModuleProto hlo_module = converter.ConsumeMainProto();
   StringRef module_name = module.getName() ? *module.getName() : kMain;
   hlo_module.set_name(module_name.str());
   if (auto cross_program_prefetches =
@@ -3893,6 +3901,34 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
       *hlo_module.add_spmd_parameters_shardings() = *xla::ConvertSharding(
           mlir::cast<mlir::StringAttr>(sharding).getValue());
     }
+  }
+  if (auto xla_entry_computation_parameter_layout =
+          module->getAttrOfType<mlir::ArrayAttr>(
+              kMhloXlaEntryComputationParameterLayouts)) {
+    auto status = mhlo::ExportModuleEntryComputationParameterLayouts(
+        xla_entry_computation_parameter_layout, hlo_module);
+    if (!status.ok()) return status;
+  }
+  if (auto xla_entry_computation_parameter_tiles =
+          module->getAttrOfType<mlir::ArrayAttr>(
+              kMhloXlaEntryComputationParameterTiles)) {
+    auto status = mhlo::ExportModuleEntryComputationParameterTiles(
+        xla_entry_computation_parameter_tiles, hlo_module);
+    if (!status.ok()) return status;
+  }
+  if (auto xla_entry_computation_result_layout =
+          module->getAttrOfType<mlir::ArrayAttr>(
+              kMhloXlaEntryComputationResultLayout)) {
+    auto status = mhlo::ExportModuleEntryComputationResultLayout(
+        xla_entry_computation_result_layout, hlo_module);
+    if (!status.ok()) return status;
+  }
+  if (auto xla_entry_computation_result_tiles =
+          module->getAttrOfType<mlir::ArrayAttr>(
+              kMhloXlaEntryComputationResultTiles)) {
+    auto status = mhlo::ExportModuleEntryComputationResultTiles(
+        xla_entry_computation_result_tiles, hlo_module);
+    if (!status.ok()) return status;
   }
 
   xla::StackFrameIndexProto stack_frame_index =

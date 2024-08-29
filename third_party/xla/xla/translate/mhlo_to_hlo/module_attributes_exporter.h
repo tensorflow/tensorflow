@@ -13,9 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_TRANSLATE_MHLO_TO_HLO_MODULE_CONFIG_EXPORTER_H_
-#define XLA_TRANSLATE_MHLO_TO_HLO_MODULE_CONFIG_EXPORTER_H_
+#ifndef XLA_TRANSLATE_MHLO_TO_HLO_MODULE_ATTRIBUTES_EXPORTER_H_
+#define XLA_TRANSLATE_MHLO_TO_HLO_MODULE_ATTRIBUTES_EXPORTER_H_
 
+#include "absl/status/status.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/service/hlo_module_config.h"
 
@@ -26,7 +28,23 @@ namespace mhlo {
 // attributes prefixed with `mhlo.`.
 void ExportHloModuleConfig(xla::HloModuleConfig& config, mlir::ModuleOp module);
 
+absl::Status ExportModuleEntryComputationParameterLayouts(
+    const mlir::ArrayAttr& xla_entry_computation_parameter_layout,
+    xla::HloModuleProto& hlo_module);
+
+absl::Status ExportModuleEntryComputationParameterTiles(
+    const mlir::ArrayAttr& xla_entry_computation_parameter_tiles,
+    xla::HloModuleProto& hlo_module);
+
+absl::Status ExportModuleEntryComputationResultLayout(
+    const mlir::ArrayAttr& xla_entry_computation_result_layout,
+    xla::HloModuleProto& hlo_module);
+
+absl::Status ExportModuleEntryComputationResultTiles(
+    const mlir::ArrayAttr& xla_entry_computation_result_tiles,
+    xla::HloModuleProto& hlo_module);
+
 }  // namespace mhlo
 }  // namespace mlir
 
-#endif  // XLA_TRANSLATE_MHLO_TO_HLO_MODULE_CONFIG_EXPORTER_H_
+#endif  // XLA_TRANSLATE_MHLO_TO_HLO_MODULE_ATTRIBUTES_EXPORTER_H_

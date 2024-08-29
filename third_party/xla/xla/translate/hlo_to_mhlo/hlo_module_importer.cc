@@ -160,17 +160,34 @@ absl::Status HloModuleImporter::Import(const HloModule& hlo_module) {
   // the boundaries, this may not be the case, so layout information needs to
   // be propagated to adapt the data layouts.
   if (const auto& computation_layout = hlo_module.entry_computation_layout();
-      computation_layout.LayoutIsSet() &&
-      !computation_layout.result_layout().shape().IsTuple()) {
+      computation_layout.LayoutIsSet()) {
     if (HasCustomLayout(computation_layout.result_layout().shape())) {
-      std::pair<mlir::Attribute, mlir::ArrayAttr> layout_attrs =
-          GetLayoutAttribute(builder_,
-                             computation_layout.result_layout().shape(),
-                             computation_layout.result_layout().layout());
-      module->setAttr("mhlo.xla_entry_computation_result_layout",
-                      layout_attrs.first);
-      module->setAttr("mhlo.xla_entry_computation_result_tiles",
-                      layout_attrs.second);
+      if (computation_layout.result_layout().shape().IsTuple()) {
+        llvm::SmallVector<mlir::Attribute> result_layouts;
+        llvm::SmallVector<mlir::Attribute> result_tiles;
+        for (auto& tuple_element_layout :
+             computation_layout.result_layout().shape().tuple_shapes()) {
+          std::pair<mlir::Attribute, mlir::Attribute> layout_attrs =
+              GetLayoutAttribute(builder_, tuple_element_layout);
+          result_layouts.push_back(layout_attrs.first);
+          result_tiles.push_back(layout_attrs.second);
+        }
+        module->setAttr(
+            "mhlo.xla_entry_computation_result_layout",
+            builder_.getArrayAttr({builder_.getArrayAttr(result_layouts)}));
+        module->setAttr(
+            "mhlo.xla_entry_computation_result_tiles",
+            builder_.getArrayAttr({builder_.getArrayAttr(result_tiles)}));
+      } else {
+        std::pair<mlir::Attribute, mlir::ArrayAttr> layout_attrs =
+            GetLayoutAttribute(builder_,
+                               computation_layout.result_layout().shape(),
+                               computation_layout.result_layout().layout());
+        module->setAttr("mhlo.xla_entry_computation_result_layout",
+                        builder_.getArrayAttr({layout_attrs.first}));
+        module->setAttr("mhlo.xla_entry_computation_result_tiles",
+                        builder_.getArrayAttr({layout_attrs.second}));
+      }
     }
     if (llvm::any_of(computation_layout.parameter_layouts(),
                      [](const ShapeLayout& shape) {
@@ -179,19 +196,30 @@ absl::Status HloModuleImporter::Import(const HloModule& hlo_module) {
       llvm::SmallVector<mlir::Attribute> parameter_layouts;
       llvm::SmallVector<mlir::Attribute> parameter_tiles;
       for (auto& layout : computation_layout.parameter_layouts()) {
-        std::pair<mlir::Attribute, mlir::ArrayAttr> layout_attrs =
-            GetLayoutAttribute(
-                builder_, layout.shape(),
-                (layout.LayoutIsSet() && !layout.shape().IsTuple())
-                    ? std::optional<Layout>(layout.layout())
-                    : std::nullopt);
-        parameter_layouts.push_back(layout_attrs.first);
-        parameter_tiles.push_back(layout_attrs.second);
+        if (layout.shape().IsTuple()) {
+          llvm::SmallVector<mlir::Attribute> tuple_element_parameter_layouts;
+          llvm::SmallVector<mlir::Attribute> tuple_element_parameter_tiles;
+          for (auto& tuple_element_shape : layout.shape().tuple_shapes()) {
+            std::pair<mlir::Attribute, mlir::Attribute> layout_attrs =
+                GetLayoutAttribute(builder_, tuple_element_shape);
+            tuple_element_parameter_layouts.push_back(layout_attrs.first);
+            tuple_element_parameter_tiles.push_back(layout_attrs.second);
+          }
+          parameter_layouts.push_back(
+              builder_.getArrayAttr({tuple_element_parameter_layouts}));
+          parameter_tiles.push_back(
+              builder_.getArrayAttr({tuple_element_parameter_tiles}));
+        } else {
+          std::pair<mlir::Attribute, mlir::ArrayAttr> layout_attrs =
+              GetLayoutAttribute(builder_, layout.shape());
+          parameter_layouts.push_back(layout_attrs.first);
+          parameter_tiles.push_back(layout_attrs.second);
+        }
       }
       module->setAttr("mhlo.xla_entry_computation_parameter_layouts",
-                      builder_.getArrayAttr(parameter_layouts));
+                      builder_.getArrayAttr({parameter_layouts}));
       module->setAttr("mhlo.xla_entry_computation_parameter_tiles",
-                      builder_.getArrayAttr(parameter_tiles));
+                      builder_.getArrayAttr({parameter_tiles}));
     }
   }
 
