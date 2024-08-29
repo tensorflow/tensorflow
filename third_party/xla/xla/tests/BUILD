@@ -3099,7 +3099,6 @@ xla_test(
     real_hardware_only = True,
     shard_count = 3,
     tags = [
-        "enable_for_xla_interpreter",
         "optonly",
         "test_xla_cpu_thunks",
     ],
