@@ -45,6 +45,7 @@ class AddModelBuilder {
         CreateBuffer(builder, builder.CreateVector({})),
     };
     std::vector<flatbuffers::Offset<Tensor>> tensors;
+    tensors.reserve(input_shapes_.size());
     for (int8_t i = 0; i < input_shapes_.size(); i++) {
       tensors.push_back(CreateTensor(
           builder, builder.CreateVector<int32_t>(input_shapes_[i].data(), 4),
