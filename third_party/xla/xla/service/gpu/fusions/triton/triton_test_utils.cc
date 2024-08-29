@@ -161,7 +161,7 @@ std::string TritonSupportTestTypeAndOpcodeToString(
   return PrimitiveTypeAndHloOpcodeToString(data_type, opcode);
 }
 
-std::string TritonSupportTestTypeOpcodeAndDeviceToString(
+std::string TritonSupportTestTypeAndOpcodeAndDeviceToString(
     const ::testing::TestParamInfo<
         std::tuple<PrimitiveType, HloOpcode, se::GpuComputeCapability>>& data) {
   auto [data_type, opcode, cc] = data.param;

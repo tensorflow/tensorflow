@@ -26,7 +26,6 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
@@ -216,12 +215,12 @@ class TritonSupportTest : public TritonSupportTestBase {
   }
 };
 
-class TritonSupportTestWithParam
+class TritonSupportTestWithTypeAndOpcodeAndDeviceParam
     : public TritonSupportTest,
       public ::testing::WithParamInterface<
           std::tuple<PrimitiveType, HloOpcode, se::GpuComputeCapability>> {};
 
-using BitcastOrReshapeTest = TritonSupportTestWithParam;
+using BitcastOrReshapeTest = TritonSupportTestWithTypeAndOpcodeAndDeviceParam;
 
 TEST_P(BitcastOrReshapeTest, IsTritonSupportedBitcastOrReshape) {
   auto [data_type, opcode, cc] = GetParam();
@@ -242,9 +241,9 @@ constexpr std::array kTestedOpsBitcastReshape = {HloOpcode::kBitcast,
 INSTANTIATE_TEST_SUITE_P(
     BitcastOrReshapeTestSuite, BitcastOrReshapeTest,
     AllTestCombinationsForOpcodes(kTestedOpsBitcastReshape),
-    TritonSupportTestTypeOpcodeAndDeviceToString);
+    TritonSupportTestTypeAndOpcodeAndDeviceToString);
 
-using UnaryElementwiseTest = TritonSupportTestWithParam;
+using UnaryElementwiseTest = TritonSupportTestWithTypeAndOpcodeAndDeviceParam;
 
 TEST_P(UnaryElementwiseTest, IsTritonSupportedUnaryElementwise) {
   auto [data_type, opcode, cc] = GetParam();
@@ -324,7 +323,7 @@ constexpr std::array kTestedOpsUnaryElementwise = {HloOpcode::kAbs,
 INSTANTIATE_TEST_SUITE_P(
     UnaryElementwiseTestSuite, UnaryElementwiseTest,
     AllTestCombinationsForOpcodes(kTestedOpsUnaryElementwise),
-    TritonSupportTestTypeOpcodeAndDeviceToString);
+    TritonSupportTestTypeAndOpcodeAndDeviceToString);
 
 class ConvertTest
     : public TritonSupportTest,
@@ -400,7 +399,7 @@ INSTANTIATE_TEST_SUITE_P(
                        ::testing::ValuesIn(AllDevicesToTest())),
     TritonSupportTestTwoTypesAndDeviceToString);
 
-using BinaryElementwiseTest = TritonSupportTestWithParam;
+using BinaryElementwiseTest = TritonSupportTestWithTypeAndOpcodeAndDeviceParam;
 
 TEST_P(BinaryElementwiseTest, IsTritonSupportedBinaryElementwise) {
   auto [data_type, opcode, cc] = GetParam();
@@ -456,9 +455,9 @@ constexpr std::array kTestedOpsBinaryElementwise = {
 INSTANTIATE_TEST_SUITE_P(
     BinaryElementwiseTestSuite, BinaryElementwiseTest,
     AllTestCombinationsForOpcodes(kTestedOpsBinaryElementwise),
-    TritonSupportTestTypeOpcodeAndDeviceToString);
+    TritonSupportTestTypeAndOpcodeAndDeviceToString);
 
-using TernaryElementwiseTest = TritonSupportTestWithParam;
+using TernaryElementwiseTest = TritonSupportTestWithTypeAndOpcodeAndDeviceParam;
 
 TEST_P(TernaryElementwiseTest, IsTritonSupportedTernaryElementwise) {
   auto [data_type, opcode, cc] = GetParam();
@@ -487,9 +486,9 @@ constexpr std::array kTestedOpsTernaryElementwise = {HloOpcode::kSelect,
 INSTANTIATE_TEST_SUITE_P(
     TernaryElementwiseTestSuite, TernaryElementwiseTest,
     AllTestCombinationsForOpcodes(kTestedOpsTernaryElementwise),
-    TritonSupportTestTypeOpcodeAndDeviceToString);
+    TritonSupportTestTypeAndOpcodeAndDeviceToString);
 
-using ReduceTest = TritonSupportTestWithParam;
+using ReduceTest = TritonSupportTestWithTypeAndOpcodeAndDeviceParam;
 
 TEST_P(ReduceTest, IsTritonSupportedReduction) {
   auto [data_type, opcode, cc] = GetParam();
@@ -682,9 +681,10 @@ constexpr std::array kTestedOpsReduction = {HloOpcode::kReduce};
 
 INSTANTIATE_TEST_SUITE_P(ReduceTestSuite, ReduceTest,
                          AllTestCombinationsForOpcodes(kTestedOpsReduction),
-                         TritonSupportTestTypeOpcodeAndDeviceToString);
+                         TritonSupportTestTypeAndOpcodeAndDeviceToString);
 
-using ReductionComputationTest = TritonSupportTestWithParam;
+using ReductionComputationTest =
+    TritonSupportTestWithTypeAndOpcodeAndDeviceParam;
 
 // The test below tests what kind of binary element-wise operations are
 // supported within a reduction's computation.
@@ -749,73 +749,98 @@ INSTANTIATE_TEST_SUITE_P(
     ReductionComputationTestSuite, ReductionComputationTest,
     AllTestCombinationsForOpcodes(ExcludeOps(kTestedOpsBinaryElementwise,
                                              {HloOpcode::kCompare})),
-    TritonSupportTestTypeOpcodeAndDeviceToString);
+    TritonSupportTestTypeAndOpcodeAndDeviceToString);
 
-using CollectiveTest = TritonSupportTestWithParam;
+class TritonSupportTestWithTypeAndDeviceParam
+    : public TritonSupportTest,
+      public ::testing::WithParamInterface<
+          std::tuple<PrimitiveType, se::GpuComputeCapability>> {};
 
-TEST_P(CollectiveTest, UnsupportedCollectivesFailGracefullyWithTriton) {
-  auto [data_type, opcode, cc] = GetParam();
-  absl::flat_hash_map<HloOpcode, std::string> kHloCollectiveTestTemplates = {
-      {
-          HloOpcode::kAllGather,
-          R"(
-            ENTRY triton_computation {
-              input = $0[128,32]{0,1} parameter(0)
-              ROOT all-gather = $0[128,128]{0,1} all-gather(input),
-              replica_groups={}, dimensions={1}
-            }
-          )",
-      },
-      {
-          HloOpcode::kAllReduce,
-          R"(
-            apply_op {
-              x = $0[] parameter(0)
-              y = $0[] parameter(1)
-              ROOT apply_op = $0[] add(x, y)
-            }
+using CollectiveTest = TritonSupportTestWithTypeAndDeviceParam;
 
-            ENTRY triton_computation {
-              input = $0[128,32] parameter(0)
-              ROOT all-reduce = $0[128,32] all-reduce(input), replica_groups={}, to_apply=apply_op
-            }
-          )",
-      },
-      {
-          HloOpcode::kAllToAll,
-          R"(
-             ENTRY triton_computation {
-               input = f32[128,32]{0,1} parameter(0)
-               ROOT a2a = (f32[128,32]{0,1}) all-to-all(input), replica_groups={}
-             }
-          )",
-      },
-      {HloOpcode::kCollectivePermute,
-       R"(
-          ENTRY triton_computation {
-            a = $0[] parameter(0)
-            ROOT collective-permute = $0[] collective-permute(a), source_target_pairs={{1,0}, {0,1}, {2,2}}
-          }
-        )"},
-      {HloOpcode::kReduceScatter,
-       R"(
-          apply_op {
-            lhs = $0[] parameter(0)
-            rhs = $0[] parameter(1)
-            ROOT apply_op = $0[] add(lhs, rhs)
-          }
+TEST_P(CollectiveTest, UnsupportedAllGatherFailsGracefullyWithTriton) {
+  auto [data_type, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  input = $0[128,32]{0,1} parameter(0)
+  ROOT all-gather = $0[128,128]{0,1} all-gather(input),
+    replica_groups={}, dimensions={1}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
+                                                    kHloTestTemplate, data_type,
+                                                    HloOpcode::kAllGather));
+  EXPECT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 2}, cc);
+}
 
-          ENTRY triton_computation {
-            input = $0[8] parameter(0)
-            ROOT result = $0[4] reduce-scatter(input), replica_groups={},
-                              dimensions={0}, to_apply=apply_op
-          }
-        )"}};
+TEST_P(CollectiveTest, UnsupportedAllReduceFailsGracefullyWithTriton) {
+  auto [data_type, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+apply_op {
+  x = $0[] parameter(0)
+  y = $0[] parameter(1)
+  ROOT apply_op = $0[] add(x, y)
+}
 
-  std::string hlo_template = kHloCollectiveTestTemplates.at(opcode);
+ENTRY triton_computation {
+  input = $0[128,32] parameter(0)
+  ROOT all-reduce = $0[128,32] all-reduce(input), replica_groups={},
+      to_apply=apply_op
+})";
+  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
+                                                    kHloTestTemplate, data_type,
+                                                    HloOpcode::kAllReduce));
+  EXPECT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 2}, cc);
+}
+
+TEST_P(CollectiveTest, UnsupportedAllToAllFailsGracefullyWithTriton) {
+  auto [data_type, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  input = $0[128,32]{0,1} parameter(0)
+  ROOT a2a = ($0[128,32]{0,1}) all-to-all(input), replica_groups={}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
+                                                    kHloTestTemplate, data_type,
+                                                    HloOpcode::kAllToAll));
+  EXPECT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 2}, cc);
+}
+
+TEST_P(CollectiveTest, UnsupportedCollectivePermuteFailsGracefullyWithTriton) {
+  auto [data_type, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  a = $0[128,32] parameter(0)
+  ROOT collective-permute = $0[128,32] collective-permute(a),
+      source_target_pairs={{1,0}, {0,1}, {2,2}}
+})";
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
-      ParseTemplateAndGetInstruction(hlo_template, data_type, opcode));
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type,
+                                     HloOpcode::kCollectivePermute));
+  EXPECT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 2}, cc);
+}
+
+TEST_P(CollectiveTest, UnsupportedReduceScatterFailsGracefullyWithTriton) {
+  auto [data_type, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+apply_op {
+  lhs = $0[] parameter(0)
+  rhs = $0[] parameter(1)
+  ROOT apply_op = $0[] add(lhs, rhs)
+}
+
+ENTRY triton_computation {
+  input = $0[8] parameter(0)
+  ROOT result = $0[4] reduce-scatter(input), replica_groups={},
+      dimensions={0}, to_apply=apply_op
+})";
+  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
+                                                    kHloTestTemplate, data_type,
+                                                    HloOpcode::kReduceScatter));
   EXPECT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc);
 }
@@ -824,9 +849,11 @@ constexpr std::array kTestedOpsCollectives = {
     HloOpcode::kAllGather, HloOpcode::kAllReduce, HloOpcode::kAllToAll,
     HloOpcode::kCollectivePermute, HloOpcode::kReduceScatter};
 
-INSTANTIATE_TEST_SUITE_P(CollectiveTestSuite, CollectiveTest,
-                         AllTestCombinationsForOpcodes(kTestedOpsCollectives),
-                         TritonSupportTestTypeOpcodeAndDeviceToString);
+INSTANTIATE_TEST_SUITE_P(
+    CollectiveTestSuite, CollectiveTest,
+    ::testing::Combine(::testing::ValuesIn(AllXlaDataTypes()),
+                       ::testing::ValuesIn(AllDevicesToTest())),
+    TritonSupportTestTypeAndDeviceToString);
 
 absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   // The return set is initialized with ops that are implicitly tested.

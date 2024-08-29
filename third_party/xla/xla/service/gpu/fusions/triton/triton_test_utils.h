@@ -140,7 +140,7 @@ std::string TritonSupportTestTypeAndDeviceToString(
     const ::testing::TestParamInfo<
         std::tuple<PrimitiveType, se::GpuComputeCapability>>& data);
 
-std::string TritonSupportTestTypeOpcodeAndDeviceToString(
+std::string TritonSupportTestTypeAndOpcodeAndDeviceToString(
     const ::testing::TestParamInfo<
         std::tuple<PrimitiveType, HloOpcode, se::GpuComputeCapability>>& data);
 
