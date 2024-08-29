@@ -1724,6 +1724,7 @@ cc_library(
         ":target_constants",
         "//xla:autotune_results_proto_cc",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/pjrt/distributed:key_value_store_interface",
