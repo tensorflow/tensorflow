@@ -234,8 +234,8 @@ TEST_P(BitcastOrReshapeTest, IsTritonSupportedBitcastOrReshape) {
   auto [data_type, opcode, cc] = GetParam();
   const std::string kHloTestTemplate = R"(
 ENTRY triton_computation {
-  parameter_0 = $0[1,16,4]{2,1,0} parameter(0)
-  ROOT bitcast_or_reshape = $0[64]{0} $1(parameter_0)
+  parameter_0 = $0[1,16,4] parameter(0)
+  ROOT bitcast_or_reshape = $0[64] $1(parameter_0)
 })";
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
@@ -257,31 +257,31 @@ TEST_P(UnaryElementwiseTest, IsTritonSupportedUnaryElementwise) {
   auto [data_type, opcode, cc] = GetParam();
   const std::string kDefaultHloTemplate = R"(
 ENTRY triton_computation {
-  parameter_0 = $0[33,68]{1,0} parameter(0)
-  ROOT unary = $0[33,68]{1,0} $1(parameter_0)
+  parameter_0 = $0[33,68] parameter(0)
+  ROOT unary = $0[33,68] $1(parameter_0)
 })";
 
   // Used for elementwise ops that return f64 regardless of the input type (e.g.
   // Imag).
   const std::string kF64OutputTemplate = R"(
 ENTRY triton_computation {
-  parameter_0 = $0[33,68]{1,0} parameter(0)
-  ROOT unary = f64[33,68]{1,0} $1(parameter_0)
+  parameter_0 = $0[33,68] parameter(0)
+  ROOT unary = f64[33,68] $1(parameter_0)
 })";
 
   // Used for elementwise ops that return pred regardless of the input type
   // (e.g. IsFinite).
   const std::string kPredOutputTemplate = R"(
 ENTRY triton_computation {
-  parameter_0 = $0[33,68]{1,0} parameter(0)
-  ROOT unary = pred[33,68]{1,0} $1(parameter_0)
+  parameter_0 = $0[33,68] parameter(0)
+  ROOT unary = pred[33,68] $1(parameter_0)
 })";
 
   // Used for the ReducePrecision op, since it requires extra attributes.
   const std::string kReducePrecisionTemplate = R"(
 ENTRY triton_computation {
-  parameter_0 = $0[33,68]{1,0} parameter(0)
-  ROOT unary = $0[33,68]{1,0} $1(parameter_0), exponent_bits=2, mantissa_bits=2
+  parameter_0 = $0[33,68] parameter(0)
+  ROOT unary = $0[33,68] $1(parameter_0), exponent_bits=2, mantissa_bits=2
 })";
 
   bool f64_output =
@@ -345,8 +345,8 @@ TEST_P(ConvertTest, Convert) {
   const std::string hlo_text = absl::Substitute(
       R"(
 ENTRY triton_computation {
-  parameter_0 = $0[33,68]{1,0} parameter(0)
-  ROOT convert = $1[33,68]{1,0} convert(parameter_0)
+  parameter_0 = $0[33,68] parameter(0)
+  ROOT convert = $1[33,68] convert(parameter_0)
 })",
       primitive_util::LowercasePrimitiveTypeName(data_type_in),
       primitive_util::LowercasePrimitiveTypeName(data_type_out));
@@ -413,16 +413,16 @@ TEST_P(BinaryElementwiseTest, IsTritonSupportedBinaryElementwise) {
   auto [data_type, opcode, cc] = GetParam();
   const std::string kHloTestTemplate = R"(
 ENTRY triton_computation {
-  parameter_0 = $0[11,63]{1,0} parameter(0)
-  parameter_1 = $0[11,63]{1,0} parameter(1)
-  ROOT binary = $0[11,63]{1,0} $1(parameter_0, parameter_1)
+  parameter_0 = $0[11,63] parameter(0)
+  parameter_1 = $0[11,63] parameter(1)
+  ROOT binary = $0[11,63] $1(parameter_0, parameter_1)
 })";
 
   const std::string kHloCompareTestTemplate = R"(
 ENTRY triton_computation {
-  parameter_0 = $0[11,63]{1,0} parameter(0)
-  parameter_1 = $0[11,63]{1,0} parameter(1)
-  ROOT compare = pred[11,63]{1,0} $1(parameter_0, parameter_1), direction=GE
+  parameter_0 = $0[11,63] parameter(0)
+  parameter_1 = $0[11,63] parameter(1)
+  ROOT compare = pred[11,63] $1(parameter_0, parameter_1), direction=GE
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -471,10 +471,10 @@ TEST_P(TernaryElementwiseTest, IsTritonSupportedTernaryElementwise) {
   auto [data_type, opcode, cc] = GetParam();
   const std::string kHloTestTemplate = R"(
 ENTRY triton_computation {
-  parameter_0 = $2[13,63]{1,0} parameter(0)
-  parameter_1 = $0[13,63]{1,0} parameter(1)
-  parameter_2 = $0[13,63]{1,0} parameter(2)
-  ROOT ternary = $0[13,63]{1,0} $1(parameter_0, parameter_1, parameter_2)
+  parameter_0 = $2[13,63] parameter(0)
+  parameter_1 = $0[13,63] parameter(1)
+  parameter_2 = $0[13,63] parameter(2)
+  ROOT ternary = $0[13,63] $1(parameter_0, parameter_1, parameter_2)
 })";
 
   auto type = primitive_util::LowercasePrimitiveTypeName(data_type);
@@ -510,9 +510,9 @@ add {
 }
 
 ENTRY triton_computation {
-  parameter_0 = $0[125,127]{1,0} parameter(0)
+  parameter_0 = $0[125,127] parameter(0)
   constant_0 = $0[] constant($1)
-  ROOT reduce = $0[125]{0} reduce(parameter_0, constant_0),
+  ROOT reduce = $0[125] reduce(parameter_0, constant_0),
     dimensions={1}, to_apply=add
 })",
                        "$0", dtype_is_complex ? "(0, 0)" : "0");
@@ -538,9 +538,9 @@ add {
 }
 
 ENTRY triton_computation {
-  parameter_0 = $0[3,125,127]{2,1,0} parameter(0)
+  parameter_0 = $0[3,125,127] parameter(0)
   constant_0 = $0[] constant(0)
-  ROOT reduce = $0[3,125]{1,0} reduce(parameter_0, constant_0),
+  ROOT reduce = $0[3,125] reduce(parameter_0, constant_0),
     dimensions={2}, to_apply=add
 })";
   TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
@@ -564,9 +564,9 @@ add {
 }
 
 ENTRY triton_computation {
-  parameter_0 = $0[2,125,127]{2,1,0} parameter(0)
+  parameter_0 = $0[2,125,127] parameter(0)
   constant_0 = $0[] constant($1)
-  ROOT reduce = $0[2]{0} reduce(parameter_0, constant_0),
+  ROOT reduce = $0[2] reduce(parameter_0, constant_0),
     dimensions={1,2}, to_apply=add
 })",
                        "$0", dtype_is_complex ? "(0, 0)" : "0");
@@ -589,9 +589,9 @@ add {
 }
 
 ENTRY triton_computation {
-  parameter_0 = $0[125,127]{1,0} parameter(0)
+  parameter_0 = $0[125,127] parameter(0)
   constant_0 = $0[] constant($1)
-  ROOT reduce = $0[127]{0} reduce(parameter_0, constant_0), dimensions={0}, to_apply=add
+  ROOT reduce = $0[127] reduce(parameter_0, constant_0), dimensions={0}, to_apply=add
 })",
                        "$0", dtype_is_complex ? "(0, 0)" : "0");
   TF_ASSERT_OK_AND_ASSIGN(
@@ -626,10 +626,10 @@ add {
 ENTRY triton_computation {
   parameter_0 = $0[125,127] parameter(0)
   constant_0 = $0[] constant($1)
-  tuple = ($0[125]{0}, $0[125]{0}) reduce(
+  tuple = ($0[125], $0[125]) reduce(
     parameter_0, parameter_0, constant_0, constant_0),
       dimensions={1}, to_apply=add
-  ROOT reduce = $0[125]{0} get-tuple-element(tuple), index=0
+  ROOT reduce = $0[125] get-tuple-element(tuple), index=0
 })",
                        "$0", dtype_is_complex ? "(0, 0)" : "0");
   TF_ASSERT_OK_AND_ASSIGN(
@@ -649,9 +649,9 @@ add {
 }
 
 ENTRY triton_computation {
-  parameter_0 = $0[125,127]{1,0} parameter(0)
+  parameter_0 = $0[125,127] parameter(0)
   init = $0[] parameter(1)
-  ROOT reduce = $0[125]{0} reduce(parameter_0, init), dimensions={1}, to_apply=add
+  ROOT reduce = $0[125] reduce(parameter_0, init), dimensions={1}, to_apply=add
 })";
   TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti,
                           ParseTemplateAndGetInstruction(kHloTestTemplate, F32,
@@ -672,9 +672,9 @@ custom_call {
 }
 
 ENTRY triton_computation {
-  parameter_0 = $0[125,127]{1,0} parameter(0)
+  parameter_0 = $0[125,127] parameter(0)
   constant_0 = $0[] constant($1)
-  ROOT reduce = $0[125]{0} reduce(parameter_0, constant_0),
+  ROOT reduce = $0[125] reduce(parameter_0, constant_0),
     dimensions={1}, to_apply=custom_call
 })",
                        "$0", dtype_is_complex ? "(0, 0)" : "0");
@@ -711,9 +711,9 @@ reduce_computation {
 }
 
 ENTRY triton_computation {
-  parameter_0 = $0[125,127]{1,0} parameter(0)
+  parameter_0 = $0[125,127] parameter(0)
   constant_0 = $0[] constant($2)
-  ROOT reduce = $0[125]{0} reduce(parameter_0, constant_0),
+  ROOT reduce = $0[125] reduce(parameter_0, constant_0),
     dimensions={1}, to_apply=reduce_computation
 })",
       "$0", HloOpcodeString(opcode), dtype_is_complex ? "(0, 0)" : "0");
@@ -770,8 +770,8 @@ TEST_P(CollectiveTest, UnsupportedAllGatherFailsGracefullyWithTriton) {
   auto [data_type, cc] = GetParam();
   const std::string kHloTestTemplate = R"(
 ENTRY triton_computation {
-  input = $0[128,32]{0,1} parameter(0)
-  ROOT all-gather = $0[128,128]{0,1} all-gather(input),
+  input = $0[128,32] parameter(0)
+  ROOT all-gather = $0[128,128] all-gather(input),
     replica_groups={}, dimensions={1}
 })";
   TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
@@ -836,8 +836,8 @@ TEST_P(CollectiveTest, UnsupportedAllToAllFailsGracefullyWithTriton) {
   auto [data_type, cc] = GetParam();
   const std::string kHloTestTemplate = R"(
 ENTRY triton_computation {
-  input = $0[128,32]{0,1} parameter(0)
-  ROOT a2a = ($0[128,32]{0,1}) all-to-all(input), replica_groups={}
+  input = $0[128,32] parameter(0)
+  ROOT a2a = ($0[128,32]) all-to-all(input), replica_groups={}
 })";
   TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
                                                     kHloTestTemplate, data_type,
