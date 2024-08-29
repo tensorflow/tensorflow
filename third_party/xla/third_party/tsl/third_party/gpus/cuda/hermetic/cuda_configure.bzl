@@ -6,6 +6,8 @@
   * `TF_NVCC_CLANG`: Whether to use clang for C++ and NVCC for Cuda compilation.
   * `CLANG_CUDA_COMPILER_PATH`: The clang compiler path that will be used for
     both host and device code compilation.
+  * `CC`: The compiler path that will be used for both host and device code
+    compilation if `CLANG_CUDA_COMPILER_PATH` is not set.
   * `TF_SYSROOT`: The sysroot to use when compiling.
   * `HERMETIC_CUDA_VERSION`: The version of the CUDA toolkit. If not specified,
     the version will be determined by the `TF_CUDA_VERSION`.
@@ -29,10 +31,12 @@ load(
 
 def _find_cc(repository_ctx):
     """Find the C++ compiler."""
-    cc_path_envvar = _CLANG_CUDA_COMPILER_PATH
     cc_name = "clang"
 
-    cc_name_from_env = get_host_environ(repository_ctx, cc_path_envvar)
+    cc_name_from_env = get_host_environ(
+        repository_ctx,
+        _CLANG_CUDA_COMPILER_PATH,
+    ) or get_host_environ(repository_ctx, _CC)
     if cc_name_from_env:
         cc_name = cc_name_from_env
     if cc_name.startswith("/"):
@@ -40,8 +44,9 @@ def _find_cc(repository_ctx):
         return cc_name
     cc = which(repository_ctx, cc_name)
     if cc == None:
-        fail(("Cannot find {}, either correct your path or set the {}" +
-              " environment variable").format(cc_name, cc_path_envvar))
+        fail(("Cannot find {}, either correct your path," +
+              " or set the CLANG_CUDA_COMPILER_PATH or CC" +
+              " environment variables").format(cc_name))
     return cc
 
 def _auto_configure_fail(msg):
@@ -104,7 +109,10 @@ def _use_nvcc_and_clang(repository_ctx):
     return _flag_enabled(repository_ctx, _TF_NVCC_CLANG)
 
 def _tf_sysroot(repository_ctx):
-    return get_host_environ(repository_ctx, _TF_SYSROOT, "")
+    tf_sys_root = get_host_environ(repository_ctx, _TF_SYSROOT, "")
+    if repository_ctx.path(tf_sys_root).exists:
+        return tf_sys_root
+    return ""
 
 def _py_tmpl_dict(d):
     return {"%{cuda_config}": str(d)}
@@ -230,6 +238,102 @@ load("//crosstool:error_gpu_disabled.bzl", "error_gpu_disabled")
 error_gpu_disabled()
 """
 
+def _setup_toolchains(repository_ctx, cc, cuda_version):
+    is_nvcc_and_clang = _use_nvcc_and_clang(repository_ctx)
+    tf_sysroot = _tf_sysroot(repository_ctx)
+
+    host_compiler_includes = get_cxx_inc_directories(
+        repository_ctx,
+        cc,
+        tf_sysroot,
+    )
+
+    cuda_defines = {}
+
+    # We do not support hermetic CUDA on Windows.
+    # This ensures the CROSSTOOL file parser is happy.
+    cuda_defines.update({
+        "%{msvc_env_tmp}": "msvc_not_used",
+        "%{msvc_env_path}": "msvc_not_used",
+        "%{msvc_env_include}": "msvc_not_used",
+        "%{msvc_env_lib}": "msvc_not_used",
+        "%{msvc_cl_path}": "msvc_not_used",
+        "%{msvc_ml_path}": "msvc_not_used",
+        "%{msvc_link_path}": "msvc_not_used",
+        "%{msvc_lib_path}": "msvc_not_used",
+        "%{win_compiler_deps}": ":empty",
+    })
+
+    cuda_defines["%{builtin_sysroot}"] = tf_sysroot
+    if not enable_cuda(repository_ctx):
+        cuda_defines["%{cuda_toolkit_path}"] = ""
+        cuda_defines["%{cuda_nvcc_files}"] = "[]"
+        nvcc_relative_path = ""
+    else:
+        cuda_defines["%{cuda_toolkit_path}"] = repository_ctx.attr.nvcc_binary.workspace_root
+        cuda_defines["%{cuda_nvcc_files}"] = "if_cuda([\"@{nvcc_archive}//:bin\", \"@{nvcc_archive}//:nvvm\"])".format(
+            nvcc_archive = repository_ctx.attr.nvcc_binary.repo_name,
+        )
+        nvcc_relative_path = "%s/%s" % (
+            repository_ctx.attr.nvcc_binary.workspace_root,
+            repository_ctx.attr.nvcc_binary.name,
+        )
+    cuda_defines["%{compiler}"] = "clang"
+    cuda_defines["%{host_compiler_prefix}"] = "/usr/bin"
+    cuda_defines["%{linker_bin_path}"] = ""
+    cuda_defines["%{extra_no_canonical_prefixes_flags}"] = ""
+    cuda_defines["%{unfiltered_compile_flags}"] = ""
+    cuda_defines["%{cxx_builtin_include_directories}"] = to_list_of_strings(
+        host_compiler_includes,
+    )
+
+    if not is_nvcc_and_clang:
+        cuda_defines["%{host_compiler_path}"] = str(cc)
+        cuda_defines["%{host_compiler_warnings}"] = """
+          # Some parts of the codebase set -Werror and hit this warning, so
+          # switch it off for now.
+          "-Wno-invalid-partial-specialization"
+      """
+        cuda_defines["%{compiler_deps}"] = ":cuda_nvcc_files"
+        repository_ctx.file(
+            "crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc",
+            "",
+        )
+    else:
+        cuda_defines["%{host_compiler_path}"] = "clang/bin/crosstool_wrapper_driver_is_not_gcc"
+        cuda_defines["%{host_compiler_warnings}"] = ""
+        cuda_defines["%{compiler_deps}"] = ":crosstool_wrapper_driver_is_not_gcc"
+
+        wrapper_defines = {
+            "%{cpu_compiler}": str(cc),
+            "%{cuda_version}": cuda_version,
+            "%{nvcc_path}": nvcc_relative_path,
+            "%{host_compiler_path}": str(cc),
+            "%{use_clang_compiler}": "True",
+        }
+        repository_ctx.template(
+            "crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc",
+            repository_ctx.attr.crosstool_wrapper_driver_is_not_gcc_tpl,
+            wrapper_defines,
+        )
+
+    _verify_build_defines(cuda_defines)
+
+    # Only expand template variables in the BUILD file
+    repository_ctx.template(
+        "crosstool/BUILD",
+        repository_ctx.attr.crosstool_build_tpl,
+        cuda_defines,
+    )
+
+    # No templating of cc_toolchain_config - use attributes and templatize the
+    # BUILD file.
+    repository_ctx.template(
+        "crosstool/cc_toolchain_config.bzl",
+        repository_ctx.attr.cc_toolchain_config_tpl,
+        {},
+    )
+
 def _create_dummy_repository(repository_ctx):
     cpu_value = get_cpu_value(repository_ctx)
 
@@ -281,14 +385,15 @@ def _create_dummy_repository(repository_ctx):
         _py_tmpl_dict({}),
     )
 
-    # If cuda_configure is not configured to build with GPU support, and the user
-    # attempts to build with --config=cuda, add a dummy build rule to intercept
-    # this and fail with an actionable error message.
-    repository_ctx.file(
-        "crosstool/error_gpu_disabled.bzl",
-        _DUMMY_CROSSTOOL_BZL_FILE,
-    )
-    repository_ctx.file("crosstool/BUILD", _DUMMY_CROSSTOOL_BUILD_FILE)
+    if repository_ctx.os.arch == "amd64" and repository_ctx.os.name == "linux":
+        cc = _find_cc(repository_ctx)
+        _setup_toolchains(repository_ctx, cc, "")
+    else:
+        repository_ctx.file(
+            "crosstool/error_gpu_disabled.bzl",
+            _DUMMY_CROSSTOOL_BZL_FILE,
+        )
+        repository_ctx.file("crosstool/BUILD", _DUMMY_CROSSTOOL_BUILD_FILE)
 
 def _create_local_cuda_repository(repository_ctx):
     """Creates the repository containing files set up to build with CUDA."""
@@ -318,98 +423,9 @@ def _create_local_cuda_repository(repository_ctx):
         },
     )
 
-    is_nvcc_and_clang = _use_nvcc_and_clang(repository_ctx)
-    tf_sysroot = _tf_sysroot(repository_ctx)
-
     # Set up crosstool/
     cc = _find_cc(repository_ctx)
-    host_compiler_includes = get_cxx_inc_directories(
-        repository_ctx,
-        cc,
-        tf_sysroot,
-    )
-
-    cuda_defines = {}
-
-    # We do not support hermetic CUDA on Windows.
-    # This ensures the CROSSTOOL file parser is happy.
-    cuda_defines.update({
-        "%{msvc_env_tmp}": "msvc_not_used",
-        "%{msvc_env_path}": "msvc_not_used",
-        "%{msvc_env_include}": "msvc_not_used",
-        "%{msvc_env_lib}": "msvc_not_used",
-        "%{msvc_cl_path}": "msvc_not_used",
-        "%{msvc_ml_path}": "msvc_not_used",
-        "%{msvc_link_path}": "msvc_not_used",
-        "%{msvc_lib_path}": "msvc_not_used",
-        "%{win_compiler_deps}": ":empty",
-    })
-
-    cuda_defines["%{builtin_sysroot}"] = tf_sysroot
-    cuda_defines["%{cuda_toolkit_path}"] = repository_ctx.attr.nvcc_binary.workspace_root
-    cuda_defines["%{compiler}"] = "clang"
-    cuda_defines["%{host_compiler_prefix}"] = "/usr/bin"
-    cuda_defines["%{linker_bin_path}"] = ""
-    cuda_defines["%{extra_no_canonical_prefixes_flags}"] = ""
-    cuda_defines["%{unfiltered_compile_flags}"] = ""
-    cuda_defines["%{cxx_builtin_include_directories}"] = to_list_of_strings(
-        host_compiler_includes,
-    )
-    cuda_defines["%{cuda_nvcc_files}"] = "if_cuda([\"@{nvcc_archive}//:bin\", \"@{nvcc_archive}//:nvvm\"])".format(
-        nvcc_archive = repository_ctx.attr.nvcc_binary.repo_name,
-    )
-
-    if not is_nvcc_and_clang:
-        cuda_defines["%{host_compiler_path}"] = str(cc)
-        cuda_defines["%{host_compiler_warnings}"] = """
-        # Some parts of the codebase set -Werror and hit this warning, so
-        # switch it off for now.
-        "-Wno-invalid-partial-specialization"
-    """
-        cuda_defines["%{compiler_deps}"] = ":cuda_nvcc_files"
-        repository_ctx.file(
-            "crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc",
-            "",
-        )
-    else:
-        cuda_defines["%{host_compiler_path}"] = "clang/bin/crosstool_wrapper_driver_is_not_gcc"
-        cuda_defines["%{host_compiler_warnings}"] = ""
-
-        nvcc_relative_path = "%s/%s" % (
-            repository_ctx.attr.nvcc_binary.workspace_root,
-            repository_ctx.attr.nvcc_binary.name,
-        )
-        cuda_defines["%{compiler_deps}"] = ":crosstool_wrapper_driver_is_not_gcc"
-
-        wrapper_defines = {
-            "%{cpu_compiler}": str(cc),
-            "%{cuda_version}": cuda_config.cuda_version,
-            "%{nvcc_path}": nvcc_relative_path,
-            "%{host_compiler_path}": str(cc),
-            "%{use_clang_compiler}": "True",
-        }
-        repository_ctx.template(
-            "crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc",
-            repository_ctx.attr.crosstool_wrapper_driver_is_not_gcc_tpl,
-            wrapper_defines,
-        )
-
-    _verify_build_defines(cuda_defines)
-
-    # Only expand template variables in the BUILD file
-    repository_ctx.template(
-        "crosstool/BUILD",
-        repository_ctx.attr.crosstool_build_tpl,
-        cuda_defines,
-    )
-
-    # No templating of cc_toolchain_config - use attributes and templatize the
-    # BUILD file.
-    repository_ctx.template(
-        "crosstool/cc_toolchain_config.bzl",
-        repository_ctx.attr.cc_toolchain_config_tpl,
-        {},
-    )
+    _setup_toolchains(repository_ctx, cc, cuda_config.cuda_version)
 
     # Set up cuda_config.h, which is used by
     # tensorflow/compiler/xla/stream_executor/dso_loader.cc.
@@ -458,6 +474,7 @@ def _cuda_autoconf_impl(repository_ctx):
 
     repository_ctx.symlink(build_file, "BUILD")
 
+_CC = "CC"
 _CLANG_CUDA_COMPILER_PATH = "CLANG_CUDA_COMPILER_PATH"
 _PYTHON_BIN_PATH = "PYTHON_BIN_PATH"
 _HERMETIC_CUDA_COMPUTE_CAPABILITIES = "HERMETIC_CUDA_COMPUTE_CAPABILITIES"
@@ -469,6 +486,7 @@ _TF_NVCC_CLANG = "TF_NVCC_CLANG"
 _TF_SYSROOT = "TF_SYSROOT"
 
 _ENVIRONS = [
+    _CC,
     _CLANG_CUDA_COMPILER_PATH,
     TF_NEED_CUDA,
     _TF_NVCC_CLANG,

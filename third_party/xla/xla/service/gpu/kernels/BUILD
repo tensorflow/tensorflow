@@ -75,7 +75,6 @@ cc_library(
     name = "custom_fusion_library",
     tags = [
         "gpu",
-        "no_rocm",
     ],
     visibility = [":friends"],
     deps = if_cuda_is_configured([":cutlass_gemm_fusion"]),

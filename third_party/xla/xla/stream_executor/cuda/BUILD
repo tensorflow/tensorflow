@@ -248,8 +248,7 @@ cuda_only_cc_library(
 xla_test(
     name = "cuda_driver_test",
     srcs = ["cuda_driver_test.cc"],
-    backends = ["gpu"],
-    tags = ["no_rocm"],
+    backends = ["gpu_any"],
     deps = [
         ":cuda_diagnostics",
         ":cuda_driver",
@@ -619,8 +618,7 @@ cc_library(
 xla_test(
     name = "cuda_platform_test",
     srcs = ["cuda_platform_test.cc"],
-    backends = ["gpu"],
-    tags = ["no_rocm"],
+    backends = ["gpu_any"],
     deps = [
         ":cuda_platform",
         "//xla/stream_executor:platform",
@@ -637,6 +635,7 @@ xla_cc_test(
     name = "ptx_compiler_test",
     srcs = ["ptx_compiler_test.cc"],
     tags = [
+        "gpu",
         "no_rocm",
         # TODO(b/343996893): Figure out whether msan reports a false positive or not.
         "nomsan",

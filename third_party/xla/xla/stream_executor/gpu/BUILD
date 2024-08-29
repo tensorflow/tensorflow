@@ -647,7 +647,6 @@ xla_test(
     name = "gpu_cudamallocasync_allocator_test",
     srcs = ["gpu_cudamallocasync_allocator_test.cc"],
     backends = ["gpu_any"],
-    tags = ["no_rocm"],
     deps = [
         ":gpu_cudamallocasync_allocator",
         ":gpu_stream",
