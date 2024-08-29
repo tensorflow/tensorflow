@@ -1211,7 +1211,7 @@ XlaOp Asin(XlaOp x) {
   };
   // These upcasts are not strictly necessary on all platforms to get within our
   // error tolerances, so we could relax this if it ever mattered.
-  return DoWithUpcastToF32(x, {BF16, F16}, [&](XlaOp x) {
+  return DoWithUpcastToF32(x, {F8E4M3FN, F8E5M2, BF16, F16}, [&](XlaOp x) {
     return b->ReportErrorOrReturn(do_it(x));
   });
 }
