@@ -3602,22 +3602,6 @@ bool HasReduceScatterOpportunity(const HloInstruction* inst,
 
 }  // namespace spmd
 
-bool IsInstructionBeforeSPMDFullToShardShapeCustomCall(
-    const HloInstruction* ins) {
-  if (ins->users().empty()) {
-    return false;
-  } else if (ins->users().size() == 1) {
-    return spmd::IsSPMDFullToShardShapeCustomCall(ins->users()[0]);
-  } else {
-    for (const HloInstruction* user : ins->users()) {
-      if (spmd::IsSPMDFullToShardShapeCustomCall(user)) {
-        return true;
-      }
-    }
-    return false;
-  }
-}
-
 std::pair<absl::flat_hash_map<std::string, std::vector<HloSharding>>, bool>
 AutoShardingImplementation::SaveAndRemoveShardingAnnotation(
     HloModule* module,
@@ -3640,7 +3624,7 @@ AutoShardingImplementation::SaveAndRemoveShardingAnnotation(
                                          preserve_shardings);
         continue;
       }
-      if (IsInstructionBeforeSPMDFullToShardShapeCustomCall(inst) ||
+      if (spmd::IsInstructionBeforeSPMDFullToShardShapeCustomCall(inst) ||
           spmd::IsSPMDShardToFullShapeCustomCall(inst)) {
         spmd::SaveShardingForInstruction(inst,
                                          /* save_for_copy_users */ false,
@@ -3709,7 +3693,7 @@ AutoShardingImplementation::SaveAndRemoveShardingAnnotation(
       if (ins->opcode() == HloOpcode::kOutfeed ||
           ins->opcode() == HloOpcode::kSend ||
           ins->opcode() == HloOpcode::kSendDone ||
-          IsInstructionBeforeSPMDFullToShardShapeCustomCall(ins) ||
+          spmd::IsInstructionBeforeSPMDFullToShardShapeCustomCall(ins) ||
           spmd::IsSPMDShardToFullShapeCustomCall(ins) ||
           !instructions_to_shard.contains(ins)) {
         continue;
@@ -4241,22 +4225,6 @@ absl::StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
 
   return module_is_changed ? AutoShardingResult::kModuleChangedShardingPerformed
                            : AutoShardingResult::kModuleUnchanged;
-}
-
-bool ModuleHasUserShardings(const HloModule* module) {
-  bool has_shardings = false;
-  for (auto computation : module->computations()) {
-    for (auto instruction : computation->instructions()) {
-      if (instruction->has_sharding()) {
-        has_shardings = true;
-        break;
-      }
-    }
-    if (has_shardings) {
-      break;
-    }
-  }
-  return has_shardings;
 }
 
 bool ModuleIsManuallyPartitioned(const HloModule* module) {

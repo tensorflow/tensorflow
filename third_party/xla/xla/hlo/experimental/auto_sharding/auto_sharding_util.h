@@ -356,6 +356,18 @@ inline bool ShardingIsComplete(const HloSharding& sharding,
          sharding.IsReplicated();
 }
 
+// Checks if the argument instruction is a producer for a SPMDFullToShardShape
+// custom call.
+inline bool IsInstructionBeforeSPMDFullToShardShapeCustomCall(
+    const HloInstruction* ins) {
+  for (const HloInstruction* user : ins->users()) {
+    if (spmd::IsSPMDFullToShardShapeCustomCall(user)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // Propagate sharding for dim-wise operations (e.g., slice, pad) which works
 // independently on each dimension.
 // The sharding can successfully propagate if the operation only happens on
