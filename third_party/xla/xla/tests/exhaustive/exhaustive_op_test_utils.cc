@@ -149,36 +149,7 @@ ErrorSpecBuilder::operator ErrorSpec() && { return std::move(*this).build(); }
 
 ErrorSpec ErrorSpecBuilder::build() && { return spec_; }
 
-// For f64, f32, f16, and bf16, we need 17, 9, 5, and 4 decimal places of
-// precision to be guaranteed that we're printing the full number.
-//
-// (The general formula is, given a floating-point number with S significand
-// bits, the number of decimal digits needed to print it to full precision is
-//
-//   ceil(1 + S * log_10(2)) ~= ceil(1 + S * 0.30103).
-//
-// See https://people.eecs.berkeley.edu/~wkahan/Math128/BinDecBin.pdf.)
 namespace {
-template <typename T>
-struct ComponentStringifyFormat {
-  static const absl::string_view value;
-};
-
-template <>
-constexpr absl::string_view ComponentStringifyFormat<double>::value =
-    "%0.17g (0x%016x)";
-
-template <>
-constexpr absl::string_view ComponentStringifyFormat<float>::value =
-    "%0.9g (0x%08x)";
-
-template <>
-constexpr absl::string_view ComponentStringifyFormat<Eigen::half>::value =
-    "%0.5g (0x%04x)";
-
-template <>
-constexpr absl::string_view ComponentStringifyFormat<bfloat16>::value =
-    "%0.4g (0x%04x)";
 
 template <typename Type, typename FuncPtr>
 ErrorSpec CallErrorSpec(FuncPtr* func, const std::array<Type, 1>& in) {
@@ -396,8 +367,12 @@ template <
     typename NativeT, typename IntegralType,
     typename std::enable_if<!is_complex_t<NativeT>::value>::type* = nullptr>
 std::string StringifyNum(NativeT x) {
-  return absl::StrFormat(ComponentStringifyFormat<NativeT>::value,
-                         static_cast<double>(x), BitCast<IntegralType>(x));
+  return absl::StrFormat("%0.*g (0x%0*x)",
+                         std::numeric_limits<NativeT>::max_digits10,
+                         static_cast<double>(x),
+                         // N.B.: `|bytes| * 8 / 4` multiplied by 8 for bytes to
+                         // bits and then divided by 4 for bits to hexdigits.
+                         sizeof(IntegralType) * 2, BitCast<IntegralType>(x));
 }
 
 template <
