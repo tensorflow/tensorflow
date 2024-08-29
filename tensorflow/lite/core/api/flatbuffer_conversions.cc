@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include "flatbuffer_conversions.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "flatbuffers/vector.h"  // from @flatbuffers
 #include "tensorflow/lite/core/api/error_reporter.h"
@@ -923,6 +924,10 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     }
     case BuiltinOperator_STABLEHLO_COMPOSITE: {
       return ParseStablehloComposite(op, error_reporter, allocator,
+                                     builtin_data);
+    }
+    case BuiltinOperator_STABLEHLO_ROUND_NEAREST_AFZ: {
+      return ParseStablehloRoundNearestAfz(op, error_reporter, allocator,
                                      builtin_data);
     }
     // TODO: skip param parsing for now since ops below don't have kernels
@@ -2415,6 +2420,13 @@ TfLiteStatus ParseStablehloComposite(const Operator* op,
 // selective registration for the OpResolver implementation in micro.
 TfLiteStatus ParseRound(const Operator*, ErrorReporter*, BuiltinDataAllocator*,
                         void**) {
+  return kTfLiteOk;
+}
+
+TfLiteStatus ParseStablehloRoundNearestAfz(const Operator* op,
+                                 ErrorReporter* error_reporter,
+                                 BuiltinDataAllocator* allocator,
+                                 void** builtin_data) {
   return kTfLiteOk;
 }
 

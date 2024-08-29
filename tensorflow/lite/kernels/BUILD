@@ -770,6 +770,7 @@ BUILTIN_KERNEL_SRCS = [
     "stablehlo_multiply.cc",
     "stablehlo_pad.cc",
     "stablehlo_reduce_window.cc",
+    "stablehlo_round_nearest_afz.cc",
     "stablehlo_min_max.cc",
     "stablehlo_scatter.cc",
     "sign.cc",
@@ -3230,6 +3231,20 @@ cc_test(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "stablehlo_round_nearest_afz_test",
+    srcs = ["stablehlo_round_nearest_afz_test.cc"],
+    tags = ["tflite_nnapi"],
+    deps = [
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/c:c_api_types",
+        "@com_google_googletest//:gtest",
     ],
 )
 
