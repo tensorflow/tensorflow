@@ -230,7 +230,7 @@ struct RewriteXlaGpuLoop : mlir::OpRewritePattern<LoopOp> {
                 }
                 SmallVector<Value, 4> then_results;
                 for (auto result : old_block->getTerminator()->getOperands()) {
-                  then_results.push_back(mapping.lookup(result));
+                  then_results.push_back(mapping.lookupOrDefault(result));
                 }
                 then_b.create<mlir::scf::YieldOp>(then_results);
               },
