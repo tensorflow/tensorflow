@@ -932,7 +932,7 @@ def pjit(
     cache_miss: Callable,
     static_argnums: Sequence[int],
     static_argnames: Sequence[str],
-    global_cache_key: Any,
+    donate_argnums: Sequence[int],
     pytree_registry: pytree.PyTreeRegistry,
     shard_arg_fallback: Callable,
     cache: Optional[PjitFunctionCache] = ...,
