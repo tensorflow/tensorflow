@@ -267,8 +267,15 @@ class FileBasedCacheTest : public AutotunerUtilTest {
   static std::vector<std::string> GetFilesInDir(
       const absl::string_view cache_dir) {
     std::vector<std::string> files_in_cache;
-    TF_CHECK_OK(tsl::Env::Default()->GetChildren(std::string(cache_dir),
-                                                 &files_in_cache));
+    // TSL's different platform implementations of `GetChildren` are not
+    // consistent. Some return an error if `cache_dir` does not exist, some
+    // others return an empty `files_in_cache`. We want the second behavior, so
+    // we swallow the error.
+    if (!tsl::Env::Default()
+             ->GetChildren(std::string(cache_dir), &files_in_cache)
+             .ok()) {
+      files_in_cache.clear();
+    }
     return files_in_cache;
   }
 

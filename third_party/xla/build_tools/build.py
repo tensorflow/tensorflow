@@ -172,6 +172,7 @@ def _tag_filters_for_compute_capability(
     else:
       tag_filters += (f"-requires-gpu-sm{cc}",)
       tag_filters += (f"-requires-gpu-sm{cc}-only",)
+  tag_filters += ("-requires-gpu-amd",)
   return tag_filters
 
 
@@ -190,8 +191,9 @@ def nvidia_gpu_build_with_compute_capability(
       image_url=_DEFAULT_IMAGE,
       target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
       configs=configs,
-      test_tag_filters=("-no_oss", "requires-gpu-nvidia") + extra_gpu_tags,
-      build_tag_filters=("-no_oss", "requires-gpu-nvidia"),
+      test_tag_filters=("-no_oss", "requires-gpu-nvidia", "gpu")
+      + extra_gpu_tags,
+      build_tag_filters=("-no_oss", "requires-gpu-nvidia", "gpu"),
       options=dict(
           run_under="//tools/ci_build/gpu_build:parallel_gpu_execute",
           repo_env=f"TF_CUDA_COMPUTE_CAPABILITIES={compute_capability/10}",
