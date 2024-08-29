@@ -19,7 +19,9 @@ limitations under the License.
 #include <vector>
 
 #include "xla/array2d.h"
+#include "xla/array3d.h"
 #include "xla/client/xla_builder.h"
+#include "xla/error_spec.h"
 #include "xla/literal_util.h"
 #include "xla/reference_util.h"
 #include "xla/tests/client_library_test_base.h"

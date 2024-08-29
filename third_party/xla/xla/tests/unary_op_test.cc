@@ -16,14 +16,14 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "xla/client/global_data.h"
-#include "xla/client/local_client.h"
 #include "xla/client/xla_builder.h"
+#include "xla/error_spec.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/tests/client_library_test_base.h"
-#include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
+#include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {

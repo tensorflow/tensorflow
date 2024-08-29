@@ -16,9 +16,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "xla/debug_options_flags.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"

@@ -19,6 +19,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/hash/hash.h"
+#include "absl/types/span.h"
+#include "xla/array.h"
 #include "xla/array3d.h"
 #include "xla/test.h"
 
