@@ -2677,20 +2677,20 @@ absl::StatusOr<Value> ComputeBasePtrOffset(
 namespace ir_emitter_triton_internal {
 
 SmallVector<Value, 3> ComputeDelinearizedTileIndex(
-    ImplicitLocOpBuilder& b, const TiledHloComputation& tiled_hlo_computation) {
+    ImplicitLocOpBuilder& b,
+    absl::Span<const int64_t> num_output_tiles_per_dim) {
   Value pid = b.create<ma::IndexCastUIOp>(
       b.getIndexType(), b.create<mt::GetProgramIdOp>(mt::ProgramIDDim::X));
 
   // Delinearize the block id.
   mlir::AffineExpr program_id = mlir::getAffineDimExpr(0, b.getContext());
   auto tile_exprs =
-      DelinearizeIndex(tiled_hlo_computation.num_output_tiles_per_dim(),
-                       program_id, b.getContext());
+      DelinearizeIndex(num_output_tiles_per_dim, program_id, b.getContext());
 
   IndexingMap program_id_to_root_tile_offset = IndexingMap::FromTensorSizes(
       mlir::AffineMap::get(/*dimCount=*/1, /*symbolCount=*/0, tile_exprs,
                            b.getContext()),
-      /*dim_upper_bounds=*/{tiled_hlo_computation.num_output_tiles()},
+      /*dim_upper_bounds=*/{Product(num_output_tiles_per_dim)},
       /*symbol_upper_bounds=*/{});
 
   return mlir_converter::ApplyIndexing(program_id_to_root_tile_offset,
@@ -2805,7 +2805,7 @@ absl::Status EmitGeneric(mlir::OpBuilder builder,
 
   SmallVector<Value, 3> tile_multi_index =
       ir_emitter_triton_internal::ComputeDelinearizedTileIndex(
-          b, tiled_hlo_computation);
+          b, tiled_hlo_computation.num_output_tiles_per_dim());
 
   TF_ASSIGN_OR_RETURN(
       Value result,
