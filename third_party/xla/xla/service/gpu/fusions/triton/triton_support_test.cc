@@ -773,6 +773,36 @@ ENTRY triton_computation {
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 2}, cc);
 }
 
+TEST_P(CollectiveTest, UnsupportedAllGatherStartFailsGracefullyWithTriton) {
+  auto [data_type, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  input = $0[128,32] parameter(0)
+  ROOT all-gather-start = ($0[128,32], $0[256,32]) all-gather-start(input),
+    replica_groups={{0,1}}, dimensions={0}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type,
+                                     HloOpcode::kAllGatherStart));
+  EXPECT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 2}, cc);
+}
+
+TEST_P(CollectiveTest, UnsupportedAllGatherDoneFailsGracefullyWithTriton) {
+  auto [data_type, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  input = ($0[128,32], $0[128,32]) parameter(0)
+  ROOT all-gather-done = $0[128,32] all-gather-done(input)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
+                                                    kHloTestTemplate, data_type,
+                                                    HloOpcode::kAllGatherDone));
+  EXPECT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 2}, cc);
+}
+
 TEST_P(CollectiveTest, UnsupportedAllReduceFailsGracefullyWithTriton) {
   auto [data_type, cc] = GetParam();
   const std::string kHloTestTemplate = R"(
@@ -846,8 +876,10 @@ ENTRY triton_computation {
 }
 
 constexpr std::array kTestedOpsCollectives = {
-    HloOpcode::kAllGather, HloOpcode::kAllReduce, HloOpcode::kAllToAll,
-    HloOpcode::kCollectivePermute, HloOpcode::kReduceScatter};
+    HloOpcode::kAllGather,     HloOpcode::kAllGatherStart,
+    HloOpcode::kAllGatherDone, HloOpcode::kAllReduce,
+    HloOpcode::kAllToAll,      HloOpcode::kCollectivePermute,
+    HloOpcode::kReduceScatter};
 
 INSTANTIATE_TEST_SUITE_P(
     CollectiveTestSuite, CollectiveTest,
@@ -875,8 +907,6 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
 absl::flat_hash_set<HloOpcode> AllUntestedOpcodes() {
   return absl::flat_hash_set<HloOpcode>{HloOpcode::kAddDependency,
                                         HloOpcode::kAfterAll,
-                                        HloOpcode::kAllGatherDone,
-                                        HloOpcode::kAllGatherStart,
                                         HloOpcode::kAllReduceDone,
                                         HloOpcode::kAllReduceStart,
                                         HloOpcode::kAsyncDone,
