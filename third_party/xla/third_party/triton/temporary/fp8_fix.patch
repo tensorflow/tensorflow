@@ -94,13 +94,6 @@ The corresponding import patch has already been added.
        validN.assign({256, 248, 240, 232, 224, 216, 208, 200, 192, 184, 176,
                       168, 160, 152, 144, 136, 128, 120, 112, 104, 96,  88,
                       80,  72,  64,  56,  48,  40,  32,  24,  16,  8});
-==== triton/patches/public/fp8_fix.patch#None - triton/patches/public/fp8_fix.patch ====
-# action=add type=text
---- /dev/null	1969-12-31 16:00:00.000000000 -0800
-+++ triton/patches/public/fp8_fix.patch	2024-08-21 01:51:13.000000000 -0700
-@@ -0,0 +1,2 @@
-+triton/patches/public/fp8_fix.patch#1 - opened for add
-+triton/patches/public/fp8_fix.patch - empty, assuming text.
 ==== triton/python/src/ir.cc#24 - triton/python/src/ir.cc ====
 # action=edit type=text
 --- triton/python/src/ir.cc	2024-08-12 00:24:31.000000000 -0700
