@@ -174,8 +174,8 @@ TritonMakeTensorPtrTest::CreateTestTensorPtr(
   ImplicitLocOpBuilder b(loc, builder);
   auto fn = CreateTritonFunction(b, shape_sizes);
 
-  SmallVector<Value, 3> tile_multi_index =
-      ComputeDelinearizedTileIndex(b, tiled_hlo_computation);
+  SmallVector<Value, 3> tile_multi_index = ComputeDelinearizedTileIndex(
+      b, tiled_hlo_computation.num_output_tiles_per_dim());
 
   return std::make_pair(
       std::move(triton_module),
