@@ -383,10 +383,10 @@ absl::StatusOr<std::optional<AutotuneResult>> TryFindInCache(
     ABSL_LOCKS_EXCLUDED(autotune_cache_mu) {
   std::optional<AutotuneResult> opt_result = TryToFindInInMemoryCache(key);
   if (opt_result.has_value()) {
-    if (VLOG_IS_ON(1)) {
-      LOG(INFO) << "In-memory autotune cache hit";
-    } else if (VLOG_IS_ON(2)) {
+    if (VLOG_IS_ON(2)) {
       LOG(INFO) << "In-memory autotune cache hit: key = " << key.ToString();
+    } else if (VLOG_IS_ON(1)) {
+      LOG(INFO) << "In-memory autotune cache hit";
     }
     return opt_result;
   }
@@ -396,18 +396,18 @@ absl::StatusOr<std::optional<AutotuneResult>> TryFindInCache(
   if (opt_result.has_value()) {
     AddResultToInMemoryCache(key, opt_result.value());
 
-    if (VLOG_IS_ON(1)) {
-      LOG(INFO) << "File-based autotune cache hit";
-    } else if (VLOG_IS_ON(2)) {
+    if (VLOG_IS_ON(2)) {
       LOG(INFO) << "File-based autotune cache hit: key = " << key.ToString();
+    } else if (VLOG_IS_ON(1)) {
+      LOG(INFO) << "File-based autotune cache hit";
     }
     return opt_result;
   }
 
-  if (VLOG_IS_ON(1)) {
-    LOG(INFO) << "Autotune cache miss";
-  } else if (VLOG_IS_ON(2)) {
+  if (VLOG_IS_ON(2)) {
     LOG(INFO) << "Autotune cache miss: key = " << key.ToString();
+  } else if (VLOG_IS_ON(1)) {
+    LOG(INFO) << "Autotune cache miss";
   }
   return std::nullopt;
 }
