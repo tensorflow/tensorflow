@@ -340,7 +340,7 @@ absl::Status CommandBufferCmdSequence::Record(
       TF_RETURN_IF_ERROR(command_buffer->Barrier(execution_scope_id));
       num_recorded_commands.erase(execution_scope_id);
     }
-    VLOG(5) << " Record command buffer with scope id "
+    VLOG(5) << "Record command buffer with scope id "
             << execution_scope_id.value();
 
     TF_RETURN_IF_ERROR(
