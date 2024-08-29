@@ -152,7 +152,10 @@ struct TfrtCompileOptions {
   // The policy used by a BatchScheduler to pad (or split) batches.
   std::string batch_padding_policy;
 
-  // If true, streams with inter data depenedencies will be preferred to be
+  // Batching parameters to be rewritten in the existing BatchFunction ops.
+  BatchingOptions batch_options;
+
+  // If true, streams with inter data dependencies will be preferred to be
   // merged for inline execution.
   bool merge_inter_dependent_streams = true;
 

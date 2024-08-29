@@ -428,7 +428,10 @@ cc_library(
     hdrs = ["translate/tfrt_compile_options.h"],
     compatible_with = get_compatible_with_portable(),  # copybara: comment
     visibility = ["//visibility:public"],
-    deps = ["//tensorflow/core/protobuf:for_core_protos_cc"],
+    deps = [
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 cc_library(
