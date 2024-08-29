@@ -18,6 +18,7 @@ package_group(
         "//learning/serving/servables/tfrt/...",
         "//learning/pathways/serving/runtime/...",
         "//learning/pathways/serving/tests/...",
+        "//learning/brain/tfrt/ifrt/...",
         "//learning/brain/tfrt/mlir/mlrt/application/pathways/compiler/...",
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server/...",
