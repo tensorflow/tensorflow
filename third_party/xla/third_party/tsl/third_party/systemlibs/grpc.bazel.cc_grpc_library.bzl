@@ -23,8 +23,6 @@ def cc_grpc_library(
     in a backwards-compatible mode (trying to generate both proto and grpc
     classes).
 
-    Assumes the generated classes will be used in cc_api_version = 2.
-
     Args:
         name (str): Name of rule.
         srcs (list): A single .proto file which contains services definitions,
