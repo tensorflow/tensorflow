@@ -199,7 +199,7 @@ void EventMgr::EnqueueCallback(se::Stream* stream, std::function<void()> func) {
 // is used to cap pending kernels there should never be more than
 // that many.)
 void EventMgr::PollEvents(se::Stream* stream,
-                          gtl::InlinedVector<InUse, 4>* to_free) {
+                          absl::InlinedVector<InUse, 4UL>* to_free) {
   VLOG(2) << "PollEvents with one or more callbacks pending on "
           << callbacks_.size() << " streams and " << free_events_.size()
           << " unused event objects.";
