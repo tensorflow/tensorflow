@@ -4215,3 +4215,15 @@ func.func @reorder_gather_cast(%arg0: tensor<2x3x5xi8>, %arg1: tensor<2x7xi32>) 
 
 // CHECK: %0 = "tfl.gather"(%arg0, %arg1) <{axis = 1 : i32, batch_dims = 1 : i32}> : (tensor<2x3x5xi8>, tensor<2x7xi32>) -> tensor<2x7x5xi8>
 // CHECK: %1 = "tfl.cast"(%0) : (tensor<2x7x5xi8>) -> tensor<2x7x5xf32>
+
+
+// CHECK-LABEL: equal_double_broadcast_canonicalizer
+func.func @equal_double_broadcast_canonicalizer(%arg0: tensor<2x1x1xi64>, %arg1: tensor<1x1x2xi64>) -> tensor<2x1x2xi1> {
+  %cst = arith.constant dense<[2, 1, 2]> : tensor<3xi64>
+  %1 = "tfl.broadcast_to"(%arg0, %cst) : (tensor<2x1x1xi64>, tensor<3xi64>) -> tensor<2x1x2xi64>
+  %2 = "tfl.broadcast_to"(%arg1, %cst) : (tensor<1x1x2xi64>, tensor<3xi64>) -> tensor<2x1x2xi64>
+  %3 = "tfl.equal"(%1, %2) : (tensor<2x1x2xi64>, tensor<2x1x2xi64>) -> tensor<2x1x2xi1>
+  func.return %3 : tensor<2x1x2xi1>
+}
+
+// CHECK-FOLD-NOT: broadcast_to
