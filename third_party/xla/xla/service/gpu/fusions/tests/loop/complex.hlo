@@ -13,10 +13,9 @@
 
 // CHECK: func.func @main
 // CHECK-NEXT: gpu.thread_id
-// CHECK:      xla_gpu.loop
 // CHECK-NEXT: pure_call @fused_computation_mul
 // CHECK-NEXT: tensor.insert
-// CHECK:      return
+// CHECK-NEXT: return
 
 // CHECK: func.func private @fused_computation_mul
 // CHECK-NEXT: arith.constant

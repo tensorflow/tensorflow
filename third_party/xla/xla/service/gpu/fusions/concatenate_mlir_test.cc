@@ -102,10 +102,9 @@ TEST_F(MlirConcatenateFusionTest, StandAloneConcatenate) {
     }
   )";
   TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
-    // CHECK-DAG: #[[MAP:.*]] = #xla_gpu.indexing_map<(d0, d1) -> (d1 * 128 + d0)
-    // CHECK-DAG: #[[LOOPMAP_1:.*]] = #xla_gpu.indexing_map<(d0, d1, d2, d3, d4, d5)[s0, s1] -> (d3 * 128 + d0)
-    // CHECK-DAG: #[[LOOPMAP_2:.*]] = #xla_gpu.indexing_map<(d0, d1, d2, d3, d4, d5)[s0, s1] -> (d3 * 128 + d0 + 200)
-    // CHECK-DAG: #[[LOOPMAP_3:.*]] = #xla_gpu.indexing_map<(d0, d1, d2, d3, d4, d5)[s0, s1] -> (d3 * 128 + d0 + 600)
+    // CHECK-DAG: #[[MAP_1:.*]] = #xla_gpu.indexing_map<(d0, d1) -> (d1 * 128 + d0)
+    // CHECK-DAG: #[[MAP_2:.*]] = #xla_gpu.indexing_map<(d0, d1) -> (d1 * 128 + d0 + 200)
+    // CHECK-DAG: #[[MAP_3:.*]] = #xla_gpu.indexing_map<(d0, d1) -> (d1 * 128 + d0 + 600)
 
     // CHECK-LABEL: fused_computation
     // CHECK-SAME:    %[[ARG_0:[a-zA-Z0-9]*]]: {{[^,]*}},
@@ -116,20 +115,20 @@ TEST_F(MlirConcatenateFusionTest, StandAloneConcatenate) {
     // CHECK: %[[THREAD_ID:.*]] = gpu.thread_id x
     // CHECK: %[[BLOCK_ID:.*]] = gpu.block_id x
 
-    // CHECK: xla_gpu.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]]) in #[[LOOPMAP_1]]
-    // CHECK:   xla_gpu.apply_indexing #[[MAP]]
+    // CHECK: %[[INPUT_INDEX_1:.*]] = xla_gpu.apply_indexing #[[MAP_1]]
+    // CHECK: %[[IF_1:.*]] = scf.if
     // CHECK:   %[[VAL_1:.*]] = xla_gpu.pure_call @fused_computation_param0
-    // CHECK:   %[[INSERTED_1:.*]] = tensor.insert %[[VAL_1:.*]] into {{.*}}[%[[RA]]]
+    // CHECK:   %[[INSERTED_1:.*]] = tensor.insert %[[VAL_1:.*]] into %[[OUTPUT]][%[[INPUT_INDEX_1]]]
 
-    // CHECK: xla_gpu.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]]) in #[[LOOPMAP_2]]
-    // CHECK:   xla_gpu.apply_indexing #[[MAP]]
+    // CHECK: %[[IF_2:.*]] = scf.if
     // CHECK:   %[[VAL_2:.*]] = xla_gpu.pure_call @fused_computation_param1
-    // CHECK:   %[[INSERTED_2:.*]] = tensor.insert %[[VAL_2:.*]] into {{.*}}[%[[RA]]]
+    // CHECK:   %[[OUTPUT_INDEX_2:.*]] = xla_gpu.apply_indexing #[[MAP_2]]
+    // CHECK:   %[[INSERTED_2:.*]] = tensor.insert %[[VAL_2:.*]] into {{.*}}[%[[OUTPUT_INDEX_2]]]
 
-    // CHECK: xla_gpu.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]]) in #[[LOOPMAP_3]]
-    // CHECK:   xla_gpu.apply_indexing #[[MAP]]
+    // CHECK: %[[IF_3:.*]] = scf.if
     // CHECK:   %[[VAL_3:.*]] = xla_gpu.pure_call @fused_computation_param2
-    // CHECK:   %[[INSERTED_3:.*]] = tensor.insert %[[VAL_3:.*]] into {{.*}}[%[[RA]]]
+    // CHECK:   %[[OUTPUT_INDEX_3:.*]] = xla_gpu.apply_indexing #[[MAP_3]]
+    // CHECK:   %[[INSERTED_3:.*]] = tensor.insert %[[VAL_3:.*]] into {{.*}}[%[[OUTPUT_INDEX_3]]]
   )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
@@ -153,19 +152,25 @@ TEST_F(MlirConcatenateFusionTest, PrologueEpilogue) {
     }
   )";
   TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
+    // CHECK: #[[MAP:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 + 64)
+
     // CHECK-LABEL: fused_computation
+    // CHECK-DAG: %[[C_63:.*]] = arith.constant 63
     // CHECK: %[[THREAD_ID:.*]] = gpu.thread_id x
 
-    // CHECK: xla_gpu.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]]) in
+    // CHECK: %[[IN_BOUND_1:.*]] = arith.cmpi sle, %[[THREAD_ID:.*]], %[[C_63]]
+    // CHECK: %[[IF_1:.*]] = scf.if %[[IN_BOUND_1]]
     // CHECK:   %[[VAL_1_1:.*]] = xla_gpu.pure_call @fused_computation_log({{.*}}, %[[THREAD_ID]])
-    // CHECK:   %[[VAL_1_2:.*]] = xla_gpu.pure_call @fused_computation__epilogue__neg({{.*}}, %[[RA]], %[[VAL_1_1]])
-    // CHECK:   tensor.insert %[[VAL_1_2:.*]] into {{.*}}[%[[RA]]]
+    // CHECK:   %[[VAL_1_2:.*]] = xla_gpu.pure_call @fused_computation__epilogue__neg({{.*}}, %[[THREAD_ID]], %[[VAL_1_1]])
+    // CHECK:   %[[INSERTED_1:.*]] = tensor.insert %[[VAL_1_2:.*]] into {{.*}}[%[[THREAD_ID]]]
+    // CHECK:   scf.yield %[[INSERTED_1]]
 
-    // CHECK: xla_gpu.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]]) in
-    // CHECK:   %[[VAL_2_1:.*]] = xla_gpu.pure_call @fused_computation_exp({{.*}}, %[[THREAD_ID]])
-    // CHECK:   %[[VAL_2_2:.*]] = xla_gpu.pure_call @fused_computation__epilogue__neg({{.*}}, %[[RA]], %[[VAL_2_1]])
-    // CHECK:   tensor.insert %[[VAL_2_2:.*]] into {{.*}}[%[[RA]]]
+    // CHECK: %[[VAL_2_1:.*]] = xla_gpu.pure_call @fused_computation_exp({{.*}}, %[[THREAD_ID]])
+    // CHECK: %[[INDEX_2:.*]] = xla_gpu.apply_indexing #[[MAP]](%[[THREAD_ID]]
+    // CHECK: %[[VAL_2_2:.*]] = xla_gpu.pure_call @fused_computation__epilogue__neg({{.*}}, %[[INDEX_2]], %[[VAL_2_1]])
+    // CHECK: %[[INSERTED_2:.*]] = tensor.insert %[[VAL_2_2:.*]] into {{.*}}[%[[INDEX_2]]]
 
+    // CHECK: return %[[INSERTED_2]]
   )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }
@@ -249,8 +254,14 @@ TEST_F(MlirConcatenateFusionTest, Vectorization) {
     }
   )";
   TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
+    // CHECK-DAG: #xla_gpu.indexing_map<(d0, d1) -> (d1 * 128 + d0)
+    // CHECK-DAG: #xla_gpu.indexing_map<(d0, d1)[s0] -> (d0 * 2 + d1 * 256 + s0)
+    // CHECK-DAG: #xla_gpu.indexing_map<(d0, d1)[s0] -> (d0 * 2 + d1 * 256 + s0 + 640002)
+
     // CHECK-LABEL: fused_computation
-    // CHECK-COUNT-2: xla_gpu.loop ({{.*}})[%{{.*}}, %{{.*}}] ->
+    // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
+    // CHECK-DAG: %[[C2:.*]] = arith.constant 2 : index
+    // CHECK-COUNT-2: scf.for %{{.*}} = %[[C0]] to %[[C2]]
   )"));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{1e-3}));
 }

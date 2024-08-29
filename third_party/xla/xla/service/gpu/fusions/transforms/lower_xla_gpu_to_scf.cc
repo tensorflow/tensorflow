@@ -282,8 +282,8 @@ struct RewriteMaterialize : mlir::OpRewritePattern<MaterializeOp> {
               b.create<PureCallOp>(op.getCalleeAttr(), ValueRange{args}, types);
           SmallVector<mlir::OpFoldResult> offset(ivs);
           auto old_vec = iter_args.back();
-          Value new_vec = b.create<mlir::vector::InsertOp>(call.getResult(0),
-                                                           old_vec, offset);
+          auto new_vec = b.create<mlir::vector::InsertOp>(call.getResult(0),
+                                                          old_vec, offset);
           b.create<YieldOp>(new_vec);
         });
     auto convert = b.create<mlir::UnrealizedConversionCastOp>(
@@ -319,7 +319,7 @@ struct RewriteInsert : mlir::OpRewritePattern<InsertOp> {
               b.create<mlir::vector::ExtractOp>(convert, vector_offset);
           auto tensor_indices = b.create<ApplyIndexingOp>(
               op.getIndices(), map_results, op.getMap().getIndexingMap());
-          Value new_tensor = b.create<mlir::tensor::InsertOp>(
+          auto new_tensor = b.create<mlir::tensor::InsertOp>(
               scalar.getResult(), iter_args.back(),
               tensor_indices->getResults());
           b.create<YieldOp>(new_tensor);

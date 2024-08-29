@@ -180,10 +180,10 @@ PerThreadOutputs MlirReductionFusion::EmitterState::EmitPerThreadElements(
     iter_arg_inits.append(init);
   }
 
-  auto body_builder = [&](ValueRange symbol_values, ValueRange map_results,
-                          ValueRange iter_args) -> SmallVector<Value> {
-    auto tile_indices = mlir_converter::ApplyIndexing(
-        tile_indexing, thread_and_block_ids, symbol_values, builder);
+  auto body_builder = [&](ValueRange iter_args, ValueRange dim_values,
+                          ValueRange symbol_values) -> SmallVector<Value> {
+    auto tile_indices = mlir_converter::ApplyIndexing(tile_indexing, dim_values,
+                                                      symbol_values, builder);
 
     llvm::SmallVector<Value> results = iter_args;
     for (auto* reduction : reductions) {
@@ -193,7 +193,7 @@ PerThreadOutputs MlirReductionFusion::EmitterState::EmitPerThreadElements(
       auto indices = mlir_converter::ApplyIndexing(
           GetBitcastMap(owner.input_shape_, reduction->operand(0)->shape(),
                         builder.getContext()),
-          map_results, {}, builder);
+          tile_indices, {}, builder);
       reduce_args.append(ProvideParameterRange(computation, reduction, 0, arity,
                                                indices, call_target,
                                                entry_function, builder));
@@ -211,7 +211,7 @@ PerThreadOutputs MlirReductionFusion::EmitterState::EmitPerThreadElements(
       auto indices = mlir_converter::ApplyIndexing(
           GetBitcastMap(owner.input_shape_, side_output->shape(),
                         builder.getContext()),
-          map_results, {}, builder);
+          tile_indices, {}, builder);
       auto* root_tuple = fusion.fused_expression_root();
       Value value = mlir_converter::ProvideParameter(
           computation, root_tuple, root_tuple->operand_index(side_output),
@@ -228,9 +228,8 @@ PerThreadOutputs MlirReductionFusion::EmitterState::EmitPerThreadElements(
     return results;
   };
 
-  auto results_vector = mlir_converter::EmitXlaLoopOp(
-      builder, thread_and_block_ids, iter_arg_inits, tile_indexing,
-      body_builder, vectorize);
+  auto results_vector = owner.EmitThreadLoopNest(
+      builder, iter_arg_inits, tile_indexing, body_builder, vectorize);
   mlir::ValueRange results = results_vector;
 
   PerThreadOutputs scalars_and_outputs;

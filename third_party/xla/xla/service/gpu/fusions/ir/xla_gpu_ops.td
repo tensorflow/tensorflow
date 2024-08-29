@@ -111,7 +111,7 @@ def XLAGPU_YieldOp : XLAGPU_Op<"yield", [
     ParentOneOf<["::xla::gpu::AtomicRMWOp", "::xla::gpu::LoopOp"]>,
     ReturnLike, Terminator]> {
   let summary = "Terminator for atomic_rmw ops.";
-  let arguments = (ins Variadic<AnyType>:$result);
+  let arguments = (ins AnyType:$result);
 
   let builders = [OpBuilder<(ins), [{ /* nothing to do */ }]>];
   let assemblyFormat = "$result attr-dict `:` type($result)";

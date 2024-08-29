@@ -31,7 +31,6 @@ fusion {
 // CHECK-DAG:  %[[CST0:.*]] = arith.constant 0xFFF0000000000000
 // CHECK-DAG:  %[[TID_X:.*]] = gpu.thread_id x
 
-// CHECK: xla_gpu.loop ({{.*}}] -> (%[[RA:.*]], %[[RA:.*]], %[[RC:.*]]) in
 // reduce0 in the context of reduce2 and reduce1's prologue:
 // CHECK:      scf.for %[[I:.*]] = %[[C0]]
 // CHECK-NEXT:   tensor.extract %[[P1]][%[[I]]]
@@ -39,5 +38,6 @@ fusion {
 // CHECK-NEXT:   yield
 
 // reduce0 again, in the context of its status as a fusion hero:
-// CHECK:     tensor.extract %[[P1]][%[[RC]]]
-// CHECK:     shuffle_reduce @add_add(%{{.*}}) to 2
+// CHECK:     %[[EXTRACTED:.*]] = tensor.extract %[[P1]][%[[TID_X]]]
+// CHECK:     %[[ADDED:.*]] = arith.addf %[[CST0]], %[[EXTRACTED]]
+// CHECK:     shuffle_reduce @add_add(%[[ADDED]]) to 2

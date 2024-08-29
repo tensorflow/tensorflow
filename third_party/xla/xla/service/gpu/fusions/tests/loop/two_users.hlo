@@ -15,9 +15,9 @@
 
 // CHECK: func.func @main
 // CHECK-NEXT: gpu.thread_id
-// CHECK:      pure_call @fused_computation_atan2
+// CHECK-NEXT: pure_call @fused_computation_atan2
 // CHECK-NEXT: tensor.insert
-// CHECK:      return
+// CHECK-NEXT: return
 
 // CHECK: func.func private @fused_computation_atan2
 // CHECK-NEXT: tensor.extract
