@@ -9,7 +9,7 @@ add {
   ROOT add = c64[] add(lhs, rhs)
 }
 
-fused_computation {
+fusion {
   param_0 = c64[128,64] parameter(0)
   c0 = c64[] constant((0, 0))
   ROOT reduce = c64[64] reduce(param_0, c0), dimensions={0},

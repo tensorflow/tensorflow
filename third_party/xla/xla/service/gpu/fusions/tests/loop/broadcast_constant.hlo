@@ -6,7 +6,6 @@ bcast {
   zero = bf16[] constant(0)
   ROOT broadcast = bf16[2,16,48]{2,1,0} broadcast(zero), dimensions={}
 }
-
 // CHECK: func.func @main(%[[ARG0:.*]]: tensor<2x16x48xbf16>
 // CHECK:   xla_gpu.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]], %[[RB:.*]], %[[RC:.*]]) in
 // CHECK-SAME: iter_args(%[[ITER:.*]] = %[[ARG0]])

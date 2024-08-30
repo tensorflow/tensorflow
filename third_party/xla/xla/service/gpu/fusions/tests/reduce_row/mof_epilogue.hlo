@@ -16,7 +16,7 @@ mul {
   ROOT mul = f32[] multiply(lhs, rhs)
 }
 
-fused_computation {
+fusion {
   param_0 = f32[8,1024] parameter(0)
   c0 = f32[] constant(0)
   c1 = f32[] constant(1)

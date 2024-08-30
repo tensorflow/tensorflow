@@ -2,7 +2,7 @@
 // RUN:   FileCheck %s
 // RUN: test_correctness %s
 
-%fused_computation {
+fusion {
   %p0 = u8[256,256,256] parameter(0)
   %transpose = u8[256,256,256] transpose(%p0), dimensions={0,2,1}
 }

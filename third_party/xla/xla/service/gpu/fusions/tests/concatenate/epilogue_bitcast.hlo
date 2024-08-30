@@ -1,6 +1,6 @@
 // RUN: test_correctness %s
 
-fused_computation {
+fusion {
   p0 = pred[1] parameter(0)
   p1 = pred[1] parameter(1)
   p2 = pred[1] parameter(2)

@@ -1,6 +1,6 @@
 // RUN: test_correctness %s
 
-fused_computation {
+fusion {
   p0 = f32[10,11,12] parameter(0)
   p1 = f32[1,11,12] parameter(1)
   p2 = f32[8,11,12] parameter(2)

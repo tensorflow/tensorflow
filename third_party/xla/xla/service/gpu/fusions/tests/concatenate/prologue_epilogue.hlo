@@ -2,7 +2,7 @@
 // RUN:   FileCheck %s
 // RUN: test_correctness %s
 
-fused_computation {
+fusion {
   param0 = f32[64] parameter(0)
   param1 = f32[128] parameter(1)
   log = f32[64] log(param0)
@@ -13,11 +13,11 @@ fused_computation {
 // CHECK: %[[THREAD_ID:.*]] = gpu.thread_id x
 
 // CHECK: xla_gpu.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]]) in
-// CHECK:   %[[VAL_1_1:.*]] = xla_gpu.pure_call @fused_computation_log({{.*}}, %[[THREAD_ID]])
-// CHECK:   %[[VAL_1_2:.*]] = xla_gpu.pure_call @fused_computation__epilogue__neg({{.*}}, %[[RA]], %[[VAL_1_1]])
+// CHECK:   %[[VAL_1_1:.*]] = xla_gpu.pure_call @fusion_log({{.*}}, %[[THREAD_ID]])
+// CHECK:   %[[VAL_1_2:.*]] = xla_gpu.pure_call @fusion__epilogue__neg({{.*}}, %[[RA]], %[[VAL_1_1]])
 // CHECK:   tensor.insert %[[VAL_1_2:.*]] into {{.*}}[%[[RA]]]
 
 // CHECK: xla_gpu.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]]) in
-// CHECK:   %[[VAL_2_1:.*]] = xla_gpu.pure_call @fused_computation_exp({{.*}}, %[[THREAD_ID]])
-// CHECK:   %[[VAL_2_2:.*]] = xla_gpu.pure_call @fused_computation__epilogue__neg({{.*}}, %[[RA]], %[[VAL_2_1]])
+// CHECK:   %[[VAL_2_1:.*]] = xla_gpu.pure_call @fusion_exp({{.*}}, %[[THREAD_ID]])
+// CHECK:   %[[VAL_2_2:.*]] = xla_gpu.pure_call @fusion__epilogue__neg({{.*}}, %[[RA]], %[[VAL_2_1]])
 // CHECK:   tensor.insert %[[VAL_2_2:.*]] into {{.*}}[%[[RA]]]

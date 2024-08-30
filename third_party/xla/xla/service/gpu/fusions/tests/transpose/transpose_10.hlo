@@ -2,7 +2,7 @@
 // RUN:   FileCheck %s
 // RUN: test_correctness %s --bijection_inputs=transpose --bijection_outputs=transpose
 
-%fused_computation {
+fusion {
   %param_0 = f64[64, 64] parameter(0)
   ROOT %transpose= f64[64,64] transpose( %param_0), dimensions={1,0}
 }

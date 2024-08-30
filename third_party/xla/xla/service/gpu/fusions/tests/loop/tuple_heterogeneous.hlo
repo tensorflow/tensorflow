@@ -2,7 +2,7 @@
 // RUN:   mlir_fusions_opt --xla-gpu-test-optimize | FileCheck %s
 // RUN: test_correctness %s
 
-fused_computation {
+fusion {
   param0 = f64[8] parameter(0)
   param1 = f64[8] parameter(1)
 

@@ -2,7 +2,7 @@
 // RUN:   FileCheck %s
 // RUN: test_correctness %s
 
-fused_computation {
+fusion {
   %p0 = f64[24,2,24] parameter(0)
   %t1 = f64[24,2,24] transpose(%p0), dimensions={2,1,0}
   %b = f64[6,4,2,24] bitcast(%t1)

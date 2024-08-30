@@ -8,7 +8,7 @@ add {
   ROOT add = f32[] add(lhs, rhs)
 }
 
-fused_computation {
+fusion {
   param_0 = f32[8,2048] parameter(0)
   param_1 = f32[] parameter(1)
   exp = f32[8,2048] exponential(param_0)
@@ -16,8 +16,8 @@ fused_computation {
   ROOT t = (f32[8], f32[8,2048]) tuple(reduce, exp)
 }
 
-// CHECK:     @fused_computation
+// CHECK:     @fusion
 // CHECK:       xla_gpu.loop
-// CHECK:         %[[SIDE_OUTPUT:.*]] = xla_gpu.pure_call @fused_computation_exp
+// CHECK:         %[[SIDE_OUTPUT:.*]] = xla_gpu.pure_call @fusion_exp
 // CHECK-NEXT:    tensor.insert %[[SIDE_OUTPUT]]
 // CHECK:         xla_gpu.yield

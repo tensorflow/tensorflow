@@ -9,7 +9,7 @@ add {
   ROOT add = f32[] add(lhs, rhs)
 }
 
-fused_computation {
+fusion {
   param_0 = f32[13,1051,321] parameter(0)
   param_1 = f32[] parameter(1)
   ROOT reduce = f32[13,321] reduce(param_0, param_1), dimensions={1}, to_apply=add

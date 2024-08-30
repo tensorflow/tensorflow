@@ -13,7 +13,7 @@ add {
   ROOT t = (f32[], f32[]) tuple(add.0, add.1)
 }
 
-fused_computation {
+fusion {
   param_0 = f32[2, 3, 2048] parameter(0)
   param_1 = f32[2, 3, 2048] parameter(1)
   c0 = f32[] constant(0)

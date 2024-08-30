@@ -1,6 +1,6 @@
 // RUN: test_correctness %s
 
-fused_computation {
+fusion {
   param0 = f32[64] parameter(0)
   param1 = f32[192] parameter(1)
   neg = f32[64] negate(param0)

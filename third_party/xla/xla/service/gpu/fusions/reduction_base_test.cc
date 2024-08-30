@@ -12,24 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/service/gpu/fusions/reduction_mlir.h"
-
-#include <cstdint>
-#include <optional>
-#include <string_view>
-#include <vector>
+#include "xla/service/gpu/fusions/reduction_base.h"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
-#include "absl/types/span.h"
-#include "xla/error_spec.h"
-#include "xla/service/gpu/fusions/mlir_emitter_test_base.h"
+#include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
-#include "xla/service/gpu/model/indexing_map.h"
-#include "xla/service/gpu/model/indexing_test_utils.h"
-#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tests/hlo_test_base.h"
 
 namespace xla {
 namespace gpu {
@@ -38,13 +27,9 @@ namespace {
 using ::testing::ElementsAre;
 using ::testing::SizeIs;
 
-template <typename EmitterType>
-class ReductionTest : public MlirEmitterTestBase<EmitterType> {};
+using MlirReductionBaseTest = HloTestBase;
 
-using MlirMultiRowReductionTest = ReductionTest<MlirMultiRowReductionFusion>;
-
-TEST_F(MlirMultiRowReductionTest, TwoGroups) {
-  // TODO(jreiffers): Move this test to reduction_base_test.
+TEST_F(MlirReductionBaseTest, TwoGroups) {
   auto module = ParseAndReturnVerifiedModule(R"(
     add {
       p0 = f32[] parameter(0)
@@ -68,16 +53,15 @@ TEST_F(MlirMultiRowReductionTest, TwoGroups) {
                     .value();
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
-  MlirMultiRowReductionFusion fusion(analysis);
-
-  EXPECT_THAT(fusion.GetGroups().grouped_roots,
+  auto device_info = TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
+  auto analysis = HloFusionAnalysis::Create(*root, device_info);
+  auto reduction_groups = GroupDisjointReductions(analysis, /*for_mlir=*/true);
+  EXPECT_THAT(reduction_groups.grouped_roots,
               ElementsAre(ElementsAre(&analysis.fusion_root(0).instruction()),
                           ElementsAre(&analysis.fusion_root(1).instruction())));
 }
 
-TEST_F(MlirMultiRowReductionTest, OneGroup) {
-  // TODO(jreiffers): Move this test to reduction_base_test.
+TEST_F(MlirReductionBaseTest, OneGroup) {
   auto module = ParseAndReturnVerifiedModule(R"(
     %add {
       %p0 = c128[] parameter(0)
@@ -99,11 +83,11 @@ TEST_F(MlirMultiRowReductionTest, OneGroup) {
     })")
                     .value();
 
+  auto device_info = TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
-
-  MlirMultiRowReductionFusion mlir_fusion(analysis);
-  EXPECT_THAT(mlir_fusion.GetGroups().grouped_roots, SizeIs(1));
+  auto analysis = HloFusionAnalysis::Create(*root, device_info);
+  auto reduction_groups = GroupDisjointReductions(analysis, /*for_mlir=*/true);
+  EXPECT_THAT(reduction_groups.grouped_roots, SizeIs(1));
 }
 
 }  // namespace

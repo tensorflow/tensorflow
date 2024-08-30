@@ -9,7 +9,7 @@ add {
   ROOT add = s16[] add(lhs, rhs)
 }
 
-fused_computation {
+fusion {
   param_0 = s16[256,128] parameter(0)
   c0 = s16[] constant(0)
   ROOT reduce = s16[128] reduce(param_0, c0), dimensions={0},

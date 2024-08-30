@@ -7,7 +7,7 @@
   ROOT %add = f32[] add(%x, %y)
 }
 
-%fused_computation {
+fusion {
   %param0 = f32[1024] parameter(0)
   %param1 = f32[1024] parameter(1)
   %constant0 = f32[] constant(0)
