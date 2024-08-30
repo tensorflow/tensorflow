@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/clock.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/SHA256.h"
 #include "xla/autotune_results.pb.h"
@@ -97,13 +98,11 @@ namespace {
 
 // Get the path corresponding to the given key.
 absl::StatusOr<std::string> GetCacheFilePath(absl::string_view cache_dir,
-                                             const AutotuneCacheKey& key) {
+                                             absl::string_view key_hash) {
   if (cache_dir.empty()) {
     return absl::InvalidArgumentError("autotune_cache_dir should not be empty");
   }
 
-  TF_ASSIGN_OR_RETURN(std::string key_hash,
-                      GetBase64EncodedSha256Hash(key.ToString()));
   return tsl::io::JoinPath(cache_dir, absl::StrCat(key_hash, ".textproto"));
 }
 
@@ -125,14 +124,6 @@ ResultAndInserted AddResultToInMemoryCache(const AutotuneCacheKey& key,
   return {it->second, inserted};
 }
 
-// Returns a unique number every time it is called.
-int64_t GetNextUniqueId() {
-  static tsl::mutex mu(tsl::LINKER_INITIALIZED);
-  static int64_t id = 0;
-  tsl::mutex_lock l(mu);
-  return ++id;
-}
-
 absl::Status AddResultToFileBasedCacheIfEnabled(
     const AutotuneCacheKey& key, AutotuneResult result,
     std::string_view cache_dir,
@@ -146,8 +137,11 @@ absl::Status AddResultToFileBasedCacheIfEnabled(
   tsl::Env* default_env = tsl::Env::Default();
   TF_RETURN_IF_ERROR(CreateDirIfNeeded(std::string(cache_dir), default_env));
 
+  TF_ASSIGN_OR_RETURN(std::string key_hash,
+                      GetBase64EncodedSha256Hash(key.ToString()));
+
   TF_ASSIGN_OR_RETURN(const std::string file_path,
-                      GetCacheFilePath(cache_dir, key));
+                      GetCacheFilePath(cache_dir, key_hash));
 
   VLOG(1) << "Writing autotune result to file: " << file_path;
 
@@ -162,9 +156,11 @@ absl::Status AddResultToFileBasedCacheIfEnabled(
   // systems.)
   std::string tmp_dir = tsl::io::JoinPath(cache_dir, "tmp");
   TF_RETURN_IF_ERROR(CreateDirIfNeeded(tmp_dir, default_env));
+  int64_t time_stamp = absl::GetCurrentTimeNanos();
+
   std::string temp_file_path = tsl::io::JoinPath(
-      tmp_dir,
-      absl::StrCat("tmp_per_fusion_cache_", GetNextUniqueId(), ".textproto"));
+      tmp_dir, absl::StrCat("tmp_per_fusion_cache_", key_hash, "_",
+                            std::to_string(time_stamp), ".textproto"));
 
   TF_RETURN_IF_ERROR(
       tsl::WriteStringToFile(default_env, temp_file_path, result_str));
@@ -202,8 +198,11 @@ TryToFindInFileBasedCacheIfEnabled(const AutotuneCacheKey& key,
     return std::nullopt;
   }
 
+  TF_ASSIGN_OR_RETURN(std::string key_hash,
+                      GetBase64EncodedSha256Hash(key.ToString()));
+
   TF_ASSIGN_OR_RETURN(const std::string file_path,
-                      GetCacheFilePath(cache_dir, key));
+                      GetCacheFilePath(cache_dir, key_hash));
   if (!tsl::Env::Default()->FileExists(file_path).ok()) {
     VLOG(1) << "Autotune result file not found: " << file_path;
     return std::nullopt;
