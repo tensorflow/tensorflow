@@ -189,7 +189,7 @@ CHECK:  })
 
 // TODO(b/353484968): Tests that don't run RunAndCompareNoHloPasses should be
 // moved to deviceless test file.
-TEST_F(TritonEmitterTest, TestSoftmaxEmitterWithSingleParameter) {
+TEST_F(TritonEmitterTest, TestGenericEmitterWithSoftMaxSingleParameter) {
   const std::string kHloText = R"(
 HloModule t
 add {
@@ -214,13 +214,12 @@ ENTRY main {
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText,
                                           FromOutputTileSizes({1, 127}),
                                           "triton_softmax_computation", R"(
-CHECK:        #[[MAP:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 * 127)
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
-CHECK:            %[[PID:.*]] = tt.get_program_id x : i32
-CHECK:            arith.index_castui %[[PID]] : i32 to index
-CHECK:            tt.addptr %[[P0]]
-CHECK-NEXT:       tt.make_tensor_ptr
-CHECK-SAME:       <tensor<1x128xf32>>
+CHECK-DAG:        %[[ZERO:.*]] = arith.constant 0 : i32
+CHECK-DAG:        %[[PID:.*]] = tt.get_program_id x : i32
+CHECK-DAG:        %[[PID_INDEX:.*]] = arith.index_castui %[[PID]] : i32 to index
+CHECK-DAG:        %[[PID_I32:.*]] = arith.index_cast %[[PID_INDEX]] : index to i32
+CHECK-DAG:        tt.make_tensor_ptr %[[P0]], {{.*}} [%[[PID_I32]], %[[ZERO]]] {order = array<i32: 1, 0>} : <tensor<1x128xf32>>
 CHECK-NEXT:       tt.load
 CHECK-SAME:       {boundaryCheck = array<i32: 1>, padding = 1 : i32} : !tt.ptr<tensor<1x128xf32>>
 CHECK:            tt.reduce
@@ -230,9 +229,7 @@ CHECK-NEXT:           tt.reduce.return %[[ADD]] : f32
 CHECK-NEXT:       }) : (tensor<1x128xf32>) -> tensor<1xf32>
 CHECK:            arith.mulf
 CHECK-SAME:       tensor<1x128xf32>
-CHECK:            tt.addptr %[[P1]]
-CHECK-NEXT:       tt.make_tensor_ptr
-CHECK-SAME:       <tensor<1x128xf32>>
+CHECK:            tt.make_tensor_ptr %[[P1]], {{.*}} [%[[PID_I32]], %[[ZERO]]] {order = array<i32: 1, 0>} : <tensor<1x128xf32>>
 CHECK-NEXT:       tt.store
 CHECK-SAME:       {boundaryCheck = array<i32: 1>} : !tt.ptr<tensor<1x128xf32>>
 CHECK:            tt.return
@@ -272,30 +269,25 @@ ENTRY main {
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText,
                                           FromOutputTileSizes({1, 127}),
                                           "triton_softmax_computation", R"(
-CHECK:        #[[MAP:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 * 127)
 CHECK-LABEL:  tt.func @triton_fn(
 CHECK-SAME:                      %[[P0:[A-Za-z0-9_]*]]: !tt.ptr<f32>
 CHECK-SAME:                      %[[P1:[A-Za-z0-9_]*]]: !tt.ptr<f32>
 CHECK-SAME:                      %[[P2:[A-Za-z0-9_]*]]: !tt.ptr<f32>
-CHECK-DAG:        %[[PID:.*]] = tt.get_program_id x : i32
-CHECK-DAG:        %[[PID_INDEX:.*]] = arith.index_castui %[[PID]] : i32 to index
-CHECK-DAG:        %[[C127_i64:.*]] = arith.constant 127 : i64
-CHECK-DAG:        %[[ZERO_OFFSET:.*]] = arith.constant 0 : i64
-CHECK-DAG:        %[[ROW_OFFSET_INDEX:.*]] = xla_gpu.apply_indexing #[[MAP]](%[[PID_INDEX]]
-CHECK-DAG:        %[[ROW_OFFSET:.*]] = arith.index_castui %[[ROW_OFFSET_INDEX]] : index to i64
-CHECK-DAG:        %[[ARG0:.*]] = tt.addptr %[[P0]], %[[ROW_OFFSET]] : !tt.ptr<f32>, i64
-CHECK-DAG:        tt.make_tensor_ptr {{.*}} : <tensor<1x128xf32>>
-CHECK-DAG:        tt.load {{.*}} : !tt.ptr<tensor<1x128xf32>>
-CHECK-DAG:        %[[ARG1:.*]] = tt.addptr %[[P1]], %[[ZERO_OFFSET]] : !tt.ptr<f32>, i64
-CHECK-DAG:        tt.make_tensor_ptr {{.*}} : <tensor<128xf32>>
-CHECK-DAG:        tt.load {{.*}} : !tt.ptr<tensor<128xf32>>
+CHECK-DAG:        %[[ZERO:.*]] = arith.constant 0 : i32
+CHECK:            %[[PID:.*]] = tt.get_program_id x : i32
+CHECK:            %[[PID_INDEX:.*]] = arith.index_castui %[[PID]] : i32 to index
+CHECK:            %[[PID_I32:.*]] = arith.index_cast %[[PID_INDEX]] : index to i32
+CHECK:            tt.make_tensor_ptr %[[P0]], {{.*}} [%[[PID_I32]], %[[ZERO]]] {order = array<i32: 1, 0>} : <tensor<1x128xf32>>
+CHECK-NEXT:       tt.load {{.*}} : !tt.ptr<tensor<1x128xf32>>
+CHECK:            tt.make_tensor_ptr %[[P1]], {{.*}} [%[[ZERO]]] {order = array<i32: 0>} : <tensor<128xf32>>
+CHECK-NEXT:       tt.load {{.*}} : !tt.ptr<tensor<128xf32>>
 CHECK:            tt.reduce
 CHECK-NEXT:       ^bb0(%[[ARG3:[^:]*]]: f32, %[[ARG4:[^:]*]]: f32):
 CHECK-NEXT:           %[[ADD:.*]] = arith.addf %[[ARG3]], %[[ARG4]] : f32
 CHECK-NEXT:           tt.reduce.return %[[ADD]] : f32
 CHECK-NEXT:       }) : (tensor<1x128xf32>) -> tensor<1xf32>
-CHECK-DAG:        tt.addptr %[[P2]]
-CHECK-DAG:        tt.make_tensor_ptr {{.*}} : <tensor<1x128xf32>>
+CHECK-DAG:        arith.mulf
+CHECK-DAG:        tt.make_tensor_ptr %[[P2]], {{.*}} [%[[PID_I32]], %[[ZERO]]] {order = array<i32: 1, 0>} : <tensor<1x128xf32>>
 CHECK-DAG:        tt.store {{.*}} : !tt.ptr<tensor<1x128xf32>>
 )"));
 }
@@ -339,27 +331,29 @@ ENTRY main {
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText,
                                           FromOutputTileSizes({1, 1, 127}),
                                           "triton_softmax_computation", R"(
-CHECK:        #[[MAP:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 * 127)
+CHECK:        #[[MAP:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 floordiv 125), domain: d0 in [0, 1249]>
+CHECK:        #[[MAP1:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 mod 125), domain: d0 in [0, 1249]>
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P2:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P3:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
+CHECK-DAG:        %[[ZERO:.*]] = arith.constant 0 : i32
 CHECK-DAG:        %[[PID:.*]] = tt.get_program_id x : i32
 CHECK-DAG:        %[[PID_INDEX:.*]] = arith.index_castui %[[PID]] : i32 to index
-CHECK-DAG:        %[[PID_i64:.*]] = arith.index_castui %[[PID_INDEX]] : index to i64
-CHECK-DAG:        %[[C127_i64:.*]] = arith.constant 127 : i64
-CHECK-DAG:        %[[ZERO_OFFSET:.*]] = arith.constant 0 : i64
-CHECK-DAG:        %[[ROW_OFFSET_INDEX:.*]] = xla_gpu.apply_indexing #[[MAP]](%[[PID_INDEX]]
-CHECK-DAG:        %[[ROW_OFFSET:.*]] = arith.index_castui %[[ROW_OFFSET_INDEX]] : index to i64
-CHECK-DAG:        tt.addptr %[[P0]], %[[ROW_OFFSET]] : !tt.ptr<f32>, i64
-CHECK-DAG:        tt.addptr %[[P1]], %[[ZERO_OFFSET]] : !tt.ptr<f32>, i64
-CHECK-DAG:        tt.addptr %[[P2]], %[[PID_i64]] : !tt.ptr<f32>, i64
-CHECK-DAG:        tt.load {{.*}} : !tt.ptr<tensor<1x1x128xf32>>
-CHECK-DAG:        tt.load {{.*}} : !tt.ptr<tensor<128xf32>>
-CHECK-DAG:        tt.load {{.*}} : !tt.ptr<tensor<1x1xf32>>
+CHECK-DAG:        %[[ROW_INDEX:.*]] = xla_gpu.apply_indexing #[[MAP]](%[[PID_INDEX]]
+CHECK-DAG:        %[[COL_INDEX:.*]] = xla_gpu.apply_indexing #[[MAP1]](%[[PID_INDEX]]
+CHECK-DAG:        %[[ROW_I32:.*]] = arith.index_cast %[[ROW_INDEX]] : index to i32
+CHECK-DAG:        %[[COL_I32:.*]] = arith.index_cast %[[COL_INDEX]] : index to i32
+CHECK-DAG:        tt.make_tensor_ptr %[[P0]], {{.*}} [%[[ROW_I32]], %[[COL_I32]], %[[ZERO]]] {order = array<i32: 2, 1, 0>} : <tensor<1x1x128xf32>>
+CHECK-NEXT:       tt.load {{.*}} : !tt.ptr<tensor<1x1x128xf32>>
+CHECK-DAG:        tt.make_tensor_ptr %[[P1]], {{.*}} [%c0_i32] {order = array<i32: 0>} : <tensor<128xf32>>
+CHECK-NEXT:       tt.load {{.*}} : !tt.ptr<tensor<128xf32>>
+CHECK-DAG:        tt.make_tensor_ptr %[[P2]], {{.*}} [%[[ROW_I32]], %[[COL_I32]]] {order = array<i32: 1, 0>} : <tensor<1x1xf32>>
+CHECK-NEXT:       tt.load {{.*}} : !tt.ptr<tensor<1x1xf32>>
 CHECK:            tt.reduce
 CHECK-NEXT:       ^bb0(%[[ARG4:[^:]*]]: f32, %[[ARG5:[^:]*]]: f32):
 CHECK-NEXT:           %[[MAX:.*]] = arith.maximumf %[[ARG4]], %[[ARG5]] : f32
 CHECK-NEXT:           tt.reduce.return %[[MAX]] : f32
 CHECK-NEXT:       }) : (tensor<1x1x128xf32>) -> tensor<1x1xf32>
-CHECK:            tt.store {{.*}} : !tt.ptr<tensor<1x1x128xf32>>
+CHECK-DAG:        tt.make_tensor_ptr %[[P3]], {{.*}} [%[[ROW_I32]], %[[COL_I32]], %[[ZERO]]] {order = array<i32: 2, 1, 0>} : <tensor<1x1x128xf32>>
+CHECK-NEXT:       tt.store {{.*}} : !tt.ptr<tensor<1x1x128xf32>>
 )"));
 
   EXPECT_TRUE(
@@ -517,7 +511,8 @@ ENTRY main {
   TF_ASSERT_OK(CreateTritonIrAndFileCheck(this, kHloText,
                                           FromOutputTileSizes({1, 1, 16}),
                                           "triton_softmax_computation", R"(
-// CHECK:         #[[MAP:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 * 16)
+// CHECK:         #xla_gpu.indexing_map<(d0) -> (d0 floordiv 32), domain: d0 in [0, 2047]>
+// CHECK:         #xla_gpu.indexing_map<(d0) -> (d0 mod 32), domain: d0 in [0, 2047]>
 // CHECK-LABEL:   tt.func @triton_fn(
 // CHECK-SAME:                       %[[P0:[A-Za-z0-9_]*]]: !tt.ptr<f32>
 // CHECK-SAME:                       %[[P1:[A-Za-z0-9_]*]]: !tt.ptr<f32>
@@ -702,59 +697,6 @@ CHECK:            tt.reduce
 CHECK:              (tensor<1x128xf32>) -> tensor<1xf32>
 CHECK:            arith.mulf {{.*}} tensor<1xf32>
 CHECK:            tt.store {{.*}} : !tt.ptr<tensor<1xf32>>
-)"));
-}
-
-// TODO(b/353484968): Tests that don't run RunAndCompareNoHloPasses should be
-// moved to deviceless test file.
-TEST_F(TritonEmitterTest, TestGenericEmitterWithSoftMaxSingleParameter) {
-  const std::string kHloText = R"(
-HloModule t
-add {
-  Arg_0 = f32[] parameter(0)
-  Arg_1 = f32[] parameter(1)
-  ROOT add = f32[] add(Arg_0, Arg_1)
-}
-
-triton_softmax_computation {
-  parameter_0 = f32[125,127]{1,0} parameter(0)
-  multiply_0 = f32[125,127]{1,0} multiply(parameter_0, parameter_0)
-  constant_0 = f32[] constant(0)
-  reduce_0 = f32[125]{0} reduce(multiply_0, constant_0), dimensions={1}, to_apply=add
-  broadcast_4 = f32[125,127]{1,0} broadcast(reduce_0), dimensions={0}
-  ROOT multiply = f32[125,127]{1,0} multiply(multiply_0, broadcast_4)
-}
-
-ENTRY main {
-  param_0 = f32[125,127]{1,0} parameter(0)
-  ROOT triton_softmax = f32[125,127]{1,0} fusion(param_0), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
-})";
-  TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText,
-                                          FromOutputTileSizes({1, 127}),
-                                          "triton_softmax_computation", R"(
-CHECK:        #[[MAP:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 * 127)
-CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
-CHECK:            %[[PID:.*]] = tt.get_program_id x : i32
-CHECK:            arith.index_castui %[[PID]] : i32 to index
-CHECK:            tt.addptr %[[P0]]
-CHECK-NEXT:       tt.make_tensor_ptr
-CHECK-SAME:       <tensor<1x128xf32>>
-CHECK-NEXT:       tt.load
-CHECK-SAME:       {boundaryCheck = array<i32: 1>, padding = 1 : i32} : !tt.ptr<tensor<1x128xf32>>
-CHECK:            tt.reduce
-CHECK-NEXT:       ^bb0(%[[ARG2:[^:]*]]: f32, %[[ARG3:[^:]*]]: f32):
-CHECK-NEXT:           %[[ADD:.*]] = arith.addf %[[ARG2]], %[[ARG3]] : f32
-CHECK-NEXT:           tt.reduce.return %[[ADD]] : f32
-CHECK-NEXT:       }) : (tensor<1x128xf32>) -> tensor<1xf32>
-CHECK:            arith.mulf
-CHECK-SAME:       tensor<1x128xf32>
-CHECK:            tt.addptr %[[P1]]
-CHECK-NEXT:       tt.make_tensor_ptr
-CHECK-SAME:       <tensor<1x128xf32>>
-CHECK-NEXT:       tt.store
-CHECK-SAME:       {boundaryCheck = array<i32: 1>} : !tt.ptr<tensor<1x128xf32>>
-CHECK:            tt.return
-CHECK:        }
 )"));
 }
 
