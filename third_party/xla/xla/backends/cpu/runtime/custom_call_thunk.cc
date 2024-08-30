@@ -168,12 +168,12 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
     Info info, absl::string_view target_name, OpBuffers op_buffers,
     absl::string_view backend_config, CustomCallApiVersion api_version) {
   std::optional<ffi::CallFrame> call_frame;
+  auto execution_state = std::make_unique<ffi::ExecutionState>();
+
   if (api_version == CustomCallApiVersion::API_VERSION_TYPED_FFI) {
     TF_ASSIGN_OR_RETURN(AttributesMap attributes,
                         ParseAttributes(backend_config));
 
-    // TODO(abanas): Pass execution state to thunk.
-    auto execution_state = std::make_unique<ffi::ExecutionState>();
     TF_RETURN_IF_ERROR(InstantiateHandlerState(
         target_name, execution_state.get(), attributes));
 
@@ -182,22 +182,24 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
                                         std::move(attributes)));
   }
 
-  return absl::WrapUnique(new CustomCallThunk(
-      std::move(info), target_name, std::move(op_buffers), api_version,
-      std::move(backend_config), std::move(call_frame)));
+  return absl::WrapUnique(
+      new CustomCallThunk(std::move(info), target_name, std::move(op_buffers),
+                          api_version, std::move(backend_config),
+                          std::move(call_frame), std::move(execution_state)));
 }
 
-CustomCallThunk::CustomCallThunk(Info info, absl::string_view target_name,
-                                 OpBuffers op_buffers,
-                                 CustomCallApiVersion api_version,
-                                 absl::string_view backend_config,
-                                 std::optional<ffi::CallFrame> call_frame)
+CustomCallThunk::CustomCallThunk(
+    Info info, absl::string_view target_name, OpBuffers op_buffers,
+    CustomCallApiVersion api_version, absl::string_view backend_config,
+    std::optional<ffi::CallFrame> call_frame,
+    std::unique_ptr<ffi::ExecutionState> execution_state)
     : Thunk(Kind::kCustomCall, std::move(info)),
       target_name_(target_name),
       op_buffers_(std::move(op_buffers)),
       api_version_(api_version),
       backend_config_(std::move(backend_config)),
-      call_frame_(std::move(call_frame)) {}
+      call_frame_(std::move(call_frame)),
+      execution_state_(std::move(execution_state)) {}
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::Execute(
     const ExecuteParams& params) {
@@ -262,8 +264,8 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallTypedFFI(
   ffi::CallOptions call_options = {
       custom_call_params->device_ordinal,
       ffi::CallOptions::CpuOptions{custom_call_params->intra_op_thread_pool},
-      /*called_computation=*/nullptr,
-      custom_call_params->ffi_execution_context};
+      /*called_computation=*/nullptr, custom_call_params->ffi_execution_context,
+      execution_state_.get()};
 
   // Call the function and check execution status.
   auto status = ffi::Call(handler->bundle.execute, call_frame, call_options);
