@@ -291,8 +291,6 @@ class TfrtCpuClient final : public PjRtClient {
 
   absl::string_view platform_version() const override { return "<unknown>"; }
 
-  PjRtRuntimeType runtime_type() const override { return kTfrt; }
-
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
 
@@ -377,16 +375,6 @@ class TfrtCpuClient final : public PjRtClient {
       void* device_ptr, const Shape& shape, PjRtDevice* device,
       std::function<void()> on_delete_callback,
       std::optional<std::intptr_t> stream) override;
-
-  absl::StatusOr<ChannelHandle> CreateChannelHandle() override {
-    return Unimplemented("CreateChannelHandle not implemented.");
-  }
-  absl::StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() override {
-    return Unimplemented("CreateDeviceToHostChannelHandle not implemented.");
-  }
-  absl::StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() override {
-    return Unimplemented("CreateHostToDeviceChannelHandle not implemented.");
-  }
 
   absl::Status Defragment() override {
     return Unimplemented("Defragment not implemented.");

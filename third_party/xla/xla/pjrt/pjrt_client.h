@@ -65,16 +65,6 @@ limitations under the License.
 
 namespace xla {
 
-enum PjRtRuntimeType { kStreamExecutor, kTfrt };
-inline constexpr absl::string_view PjRtRuntimeTypeString(PjRtRuntimeType type) {
-  switch (type) {
-    case kStreamExecutor:
-      return "stream_executor";
-    case kTfrt:
-      return "tfrt";
-  }
-}
-
 class PjRtClient;
 class PjRtDevice;
 
@@ -556,11 +546,6 @@ class PjRtClient {
     return std::nullopt;
   }
 
-  // TODO(b/244756954): Rethink this function altogether
-  // Returns an enum that identifies the type of runtime being used under this
-  // client.
-  virtual PjRtRuntimeType runtime_type() const = 0;
-
   // Return a device-specific default device assignment, e.g., GPU and TPU may
   // be different.
   virtual absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
@@ -1031,11 +1016,6 @@ class PjRtClient {
   MakeCrossHostReceiveBuffersForGather(
       absl::Span<const Shape> shapes, std::vector<GatherDetails> gather_details,
       PjRtDevice* device, PjRtCrossHostRecvNotifier notifier) = 0;
-
-  // Create ChannelHandles for XLA send/recv.
-  virtual absl::StatusOr<ChannelHandle> CreateChannelHandle() = 0;
-  virtual absl::StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() = 0;
-  virtual absl::StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() = 0;
 
   // TODO(zhangqiaorjc): Experimental API to be removed.
   // Defragment device memory.
