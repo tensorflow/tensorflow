@@ -574,6 +574,7 @@ xla_test(
         "notap",
     ],
     deps = [
+        "//testing/base/public:gunit_for_library_testonly",
         "//xla:debug_options_flags",
         "//xla/service:hlo_module_config",
         "//xla/tests:hlo_test_base",
