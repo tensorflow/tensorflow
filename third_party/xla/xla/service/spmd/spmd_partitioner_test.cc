@@ -18,7 +18,9 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <new>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -29,12 +31,14 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/utils/hlo_matchers.h"
@@ -9363,6 +9367,12 @@ ENTRY entry {
           op::DynamicUpdateSlice(op::Broadcast(), tiled, _, _))))))));
   const auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, partially_replicated);
+
+  const HloInstruction* all_reduce =
+      FindInstruction(module.get(), "all-reduce");
+  EXPECT_NE(all_reduce, nullptr);
+  EXPECT_TRUE(
+      absl::StrContains(all_reduce->ToString(), "replica_groups=[2,3]<=[6]"));
 }
 
 TEST_P(SpmdPartitioningTest, PartialReplicateToTileReshardUnevenPartition) {
