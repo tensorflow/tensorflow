@@ -226,8 +226,10 @@ Value IsNaN(Value value, mlir::ImplicitLocOpBuilder& b) {
 
   assert(ty.getIntOrFloatBitWidth() == 8);
   Val bits{b.create<ma::BitcastOp>(b.getI8Type(), value), &b};
-  if (ty.isFloat8E5M2() || ty.isFloat8E4M3FN()) {
-    return (bits & 0x7F) == 0x7F;
+  if (ty.isFloat8E5M2()) {
+    return (bits & 0b0111'1111).cmp(ma::CmpIPredicate::ugt, 0b0111'1100);
+  } else if (ty.isFloat8E4M3FN()) {
+    return (bits & 0b0111'1111) == 0b0111'1111;
   }
   return bits == 0x80;
 }

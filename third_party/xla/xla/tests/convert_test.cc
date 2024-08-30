@@ -794,6 +794,60 @@ XLA_TEST_F(ConvertTest, ConvertF8e5m2F16RoundtripExhaustive) {
   ComputeAndCompareR1<tsl::float8_e5m2>(&builder, all_f8, {}, ErrorSpec(0.));
 }
 
+XLA_TEST_F(ConvertTest, ConvertF8e5m2F32Exhaustive) {
+  // Convert from f8e5m2 to f32.
+  XlaBuilder builder(TestName());
+
+  std::vector<tsl::float8_e5m2> all_f8;
+  std::vector<float> all_f32;
+  for (int i = 0; i < 256; i++) {
+    all_f8.push_back(
+        Eigen::numext::bit_cast<tsl::float8_e5m2>(static_cast<uint8_t>(i)));
+    all_f32.push_back(tsl::float8_e5m2::ConvertTo<float>(all_f8.back()));
+  }
+
+  xla::XlaOp all_f8_as_f8 = ConstantR1<tsl::float8_e5m2>(&builder, all_f8);
+  ConvertElementType(all_f8_as_f8, F32);
+
+  ComputeAndCompareR1<float>(&builder, all_f32, {}, ErrorSpec(0.));
+}
+
+XLA_TEST_F(ConvertTest, ConvertF8e5m2fnuzF32Exhaustive) {
+  // Convert from f8e5m2fnuz to f32.
+  XlaBuilder builder(TestName());
+
+  std::vector<tsl::float8_e5m2fnuz> all_f8;
+  std::vector<float> all_f32;
+  for (int i = 0; i < 256; i++) {
+    all_f8.push_back(
+        Eigen::numext::bit_cast<tsl::float8_e5m2fnuz>(static_cast<uint8_t>(i)));
+    all_f32.push_back(tsl::float8_e5m2fnuz::ConvertTo<float>(all_f8.back()));
+  }
+
+  xla::XlaOp all_f8_as_f8 = ConstantR1<tsl::float8_e5m2fnuz>(&builder, all_f8);
+  ConvertElementType(all_f8_as_f8, F32);
+
+  ComputeAndCompareR1<float>(&builder, all_f32, {}, ErrorSpec(0.));
+}
+
+XLA_TEST_F(ConvertTest, ConvertF8e4m3F32Exhaustive) {
+  // Convert from f8e4m3 to f32.
+  XlaBuilder builder(TestName());
+
+  std::vector<tsl::float8_e4m3fn> all_f8;
+  std::vector<float> all_f32;
+  for (int i = 0; i < 256; i++) {
+    all_f8.push_back(
+        Eigen::numext::bit_cast<tsl::float8_e4m3fn>(static_cast<uint8_t>(i)));
+    all_f32.push_back(tsl::float8_e4m3fn::ConvertTo<float>(all_f8.back()));
+  }
+
+  xla::XlaOp all_f8_as_f8 = ConstantR1<tsl::float8_e4m3fn>(&builder, all_f8);
+  ConvertElementType(all_f8_as_f8, F32);
+
+  ComputeAndCompareR1<float>(&builder, all_f32, {}, ErrorSpec(0.));
+}
+
 XLA_TEST_F(ConvertTest, ConvertF8e5m2F16RoundtripExhaustive2) {
   // Convert from F16 to FP8.
   XlaBuilder builder(this->TestName());
