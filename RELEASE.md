@@ -60,7 +60,8 @@
     * `Dequantize` op supports `TensorType_INT4`.
         * This change includes per-channel dequantization.
     * Add support for `stablehlo.composite`.
-    * `EmbeddingLookup` op supports `TensorType_INT4` values.
+    * `EmbeddingLookup` op supports per-channel
+      quantization and `TensorType_INT4` values.
     * `FullyConnected` op supports `TensorType_INT16` activation and
       `TensorType_Int4` weight per-channel quantization.
 
