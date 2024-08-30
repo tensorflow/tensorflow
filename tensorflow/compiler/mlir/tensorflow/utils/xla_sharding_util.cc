@@ -35,6 +35,7 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
@@ -59,7 +60,8 @@ mlir::LogicalResult CreateSplitOp(const int num_split,
                                   const mlir::Location& location,
                                   mlir::Value src_input,
                                   mlir::OpBuilder* builder,
-                                  mlir::TF::SplitOp* split_op) {
+                                  mlir::TF::SplitOp* split_op,
+                                  bool is_ici_weight_dist_spmd) {
   // Creates a const op to hold split dimension value.
   auto split_dim_type =
       mlir::RankedTensorType::get({}, builder->getIntegerType(32));
@@ -67,6 +69,10 @@ mlir::LogicalResult CreateSplitOp(const int num_split,
       mlir::DenseElementsAttr::get(split_dim_type, split_dimension);
   auto split_dimension_op = builder->create<mlir::TF::ConstOp>(
       location, split_dim_type, split_dimension_attr);
+  if (is_ici_weight_dist_spmd) {
+    split_dimension_op->setAttr(kICIWeightDistributionMlirBridgeMarker,
+                                builder->getBoolAttr(true));
+  }
 
   // Correctly set output shapes of split op output if input shape is statically
   // known.
@@ -102,6 +108,10 @@ mlir::LogicalResult CreateSplitOp(const int num_split,
   (*split_op)->setAttr(
       kNumSplitAttr,
       builder->getIntegerAttr(builder->getIntegerType(32), num_split));
+  if (is_ici_weight_dist_spmd) {
+    (*split_op)->setAttr(kICIWeightDistributionMlirBridgeMarker,
+                         builder->getBoolAttr(true));
+  }
   return mlir::success();
 }
 
@@ -149,7 +159,8 @@ mlir::TF::ConcatOp CreateConcatOp(const int concat_dimension,
 mlir::LogicalResult HandleTileShardedInputs(
     const mlir::Location& location, const xla::OpSharding& input_sharding,
     const mlir::Value& original_source, mlir::OpBuilder* builder,
-    llvm::SmallVectorImpl<mlir::Value>* tiled_inputs) {
+    llvm::SmallVectorImpl<mlir::Value>* tiled_inputs,
+    bool is_ici_weight_dist_spmd) {
   llvm::SmallVector<mlir::TF::SplitOp, 4> split_ops_for_tiled_input;
   split_ops_for_tiled_input.reserve(
       input_sharding.tile_assignment_devices_size());
@@ -172,8 +183,9 @@ mlir::LogicalResult HandleTileShardedInputs(
     // Creates root split op.
     if (split_ops_for_tiled_input.empty()) {
       mlir::TF::SplitOp root_split_op;
-      auto result = CreateSplitOp(num_splits, dimension, location,
-                                  original_source, builder, &root_split_op);
+      auto result =
+          CreateSplitOp(num_splits, dimension, location, original_source,
+                        builder, &root_split_op, is_ici_weight_dist_spmd);
       if (mlir::failed(result)) return mlir::failure();
 
       split_ops_for_tiled_input.emplace_back(root_split_op);
@@ -186,9 +198,9 @@ mlir::LogicalResult HandleTileShardedInputs(
     for (auto split_op : split_ops_for_tiled_input) {
       for (auto parent_split_output_value : split_op.getResults()) {
         mlir::TF::SplitOp child_split_op;
-        auto result =
-            CreateSplitOp(num_splits, dimension, location,
-                          parent_split_output_value, builder, &child_split_op);
+        auto result = CreateSplitOp(num_splits, dimension, location,
+                                    parent_split_output_value, builder,
+                                    &child_split_op, is_ici_weight_dist_spmd);
         if (mlir::failed(result)) return mlir::failure();
 
         new_split_ops.emplace_back(child_split_op);
@@ -401,9 +413,15 @@ mlir::LogicalResult ExtractInputsForLogicalDevices(
     }
 
     if (IsSplitSharding(sharding)) {
+      bool is_ici_weight_dist_spmd =
+          cluster_func.getOperand(input_index).getDefiningOp() &&
+          cluster_func.getOperand(input_index)
+              .getDefiningOp()
+              ->hasAttr(kICIWeightDistributionMlirBridgeMarker);
       llvm::SmallVector<mlir::Value, 4> tiled_inputs;
-      auto result = HandleTileShardedInputs(
-          cluster_func.getLoc(), sharding, input_value, builder, &tiled_inputs);
+      auto result = HandleTileShardedInputs(cluster_func.getLoc(), sharding,
+                                            input_value, builder, &tiled_inputs,
+                                            is_ici_weight_dist_spmd);
       if (mlir::failed(result)) return mlir::failure();
 
       const int64_t tiled_inputs_size = tiled_inputs.size();

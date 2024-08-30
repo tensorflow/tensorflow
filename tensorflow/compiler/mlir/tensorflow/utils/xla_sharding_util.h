@@ -40,6 +40,9 @@ inline constexpr llvm::StringRef kInputShardingAttr =
 inline constexpr llvm::StringRef kOutputShardingAttr =
     "output_sharding_configuration";
 
+inline constexpr llvm::StringRef kICIWeightDistributionMlirBridgeMarker =
+    "ici_weight_distribution_mlir_bridge_marker";
+
 // Parses the sharding string. This sharding string can be binary (serialized)
 // or human readable.
 mlir::LogicalResult DecodeShardingAttribute(const std::string& shard_str,
