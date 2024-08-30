@@ -42,11 +42,11 @@ def _find_cc(repository_ctx):
     if cc_name.startswith("/"):
         # Return the absolute path.
         return cc_name
-    cc = which(repository_ctx, cc_name)
-    if cc == None:
-        fail(("Cannot find {}, either correct your path," +
-              " or set the CLANG_CUDA_COMPILER_PATH or CC" +
-              " environment variables").format(cc_name))
+    cc = which(repository_ctx, cc_name, allow_failure = True)
+    if not cc:
+        print(("Cannot find {}, either correct your path," +
+               " or set the CLANG_CUDA_COMPILER_PATH or CC" +
+               " environment variables").format(cc_name))  # buildifier: disable=print
     return cc
 
 def _auto_configure_fail(msg):
@@ -385,8 +385,10 @@ def _create_dummy_repository(repository_ctx):
         _py_tmpl_dict({}),
     )
 
+    cc = None
     if repository_ctx.os.arch == "amd64" and repository_ctx.os.name == "linux":
         cc = _find_cc(repository_ctx)
+    if cc:
         _setup_toolchains(repository_ctx, cc, "")
     else:
         repository_ctx.file(
