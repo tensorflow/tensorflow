@@ -77,7 +77,7 @@ class FallbackState {
 
  private:
   SessionOptions session_options_;
-  StaticDeviceMgr device_manager_;
+  DynamicDeviceMgr device_manager_;
   DeviceSet device_set_;
   FunctionLibraryDefinition func_lib_def_;
   ProcessFunctionLibraryRuntime pflr_;
