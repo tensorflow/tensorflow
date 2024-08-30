@@ -832,6 +832,36 @@ ENTRY triton_computation {
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 2}, cc);
 }
 
+TEST_P(CollectiveTest,
+       UnsupportedAllReduceStartAndDoneFailGracefullyWithTriton) {
+  // 'all-reduce-start' and 'all-reduce-done' need to be tested together, since
+  // the HLO verifier relies on one directly consuming the other.
+  auto [data_type, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+apply_op {
+  x = $0[] parameter(0)
+  y = $0[] parameter(1)
+  ROOT apply_op = $0[] add(x, y)
+}
+
+ENTRY triton_computation {
+  input = $0[128,32] parameter(0)
+  all-reduce-start = $0[128,32] all-reduce-start(input), replica_groups={},
+      to_apply=apply_op
+  ROOT all-reduce-done = $0[128,32] all-reduce-done(all-reduce-start)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type,
+                                     HloOpcode::kAllReduceStart));
+  // all-reduce-start is not supported.
+  EXPECT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
+  // all-reduce-done is not supported.
+  EXPECT_FALSE(IsTritonSupportedInstruction(
+      *ti.TritonComputation().root_instruction(), cc));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 2}, cc);
+}
+
 TEST_P(CollectiveTest, UnsupportedAllToAllFailsGracefullyWithTriton) {
   auto [data_type, cc] = GetParam();
   const std::string kHloTestTemplate = R"(
@@ -884,9 +914,10 @@ ENTRY triton_computation {
 }
 
 constexpr std::array kTestedOpsCollectives = {
-    HloOpcode::kAllGather,     HloOpcode::kAllGatherStart,
-    HloOpcode::kAllGatherDone, HloOpcode::kAllReduce,
-    HloOpcode::kAllToAll,      HloOpcode::kCollectivePermute,
+    HloOpcode::kAllGather,      HloOpcode::kAllGatherStart,
+    HloOpcode::kAllGatherDone,  HloOpcode::kAllReduce,
+    HloOpcode::kAllReduceStart, HloOpcode::kAllReduceDone,
+    HloOpcode::kAllToAll,       HloOpcode::kCollectivePermute,
     HloOpcode::kReduceScatter};
 
 INSTANTIATE_TEST_SUITE_P(
@@ -915,8 +946,6 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
 absl::flat_hash_set<HloOpcode> AllUntestedOpcodes() {
   return absl::flat_hash_set<HloOpcode>{HloOpcode::kAddDependency,
                                         HloOpcode::kAfterAll,
-                                        HloOpcode::kAllReduceDone,
-                                        HloOpcode::kAllReduceStart,
                                         HloOpcode::kAsyncDone,
                                         HloOpcode::kAsyncStart,
                                         HloOpcode::kAsyncUpdate,
