@@ -68,6 +68,7 @@ cc_library(
     name = "timespan",
     hdrs = ["timespan.h"],
     copts = tf_profiler_copts(),
+    visibility = internal_visibility([":friends"]),
     deps = [
         ":math_utils",
         "//tsl/platform:logging",
