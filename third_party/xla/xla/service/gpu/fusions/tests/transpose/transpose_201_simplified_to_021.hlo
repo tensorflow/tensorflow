@@ -1,0 +1,6 @@
+// RUN: test_correctness %s
+
+fusion {
+  %input = f32[1,6400,32] parameter(0)
+  ROOT transpose = f32[1,32,6400] transpose(%input), dimensions={0,2,1}
+}

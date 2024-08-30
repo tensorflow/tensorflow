@@ -329,7 +329,6 @@ CodegenDecision IsTritonSupportedInstructionImpl(
                                    gpu_version);
     }
     case HloOpcode::kTranspose:
-    case HloOpcode::kSlice:
     case HloOpcode::kParameter:
     case HloOpcode::kBroadcast:
     case HloOpcode::kBitcast:

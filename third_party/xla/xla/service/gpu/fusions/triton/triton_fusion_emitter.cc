@@ -1018,7 +1018,10 @@ absl::StatusOr<Value> EmitTiledHloInstruction(
   // which are pushed to loads and stores. We don't generate any further code
   // for these operations here.
   std::vector<HloOpcode> passthrough_opcodes(
-      {HloOpcode::kPad, HloOpcode::kSlice, HloOpcode::kTranspose});
+      {HloOpcode::kPad,
+       // TODO(b/363166438) Add slice back once support is implemented.
+       // HloOpcode::kSlice,
+       HloOpcode::kTranspose});
   if (absl::c_linear_search(passthrough_opcodes, hlo->opcode())) {
     return values[tiled_hlo.operand(0)];
   }
