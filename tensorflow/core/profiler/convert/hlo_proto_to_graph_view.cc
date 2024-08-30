@@ -23,9 +23,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
+#ifdef PLATFORM_GOOGLE
+#include "tensorflow/compiler/mlir/lite/experimental/google/tooling/google/direct_hlo_to_json_graph_convert.h"
+#endif  // PLATFORM_GOOGLE
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -62,6 +67,45 @@ void CleanUpHloModuleForGraphviz(HloModule* hlo_module) {
       }
     }
   }
+}
+
+// This function does the same thing as Plot() but uses the ModelExplorer
+// instead of graphviz.
+absl::StatusOr<std::string> PlotMe(std::unique_ptr<HloModule> module,
+                                   const std::string& node_name,
+                                   int graph_width) {
+  if (node_name.empty()) {
+    // This should not happen.
+    return InvalidArgument("node_name should not be empty");
+  }
+  // Find the node with the given name.
+  const HloInstruction* instr = FindInstruction(*module, node_name);
+  const HloComputation* comp = FindComputation(*module, node_name);
+
+  if (!instr && !comp) {
+    return InvalidArgument(
+        absl::StrCat("Couldn't find HloInstruction or HloComputation named ",
+                     node_name, "."));
+  }
+  // Generate the graph and print the resulting string.
+  absl::StatusOr<std::string> graph_handle;
+
+// b/360874576: Enable when the adapter is open sourced.
+#ifdef PLATFORM_GOOGLE
+  if (comp) {
+    graph_handle = tooling::visualization_client::HloGraphAdapter(*comp);
+  } else {
+    graph_handle =
+        tooling::visualization_client::HloGraphAdapter(*instr, graph_width);
+  }
+#endif  // PLATFORM_GOOGLE
+  if (graph_handle.ok()) {
+    VLOG(1) << graph_handle.value();
+  } else {
+    LOG(ERROR) << "Unable to render graph: " << graph_handle.status();
+  }
+
+  return graph_handle;
 }
 
 absl::StatusOr<std::string> Plot(std::unique_ptr<HloModule> module,
@@ -175,6 +219,13 @@ absl::StatusOr<std::string> ConvertHloProtoToGraph(
                       ConvertHloProtoToModule(hlo_proto));
   return Plot(std::move(hlo_module), node_name, graph_width, render_options,
               format);
+}
+
+absl::StatusOr<std::string> ConvertHloProtoToMeGraph(
+    const HloProto& hlo_proto, const std::string& node_name, int graph_width) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+                      ConvertHloProtoToModule(hlo_proto));
+  return PlotMe(std::move(hlo_module), node_name, graph_width);
 }
 
 absl::StatusOr<std::string> ConvertHloProtoToStringView(
