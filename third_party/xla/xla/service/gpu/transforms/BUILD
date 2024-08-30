@@ -808,9 +808,10 @@ xla_test(
     name = "cudnn_fused_mha_rewriter_test",
     srcs = ["cudnn_fused_mha_rewriter_test.cc"],
     backends = [
-        "gpu_any",
+        "gpu",
     ],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    tags = ["no_rocm"],
     deps = [
         ":cudnn_fused_mha_rewriter",
         ":cudnn_fused_mha_transpose_fusion",

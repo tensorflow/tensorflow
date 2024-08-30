@@ -869,16 +869,17 @@ xla_test(
 xla_test(
     name = "xla_gpu_compile_lib_test",
     srcs = ["xla_gpu_compile_lib_test.cc"],
-    backend_tags = {
-        "gpu_any": if_google(["config-cuda-only"]),
-    },
     backends = [
-        "gpu_any",
+        "gpu",
     ],
     data = [
         ":data/add.hlo",
         "//xla/service:xla_aot_compile_test_gpu_target_config.prototxt",
         "//xla/service/gpu:gpu_compiler_test_autotune_db.textproto",
+    ],
+    tags = [
+        "config-cuda-only",
+        "no_rocm",
     ],
     deps = [
         ":xla_compile_lib",
