@@ -21,13 +21,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/statusor.h"
+#include "xla/array2d.h"
 #include "xla/array4d.h"
-#include "xla/client/global_data.h"
 #include "xla/client/local_client.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
+#include "xla/service/service.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_macros.h"
 #include "tsl/platform/test.h"
 
 namespace xla {

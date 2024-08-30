@@ -17,10 +17,13 @@ limitations under the License.
 #include <optional>
 
 #include "absl/status/statusor.h"
+#include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
 #include "xla/client/xla_builder.h"
+#include "xla/error_spec.h"
+#include "xla/executable_run_options.h"
 #include "xla/literal.h"
-#include "xla/service/local_service.h"
+#include "xla/literal_util.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/local_client_test_base.h"

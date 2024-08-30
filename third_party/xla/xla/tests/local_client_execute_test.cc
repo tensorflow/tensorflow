@@ -17,19 +17,29 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "xla/client/client_library.h"
+#include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
 #include "xla/client/sharding_builder.h"
 #include "xla/client/xla_builder.h"
+#include "xla/error_spec.h"
+#include "xla/executable_run_options.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/transfer_manager.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/host/host_platform_id.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
@@ -40,6 +50,7 @@ limitations under the License.
 #include "xla/tests/test_utils.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test_benchmark.h"
 
 namespace xla {

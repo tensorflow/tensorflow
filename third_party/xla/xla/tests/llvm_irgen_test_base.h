@@ -18,6 +18,10 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
+#include "llvm/IR/Module.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/compiler.h"
 #include "xla/service/llvm_compiler.h"
 #include "xla/tests/codegen_test_base.h"
 

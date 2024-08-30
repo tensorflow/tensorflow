@@ -16,6 +16,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"

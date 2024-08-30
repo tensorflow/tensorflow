@@ -13,11 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
 #include "xla/client/xla_builder.h"
-#include "xla/service/local_service.h"
-#include "xla/test_helpers.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/tests/local_client_test_base.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
