@@ -51,6 +51,7 @@ def lit_test_suite(
         default_tags = None,
         tags_override = None,
         hermetic_cuda_data_dir = None,
+        tags = [],
         **kwargs):
     """Creates one lit test per source file and a test suite that bundles them.
 
@@ -75,6 +76,7 @@ def lit_test_suite(
       timeout: timeout argument passed to the individual tests.
       default_tags: string list. Tags applied to all tests.
       tags_override: string_dict. Tags applied in addition to only select tests.
+      tags: string list. Tags applied to all tests and the test suite.
       hermetic_cuda_data_dir: string. If set, the tests will be run with a
         `--xla_gpu_cuda_data_dir` flag set to the hermetic CUDA data directory.
       **kwargs: additional keyword arguments to pass to all generated rules.
@@ -107,7 +109,7 @@ def lit_test_suite(
             visibility = visibility,
             env = env,
             timeout = timeout,
-            tags = default_tags + tags_override.get(test_file, []),
+            tags = tags + default_tags + tags_override.get(test_file, []),
             hermetic_cuda_data_dir = hermetic_cuda_data_dir,
             **kwargs
         )
@@ -115,6 +117,7 @@ def lit_test_suite(
     native.test_suite(
         name = name,
         tests = tests,
+        tags = tags,
         **kwargs
     )
 
