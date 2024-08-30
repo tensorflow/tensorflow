@@ -3010,7 +3010,13 @@ std::optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
     std::string tensor_name;
     if (has_input_attr)
       tensor_name = std::string(name_mapper_.GetUniqueName(arg));
-    if (tensor_name.empty()) tensor_name = absl::StrCat("arg", i);
+    if (tensor_name.empty()) {
+      if (name == "main") {
+        tensor_name = absl::StrCat("arg", i);
+      } else {
+        tensor_name = absl::StrCat(name, "_arg", i);
+      }
+    }
     if (!build_tensor_and_buffer(arg, index, tensor_name)) return std::nullopt;
   }
 
