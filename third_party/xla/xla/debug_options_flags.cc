@@ -1622,14 +1622,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "xla_dump_to or stdout. Each fusion is dumped only once, as an optimized "
       "HLO."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_override_gemm_autotuner",
-      string_setter_for(&DebugOptions::set_xla_gpu_override_gemm_autotuner),
-      debug_options->xla_gpu_override_gemm_autotuner(),
-      "Overrides the GEMM autotuner to use the specified "
-      "(AutotuneResult::TritonGemmKey) textproto configuration for all Triton "
-      "GEMM fusions. (You can get such textprotos from the debug logs of the "
-      "GEMM autotuner.) "));
-  flag_list->push_back(tsl::Flag(
       "xla_gpu_copy_insertion_use_region_analysis",
       bool_setter_for(
           &DebugOptions::set_xla_gpu_copy_insertion_use_region_analysis),

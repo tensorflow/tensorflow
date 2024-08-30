@@ -699,7 +699,7 @@ message DebugOptions {
 
   bool xla_gpu_dump_autotuned_gemm_fusions = 232;
 
-  string xla_gpu_override_gemm_autotuner = 295;
+  reserved 295;  // Was xla_gpu_override_gemm_autotuner
 
   bool xla_gpu_copy_insertion_use_region_analysis = 236;
 
