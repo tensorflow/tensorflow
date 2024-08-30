@@ -2657,6 +2657,7 @@ tf_cuda_cc_test(
     deps = [
         ":memory_types",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -2667,7 +2668,6 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:cast_op",
-        "@eigen_archive//:eigen3",
     ],
 )
 
