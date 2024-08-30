@@ -19,8 +19,12 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "benchmark/benchmark.h"  // from @com_google_benchmark
 #include "tensorflow/core/common_runtime/executor.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/macros.h"

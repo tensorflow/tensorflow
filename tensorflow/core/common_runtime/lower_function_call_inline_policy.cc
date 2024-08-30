@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/lower_function_call_inline_policy.h"
 
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/graph/graph.h"
+
 namespace tensorflow {
 
 FunctionCallInlinePolicy GetFunctionCallInlinePolicy(
