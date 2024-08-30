@@ -20,8 +20,11 @@ limitations under the License.
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
+#include "llvm/Support/Casting.h"
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/runtime_fallback/runtime_fallback_ops.h"
 
 // This optimizes the following scenario:
