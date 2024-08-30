@@ -39,6 +39,7 @@ class Shape;
 class Tile {
  public:
   Tile() = default;
+  
   explicit Tile(absl::Span<const int64_t> dimensions)
       : dimensions_(dimensions.begin(), dimensions.end()) {}
 
@@ -46,23 +47,30 @@ class Tile {
   static Tile CreateFromProto(const TileProto& tile_proto) {
     return Tile(tile_proto.dimensions());
   }
+  
   TileProto ToProto() const;
   void SetProto(TileProto& tile_proto) const;
 
   bool operator==(const Tile& other) const {
     return dimensions() == other.dimensions();
   }
-  bool operator!=(const Tile& other) const { return !(*this == other); }
+
+  bool operator!=(const Tile& other) const {
+    return !(*this == other);
+  }
 
   void Print(Printer* printer) const;
-
   std::string ToString() const;
 
   // Returns the bound of the tile in the given dimension index.
-  int64_t dimension(int i) const { return dimensions_[i]; }
+  int64_t dimension(int i) const {
+    return dimensions_[i];
+  }
 
   // Returns the dimensions of the tile.
-  absl::Span<const int64_t> dimensions() const { return dimensions_; }
+  absl::Span<const int64_t> dimensions() const {
+    return dimensions_;
+  }
 
   Tile& add_dimensions(int64_t value) {
     dimensions_.push_back(value);
@@ -109,6 +117,7 @@ class SplitConfig {
     return SplitConfig(split_config_proto.dimension(),
                        split_config_proto.split_indices());
   }
+  
   SplitConfigProto ToProto() const;
   void SetProto(SplitConfigProto& split_config_proto) const;
 
@@ -116,25 +125,41 @@ class SplitConfig {
     return dimension() == other.dimension() &&
            split_indices() == other.split_indices();
   }
-  bool operator!=(const SplitConfig& other) const { return !(*this == other); }
+  
+  bool operator!=(const SplitConfig& other) const {
+    return !(*this == other);
+  }
 
   std::string ToString() const;
 
   // Returns the dimension that is split.
-  int64_t dimension() const { return dimension_; }
+  int64_t dimension() const {
+    return dimension_;
+  }
+
   SplitConfig& set_dimension(int64_t dimension) {
     dimension_ = dimension;
     return *this;
   }
 
   // Returns the indices where splits occur.
-  absl::Span<const int64_t> split_indices() const { return split_indices_; }
-  int64_t split_indices(int64_t idx) const { return split_indices_.at(idx); }
-  int64_t split_indices_size() const { return split_indices_.size(); }
+  absl::Span<const int64_t> split_indices() const {
+    return split_indices_;
+  }
+
+  int64_t split_indices(int64_t idx) const {
+    return split_indices_.at(idx);
+  }
+
+  int64_t split_indices_size() const {
+    return split_indices_.size();
+  }
+
   SplitConfig& add_split_indices(int64_t split_index) {
     split_indices_.push_back(split_index);
     return *this;
   }
+
   SplitConfig& clear_split_indices() {
     split_indices_.clear();
     return *this;
@@ -174,7 +199,7 @@ class Layout {
                   absl::Span<const Tile> tiles,
                   int64_t tail_padding_alignment_in_elements = 1,
                   PrimitiveType index_primitive_type = PRIMITIVE_TYPE_INVALID,
-                  PrimitiveType element_primitive_type = PRIMITIVE_TYPE_INVALID,
+                  PrimitiveType pointer_primitive_type = PRIMITIVE_TYPE_INVALID,
                   int64_t element_size_in_bits = 0, int64_t memory_space = 0,
                   absl::Span<const SplitConfig> split_configs = {},
                   std::unique_ptr<Shape> physical_shape = nullptr,
@@ -188,6 +213,7 @@ class Layout {
 
   // Returns a LayoutProto representation of the Layout.
   LayoutProto ToProto() const;
+
   // Sets a LayoutProto to the representation of the Layout.
   void SetProto(LayoutProto& proto) const;
 
@@ -270,259 +296,163 @@ class Layout {
     bool ignore_physical_shape_ = false;
   };
 
-  bool operator==(const Layout& other) const;
-  bool operator!=(const Layout& other) const { return !(*this == other); }
-
-  // The following methods mirror the protobuf generated code interface for the
-  // message LayoutProto. This enabled easy migration of this data structure
-  // from a proto to a proper C++ class.
-  //
-  // TODO(b/29771030): Replace or augment these methods with a more ergonomic
-  // interface.
-
-  // Methods for accessing the DimLevelType array.
-  int dim_level_types_size() const { return n_dim_level_types_; }
-  DimLevelType dim_level_type(int index) const {
-    return dim_attributes_[index].dim_level_type;
-  }
-  Layout& set_dim_level_type(int index, DimLevelType dim_level_type) {
-    dim_attributes_[index].dim_level_type = dim_level_type;
-    return *this;
-  }
-  Layout& add_dim_level_type(DimLevelType dim_level_type) {
-    while (n_dim_level_types_ >= dim_attributes_.size()) {
-      dim_attributes_.push_back(DimInfo());
-    }
-    dim_attributes_[n_dim_level_types_].dim_level_type = dim_level_type;
-    n_dim_level_types_++;
-    return *this;
-  }
-  Layout& clear_dim_level_types() {
-    n_dim_level_types_ = 0;
-    return *this;
+  bool operator==(const Layout& other) const {
+    return Equal()(*this, other);
   }
 
-  // Methods for accessing the dim_unique array.
-  int dim_unique_size() const { return n_dim_unique_; }
-  bool dim_unique(int index) const { return dim_attributes_[index].dim_unique; }
-  Layout& set_dim_unique(int index, bool unique) {
-    dim_attributes_[index].dim_unique = unique;
-    return *this;
-  }
-  Layout& add_dim_unique(bool unique) {
-    while (n_dim_unique_ >= dim_attributes_.size()) {
-      dim_attributes_.push_back(DimInfo());
-    }
-    dim_attributes_[n_dim_unique_].dim_unique = unique;
-    n_dim_unique_++;
-    return *this;
+  bool operator!=(const Layout& other) const {
+    return !(*this == other);
   }
 
-  // Methods for accessing the dim_ordered array.
-  int dim_ordered_size() const { return n_dim_ordered_; }
-  bool dim_ordered(int index) const {
-    return dim_attributes_[index].dim_ordered;
-  }
-  Layout& set_dim_ordered(int index, bool ordered) {
-    dim_attributes_[index].dim_ordered = ordered;
-    return *this;
-  }
-  Layout& add_dim_ordered(bool ordered) {
-    while (n_dim_ordered_ >= dim_attributes_.size()) {
-      dim_attributes_.push_back(DimInfo());
-    }
-    dim_attributes_[n_dim_ordered_].dim_ordered = ordered;
-    n_dim_ordered_++;
-    return *this;
-  }
-
-  // Methods for accessing the minor-to-major array.
-  int minor_to_major_size() const { return minor_to_major_.size(); }
-  int64_t minor_to_major(int index) const { return minor_to_major_[index]; }
-  Layout& set_minor_to_major(int index, int64_t value) {
-    minor_to_major_[index] = value;
-    return *this;
-  }
-  Layout& add_minor_to_major(int64_t value) {
-    minor_to_major_.push_back(value);
-    return *this;
-  }
-  Layout& clear_minor_to_major() {
-    minor_to_major_.clear();
-    return *this;
-  }
-  // Removes the given dimension from 'minor_to_major_', and adjusts the other
-  // dimensions accordingly. Also adjusts 'dim_level_types_', 'dim_ordered_' and
-  // 'dim_unique_' in case it is a sparse layout.
-  Layout& DeleteDimension(int64_t dim_to_delete);
+  // Accessors and Mutators
+  int64_t dimension(int i) const { return minor_to_major_[i]; }
   absl::Span<const int64_t> minor_to_major() const { return minor_to_major_; }
-  DimensionVector* mutable_minor_to_major() { return &minor_to_major_; }
-
-  // Methods for accessing the tile field.
-  int64_t tiles_size() const { return tiles_.size(); }
-  const Tile& tiles(int index) const { return tiles_[index]; }
-  Tile* mutable_tiles(int index) { return &tiles_[index]; }
-  Tile* add_tiles() {
-    tiles_.push_back(Tile());
-    return &tiles_.back();
-  }
-  Layout& clear_tiles() {
-    tiles_.clear();
+  Layout& set_minor_to_major(absl::Span<const int64_t> minor_to_major) {
+    minor_to_major_.assign(minor_to_major.begin(), minor_to_major.end());
     return *this;
   }
-  absl::Span<const Tile> tiles() const { return tiles_; }
-  TileVector* mutable_tiles() { return &tiles_; }
 
-  int64_t element_size_in_bits() const { return element_size_in_bits_; }
-  Layout& set_element_size_in_bits(int64_t value) {
-    element_size_in_bits_ = value;
+  absl::Span<const Tile> tiles() const { return tiles_; }
+  Layout& set_tiles(absl::Span<const Tile> tiles) {
+    tiles_.assign(tiles.begin(), tiles.end());
     return *this;
   }
 
   int64_t tail_padding_alignment_in_elements() const {
     return tail_padding_alignment_in_elements_;
   }
-  Layout& set_tail_padding_alignment_in_elements(int64_t value) {
-    tail_padding_alignment_in_elements_ = value;
+
+  Layout& set_tail_padding_alignment_in_elements(int64_t tail_padding_alignment_in_elements) {
+    tail_padding_alignment_in_elements_ = tail_padding_alignment_in_elements;
     return *this;
   }
 
   PrimitiveType index_primitive_type() const { return index_primitive_type_; }
-  Layout& set_index_primitive_type(PrimitiveType value) {
-    index_primitive_type_ = value;
+  Layout& set_index_primitive_type(PrimitiveType index_primitive_type) {
+    index_primitive_type_ = index_primitive_type;
     return *this;
   }
 
-  PrimitiveType pointer_primitive_type() const {
-    return pointer_primitive_type_;
-  }
-  Layout& set_pointer_primitive_type(PrimitiveType value) {
-    pointer_primitive_type_ = value;
+  PrimitiveType pointer_primitive_type() const { return pointer_primitive_type_; }
+  Layout& set_pointer_primitive_type(PrimitiveType pointer_primitive_type) {
+    pointer_primitive_type_ = pointer_primitive_type;
     return *this;
   }
 
-  static constexpr int64_t kDefaultMemorySpace = 0;
-  static constexpr int64_t kGenericFastMemorySpace = 1;
-  static constexpr int64_t kHostMemorySpace = 5;
   int64_t memory_space() const { return memory_space_; }
-  Layout& set_memory_space(int64_t value) {
-    memory_space_ = value;
+  Layout& set_memory_space(int64_t memory_space) {
+    memory_space_ = memory_space;
     return *this;
   }
 
-  int split_configs_size() const { return split_configs_.size(); }
-  const SplitConfig& split_configs(int index) const {
-    return split_configs_.at(index);
-  }
-  SplitConfig* mutable_split_configs(int index) {
-    return &split_configs_.at(index);
-  }
-  Layout& add_split_configs(const SplitConfig& split_config) {
-    split_configs_.push_back(split_config);
+  int64_t element_size_in_bits() const { return element_size_in_bits_; }
+  Layout& set_element_size_in_bits(int64_t element_size_in_bits) {
+    element_size_in_bits_ = element_size_in_bits;
     return *this;
   }
-  void clear_split_configs() { split_configs_.clear(); }
+
+  // Returns the DimLevelType for a given dimension.
+  DimLevelType dim_level_type(int i) const { return dim_level_types_[i]; }
+
+  // Returns the DimLevelTypes.
+  absl::Span<const DimLevelType> dim_level_types() const {
+    return dim_level_types_;
+  }
+
+  Layout& set_dim_level_types(absl::Span<const DimLevelType> dim_level_types) {
+    dim_level_types_.assign(dim_level_types.begin(), dim_level_types.end());
+    return *this;
+  }
+
+  // Returns true if the dimension is unique.
+  bool dim_unique(int i) const { return dim_unique_[i]; }
+
+  // Returns the uniqueness of dimensions.
+  absl::Span<const bool> dim_unique() const { return dim_unique_; }
+
+  Layout& set_dim_unique(absl::Span<const bool> dim_unique) {
+    dim_unique_.assign(dim_unique.begin(), dim_unique.end());
+    return *this;
+  }
+
+  // Returns true if the dimension is ordered.
+  bool dim_ordered(int i) const { return dim_ordered_[i]; }
+
+  // Returns the order of dimensions.
+  absl::Span<const bool> dim_ordered() const { return dim_ordered_; }
+
+  Layout& set_dim_ordered(absl::Span<const bool> dim_ordered) {
+    dim_ordered_.assign(dim_ordered.begin(), dim_ordered.end());
+    return *this;
+  }
+
+  // Returns split configurations.
   absl::Span<const SplitConfig> split_configs() const { return split_configs_; }
 
-  // Methods for accessing the physical shape.
-  bool has_physical_shape() const { return physical_shape_ != nullptr; }
-  const Shape& physical_shape() const {
-    CHECK(has_physical_shape());
-    return *physical_shape_;
+  // Sets split configurations.
+  Layout& set_split_configs(absl::Span<const SplitConfig> split_configs) {
+    split_configs_.assign(split_configs.begin(), split_configs.end());
+    return *this;
   }
-  Shape* mutable_physical_shape();
-  void clear_physical_shape();
 
+  // Returns the physical shape.
+  const Shape* physical_shape() const { return physical_shape_.get(); }
+
+  // Sets the physical shape.
+  Layout& set_physical_shape(std::unique_ptr<Shape> physical_shape) {
+    physical_shape_ = std::move(physical_shape);
+    return *this;
+  }
+
+  // Returns the number of bytes in the dynamic shape metadata prefix.
   int64_t dynamic_shape_metadata_prefix_bytes() const {
     return dynamic_shape_metadata_prefix_bytes_;
   }
-  void set_dynamic_shape_metadata_prefix_bytes(int64_t bytes) {
+
+  // Sets the number of bytes in the dynamic shape metadata prefix.
+  Layout& set_dynamic_shape_metadata_prefix_bytes(int64_t bytes) {
     dynamic_shape_metadata_prefix_bytes_ = bytes;
-  }
-
-  void Swap(Layout* other) {
-    using std::swap;
-    swap(*this, *other);
-  }
-
-  void Clear() { *this = Layout(); }
-
-  template <typename H>
-  friend H AbslHashValue(H h, const Layout& l) {
-    return H::combine(std::move(h), l.minor_to_major_, l.tiles_,
-                      l.element_size_in_bits_, l.index_primitive_type_,
-                      l.pointer_primitive_type_, l.memory_space_,
-                      l.split_configs_, l.tail_padding_alignment_in_elements_);
+    return *this;
   }
 
  private:
-  // We store a single inlined vector to hold
-  struct DimInfo {
-    DimInfo()
-        : dim_level_type(DIM_DENSE), dim_unique(false), dim_ordered(false) {}
+  // The minor-to-major order of dimensions in this layout.
+  absl::InlinedVector<int64_t, 4> minor_to_major_;
 
-    DimLevelType dim_level_type : 6;
-    bool dim_unique : 1;
-    bool dim_ordered : 1;
-  };
-  absl::InlinedVector<DimInfo, InlineRank()> dim_attributes_;
-
-  uint8_t n_dim_level_types_ = 0;
-  uint8_t n_dim_unique_ = 0;
-  uint8_t n_dim_ordered_ = 0;
-
-  // The primitive type to use for sparse array indices and pointers.  Each of
-  // these must either be INVALID, or an unsigned integer type.
-  PrimitiveType index_primitive_type_ : 8;
-  PrimitiveType pointer_primitive_type_ : 8;
-
-  // The assigned memory space.
-  int8_t memory_space_ = 0;
-
-  // The number of bits used to store an individual array element.
-  // When the value is 0, default to ShapeUtil::ByteSizeOfPrimitiveType.
-  int64_t element_size_in_bits_ = 0;
-
-  // A map from physical dimension numbers to logical dimension numbers.
-  // The first element is the most minor physical dimension (fastest varying
-  // index) and the last the most major (slowest varying index). The contents of
-  // the vector are the indices of the *logical* dimensions in the shape.
-  //
-  // For example, in shape f32[8,100,100,3]{3,0,2,1}, the logical dimensions
-  // are [8,100,100,3] and minor_to_major_ is {3,0,2,1}.
-  // So, the most minor physical dimension is [8,100,100,3][3], which is size 3.
-  // The second most minor is [8,100,100,3][0], which is size 8.
-  // The third most minor is [8,100,100,3][2], which is size 100.
-  // And the major dim is [8,100,100,3][1], which is size 100.
-  DimensionVector minor_to_major_;
-
-  // The tiles used in tiling-based layout.
+  // The tiles used in the layout.
   TileVector tiles_;
 
-  // The split configurations of the shape, which describes how the storage of
-  // the tensor is split between different physical memories.
-  absl::InlinedVector<SplitConfig, 1> split_configs_;
+  // Alignment for tail padding in elements.
+  int64_t tail_padding_alignment_in_elements_;
 
-  // The shape is padded at the end to multiple of, in terms of number of
-  // elements. This is useful when tiling does not bring the shape to certain
-  // desired granules. Tiling effectively pads/reshapes/transposes the shape
-  // to another shape. This field pads the total number of elements of that
-  // new shape to a multiple of certain number of elements. This is useful such
-  // as we want a layout which does not tile the data but still requires it to
-  // be padded to certain number of elements.
-  int64_t tail_padding_alignment_in_elements_ = 1;
+  // Primitive types used in indexing and pointers.
+  PrimitiveType index_primitive_type_;
+  PrimitiveType pointer_primitive_type_;
 
-  // The physical on-device shape used to represent a sparse array.
+  // Memory space for the layout.
+  int64_t memory_space_;
+
+  // Element size in bits.
+  int64_t element_size_in_bits_;
+
+  // DimLevelType for each dimension.
+  absl::InlinedVector<DimLevelType, 4> dim_level_types_;
+
+  // Indicates if each dimension is unique.
+  absl::InlinedVector<bool, 4> dim_unique_;
+
+  // Indicates if each dimension is ordered.
+  absl::InlinedVector<bool, 4> dim_ordered_;
+
+  // Split configurations.
+  absl::InlinedVector<SplitConfig, 2> split_configs_;
+
+  // Physical shape if applicable.
   std::unique_ptr<Shape> physical_shape_;
 
-  // The dynamic shape metadata size in bytes in front of the shape data. The
-  // field may be non-zero for a static shape whose associated buffer is for a
-  // dynamic shape, e.g. a result of SliceToDynamic.
+  // Bytes for dynamic shape metadata prefix.
   int64_t dynamic_shape_metadata_prefix_bytes_ = 0;
 };
-
-std::ostream& operator<<(std::ostream& out, const Tile& Tile);
-std::ostream& operator<<(std::ostream& out, const Layout& layout);
 
 }  // namespace xla
 
