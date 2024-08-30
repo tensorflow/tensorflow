@@ -786,3 +786,23 @@ func.func @dynamic_slice_i64(%arg0: tensor<7x3xf32>, %arg1: tensor<i64>, %arg2: 
 
 // CHECK:      mhlo.dynamic_slice
 // CHECK-SAME: (tensor<7x3xf32>, tensor<i64>, tensor<i64>) -> tensor<4x2xf32>
+
+//===----------------------------------------------------------------------===//
+// mhlo.custom_call
+//===----------------------------------------------------------------------===//
+
+// -----
+
+// CHECK-LABEL: @shape_assertion_custom_call
+func.func @shape_assertion_custom_call(%arg1: tensor<?x5xi32>) -> tensor<i32> {
+  %0 = mhlo.constant dense<3> : tensor<i32>
+  %1 = "mhlo.get_dimension_size"(%arg1) <{dimension = 0 : i64}> : (tensor<?x5xi32>) -> tensor<i32>
+  %ok = mhlo.compare  EQ, %1, %0,  SIGNED : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  mhlo.custom_call @shape_assertion(%ok) {
+    error_message = "The error message",
+    has_side_effect = true
+  } : (tensor<i1>) -> ()
+  return %1 : tensor<i32>
+}
+
+// CHECK-NOT: mhlo.custom_call
