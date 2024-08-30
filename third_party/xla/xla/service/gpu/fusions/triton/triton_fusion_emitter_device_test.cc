@@ -759,9 +759,6 @@ ENTRY entry_computation {
 }
 
 TEST_F(TritonEmitterTest, TestSliceWithTileThatNeedsMasking) {
-  // TODO(b/363166438) Reenable this test after proper support is implemented.
-  GTEST_SKIP() << "Slice is not currently supported.";
-
   const std::string kHloText = R"(
 HloModule m
 

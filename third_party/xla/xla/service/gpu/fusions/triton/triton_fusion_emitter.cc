@@ -1033,15 +1033,11 @@ absl::StatusOr<Value> EmitTiledHloInstruction(
   if (hlo->opcode() == HloOpcode::kTranspose) {
     return EmitTiledTranspose(b, tiled_hlo, values[tiled_hlo.operand(0)]);
   }
+
   // All these operations are currently supported only as operations on indices
   // which are pushed to loads and stores. We don't generate any further code
   // for these operations here.
-  std::vector<HloOpcode> passthrough_opcodes({
-      HloOpcode::kPad,
-      // TODO(b/363166438) Add slice back once support is implemented.
-      // HloOpcode::kSlice
-  });
-  if (absl::c_linear_search(passthrough_opcodes, hlo->opcode())) {
+  if (hlo->opcode() == HloOpcode::kPad || IsSliceWithUnitStrides(hlo)) {
     return values[tiled_hlo.operand(0)];
   }
 
