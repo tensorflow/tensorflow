@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 
+#include <memory>
+
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/functional_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
@@ -61,7 +63,7 @@ class GraphPropertiesTest : public ::testing::Test {
  public:
   void SetUp() override {
     // Provision a single machine with 3 cpu cores
-    cluster_.reset(new SingleMachine(5 * 60, 3, 0));
+    cluster_ = std::make_unique<SingleMachine>(5 * 60, 3, 0);
     TF_ASSERT_OK(cluster_->Provision());
 
     // This function is simply

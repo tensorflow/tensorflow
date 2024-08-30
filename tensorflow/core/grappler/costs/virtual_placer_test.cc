@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/costs/virtual_placer.h"
+
+#include <memory>
+
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -234,8 +237,8 @@ TEST(VirtualPlacerTest, MultiReplica) {
     devices[strings::StrCat("/job:ps/replica:", i, "/task:0/cpu:0")] =
         cpu_device;
   }
-  cluster.reset(new VirtualCluster(devices));
-  placer.reset(new VirtualPlacer(cluster->GetDevices()));
+  cluster = std::make_unique<VirtualCluster>(devices);
+  placer = std::make_unique<VirtualPlacer>(cluster->GetDevices());
   EXPECT_EQ("/job:worker/replica:0/task:0/cpu:0",
             get_device_name("/job:worker/replica:0/cpu:0"));
   EXPECT_EQ("/job:worker/replica:7/task:0/gpu:3",

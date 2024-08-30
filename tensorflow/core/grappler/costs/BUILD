@@ -249,7 +249,6 @@ tf_cc_test(
     srcs = ["virtual_placer_test.cc"],
     deps = [
         ":virtual_placer",
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
@@ -404,7 +403,6 @@ tf_cc_test(
         ":analytical_cost_estimator",
         ":virtual_scheduler",
         "//tensorflow/cc:cc_ops",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
