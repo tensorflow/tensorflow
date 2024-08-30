@@ -34,7 +34,7 @@ constexpr int kInputTensor2 = 1;
 constexpr int kOutputTensor = 0;
 
 // Indicates the type of the computation performed by the element-wise op.
-enum class ComputationType { kAdd, kSub, kMax, kMin, kMul };
+enum class ComputationType { kAdd, kSub, kMax, kMin, kMul, kAnd };
 
 TfLiteStatus ElementwisePrepare(TfLiteContext* context, TfLiteNode* node);
 
@@ -55,7 +55,13 @@ static IndexType TensorIndexToFlat(const IndexType* index, const int64_t dims,
 
 template <typename DataType, ComputationType computation_type>
 inline DataType ApplyComputation(DataType input1, DataType input2) {
-  if (computation_type == ComputationType::kAdd) {
+  if (computation_type == ComputationType::kAnd) {
+    if constexpr (std::is_integral<DataType>::value) {
+      return input1 & input2;
+    } else if constexpr (std::is_same<DataType, bool>::value) {
+      return input1 && input2;
+    }
+  } else if (computation_type == ComputationType::kAdd) {
     return input1 + input2;
   } else if (computation_type == ComputationType::kSub) {
     return input1 - input2;
@@ -136,6 +142,8 @@ TfLiteStatus ElementwiseEval(TfLiteContext* context, TfLiteNode* node) {
       return EvalWithType<computation_type, uint32_t>(context, node);
     case kTfLiteUInt64:
       return EvalWithType<computation_type, uint64_t>(context, node);
+    case kTfLiteBool:
+      return EvalWithType<computation_type, bool>(context, node);
     default:
       TF_LITE_KERNEL_LOG(context, "(Data Type: %s) currently not supported.\n",
                          TfLiteTypeGetName(data_type));
