@@ -279,6 +279,9 @@ LogicalResult MoveBroadcastToCluster(OpBuilder& builder,
   LaunchOp launch = tensorflow::WrapOpInLaunch(
       &before_cluster_builder, val_bcast.getLoc(), assigned_id, device);
 
+  launch->setAttr(kICIWeightDistributionMlirBridgeMarker,
+                  before_cluster_builder.getBoolAttr(true));
+
   Value all_reduce =
       CreateAllReduce(replicate, inner_builder, launch.getResult(0));
 

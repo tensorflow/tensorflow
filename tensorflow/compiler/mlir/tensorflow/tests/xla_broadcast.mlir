@@ -16,7 +16,7 @@ func.func @move_broadcast(%arg0: tensor<f32>) -> () {
   // CHECK-NEXT:   %[[ID:.*]] = "tf_device.launch"() <{device = "TPU_REPLICATED_HOST_0"}> ({
   // CHECK-NEXT:     %[[IDINSIDE:.*]] = "tf.Identity"(%[[REPVAR]]) {ici_weight_distribution_mlir_bridge_marker = true} : (tensor<f32>) -> tensor<f32>
   // CHECK-NEXT:     tf_device.return %[[IDINSIDE]] : tensor<f32>
-  // CHECK-NEXT:   }) : () -> tensor<f32>
+  // CHECK-NEXT:   }) {ici_weight_distribution_mlir_bridge_marker = true} : () -> tensor<f32>
   // CHECK-NEXT:   "tf_device.cluster"() ({
   // CHECK-NEXT:     %[[GROUP:.*]] = "tf.Const"()
   // CHECK-SAME:       [0, 1, 2, 3]
