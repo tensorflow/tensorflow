@@ -59,6 +59,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cudnn/cudnn.h"  // IWYU pragma: keep
 #elif TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
 #endif  // GOOGLE_CUDA

@@ -143,24 +143,10 @@ llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
   if (b->getFastMathFlags().noNaNs() || enable_fast_min_max) {
     auto cmp = b->CreateFCmpUGE(lhs_value, rhs_value);
     return b->CreateSelect(cmp, lhs_value, rhs_value, name.data());
-  } else {
-    // logic: isNaN(lhs) || (!isNan(rhs) && lhs >= rhs) ? lhs : rhs
-    // See also: IEEE Std 754-2008 5.11.
-    //
-    // This also works, but we wanted to make it similar to minimum.
-    // logic: isNaN(lhs) || lhs >= rhs ? lhs : rhs
-    //
-    // b->CreateMaximum() doesn't work on GPU before SM80.
-    //
-    // A test with a strange LLVM version breaks if we use OGT here, so we use
-    // OGE.
-    auto lhs_is_nan = b->CreateFCmpUNE(lhs_value, lhs_value);
-    auto rhs_is_not_nan = b->CreateFCmpOEQ(rhs_value, rhs_value);
-    auto lhs_is_ge = b->CreateFCmpOGE(lhs_value, rhs_value);
-    return b->CreateSelect(
-        b->CreateOr(lhs_is_nan, b->CreateAnd(rhs_is_not_nan, lhs_is_ge)),
-        lhs_value, rhs_value, name.data());
   }
+  return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::maximum,
+                                      {lhs_value, rhs_value},
+                                      {lhs_value->getType()}, b);
 }
 
 llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
@@ -169,25 +155,10 @@ llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
   if (b->getFastMathFlags().noNaNs() || enable_fast_min_max) {
     auto cmp = b->CreateFCmpULE(lhs_value, rhs_value);
     return b->CreateSelect(cmp, lhs_value, rhs_value, name.data());
-  } else {
-    // logic: isNaN(lhs) || (!isNan(rhs) && lhs <= rhs) ? lhs : rhs
-    // See also: IEEE Std 754-2008 5.11.
-    //
-    // This should also work, but the tests show that it doesn't work for
-    // minimum(x, NaN) on GPU:
-    // logic: isNaN(lhs) || lhs <= rhs ? lhs : rhs
-    //
-    // b->CreateMaximum() doesn't work on GPU before SM80.
-    //
-    // A test with a strange LLVM version breaks if we use OLT here, so we use
-    // OLE.
-    auto lhs_is_nan = b->CreateFCmpUNE(lhs_value, lhs_value);
-    auto rhs_is_not_nan = b->CreateFCmpOEQ(rhs_value, rhs_value);
-    auto lhs_is_le = b->CreateFCmpOLE(lhs_value, rhs_value);
-    return b->CreateSelect(
-        b->CreateOr(lhs_is_nan, b->CreateAnd(rhs_is_not_nan, lhs_is_le)),
-        lhs_value, rhs_value, name.data());
   }
+  return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::minimum,
+                                      {lhs_value, rhs_value},
+                                      {lhs_value->getType()}, b);
 }
 
 llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,

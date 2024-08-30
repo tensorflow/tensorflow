@@ -1260,34 +1260,28 @@ typename ErrorSpecGenWrapper<T, N>::type GetDefaultSpecGenerator() {
   return DefaultSpecGenerator<T, N>;
 }
 
-template <typename T, typename std::enable_if<
-                          std::is_same<T, float>::value ||
-                          std::is_same<T, double>::value>::type* = nullptr>
+template <typename T>
 T ReferenceMax(T x, T y) {
-  // We need to propagate NAN here because std::max may not propagate NAN.
-  if (std::fpclassify(x) == FP_NAN) {
+  if (x != x) {
     return x;
   }
-  if (std::fpclassify(y) == FP_NAN) {
+  if (y != y) {
     return y;
   }
 
-  return std::max<T>(x, y);
+  return ToSignMagnitude(x) < ToSignMagnitude(y) ? y : x;
 }
 
-template <typename T, typename std::enable_if<
-                          std::is_same<T, float>::value ||
-                          std::is_same<T, double>::value>::type* = nullptr>
+template <typename T>
 T ReferenceMin(T x, T y) {
-  // We need to propagate NAN here because std::max may not propagate NAN.
-  if (std::fpclassify(x) == FP_NAN) {
+  if (x != x) {
     return x;
   }
-  if (std::fpclassify(y) == FP_NAN) {
+  if (y != y) {
     return y;
   }
 
-  return std::min<T>(x, y);
+  return ToSignMagnitude(x) < ToSignMagnitude(y) ? x : y;
 }
 
 // Returns a wrapper of the given build method, which build an HLO operation
