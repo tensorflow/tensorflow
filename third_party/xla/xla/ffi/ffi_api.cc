@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <exception>
+#include <new>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -48,6 +49,9 @@ limitations under the License.
 #include "xla/util.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
+
+#define EIGEN_USE_THREADS
+#include "unsupported/Eigen/CXX11/Tensor"
 
 //===----------------------------------------------------------------------===//
 // XLA FFI C structs definition
@@ -636,6 +640,31 @@ static XLA_FFI_Error* XLA_FFI_DeviceMemory_Free(
   return nullptr;
 }
 
+static XLA_FFI_Error* XLA_FFI_ThreadPool_Schedule(
+    XLA_FFI_ThreadPool_Schedule_Args* args) {
+  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "XLA_FFI_ThreadPool_Schedule_Args",
+      XLA_FFI_ThreadPool_Schedule_Args_STRUCT_SIZE, args->struct_size));
+
+  auto* cpu = std::get_if<XLA_FFI_ExecutionContext::CpuContext>(
+      &args->ctx->backend_context);
+
+  if (ABSL_PREDICT_FALSE(cpu == nullptr)) {
+    return new XLA_FFI_Error{
+        Unimplemented("XLA FFI CPU context is not available")};
+  }
+
+  if (ABSL_PREDICT_FALSE(cpu->intra_op_thread_pool == nullptr)) {
+    return new XLA_FFI_Error{
+        Unimplemented("No intra-op thread pool available on this platform")};
+  }
+
+  cpu->intra_op_thread_pool->enqueueNoNotification(
+      [task = args->task, data = args->data] { (*task)(data); });
+
+  return nullptr;
+}
+
 //===----------------------------------------------------------------------===//
 // XLA FFI Internal Api Implementation
 //===----------------------------------------------------------------------===//
@@ -740,6 +769,7 @@ static XLA_FFI_Api api = {
     XLA_FFI_State_Get,
     XLA_FFI_DeviceMemory_Allocate,
     XLA_FFI_DeviceMemory_Free,
+    XLA_FFI_ThreadPool_Schedule,
 };
 
 const XLA_FFI_Api* GetXlaFfiApi() { return &api; }

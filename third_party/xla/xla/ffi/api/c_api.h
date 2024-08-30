@@ -535,6 +535,37 @@ typedef XLA_FFI_Error* XLA_FFI_DeviceMemory_Free(
     XLA_FFI_DeviceMemory_Free_Args* args);
 
 //===----------------------------------------------------------------------===//
+// ThreadPool
+//===----------------------------------------------------------------------===//
+
+// A function pointer for a task to be scheduled on a thread pool. XLA runtime
+// will call this function with a user-defined `data` pointer on one of the
+// runtime-managed threads. For XLA:CPU backends the task will be invoked on
+// a thread pool that runs all compute tasks (Eigen thread pool).
+//
+// IMPORTANT: Users must not rely on any particular execution order or the
+// number of available threads. Tasks can be executed in the caller thread, or
+// in a thread pool with size `1`, and it is unsafe to assume that all scheduled
+// tasks can be executed in parallel.
+typedef void XLA_FFI_Task(void* data);
+
+struct XLA_FFI_ThreadPool_Schedule_Args {
+  size_t struct_size;
+  XLA_FFI_Extension_Base* extension_start;
+
+  XLA_FFI_ExecutionContext* ctx;
+  XLA_FFI_Task* task;
+  void* data;
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_ThreadPool_Schedule_Args, data);
+
+// Schedules a task to be executed on a thread pool managed by XLA runtime.
+// Returns an error if thread pool is not available.
+typedef XLA_FFI_Error* XLA_FFI_ThreadPool_Schedule(
+    XLA_FFI_ThreadPool_Schedule_Args* args);
+
+//===----------------------------------------------------------------------===//
 // Metadata extension
 //===----------------------------------------------------------------------===//
 
@@ -577,6 +608,7 @@ struct XLA_FFI_Api {
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_State_Get);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_DeviceMemory_Allocate);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_DeviceMemory_Free);
+  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_ThreadPool_Schedule);
 };
 
 #undef _XLA_FFI_API_STRUCT_FIELD

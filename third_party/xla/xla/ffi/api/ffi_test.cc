@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
+#include "absl/synchronization/blocking_counter.h"
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/execution_state.h"
@@ -38,9 +39,14 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
+#include "tsl/platform/threadpool.h"
+
+#define EIGEN_USE_THREADS
+#include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla::ffi {
 
@@ -1036,6 +1042,38 @@ TEST(FfiTest, ScratchAllocatorUnimplemented) {
   CallFrame call_frame =
       CallFrameBuilder(/*num_args=*/0, /*num_rets=*/0).Build();
   auto status = Call(*handler, call_frame);
+  TF_ASSERT_OK(status);
+}
+
+TEST(FfiTest, ThreadPool) {
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "XLAEigen", 2);
+  Eigen::ThreadPoolDevice device(pool.AsEigenThreadPool(), pool.NumThreads());
+
+  auto fn = [&](ThreadPool thread_pool) {
+    // Use a pair of blocking counters to check that scheduled task was executed
+    // on a thread pool (it would deadlock if executed inline).
+    absl::BlockingCounter prepare(1);
+    absl::BlockingCounter execute(1);
+
+    thread_pool.Schedule([&] {
+      prepare.Wait();
+      execute.DecrementCount();
+    });
+
+    prepare.DecrementCount();
+    execute.Wait();
+
+    return Error::Success();
+  };
+
+  auto handler = Ffi::Bind().Ctx<ThreadPool>().To(fn);
+  CallFrame call_frame =
+      CallFrameBuilder(/*num_args=*/0, /*num_rets=*/0).Build();
+
+  CallOptions options;
+  options.backend_options = CallOptions::CpuOptions{&device};
+
+  auto status = Call(*handler, call_frame, options);
   TF_ASSERT_OK(status);
 }
 
