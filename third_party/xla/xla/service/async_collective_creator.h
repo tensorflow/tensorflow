@@ -42,6 +42,7 @@ class AsyncCollectiveCreator : public HloModulePass {
     ContextShapeQuery get_context_shapes = [](const HloInstruction *) {
       return std::vector<Shape>{};
     };
+    int64_t all_reduce_min_threshold_in_bytes = 0;
   };
   explicit AsyncCollectiveCreator(CollectiveCreatorConfig creator_config)
       : config_(std::move(creator_config)) {}
