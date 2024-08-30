@@ -913,12 +913,46 @@ ENTRY triton_computation {
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc);
 }
 
+TEST_P(CollectiveTest,
+       UnsupportedAsyncStartAndUpdateAndDoneFailGracefullyWithTriton) {
+  // 'async-start', 'async-update', and 'async-done' need to be tested together,
+  // since the HLO verifier requires 'async-start' and 'async-done' to always
+  // appear together within a module.
+  auto [data_type, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+async_computation {
+  ROOT p0 = $0[10] parameter(0)
+}
+
+ENTRY triton_computation {
+  input = $0[10] parameter(0)
+  async-start = (($0[10]), $0[10]) async-start(input),
+    calls=async_computation
+  async-update = (($0[10]), $0[10]) async-update(async-start),
+    calls=async_computation
+  ROOT async-done = $0[10] async-done(async-update), calls=async_computation
+})";
+  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
+                                                    kHloTestTemplate, data_type,
+                                                    HloOpcode::kAsyncStart));
+  // async-start is not supported.
+  EXPECT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
+  // async-done is not supported.
+  EXPECT_FALSE(IsTritonSupportedInstruction(
+      *ti.TritonComputation().root_instruction(), cc));
+  // async-update is not supported.
+  EXPECT_FALSE(IsTritonSupportedInstruction(
+      *ti.TritonComputation().root_instruction()->operand(0), cc));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc);
+}
+
 constexpr std::array kTestedOpsCollectives = {
-    HloOpcode::kAllGather,      HloOpcode::kAllGatherStart,
-    HloOpcode::kAllGatherDone,  HloOpcode::kAllReduce,
-    HloOpcode::kAllReduceStart, HloOpcode::kAllReduceDone,
-    HloOpcode::kAllToAll,       HloOpcode::kCollectivePermute,
-    HloOpcode::kReduceScatter};
+    HloOpcode::kAllGather,         HloOpcode::kAllGatherStart,
+    HloOpcode::kAllGatherDone,     HloOpcode::kAllReduce,
+    HloOpcode::kAllReduceStart,    HloOpcode::kAllReduceDone,
+    HloOpcode::kAsyncDone,         HloOpcode::kAsyncStart,
+    HloOpcode::kAsyncUpdate,       HloOpcode::kAllToAll,
+    HloOpcode::kCollectivePermute, HloOpcode::kReduceScatter};
 
 INSTANTIATE_TEST_SUITE_P(
     CollectiveTestSuite, CollectiveTest,
@@ -946,9 +980,6 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
 absl::flat_hash_set<HloOpcode> AllUntestedOpcodes() {
   return absl::flat_hash_set<HloOpcode>{HloOpcode::kAddDependency,
                                         HloOpcode::kAfterAll,
-                                        HloOpcode::kAsyncDone,
-                                        HloOpcode::kAsyncStart,
-                                        HloOpcode::kAsyncUpdate,
                                         HloOpcode::kBatchNormGrad,
                                         HloOpcode::kBatchNormInference,
                                         HloOpcode::kBatchNormTraining,
