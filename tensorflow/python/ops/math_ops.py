@@ -2122,7 +2122,7 @@ def reduce_sum_v1(input_tensor,
            [1, 1, 1]], dtype=int32)
     >>> # sum all the elements
     >>> # 1 + 1 + 1 + 1 + 1+ 1 = 6
-    >>> tf.reduce_sum(x).numpy()
+    >>> tf.reduce_sum(x).numpy().item()
     6
     >>> # reduce along the first dimension
     >>> # the result is [1, 1, 1] + [1, 1, 1] = [2, 2, 2]
@@ -2141,7 +2141,7 @@ def reduce_sum_v1(input_tensor,
     >>> # or, equivalently, reduce along rows, then reduce the resultant array
     >>> # [1, 1, 1] + [1, 1, 1] = [2, 2, 2]
     >>> # 2 + 2 + 2 = 6
-    >>> tf.reduce_sum(x, [0, 1]).numpy()
+    >>> tf.reduce_sum(x, [0, 1]).numpy().item()
     6
 
   Args:
@@ -2194,7 +2194,7 @@ def reduce_sum(input_tensor, axis=None, keepdims=False, name=None):
            [1, 1, 1]], dtype=int32)
     >>> # sum all the elements
     >>> # 1 + 1 + 1 + 1 + 1+ 1 = 6
-    >>> tf.reduce_sum(x).numpy()
+    >>> tf.reduce_sum(x).numpy().item()
     6
     >>> # reduce along the first dimension
     >>> # the result is [1, 1, 1] + [1, 1, 1] = [2, 2, 2]
@@ -2213,7 +2213,7 @@ def reduce_sum(input_tensor, axis=None, keepdims=False, name=None):
     >>> # or, equivalently, reduce along rows, then reduce the resultant array
     >>> # [1, 1, 1] + [1, 1, 1] = [2, 2, 2]
     >>> # 2 + 2 + 2 = 6
-    >>> tf.reduce_sum(x, [0, 1]).numpy()
+    >>> tf.reduce_sum(x, [0, 1]).numpy().item()
     6
 
   Args:
