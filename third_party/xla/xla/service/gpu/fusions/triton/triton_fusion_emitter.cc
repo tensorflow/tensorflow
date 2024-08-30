@@ -943,6 +943,22 @@ Value EmitTiledReshape(ImplicitLocOpBuilder& b,
       .getResult();
 }
 
+Value EmitTiledTranspose(ImplicitLocOpBuilder& b,
+                         const TiledHloInstruction& tiled_transpose,
+                         Value input) {
+  Type input_element_type =
+      mlir::cast<ShapedType>(input.getType()).getElementType();
+  Type output_tensor_type = mlir::RankedTensorType::get(
+      tiled_transpose.tile_sizes(), input_element_type);
+
+  auto transpose =
+      ::xla::Cast<const HloTransposeInstruction>(tiled_transpose.hlo());
+  SmallVector<int32_t> order =
+      llvm::to_vector_of<int32_t>(transpose->dimensions());
+
+  return b.create<mt::TransOp>(output_tensor_type, input, order);
+}
+
 absl::StatusOr<Value> EmitTiledHloInstruction(
     ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
     const se::DeviceDescription& device_info,
@@ -1014,14 +1030,17 @@ absl::StatusOr<Value> EmitTiledHloInstruction(
     return EmitTiledReshape(b, tiled_hlo, values[tiled_hlo.operand(0)]);
   }
 
+  if (hlo->opcode() == HloOpcode::kTranspose) {
+    return EmitTiledTranspose(b, tiled_hlo, values[tiled_hlo.operand(0)]);
+  }
   // All these operations are currently supported only as operations on indices
   // which are pushed to loads and stores. We don't generate any further code
   // for these operations here.
-  std::vector<HloOpcode> passthrough_opcodes(
-      {HloOpcode::kPad,
-       // TODO(b/363166438) Add slice back once support is implemented.
-       // HloOpcode::kSlice,
-       HloOpcode::kTranspose});
+  std::vector<HloOpcode> passthrough_opcodes({
+      HloOpcode::kPad,
+      // TODO(b/363166438) Add slice back once support is implemented.
+      // HloOpcode::kSlice
+  });
   if (absl::c_linear_search(passthrough_opcodes, hlo->opcode())) {
     return values[tiled_hlo.operand(0)];
   }

@@ -958,6 +958,35 @@ CHECK:      arith.trunci %[[I8_PARAM]] : tensor<4xi8> to tensor<4xi1>
       RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
 }
 
+TEST_F(TritonEmitterTest, Transpose3D) {
+  const std::string kHloText = R"(
+HloModule m
+
+triton_computation {
+  param_0 = f32[15,7,3] parameter(0)
+  ROOT transpose = f32[3,15,7]{2,1,0} transpose(param_0), dimensions={2,0,1}
+}
+
+ENTRY main {
+  param_0 = f32[15,7,3] parameter(0)
+  ROOT triton_fusion = f32[3,15,7] fusion(param_0),
+    kind=kCustom, calls=triton_computation,
+    backend_config={"fusion_backend_config":
+      {"kind":"__triton",
+      "block_level_fusion_config":{"output_tile_sizes":["1","8","4"],
+                                   "num_warps":"1"}}}
+})";
+  // TODO(b/353490600): parse output tile sizes from backend config.
+  TF_EXPECT_OK(CreateTritonIrAndFileCheck(
+      this, kHloText, FromOutputTileSizes({1, 8, 4}), "triton_computation", R"(
+CHECK:      %[[TILE:.*]] = tt.load {{.*}} : !tt.ptr<tensor<8x4x1xf32>>
+CHECK:      tt.trans %[[TILE]] {order = array<i32: 2, 0, 1>} : tensor<8x4x1xf32> -> tensor<1x8x4xf32>
+)"));
+
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
