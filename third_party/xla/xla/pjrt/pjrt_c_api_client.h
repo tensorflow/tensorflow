@@ -282,11 +282,6 @@ class PjRtCApiClient : public PjRtClient {
 
   std::optional<PjRtPluginAttributes> plugin_attributes() const override;
 
-  // TODO(b/244756954): Rethink this function altogether
-  PjRtRuntimeType runtime_type() const override {
-    return PjRtRuntimeType::kTfrt;
-  }
-
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
 
