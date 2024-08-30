@@ -2082,6 +2082,21 @@ TEST_F(IntervalTreeTest, BufferIntervalTreeMemoryUsedInInterval) {
   EXPECT_THAT(memory_used_by_time, ContainerEq(expected_memory_used_by_time));
 }
 
+TEST_F(IntervalTreeTest, BufferIntervalTreeHeapSize) {
+  // Buffer 1: memory block [0, 16), time interval [15, 26]
+  // Buffer 2: memory block [16, 48), time interval [17, 24]
+  // Buffer 3: memory block [32, 64), time interval [20, 22]
+  BufferIntervalTree tree;
+  tree.Add(15, 26, HeapSimulator::Chunk::FromOffsetEnd(0, 16));
+  tree.Add(17, 24, HeapSimulator::Chunk::FromOffsetEnd(16, 48));
+  tree.Add(20, 22, HeapSimulator::Chunk::FromOffsetEnd(32, 64));
+  EXPECT_THAT(tree.HeapSizeInInterval(15, 16), 16);
+  EXPECT_THAT(tree.HeapSizeInInterval(15, 19), 48);
+  EXPECT_THAT(tree.HeapSizeInInterval(15, 22), 64);
+  EXPECT_THAT(tree.HeapSizeInInterval(23, 24), 48);
+  EXPECT_THAT(tree.HeapSizeInInterval(25, 26), 16);
+}
+
 class SlicedBufferIntervalTest : public ::testing::Test {
  public:
   using HeapTy = GlobalDecreasingSizeBestFitHeap<HloValue>;
