@@ -816,15 +816,34 @@ ENTRY entry_computation {
                                                            /*arel=*/1e-6}));
 }
 
-TEST_F(TritonEmitterTest, TestSliceWithTileElementsNotAllContiguous) {
+TEST_F(TritonEmitterTest, TestSliceWithTileThatNeedsMasking) {
+  // TODO(b/363166438) Reenable this test after proper support is implemented.
+  GTEST_SKIP() << "Slice is not currently supported.";
+
   const std::string kHloText = R"(
 HloModule m
 
-region {
-  param_0 = f32[] parameter(0)
-  param_1 = f32[] parameter(1)
-  ROOT add.2 = f32[] add(param_0, param_1)
+fused_computation {
+  p = f32[128,32] parameter(0)
+  ROOT slice = f32[12,5] slice(p), slice={[116:128], [20:25]}
 }
+
+ENTRY entry_computation {
+  p = f32[128,32] parameter(0)
+  ROOT fusion = f32[12,5] fusion(p), kind=kCustom, calls=fused_computation,
+  backend_config={"fusion_backend_config":
+    {"kind":"__triton","block_level_fusion_config":
+      {"output_tile_sizes":["8","4"],"num_warps":"1"}}}
+})";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, ErrorSpec{0, 0}));
+}
+
+TEST_F(TritonEmitterTest, TestSliceWithTileElementsNotAllContiguous) {
+  // TODO(b/363166438) Reenable this test after proper support is implemented.
+  GTEST_SKIP() << "Slice is not currently supported.";
+
+  const std::string kHloText = R"(
+HloModule m
 
 fused_computation {
   param_0.1 = f32[16,16,32] parameter(0)

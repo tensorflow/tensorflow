@@ -764,6 +764,56 @@ class TritonSupportTestWithTypeAndDeviceParam
       public ::testing::WithParamInterface<
           std::tuple<PrimitiveType, se::GpuComputeCapability>> {};
 
+using SliceTest = TritonSupportTestWithTypeAndOpcodeAndDeviceParam;
+
+TEST_P(SliceTest, ContinuousSlice) {
+  auto [data_type, opcode, cc] = GetParam();
+  const std::string kHloTestTemplate = (R"(
+ENTRY triton_computation {
+  p = $0[128,32] parameter(0)
+  ROOT slice = $0[12,5] $1(p), slice={[116:128], [20:25]}
+})");
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
+
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{8, 4}, cc);
+}
+
+TEST_P(SliceTest, NonContinuousSliceWhereStrideDividesOffsetEvenly) {
+  auto [data_type, opcode, cc] = GetParam();
+  const std::string kHloTestTemplate = (R"(
+ENTRY triton_computation {
+  p = f32[16,16,32] parameter(0)
+  ROOT slice = f32[4,4,8] slice(p), slice={[2:10:2], [2:6], [3:11]}
+})");
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
+
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 2, 2}, cc);
+}
+
+TEST_P(SliceTest, NonContinuousSliceWhereStrideDoesNotDivideOffsetEvenly) {
+  auto [data_type, opcode, cc] = GetParam();
+  const std::string kHloTestTemplate = (R"(
+ENTRY triton_computation {
+  p = f32[16,16,32] parameter(0)
+  ROOT slice = f32[4,4,8] slice(p), slice={[3:11:2], [2:6], [3:11]}
+})");
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
+
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 2, 2}, cc);
+}
+
+constexpr std::array kTestedOpsSlice = {HloOpcode::kSlice};
+
+INSTANTIATE_TEST_SUITE_P(SliceTestSuite, SliceTest,
+                         AllTestCombinationsForOpcodes(kTestedOpsSlice),
+                         TritonSupportTestTypeAndOpcodeAndDeviceToString);
+
 using CollectiveTest = TritonSupportTestWithTypeAndDeviceParam;
 
 TEST_P(CollectiveTest, UnsupportedAllGatherFailsGracefullyWithTriton) {
@@ -973,6 +1023,7 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   ret.insert(kTestedOpsTernaryElementwise.begin(),
              kTestedOpsTernaryElementwise.end());
   ret.insert(kTestedOpsReduction.begin(), kTestedOpsReduction.end());
+  ret.insert(kTestedOpsSlice.begin(), kTestedOpsSlice.end());
   ret.insert(kTestedOpsCollectives.begin(), kTestedOpsCollectives.end());
   return ret;
 }
@@ -1029,7 +1080,6 @@ absl::flat_hash_set<HloOpcode> AllUntestedOpcodes() {
                                         HloOpcode::kSend,
                                         HloOpcode::kSendDone,
                                         HloOpcode::kSetDimensionSize,
-                                        HloOpcode::kSlice,
                                         HloOpcode::kSort,
                                         HloOpcode::kStochasticConvert,
                                         HloOpcode::kTopK,
