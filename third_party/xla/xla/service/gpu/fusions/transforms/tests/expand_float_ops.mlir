@@ -1,5 +1,5 @@
-// RUN: mlir_fusions_opt %s -split-input-file -xla-gpu-expand-float-ops="pre-ampere=true" -canonicalize | FileCheck %s -check-prefixes=CHECK,CHECK-PRE-AMPERE
-// RUN: mlir_fusions_opt %s -split-input-file -xla-gpu-expand-float-ops="pre-ampere=false" -canonicalize | FileCheck %s -check-prefixes=CHECK,CHECK-AMPERE
+// RUN: mlir_fusions_opt %s -split-input-file -xla-gpu-expand-float-ops="pre-ampere=true" -canonicalize | FileCheck %s
+// RUN: mlir_fusions_opt %s -split-input-file -xla-gpu-expand-float-ops="pre-ampere=false" -canonicalize | FileCheck %s
 
 module {
   func.func @tanh(%arg0: f32) -> f32 {
@@ -33,9 +33,7 @@ module {
 }
 
 // CHECK-LABEL: @maximumf
-// CHECK-AMPERE: arith.maximumf
-// CHECK-PRE-AMPERE: arith.cmpf
-// CHECK-PRE-AMPERE: arith.select
+// CHECK: arith.maximumf
 
 // -----
 
@@ -47,9 +45,7 @@ module {
 }
 
 // CHECK-LABEL: @minimumf
-// CHECK-AMPERE: arith.minimumf
-// CHECK-PRE-AMPERE: arith.cmpf
-// CHECK-PRE-AMPERE: arith.select
+// CHECK: arith.minimumf
 
 // -----
 
@@ -61,9 +57,7 @@ module {
 }
 
 // CHECK-LABEL: @minimumf64
-// CHECK-NOT: minimumf
-// CHECK: arith.cmpf
-// CHECK: arith.select
+// CHECK: arith.minimumf
 
 // -----
 

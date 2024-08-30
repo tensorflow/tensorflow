@@ -106,41 +106,6 @@ struct Val {
   }
 };
 
-template <typename OpTy, ma::CmpFPredicate pred>
-struct RewriteToCmpSelect : public mlir::OpRewritePattern<OpTy> {
-  using mlir::OpRewritePattern<OpTy>::OpRewritePattern;
-
-  RewriteToCmpSelect(mlir::MLIRContext* context, bool include_f32)
-      : mlir::OpRewritePattern<OpTy>(context), include_f32(include_f32) {}
-
-  mlir::LogicalResult matchAndRewrite(
-      OpTy op, mlir::PatternRewriter& rewriter) const override {
-    if (op.getType().isF32() && !include_f32) {
-      return rewriter.notifyMatchFailure(op, "not rewriting f32 min/max");
-    }
-
-    auto lhs_is_nan = rewriter.create<ma::CmpFOp>(
-        op.getLoc(), ma::CmpFPredicate::UNE, op.getLhs(), op.getLhs());
-    auto rhs_is_not_nan = rewriter.create<ma::CmpFOp>(
-        op.getLoc(), ma::CmpFPredicate::OEQ, op.getRhs(), op.getRhs());
-
-    auto return_lhs =
-        rewriter.create<ma::CmpFOp>(op.getLoc(), pred, op.getLhs(), op.getRhs())
-            .getResult();
-
-    // logic: isNaN(lhs) || (!isNan(rhs) && return_lhs) ? lhs : rhs
-    return_lhs = rewriter.create<ma::OrIOp>(
-        op.getLoc(), lhs_is_nan,
-        rewriter.create<ma::AndIOp>(op.getLoc(), rhs_is_not_nan, return_lhs));
-
-    rewriter.replaceOpWithNewOp<SelectOp>(op, op.getResult().getType(),
-                                          return_lhs, op.getLhs(), op.getRhs());
-    return mlir::success();
-  }
-
-  bool include_f32;
-};
-
 struct RewriteErf32Pattern : public mlir::OpRewritePattern<mlir::math::ErfOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -650,10 +615,6 @@ class ExpandFloatOpsPass
   using ExpandFloatOpsPassBase::ExpandFloatOpsPassBase;
   void runOnOperation() override {
     mlir::RewritePatternSet patterns(&getContext());
-    patterns.add<RewriteToCmpSelect<ma::MinimumFOp, ma::CmpFPredicate::OLE>>(
-        &getContext(), /*include_f32=*/pre_ampere_);
-    patterns.add<RewriteToCmpSelect<ma::MaximumFOp, ma::CmpFPredicate::OGE>>(
-        &getContext(), /*include_f32=*/pre_ampere_);
     patterns.add<RewriteTruncFPattern, RewriteExtFPattern, RewriteAbsFPattern,
                  RewriteF8Cst, RewriteIToFpPattern<ma::SIToFPOp>,
                  RewriteIToFpPattern<ma::UIToFPOp>,

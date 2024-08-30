@@ -17,6 +17,7 @@ limitations under the License.
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -2268,6 +2269,25 @@ XLA_TEST_F(ArrayElementwiseOpTest, MinZeroElementF32s) {
   auto rhs = ConstantR1<float>(&builder, {});
   Min(lhs, rhs);
   ComputeAndCompareR1<float>(&builder, {}, {}, error_spec_);
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, MinF16) {
+  XlaBuilder builder(TestName());
+  SetFastMathDisabled(true);
+  std::vector<Eigen::half> lhs_values(4,
+                                      absl::bit_cast<Eigen::half>(uint16_t{0}));
+  std::vector<Eigen::half> rhs_values(
+      4, absl::bit_cast<Eigen::half>(uint16_t{0x7c01}));
+
+  auto x_literal = LiteralUtil::CreateR1<Eigen::half>(lhs_values);
+  auto y_literal = LiteralUtil::CreateR1<Eigen::half>(rhs_values);
+
+  auto x = Parameter(&builder, 0, x_literal.shape(), "x");
+  auto y = Parameter(&builder, 1, y_literal.shape(), "y");
+  Max(x, y);
+
+  ComputeAndCompare(&builder, {std::move(x_literal), std::move(y_literal)},
+                    ErrorSpec{0.0, 0.0});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, MinF64s) {
