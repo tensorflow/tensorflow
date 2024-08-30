@@ -44,6 +44,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/source_location.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"
 #include "xla/status_macros.h"
