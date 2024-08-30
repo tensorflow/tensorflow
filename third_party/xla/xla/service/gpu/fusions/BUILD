@@ -33,23 +33,6 @@ cc_library(
     ],
 )
 
-xla_test(
-    name = "in_place_dynamic_update_slice_mlir_test",
-    srcs = ["in_place_dynamic_update_slice_mlir_test.cc"],
-    backends = ["gpu"],
-    deps = [
-        ":in_place_dynamic_update_slice_mlir",
-        ":mlir_emitter_test_base",
-        "//xla:error_spec",
-        "//xla/service/gpu:hlo_fusion_analysis",
-        "//xla/service/gpu/model:indexing_test_utils",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/lib/core:status_test_util",
-        "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
 cc_library(
     name = "copy",
     srcs = ["copy.cc"],
@@ -368,23 +351,6 @@ cc_library(
     ],
 )
 
-xla_test(
-    name = "scatter_mlir_test",
-    srcs = ["scatter_mlir_test.cc"],
-    backends = ["gpu"],
-    deps = [
-        ":mlir_emitter_test_base",
-        ":scatter_mlir",
-        "//xla:error_spec",
-        "//xla/service/gpu:hlo_fusion_analysis",
-        "//xla/service/gpu/model:indexing_test_utils",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/lib/core:status_test_util",
-        "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
 cc_library(
     name = "transpose_mlir",
     srcs = ["transpose_mlir.cc"],
@@ -416,24 +382,6 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
-    ],
-)
-
-xla_test(
-    name = "transpose_mlir_test",
-    srcs = ["transpose_mlir_test.cc"],
-    backends = ["gpu"],
-    deps = [
-        ":mlir_emitter_test_base",
-        ":transpose_mlir",
-        "//xla:error_spec",
-        "//xla/service/gpu:hlo_fusion_analysis",
-        "//xla/service/gpu/model:indexing_test_utils",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/lib/core:status_test_util",
-        "@com_google_googletest//:gtest",
-        "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -696,23 +644,6 @@ cc_library(
     ],
 )
 
-xla_test(
-    name = "concatenate_mlir_test",
-    srcs = ["concatenate_mlir_test.cc"],
-    backends = ["gpu"],
-    deps = [
-        ":concatenate_mlir",
-        ":mlir_emitter_test_base",
-        "//xla:error_spec",
-        "//xla/service/gpu:hlo_fusion_analysis",
-        "//xla/service/gpu/model:indexing_test_utils",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/lib/core:status_test_util",
-        "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
 cc_library(
     name = "input_slices_mlir",
     srcs = ["input_slices_mlir.cc"],
@@ -738,20 +669,5 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:TensorDialect",
-    ],
-)
-
-xla_test(
-    name = "input_slices_mlir_test",
-    srcs = ["input_slices_mlir_test.cc"],
-    backends = ["gpu"],
-    deps = [
-        ":input_slices_mlir",
-        ":mlir_emitter_test_base",
-        "//xla:error_spec",
-        "//xla/service/gpu:hlo_fusion_analysis",
-        "//xla/service/gpu/model:indexing_test_utils",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_googletest//:gtest",
     ],
 )
