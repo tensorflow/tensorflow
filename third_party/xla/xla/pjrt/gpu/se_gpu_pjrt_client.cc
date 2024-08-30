@@ -1153,8 +1153,6 @@ StreamExecutorGpuDevice::StreamExecutorGpuDevice(
                                std::move(device_kind), node_id),
       device_vendor_(std::move(device_vendor)),
       slice_index_(slice_index) {
-  int64_t core_index = 0;
-  description().SetCoreOnChip(core_index);
   std::array<int, 1> coords = {local_device_id().value()};
   description().SetCoords(coords);
   std::vector<int64_t> v_coords(description().coords().begin(),
@@ -1162,7 +1160,6 @@ StreamExecutorGpuDevice::StreamExecutorGpuDevice(
 
   description().SetAttributes(
       {{"coords", xla::PjRtDeviceAttribute(v_coords)},
-       {"core_on_chip", xla::PjRtDeviceAttribute(core_index)},
        {"device_vendor", device_vendor_},
        {"slice_index", static_cast<int64_t>(slice_index)},
        {"compute_capability", xla::PjRtDeviceAttribute(compute_capability)},
@@ -1207,10 +1204,6 @@ absl::StatusOr<tsl::AllocatorStats> StreamExecutorGpuDevice::GetAllocatorStats()
 
 absl::Span<int const> StreamExecutorGpuDevice::coords() const {
   return description().coords();
-}
-
-int StreamExecutorGpuDevice::core_on_chip() const {
-  return description().core_on_chip();
 }
 
 absl::StatusOr<PjRtMemorySpace*> StreamExecutorGpuDevice::default_memory_space()

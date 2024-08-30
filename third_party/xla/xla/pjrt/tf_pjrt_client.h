@@ -247,9 +247,6 @@ class TfPjRtClient : public PjRtClient {
   absl::string_view platform_version() const override {
     return wrapped_->platform_version();
   }
-  PjRtRuntimeType runtime_type() const override {
-    return wrapped_->runtime_type();
-  }
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override {
     return wrapped_->GetDefaultDeviceAssignment(num_replicas, num_partitions);
@@ -345,12 +342,6 @@ class TfPjRtClient : public PjRtClient {
   }
   absl::StatusOr<ChannelHandle> CreateChannelHandle() override {
     return wrapped_->CreateChannelHandle();
-  }
-  absl::StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() override {
-    return wrapped_->CreateDeviceToHostChannelHandle();
-  }
-  absl::StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() override {
-    return wrapped_->CreateHostToDeviceChannelHandle();
   }
   absl::StatusOr<const PjRtTopologyDescription*> GetTopologyDescription()
       const override {
