@@ -1200,6 +1200,8 @@ def TFL_GatherOp : TFL_Op<"gather", [
 
   let hasVerifier = 1;
 
+  let hasFolder = 1;
+
   let extraClassDeclaration = [{
     // DynamicRangeQuantizedOpInterface:
     std::vector<int> GetQuantizableOperandIndices() { return {0}; }

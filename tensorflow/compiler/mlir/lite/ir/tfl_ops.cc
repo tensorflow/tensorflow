@@ -1190,6 +1190,120 @@ LogicalResult GatherOp::verify() {
   return mlir::success();
 }
 
+OpFoldResult GatherOp::fold(GatherOp::FoldAdaptor adaptor) {
+  // Get the params tensor type/shape/data
+  auto params = mlir::dyn_cast_or_null<DenseElementsAttr>(adaptor.getParams());
+  if (!params) {
+    return {};
+  }
+  auto params_type = params.getType();
+  auto params_shape = params_type.getShape();
+  auto params_data = params.getValues<Attribute>();
+  // Get the indices tensor type/shape/data
+  auto indices =
+      mlir::dyn_cast_or_null<DenseIntElementsAttr>(adaptor.getIndices());
+  if (!indices) {
+    return {};
+  }
+  auto indices_type = indices.getType();
+  auto indices_shape = indices_type.getShape();
+  auto indices_data = indices.getValues<IntegerAttr>();
+  // Get the axis value
+  int64_t axis = adaptor.getAxisAttr().getInt();
+  if (axis < 0) {
+    axis += params_shape.size();
+  }
+  // Get the batch_dims value
+  int64_t batch_dims = adaptor.getBatchDimsAttr().getInt();
+  if (axis < 0 || axis >= params_shape.size()) {
+    return {};
+  }
+  if (batch_dims < 0) {
+    batch_dims += params_shape.size();
+  }
+  // Check the values are valid
+  if (batch_dims < 0) return {};
+  if (batch_dims >= params_shape.size()) return {};
+  if (batch_dims >= indices_shape.size()) return {};
+  if (axis < batch_dims) return {};
+  for (int i = 0; i < batch_dims; ++i) {
+    if (params_shape[i] != indices_shape[i]) return {};
+  }
+
+  // Figure out the result shape. It will have this structure:
+  // [batch dims.. , outer dims.., indexed dims.., inner dims..]
+  // Where:
+  // - batch dims are the first common batch_dims dimensions of params and
+  //     indices
+  // - outer dims are dimensions of params from batch_dims to the indexed axis
+  // - indexed dims are all dimensions of indices
+  // - inner dims are the dimensions of params after the indexed axis
+  llvm::SmallVector<int64_t> result_shape;
+  // batch dims:
+  int64_t batch_flat_size = 1;
+  for (int64_t i = 0; i < batch_dims; ++i) {
+    batch_flat_size *= params_shape[i];
+    result_shape.push_back(params_shape[i]);
+  }
+  // outer dims:
+  int64_t outer_flat_size = 1;
+  for (int64_t i = batch_dims; i < axis; ++i) {
+    outer_flat_size *= params_shape[i];
+    result_shape.push_back(params_shape[i]);
+  }
+  // indexed dims:
+  const int64_t params_axis_size = params_shape[axis];
+  int64_t indices_flat_size = 1;
+  for (int64_t i = batch_dims; i < indices_shape.size(); ++i) {
+    indices_flat_size *= indices_shape[i];
+    result_shape.push_back(indices_shape[i]);
+  }
+  // inner dims:
+  int64_t inner_flat_size = 1;
+  for (int64_t i = axis + 1; i < params_shape.size(); ++i) {
+    inner_flat_size *= params_shape[i];
+    result_shape.push_back(params_shape[i]);
+  }
+  // flat size of the params tensor (used by a check below):
+  int64_t params_flat_size = 1;
+  for (auto params_dim : params_shape) {
+    params_flat_size *= params_dim;
+  }
+  // flat size of the results tensor:
+  int64_t results_flat_size = 1;
+  for (auto result_dim : result_shape) {
+    results_flat_size *= result_dim;
+  }
+  // Result type is the params element type with the result shape
+  auto result_type = params_type.clone(result_shape);
+
+  // Figure out the result value:
+  // Follow the reference TFLite kernel implementation at
+  // tensorflow/lite/kernels/internal/reference/gather.h
+  std::vector<Attribute> result_values;
+  result_values.reserve(results_flat_size);
+  for (int64_t batch = 0; batch < batch_flat_size; ++batch) {
+    for (int64_t outer = 0; outer < outer_flat_size; ++outer) {
+      for (int64_t indices_idx = 0; indices_idx < indices_flat_size;
+           ++indices_idx) {
+        int64_t params_idx =
+            indices_data[batch * indices_flat_size + indices_idx].getInt();
+        int64_t from_pos =
+            (((batch * outer_flat_size) + outer) * params_axis_size +
+             params_idx) *
+            inner_flat_size;
+
+        if (from_pos < 0 || from_pos + inner_flat_size > params_flat_size) {
+          return {};
+        }
+        std::copy_n(params_data.begin() + from_pos, inner_flat_size,
+                    std::back_inserter(result_values));
+      }
+    }
+  }
+  return DenseElementsAttr::get(result_type, result_values);
+}
+
 //===----------------------------------------------------------------------===//
 // BroadcastToOp
 //===----------------------------------------------------------------------===//
@@ -1593,7 +1707,7 @@ int64_t Conv2DOp::GetArithmeticCount(Operation* op) {
 }
 
 //===----------------------------------------------------------------------===//
-// DepthwiseConv2DO
+// DepthwiseConv2DOp
 //===----------------------------------------------------------------------===//
 
 void DepthwiseConv2DOp::getCanonicalizationPatterns(RewritePatternSet& results,
