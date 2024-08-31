@@ -3008,7 +3008,7 @@ xla_test(
 xla_test(
     name = "iota_test",
     srcs = ["iota_test.cc"],
-    shard_count = 30,
+    shard_count = 50,
     tags = [
         # Require optimized builds, iota_test_cpu is very slow in fastbuild.
         "optonly",
@@ -3020,7 +3020,13 @@ xla_test(
         ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:error_spec",
-        "@local_tsl//tsl/platform:errors",
+        "//xla:shape_util",
+        "//xla:types",
+        "//xla:xla_data_proto_cc",
+        "//xla/client:xla_builder",
+        "@com_google_absl//absl/log:check",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:ml_dtypes",
     ],
 )
 
