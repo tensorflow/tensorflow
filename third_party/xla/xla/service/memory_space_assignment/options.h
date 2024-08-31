@@ -105,7 +105,9 @@ struct Options {
           [](const HloPosition&) { return true; };
 
   // This function returns the amount of scoped memory in bytes that should be
-  // reserved during the execution of this instruction.
+  // reserved during the execution of this instruction. Note that the
+  // `operands_in_alternate_memory` also includes the window prefetched
+  // operands.
   ReservedScopedMemoryFunction reserved_scoped_memory_fn =
       [](const HloInstruction*,
          const absl::flat_hash_set<

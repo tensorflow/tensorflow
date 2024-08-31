@@ -389,8 +389,7 @@ TEST_F(ClientServerTest,
     DistributedRuntimeClient::Options client_options;
     client_options.shutdown_on_destruction = node_id != 0;
     client_options.poll_for_error_from_service_at_startup = false;
-    client_options.missed_heartbeat_callback =
-        [&](absl::Status status, bool coordinator_initiated) {};
+    client_options.missed_heartbeat_callback = [&](absl::Status status) {};
     auto client = GetClient(node_id, client_options);
 
     TF_RETURN_IF_ERROR(client->Connect());
@@ -434,8 +433,7 @@ TEST_F(ClientServerTest, ClientsTerminateShutdownIfAnyClientGoesAway) {
   auto thread_fn = [&](int node_id) -> absl::Status {
     DistributedRuntimeClient::Options client_options;
     client_options.shutdown_on_destruction = node_id != 0;
-    client_options.missed_heartbeat_callback =
-        [&](absl::Status status, bool coordinator_initiated) {};
+    client_options.missed_heartbeat_callback = [&](absl::Status status) {};
     auto client = GetClient(node_id, client_options);
 
     TF_RETURN_IF_ERROR(client->Connect());
@@ -473,8 +471,7 @@ TEST_F(ClientServerTest, ClientsShutdownSuccessfully) {
   auto thread_fn = [&](int node_id) -> absl::Status {
     DistributedRuntimeClient::Options client_options;
     client_options.shutdown_on_destruction = true;
-    client_options.missed_heartbeat_callback =
-        [&](absl::Status status, bool coordinator_initiated) {};
+    client_options.missed_heartbeat_callback = [&](absl::Status status) {};
     auto client = GetClient(node_id, client_options);
 
     TF_RETURN_IF_ERROR(client->Connect());
@@ -504,8 +501,7 @@ TEST_F(ClientServerTest, MissedHeartbeatCallbackIsExecutedIfAnyClientGoesAway) {
     DistributedRuntimeClient::Options client_options;
     client_options.shutdown_on_destruction = (node_id != 0);
     absl::Notification shutdown;
-    client_options.missed_heartbeat_callback = [&](absl::Status status,
-                                                   bool coordinator_initiated) {
+    client_options.missed_heartbeat_callback = [&](absl::Status status) {
       shutdown.Notify();
     };
     auto client = GetClient(node_id, client_options);
@@ -541,8 +537,7 @@ TEST_F(ClientServerTest,
     DistributedRuntimeClient::Options client_options;
     client_options.shutdown_on_destruction = (node_id != 0);
     absl::Notification shutdown;
-    client_options.missed_heartbeat_callback = [&](absl::Status status,
-                                                   bool coordinator_initiated) {
+    client_options.missed_heartbeat_callback = [&](absl::Status status) {
       shutdown.Notify();
     };
     client_options.poll_for_error_from_service_at_startup = false;
@@ -586,8 +581,7 @@ TEST_F(ClientServerTest, ClientsTerminateIfServiceGoesAway) {
     client_options.rpc_timeout = absl::Seconds(1);
     client_options.shutdown_timeout = absl::Seconds(10);
     absl::Notification shutdown;
-    client_options.missed_heartbeat_callback = [&](absl::Status status,
-                                                   bool coordinator_initiated) {
+    client_options.missed_heartbeat_callback = [&](absl::Status status) {
       shutdown.Notify();
     };
     auto channel = GetDistributedRuntimeClientChannel(
@@ -666,10 +660,9 @@ TEST_F(ClientServerTest, ConnectEventuallyTimesOutIfAClientDoesNotShowUp) {
     client_options.init_timeout = timeout;
     client_options.rpc_timeout = timeout;
     // Overwrite the default error callback which invokes LOG(QFATAL).
-    client_options.missed_heartbeat_callback =
-        [](absl::Status status, bool coordinator_reported_failure) {
-          LOG(ERROR) << "Distributed client has missing heartbeats: " << status;
-        };
+    client_options.missed_heartbeat_callback = [](absl::Status status) {
+      LOG(ERROR) << "Distributed client has missing heartbeats: " << status;
+    };
     auto client = GetClient(node_id, client_options);
 
     TF_RETURN_IF_ERROR(client->Connect());
