@@ -648,10 +648,6 @@ cc_library_with_tflite(
     generate_opaque_delegate_target = True,
     visibility = [
         "//research/drishti/benchmarking/async:__subpackages__",
-        "//tensorflow/compiler/mlir/lite:__subpackages__",
-        "//tensorflow/lite/core/kernels:__subpackages__",
-        "//tensorflow/lite/core/shims:__subpackages__",
-        "//tensorflow/lite/delegates/flex:__subpackages__",
         "//tensorflow/lite/kernels:__subpackages__",
     ],
     deps = [
@@ -701,7 +697,6 @@ cc_library_with_tflite(
     hdrs = ["signature_runner.h"],
     compatible_with = get_compatible_with_portable(),
     visibility = [
-        "//tensorflow/lite/c:__subpackages__",
         "//tensorflow/lite/core:__subpackages__",
         "//tensorflow/lite/java:__subpackages__",
     ],
@@ -733,7 +728,6 @@ cc_library_with_tflite(
         ":cc_api_stable",
     ],
     visibility = [
-        "//tensorflow/lite/core/shims:__subpackages__",
         "//tensorflow/lite/delegates/flex:__subpackages__",
         "//tensorflow/lite/kernels:__subpackages__",
     ],
@@ -1474,7 +1468,7 @@ cc_library_with_tflite(
 bzl_library(
     name = "special_rules_bzl",
     srcs = ["special_rules.bzl"],
-    visibility = ["//tensorflow/lite/core/shims:__subpackages__"],
+    visibility = ["//visibility:private"],
     deps = SPECIAL_RULES_DEPS,
 )
 
