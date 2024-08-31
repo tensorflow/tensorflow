@@ -2523,6 +2523,7 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
         main_pipeline.AddPass<HloPassPipeline>("remat-pipeline");
 
     pipeline.AddPass<HloRematerialization>(remat_opts, sizes);
+    pipeline.AddPass<StreamAttributeAnnotator>();
     pipeline.AddPass<OptimizationBarrierExpander>();
   }
 

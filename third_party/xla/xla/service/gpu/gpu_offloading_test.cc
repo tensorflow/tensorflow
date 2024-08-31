@@ -30,6 +30,8 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/layout.h"
 #include "xla/service/buffer_value.h"
+#include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/transforms/stream_attribute_annotator.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_memory_scheduler.h"
 #include "xla/service/hlo_rematerialization.h"
@@ -216,6 +218,18 @@ TEST_F(GpuOffloadingTest, CopyIRCreationTest) {
                           RunHloRematerialization(
                               /*memory_limit_bytes=*/10 * 1024, module.get()));
   ASSERT_TRUE(changed);
+  StreamAttributeAnnotator attr_annotator;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed_attr, attr_annotator.Run(module.get()));
+  EXPECT_TRUE(changed_attr);
+  // Verify that the stream attribute for a copy-start is annotated
+  for (std::string i : {"", ".1", ".2", ".3"}) {
+    const HloInstruction* cp_start =
+        FindInstruction(module.get(), "copy-start" + i);
+    EXPECT_TRUE(cp_start->has_backend_config());
+    TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
+                            cp_start->backend_config<GpuBackendConfig>());
+    EXPECT_GT(gpu_config.operation_queue_id(), 0);
+  }
 
   // The module should still have a schedule.
   ASSERT_TRUE(module->has_schedule());

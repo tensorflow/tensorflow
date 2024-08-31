@@ -89,6 +89,20 @@ absl::StatusOr<bool> AnnotateStreamAttributesForInstruction(
   return true;
 }
 
+absl::StatusOr<bool> AnnotateStreamAttributesForCopyStart(
+    HloInstruction* instr, int64_t channel_id,
+    GpuBackendConfig& instr_gpu_config) {
+  // Do nothing if copy-start has already been annotated
+  if (instr_gpu_config.operation_queue_id() !=
+      Thunk::kDefaultExecutionStreamId.value()) {
+    return false;
+  }
+  instr_gpu_config.set_operation_queue_id(channel_id);
+  TF_RETURN_IF_ERROR(instr->set_backend_config(instr_gpu_config));
+  VLOG(3) << "Add copy-start's backend config: " << channel_id;
+  return true;
+}
+
 absl::StatusOr<bool> WrapIntoFusionAndAnnotateStreamAttributes(
     HloInstruction* instruction, int64_t channel_id,
     GpuBackendConfig& instr_gpu_config) {
@@ -181,6 +195,12 @@ absl::StatusOr<bool> StreamAttributeAnnotator::Run(
                             AnnotateStreamAttributesForInstruction(
                                 instr, instr_gpu_config.value()));
         changed |= comp_result;
+      } else if (instr->opcode() == HloOpcode::kCopyStart) {
+        TF_ASSIGN_OR_RETURN(bool comp_result,
+                            AnnotateStreamAttributesForCopyStart(
+                                instr, channel_id, instr_gpu_config.value()));
+        changed |= comp_result;
+        continue;
       } else if (comp->IsAsyncComputation() &&
                  (instr->opcode() == HloOpcode::kDynamicSlice ||
                   instr->opcode() == HloOpcode::kDynamicUpdateSlice)) {
