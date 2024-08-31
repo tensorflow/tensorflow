@@ -15,10 +15,16 @@ limitations under the License.
 
 #include "xla/service/cpu/tiled_dot_emitter.h"
 
-#include "xla/hlo/ir/hlo_module.h"
+#include "absl/log/check.h"
+#include "absl/numeric/bits.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Value.h"
 #include "xla/service/cpu/vector_support_library.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/kernel_support_library.h"
-#include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace cpu {
