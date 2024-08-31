@@ -28,7 +28,6 @@ from tensorflow.python.platform import test as test_lib
 from packaging.version import StrictVersion as Version
 # numpy.roll for multiple shifts was introduced in numpy version 1.12.0
 NP_ROLL_CAN_MULTISHIFT = Version(np.version.version) >= Version("1.12.0")
-# pylint: enable=g-import-not-at-top
 
 
 class RollTest(test_util.TensorFlowTestCase):
