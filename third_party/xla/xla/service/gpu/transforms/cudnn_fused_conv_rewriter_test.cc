@@ -59,6 +59,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cudnn/cudnn.h"  // IWYU pragma: keep
 #elif TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
 #endif  // GOOGLE_CUDA
@@ -253,8 +254,9 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
       TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                               ParseAndReturnVerifiedModule(pre_hlo_string));
       TF_ASSERT_OK_AND_ASSIGN(
-          bool changed,
-          RunHloPass(ConvRewriter(GetCudaComputeCapability()), module.get()));
+          bool changed, RunHloPass(ConvRewriter(se::CudaComputeCapability{
+                                       se::CudaComputeCapability::HOPPER, 0}),
+                                   module.get()));
       EXPECT_TRUE(changed);
       RunAndFilecheckHloRewrite(
           module->ToString(HloPrintOptions{}.set_print_operand_shape(false)),
