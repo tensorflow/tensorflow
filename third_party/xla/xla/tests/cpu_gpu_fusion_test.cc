@@ -21,6 +21,21 @@ limitations under the License.
 #include <random>
 #include <utility>
 
+#include <gtest/gtest.h>
+#include "xla/client/executable_build_options.h"
+#include "xla/comparison_util.h"
+#include "xla/error_spec.h"
+#include "xla/executable_run_options.h"
+#include "xla/layout_util.h"
+#include "xla/literal_util.h"
+#include "xla/service/shaped_buffer.h"
+#include "xla/shape.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/xla.pb.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/test.h"
+#include "tsl/platform/threadpool.h"
+
 #define EIGEN_USE_THREADS
 
 #include "absl/types/span.h"
@@ -30,7 +45,6 @@ limitations under the License.
 #include "xla/client/xla_builder.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/primitive_util.h"

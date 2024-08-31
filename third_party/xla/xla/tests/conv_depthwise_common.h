@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <optional>
 
+#include <gtest/gtest.h>
 #include "xla/client/xla_computation.h"
 #include "xla/execution_options_util.h"
 #include "xla/service/despecializer.h"

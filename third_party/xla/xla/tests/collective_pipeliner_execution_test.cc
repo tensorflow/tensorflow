@@ -30,8 +30,10 @@ limitations under the License.
 #include "xla/service/hlo_dce.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/hlo_pass_pipeline.h"
+#include "xla/service/hlo_verifier.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
