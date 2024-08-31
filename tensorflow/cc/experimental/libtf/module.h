@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CC_EXPERIMENTAL_LIBTF_MODULE_H_
 
 #include "tensorflow/cc/experimental/libexport/load.h"
+#include "tensorflow/cc/experimental/libtf/object.h"
 #include "tensorflow/cc/experimental/libtf/runtime/runtime.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"

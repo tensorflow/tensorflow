@@ -16,7 +16,13 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/str_cat.h"
+#include "tensorflow/cc/experimental/libexport/load.h"
+#include "tensorflow/cc/experimental/libtf/object.h"
+#include "tensorflow/cc/experimental/libtf/runtime/runtime.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
 namespace tf {
 namespace libtf {
