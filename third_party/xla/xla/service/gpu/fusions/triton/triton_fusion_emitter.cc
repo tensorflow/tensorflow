@@ -2350,22 +2350,35 @@ Value EmitMaskOnInput(ImplicitLocOpBuilder& b,
                       int denom, Value k, int64_t dims_k, int64_t block_k,
                       Value pid_k) {
   auto c32 = [&](int64_t v) { return CreateConst(b, b.getI32Type(), v); };
-  auto elements_in_tile = b.create<ma::SubIOp>(c32(dims_k / denom), k);
   int size = block_k / denom;
-  auto range_k = Range(b, size);
-  if (pid_k != nullptr) {
-    range_k = b.create<ma::AddIOp>(
-        range_k, Splat(b, b.create<ma::MulIOp>(pid_k, c32(size)), size));
-  }
-  auto ty = mlir::cast<mlir::RankedTensorType>(input.getType());
-  TensorValue range_expanded = mlir::cast<TensorValue>(
-      b.create<mt::ExpandDimsOp>(range_k, expand_dimension).getResult());
-  Value mask = b.create<mt::BroadcastOp>(
-      ty.clone(b.getI1Type()),
-      b.create<ma::CmpIOp>(
-          ma::CmpIPredicate::slt, range_expanded,
-          Splat(b, elements_in_tile, range_expanded.getType().getShape())));
-  return b.create<ma::SelectOp>(mask, input, ZerosLike(b, input));
+  auto elements_in_tile = b.create<ma::SubIOp>(c32(dims_k / denom), k);
+  auto cond =
+      b.create<ma::CmpIOp>(ma::CmpIPredicate::slt, elements_in_tile, c32(size));
+  auto if_op = b.create<mlir::scf::IfOp>(
+      cond, /*thenBranch=*/
+      [&](mlir::OpBuilder& builder, mlir::Location loc) {
+        ImplicitLocOpBuilder b(loc, builder);
+        auto range_k = Range(b, size);
+        if (pid_k != nullptr) {
+          range_k = b.create<ma::AddIOp>(
+              range_k, Splat(b, b.create<ma::MulIOp>(pid_k, c32(size)), size));
+        }
+        auto ty = mlir::cast<mlir::RankedTensorType>(input.getType());
+        TensorValue range_expanded = mlir::cast<TensorValue>(
+            b.create<mt::ExpandDimsOp>(range_k, expand_dimension).getResult());
+        Value mask = b.create<mt::BroadcastOp>(
+            ty.clone(b.getI1Type()),
+            b.create<ma::CmpIOp>(ma::CmpIPredicate::slt, range_expanded,
+                                 Splat(b, elements_in_tile,
+                                       range_expanded.getType().getShape())));
+        auto result = b.create<ma::SelectOp>(mask, input, ZerosLike(b, input));
+        b.create<mlir::scf::YieldOp>(mlir::ValueRange(result));
+      },
+      /*elseBranch=*/
+      [&](mlir::OpBuilder& b, mlir::Location loc) {
+        b.create<mlir::scf::YieldOp>(loc, mlir::ValueRange(input));
+      });
+  return if_op.getResult(0);
 }
 
 }  // namespace

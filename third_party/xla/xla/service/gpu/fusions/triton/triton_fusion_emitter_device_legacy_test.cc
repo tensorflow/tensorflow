@@ -110,6 +110,7 @@ class TritonGemmTest : public TritonTest {
     // Always rewrite Gemms with Triton regardless of size.
     debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
     debug_options.set_xla_gpu_enable_triton_gemm_int4(true);
+    debug_options.set_xla_dump_to("-");
     return debug_options;
   }
 
@@ -500,18 +501,25 @@ CHECK:        %[[RHS_TILE:.*]] = tt.load %[[RHS_ITER_PTR]] {boundaryCheck = arra
 CHECK:        %[[RHS_ITER_PTR_NEXT:.*]] = tt.advance %[[RHS_ITER_PTR]], [%[[TILE_SIZE_K]], %[[C0]]]
 CHECK:        %[[CONVERTED:.*]] = arith.sitofp %[[LHS_TILE]] : tensor<16x32xi8> to tensor<16x32xf32>
 CHECK:        %[[TILE_K_LIMIT:.*]] = arith.subi %[[SIZE_K]], %[[BLOCK_K]] : i32
+CHECK:        %[[MASK_IF_COND:.*]]  = arith.cmpi slt, %[[TILE_K_LIMIT]], %c32_i32 : i32
+CHECK:        %[[LHS_MASK_IF_STMT:.*]] = scf.if %[[MASK_IF_COND]] -> (tensor<16x32xf32>) {
 CHECK:        %[[K_TILE_IOTA:.*]] = tt.make_range {end = 32 : i32, start = 0 : i32} : tensor<32xi32>
 CHECK:        %[[K_OFFSETS_1K:.*]] = tt.expand_dims %[[K_TILE_IOTA]] {axis = 0 : i32} : tensor<32xi32> -> tensor<1x32xi32>
 CHECK:        %[[TILE_K_LIMIT_1K:.*]] = tt.splat %[[TILE_K_LIMIT]] : i32 -> tensor<1x32xi32>
 CHECK:        %[[LHS_INBOUNDS_1K:.*]] = arith.cmpi slt, %[[K_OFFSETS_1K]], %[[TILE_K_LIMIT_1K]] : tensor<1x32xi32>
 CHECK:        %[[LHS_INBOUNDS_MK:.*]] = tt.broadcast %[[LHS_INBOUNDS_1K]] : tensor<1x32xi1> -> tensor<16x32xi1>
 CHECK:        %[[LHS_MASKED:.*]] = arith.select %[[LHS_INBOUNDS_MK]], %[[CONVERTED]], %[[ZERO_MK]]
+CHECK:        scf.yield %[[LHS_MASKED]] : tensor<16x32xf32>
+CHECK:        scf.yield %[[CONVERTED]] : tensor<16x32xf32>
+CHECK:        %[[RHS_MASK_IF_STMT:.*]] = scf.if %[[MASK_IF_COND]] -> (tensor<32x64xf32>) {
 CHECK:        %[[K_OFFSETS_K1:.*]] = tt.expand_dims %[[K_TILE_IOTA]] {axis = 1 : i32} : tensor<32xi32> -> tensor<32x1xi32>
 CHECK:        %[[TILE_K_LIMIT_K1:.*]] = tt.splat %[[TILE_K_LIMIT]] : i32 -> tensor<32x1xi32>
 CHECK:        %[[RHS_INBOUNDS_K1:.*]] = arith.cmpi slt, %[[K_OFFSETS_K1]], %[[TILE_K_LIMIT_K1]] : tensor<32x1xi32>
 CHECK:        %[[RHS_INBOUNDS_KN:.*]] = tt.broadcast %[[RHS_INBOUNDS_K1]] : tensor<32x1xi1> -> tensor<32x64xi1>
 CHECK:        %[[RHS_MASKED:.*]] = arith.select %[[RHS_INBOUNDS_KN]], %[[RHS_TILE]], %[[ZERO_KN]] : tensor<32x64xi1>, tensor<32x64xf32>
-CHECK:        %[[ACC_NEXT:.*]] = tt.dot %[[LHS_MASKED]], %[[RHS_MASKED]], %[[ACC]]
+CHECK:        scf.yield %[[RHS_MASKED]] : tensor<32x64xf32>
+CHECK:        scf.yield %[[RHS_TILE]] : tensor<32x64xf32>
+CHECK:        %[[ACC_NEXT:.*]] = tt.dot %[[LHS_MASK_IF_STMT]], %[[RHS_MASK_IF_STMT]], %[[ACC]]
 CHECK:        scf.yield %[[LHS_ITER_PTR_NEXT]], %[[RHS_ITER_PTR_NEXT]], %[[ACC_NEXT]] : !tt.ptr<tensor<16x32xi8>>, !tt.ptr<tensor<32x64xf32>>, tensor<16x64xf32>
 CHECK:      }
 CHECK:      %[[OUT_PTR:.*]] = tt.make_tensor_ptr %[[OUT]], [%[[C80]], %[[SIZE_M]]], [%[[SIZE_M]], %[[C1]]], [%[[C0]], %[[C0]]] {order = array<i32: 1, 0>} : <tensor<16x64xf32>>
@@ -582,18 +590,25 @@ CHECK:      %[[LHS_ITER_PTR_NEXT:.*]] = tt.advance %[[LHS_ITER_PTR]], [%[[C0]], 
 CHECK:      %[[RHS_TILE:.*]] = tt.load %[[RHS_ITER_PTR]] {boundaryCheck = array<i32: 0, 1>
 CHECK:      %[[RHS_ITER_PTR_NEXT:.*]] = tt.advance %[[RHS_ITER_PTR]], [%[[TILE_SIZE_K]], %[[C0]]]
 CHECK:      %[[TILE_K_LIMIT:.*]] = arith.subi %[[SIZE_K]], %[[BLOCK_K]] : i32
+CHECK:      %[[MASK_IF_COND:.*]]  = arith.cmpi slt, %[[TILE_K_LIMIT]], %c32_i32 : i32
+CHECK:      %[[LHS_MASK_IF_STMT:.*]] = scf.if %[[MASK_IF_COND]] -> (tensor<16x32xf32>) {
 CHECK:      %[[K_TILE_IOTA:.*]] = tt.make_range {end = 32 : i32, start = 0 : i32} : tensor<32xi32>
 CHECK:      %[[K_OFFSETS_1K:.*]] = tt.expand_dims %[[K_TILE_IOTA]] {axis = 0 : i32} : tensor<32xi32> -> tensor<1x32xi32>
 CHECK:      %[[TILE_K_LIMIT_1K:.*]] = tt.splat %[[TILE_K_LIMIT]] : i32 -> tensor<1x32xi32>
 CHECK:      %[[LHS_INBOUNDS_1K:.*]] = arith.cmpi slt, %[[K_OFFSETS_1K]], %[[TILE_K_LIMIT_1K]] : tensor<1x32xi32>
 CHECK:      %[[LHS_INBOUNDS_MK:.*]] = tt.broadcast %[[LHS_INBOUNDS_1K]] : tensor<1x32xi1> -> tensor<16x32xi1>
 CHECK:      %[[LHS_MASKED:.*]] = arith.select %[[LHS_INBOUNDS_MK]], %[[LHS_TILE]], %[[ZERO_MK]]
+CHECK:      scf.yield %[[LHS_MASKED]] : tensor<16x32xf32>
+CHECK:      scf.yield %[[LHS_TILE]] : tensor<16x32xf32>
+CHECK:      %[[RHS_MASK_IF_STMT:.*]] = scf.if %[[MASK_IF_COND]] -> (tensor<32x16xf32>) {
 CHECK:      %[[K_OFFSETS_K1:.*]] = tt.expand_dims %[[K_TILE_IOTA]] {axis = 1 : i32} : tensor<32xi32> -> tensor<32x1xi32>
 CHECK:      %[[TILE_K_LIMIT_K1:.*]] = tt.splat %[[TILE_K_LIMIT]] : i32 -> tensor<32x1xi32>
 CHECK:      %[[RHS_INBOUNDS_K1:.*]] = arith.cmpi slt, %[[K_OFFSETS_K1]], %[[TILE_K_LIMIT_K1]] : tensor<32x1xi32>
 CHECK:      %[[RHS_INBOUNDS_KN:.*]] = tt.broadcast %[[RHS_INBOUNDS_K1]] : tensor<32x1xi1> -> tensor<32x16xi1>
 CHECK:      %[[RHS_MASKED:.*]] = arith.select %[[RHS_INBOUNDS_KN]], %[[RHS_TILE]], %[[ZERO_KN]] : tensor<32x16xi1>, tensor<32x16xf32>
-CHECK:      %[[ACC_NEXT:.*]] = tt.dot %[[LHS_MASKED]], %[[RHS_MASKED]], %[[ACC]]
+CHECK:      scf.yield %[[RHS_MASKED]] : tensor<32x16xf32>
+CHECK:      scf.yield %[[RHS_TILE]] : tensor<32x16xf32>
+CHECK:      %[[ACC_NEXT:.*]] = tt.dot %[[LHS_MASK_IF_STMT]], %[[RHS_MASK_IF_STMT]], %[[ACC]]
 CHECK:      scf.yield %[[LHS_ITER_PTR_NEXT]], %[[RHS_ITER_PTR_NEXT]], %[[ACC_NEXT]] : !tt.ptr<tensor<16x32xf32>>, !tt.ptr<tensor<32x16xf32>>, tensor<16x16xf32>
 CHECK:    }
 
@@ -4034,10 +4049,10 @@ TEST_F(CompareTest, TritonDotFusionCanHaveNoParametersAtAll) {
 HloModule m, is_scheduled=true
 
 triton_gemm___computation {
-  c = f32[] constant(123)
-  b = f32[11,63] broadcast(c)
-  c2 = f32[] constant(945)
-  b2 = f32[63,45] broadcast(c2)
+  c = f32[] constant(7)
+  b = f32[11,61] broadcast(c)
+  c2 = f32[] constant(5)
+  b2 = f32[61,45] broadcast(c2)
   ROOT _.1 = f32[11,45]{1,0} dot(b, b2),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
@@ -4056,10 +4071,10 @@ ENTRY e {
 HloModule m, is_scheduled=true
 
 ENTRY triton_gemm___computation {
-  constant_1 = f32[] constant(945)
-  constant = f32[] constant(123)
-  broadcast = f32[11,63]{1,0} broadcast(constant), dimensions={}
-  broadcast.1 = f32[63,45]{1,0} broadcast(constant_1), dimensions={}
+  constant_1 = f32[] constant(7)
+  constant = f32[] constant(5)
+  broadcast = f32[11,61]{1,0} broadcast(constant), dimensions={}
+  broadcast.1 = f32[61,45]{1,0} broadcast(constant_1), dimensions={}
   gemm = (f32[11,45]{1,0}, s8[0]{0}) custom-call(broadcast, broadcast.1),
     custom_call_target="__cublas$gemm",
     backend_config={"gemm_backend_config": {"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}}
