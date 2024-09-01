@@ -425,10 +425,13 @@ cc_library(
         "//xla/stream_executor:plugin_registry",
     ]) + [
         "//xla/stream_executor",  # build_cleaner: keep
+        "//xla/stream_executor:numeric_options",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
+        "@cudnn_frontend_archive//:cudnn_frontend",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/protobuf:dnn_proto_cc",
     ],
@@ -626,6 +629,7 @@ xla_test(
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",

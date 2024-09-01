@@ -13,10 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/stream_executor/cuda/cuda_platform.h"
-
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "tsl/platform/statusor.h"
