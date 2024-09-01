@@ -60,7 +60,7 @@ jobs:
         name: Login to AR
         # Once this is verified, change the label's name. For now, we will piggyback on gcr.io actions.
         if: contains(github.event.pull_request.labels.*.name, 'build and push to gcr.io for staging')
-        uses: docker/login-action@0d4c9c5ea7693da7b068278f7b52bda2a190a446 # v3.2.0
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
         with:
           registry: us-central1-docker.pkg.dev
           username: _json_key
@@ -73,7 +73,7 @@ jobs:
       -
         name: Build containers, and push to GCR only if the 'build and push to gcr.io for staging' label is applied
         id: docker_build
-        uses: docker/build-push-action@5176d81f87c23d6fc96624dfdbcd9f3830bbe445 # v6.5.0
+        uses: docker/build-push-action@5cd11c3a4ced054e52742c5fd54dca954e0edd85 # v6.7.0
         with:
           push: ${{ contains(github.event.pull_request.labels.*.name, 'build and push to gcr.io for staging') }}
           context: ./tensorflow/tools/tf_sig_build_dockerfiles
