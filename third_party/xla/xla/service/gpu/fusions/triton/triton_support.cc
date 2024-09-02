@@ -296,6 +296,10 @@ CodegenDecision CanTritonHandleSlice(
 CodegenDecision IsTritonSupportedInstructionImpl(
     const HloInstruction& instr, const se::GpuComputeCapability& gpu_version,
     bool is_within_reduction_computation) {
+  if (internal::IsTritonUnsupportedOpcode(instr.opcode())) {
+    return "Unsupported opcode.";
+  }
+
   // Special handling for the kConvert instruction, which has a non-standard
   // set of supported types.
   if (instr.opcode() == HloOpcode::kConvert) {
@@ -367,6 +371,69 @@ CodegenDecision IsTritonSupportedInstructionImpl(
 }
 
 }  // namespace
+
+namespace internal {
+bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
+  switch (opcode) {
+    case HloOpcode::kAddDependency:
+    case HloOpcode::kAfterAll:
+    case HloOpcode::kBatchNormGrad:
+    case HloOpcode::kBatchNormInference:
+    case HloOpcode::kBatchNormTraining:
+    case HloOpcode::kBitcastConvert:
+    case HloOpcode::kCall:
+    case HloOpcode::kCholesky:
+    case HloOpcode::kCollectiveBroadcast:
+    case HloOpcode::kCollectivePermuteDone:
+    case HloOpcode::kCollectivePermuteStart:
+    case HloOpcode::kComplex:
+    case HloOpcode::kConcatenate:
+    case HloOpcode::kConditional:
+    case HloOpcode::kConvolution:
+    case HloOpcode::kCopy:
+    case HloOpcode::kCopyDone:
+    case HloOpcode::kCopyStart:
+    case HloOpcode::kCustomCall:
+    case HloOpcode::kDomain:
+    case HloOpcode::kDot:
+    case HloOpcode::kDynamicReshape:
+    case HloOpcode::kDynamicSlice:
+    case HloOpcode::kDynamicUpdateSlice:
+    case HloOpcode::kFft:
+    case HloOpcode::kFusion:
+    case HloOpcode::kGather:
+    case HloOpcode::kGetDimensionSize:
+    case HloOpcode::kGetTupleElement:
+    case HloOpcode::kInfeed:
+    case HloOpcode::kMap:
+    case HloOpcode::kOptimizationBarrier:
+    case HloOpcode::kOutfeed:
+    case HloOpcode::kPad:
+    case HloOpcode::kPartitionId:
+    case HloOpcode::kRecv:
+    case HloOpcode::kRecvDone:
+    case HloOpcode::kReduceWindow:
+    case HloOpcode::kReplicaId:
+    case HloOpcode::kReverse:
+    case HloOpcode::kRngBitGenerator:
+    case HloOpcode::kRngGetAndUpdateState:
+    case HloOpcode::kScatter:
+    case HloOpcode::kSelectAndScatter:
+    case HloOpcode::kSend:
+    case HloOpcode::kSendDone:
+    case HloOpcode::kSetDimensionSize:
+    case HloOpcode::kSort:
+    case HloOpcode::kStochasticConvert:
+    case HloOpcode::kTopK:
+    case HloOpcode::kTriangularSolve:
+    case HloOpcode::kTuple:
+    case HloOpcode::kWhile:
+      return true;
+    default:
+      return false;
+  }
+}
+}  // namespace internal
 
 absl::Status EnsureTritonSupportsComputeCapability(
     const se::GpuComputeCapability& gpu_compute_capability) {

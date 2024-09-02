@@ -1129,35 +1129,12 @@ INSTANTIATE_TEST_SUITE_P(RngTestSuite, RngTest,
                          AllTestCombinationsForOpcodes(kTestedOpsRng),
                          TritonSupportTestTypeAndOpcodeAndDeviceToString);
 
-absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
-  absl::flat_hash_set<HloOpcode> ret;
-  ret.insert(kTestedOpsBitcastReshape.begin(), kTestedOpsBitcastReshape.end());
-  ret.insert(kTestedOpsUnaryElementwise.begin(),
-             kTestedOpsUnaryElementwise.end());
-  ret.insert(kTestedOpsConvert.begin(), kTestedOpsConvert.end());
-  ret.insert(kTestedOpsBinaryElementwise.begin(),
-             kTestedOpsBinaryElementwise.end());
-  ret.insert(kTestedOpsTernaryElementwise.begin(),
-             kTestedOpsTernaryElementwise.end());
-  ret.insert(kTestedOpsReduction.begin(), kTestedOpsReduction.end());
-  ret.insert(kTestedOpsSlice.begin(), kTestedOpsSlice.end());
-  ret.insert(kTestedOpsTranspose.begin(), kTestedOpsTranspose.end());
-  ret.insert(kTestedOpsCollectives.begin(), kTestedOpsCollectives.end());
-  ret.insert(kTestedOpsParameter.begin(), kTestedOpsParameter.end());
-  ret.insert(kTestedOpsConstant.begin(), kTestedOpsConstant.end());
-  ret.insert(kTestedOpsIota.begin(), kTestedOpsIota.end());
-  ret.insert(kTestedOpsRng.begin(), kTestedOpsRng.end());
-  return ret;
-}
-
-absl::flat_hash_set<HloOpcode> AllUntestedOpcodes() {
-  return absl::flat_hash_set<HloOpcode>{HloOpcode::kAddDependency,
+constexpr std::array kUnsupportedOps = {HloOpcode::kAddDependency,
                                         HloOpcode::kAfterAll,
                                         HloOpcode::kBatchNormGrad,
                                         HloOpcode::kBatchNormInference,
                                         HloOpcode::kBatchNormTraining,
                                         HloOpcode::kBitcastConvert,
-                                        HloOpcode::kBroadcast,
                                         HloOpcode::kCall,
                                         HloOpcode::kCholesky,
                                         HloOpcode::kCollectiveBroadcast,
@@ -1205,6 +1182,38 @@ absl::flat_hash_set<HloOpcode> AllUntestedOpcodes() {
                                         HloOpcode::kTriangularSolve,
                                         HloOpcode::kTuple,
                                         HloOpcode::kWhile};
+
+absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
+  absl::flat_hash_set<HloOpcode> ret;
+  ret.insert(kTestedOpsBitcastReshape.begin(), kTestedOpsBitcastReshape.end());
+  ret.insert(kTestedOpsUnaryElementwise.begin(),
+             kTestedOpsUnaryElementwise.end());
+  ret.insert(kTestedOpsConvert.begin(), kTestedOpsConvert.end());
+  ret.insert(kTestedOpsBinaryElementwise.begin(),
+             kTestedOpsBinaryElementwise.end());
+  ret.insert(kTestedOpsTernaryElementwise.begin(),
+             kTestedOpsTernaryElementwise.end());
+  ret.insert(kTestedOpsReduction.begin(), kTestedOpsReduction.end());
+  ret.insert(kTestedOpsSlice.begin(), kTestedOpsSlice.end());
+  ret.insert(kTestedOpsTranspose.begin(), kTestedOpsTranspose.end());
+  ret.insert(kTestedOpsCollectives.begin(), kTestedOpsCollectives.end());
+  ret.insert(kTestedOpsParameter.begin(), kTestedOpsParameter.end());
+  ret.insert(kTestedOpsConstant.begin(), kTestedOpsConstant.end());
+  ret.insert(kTestedOpsIota.begin(), kTestedOpsIota.end());
+  ret.insert(kTestedOpsRng.begin(), kTestedOpsRng.end());
+
+  ret.insert(kUnsupportedOps.begin(), kUnsupportedOps.end());
+  return ret;
+}
+
+absl::flat_hash_set<HloOpcode> AllUntestedOpcodes() {
+  return absl::flat_hash_set<HloOpcode>{HloOpcode::kBroadcast};
+}
+
+TEST(OpCoverage, UnsupportedOpcodes) {
+  for (HloOpcode opcode : kUnsupportedOps) {
+    EXPECT_TRUE(internal::IsTritonUnsupportedOpcode(opcode));
+  }
 }
 
 TEST(OpCoverage, TestedAndUntestedDoNotOverlap) {

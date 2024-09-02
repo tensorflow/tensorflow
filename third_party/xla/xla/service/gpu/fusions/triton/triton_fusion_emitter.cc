@@ -1037,10 +1037,9 @@ absl::StatusOr<Value> EmitTiledHloInstruction(
     return EmitTiledTranspose(b, tiled_hlo, values[tiled_hlo.operand(0)]);
   }
 
-  // All these operations are currently supported only as operations on indices
-  // which are pushed to loads and stores. We don't generate any further code
-  // for these operations here.
-  if (hlo->opcode() == HloOpcode::kPad || IsSliceWithUnitStrides(hlo)) {
+  // Slice is currently supported only as an operation on indices
+  // which is pushed to loads and stores. We don't generate any further code.
+  if (IsSliceWithUnitStrides(hlo)) {
     return values[tiled_hlo.operand(0)];
   }
 
