@@ -106,69 +106,29 @@ struct HostCallback {
   std::function<absl::Status(void**, void**)> callback;
 };
 
-// A helper class that maintains the send/recv states for a host callback.
-class HostCallbackContext {
+class HostCallbackContext;
+
+// Owner object to store the callbacks for async passing.
+// Needs to be kept alive for callbacks to be kept alive.
+class HostCallbackStates {
  public:
-  HostCallbackContext(
+  void AddHostCallback(
       HostCallback host_callback,
       bool use_major_to_minor_data_layout_for_callbacks,
-      PjRtHostMemoryForDeviceManager* host_memory_for_device_manager)
-      : host_callback_(std::move(host_callback)),
-        use_major_to_minor_data_layout_for_callbacks_(
-            use_major_to_minor_data_layout_for_callbacks),
-        host_memory_for_device_manager_(host_memory_for_device_manager),
-        args_(host_callback_.operands.size()),
-        result_channels_(host_callback_.results.size()),
-        ready_count_(args_.size()) {
-    if (!use_major_to_minor_data_layout_for_callbacks_) {
-      CHECK(host_memory_for_device_manager_);
-    }
-    for (auto& channel : result_channels_) {
-      channel = std::make_unique<ThreadSafePjRtChunkQueue>();
-    }
+      PjRtHostMemoryForDeviceManager* host_memory_for_device_manager);
+
+  absl::Span<const std::vector<SendCallback>> SendCallbacks() const {
+    return send_callbacks_;
+  }
+  absl::Span<const std::vector<RecvCallback>> RecvCallbacks() const {
+    return recv_callbacks_;
   }
 
-  absl::Status OnSend(int arg_num, const PjRtTransferMetadata& metadata,
-                      PjRtChunk data);
-
-  void Receive(int res_num, const PjRtTransferMetadata& metadata,
-               std::unique_ptr<CopyToDeviceStream> stream);
-
-  const HostCallback& host_callback() const { return host_callback_; }
-
  private:
-  HostCallback host_callback_;
-  bool use_major_to_minor_data_layout_for_callbacks_;
-  PjRtHostMemoryForDeviceManager* host_memory_for_device_manager_ = nullptr;
-  std::vector<PjRtChunk> args_;
-  std::vector<std::unique_ptr<ThreadSafePjRtChunkQueue>> result_channels_;
-  std::atomic<int> ready_count_;
+  std::vector<std::unique_ptr<HostCallbackContext>> states_;
+  std::vector<std::vector<SendCallback>> send_callbacks_;
+  std::vector<std::vector<RecvCallback>> recv_callbacks_;
 };
-
-// The execution states for host callbacks for all replicas. The states are kept
-// as vectors of vectors. The outer vector corresponds to the execution
-// replicas. The inner vector is a list of host callback states for a single
-// execution replica.
-struct HostCallbackStates {
-  std::vector<std::vector<std::unique_ptr<HostCallbackContext>>> contexts;
-  std::vector<std::vector<SendCallback>> send_callbacks;
-  std::vector<std::vector<RecvCallback>> recv_callbacks;
-};
-
-// Creates the execution context for the `host_callback` for one
-// replica.
-//
-// `use_major_to_minor_data_layout_for_callbacks` should match the value set in
-// the corresponding ExecuteOptions; see the comment there for more
-// info. `host_memory_for_device_manager` may be nullptr if
-// `use_major_to_minor_data_layout_for_callbacks` is true.
-std::unique_ptr<HostCallbackContext>
-CreateHostCallbackStateAndAppendSendRecvCallbacks(
-    HostCallback host_callback,
-    PjRtHostMemoryForDeviceManager* host_memory_for_device_manager,
-    std::vector<SendCallback>& send_callbacks,
-    std::vector<RecvCallback>& recv_callbacks,
-    bool use_major_to_minor_data_layout_for_callbacks);
 
 }  // namespace xla
 

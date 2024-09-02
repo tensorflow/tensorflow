@@ -1240,49 +1240,6 @@ PjRtStreamExecutorClient::MakeCrossHostReceiveBuffers(
   return buffers;
 }
 
-absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-PjRtStreamExecutorClient::MakeCrossHostReceiveBuffersForGather(
-    absl::Span<const Shape> shapes, std::vector<GatherDetails> gather_details,
-    PjRtDevice* device, PjRtCrossHostRecvNotifier notifier) {
-  VLOG(2) << "Making " << gather_details.size()
-          << " cross host receive buffers for gather";
-  if (gather_details.empty()) {
-    return InvalidArgument(
-        "gather_details parameter empty in "
-        "MakeCrossHostReceiveBuffersForGather");
-  }
-
-  if (shapes.size() != gather_details.size()) {
-    return InvalidArgument(
-        "gather_details parameter has length %lld but shapes "
-        "parameter has length %lld in "
-        "MakeCrossHostReceiveBuffersForGather",
-        gather_details.size(), shapes.size());
-  }
-
-  TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                      tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
-                          ->GetLocalDeviceState());
-  std::shared_ptr<BufferSequencingEvent> definition_event =
-      std::make_shared<BufferSequencingEvent>(this->thread_pool());
-  std::vector<std::unique_ptr<PjRtBuffer>> buffers;
-  buffers.reserve(shapes.size());
-  for (int i = 0; i < shapes.size(); ++i) {
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<PjRtBuffer> buffer,
-        AllocateDestinationBuffer(shapes[i], device, local_device,
-                                  /*copy_stream=*/nullptr,
-                                  /*is_uninitialized_create=*/false, this,
-                                  definition_event));
-    buffers.push_back(std::move(buffer));
-  }
-
-  TF_RETURN_IF_ERROR(
-      EnqueueCrossHostReceive(buffers, std::move(definition_event),
-                              std::move(notifier), gather_details));
-  return buffers;
-}
-
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 PjRtStreamExecutorClient::CreateViewOfDeviceBuffer(
     void* device_ptr, const Shape& shape, PjRtDevice* device,

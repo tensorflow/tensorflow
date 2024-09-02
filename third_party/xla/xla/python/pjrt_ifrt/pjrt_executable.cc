@@ -550,23 +550,16 @@ PjRtLoadedExecutable::Execute(absl::Span<tsl::RCReference<Array>> args,
   if (!host_send_recv_callbacks_.empty()) {
     host_callback_states = std::make_unique<HostCallbackStates>();
     for (int i = 0; i < num_computations; ++i) {
-      auto& contexts = host_callback_states->contexts.emplace_back();
-      auto& send_callbacks =
-          host_callback_states->send_callbacks.emplace_back();
-      auto& recv_callbacks =
-          host_callback_states->recv_callbacks.emplace_back();
-
       for (const auto& host_send_recv_callback : host_send_recv_callbacks_) {
-        contexts.push_back(CreateHostCallbackStateAndAppendSendRecvCallbacks(
+        host_callback_states->AddHostCallback(
             host_send_recv_callback->host_callback(),
-            /*host_memory_for_device_manager=*/nullptr, send_callbacks,
-            recv_callbacks,
             /*use_major_to_minor_data_layout_for_callbacks=*/
-            options.use_major_to_minor_data_layout_for_callbacks));
+            options.use_major_to_minor_data_layout_for_callbacks,
+            /*host_memory_for_device_manager=*/nullptr);
       }
     }
-    opts.send_callbacks = host_callback_states->send_callbacks;
-    opts.recv_callbacks = host_callback_states->recv_callbacks;
+    opts.send_callbacks = host_callback_states->SendCallbacks();
+    opts.recv_callbacks = host_callback_states->RecvCallbacks();
   }
 
   // Execute the computation.
