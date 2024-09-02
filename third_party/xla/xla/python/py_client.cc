@@ -199,11 +199,10 @@ nb::list PyClient::LiveExecutables() {
 
 absl::Status PyClient::Defragment() {
   CHECK(PyGILState_Check());
-  auto runtime_type = ifrt_client_->runtime_type();
-  if (runtime_type == PjRtRuntimeTypeString(PjRtRuntimeType::kTfrt)) {
+
+  if (dynamic_cast<PjRtStreamExecutorClient*>(pjrt_client()) == nullptr) {
     return pjrt_client()->Defragment();
-  } else if (runtime_type ==
-             PjRtRuntimeTypeString(PjRtRuntimeType::kStreamExecutor)) {
+  } else {
     struct TmpBuffer {
       // Non-empty for buffers found in a PyArray_Storage. Multiple Arrays
       // can reference the same PjRtBuffer.
