@@ -54,12 +54,12 @@ def byte_swap_tensor_content(tensor, from_endiness, to_endiness):
       tensor_size = 1
       for sz in tshape:
         if sz.size != 0:
-          tensor_size = tensor_size * sz.size
+          tensor_size *= sz.size
       chunksize = int(len(tensor_bytes) / tensor_size)
       # Split tensor_data into chunks for byte swapping.
       to_swap = [
           tensor_bytes[i : i + chunksize]
-          for i in range(0, len(tensor_bytes), chunksize)
+          for i in range(len(tensor_bytes), chunksize)
       ]
       # Swap and replace tensor_content.
       tensor.tensor_content = b"".join(
