@@ -8135,6 +8135,10 @@ bool TfLiteXNNPackDelegateCanUseInMemoryWeightCacheProvider() {
   return false;
 }
 
+const char* TfLiteXNNPackDelegateInMemoryFilePath() {
+  return tflite::xnnpack::kInMemoryCachePath;
+}
+
 TfLiteXNNPackDelegateOptions TfLiteXNNPackDelegateOptionsDefault() {
   TfLiteXNNPackDelegateOptions options = {0};
 
