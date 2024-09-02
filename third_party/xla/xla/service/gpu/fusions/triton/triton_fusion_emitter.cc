@@ -1000,11 +1000,14 @@ absl::StatusOr<Value> EmitTiledHloInstruction(
     return parameter;
   }
 
-  if (hlo->opcode() == HloOpcode::kConstant &&
-      ShapeUtil::IsEffectiveScalar(hlo->shape())) {
-    TF_ASSIGN_OR_RETURN(Value constant, EmitConstant(b, *hlo));
-    // Splat makes it a tensor to avoid type mismatches.
-    return Splat(b, constant, {});
+  if (hlo->opcode() == HloOpcode::kConstant) {
+    if (ShapeUtil::IsScalar(hlo->shape())) {
+      TF_ASSIGN_OR_RETURN(Value constant, EmitConstant(b, *hlo));
+      // Splat makes it a tensor to avoid type mismatches.
+      return Splat(b, constant, {});
+    }
+    return absl::UnimplementedError(
+        absl::StrCat("Unsupported non-scalar constant ", hlo->ToString()));
   }
 
   if (hlo->opcode() == HloOpcode::kBroadcast) {

@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 
@@ -318,6 +319,15 @@ CodegenDecision IsTritonSupportedInstructionImpl(
 
   if (!input_types_are_supported) {
     return "Unsupported input data type.";
+  }
+
+  // Const is technically an elementwise op, so this check must be before the
+  // elementwise check.
+  if (instr.opcode() == HloOpcode::kConstant) {
+    return ShapeUtil::IsScalar(instr.shape())
+               ? CodegenDecision{}
+               : CodegenDecision{
+                     "Only scalar constants are supported in Triton."};
   }
 
   if (instr.IsElementwise()) {

@@ -125,7 +125,10 @@ bool DoesOpSupportType(HloOpcode opcode, PrimitiveType type) {
     case HloOpcode::kRemainder:
     case HloOpcode::kSubtract:
     case HloOpcode::kNegate:
+    case HloOpcode::kIota:
       return type != PRED;
+    case HloOpcode::kRng:
+      return !pu::IsComplexType(type);
     default:
       // Returning true by default ensures that newly added ops are not
       // skipped.
@@ -1032,10 +1035,102 @@ INSTANTIATE_TEST_SUITE_P(
                        ::testing::ValuesIn(AllDevicesToTest())),
     TritonSupportTestTypeAndDeviceToString);
 
-absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
-  // The return set is initialized with ops that are implicitly tested.
-  absl::flat_hash_set<HloOpcode> ret{HloOpcode::kParameter};
+using ParameterTest = TritonSupportTestWithTypeAndDeviceParam;
 
+TEST_P(ParameterTest, Parameter) {
+  auto [data_type, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  input = $0[35,131] parameter(0)
+  // TODO(b/363961478) remove the line below once parameters can be ROOT.
+  ROOT noop = $0[35,131] convert(input)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
+                                                    kHloTestTemplate, data_type,
+                                                    HloOpcode::kParameter));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{16, 32}, cc);
+}
+
+constexpr std::array kTestedOpsParameter = {HloOpcode::kParameter};
+
+INSTANTIATE_TEST_SUITE_P(
+    ParameterTestSuite, ParameterTest,
+    ::testing::Combine(::testing::ValuesIn(AllXlaDataTypes()),
+                       ::testing::ValuesIn(AllDevicesToTest())),
+    TritonSupportTestTypeAndDeviceToString);
+
+using ConstantTest = TritonSupportTestWithTypeAndDeviceParam;
+
+TEST_P(ConstantTest, Constant2D) {
+  // The IsTritonSupportedReduction effectively tests the scalar constant
+  // support.
+  auto [data_type, cc] = GetParam();
+  bool dtype_is_complex = data_type == C64 || data_type == C128;
+  const std::string kHloTestTemplate =
+      absl::Substitute(R"(
+ENTRY triton_computation {
+  ROOT const = $0[3,3] constant({{$1,$1,$1},{$1,$1,$1},{$1,$1,$1}})
+})",
+                       "$0", dtype_is_complex ? "(0, 0)" : "0");
+
+  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
+                                                    kHloTestTemplate, data_type,
+                                                    HloOpcode::kConstant));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 2}, cc);
+}
+
+constexpr std::array kTestedOpsConstant = {HloOpcode::kConstant};
+
+INSTANTIATE_TEST_SUITE_P(
+    ConstantTestSuite, ConstantTest,
+    ::testing::Combine(::testing::ValuesIn(AllXlaDataTypes()),
+                       ::testing::ValuesIn(AllDevicesToTest())),
+    TritonSupportTestTypeAndDeviceToString);
+
+using IotaTest = TritonSupportTestWithTypeAndOpcodeAndDeviceParam;
+
+TEST_P(IotaTest, Iota2D) {
+  auto [data_type, opcode, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  ROOT input = $0[35,131] iota(), iota_dimension=0
+})";
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{16, 32}, cc);
+}
+
+constexpr std::array kTestedOpsIota = {HloOpcode::kIota};
+
+INSTANTIATE_TEST_SUITE_P(IotaTestSuite, IotaTest,
+                         AllTestCombinationsForOpcodes(kTestedOpsIota),
+                         TritonSupportTestTypeAndOpcodeAndDeviceToString);
+
+using RngTest = TritonSupportTestWithTypeAndOpcodeAndDeviceParam;
+
+TEST_P(RngTest, Rng) {
+  auto [data_type, opcode, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  low = $0[] parameter(0)
+  high = $0[] parameter(1)
+  ROOT root = $0[33,77] rng(low, high), distribution=rng_uniform
+})";
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{16, 32}, cc);
+}
+
+constexpr std::array kTestedOpsRng = {HloOpcode::kRng};
+
+INSTANTIATE_TEST_SUITE_P(RngTestSuite, RngTest,
+                         AllTestCombinationsForOpcodes(kTestedOpsRng),
+                         TritonSupportTestTypeAndOpcodeAndDeviceToString);
+
+absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
+  absl::flat_hash_set<HloOpcode> ret;
   ret.insert(kTestedOpsBitcastReshape.begin(), kTestedOpsBitcastReshape.end());
   ret.insert(kTestedOpsUnaryElementwise.begin(),
              kTestedOpsUnaryElementwise.end());
@@ -1048,6 +1143,10 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   ret.insert(kTestedOpsSlice.begin(), kTestedOpsSlice.end());
   ret.insert(kTestedOpsTranspose.begin(), kTestedOpsTranspose.end());
   ret.insert(kTestedOpsCollectives.begin(), kTestedOpsCollectives.end());
+  ret.insert(kTestedOpsParameter.begin(), kTestedOpsParameter.end());
+  ret.insert(kTestedOpsConstant.begin(), kTestedOpsConstant.end());
+  ret.insert(kTestedOpsIota.begin(), kTestedOpsIota.end());
+  ret.insert(kTestedOpsRng.begin(), kTestedOpsRng.end());
   return ret;
 }
 
@@ -1067,7 +1166,6 @@ absl::flat_hash_set<HloOpcode> AllUntestedOpcodes() {
                                         HloOpcode::kComplex,
                                         HloOpcode::kConcatenate,
                                         HloOpcode::kConditional,
-                                        HloOpcode::kConstant,
                                         HloOpcode::kConvolution,
                                         HloOpcode::kCopy,
                                         HloOpcode::kCopyDone,
@@ -1084,7 +1182,6 @@ absl::flat_hash_set<HloOpcode> AllUntestedOpcodes() {
                                         HloOpcode::kGetDimensionSize,
                                         HloOpcode::kGetTupleElement,
                                         HloOpcode::kInfeed,
-                                        HloOpcode::kIota,
                                         HloOpcode::kMap,
                                         HloOpcode::kOptimizationBarrier,
                                         HloOpcode::kOutfeed,
@@ -1095,7 +1192,6 @@ absl::flat_hash_set<HloOpcode> AllUntestedOpcodes() {
                                         HloOpcode::kReduceWindow,
                                         HloOpcode::kReplicaId,
                                         HloOpcode::kReverse,
-                                        HloOpcode::kRng,
                                         HloOpcode::kRngBitGenerator,
                                         HloOpcode::kRngGetAndUpdateState,
                                         HloOpcode::kScatter,
