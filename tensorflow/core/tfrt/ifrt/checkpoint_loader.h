@@ -57,6 +57,7 @@ class CheckpointLoader {
       const mlrt::bc::Vector<bool>& truncate_in_cast,
       tf_mlrt::Context& context);
 
+ private:
   IfrtRestoreTensorRegistry* ifrt_restore_tensor_registry_;
   tfrt::ConcurrentWorkQueue* checkpoint_loader_work_queue_;
 };

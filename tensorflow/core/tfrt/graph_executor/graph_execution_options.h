@@ -108,6 +108,10 @@ struct GraphExecutionOptions {
   // This option is experimental.
   bool use_ifrt = false;
 
+  // If true, and `use_ifrt` is true, it will trigger a whole graph analysis for
+  // checkpoint restore that is implemented by Pathways' persistence api.
+  bool ifrt_use_persistence_api_for_restore = false;
+
   tensorflow::TfrtCompileOptions compile_options;
 };
 
