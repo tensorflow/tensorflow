@@ -48,6 +48,7 @@ cc_library(
         "//xla/service/llvm_ir:llvm_command_line_options",
         "//xla/service/llvm_ir:llvm_type_conversion_util",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor:semantic_version",
         "//xla/tsl/util:env_var",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
@@ -120,8 +121,9 @@ xla_cc_test(
     deps = [
         ":llvm_gpu_backend",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor:semantic_version",
         "//xla/tests:xla_internal_test_main",
-        "@llvm-project//llvm:Core",
+        "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:test",
     ],
 )

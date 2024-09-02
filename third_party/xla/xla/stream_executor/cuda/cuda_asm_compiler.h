@@ -24,9 +24,10 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/stream_executor/cuda/cuda_driver.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
+#include "xla/stream_executor/semantic_version.h"
 
 namespace stream_executor {
 // Compiles the given PTX string using ptxas and returns the resulting machine
@@ -80,24 +81,23 @@ absl::StatusOr<std::vector<uint8_t>> LinkUsingNvlink(
     stream_executor::CudaComputeCapability cc,
     std::string_view preferred_cuda_dir, std::vector<CubinOrPTXImage> images);
 
-using ToolVersion = std::array<int64_t, 3>;
 absl::StatusOr<std::string> FindCudaExecutable(
     std::string_view binary_name, std::string_view preferred_cuda_dir,
-    ToolVersion minimum_version,
-    absl::Span<const ToolVersion> excluded_versions);
+    SemanticVersion minimum_version,
+    absl::Span<const SemanticVersion> excluded_versions);
 
 absl::StatusOr<std::string> FindCudaExecutable(
     std::string_view binary_name, std::string_view preferred_cuda_dir);
 
 // Runs tool --version and parses its version string.
-absl::StatusOr<ToolVersion> GetToolVersion(std::string_view tool_path);
+absl::StatusOr<SemanticVersion> GetToolVersion(std::string_view tool_path);
 
 // On NVIDIA GPUs, returns the version of the ptxas command line tool.
-absl::StatusOr<ToolVersion> GetAsmCompilerVersion(
+absl::StatusOr<SemanticVersion> GetAsmCompilerVersion(
     std::string_view preferred_cuda_dir);
 
 // On NVIDIA GPUs, returns the version of the nvlink command line tool.
-absl::StatusOr<ToolVersion> GetNvLinkVersion(
+absl::StatusOr<SemanticVersion> GetNvLinkVersion(
     std::string_view preferred_cuda_dir);
 
 }  // namespace stream_executor

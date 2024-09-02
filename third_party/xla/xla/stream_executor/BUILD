@@ -678,6 +678,37 @@ cc_library(
 )
 
 cc_library(
+    name = "semantic_version",
+    srcs = ["semantic_version.cc"],
+    hdrs = ["semantic_version.h"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_test(
+    name = "semantic_version_test",
+    srcs = ["semantic_version_test.cc"],
+    deps = [
+        ":semantic_version",
+        "@com_google_absl//absl/hash:hash_testing",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)
+
+cc_library(
     name = "scratch_allocator",
     hdrs = ["scratch_allocator.h"],
     deps = [

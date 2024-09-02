@@ -575,6 +575,7 @@ cc_library(
         "ptx_compiler_stub.cc",
     ],
     deps = [
+        "//xla/stream_executor:semantic_version",
         "//xla/stream_executor/gpu:gpu_asm_opts",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -589,6 +590,7 @@ cc_library(
     ],
     tags = ["manual"],
     deps = [
+        "//xla/stream_executor:semantic_version",
         "//xla/stream_executor/gpu:gpu_asm_opts",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
@@ -611,6 +613,7 @@ cc_library(
         ":libnvptxcompiler_support_enabled": [":ptx_compiler_impl"],
         "//conditions:default": [":ptx_compiler_stub"],
     }) + [
+        "//xla/stream_executor:semantic_version",
         "//xla/stream_executor/gpu:gpu_asm_opts",
         "@com_google_absl//absl/status:statusor",
     ],
@@ -645,6 +648,7 @@ xla_cc_test(
         ":ptx_compiler",
         ":ptx_compiler_support",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor:semantic_version",
         "//xla/stream_executor/gpu:gpu_asm_opts",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -797,13 +801,13 @@ cuda_only_cc_library(
         "//tensorflow/core/kernels:__subpackages__",
     ]),
     deps = [
-        ":cuda_driver",
         ":cuda_status",
         ":ptx_compiler",
         ":ptx_compiler_support",
         "//xla:status_macros",
         "//xla:util",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor:semantic_version",
         "//xla/stream_executor/gpu:context",
         "//xla/stream_executor/gpu:gpu_asm_opts",
         "//xla/stream_executor/gpu:gpu_driver_header",

@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/util.h"
 #include "tsl/platform/logging.h"
 
@@ -111,7 +112,8 @@ int64_t MinThreadsXRowReduction(const HloModuleConfig& hlo_module_config) {
       // register spilling occurs with some order of instructions, so use less
       // threads to reduce register pressure.
       if (!ptxas_version_tuple.ok() ||
-          ptxas_version_tuple.value() < std::array<int64_t, 3>{12, 2, 0}) {
+          ptxas_version_tuple.value() <
+              stream_executor::SemanticVersion{12, 2, 0}) {
         *use_reduced_thread_count = true;
       }
 

@@ -95,6 +95,7 @@ limitations under the License.
 #include "xla/service/tuple_simplifier.h"
 #include "xla/stream_executor/cuda/cuda_asm_compiler.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
+#include "xla/stream_executor/cuda/cuda_driver.h"  // IWYU pragma : keep - Needed for GpuContext
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/nvjitlink.h"
 #include "xla/stream_executor/cuda/nvjitlink_support.h"
@@ -108,6 +109,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/util/env_var.h"
 #include "xla/util.h"
@@ -849,7 +851,7 @@ static bool IsNvlinkEnabled() {
 
 // Returns the version of the PTX compiler that will be used for the given
 // debug options and preferred CUDA directory (Either libnvptxcompiler or ptxas)
-static absl::StatusOr<stream_executor::ToolVersion> GetAsmCompilerVersion(
+static absl::StatusOr<stream_executor::SemanticVersion> GetAsmCompilerVersion(
     const DebugOptions& debug_options, const std::string& preferred_cuda_dir) {
   if (debug_options.xla_gpu_enable_libnvptxcompiler() &&
       se::IsLibNvPtxCompilerSupported()) {
@@ -880,8 +882,8 @@ absl::StatusOr<se::PtxLinkingMethod> NVPTXCompiler::ChooseLinkingMethod(
     return LinkingMethod::kNvLink;
   }
 
-  int ptxas_version = std::get<0>(asm_compiler_version) * 1000 +
-                      std::get<1>(asm_compiler_version) * 10;
+  int ptxas_version =
+      asm_compiler_version.major() * 1000 + asm_compiler_version.minor() * 10;
   TF_ASSIGN_OR_RETURN(int driver_version,
                       se::gpu::GpuDriver::GetDriverVersion());
 
@@ -894,9 +896,7 @@ absl::StatusOr<se::PtxLinkingMethod> NVPTXCompiler::ChooseLinkingMethod(
       << absl::StrFormat("%d.%d", driver_version / 1000,
                          (driver_version % 1000) / 10)
       << " which is older than the PTX compiler version "
-      << absl::StrFormat("(%d.%d.%d)", std::get<0>(asm_compiler_version),
-                         std::get<1>(asm_compiler_version),
-                         std::get<2>(asm_compiler_version))
+      << asm_compiler_version
       << ". Because the driver is older than the PTX compiler version, XLA is "
          "disabling parallel compilation, which may slow down compilation. "
          "You should update your NVIDIA driver or use the NVIDIA-provided "
