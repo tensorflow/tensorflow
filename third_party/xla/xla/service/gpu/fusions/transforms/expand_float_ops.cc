@@ -232,12 +232,24 @@ Value EmitFloatConversion(Value value, mlir::FloatType to_ty,
                           mlir::ImplicitLocOpBuilder& b) {
   using ma::CmpIPredicate;
 
-  // This is a port of ConvertImpl in
-  // https://github.com/jax-ml/ml_dtypes/blob/main/ml_dtypes/include/float8.h
   auto from_ty = mlir::cast<mlir::FloatType>(value.getType());
   if (to_ty == b.getFloat8E5M2Type() && from_ty == b.getF16Type()) {
     return EmitF16ToF8e5m2(value, b);
   }
+
+  if (to_ty == b.getFloat8E5M2Type() && from_ty == b.getBF16Type()) {
+    // Going through f32 and f16 is significantly faster than the fallback code
+    // below.
+    return EmitF16ToF8e5m2(
+        b.create<ma::TruncFOp>(b.getF16Type(),
+                               b.create<ma::ExtFOp>(b.getF32Type(), value)),
+        b);
+  }
+
+  // Fallback code. The generated code here is not good. If you end up here,
+  // you might want to add a more specific conversion.
+  // This is a port of ConvertImpl in
+  // https://github.com/jax-ml/ml_dtypes/blob/main/ml_dtypes/include/float8.h
 
   int from_mantissa = GetSignificandBits(from_ty);
   int from_bias = GetExponentBias(from_ty);
