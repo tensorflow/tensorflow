@@ -2865,20 +2865,10 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> TranslateLLVMToLLVMIR(
   if (!llvmModule) {
     return Internal("Failed to emit LLVM IR.");
   }
-
-  // Link external libraries before performing optimizations.
-  TF_RETURN_IF_ERROR(nvptx::LinkLibdeviceIfNecessary(
-      llvmModule.get(), std::string(libdevice_path)));
-
-  auto optPipeline = mlir::makeOptimizingTransformer(
-      /*optLevel=*/3, /*sizeLevel=*/0,
-      /*targetMachine=*/nullptr);
-
-  if (auto err = optPipeline(llvmModule.get())) {
-    llvm::errs() << err;
-    return Internal("Failed to optimize LLVM IR.");
-  }
-
+  // TODO: b/363203060 - Upstream Triton sets specific flags for the LLVM
+  // optimizer to get best performance. Figure out if we can gain any of it by
+  // propagating these flags to
+  // xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.cc.
   return llvmModule;
 }
 
