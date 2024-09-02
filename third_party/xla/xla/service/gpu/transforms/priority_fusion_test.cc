@@ -91,7 +91,8 @@ class PriorityFusionWithTritonEnabledTest : public PriorityFusionTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = PriorityFusionTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_enable_triton_softmax_priority_fusion(true);
+    debug_options
+        .set_xla_gpu_experimental_enable_triton_softmax_priority_fusion(true);
     return debug_options;
   }
 };

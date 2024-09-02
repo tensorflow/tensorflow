@@ -192,7 +192,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_triton_gemm(true);
   opts.set_xla_gpu_enable_cudnn_int8x32_convolution_reordering(true);
   opts.set_xla_gpu_triton_gemm_any(false);
-  opts.set_xla_gpu_enable_triton_softmax_fusion(false);
   opts.set_xla_gpu_triton_fusion_level(2);
   opts.set_xla_gpu_verify_triton_fusion_numerics(false);
 
@@ -206,7 +205,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_exhaustive_tiling_search(false);
 
   opts.set_xla_gpu_enable_priority_fusion(true);
-  opts.set_xla_gpu_enable_triton_softmax_priority_fusion(false);
+  opts.set_xla_gpu_experimental_enable_triton_softmax_priority_fusion(false);
 
   opts.set_xla_gpu_auto_spmd_partitioning_memory_budget_gb(0);
   opts.set_xla_gpu_auto_spmd_partitioning_memory_budget_ratio(1.1);
@@ -326,6 +325,13 @@ static void WarnIfFuelWasNeverConsumed() {
           pass);
     }
   }
+}
+
+// A util that does nothing. Used as a no-op flag setter in order to
+// soft-deprecate flags.
+template <typename T>
+static bool noop_flag_setter(T value) {
+  return true;
 }
 
 void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
@@ -1519,11 +1525,9 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 bool_setter_for(&DebugOptions::set_xla_gpu_enable_triton_gemm),
                 debug_options->xla_gpu_enable_triton_gemm(),
                 "Use Triton-based matrix multiplication."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_triton_softmax_fusion",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_triton_softmax_fusion),
-      debug_options->xla_gpu_enable_triton_softmax_fusion(),
-      "Use Triton-based Softmax fusion."));
+  flag_list->push_back(tsl::Flag("xla_gpu_enable_triton_softmax_fusion",
+                                 noop_flag_setter<bool>, false,
+                                 "[Deprecated, do not use]"));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_verify_triton_fusion_numerics",
       bool_setter_for(&DebugOptions::set_xla_gpu_verify_triton_fusion_numerics),
@@ -1556,10 +1560,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_enable_priority_fusion(),
       "Enable priority queue for fusion order."));
   flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_triton_softmax_priority_fusion",
+      "xla_gpu_experimental_enable_triton_softmax_priority_fusion",
       bool_setter_for(
-          &DebugOptions::set_xla_gpu_enable_triton_softmax_priority_fusion),
-      debug_options->xla_gpu_enable_triton_softmax_priority_fusion(),
+          &DebugOptions::
+              set_xla_gpu_experimental_enable_triton_softmax_priority_fusion),
+      debug_options
+          ->xla_gpu_experimental_enable_triton_softmax_priority_fusion(),
       "Enable fusion into Triton Softmax in PriorityFusion pass."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_dump_autotune_results_to",

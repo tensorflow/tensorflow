@@ -940,7 +940,7 @@ absl::StatusOr<bool> PriorityFusion::Run(
   bool triton_softmax_priority_fusion_enabled =
       module->config()
           .debug_options()
-          .xla_gpu_enable_triton_softmax_priority_fusion();
+          .xla_gpu_experimental_enable_triton_softmax_priority_fusion();
 
   FusionDeduplicationCache fusion_deduplication_cache =
       FusionDeduplicationCache::Create(*module);

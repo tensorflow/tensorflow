@@ -1484,7 +1484,8 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // in the softmax codegen pipeline. However we should run before
     // ReductionDimensionGrouper, as that makes matching the softmax pattern
     // harder.
-    if (debug_options.xla_gpu_enable_triton_softmax_fusion() &&
+    if (debug_options
+            .xla_gpu_experimental_enable_triton_softmax_priority_fusion() &&
         ((cuda_cc != nullptr &&
           cuda_cc->IsAtLeast(se::CudaComputeCapability::AMPERE)) ||
          rocm_cc != nullptr)) {

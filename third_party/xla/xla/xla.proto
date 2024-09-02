@@ -112,10 +112,15 @@ message DebugOptions {
   //--------------------------------------------------------------------------//
   // XLA:GPU options.
   //--------------------------------------------------------------------------//
-  // go/keep-sorted start
+  // go/keep-sorted start newline_separated=yes skip_lines=1
 
   // Specifies the behavior of per kernel autotuning cache.
   AutotuneCacheMode xla_gpu_experimental_autotune_cache_mode = 324;
+
+  // Gates the experimental feature coupling the Triton Softmax pattern matcher
+  // with priority fusion.
+  bool xla_gpu_experimental_enable_triton_softmax_priority_fusion = 325;
+
   // Internal debug/testing flag to switch Triton GEMM fusions on or off.
   bool xla_gpu_unsupported_enable_triton_gemm = 322;
 
@@ -663,10 +668,11 @@ message DebugOptions {
 
   bool xla_gpu_exhaustive_tiling_search = 219;
 
-  bool xla_gpu_enable_triton_softmax_fusion = 220;
+  reserved 220;  // Was xla_gpu_enable_triton_softmax_fusion
 
   bool xla_gpu_enable_priority_fusion = 221;
-  bool xla_gpu_enable_triton_softmax_priority_fusion = 286;
+
+  reserved 286;  // Was xla_gpu_enable_triton_softmax_priority_fusion
 
   // File to write autotune results to. It will be a binary file unless the name
   // ends with .txt or .textproto. Warning: The results are written at every
@@ -956,7 +962,7 @@ message DebugOptions {
     AUTOTUNE_CACHE_MODE_READ = 2;
   }
 
-  // Next id: 325
+  // Next id: 326
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

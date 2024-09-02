@@ -43,7 +43,8 @@ class TritonFusionNumericsVerifierTest
  public:
   DebugOptions GetDebugOptionsForTest() override {
     auto options = HloTestBase::GetDebugOptionsForTest();
-    options.set_xla_gpu_enable_triton_softmax_fusion(true);
+    options.set_xla_gpu_experimental_enable_triton_softmax_priority_fusion(
+        true);
     options.set_xla_gpu_verify_triton_fusion_numerics(true);
     return options;
   }
