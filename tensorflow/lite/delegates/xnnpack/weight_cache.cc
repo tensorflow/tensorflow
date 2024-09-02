@@ -547,6 +547,11 @@ void MMapWeightCacheProvider::MapTensorIdentifiers(
   }
 }
 
+void MMapWeightCacheProvider::RemapDataBuffer(const void* const buffer,
+                                              const void* const new_buffer) {
+  buffer_remaps_[new_buffer] = buffer;
+}
+
 size_t MMapWeightCacheProvider::LookUp(
     const xnn_weights_cache_look_up_key* cache_key) {
   if (!cache_key) {
@@ -662,9 +667,24 @@ PackIdentifier MMapWeightCacheProvider::BuildPackIdentifier(
   const auto get_buffer_id = [&](const void* buffer) -> size_t {
     if (buffer) {
       const auto identifier_it = buffer_address_to_identifier_.find(buffer);
-      XNNPACK_ABORT_CHECK(identifier_it != buffer_address_to_identifier_.end(),
-                          "Unknown constant buffer passed to HashCacheKey.");
-      return identifier_it->second;
+      if (identifier_it != buffer_address_to_identifier_.end()) {
+        return identifier_it->second;
+      }
+      // We could have several layers of remapping. We look through
+      // buffer_remaps_ until we find a valid identifier or nothing is mapped to
+      // the current buffer pointer.
+      auto remapped_it = buffer_remaps_.find(buffer);
+      while (remapped_it != buffer_remaps_.end()) {
+        const auto remapped_identifier_it =
+            buffer_address_to_identifier_.find(remapped_it->second);
+        if (remapped_identifier_it != buffer_address_to_identifier_.end()) {
+          return remapped_identifier_it->second;
+        }
+        remapped_it = buffer_remaps_.find(remapped_it->second);
+      }
+      XNNPACK_ABORT_CHECK(
+          remapped_it != buffer_remaps_.end(),
+          "Unknown constant buffer passed to BuildPackIdentifier.");
     }
     return PackIdentifier::kNoId;
   };

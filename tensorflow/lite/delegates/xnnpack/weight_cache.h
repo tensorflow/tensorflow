@@ -260,6 +260,10 @@ class MMapWeightCacheProvider {
       const TfLiteTensor* tensors, size_t size,
       const std::unordered_map<size_t, size_t>& tensor_index_to_identifier);
 
+  // In case a constant buffer data needs to be moved for some reason, this will
+  // map the new buffer data to its identifier.
+  void RemapDataBuffer(const void* buffer, const void* new_buffer);
+
   // Returns the offset of the buffer identified by `cache_key`.
   //
   // If the buffer isn't found, return SIZE_MAX.
@@ -352,6 +356,8 @@ class MMapWeightCacheProvider {
 
   // Maps buffer addresses to buffer identifiers.
   std::unordered_map<const void*, uint64_t> buffer_address_to_identifier_;
+
+  std::unordered_map<const void*, const void*> buffer_remaps_;
 
   // Maps cache request hashes to the buffer identifier.
   std::unordered_multimap<PackIdentifier, BufferLocation, PackIdentifier::Hash>

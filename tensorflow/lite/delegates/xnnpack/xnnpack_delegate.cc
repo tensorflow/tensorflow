@@ -7942,6 +7942,34 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
     static_unpacked_data_map_[t] = tensor_offset;
   }
 
+  // Now that the unpacking is done, we can update the weight cache mappings.
+  //
+  // We do it in a separate loop because `static_unpacked_data_` may need to
+  // reallocate (and therefore invalidate the pointers) when it is grown.
+  for (int t : sorted_quasi_static_tensors_to_unpack) {
+    const int producer_index = quasi_static_tensors_producers[t];
+    TfLiteNode* node = nullptr;
+    TfLiteRegistration* registration = nullptr;
+    if (context->GetNodeAndRegistration(context, producer_index, &node,
+                                        &registration) != kTfLiteOk) {
+      TF_LITE_KERNEL_LOG(context,
+                         "Unable to get node and registration for node %d.",
+                         producer_index);
+      TfLiteIntArrayFree(nodes_to_delegate);
+      return nullptr;  // Hard error.
+    }
+    const TfLiteTensor& input_tensor = context->tensors[node->inputs->data[0]];
+    const auto tensor_offset = static_unpacked_data_map_[t];
+    char* unpacked_data = static_unpacked_data_.data() + tensor_offset;
+    const auto static_unpacked_input_it_ =
+        static_unpacked_data_map_.find(node->inputs->data[0]);
+    const char* packed_data =
+        static_unpacked_input_it_ != static_unpacked_data_map_.end()
+            ? static_unpacked_data_.data() + static_unpacked_input_it_->second
+            : static_cast<const char*>(input_tensor.data.data);
+    weight_cache_provider_.RemapDataBuffer(packed_data, unpacked_data);
+  }
+
   // Add nodes that unpack static data consumed by delegated nodes.
   // Note: this is done purely to avoid the overhead of running these nodes
   // again in TFLite interpreter which would allocate memory for their
