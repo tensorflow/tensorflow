@@ -801,6 +801,7 @@ cuda_only_cc_library(
         "//tensorflow/core/kernels:__subpackages__",
     ]),
     deps = [
+        ":cuda_driver",  # buildcleaner: keep
         ":cuda_status",
         ":ptx_compiler",
         ":ptx_compiler_support",
