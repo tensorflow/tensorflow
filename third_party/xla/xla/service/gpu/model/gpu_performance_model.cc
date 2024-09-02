@@ -180,6 +180,10 @@ absl::Duration GpuPerformanceModel::EstimateUnfusedExecTime(
   VLOG(8) << "EstimateRunTimeForFusion, producer: " << producer->name()
           << " consumer: " << consumer->name();
 
+  if (producer_runtime.IsInfinite() || consumer_runtime.IsInfinite()) {
+    return absl::InfiniteDuration();
+  }
+
   float utilization_by_this_consumer = 0;
   for (int64_t i = 0; i < consumer->operand_count(); ++i) {
     if (consumer->operand(i) == producer ||

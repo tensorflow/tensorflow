@@ -242,13 +242,7 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForInstruction(
     const HloInstruction* producer) {
   // Stand-alone bitcast is always no-op during runtime.
   if (producer->opcode() == HloOpcode::kBitcast) {
-    return EstimateRunTimeData{/*flops=*/0,
-                               /*bytes_read=*/0,
-                               /*bytes_written=*/0,
-                               /*read_time=*/absl::ZeroDuration(),
-                               /*write_time=*/absl::ZeroDuration(),
-                               /*compute_time=*/absl::ZeroDuration(),
-                               /*exec_time=*/absl::ZeroDuration()};
+    return EstimateRunTimeData::Zero();
   }
 
   auto fusion_analysis = HloFusionAnalysis::Create(*producer, *device_info_);
