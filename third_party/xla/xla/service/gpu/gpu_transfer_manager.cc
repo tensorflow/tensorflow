@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/cleanup/cleanup.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
@@ -63,16 +64,43 @@ GpuTransferManager::GpuTransferManager(se::Platform::Id id,
                                        unsigned pointer_size)
     : GenericTransferManager(id, pointer_size) {}
 
+InfeedManager* GpuTransferManager::GetOrCreateInfeedManager(
+    se::StreamExecutor* executor) {
+  static absl::Mutex* mutex = new absl::Mutex();
+  static auto* infeed_managers =
+      new absl::flat_hash_map<se::StreamExecutor*,
+                              std::unique_ptr<InfeedManager>>();
+  absl::MutexLock lock(mutex);
+  if (!infeed_managers->contains(executor)) {
+    infeed_managers->emplace(executor,
+                             std::make_unique<InfeedManager>(executor));
+  }
+  return infeed_managers->at(executor).get();
+}
+
+OutfeedManager* GpuTransferManager::GetOrCreateOutfeedManager(
+    se::StreamExecutor* executor) {
+  static absl::Mutex* mutex = new absl::Mutex();
+  static auto* outfeed_managers =
+      new absl::flat_hash_map<se::StreamExecutor*,
+                              std::unique_ptr<OutfeedManager>>();
+  absl::MutexLock lock(mutex);
+  if (!outfeed_managers->contains(executor)) {
+    outfeed_managers->emplace(executor, std::make_unique<OutfeedManager>());
+  }
+  return outfeed_managers->at(executor).get();
+}
+
 absl::Status GpuTransferManager::TransferLiteralToInfeed(
     se::StreamExecutor* executor, const LiteralSlice& literal) {
-  return gpu::GetOrCreateInfeedManager(executor)->TransferLiteralToInfeed(
-      executor, literal);
+  InfeedManager* infeed_manager = GetOrCreateInfeedManager(executor);
+  return infeed_manager->TransferLiteralToInfeed(executor, literal);
 }
 
 absl::Status GpuTransferManager::TransferLiteralFromOutfeed(
     se::StreamExecutor* executor, MutableBorrowingLiteral literal) {
-  return gpu::GetOrCreateOutfeedManager(executor)->TransferLiteralFromOutfeed(
-      executor, literal);
+  OutfeedManager* outfeed_manager = GetOrCreateOutfeedManager(executor);
+  return outfeed_manager->TransferLiteralFromOutfeed(executor, literal);
 }
 
 absl::Status GpuTransferManager::EnsurePinnedBuffersAllocated(
@@ -83,7 +111,6 @@ absl::Status GpuTransferManager::EnsurePinnedBuffersAllocated(
 
   TF_ASSIGN_OR_RETURN(pinned_chunk_,
                       executor->HostMemoryAllocate(kPinnedChunkBytes));
-  pinned_chunk_se_ = executor;
 
   static_assert(kPinnedChunkBytes % kPinnedBufferBytes == 0,
                 "assumption of loop below");

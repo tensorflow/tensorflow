@@ -60,6 +60,22 @@ namespace {
 
 constexpr char kNumSplitAttr[] = "num_split";
 
+bool IsShapeKnown(mlir::TensorType type) {
+  if (!type.hasRank()) return false;
+
+  bool shape_known = false;
+  for (int i = 0; i < type.getRank(); ++i) {
+    if (type.getShape()[i] == mlir::ShapedType::kDynamic) {
+      shape_known = false;
+      break;
+    } else {
+      shape_known = true;
+    }
+  }
+
+  return shape_known;
+}
+
 int64_t GetPadding(const int split_dim, const int num_splits,
                    const PartialTensorShape& partial_tensor_shape) {
   // If dim dimension is not defined, no uneven sharding support.
@@ -71,106 +87,6 @@ int64_t GetPadding(const int split_dim, const int num_splits,
   int64_t total_padding =
       per_split_size * num_splits - partial_tensor_shape.dim_size(split_dim);
   return total_padding;
-}
-
-// Creates a tf::SplitOp that splits 'src_input' into 'num_splits' ways
-// in 'split_dimension' dimension and returns the split values.
-mlir::LogicalResult CreateSplitOp(const int num_split,
-                                  const int split_dimension,
-                                  const mlir::Location& location,
-                                  mlir::Value src_input,
-                                  mlir::OpBuilder* builder,
-                                  mlir::TF::SplitOp* split_op,
-                                  bool is_ici_weight_dist_spmd) {
-  // Creates a const op to hold split dimension value.
-  auto split_dim_type =
-      mlir::RankedTensorType::get({}, builder->getIntegerType(32));
-  auto split_dimension_attr =
-      mlir::DenseElementsAttr::get(split_dim_type, split_dimension);
-
-  // Correctly set output shapes of split op output if input shape is statically
-  // known.
-  mlir::Type output_type;
-  auto input_type = mlir::cast<mlir::TensorType>(src_input.getType());
-
-  if (input_type.hasRank()) {
-    if (input_type.getShape()[split_dimension] == mlir::ShapedType::kDynamic) {
-      output_type = input_type;
-    } else {
-      auto shape = llvm::to_vector<4>(input_type.getShape());
-      if (shape[split_dimension] % num_split != 0) {
-        return mlir::emitError(
-            location,
-            llvm::formatv(
-                "incorrect input sharding configuration received. "
-                "{0}-th dimension of the input must be evenly divisible by {1}",
-                split_dimension, num_split));
-      }
-
-      shape[split_dimension] = shape[split_dimension] / num_split;
-      output_type =
-          mlir::RankedTensorType::get(shape, input_type.getElementType());
-    }
-  } else {
-    output_type = input_type;
-  }
-
-  auto split_dimension_op = builder->create<mlir::TF::ConstOp>(
-      location, split_dim_type, split_dimension_attr);
-  if (is_ici_weight_dist_spmd) {
-    split_dimension_op->setAttr(kICIWeightDistributionMlirBridgeMarker,
-                                builder->getBoolAttr(true));
-  }
-
-  // Creates a split op that splits |src_input| along |split_dimension|.
-  llvm::SmallVector<mlir::Type, 4> output_types(num_split, output_type);
-  *split_op = builder->create<mlir::TF::SplitOp>(
-      location, output_types, split_dimension_op.getOutput(), src_input);
-  (*split_op)->setAttr(
-      kNumSplitAttr,
-      builder->getIntegerAttr(builder->getIntegerType(32), num_split));
-  if (is_ici_weight_dist_spmd) {
-    (*split_op)->setAttr(kICIWeightDistributionMlirBridgeMarker,
-                         builder->getBoolAttr(true));
-  }
-  return mlir::success();
-}
-
-// Creates a tf::ConcatOp that merges `input` values in `concat_dimension`.
-mlir::TF::ConcatOp CreateConcatOp(const int concat_dimension,
-                                  const mlir::Location& location,
-                                  mlir::ArrayRef<mlir::Value> inputs,
-                                  mlir::OpBuilder* builder) {
-  // Creates a const op to hold concat dimension value.
-  auto concat_dim_type =
-      mlir::RankedTensorType::get({}, builder->getIntegerType(32));
-  auto concat_dimension_attr =
-      mlir::DenseElementsAttr::get(concat_dim_type, concat_dimension);
-  auto concat_dimension_op = builder->create<mlir::TF::ConstOp>(
-      location, concat_dim_type, concat_dimension_attr);
-
-  // Correctly set output shapes of concat op output if output shape is
-  // statically known. Since the shape of TPUExecute op must be the same
-  // across logical devices, we refer to the shape of 0th logical device
-  // computation output.
-  mlir::Type output_type;
-  auto input_type = mlir::cast<mlir::TensorType>(inputs[0].getType());
-
-  if (input_type.hasRank()) {
-    if (input_type.getShape()[concat_dimension] == mlir::ShapedType::kDynamic) {
-      output_type = input_type;
-    } else {
-      auto shape = llvm::to_vector<4>(input_type.getShape());
-      shape[concat_dimension] = shape[concat_dimension] * inputs.size();
-      output_type =
-          mlir::RankedTensorType::get(shape, input_type.getElementType());
-    }
-  } else {
-    output_type = input_type;
-  }
-
-  return builder->create<mlir::TF::ConcatOp>(
-      location, output_type, concat_dimension_op.getOutput(), inputs);
 }
 
 mlir::TF::XlaConcatNDOp CreateXlaConcatNDOp(
@@ -200,7 +116,7 @@ mlir::TF::XlaConcatNDOp CreateXlaConcatNDOp(
 
       output_shape.emplace_back(max_dim_size - paddings[i]);
     }
-    VLOG(2) << "SL: CreateXlaConcatNDOp. output_shape="
+    VLOG(2) << "CreateXlaConcatNDOp. output_shape="
             << absl::StrJoin(output_shape, ",")
             << ", Padding=" << absl::StrJoin(paddings, ",");
     output_type = mlir::RankedTensorType::get(output_shape, element_type);
@@ -214,22 +130,13 @@ mlir::TF::XlaConcatNDOp CreateXlaConcatNDOp(
   return op;
 }
 
-mlir::LogicalResult CreateXlaSplitNDOp(const mlir::Location& location,
-                                       mlir::Value src_input,
-                                       const std::vector<int64_t>& num_splits,
-                                       const std::vector<int64_t>& paddings,
-                                       mlir::OpBuilder* builder,
-                                       mlir::TF::XlaSplitNDOp* xla_split_op,
-                                       bool is_ici_weight_dist_spmd) {
+mlir::LogicalResult CreateXlaSplitNDOp(
+    const mlir::Location& location, mlir::Value src_input, const int64_t rank,
+    const std::vector<int64_t>& num_splits,
+    const std::vector<int64_t>& paddings, mlir::OpBuilder* builder,
+    mlir::TF::XlaSplitNDOp* xla_split_op, bool is_ici_weight_dist_spmd) {
   auto input_type = mlir::cast<mlir::TensorType>(src_input.getType());
   mlir::Type output_type;
-  if (!input_type.hasRank()) {
-    mlir::emitError(
-        location,
-        "XLA Split/Concat ops are supported only for Ranked Tensors.");
-    return mlir::failure();
-  }
-  const int rank = input_type.getRank();
   const auto& input_shape = input_type.getShape();
 
   auto output_slice_shape = llvm::to_vector<4>(input_type.getShape());
@@ -250,7 +157,7 @@ mlir::LogicalResult CreateXlaSplitNDOp(const mlir::Location& location,
 
   llvm::SmallVector<mlir::Type, 4> output_types(num_tiles, output_type);
 
-  VLOG(2) << "SL: CreateXlaSplitNDOp. input_shape="
+  VLOG(2) << "CreateXlaSplitNDOp. input_shape="
           << absl::StrJoin(input_shape, ",")
           << ", Padding: " << absl::StrJoin(paddings, ",");
 
@@ -281,18 +188,24 @@ mlir::LogicalResult HandleTileShardedInputsUsingXlaSplitOps(
                        : input_sharding.tile_assignment_dimensions_size();
   std::vector<int64_t> paddings;
   paddings.reserve(rank);
-  auto shape = llvm::to_vector<4>(
-      original_source.getType().cast<mlir::TensorType>().getShape());
-  for (int dim = 0; dim < rank; ++dim) {
-    paddings.push_back(
-        GetPadding(dim, input_sharding.tile_assignment_dimensions(dim),
-                   PartialTensorShape(shape)));
+  const auto input_type =
+      mlir::cast<mlir::TensorType>(original_source.getType());
+  if (IsShapeKnown(input_type)) {
+    auto shape = llvm::to_vector<4>(
+        original_source.getType().cast<mlir::TensorType>().getShape());
+    for (int dim = 0; dim < rank; ++dim) {
+      paddings.push_back(
+          GetPadding(dim, input_sharding.tile_assignment_dimensions(dim),
+                     PartialTensorShape(shape)));
+    }
+  } else {
+    paddings.assign(rank, 0);
   }
 
   mlir::TF::XlaSplitNDOp xla_split_op;
-  if (mlir::failed(CreateXlaSplitNDOp(location, original_source, num_splits,
-                                      paddings, builder, &xla_split_op,
-                                      is_ici_weight_dist_spmd))) {
+  if (mlir::failed(CreateXlaSplitNDOp(
+          location, original_source, rank, num_splits, paddings, builder,
+          &xla_split_op, is_ici_weight_dist_spmd))) {
     return mlir::failure();
   }
 
@@ -306,84 +219,6 @@ mlir::LogicalResult HandleTileShardedInputsUsingXlaSplitOps(
     auto split_op_output = xla_split_op.getResults()[i];
     for (int64_t j = 0; j < repeat_count; ++j) {
       tiled_inputs->push_back(split_op_output);
-    }
-  }
-
-  return mlir::success();
-}
-
-// For tile sharded inputs to TPU computation, inject split op between the
-// input values and TPU computation so that tiled input values are passed in
-// as inputs to TPU computations. If more than one dimension is sharded, then
-// a tree of connected split ops are added before tf_device.parallel_execute op.
-mlir::LogicalResult HandleTileShardedInputsUsingTfSplitOps(
-    const mlir::Location& location, const xla::OpSharding& input_sharding,
-    const mlir::Value& original_source, mlir::OpBuilder* builder,
-    llvm::SmallVectorImpl<mlir::Value>* tiled_inputs,
-    bool is_ici_weight_dist_spmd) {
-  llvm::SmallVector<mlir::TF::SplitOp, 4> split_ops_for_tiled_input;
-  split_ops_for_tiled_input.reserve(
-      input_sharding.tile_assignment_devices_size());
-
-  // Creates a tree of split nodes for sharding tiled inputs. Splits nodes
-  // are created such that input data is sharded in row major order.
-  // Split nodes at ith depth from the original input node represent nodes
-  // that split the input data at i-th dimension.
-  auto dimension_to_splits_map =
-      GetDimensionIndicesAndNumSplitsFromSharding(input_sharding);
-  if (!dimension_to_splits_map.ok()) {
-    LOG(ERROR) << dimension_to_splits_map.status();
-    return mlir::failure();
-  }
-
-  for (const auto& dimension_and_num_splits : *dimension_to_splits_map) {
-    const int dimension = dimension_and_num_splits.first;
-    const int num_splits = dimension_and_num_splits.second;
-
-    // Creates root split op.
-    if (split_ops_for_tiled_input.empty()) {
-      mlir::TF::SplitOp root_split_op;
-      auto result =
-          CreateSplitOp(num_splits, dimension, location, original_source,
-                        builder, &root_split_op, is_ici_weight_dist_spmd);
-      if (mlir::failed(result)) return mlir::failure();
-
-      split_ops_for_tiled_input.emplace_back(root_split_op);
-      continue;
-    }
-
-    llvm::SmallVector<mlir::TF::SplitOp, 4> new_split_ops;
-    new_split_ops.reserve(split_ops_for_tiled_input.size() * num_splits);
-
-    for (auto split_op : split_ops_for_tiled_input) {
-      for (auto parent_split_output_value : split_op.getResults()) {
-        mlir::TF::SplitOp child_split_op;
-        auto result = CreateSplitOp(num_splits, dimension, location,
-                                    parent_split_output_value, builder,
-                                    &child_split_op, is_ici_weight_dist_spmd);
-        if (mlir::failed(result)) return mlir::failure();
-
-        new_split_ops.emplace_back(child_split_op);
-      }
-    }
-
-    std::swap(new_split_ops, split_ops_for_tiled_input);
-  }
-
-  // `split_ops_for_tiled_input` now includes final split nodes
-  // from which sharded data will be fed into TPUExecute ops -- sorted by
-  // row major order.
-  tiled_inputs->clear();
-  tiled_inputs->reserve(input_sharding.tile_assignment_devices_size());
-  for (auto split_op : split_ops_for_tiled_input) {
-    for (auto split_op_output : split_op.getResults()) {
-      int64_t repeat_count =
-          input_sharding.replicate_on_last_tile_dim()
-              ? *input_sharding.tile_assignment_dimensions().rbegin()
-              : 1;
-      for (int64_t i = 0; i < repeat_count; ++i) {
-        tiled_inputs->push_back(split_op_output);
-      }
     }
   }
 
@@ -495,15 +330,6 @@ mlir::LogicalResult ExtractInputsForLogicalDevices(
     const int num_cores_per_replica,
     mlir::tf_device::ClusterFuncOp cluster_func, mlir::OpBuilder* builder,
     llvm::SmallVectorImpl<llvm::SmallVector<mlir::Value, 4>>* input_list) {
-  return ExtractInputsForLogicalDevices(num_cores_per_replica, cluster_func,
-                                        builder, /*use_xla_nd_ops=*/false,
-                                        input_list);
-}
-mlir::LogicalResult ExtractInputsForLogicalDevices(
-    const int num_cores_per_replica,
-    mlir::tf_device::ClusterFuncOp cluster_func, mlir::OpBuilder* builder,
-    bool use_xla_nd_ops,
-    llvm::SmallVectorImpl<llvm::SmallVector<mlir::Value, 4>>* input_list) {
   // Initialize the input list for each logical devices.
   input_list->reserve(num_cores_per_replica);
   for (int i = 0; i < num_cores_per_replica; ++i)
@@ -588,17 +414,10 @@ mlir::LogicalResult ExtractInputsForLogicalDevices(
               ->hasAttr(kICIWeightDistributionMlirBridgeMarker);
       llvm::SmallVector<mlir::Value, 4> tiled_inputs;
 
-      if (use_xla_nd_ops) {
-        auto result = HandleTileShardedInputsUsingXlaSplitOps(
-            cluster_func.getLoc(), sharding, input_value, builder,
-            &tiled_inputs, is_ici_weight_dist_spmd);
-        if (mlir::failed(result)) return mlir::failure();
-      } else {
-        auto result = HandleTileShardedInputsUsingTfSplitOps(
-            cluster_func.getLoc(), sharding, input_value, builder,
-            &tiled_inputs, is_ici_weight_dist_spmd);
-        if (mlir::failed(result)) return mlir::failure();
-      }
+      auto result = HandleTileShardedInputsUsingXlaSplitOps(
+          cluster_func.getLoc(), sharding, input_value, builder, &tiled_inputs,
+          is_ici_weight_dist_spmd);
+      if (mlir::failed(result)) return mlir::failure();
 
       const int64_t tiled_inputs_size = tiled_inputs.size();
       if (tiled_inputs_size != num_cores_per_replica)
@@ -768,7 +587,7 @@ mlir::LogicalResult HandleTileShardedOutputsUsingXlaConcatOps(
   paddings.reserve(rank);
   auto output_type =
       mlir::cast<mlir::TensorType>(cluster_func_output.getType());
-  if (output_type.hasRank()) {
+  if (IsShapeKnown(output_type)) {
     auto shape = llvm::to_vector<4>(output_type.getShape());
     for (int dim = 0; dim < rank; ++dim) {
       paddings.push_back(GetPadding(dim,
@@ -776,9 +595,7 @@ mlir::LogicalResult HandleTileShardedOutputsUsingXlaConcatOps(
                                     PartialTensorShape(shape)));
     }
   } else {
-    mlir::emitError(
-        location, "XLA concat/split ops are supported only for Ranked tensor.");
-    return mlir::failure();
+    paddings.assign(rank, 0);
   }
   // Reorders outputs from TPUExecute op as defined by the output sharding
   // configuration.
@@ -795,69 +612,10 @@ mlir::LogicalResult HandleTileShardedOutputsUsingXlaConcatOps(
   return mlir::success();
 }
 
-// Merges outputs from TPU computation for tile-sharded outputs.
-mlir::LogicalResult HandleTileShardedOutputsUsingTfConcatOps(
-    const int cluster_func_output_index,
-    llvm::ArrayRef<xla::OpSharding> output_sharding_config,
-    llvm::SmallVector<llvm::SmallVector<int, 4>, 4> cluster_to_core_index,
-    const mlir::Location& location, mlir::Value cluster_func_output,
-    int cluster_idx, mlir::tf_device::ParallelExecuteOp new_parallel_execute,
-    mlir::OpBuilder* builder) {
-  // Inject concat ops after parallel_execute to merge outputs from
-  // concurrently executed computations.
-  builder->setInsertionPointAfter(new_parallel_execute);
-
-  // Reorders outputs from TPUExecute op as defined by the output sharding
-  // configuration.
-  llvm::SmallVector<mlir::Value, 4> outputs_to_merge;
-  auto status = GetTileShardedOutputsToMerge(
-      location, cluster_func_output_index, output_sharding_config,
-      cluster_to_core_index, cluster_idx, new_parallel_execute,
-      &outputs_to_merge);
-  if (failed(status)) return mlir::failure();
-
-  // Creates a tree of Concat ops that merges outputs from multiple logical
-  // devices to a single replica output.
-  const xla::OpSharding& sharding =
-      output_sharding_config[cluster_func_output_index];
-
-  auto dimension_to_splits_map =
-      GetDimensionIndicesAndNumSplitsFromSharding(sharding);
-  if (!dimension_to_splits_map.ok()) {
-    LOG(ERROR) << dimension_to_splits_map.status();
-    return mlir::failure();
-  }
-
-  for (auto it = dimension_to_splits_map->rbegin();
-       it != dimension_to_splits_map->rend(); ++it) {
-    int concat_dimension = it->first;
-    int num_splits = it->second;
-
-    llvm::SmallVector<mlir::Value, 4> new_outputs;
-    new_outputs.reserve(num_splits);
-    for (int i = 0, end = outputs_to_merge.size(); i < end;
-         i = i + num_splits) {
-      mlir::TF::ConcatOp concat_op =
-          CreateConcatOp(concat_dimension, location,
-                         llvm::ArrayRef<mlir::Value>{
-                             outputs_to_merge.begin() + i,
-                             outputs_to_merge.begin() + i + num_splits},
-                         builder);
-      new_outputs.emplace_back(concat_op.getResult());
-    }
-
-    std::swap(new_outputs, outputs_to_merge);
-  }
-
-  assert(outputs_to_merge.size() == 1);
-  cluster_func_output.replaceAllUsesWith(outputs_to_merge[0]);
-  return mlir::success();
-}
-
 mlir::LogicalResult ValidateAndGetTiledExecuteOutputShape(
     const mlir::Location& location,
     const mlir::TensorType cluster_func_output_type,
-    const xla::OpSharding& output_sharding, bool use_xla_nd_ops,
+    const xla::OpSharding& output_sharding,
     mlir::Type* tiled_logical_computation_type) {
   const auto output_shape = cluster_func_output_type.getShape();
   auto new_output_shape = llvm::to_vector<4>(output_shape);
@@ -876,26 +634,13 @@ mlir::LogicalResult ValidateAndGetTiledExecuteOutputShape(
       *tiled_logical_computation_type = cluster_func_output_type;
       break;
     }
-    if (use_xla_nd_ops) {
-      if (output_shape[dimension] % output_splits == 0) {
-        new_output_shape[dimension] = output_shape[dimension] / output_splits;
-      } else {
-        // Input will be padded to be divisible by output_splits, thus add 1 to
-        // the output shape.
-        new_output_shape[dimension] =
-            (output_shape[dimension] / output_splits) + 1;
-      }
-    } else {
-      if (output_shape[dimension] % output_splits != 0) {
-        mlir::emitError(
-            location,
-            llvm::formatv("incorrect output sharding received. "
-                          "{0}-th dimension of the output must be "
-                          "evenly divisible by {1}, got dimension "
-                          "shape {2}",
-                          dimension, output_splits, output_shape[dimension]));
-      }
+    if (output_shape[dimension] % output_splits == 0) {
       new_output_shape[dimension] = output_shape[dimension] / output_splits;
+    } else {
+      // Input will be padded to be divisible by output_splits, thus add 1 to
+      // the output shape.
+      new_output_shape[dimension] =
+          (output_shape[dimension] / output_splits) + 1;
     }
   }
 
@@ -903,22 +648,6 @@ mlir::LogicalResult ValidateAndGetTiledExecuteOutputShape(
       new_output_shape, cluster_func_output_type.getElementType());
 
   return mlir::success();
-}
-
-bool IsShapeKnown(mlir::TensorType type) {
-  if (!type.hasRank()) return false;
-
-  bool shape_known = false;
-  for (int i = 0; i < type.getRank(); ++i) {
-    if (type.getShape()[i] == mlir::ShapedType::kDynamic) {
-      shape_known = false;
-      break;
-    } else {
-      shape_known = true;
-    }
-  }
-
-  return shape_known;
 }
 
 }  // namespace
@@ -979,16 +708,6 @@ mlir::LogicalResult GetOutputTypesForLogicalDeviceComputation(
     mlir::tf_device::ClusterFuncOp cluster_func,
     llvm::SmallVectorImpl<mlir::Type>* output_types,
     llvm::SmallVectorImpl<int>* cluster_to_core_index) {
-  return GetOutputTypesForLogicalDeviceComputation(
-      core_id, output_sharding_config, cluster_func, output_types,
-      /*use_xla_nd_ops=*/false, cluster_to_core_index);
-}
-
-mlir::LogicalResult GetOutputTypesForLogicalDeviceComputation(
-    const int core_id, llvm::ArrayRef<xla::OpSharding> output_sharding_config,
-    mlir::tf_device::ClusterFuncOp cluster_func,
-    llvm::SmallVectorImpl<mlir::Type>* output_types, bool use_xla_nd_ops,
-    llvm::SmallVectorImpl<int>* cluster_to_core_index) {
   output_types->reserve(cluster_func.getNumResults());
 
   int core_index = 0;
@@ -1008,7 +727,7 @@ mlir::LogicalResult GetOutputTypesForLogicalDeviceComputation(
       if (cluster_func_output_type.hasRank()) {
         auto result = ValidateAndGetTiledExecuteOutputShape(
             cluster_func.getLoc(), cluster_func_output_type, output_sharding,
-            use_xla_nd_ops, &tiled_logical_computation_type);
+            &tiled_logical_computation_type);
         if (mlir::failed(result)) return mlir::failure();
       } else {
         tiled_logical_computation_type = cluster_func_output_type;
@@ -1035,20 +754,6 @@ mlir::LogicalResult RemapOutputsFromLogicalDevices(
     mlir::tf_device::ParallelExecuteOp old_parallel_execute, int cluster_idx,
     mlir::tf_device::ParallelExecuteOp new_parallel_execute,
     mlir::OpBuilder* builder) {
-  return RemapOutputsFromLogicalDevices(
-      location, output_sharding_config, cluster_to_core_index,
-      num_results_pre_cluster, old_parallel_execute, cluster_idx,
-      new_parallel_execute, /*use_xla_nd_ops=*/false, builder);
-}
-
-mlir::LogicalResult RemapOutputsFromLogicalDevices(
-    const mlir::Location& location,
-    llvm::ArrayRef<xla::OpSharding> output_sharding_config,
-    llvm::SmallVector<llvm::SmallVector<int, 4>, 4> cluster_to_core_index,
-    int num_results_pre_cluster,
-    mlir::tf_device::ParallelExecuteOp old_parallel_execute, int cluster_idx,
-    mlir::tf_device::ParallelExecuteOp new_parallel_execute,
-    bool use_xla_nd_ops, mlir::OpBuilder* builder) {
   for (auto [output_index, old_parallel_execute_output] :
        llvm::enumerate(old_parallel_execute.getResults())) {
     if (output_index < num_results_pre_cluster) {
@@ -1118,19 +823,11 @@ mlir::LogicalResult RemapOutputsFromLogicalDevices(
       continue;
     }
     if (IsSplitSharding(output_sharding)) {
-      if (use_xla_nd_ops) {
-        auto result = HandleTileShardedOutputsUsingXlaConcatOps(
-            tpu_cluster_output_index, output_sharding_config,
-            cluster_to_core_index, location, old_parallel_execute_output,
-            cluster_idx, new_parallel_execute, *builder);
-        if (mlir::failed(result)) return mlir::failure();
-      } else {
-        auto result = HandleTileShardedOutputsUsingTfConcatOps(
-            tpu_cluster_output_index, output_sharding_config,
-            cluster_to_core_index, location, old_parallel_execute_output,
-            cluster_idx, new_parallel_execute, builder);
-        if (failed(result)) return mlir::failure();
-      }
+      auto result = HandleTileShardedOutputsUsingXlaConcatOps(
+          tpu_cluster_output_index, output_sharding_config,
+          cluster_to_core_index, location, old_parallel_execute_output,
+          cluster_idx, new_parallel_execute, *builder);
+      if (mlir::failed(result)) return mlir::failure();
       continue;
     }
 

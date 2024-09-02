@@ -1429,16 +1429,19 @@ class Handler : public Ffi {
  private:
   XLA_FFI_Error* PopulateMetadata(const XLA_FFI_Api* api,
                                   XLA_FFI_Metadata_Extension* extension) const {
-    if (XLA_FFI_Error* err = StructSizeIsGreaterOrEqual(
-            api, "XLA_FFI_Metadata_Extension",
-            XLA_FFI_Metadata_Extension_STRUCT_SIZE, extension->struct_size)) {
+    if (XLA_FFI_Error* err =
+            StructSizeIsGreaterOrEqual(api, "XLA_FFI_Metadata_Extension",
+                                       XLA_FFI_Metadata_Extension_STRUCT_SIZE,
+                                       extension->extension_base.struct_size)) {
       return err;
     }
+
     if (XLA_FFI_Error* err = StructSizeIsGreaterOrEqual(
             api, "XLA_FFI_Metadata", XLA_FFI_Metadata_STRUCT_SIZE,
             extension->metadata->struct_size)) {
       return err;
     }
+
     extension->metadata->api_version = XLA_FFI_Api_Version{
         XLA_FFI_Api_Version_STRUCT_SIZE,
         /*extension_start=*/nullptr,

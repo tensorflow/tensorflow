@@ -69,13 +69,6 @@ mlir::LogicalResult ExtractInputsForLogicalDevices(
     mlir::OpBuilder* builder,
     llvm::SmallVectorImpl<llvm::SmallVector<mlir::Value, 4>>* input_list);
 
-// Same as above, except creates tf.XlaSplitND Op for split sharding if
-// use_xla_nd_ops is true, otherwise creates tf.Split op.
-mlir::LogicalResult ExtractInputsForLogicalDevices(
-    int num_cores_per_replica, mlir::tf_device::ClusterFuncOp cluster_func,
-    mlir::OpBuilder* builder, bool use_xla_nd_ops,
-    llvm::SmallVectorImpl<llvm::SmallVector<mlir::Value, 4>>* input_list);
-
 // Extracts a list of OpSharding that represent output sharding configuration of
 // `tf_device.cluster`.
 mlir::LogicalResult ParseAndValidateOutputSharding(
@@ -91,14 +84,6 @@ mlir::LogicalResult GetOutputTypesForLogicalDeviceComputation(
     llvm::SmallVectorImpl<mlir::Type>* output_types,
     llvm::SmallVectorImpl<int>* cluster_to_core_index);
 
-// Same as above, except creates tf.XlaSplitND Op for split sharding if
-// use_xla_nd_ops is true, otherwise creates tf.Split op.
-mlir::LogicalResult GetOutputTypesForLogicalDeviceComputation(
-    int core_id, llvm::ArrayRef<xla::OpSharding> output_sharding_config,
-    mlir::tf_device::ClusterFuncOp cluster_func,
-    llvm::SmallVectorImpl<mlir::Type>* output_types, bool use_xla_nd_ops,
-    llvm::SmallVectorImpl<int>* cluster_to_core_index);
-
 // Remaps outputs of `new_parallel_execute` op that represent concurrent
 // execution of the `tf_device.cluster_func` at index `cluster_idx` of
 // `old_parallel_execute` with its users.
@@ -112,17 +97,6 @@ mlir::LogicalResult RemapOutputsFromLogicalDevices(
     mlir::tf_device::ParallelExecuteOp old_parallel_execute, int cluster_idx,
     mlir::tf_device::ParallelExecuteOp new_parallel_execute,
     mlir::OpBuilder* builder);
-
-// Same as above, except creates tf.XlaConcatNd Op for split sharding if
-// use_xla_nd_ops is true, otherwise creates tf.Concat op.
-mlir::LogicalResult RemapOutputsFromLogicalDevices(
-    const mlir::Location& location,
-    llvm::ArrayRef<xla::OpSharding> output_sharding_config,
-    llvm::SmallVector<llvm::SmallVector<int, 4>, 4> cluster_to_core_index,
-    int num_results_pre_cluster,
-    mlir::tf_device::ParallelExecuteOp old_parallel_execute, int cluster_idx,
-    mlir::tf_device::ParallelExecuteOp new_parallel_execute,
-    bool use_xla_nd_ops, mlir::OpBuilder* builder);
 
 // Determines each logical core argument to metadata argument index mapping,
 // based on sharding. The return value is indexed first by logical core then by

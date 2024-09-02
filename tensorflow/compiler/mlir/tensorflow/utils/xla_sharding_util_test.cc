@@ -164,11 +164,9 @@ TEST(XLAShardingUtilTest, NotDivisibleShardingSplitOpTest) {
   auto& cluster_func_op = cluster_func_ops[0];
   int num_cores_per_replica = 4;
   mlir::OpBuilder builder(&context);
-  bool use_xla_nd_ops = true;
   llvm::SmallVector<llvm::SmallVector<mlir::Value, 4>, 4> input_list;
   auto result = tensorflow::ExtractInputsForLogicalDevices(
-      num_cores_per_replica, cluster_func_op, &builder, use_xla_nd_ops,
-      &input_list);
+      num_cores_per_replica, cluster_func_op, &builder, &input_list);
   ASSERT_TRUE(succeeded(result));
 
   ASSERT_EQ(input_list.size(), num_cores_per_replica);
@@ -193,10 +191,5 @@ TEST(XLAShardingUtilTest, NotDivisibleShardingSplitOpTest) {
   // test code, it is not a problem in the actual pass since tpu_rewrite_pass
   // will appropriately add the values to the block.
   op->destroy();
-
-  // Expect error when use_xla_nd_ops is false.
-  result = tensorflow::ExtractInputsForLogicalDevices(
-      num_cores_per_replica, cluster_func_op, &builder, false, &input_list);
-  ASSERT_TRUE(failed(result));
 }
 }  // namespace
