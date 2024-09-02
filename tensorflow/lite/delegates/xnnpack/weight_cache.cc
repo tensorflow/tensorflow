@@ -22,6 +22,7 @@ limitations under the License.
 #define F_OK 0
 #else
 #include <sys/mman.h>
+#include <sys/syscall.h>
 #include <unistd.h>
 #endif
 
@@ -55,6 +56,18 @@ namespace tflite::xnnpack {
 
 namespace {
 constexpr size_t kMinAlignment = 64;
+
+// Checks if the given path is a special value to use an in-memory cache.
+bool IsInMemoryCachePath(const char* path) {
+  // Use strncmp to check for the prefix.
+  return !strncmp(path, kInMemoryCachePath, sizeof(kInMemoryCachePath) - 1);
+}
+
+// Checks if the given path is a special value to use an in-memory cache.
+bool IsInMemoryCachePath(const std::string& path) {
+  // Use strncmp to check for the prefix.
+  return IsInMemoryCachePath(path.c_str());
+}
 
 // Returns the next offset value that is aligned to `alignement`.
 size_t Align(size_t offset, const size_t alignment) {
@@ -105,6 +118,29 @@ bool FileExists(const char* path) {
 
 }  // namespace
 
+FileDescriptor FileDescriptor::Duplicate() const {
+  return FileDescriptor(dup(fd_));
+}
+
+void FileDescriptor::Reset(int new_fd) {
+  if (IsValid()) {
+    close(fd_);
+  }
+  fd_ = new_fd;
+}
+
+void FileDescriptor::Close() { Reset(-1); }
+
+off_t FileDescriptor::GetPos() const { return lseek(fd_, 0, SEEK_CUR); }
+
+off_t FileDescriptor::SetPos(off_t position) {
+  return lseek(fd_, position, SEEK_SET);
+}
+
+off_t FileDescriptor::MovePos(off_t offset) {
+  return lseek(fd_, offset, SEEK_CUR);
+}
+
 void swap(MMapHandle& a, MMapHandle& b) {
   using std::swap;
   swap(a.size_, b.size_);
@@ -121,9 +157,13 @@ MMapHandle& MMapHandle::operator=(MMapHandle&& other) {
 }
 
 bool MMapHandle::Map(const char* path) {
+  const int fd = open(path, O_RDONLY);
+  return this->Map(fd, path);
+}
+
+bool MMapHandle::Map(const int fd, const char* const path) {
   this->UnMap();
 
-  const int fd = open(path, O_RDONLY);
   if (fd == -1) {
     TFLITE_LOG_PROD(
         tflite::TFLITE_LOG_ERROR,
@@ -241,8 +281,19 @@ bool WeightCacheBuilder::Start(const char* path) {
   ScopeGuard reset_on_error([this] { Reset(); });
 
   file_path_ = path;
-  fd_ = open(file_path_.c_str(), O_CREAT | O_TRUNC | O_WRONLY, 0644);
-  if (fd_ == -1) {
+  if (IsInMemoryCachePath(file_path_)) {
+#if TFLITE_XNNPACK_ENABLE_IN_MEMORY_WEIGHT_CACHE
+    fd_.Reset(syscall(SYS_memfd_create, "XNNPack in-memory weight cache", 0));
+#else
+    TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
+                    "XNNPack weight cache: in-memory cache is not enabled for "
+                    "this build.");
+    return false;
+#endif
+  } else {
+    fd_.Reset(open(file_path_.c_str(), O_CREAT | O_TRUNC | O_WRONLY, 0644));
+  }
+  if (!fd_.IsValid()) {
     TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR, "Could not open file ('%s'): %s.",
                     file_path_.c_str(), strerror(errno));
     return false;
@@ -253,7 +304,7 @@ bool WeightCacheBuilder::Start(const char* path) {
   // the build, reloading the cache file will fail.
   const XNNPackCacheHeader header{XNNPackCacheHeader::kInvalidHeader};
 
-  if (!WriteData(fd_, (const uint8_t*)&header, sizeof(header),
+  if (!WriteData(fd_.Value(), (const uint8_t*)&header, sizeof(header),
                  file_path_.c_str(), "padding for flatbuffer offset")) {
     return false;
   }
@@ -265,11 +316,7 @@ bool WeightCacheBuilder::Start(const char* path) {
 }
 
 void WeightCacheBuilder::Reset() {
-  if (fd_ != -1) {
-    close(fd_);
-    fd_ = -1;
-    file_path_.clear();
-  }
+  fd_.Close();
   data_.reset(nullptr);
   capacity_ = 0;
 }
@@ -291,8 +338,8 @@ BufferLocation WeightCacheBuilder::Append(PackIdentifier pack_id,
                       "Cannot append data to an unstarted builder.");
   // Add some padding so that the cache file can be mmaped and the buffer
   // stays aligned correctly.
-  const size_t offset = Align(lseek(fd_, 0, SEEK_CUR), kMinAlignment);
-  if (lseek(fd_, offset, SEEK_SET) != offset) {
+  const size_t offset = Align(fd_.GetPos(), kMinAlignment);
+  if (fd_.SetPos(offset) != offset) {
     return BufferLocation::Invalid();
   }
 
@@ -305,17 +352,17 @@ BufferLocation WeightCacheBuilder::Append(PackIdentifier pack_id,
   buffer.size = loc.size;
   schema_.buffers.push_back(std::make_unique<cache::schema::BufferT>(buffer));
 
-  if (!WriteData(fd_, reinterpret_cast<const uint8_t*>(data), size,
+  if (!WriteData(fd_.Value(), reinterpret_cast<const uint8_t*>(data), size,
                  file_path_.c_str(), "Append buffer to cache file")) {
     return BufferLocation::Invalid();
   }
   return loc;
 }
 
-bool WeightCacheBuilder::ShouldFinalize() const { return fd_ != -1; }
+bool WeightCacheBuilder::ShouldFinalize() const { return fd_.IsValid(); }
 
 bool WeightCacheBuilder::Finalize() {
-  if (fd_ == -1) {
+  if (!fd_.IsValid()) {
     TFLITE_LOG_PROD(
         tflite::TFLITE_LOG_ERROR,
         "XNNPack weight cache: cache file ('%s') is not open for writing: %s.",
@@ -331,8 +378,8 @@ bool WeightCacheBuilder::Finalize() {
 
   // Add some padding so that the cache file can be mmaped and the buffer
   // stays aligned correctly.
-  const size_t layout_offset = Align(lseek(fd_, 0, SEEK_CUR), kMinAlignment);
-  if (lseek(fd_, layout_offset, SEEK_SET) != layout_offset) {
+  const size_t layout_offset = Align(fd_.GetPos(), kMinAlignment);
+  if (fd_.SetPos(layout_offset) != layout_offset) {
     TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
                     "XNNPack weight cache: could not move in the file: %s",
                     strerror(errno))
@@ -352,24 +399,24 @@ bool WeightCacheBuilder::Finalize() {
   memcpy(header.xnnpack_build_identifier,
          xnn_experimental_get_build_identifier_data(),
          xnn_experimental_get_build_identifier_size());
-  header.buffer_list_offset = lseek(fd_, 0, SEEK_CUR);
+  header.buffer_list_offset = fd_.GetPos();
   header.buffer_list_size = builder.GetSize();
 
   // Write the flatbuffer which serves as a header to index the buffer data.
-  if (!WriteData(fd_, builder.GetBufferPointer(), builder.GetSize(),
+  if (!WriteData(fd_.Value(), builder.GetBufferPointer(), builder.GetSize(),
                  file_path_.c_str(), "Buffer list")) {
     return false;
   }
 
   // Write the header at the beginning of the file.
-  if (lseek(fd_, 0, SEEK_SET) == -1) {
+  if (fd_.SetPos(0) != 0) {
     TFLITE_LOG_PROD(
         tflite::TFLITE_LOG_ERROR,
         "XNNPack weight cache: could not move in the file to write header: %s",
         strerror(errno))
     return false;
   }
-  if (!WriteData(fd_, (const uint8_t*)&header, sizeof(header),
+  if (!WriteData(fd_.Value(), (const uint8_t*)&header, sizeof(header),
                  file_path_.c_str(), "Writing header")) {
     return false;
   }
@@ -413,7 +460,7 @@ void MMapWeightCacheProvider::SetFilePath(const char* path) {
 }
 
 bool MMapWeightCacheProvider::LoadOrStartBuild(const char* path) {
-  if (Load(path)) {
+  if (!IsInMemoryCachePath(path) && Load(path)) {
     TFLITE_LOG_PROD(tflite::TFLITE_LOG_VERBOSE,
                     "XNNPack weight cache loaded from '%s'.", path);
     return true;
@@ -437,20 +484,27 @@ bool MMapWeightCacheProvider::Load(const std::string& path) {
 }
 
 bool MMapWeightCacheProvider::Load() {
-  XNNPACK_ABORT_CHECK(!file_path_.empty(),
-                      "Path wasn't provided to weight cache provider.");
   mmap_buffer_base_offset_ = 0;
   cache_key_to_offset_.clear();
 
-  if (!FileExists(file_path_.c_str())) {
-    TFLITE_LOG(tflite::TFLITE_LOG_WARNING,
-               "XNNPack weight cache: could not load '%s': %s.",
-               file_path_.c_str(), strerror(errno));
-    return false;
-  }
+  if (temporary_file_descriptor_.IsValid()) {
+    if (!mmap_handle_.Map(temporary_file_descriptor_.Duplicate().Release(),
+                          file_path_.c_str())) {
+      return false;
+    }
+  } else {
+    XNNPACK_ABORT_CHECK(!file_path_.empty(),
+                        "Path wasn't provided to weight cache provider.");
+    if (!FileExists(file_path_.c_str())) {
+      TFLITE_LOG(tflite::TFLITE_LOG_WARNING,
+                 "XNNPack weight cache: could not load '%s': %s.",
+                 file_path_.c_str(), strerror(errno));
+      return false;
+    }
 
-  if (!mmap_handle_.Map(file_path_.c_str())) {
-    return false;
+    if (!mmap_handle_.Map(file_path_.c_str())) {
+      return false;
+    }
   }
 
   ScopeGuard unmap_on_fail([this] { mmap_handle_.UnMap(); });
@@ -619,6 +673,11 @@ bool MMapWeightCacheProvider::Finalize() {
                     "XNNPack weight cache: file path wasn't set. Cannot "
                     "finalize the cache.");
     return false;
+  }
+  if (IsInMemoryCachePath(file_path_)) {
+    // Duplicate the file descriptor to avoid loosing the temporary file when
+    // the builder is reset.
+    temporary_file_descriptor_ = builder_.GetFileDescriptor().Duplicate();
   }
   if (!builder_.Finalize()) {
     return false;

@@ -57,6 +57,13 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
 
+// These includes are below the non-system includes because the macro may be
+// defined in lite/delegates/xnnpack/weight_cache.h.
+#if TFLITE_XNNPACK_ENABLE_IN_MEMORY_WEIGHT_CACHE
+#include <sys/syscall.h>
+#include <unistd.h>
+#endif
+
 struct TfLiteXNNPackDelegateWeightsCache;
 
 namespace tflite {
@@ -8114,6 +8121,18 @@ void TfLiteXNNPackDelegateWeightsCacheDelete(
   }
   auto weights_cache = reinterpret_cast<xnn_weights_cache_t>(cache);
   xnn_delete_weights_cache(weights_cache);
+}
+
+bool TfLiteXNNPackDelegateCanUseInMemoryWeightCacheProvider() {
+#if TFLITE_XNNPACK_ENABLE_IN_MEMORY_WEIGHT_CACHE
+  // Test if the syscall memfd_create is available.
+  const int test_fd = syscall(SYS_memfd_create, "test fd", 0);
+  if (test_fd != -1) {
+    close(test_fd);
+    return true;
+  }
+#endif
+  return false;
 }
 
 TfLiteXNNPackDelegateOptions TfLiteXNNPackDelegateOptionsDefault() {

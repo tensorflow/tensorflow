@@ -2946,6 +2946,7 @@ cc_test(
         ":test_main",
         ":weight_cache",
         ":weight_cache_schema",
+        ":xnnpack_delegate_test_mode",
         "//tensorflow/lite/c:common",
         "@XNNPACK",
         "@com_google_googletest//:gtest",

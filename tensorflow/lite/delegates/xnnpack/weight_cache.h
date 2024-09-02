@@ -26,6 +26,15 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/xnnpack/weight_cache_schema_generated.h"
 
+#if defined(__linux__) || defined(__ANDROID__)
+#ifndef TFLITE_XNNPACK_ENABLE_IN_MEMORY_WEIGHT_CACHE
+#include <sys/syscall.h>
+#ifdef SYS_memfd_create
+#define TFLITE_XNNPACK_ENABLE_IN_MEMORY_WEIGHT_CACHE 1
+#endif
+#endif
+#endif
+
 // WARNING: the interface in this file is still under experimentation and WILL
 // CHANGE. Do not rely on it.
 
@@ -33,6 +42,14 @@ limitations under the License.
 
 namespace tflite {
 namespace xnnpack {
+
+// Reserved value to request the delegate to use an in-memory cache instead of
+// saving it to disk.
+//
+// This is useful when disk space is not available or when having to manage the
+// cache file freshness is too complicated and still provides the deduplication
+// mechanism for constant buffers that are reused accross graph signatures.
+inline constexpr char kInMemoryCachePath[] = ":memory";
 
 // This structure is written at the start of every cache file.
 //
@@ -83,6 +100,74 @@ struct BufferLocation {
   }
 };
 
+class FileDescriptor {
+ public:
+  explicit FileDescriptor(int fd) : fd_(fd) {}
+
+  FileDescriptor() = default;
+
+  FileDescriptor(const FileDescriptor&) = delete;
+  FileDescriptor& operator=(const FileDescriptor&) = delete;
+
+  FileDescriptor(FileDescriptor&& other) : fd_(other.fd_) { other.fd_ = -1; }
+
+  FileDescriptor& operator=(FileDescriptor&& other) {
+    Close();
+    fd_ = other.fd_;
+    other.fd_ = -1;
+    return *this;
+  }
+
+  ~FileDescriptor() { Close(); }
+
+  // Checks that the file descriptor has a valid value.
+  //
+  // WARNING: this does not check that the descriptor points to an open file.
+  bool IsValid() const { return fd_ >= 0; }
+
+  // Returns the file descriptor value.
+  int Value() const { return fd_; }
+
+  // Closes the current file descriptor if needed and assigns the given value.
+  void Reset(int new_fd);
+
+  // Returns the cursor position in the current file.
+  //
+  // WARNING: the file descriptor must be valid and the file must be opened.
+  off_t GetPos() const;
+
+  // Sets the absolute cursor position in the current file.
+  //
+  // WARNING: the file descriptor must be valid and the file must be opened.
+  off_t SetPos(off_t position);
+
+  // Moves the cursor position by the given offset in the current file.
+  //
+  // WARNING: the file descriptor must be valid and the file must be opened.
+  off_t MovePos(off_t offset);
+
+  // Duplicates the current file descriptor and returns the new file descriptor.
+  FileDescriptor Duplicate() const;
+
+  // Closes the current file descriptor and set it to -1.
+  void Close();
+
+  // Returns the current file descriptor value and stops managing it.
+  int Release() {
+    const int fd = fd_;
+    fd_ = -1;
+    return fd;
+  }
+
+  friend void swap(FileDescriptor& f1, FileDescriptor& f2) {
+    using std::swap;
+    swap(f1.fd_, f2.fd_);
+  }
+
+ private:
+  int fd_ = -1;
+};
+
 // Handles MMap allocations lifetime.
 //
 // When mapped, provides a view over the allocation for convenience.
@@ -103,6 +188,9 @@ class MMapHandle {
   // Maps the file at the given path.
   [[nodiscard /*Mapping a file can fail.*/]]
   bool Map(const char* path);
+
+  [[nodiscard /*Mapping a file can fail.*/]]
+  bool Map(int fd, const char* debug_path = "unspecified");
 
   // Unmaps an existing mapping.
   void UnMap();
@@ -156,7 +244,7 @@ class WeightCacheBuilder {
 
   [[nodiscard]]
   bool IsStarted() const {
-    return fd_ != -1;
+    return fd_.IsValid();
   }
 
   // Resets the builder, discarding any data that hasn't been written.
@@ -186,6 +274,9 @@ class WeightCacheBuilder {
   [[nodiscard /*Writing the weight cache can fail.*/]]
   bool Finalize();
 
+  // Returns the file descriptor.
+  const FileDescriptor& GetFileDescriptor() const { return fd_; }
+
   // Returns the capacity of the underlying reserved buffer.
   //
   // WARNING: this exposes class implementation details for testing purposes and
@@ -207,7 +298,7 @@ class WeightCacheBuilder {
   cache::schema::BufferListT schema_;
   size_t capacity_ = 0;
   // Temporary file descriptor to write the weights to disk immediately.
-  int fd_ = -1;
+  FileDescriptor fd_;
   std::string file_path_;
 };
 
@@ -368,6 +459,10 @@ class MMapWeightCacheProvider {
 
   // The offset to the first buffer data in the MMap allocation.
   size_t mmap_buffer_base_offset_;
+
+  // Can hold a file descriptor when building a temporary cache to prevent it
+  // from being deleted.
+  FileDescriptor temporary_file_descriptor_;
 
   // Used to build the cache.
   WeightCacheBuilder builder_;

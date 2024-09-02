@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cassert>
+#include <cerrno>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -36,6 +37,7 @@ limitations under the License.
 #include "flatbuffers/verifier.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/xnnpack/weight_cache_schema_generated.h"
+#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 
 namespace tflite::xnnpack {
 
@@ -124,7 +126,7 @@ TEST(MMapHandleTest, DefaultConstructs) {
   EXPECT_EQ(handle.size(), 0);
 }
 
-TEST(MMapHandleTest, MapNonExitxingFileFails) {
+TEST(MMapHandleTest, MapNonExistingFileFails) {
   // I hope this path doesn't exist...
   const char* file_path = "sdbgfd";
   MMapHandle handle;
@@ -309,11 +311,41 @@ TEST(WeightCacheBuilderTest, AppendWithoutReserveWriteWorks) {
 }
 
 TEST(WeightCacheBuilderTest, NonExistingPathFails) {
-  using std::size;
   WeightCacheBuilder builder;
   EXPECT_FALSE(builder.Start(""));
   EXPECT_FALSE(builder.Start("/seldf/sedsft"));
 }
+
+#if TFLITE_XNNPACK_ENABLE_IN_MEMORY_WEIGHT_CACHE
+TEST(WeightCacheBuilderTest, InMemoryCacheTriggeredByCorrectPrefix) {
+  if (!TfLiteXNNPackDelegateCanUseInMemoryWeightCacheProvider()) {
+    GTEST_SKIP() << "In-memory weight cache is enabled for this build but "
+                    "isn't supported by the current system, skipping test.";
+  }
+  {  // Exact in-memory flag used starts an in-memory build.
+    WeightCacheBuilder builder;
+    EXPECT_TRUE(builder.Start(kInMemoryCachePath));
+    EXPECT_TRUE(builder.IsStarted());
+    const FileDescriptor file_fd(open(kInMemoryCachePath, O_RDONLY));
+    EXPECT_FALSE(file_fd.IsValid());
+    EXPECT_EQ(errno, ENOENT);
+  }
+  {  // Prefixed in-memory flag used starts an in-memory build.
+    WeightCacheBuilder builder;
+    const std::string path_with_in_memory_prefix =
+        std::string(kInMemoryCachePath) + "/slkdjfsldf";
+    EXPECT_TRUE(builder.Start(path_with_in_memory_prefix.c_str()));
+    EXPECT_TRUE(builder.IsStarted());
+    const FileDescriptor file_fd(open(kInMemoryCachePath, O_RDONLY));
+    EXPECT_FALSE(file_fd.IsValid());
+    EXPECT_EQ(errno, ENOENT);
+  }
+}
+#else
+TEST(WeightCacheBuilderTest, InMemoryCacheTriggeredByCorrectPrefix) {
+  GTEST_SKIP() << "In-memory weight cache isn't enabled, skipping test.";
+}
+#endif
 
 struct FakeContext {
   // Adds a new tensor and it's backing buffer to the context.

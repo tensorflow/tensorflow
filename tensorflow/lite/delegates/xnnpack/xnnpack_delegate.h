@@ -75,6 +75,10 @@ typedef struct {
   const char* weight_cache_file_path;
 } TfLiteXNNPackDelegateOptions;
 
+// Returns true on systems that support running the in-memory weight cache
+// provider.
+TFL_CAPI_EXPORT bool TfLiteXNNPackDelegateCanUseInMemoryWeightCacheProvider();
+
 // Returns a structure with the default XNNPack delegate options.
 TFL_CAPI_EXPORT TfLiteXNNPackDelegateOptions
 TfLiteXNNPackDelegateOptionsDefault();
