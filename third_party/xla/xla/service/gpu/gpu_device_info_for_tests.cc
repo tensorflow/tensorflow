@@ -39,6 +39,8 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::RTXA6000DeviceInfo(
   b.set_l2_cache_size(6 * 1024 * 1024);
   b.set_clock_rate_ghz(1.410);
   b.set_device_memory_size(51'050'250'240);
+  b.set_registers_per_core_limit(65536);
+  b.set_registers_per_block_limit(65536);
   return b.BuildObject();
 }
 
