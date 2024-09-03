@@ -72,9 +72,9 @@ absl::StatusOr<bool> BroadcastCanonicalizer::Run(
         transpose_dims[new_dims[i]] = new_dims[std::distance(
             original_dims.begin(), absl::c_find(original_dims, new_dims[i]))];
       }
-      TF_ASSIGN_OR_RETURN(new_broadcast,
-                          MakeTransposeHlo(new_broadcast, transpose_dims));
-      TF_RETURN_IF_ERROR(computation->ReplaceInstruction(hlo, new_broadcast));
+      TF_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
+          hlo, HloInstruction::CreateTranspose(hlo->shape(), new_broadcast,
+                                               transpose_dims)));
       changed = true;
     }
   }
