@@ -305,9 +305,11 @@ static absl::StatusOr<std::string> FindPtxAsExecutable(
 
 absl::StatusOr<SemanticVersion> GetAsmCompilerVersion(
     std::string_view preferred_cuda_dir) {
-  TF_ASSIGN_OR_RETURN(std::string ptxas_path,
-                      FindPtxAsExecutable(preferred_cuda_dir));
-  return GetToolVersion(ptxas_path);
+  return ::xla::GetOnce([&]() -> absl::StatusOr<SemanticVersion> {
+    TF_ASSIGN_OR_RETURN(std::string ptxas_path,
+                        FindPtxAsExecutable(preferred_cuda_dir));
+    return GetToolVersion(ptxas_path);
+  });
 }
 
 absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(

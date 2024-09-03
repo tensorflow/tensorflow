@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -922,6 +923,29 @@ inline bool HloPredicateFalse(const HloInstruction*) { return false; }
 
 using Vector2 = std::array<int64_t, 2>;
 using Vector3 = std::array<int64_t, 3>;
+
+// Get a value on the first access and store it to a static variable.
+// On every next access, get the stored value as const reference.
+template <typename Func, typename T = std::result_of_t<Func()>>
+const T& GetOnce(Func fn) {
+  static absl::Mutex mutex(absl::kConstInit);
+  static std::atomic<T*> value_atomic_ptr = nullptr;
+
+  T* value_ptr = value_atomic_ptr.load(std::memory_order_acquire);
+  if (value_ptr == nullptr) {
+    absl::MutexLock lock(&mutex);
+    // We might have raced with another thread, so check again!
+    // Note: We can use relaxed memory ordering here because we hold
+    //       the mutex lock and all updates happen under the same lock.
+    value_ptr = value_atomic_ptr.load(std::memory_order_relaxed);
+    if (value_ptr == nullptr) {
+      value_ptr = new T;
+      *value_ptr = std::move(fn());
+      value_atomic_ptr.store(value_ptr, std::memory_order_release);
+    }
+  }
+  return *value_ptr;
+}
 
 }  // namespace xla
 
