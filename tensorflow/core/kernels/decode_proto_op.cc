@@ -140,7 +140,7 @@ Status InitDefaultValue(DataType dtype, const char* value,
   }
   result->dtype = DT_STRING;
   result->value.v_string = value;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Initializes a default value from the output data type and the field

@@ -77,7 +77,7 @@ struct NumTrue<CPUDevice, T, int64_t> {
                         typename TTypes<T>::ConstFlat input,
                         TTypes<int64_t>::UnalignedScalar num_true) {
     num_true() = CountAccumulator<T>(input.data(), input.data() + input.size());
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -118,7 +118,7 @@ struct Where<CPUDevice, DIMS, T, TIndex> {
         ++*found_true;
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

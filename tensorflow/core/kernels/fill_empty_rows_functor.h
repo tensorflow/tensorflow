@@ -97,7 +97,7 @@ struct FillEmptyRows<CPUDevice, T, Tindex, RaggedOperands> {
           kOutputValuesOutput, TensorShape({0}), &output_values_t));
 
       // Exit early, nothing more to do.
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     auto vec_or_matrix = [](auto tensor, int index1, int index2) -> auto& {
@@ -204,7 +204,7 @@ struct FillEmptyRows<CPUDevice, T, Tindex, RaggedOperands> {
       }
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -258,7 +258,7 @@ struct FillEmptyRowsGrad<CPUDevice, T, Tindex> {
         d_default_value_scalar += grad_values(j);
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
