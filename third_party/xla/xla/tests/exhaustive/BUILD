@@ -86,6 +86,11 @@ exhaustive_xla_test(
         "exhaustive_test_main.cc",
         ":exhaustive_unary_test_srcs",
     ],
+    # Nvidia close-sourced libraries are not TSAN friendly, but are doing their own synchronization.
+    # This can lead to TSAN false positives that are hard to track down.
+    backend_tags = {
+        "gpu": ["notsan"],
+    },
     backends = [
         "gpu",
         "cpu",
@@ -130,6 +135,11 @@ xla_test(
         "exhaustive_test_main.cc",
         "exhaustive_unary_complex_test.cc",
     ],
+    # Nvidia close-sourced libraries are not TSAN friendly, but are doing their own synchronization.
+    # This can lead to TSAN false positives that are hard to track down.
+    backend_tags = {
+        "gpu": ["notsan"],
+    },
     backends = [
         "gpu",
         "cpu",
@@ -170,6 +180,11 @@ xla_test(
         "exhaustive_test_main.cc",
         ":exhaustive_binary_16_bit_test_srcs",
     ],
+    # Nvidia close-sourced libraries are not TSAN friendly, but are doing their own synchronization.
+    # This can lead to TSAN false positives that are hard to track down.
+    backend_tags = {
+        "gpu": ["notsan"],
+    },
     backends = [
         "gpu",
         "cpu",
@@ -204,6 +219,8 @@ xla_test(
         "exhaustive_binary_f32_f64_test.cc",
         "exhaustive_test_main.cc",
     ],
+    # Nvidia close-sourced libraries are not TSAN friendly, but are doing their own synchronization.
+    # This can lead to TSAN false positives that are hard to track down.
     backend_tags = {
         "gpu": ["notsan"],
     },
