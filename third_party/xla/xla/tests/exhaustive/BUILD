@@ -204,6 +204,9 @@ xla_test(
         "exhaustive_binary_f32_f64_test.cc",
         "exhaustive_test_main.cc",
     ],
+    backend_tags = {
+        "gpu": ["notsan"],
+    },
     backends = [
         "gpu",
         "cpu",
