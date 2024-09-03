@@ -11,6 +11,7 @@ load(
 )
 load("@local_xla//xla:xla.bzl", "xla_py_proto_library")
 load("@local_xla//xla/service/cpu:build_defs.bzl", "runtime_copts")
+load("@local_xla//xla/tsl/mkl:build_defs.bzl", "mkl_deps")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "if_google", "if_libtpu", "tf_cc_binary", "tf_cc_test", "tf_copts", "tf_cuda_cc_test", "tf_gen_op_wrapper_py", "tf_openmp_copts")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "filegroup", "get_compatible_with_portable")
@@ -316,10 +317,12 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:mutex",
         "@local_tsl//tsl/platform:blocking_counter",
+        "@local_tsl//tsl/platform:cord",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:tstring",
         "@local_tsl//tsl/platform:types",
-    ] + tf_additional_tensor_coding_deps(),
+    ] + tf_additional_tensor_coding_deps() + mkl_deps(),
     alwayslink = 1,
 )
 
