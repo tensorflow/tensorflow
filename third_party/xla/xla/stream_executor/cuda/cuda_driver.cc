@@ -64,6 +64,13 @@ namespace gpu {
 
 namespace {
 
+CUcontext CurrentContextOrDie() {
+  CUcontext current = nullptr;
+  TF_CHECK_OK(cuda::ToStatus(cuCtxGetCurrent(&current),
+                             "Failed to query current context"));
+  return current;
+}
+
 // Returns the singleton ContextMap.
 ContextMap<CUcontext, GpuContext>* GetContextMap() {
   static ContextMap<CUcontext, GpuContext>* context_map =
@@ -86,7 +93,7 @@ ContextMap<CUcontext, GpuContext>* GetContextMap() {
 // created by StreamExecutor (to ensure that the CUDA runtime didn't create a
 // context behind our backs).
 CUcontext CurrentContext() {
-  CUcontext current = cuda::CurrentContextOrDie();
+  CUcontext current = CurrentContextOrDie();
   if (current != nullptr && !GetContextMap()->Has(current)) {
     LOG(FATAL) << "current context was not created by the StreamExecutor "
                   "cuda_driver API: "
@@ -265,7 +272,7 @@ absl::Status GpuDriver::CreateContext(int device_ordinal, CUdevice device,
     }
   }
 
-  CUcontext former_context = cuda::CurrentContextOrDie();
+  CUcontext former_context = CurrentContextOrDie();
   CUcontext new_context;
   TF_RETURN_IF_ERROR(
       cuda::ToStatus(cuDevicePrimaryCtxRetain(&new_context, device)));
@@ -2009,14 +2016,4 @@ absl::StatusOr<int> GpuDriver::GetMaxOccupiedBlocksPerCore(
 }
 
 }  // namespace gpu
-
-namespace cuda {
-CUcontext CurrentContextOrDie() {
-  CUcontext current = nullptr;
-  TF_CHECK_OK(cuda::ToStatus(cuCtxGetCurrent(&current),
-                             "Failed to query current context"));
-  return current;
-}
-
-}  // namespace cuda
 }  // namespace stream_executor

@@ -66,10 +66,6 @@ using CUDADriver = gpu::GpuDriver;
 
 using CudaContext = gpu::GpuContext;
 
-// Returns the current context set in CUDA. This is done by calling the cuda
-// driver (e.g., this value is not our cached view of the current context).
-CUcontext CurrentContextOrDie();
-
 }  // namespace cuda
 }  // namespace stream_executor
 
