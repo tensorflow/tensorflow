@@ -65,11 +65,6 @@ class GpuDriver {
   // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#initialization
   static absl::Status Init();
 
-  // Returns the device associated with the given context.
-  // device is an outparam owned by the caller, must not be null.
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1g4e84b109eba36cdaaade167f34ae881e
-  static absl::StatusOr<GpuDeviceHandle> DeviceFromContext(GpuContext* context);
-
   // Creates a new CUDA/HIP stream associated with the given context via
   // cuStreamCreate/hipStreamCreateWithFlags.
   // stream is an outparam owned by the caller, must not be null.

@@ -171,6 +171,17 @@ hipCtx_t CurrentContext() {
   return current;
 }
 
+// Returns the device associated with the given context.
+absl::StatusOr<hipDevice_t> DeviceFromContext(GpuContext* context) {
+  ScopedActivateContext activated{context};
+  hipDevice_t device = -1;
+  hipError_t result = wrap::hipCtxGetDevice(&device);
+  if (result == hipSuccess) return device;
+
+  return absl::InternalError(
+      absl::StrCat("failed to get device for context: ", ToString(result)));
+}
+
 // ROCM driver routines may require a large amount of stack (particularly
 // hipModuleLoadDataEx, in our experience). To avoid stack overflow when using
 // stack-limited threads (such as those spawned by a default-argument
@@ -1199,17 +1210,6 @@ absl::Status GpuDriver::LaunchKernel(
     LOG(ERROR) << "failed to unload module " << module
                << "; leaking: " << ToString(res);
   }
-}
-
-/* static */ absl::StatusOr<hipDevice_t> GpuDriver::DeviceFromContext(
-    GpuContext* context) {
-  ScopedActivateContext activated{context};
-  hipDevice_t device = -1;
-  hipError_t result = wrap::hipCtxGetDevice(&device);
-  if (result == hipSuccess) return device;
-
-  return absl::InternalError(
-      absl::StrCat("failed to get device for context: ", ToString(result)));
 }
 
 /* static */ bool GpuDriver::CreateStream(GpuContext* context,

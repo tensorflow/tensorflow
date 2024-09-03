@@ -64,6 +64,18 @@ namespace gpu {
 
 namespace {
 
+// Returns the device associated with the given context.
+absl::StatusOr<CUdevice> DeviceFromContext(GpuContext* context) {
+  ScopedActivateContext activated{context};
+  CUdevice device = -1;
+  auto status = cuda::ToStatus(cuCtxGetDevice(&device));
+  if (status.ok()) {
+    return device;
+  }
+
+  return status;
+}
+
 CUcontext CurrentContextOrDie() {
   CUcontext current = nullptr;
   TF_CHECK_OK(cuda::ToStatus(cuCtxGetCurrent(&current),
@@ -1321,17 +1333,6 @@ void GpuDriver::UnloadModule(GpuContext* context, CUmodule module) {
     LOG(ERROR) << "failed to unload module " << module
                << "; leaking: " << status;
   }
-}
-
-absl::StatusOr<CUdevice> GpuDriver::DeviceFromContext(GpuContext* context) {
-  ScopedActivateContext activated{context};
-  CUdevice device = -1;
-  auto status = cuda::ToStatus(cuCtxGetDevice(&device));
-  if (status.ok()) {
-    return device;
-  }
-
-  return status;
 }
 
 bool GpuDriver::CreateStream(GpuContext* context, CUstream* stream,
