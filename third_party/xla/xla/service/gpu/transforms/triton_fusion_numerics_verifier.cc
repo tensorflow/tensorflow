@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -159,9 +160,17 @@ absl::Status VerifyTritonFusion(AutotunerCompileUtil& util,
                           /*clear_backend_config=*/true));
 
   TF_ASSIGN_OR_RETURN(auto stream, config.GetStream());
-  return triton_fusion_numerics_pass_internal::CompareBuffers(
+  auto status = triton_fusion_numerics_pass_internal::CompareBuffers(
       triton_result, emitters_result, fusion.shape(),
       fusion.GetModule()->config(), stream);
+
+  if (!status.ok()) {
+    LOG(ERROR) << "Triton numerics verification failed with: "
+               << status.message() << "\n The failing HLO is: \n\n"
+               << ExtractInstructionIntoNewModule(fusion)->ToString();
+  }
+
+  return status;
 }
 
 }  // namespace
