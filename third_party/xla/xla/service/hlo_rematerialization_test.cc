@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_memory_scheduler.h"
 #include "xla/service/hlo_rematerialization_test_utils.h"
+#include "xla/service/hlo_verifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -1070,8 +1071,8 @@ HloModule fusion, is_scheduled=true
   %p1 = f32[] parameter(1)
   %x = f32[1024]{0} broadcast(f32[] %p0), dimensions={}
   %y = f32[1024]{0} broadcast(f32[] %p1), dimensions={}
-  %add = f32[1024] add(%x, %y)
-  %mul = f32[1024] multiply(%x, %y)
+  %add = f32[1024] add(%x, %y), metadata={scheduling_name="add"}
+  %mul = f32[1024] multiply(%x, %y), metadata={scheduling_name="mul"}
   %c = f32[1024] custom-call(%mul), custom_call_target="SomeCall", called_computations={custom_call_comp}
   ROOT %out = (f32[1024], f32[1024]) tuple(%add, %c)
 }
@@ -1080,15 +1081,19 @@ ENTRY %entry {
   %param.0 = f32[] parameter(0)
   %param.1 = f32[] parameter(1)
   %fus = (f32[1024]{0}, f32[1024]{0}) fusion(%param.0, %param.1), kind=kLoop,
-    calls=%add_mul_comp
+    calls=%add_mul_comp, metadata={scheduling_name="fus"}
   %gte.1 = f32[1024]{0} get-tuple-element(%fus), index=0
-  %add = f32[1024]{0} add(f32[1024]{0} %gte.1, f32[1024]{0} %gte.1)
+  %add = f32[1024]{0} add(f32[1024]{0} %gte.1, f32[1024]{0} %gte.1),
+    metadata={scheduling_name="add"}
   %broadcast.1 = f32[1024]{0} broadcast(f32[] %param.0), dimensions={}
-  %mul = f32[1024]{0} multiply(f32[1024]{0} %add, f32[1024]{0} %broadcast.1)
-  %gte.2 = f32[1024]{0} get-tuple-element(%fus), index=1
-  %gte.3 = f32[1024]{0} get-tuple-element(%fus), index=0
-  %add.2 = f32[1024]{0} add(f32[1024]{0} %mul, f32[1024]{0} %gte.2)
-  ROOT %mul.2 = f32[1024]{0} multiply(f32[1024]{0} %add.2, f32[1024]{0} %gte.3)
+  %mul = f32[1024]{0} multiply(f32[1024]{0} %add, f32[1024]{0} %broadcast.1),
+    metadata={scheduling_name="mul"}
+  %gte.2 = f32[1024]{0} get-tuple-element(%fus), index=1, metadata={scheduling_name="gte.2"}
+  %gte.3 = f32[1024]{0} get-tuple-element(%fus), index=0, metadata={scheduling_name="gte.3"}
+  %add.2 = f32[1024]{0} add(f32[1024]{0} %mul, f32[1024]{0} %gte.2),
+    metadata={scheduling_name="add.2"}
+  ROOT %mul.2 = f32[1024]{0} multiply(f32[1024]{0} %add.2, f32[1024]{0} %gte.3),
+    metadata={scheduling_name="mul.2"}
 }
 )";
 
@@ -1129,6 +1134,9 @@ ENTRY %entry {
       (*it2)->called_computations()[0]));
   CheckForRematInInstructionNames(
       ::testing::UnitTest::GetInstance()->current_test_info()->name());
+  TF_ASSERT_OK(HloVerifier{HloVerifierOpts{}.VerifyInstructionNameUnchanged()}
+                   .Run(module.get())
+                   .status());
 }
 
 class CompressingRematerializationTest : public RematerializationTestBase {
