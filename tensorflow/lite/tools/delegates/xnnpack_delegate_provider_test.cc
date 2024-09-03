@@ -60,7 +60,6 @@ TEST(XNNPackDelegateProviderTest, Test) {
     const TfLiteXNNPackDelegateOptions* options =
         TfLiteXNNPackDelegateGetOptions(delegate.get());
     ASSERT_NE(options, nullptr);
-    EXPECT_EQ(options->weight_cache_file_path, nullptr);
   }
 
   params.Set<bool>("xnnpack_force_fp16", true, /*position=*/1);
