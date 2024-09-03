@@ -1035,6 +1035,29 @@ INSTANTIATE_TEST_SUITE_P(
                        ::testing::ValuesIn(AllDevicesToTest())),
     TritonSupportTestTypeAndDeviceToString);
 
+using BroadcastTest = TritonSupportTestWithTypeAndDeviceParam;
+
+TEST_P(BroadcastTest, Broadcast) {
+  auto [data_type, cc] = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  input = $0[35,131] parameter(0)
+  ROOT bcast = $0[3,35,131,12] broadcast(input), dimensions={1,2}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
+                                                    kHloTestTemplate, data_type,
+                                                    HloOpcode::kBroadcast));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{2, 16, 32, 8}, cc);
+}
+
+constexpr std::array kTestedOpsBroadcast = {HloOpcode::kBroadcast};
+
+INSTANTIATE_TEST_SUITE_P(
+    BroadcastTestSuite, BroadcastTest,
+    ::testing::Combine(::testing::ValuesIn(AllXlaDataTypes()),
+                       ::testing::ValuesIn(AllDevicesToTest())),
+    TritonSupportTestTypeAndDeviceToString);
+
 using ParameterTest = TritonSupportTestWithTypeAndDeviceParam;
 
 TEST_P(ParameterTest, Parameter) {
@@ -1197,6 +1220,7 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   ret.insert(kTestedOpsSlice.begin(), kTestedOpsSlice.end());
   ret.insert(kTestedOpsTranspose.begin(), kTestedOpsTranspose.end());
   ret.insert(kTestedOpsCollectives.begin(), kTestedOpsCollectives.end());
+  ret.insert(kTestedOpsBroadcast.begin(), kTestedOpsBroadcast.end());
   ret.insert(kTestedOpsParameter.begin(), kTestedOpsParameter.end());
   ret.insert(kTestedOpsConstant.begin(), kTestedOpsConstant.end());
   ret.insert(kTestedOpsIota.begin(), kTestedOpsIota.end());
@@ -1206,34 +1230,18 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   return ret;
 }
 
-absl::flat_hash_set<HloOpcode> AllUntestedOpcodes() {
-  return absl::flat_hash_set<HloOpcode>{HloOpcode::kBroadcast};
-}
-
 TEST(OpCoverage, UnsupportedOpcodes) {
   for (HloOpcode opcode : kUnsupportedOps) {
     EXPECT_TRUE(internal::IsTritonUnsupportedOpcode(opcode));
   }
 }
 
-TEST(OpCoverage, TestedAndUntestedDoNotOverlap) {
-  absl::flat_hash_set<HloOpcode> untested_opcodes = AllUntestedOpcodes();
-  for (HloOpcode tested : AllTestedOpcodes()) {
-    EXPECT_FALSE(untested_opcodes.contains(tested))
-        << "Opcode `" << HloOpcodeString(tested)
-        << "` appears in both tested and untested opcodes.";
-  }
-}
-
-TEST(OpCoverage, AllOpcodesAppearInTestedOrUntested) {
-  absl::flat_hash_set<HloOpcode> untested_opcodes = AllUntestedOpcodes();
+TEST(OpCoverage, AllOpcodesAreTested) {
   absl::flat_hash_set<HloOpcode> tested_opcodes = AllTestedOpcodes();
   for (int opcode_index = 0; opcode_index < HloOpcodeCount(); ++opcode_index) {
     auto opcode = static_cast<HloOpcode>(opcode_index);
-    EXPECT_TRUE(untested_opcodes.contains(opcode) ||
-                tested_opcodes.contains(opcode))
-        << "Opcode `" << HloOpcodeString(opcode)
-        << "` does not appear in tested or untested opcodes.";
+    EXPECT_TRUE(tested_opcodes.contains(opcode))
+        << "Opcode `" << HloOpcodeString(opcode) << "` is not tested.";
   }
 }
 

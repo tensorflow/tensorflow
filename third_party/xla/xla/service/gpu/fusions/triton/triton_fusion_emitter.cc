@@ -867,7 +867,6 @@ absl::StatusOr<Value> EmitNestedFusion(
                    region_values);
 }
 
-// TODO(b/331332678): Add unit tests to target this function specifically.
 Value EmitTiledBroadcast(
     ImplicitLocOpBuilder& b, const TiledHloInstruction& tiled_broadcast,
     absl::flat_hash_map<const TiledHloInstruction*, Value>& values) {
