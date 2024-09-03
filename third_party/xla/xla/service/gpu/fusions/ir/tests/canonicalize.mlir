@@ -237,3 +237,45 @@ func.func @apply_indexing_move_syms_to_dims(%dim0: index, %sym0: index)
 // CHECK-LABEL: func.func @apply_indexing_move_syms_to_dims
 // CHECK-NEXT:  xla_gpu.apply_indexing #[[$MAP]]
 // CHECK-SAME:      (%[[ARG0:.*]], %[[ARG1:.*]])
+
+// // -----
+
+#map0 = #xla_gpu.indexing_map<(d0) -> (4 * d0), domain: d0 in [0, 3]>
+#map1 = #xla_gpu.indexing_map<(d0)[s0, s1] -> (d0 + s0, s1), domain: d0 in [0, 12], s0 in [0, 1024], s1 in [0, 32]>
+func.func @loop_of_apply_indexing(%input: tensor<1024x32xf32>, %init: f32, %dim: index) -> (f32) {
+  %idx = xla_gpu.apply_indexing #map0(%dim)
+  %sum = xla_gpu.loop (%idx)[%i, %j] -> (%r0, %r1) in #map1 iter_args(%sum_ = %init) -> (f32) {
+    %t = tensor.extract %input[%i, %j] : tensor<1024x32xf32>
+    %add = arith.addf %sum_, %t : f32
+    xla_gpu.yield %add : f32
+  }
+  func.return %sum : f32
+}
+
+// CHECK: #[[$MAP:.*]] = #xla_gpu.indexing_map<(d0)[s0, s1] -> (d0 * 4 + s0, s1),
+// CHECK-SAME:                     domain: d0 in [0, 3], s0 in [0, 1024], s1 in [0, 32]>
+// CHECK-LABEL: func.func @loop_of_apply_indexing
+// CHECK-SAME:      %[[ARG0:.*]]: tensor<1024x32xf32>, %[[ARG1:.*]]: f32, %[[ARG2:.*]]: index)
+// CHECK:         xla_gpu.loop (%[[ARG2]])
+// CHECK-SAME:      in #[[$MAP]]
+
+// -----
+
+#map0 = #xla_gpu.indexing_map<(d0)[s0] -> (2 * d0 * s0), domain: d0 in [0, 3], s0 in [0, 2]>
+#map1 = #xla_gpu.indexing_map<(d0)[s0, s1] -> (d0 + s0 + s1), domain: d0 in [0, 12], s0 in [0, 1024], s1 in [0, 32]>
+func.func @loop_of_apply_indexing_with_syms(%dim0: index, %sym0: index, %input: tensor<1024x32xf32>, %init: f32) -> (f32) {
+  %0 = xla_gpu.apply_indexing #map0(%dim0)[%sym0]
+  %sum = xla_gpu.loop (%0)[%i, %j] -> (%r0) in #map1 iter_args(%sum_ = %init) -> (f32) {
+    %t = tensor.extract %input[%i, %j] : tensor<1024x32xf32>
+    %add = arith.addf %sum_, %t : f32
+    xla_gpu.yield %add : f32
+  }
+  func.return %sum : f32
+}
+
+// CHECK: #[[$MAP:.*]] = #xla_gpu.indexing_map<(d0, d1)[s0, s1] -> ((d0 * d1) * 2 + s0 + s1),
+// CHECK-SAME:                     domain: d0 in [0, 3], d1 in [0, 2], s0 in [0, 1024], s1 in [0, 32]>
+// CHECK-LABEL: func.func @loop_of_apply_indexing_with_syms
+// CHECK-SAME:      %[[ARG0:.*]]: index, %[[ARG1:.*]]: index
+// CHECK:         xla_gpu.loop (%[[ARG0]], %[[ARG1]])
+// CHECK-SAME:      in #[[$MAP]]

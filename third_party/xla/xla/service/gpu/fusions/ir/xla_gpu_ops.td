@@ -353,6 +353,7 @@ def LoopOp : XLAGPU_Op<"loop", [
   }];
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
+  let hasCanonicalizer = 1;
 }
 
 def XLAGPU_MaterializeOp : XLAGPU_Op<"materialize", [AttrSizedOperandSegments]> {
