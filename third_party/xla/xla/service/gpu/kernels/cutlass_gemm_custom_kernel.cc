@@ -245,16 +245,6 @@ absl::StatusOr<std::vector<CustomKernel>> GetCutlassGemmKernels(
                                            slices, device)}};
   }
 
-  if (dot_type == PrimitiveType::F32 && lhs_type == PrimitiveType::BF16 &&
-      rhs_type == PrimitiveType::F32) {
-    return {{Load<Bf16xF32ToF32<Default>>(name, GemmMode::kGemm,
-                                          /*batch_count=*/1, m, n, k, indices,
-                                          slices, device),
-             Load<Bf16xF32ToF32<Default>>(name, GemmMode::kGemmSplitKParallel,
-                                          /*batch_count=*/16, m, n, k, indices,
-                                          slices, device)}};
-  }
-
   if (dot_type == PrimitiveType::F32 && lhs_type == PrimitiveType::F32 &&
       rhs_type == PrimitiveType::BF16) {
     return {{Load<F32xBf16ToF32<Default>>(name, GemmMode::kGemm,

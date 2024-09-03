@@ -281,7 +281,7 @@ bool IsSupportedKernel(PrimitiveType lhs, PrimitiveType rhs,
                        PrimitiveType dot) {
   // List of supported kernels using {lhs_type, rhs_type, dot_type}.
   constexpr std::array<std::array<PrimitiveType, 3>, 4> kSupportedKernels = {
-      {{BF16, BF16, F32}, {BF16, F32, F32}, {F32, BF16, F32}, {BF16, S8, F32}}};
+      {{BF16, BF16, F32}, {F32, BF16, F32}, {BF16, S8, F32}}};
   return absl::c_linear_search(kSupportedKernels,
                                std::array<PrimitiveType, 3>{lhs, rhs, dot});
 }
