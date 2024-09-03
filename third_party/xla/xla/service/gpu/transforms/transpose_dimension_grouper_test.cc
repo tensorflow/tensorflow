@@ -89,8 +89,6 @@ ENTRY main {
                        HasSubstr("Layout normalization")));
 }
 
-// TODO(b/328656780): Do not normalize to 3D once the emitter supports any
-// number of dimensions.
 TEST_F(TransposeDimensionGrouperTest, Simple2D) {
   const char* hlo = R"(
 HloModule Simple2D
@@ -101,13 +99,7 @@ ENTRY main {
 }
 )";
 
-  CheckDimensionGrouper(hlo,
-                        R"(
-// CHECK:  [[input_0:%[^ ]+]] = f32[128,64]{1,0} parameter(0)
-// CHECK:  [[bitcast_1:%[^ ]+]] = f32[1,128,64]{2,1,0} bitcast([[input_0]])
-// CHECK:  [[transpose:%[^ ]+]] = f32[1,64,128]{2,1,0} transpose([[bitcast_1]]), dimensions={0,2,1}
-// CHECK:  ROOT {{.*}} = f32[64,128]{1,0} bitcast([[transpose]])
-      )");
+  CheckDimensionGrouperUnchanged(hlo);
 }
 
 TEST_F(TransposeDimensionGrouperTest, Simple3D_021) {
@@ -184,8 +176,8 @@ ENTRY main {
   CheckDimensionGrouper(hlo,
                         R"(
 // CHECK:  [[input_0:%[^ ]+]] = f32[4096,4096,128,16]{3,2,1,0} parameter(0)
-// CHECK:  [[bitcast_1:%[^ ]+]] = f32[1,2147483648,16]{2,1,0} bitcast([[input_0]])
-// CHECK:  [[transpose:%[^ ]+]] = f32[1,16,2147483648]{2,1,0} transpose([[bitcast_1]]), dimensions={0,2,1}
+// CHECK:  [[bitcast_1:%[^ ]+]] = f32[2147483648,16]{1,0} bitcast([[input_0]])
+// CHECK:  [[transpose:%[^ ]+]] = f32[16,2147483648]{1,0} transpose([[bitcast_1]]), dimensions={1,0}
 // CHECK:  ROOT {{.*}} = f32[16,4096,4096,128]{3,2,1,0} bitcast([[transpose]])
       )");
 }
@@ -228,9 +220,7 @@ ENTRY main {
       )");
 }
 
-// TODO(b/328656780): Do not normalize to 3D once the emitter supports any
-// number of dimensions.
-TEST_F(TransposeDimensionGrouperTest, Normalize2DTo3D) {
+TEST_F(TransposeDimensionGrouperTest, NormalizeTo2D) {
   const char* hlo = R"(
 HloModule Normalize2DTo3D
 
@@ -243,8 +233,8 @@ ENTRY main {
   CheckDimensionGrouper(hlo,
                         R"(
 // CHECK:  [[input_0:%[^ ]+]] = f32[50,20,30]{2,1,0} parameter(0)
-// CHECK:  [[bitcast_1:%[^ ]+]] = f32[1,50,600]{2,1,0} bitcast([[input_0]])
-// CHECK:  [[transpose:%[^ ]+]] = f32[1,600,50]{2,1,0} transpose([[bitcast_1]]), dimensions={0,2,1}
+// CHECK:  [[bitcast_1:%[^ ]+]] = f32[50,600]{1,0} bitcast([[input_0]])
+// CHECK:  [[transpose:%[^ ]+]] = f32[600,50]{1,0} transpose([[bitcast_1]]), dimensions={1,0}
 // CHECK:  ROOT {{.*}} = f32[20,30,50]{2,1,0} bitcast([[transpose]])
       )");
 }
