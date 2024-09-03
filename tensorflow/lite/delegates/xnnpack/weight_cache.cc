@@ -22,8 +22,10 @@ limitations under the License.
 #define F_OK 0
 #else
 #include <sys/mman.h>
-#include <sys/syscall.h>
 #include <unistd.h>
+#endif
+#if TFLITE_XNNPACK_ENABLE_IN_MEMORY_WEIGHT_CACHE
+#include <sys/syscall.h>
 #endif
 
 #include <algorithm>
