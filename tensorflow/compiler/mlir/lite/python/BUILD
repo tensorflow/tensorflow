@@ -211,13 +211,10 @@ cc_library(
         "//tensorflow/lite/toco:model_flags_proto_cc",
         "//tensorflow/lite/toco:toco_convert",
         "//tensorflow/lite/toco:toco_flags_proto_cc",
-        "//tensorflow/lite/toco:toco_graphviz_dump_options",
         "//tensorflow/lite/toco:toco_port",
         "//tensorflow/lite/toco:toco_tooling",
         "//tensorflow/lite/toco:tooling_util",
         "//tensorflow/lite/toco:types_proto_cc",
-        "//tensorflow/lite/toco/logging:conversion_log_util",
-        "//tensorflow/lite/toco/logging:toco_conversion_log_proto_cc",
         "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
