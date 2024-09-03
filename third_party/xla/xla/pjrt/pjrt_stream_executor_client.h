@@ -93,8 +93,6 @@ class PjRtStreamExecutorDeviceDescription : public PjRtDeviceDescription {
 
   absl::string_view DebugString() const override { return debug_string_; }
 
-  int core_on_chip() const { return core_index_; }
-
   absl::Span<int const> coords() const { return absl::MakeSpan(coords_); }
 
   const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
@@ -115,13 +113,10 @@ class PjRtStreamExecutorDeviceDescription : public PjRtDeviceDescription {
 
   void SetCoords(std::array<int, 1> coords) { coords_ = coords; }
 
-  void SetCoreOnChip(int core_index) { core_index_ = core_index; }
-
  private:
   const int id_;
   const int process_index_;
   const std::string device_kind_;
-  int core_index_ = -1;
   std::string debug_string_ = "<unknown SE device>";
   std::string to_string_ = "<unknown SE device>";
   absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes_;
