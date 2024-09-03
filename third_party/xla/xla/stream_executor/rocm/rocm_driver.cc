@@ -417,17 +417,6 @@ static absl::Status InternalInit() {
   return absl::OkStatus();
 }
 
-/* static */ absl::Status GpuDriver::FuncSetCacheConfig(
-    hipFunction_t function, hipFuncCache_t cache_config) {
-  // NOTE: this function is only available for in-process GPU kernels:
-  // https://rocm.docs.amd.com/projects/HIP/en/latest/.doxygen/docBin/html/group___execution.html#gafdb33ef569eb89808fc5178d04b508ba
-  // but it is no-op for the current HIP release !
-  RETURN_IF_ROCM_ERROR(
-      wrap::hipFuncSetCacheConfig((const void*)function, cache_config),
-      "Failed to set ROCM kernel cache config.");
-  return absl::OkStatus();
-}
-
 /* static */ absl::Status GpuDriver::CreateGraph(hipGraph_t* graph) {
   VLOG(2) << "Create new HIP graph";
   RETURN_IF_ROCM_ERROR(wrap::hipGraphCreate(graph, /*flags=*/0),
@@ -1366,32 +1355,6 @@ absl::Status GpuDriver::LaunchKernel(
   }
 }
 
-/* static */ bool GpuDriver::HostRegister(GpuContext* context, void* location,
-                                          uint64_t bytes) {
-  ScopedActivateContext activation{context};
-  // "Portable" memory is visible to all ROCM contexts. Safe for our use model.
-  hipError_t res =
-      wrap::hipHostRegister(location, bytes, hipHostRegisterPortable);
-  if (res != hipSuccess) {
-    LOG(ERROR) << "error registering host memory at " << location << ": "
-               << ToString(res);
-    return false;
-  }
-  return true;
-}
-
-/* static */ bool GpuDriver::HostUnregister(GpuContext* context,
-                                            void* location) {
-  ScopedActivateContext activation{context};
-  hipError_t res = wrap::hipHostUnregister(location);
-  if (res != hipSuccess) {
-    LOG(ERROR) << "error unregistering host memory at " << location << ": "
-               << ToString(res);
-    return false;
-  }
-  return true;
-}
-
 /* static */ int GpuDriver::GetGpuStreamPriority(
     GpuContext* context, stream_executor::StreamPriority stream_priority) {
   ScopedActivateContext activation(context);
@@ -1557,21 +1520,6 @@ absl::Status GpuDriver::LaunchKernel(
           " host src: %p; size: %llu=0x%llx",
           absl::bit_cast<void*>(gpu_dst), host_src, size, size));
   VLOG(2) << "successfully sync memcpy'd h2d of " << size << " bytes";
-  return absl::OkStatus();
-}
-
-/* static */ absl::Status GpuDriver::SynchronousMemcpyD2D(
-    GpuContext* context, hipDeviceptr_t gpu_dst, hipDeviceptr_t gpu_src,
-    uint64_t size) {
-  ScopedActivateContext activation{context};
-  RETURN_IF_ROCM_ERROR(
-      wrap::hipMemcpyDtoD(gpu_dst, gpu_src, size),
-      absl::StrFormat(
-          "failed to synchronous memcpy from host to device:Gpu dst: %p; "
-          "Gpu src: %p; size: %llu=0x%llx",
-          absl::bit_cast<void*>(gpu_dst), absl::bit_cast<void*>(gpu_src), size,
-          size));
-  VLOG(2) << "successfully sync memcpy'd d2d of " << size << " bytes";
   return absl::OkStatus();
 }
 
@@ -1877,12 +1825,6 @@ static absl::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
     hipDevice_t device) {
   return GetSimpleAttribute<int64_t>(
       device, hipDeviceAttributeMaxThreadsPerMultiProcessor);
-}
-
-/* static */ absl::StatusOr<int64_t> GpuDriver::GetMaxThreadsPerBlock(
-    hipDevice_t device) {
-  return GetSimpleAttribute<int64_t>(device,
-                                     hipDeviceAttributeMaxThreadsPerBlock);
 }
 
 /* static */ absl::StatusOr<int64_t> GpuDriver::GetMaxRegistersPerBlock(

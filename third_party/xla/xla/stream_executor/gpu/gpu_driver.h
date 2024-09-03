@@ -140,22 +140,6 @@ class GpuDriver {
   // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#memory-management
   static void HostDeallocate(GpuContext* context, void* location);
 
-  // Registers a memory region at location of size bytes via
-  // cuMemHostRegister/hipHostRegister.
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1gf0a9fe11544326dabd743b7aa6b54223
-  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#memory-management
-  static bool HostRegister(GpuContext* context, void* location, uint64_t bytes);
-
-  // Unregisters a memory region that was previously registered at location via
-  // cuMemHostUnregister/hipHostUnregister.
-  //
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g63f450c8125359be87b7623b1c0b2a14
-  // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#memory-management
-  //
-  // TODO(leary) verify an error will be returned if the location wasn't
-  // previously registered.
-  static bool HostUnregister(GpuContext* context, void* location);
-
   // Queries the priority range and returns the corresponding integer value via
   // cuCtxGetStreamPriorityRange/hipDeviceGetStreamPriorityRange
   //
@@ -163,59 +147,6 @@ class GpuDriver {
   // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#context-management
   static int GetGpuStreamPriority(
       GpuContext* context, stream_executor::StreamPriority stream_priority);
-
-  // Reserves a range of virtual device memory addresses via
-  // cuMemAddressReserve. bytes must be a multiple of the host page size.
-  // Returns nullptr base address in VmemSpan if the reservation fails.
-  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__VA.html#group__CUDA__VA_1ge489256c107df2a07ddf96d80c86cd9b
-  struct VmemSpan {
-    GpuDevicePtr base;
-    // Size in bytes.
-    uint64_t size_bytes;
-  };
-  static absl::StatusOr<VmemSpan> ReserveVirtualMemory(GpuContext* context,
-                                                       uint64_t bytes);
-
-  // Frees a range of virtual addresses that were previously reserved through
-  // ReserveVirtualMemory via cuMemAddressFree.
-  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__VA.html#group__CUDA__VA_1g6993ecea2ea03e1b802b8255edc2da5b
-  static void FreeVirtualMemory(GpuContext* context, VmemSpan reservation);
-
-  // Calculates the minimum alignment for memory allocations done through
-  // cuMemCreate via cuMemGetAllocationGranularity.
-  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__VA.html#group__CUDA__VA_1g30ee906c2cf66a0347b3dfec3d7eb31a
-  static absl::StatusOr<uint64_t> GetMinAllocationGranularity(
-      GpuDeviceHandle device);
-
-  // Allocates physical memory and returns a handle that can be mapped to
-  // virtual addresses via cuMemCreate. bytes must be a multiple of the
-  // granularity returned by GetMinAllocationGranularity.
-  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__VA.html#group__CUDA__VA_1g899d69a862bba36449789c64b430dc7c
-  struct GenericMemoryHandle {
-    uint64_t handle;
-    uint64_t bytes;
-  };
-  static absl::StatusOr<GenericMemoryHandle> CreateMemoryHandle(
-      GpuContext* context, uint64_t bytes);
-
-  // Frees memory represented by the provided MemoryHandle via cuMemRelease.
-  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__VA.html#group__CUDA__VA_1g3014f0759f43a8d82db951b8e4b91d68
-  static void ReleaseMemoryHandle(GpuContext* context,
-                                  GenericMemoryHandle handle);
-
-  // Maps a memory allocation handle to a reserved virtual address range via
-  // cuMemMap and sets the appropriate access settings via cuMemSetAccess.
-  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__VA.html#group__CUDA__VA_1gff1d395423af5c5c75375516959dae56
-  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__VA.html#group__CUDA__VA_1g1b6b12b10e8324bf462ecab4e7ef30e1
-  static absl::Status MapMemory(
-      GpuContext* context, GpuDevicePtr va, const GenericMemoryHandle& handle,
-      const std::vector<GpuDeviceHandle>& device_handles);
-
-  // Unmaps the backing memory from the given virtual address range. This range
-  // must fully unmap a memory handle that was mapped using MapMemory; partial
-  // unmapping is not supported.
-  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__VA.html#group__CUDA__VA_1gfb50aac00c848fd7087e858f59bf7e2a
-  static void UnmapMemory(GpuContext* context, GpuDevicePtr va, uint64_t bytes);
 
   // Given a device ordinal, returns a device handle into the device outparam,
   // which must not be null.
@@ -253,11 +184,6 @@ class GpuDriver {
   static absl::Status FuncGetAttribute(GpuFunctionAttribute attribute,
                                        GpuFunctionHandle function,
                                        int* attribute_value);
-
-  // Sets the preferred cache configuration for the specified function.
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EXEC.html#group__CUDA__EXEC_1g40f8c11e81def95dc0072a375f965681
-  static absl::Status FuncSetCacheConfig(GpuFunctionHandle function,
-                                         GpuFuncCachePreference cache_config);
 
   // Launches a CUDA/ROCm kernel via cuLaunchKernel/hipModuleLaunchKernel.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EXEC.html#group__CUDA__EXEC_1gb8f3dc3031b40da29d5f9a7139e52e15
@@ -667,9 +593,6 @@ class GpuDriver {
   static absl::Status SynchronousMemcpyH2D(GpuContext* context,
                                            GpuDevicePtr gpu_dst,
                                            const void* host_src, uint64_t size);
-  static absl::Status SynchronousMemcpyD2D(GpuContext* context,
-                                           GpuDevicePtr gpu_dst,
-                                           GpuDevicePtr gpu_src, uint64_t size);
 
   // -- Asynchronous memcopies.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g56f30236c7c5247f8e061b59d3268362
@@ -806,10 +729,6 @@ class GpuDriver {
   static absl::StatusOr<int64_t> GetMaxThreadsPerMultiprocessor(
       GpuDeviceHandle device);
 
-  // Returns the limit on number of threads which may be resident for a single
-  // block (cooperative thread array).
-  static absl::StatusOr<int64_t> GetMaxThreadsPerBlock(GpuDeviceHandle device);
-
   // Returns the amount of shared memory available on a single GPU core (i.e.
   // SM on NVIDIA devices).
   static absl::StatusOr<int64_t> GetMaxSharedMemoryPerCore(
@@ -898,10 +817,6 @@ class GpuDriver {
   static absl::StatusOr<int> GetMaxOccupiedBlocksPerCore(
       GpuContext* context, GpuFunctionHandle kernel, int threads_per_block,
       size_t dynamic_shared_memory_bytes);
-
-  // Seam for injecting an error at CUDA initialization time for testing
-  // purposes.
-  static bool driver_inject_init_error_;
 };
 
 }  // namespace gpu

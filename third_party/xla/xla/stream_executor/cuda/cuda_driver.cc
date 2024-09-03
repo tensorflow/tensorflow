@@ -338,12 +338,6 @@ absl::Status GpuDriver::FuncGetAttribute(CUfunction_attribute attribute,
       absl::StrCat("Failed to query kernel attribute: ", attribute));
 }
 
-absl::Status GpuDriver::FuncSetCacheConfig(CUfunction function,
-                                           CUfunc_cache cache_config) {
-  return cuda::ToStatus(cuFuncSetCacheConfig(function, cache_config),
-                        "Failed to set CUDA kernel cache config");
-}
-
 absl::Status GpuDriver::CreateGraph(CUgraph* graph) {
   VLOG(2) << "Create new CUDA graph";
   TF_RETURN_IF_ERROR(cuda::ToStatus(cuGraphCreate(graph, /*flags=*/0),
@@ -1470,31 +1464,6 @@ void GpuDriver::HostDeallocate(GpuContext* context, void* location) {
   }
 }
 
-bool GpuDriver::HostRegister(GpuContext* context, void* location,
-                             uint64_t bytes) {
-  ScopedActivateContext activation(context);
-  // "Portable" memory is visible to all CUDA contexts. Safe for our use model.
-  auto status = cuda::ToStatus(
-      cuMemHostRegister(location, bytes, CU_MEMHOSTREGISTER_PORTABLE));
-  if (!status.ok()) {
-    LOG(ERROR) << "error registering host memory at " << location << ": "
-               << status;
-    return false;
-  }
-  return true;
-}
-
-bool GpuDriver::HostUnregister(GpuContext* context, void* location) {
-  ScopedActivateContext activation(context);
-  auto status = cuda::ToStatus(cuMemHostUnregister(location));
-  if (!status.ok()) {
-    LOG(ERROR) << "error unregistering host memory at " << location << ": "
-               << status;
-    return false;
-  }
-  return true;
-}
-
 int GpuDriver::GetGpuStreamPriority(
     GpuContext* context, stream_executor::StreamPriority stream_priority) {
   ScopedActivateContext activation(context);
@@ -1510,120 +1479,6 @@ int GpuDriver::GetGpuStreamPriority(
   }
   return stream_priority == stream_executor::StreamPriority::Highest ? highest
                                                                      : lowest;
-}
-
-absl::StatusOr<GpuDriver::VmemSpan> GpuDriver::ReserveVirtualMemory(
-    GpuContext* context, uint64_t bytes) {
-  ScopedActivateContext activation(context);
-  CUdeviceptr base;
-  return cuda::ToStatus(
-      cuMemAddressReserve(&base, bytes, /*alignment=*/0,
-                          /*addr=*/0, /*flags=*/0),
-      absl::StrFormat("error reserving %d bytes of virtual GPU memory", bytes));
-}
-
-void GpuDriver::FreeVirtualMemory(GpuContext* context,
-                                  GpuDriver::VmemSpan reservation) {
-  ScopedActivateContext activation(context);
-  auto status = cuda::ToStatus(
-      cuMemAddressFree(reservation.base, reservation.size_bytes));
-  if (!status.ok()) {
-    LOG(ERROR) << "error freeing vmem reservation of size "
-               << reservation.size_bytes << " at address " << reservation.base;
-  }
-}
-
-absl::StatusOr<uint64_t> GpuDriver::GetMinAllocationGranularity(
-    GpuDeviceHandle device) {
-  CUmemAllocationProp props = {};
-  props.type = CU_MEM_ALLOCATION_TYPE_PINNED;
-  props.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
-  props.location.id = device;
-
-  size_t granularity;
-  TF_RETURN_IF_ERROR(cuda::ToStatus(
-      cuMemGetAllocationGranularity(&granularity, &props,
-                                    CU_MEM_ALLOC_GRANULARITY_MINIMUM),
-      "failed to get min allocation granularity"));
-  return granularity;
-}
-
-absl::StatusOr<GpuDriver::GenericMemoryHandle> GpuDriver::CreateMemoryHandle(
-    GpuContext* context, uint64_t bytes) {
-  ScopedActivateContext activation(context);
-  auto device = DeviceFromContext(context);
-  if (!device.ok()) {
-    LOG(ERROR) << "Failed to get device from context" << device.status();
-    return device.status();
-  }
-
-  CUmemAllocationProp props = {};
-  props.type = CU_MEM_ALLOCATION_TYPE_PINNED;
-  props.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
-  props.location.id = device.value();
-
-  CUmemGenericAllocationHandle mem_handle;
-  TF_RETURN_IF_ERROR(cuda::ToStatus(
-      cuMemCreate(&mem_handle, bytes, &props, 0),
-      absl::StrFormat("failed to create memory allocation of size %d", bytes)));
-  return GpuDriver::GenericMemoryHandle{mem_handle, bytes};
-}
-
-void GpuDriver::ReleaseMemoryHandle(GpuContext* context,
-                                    GpuDriver::GenericMemoryHandle handle) {
-  ScopedActivateContext activation(context);
-
-  auto status = cuda::ToStatus(cuMemRelease(handle.handle));
-  if (!status.ok()) {
-    LOG(ERROR) << "Failed to release memory handle " << handle.handle
-               << " of size " << handle.bytes << ": " << status;
-  }
-}
-
-absl::Status GpuDriver::MapMemory(
-    GpuContext* context, CUdeviceptr va,
-    const GpuDriver::GenericMemoryHandle& handle,
-    const std::vector<GpuDeviceHandle>& device_handles) {
-  ScopedActivateContext activation(context);
-
-  auto device = DeviceFromContext(context);
-  if (!device.ok()) {
-    return device.status();
-  }
-
-  // NB: Zero is the only valid value for both flags and offset.
-  TF_RETURN_IF_ERROR(cuda::ToStatus(
-      cuMemMap(va, handle.bytes, /*offset=*/0, handle.handle, /*flags=*/0)));
-
-  std::vector<CUmemAccessDesc> access_descriptors(device_handles.size());
-  for (int i = 0; i < access_descriptors.size(); ++i) {
-    access_descriptors[i].location.id = device_handles[i];
-    access_descriptors[i].location.type = CU_MEM_LOCATION_TYPE_DEVICE;
-    access_descriptors[i].flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE;
-  }
-
-  auto status = cuda::ToStatus(cuMemSetAccess(
-      va, handle.bytes, access_descriptors.data(), access_descriptors.size()));
-  if (!status.ok()) {
-    // Unmap the memory that we failed to set access for.
-    if (!cuda::ToStatus(cuMemUnmap(va, handle.bytes)).ok()) {
-      LOG(ERROR)
-          << "Failed to unmap memory in GpuDriver::MapMemory error path.";
-    }
-    return status;
-  }
-  return absl::OkStatus();
-}
-
-void GpuDriver::UnmapMemory(GpuContext* context, CUdeviceptr va,
-                            uint64_t bytes) {
-  ScopedActivateContext activation(context);
-
-  auto status = cuda::ToStatus(cuMemUnmap(va, bytes));
-  if (!status.ok()) {
-    LOG(ERROR) << "Failed to unmap memory at " << va << " of size " << bytes
-               << ": " << status;
-  }
 }
 
 absl::Status GpuDriver::DestroyEvent(GpuContext* context, CUevent* event) {
@@ -1738,52 +1593,6 @@ absl::Status GpuDriver::SynchronousMemcpyH2D(GpuContext* context,
           " host src: %p; size: %u=0x%x",
           absl::bit_cast<void*>(gpu_dst), host_src, size, size)));
   VLOG(2) << "successfully enqueued sync memcpy h2d of " << size << " bytes";
-  return absl::OkStatus();
-}
-
-absl::Status GpuDriver::SynchronousMemcpyD2D(GpuContext* context,
-                                             CUdeviceptr gpu_dst,
-                                             CUdeviceptr gpu_src,
-                                             uint64_t size) {
-  ScopedActivateContext activation(context);
-
-  CUresult result;
-  // GetContextMap()->GetAnyContext() doesn't works when ptr == 0.
-  // This happens when the size is 0.
-  if (gpu_dst == 0 || gpu_src == 0) {
-    result = cuMemcpyDtoD(gpu_dst, gpu_src, size);
-  } else {
-    // Any context work here.
-    CUcontext dst_context =
-        GetContextMap()->GetAnyContext(absl::bit_cast<void*>(gpu_dst));
-    CUcontext src_context =
-        GetContextMap()->GetAnyContext(absl::bit_cast<void*>(gpu_src));
-
-    if (static_cast<void*>(dst_context) == nullptr) {
-      absl::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_dst);
-      if (tmp_context.ok()) {
-        dst_context = tmp_context.value()->context();
-      }
-    }
-
-    if (static_cast<void*>(src_context) == nullptr) {
-      absl::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_src);
-      if (tmp_context.ok()) {
-        src_context = tmp_context.value()->context();
-      }
-    }
-
-    result = cuMemcpyPeer(gpu_dst, dst_context, gpu_src, src_context, size);
-  }
-
-  TF_RETURN_IF_ERROR(cuda::ToStatus(
-      result,
-      absl::StrFormat(
-          "failed to synchronous memcpy from host to device: GPU dst: %p; "
-          "GPU src: %p; size: %u=0x%x",
-          absl::bit_cast<void*>(gpu_dst), absl::bit_cast<void*>(gpu_src), size,
-          size)));
-  VLOG(2) << "successfully sync memcpy'd d2d of " << size << " bytes";
   return absl::OkStatus();
 }
 
@@ -2038,11 +1847,6 @@ absl::StatusOr<int64_t> GpuDriver::GetMaxThreadsPerMultiprocessor(
     CUdevice device) {
   return GetSimpleAttribute<int64_t>(
       device, CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_MULTIPROCESSOR);
-}
-
-absl::StatusOr<int64_t> GpuDriver::GetMaxThreadsPerBlock(CUdevice device) {
-  return GetSimpleAttribute<int64_t>(device,
-                                     CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK);
 }
 
 absl::StatusOr<int64_t> GpuDriver::GetMaxRegistersPerBlock(CUdevice device) {
