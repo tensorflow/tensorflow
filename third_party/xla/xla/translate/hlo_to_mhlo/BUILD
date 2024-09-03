@@ -79,35 +79,25 @@ cc_library(
 )
 
 cc_library(
-    name = "hlo_module_importer",
-    srcs = [
-        "hlo_function_importer.cc",
-        "hlo_module_importer.cc",
-    ],
-    hdrs = [
-        "hlo_function_importer.h",
-        "hlo_module_importer.h",
-    ],
+    name = "hlo_function_importer",
+    srcs = ["hlo_function_importer.cc"],
+    hdrs = ["hlo_function_importer.h"],
     deps = [
         ":async_importer",
         ":attribute_importer",
         ":custom_call_importer",
         ":hlo_utils",
         ":location_importer",
-        ":module_config_importer",
         "//xla:comparison_util",
         "//xla:literal",
         "//xla:protobuf_util",
-        "//xla:shape_layout",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
-        "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo",
         "//xla/service:hlo_proto_cc",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -118,10 +108,35 @@ cc_library(
         "@llvm-project//mlir:AsmParser",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "hlo_module_importer",
+    srcs = [
+        "hlo_module_importer.cc",
+    ],
+    hdrs = [
+        "hlo_module_importer.h",
+    ],
+    deps = [
+        ":hlo_function_importer",
+        ":module_attributes_importer",
+        "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/mlir_hlo",
+        "@com_google_absl//absl/status",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
     ],
@@ -194,11 +209,23 @@ cc_library(
 )
 
 cc_library(
-    name = "module_config_importer",
-    srcs = ["module_config_importer.cc"],
-    hdrs = ["module_config_importer.h"],
+    name = "module_attributes_importer",
+    srcs = ["module_attributes_importer.cc"],
+    hdrs = ["module_attributes_importer.h"],
     deps = [
+        ":hlo_function_importer",
+        ":hlo_utils",
+        "//xla:shape_layout",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/mlir_hlo",
+        "//xla/service:computation_layout",
         "//xla/service:hlo_module_config",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
 )
