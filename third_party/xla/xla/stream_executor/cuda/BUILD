@@ -548,8 +548,7 @@ cuda_only_cc_library(
         ":cuda_driver",
         "//xla/stream_executor:event",
         "//xla/stream_executor/gpu:gpu_event",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status:statusor",
+        "//xla/stream_executor/gpu:scoped_activate_context",
         "@local_config_cuda//cuda:cuda_headers",
     ],
 )

@@ -148,7 +148,7 @@ cc_library(
         "//xla/stream_executor",
         "//xla/stream_executor/gpu:gpu_event_header",
         "//xla/stream_executor/gpu:gpu_stream_header",
-    ]),
+    ]) + ["//xla/stream_executor/gpu:scoped_activate_context"],
 )
 
 cc_library(

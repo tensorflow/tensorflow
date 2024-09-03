@@ -33,8 +33,6 @@ namespace gpu {
 // Error summaries taken from:
 std::string ToString(hipError_t result);
 
-absl::StatusOr<hipError_t> QueryEvent(GpuContext* context, hipEvent_t event);
-
 // RocmContext implements the Context class for ROCm GPUs.
 class GpuContext : public Context {
  public:

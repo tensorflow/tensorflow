@@ -154,17 +154,6 @@ std::string ToString(hipError_t result) {
   }
 }
 
-absl::StatusOr<hipError_t> QueryEvent(GpuContext* context, hipEvent_t event) {
-  ScopedActivateContext activated{context};
-  hipError_t res = wrap::hipEventQuery(event);
-  if (res != hipSuccess && res != hipErrorNotReady) {
-    return absl::Status{
-        absl::StatusCode::kInternal,
-        absl::StrFormat("failed to query event: %s", ToString(res).c_str())};
-  }
-  return res;
-}
-
 namespace {
 
 // Returns the current context and checks that it is in the set of HIP contexts

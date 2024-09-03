@@ -216,16 +216,6 @@ int GetFlagsFromEnv() {
 
 }  // namespace
 
-absl::StatusOr<CUresult> QueryEvent(GpuContext* context, CUevent event) {
-  ScopedActivateContext activated{context};
-  CUresult res = cuEventQuery(event);
-  if (res != CUDA_SUCCESS && res != CUDA_ERROR_NOT_READY) {
-    return cuda::ToStatus(res, ("failed to query event"));
-  }
-
-  return res;
-}
-
 absl::Status GpuDriver::Init() {
   // Cached return value from calling InternalInit(), as cuInit need only be
   // called once, but GpuDriver::Init may be called many times.
