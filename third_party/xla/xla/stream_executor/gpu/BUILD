@@ -529,7 +529,6 @@ cc_library(
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:typed_kernel_factory",
         "//xla/stream_executor/cuda:cuda_asm_compiler",
-        "//xla/stream_executor/cuda:cuda_driver",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:node_hash_map",
