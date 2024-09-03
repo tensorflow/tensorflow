@@ -1651,35 +1651,35 @@ auto DictionaryDecoder(Members... m) {
 // Automatically registers attributes binding for a struct that allows automatic
 // binding specification inference from a callable signature.
 //
-#define XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(T, ...)                       \
-  template <>                                                               \
-  struct xla::ffi::AttrsBinding<T> {                                        \
-    using Attrs = T;                                                        \
-  };                                                                        \
-                                                                            \
-  template <>                                                               \
-  struct xla::ffi::AttrDecoding<T> {                                        \
-    using Type = T;                                                         \
-    static std::optional<T> Decode(XLA_FFI_AttrType type, void* attr,       \
-                                   DiagnosticEngine& diagnostic) {          \
-      if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_AttrType_DICTIONARY)) {     \
-        diagnostic.Emit("Wrong attribute type: expected ")                  \
-            << XLA_FFI_AttrType_DICTIONARY << " but got " << type;          \
-        return std::nullopt;                                                \
-      }                                                                     \
-                                                                            \
-      auto decoder = xla::ffi::internal::DictionaryDecoder<T>(__VA_ARGS__); \
-      return decltype(decoder)::Decode(                                     \
-          reinterpret_cast<const XLA_FFI_Attrs*>(attr),                     \
-          internal::StructMemberNames(__VA_ARGS__), diagnostic);            \
-    }                                                                       \
+#define XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(T, ...)                         \
+  template <>                                                                 \
+  struct ::xla::ffi::AttrsBinding<T> {                                        \
+    using Attrs = T;                                                          \
+  };                                                                          \
+                                                                              \
+  template <>                                                                 \
+  struct ::xla::ffi::AttrDecoding<T> {                                        \
+    using Type = T;                                                           \
+    static std::optional<T> Decode(XLA_FFI_AttrType type, void* attr,         \
+                                   DiagnosticEngine& diagnostic) {            \
+      if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_AttrType_DICTIONARY)) {       \
+        diagnostic.Emit("Wrong attribute type: expected ")                    \
+            << XLA_FFI_AttrType_DICTIONARY << " but got " << type;            \
+        return std::nullopt;                                                  \
+      }                                                                       \
+                                                                              \
+      auto decoder = ::xla::ffi::internal::DictionaryDecoder<T>(__VA_ARGS__); \
+      return decltype(decoder)::Decode(                                       \
+          reinterpret_cast<const XLA_FFI_Attrs*>(attr),                       \
+          internal::StructMemberNames(__VA_ARGS__), diagnostic);              \
+    }                                                                         \
   }
 
 // Registers decoding for a user-defined enum class type. Uses enums underlying
 // type to decode the attribute as a scalar value and cast it to the enum type.
 #define XLA_FFI_REGISTER_ENUM_ATTR_DECODING(T)                                \
   template <>                                                                 \
-  struct xla::ffi::AttrDecoding<T> {                                          \
+  struct ::xla::ffi::AttrDecoding<T> {                                        \
     using Type = T;                                                           \
     using U = std::underlying_type_t<Type>;                                   \
     static_assert(std::is_enum<Type>::value, "Expected enum class");          \
