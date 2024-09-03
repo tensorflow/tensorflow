@@ -43,7 +43,7 @@ ENTRY fusion.1644 {
   RunAndFilecheckHloRewrite(hlo, BroadcastCanonicalizer{}, R"(
 // CHECK: [[parameter_2_0:%[^ ]+]] = f32[2,3,2]{2,1,0} parameter(0)
 // CHECK: [[broadcast_1:%[^ ]+]] = f32[2,3,8,2]{3,2,1,0} broadcast([[parameter_2_0]]), dimensions={0,1,3}
-// CHECK: [[transpose_2:%[^ ]+]] = f32[3,2,8,2]{3,2,0,1} transpose([[broadcast_1]]), dimensions={1,0,2,3}
+// CHECK: [[transpose_2:%[^ ]+]] = f32[3,2,8,2]{3,2,1,0} transpose([[broadcast_1]]), dimensions={1,0,2,3}
 // CHECK: ROOT [[reshape_43_3:%[^ ]+]] = f32[3,16,1,2]{3,2,1,0} reshape([[transpose_2]])
       )");
 }
@@ -61,7 +61,7 @@ ENTRY fusion.1644 {
 
   RunAndFilecheckHloRewrite(hlo, BroadcastCanonicalizer{}, R"(
 // CHECK: [[broadcast_0:%[^ ]+]] = f32[8,5,9,6,7]{4,3,2,1,0} broadcast([[parameter_2_1:%[^ ]+]]), dimensions={1,3,4}
-// CHECK: [[transpose_2:%[^ ]+]] = f32[8,7,9,5,6]{1,4,2,3,0} transpose([[broadcast_0]]), dimensions={0,4,2,1,3}
+// CHECK: [[transpose_2:%[^ ]+]] = f32[8,7,9,5,6]{4,3,2,1,0} transpose([[broadcast_0]]), dimensions={0,4,2,1,3}
 // CHECK: ROOT [[reshape_43_3:%[^ ]+]] = f32[8,7,45,1,6]{4,3,2,1,0} reshape([[transpose_2]])
       )");
 }
