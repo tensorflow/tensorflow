@@ -48,6 +48,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_rewrite_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
 
 namespace tensorflow {
 namespace tf2xla {
@@ -87,8 +88,6 @@ using mlir::tf_device::ReplicateOp;
 #define GEN_PASS_DEF_XLABROADCASTPASS
 #include "tensorflow/compiler/mlir/tf2xla/internal/passes/clustering_passes.h.inc"
 
-const char kICIWeightDistributionMlirBridgeMarker[] =
-    "ici_weight_distribution_mlir_bridge_marker";
 
 struct XlaBroadcast : public impl::XlaBroadcastPassBase<XlaBroadcast> {
   void runOnOperation() override;
