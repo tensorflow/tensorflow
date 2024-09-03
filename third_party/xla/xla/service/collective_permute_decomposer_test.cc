@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -27,11 +28,14 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo_parser.h"
+#include "xla/service/p2p_schedule_preparation.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
+using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 namespace op = xla::testing::opcode_matchers;
 using CollectivePermuteDecomposerTest = HloTestBase;
@@ -314,6 +318,8 @@ TEST_F(CollectivePermuteDecomposerTest, ForwardPipeline2) {
   HloInstruction* send_done1 = FindInstruction(module.get(), "send-done.1");
   EXPECT_THAT(send_done1->ToString(),
               HasSubstr("_xla_send_recv_pipeline=\"1\""));
+
+  EXPECT_THAT(recv1->control_predecessors(), ElementsAre(send));
 }
 
 TEST_F(CollectivePermuteDecomposerTest, ForwardPipelineWithMatmul) {
@@ -422,6 +428,10 @@ TEST_F(CollectivePermuteDecomposerTest, ForwardPipelineWithMatmul) {
       hlo_query::IsBeforeInComputation(while_body, "send-done", "send-done.1"));
   EXPECT_TRUE(
       hlo_query::IsBeforeInComputation(while_body, "recv-done", "send-done.1"));
+
+  EXPECT_THAT(recv_fwd->control_predecessors(), ElementsAre(send_bwd));
+  EXPECT_TRUE(hlo_query::IsBeforeInComputation(while_body, "send", "recv.1"));
+
   EXPECT_TRUE(hlo_query::IsBeforeInComputation(while_body, "recv-done.1",
                                                "send-done.1"));
   auto recv_done_fwd = FindInstruction(transformed_module, "recv-done");
@@ -506,6 +516,71 @@ TEST_F(CollectivePermuteDecomposerTest, BackwardPipeline2) {
   EXPECT_THAT(send1->ToString(),
               HasSubstr("_xla_send_recv_source_target_pairs={{0,3}}"));
   EXPECT_THAT(send1->ToString(), HasSubstr("_xla_send_recv_pipeline=\"0\""));
+
+  EXPECT_THAT(recv1->control_predecessors(), ElementsAre(send));
+}
+
+TEST_F(CollectivePermuteDecomposerTest, BackwardPipeline2_WithSchedulePrep) {
+  const char* const kModuleStr = R"(
+  HloModule module
+  cond {
+    param = (u32[], u32[2]) parameter(0)
+    count = get-tuple-element(param), index=0
+    ub = u32[] constant(2)
+    ROOT result = pred[] compare(count, ub), direction=LT
+  }
+
+  body {
+    param = (u32[], u32[2]) parameter(0)
+    count = get-tuple-element(param), index=0
+    send-data = get-tuple-element(param), index=1
+
+    recv-data.0 = u32[2] collective-permute(send-data), channel_id=1,
+      source_target_pairs={{1,0},{2,1},{3,2}}
+
+    recv-data.1 = u32[2] collective-permute(send-data), channel_id=2,
+      source_target_pairs={{0,3}}
+
+    replica = u32[] replica-id()
+    constant0 = u32[] constant(0)
+    compare0 = pred[] compare(replica, constant0), direction=NE
+    compare = pred[2] broadcast(compare0), dimensions={}
+    recv-data = u32[2] select(compare, recv-data.0, recv-data.1)
+
+    c1 = u32[] constant(1)
+    new_count = u32[] add(count, c1)
+
+    r = u32[2] broadcast(c1), dimensions={}
+    s = u32[2] add(r, recv-data)
+
+    ROOT result = (u32[], u32[2]) tuple(new_count, s)
+  }
+
+  ENTRY test_computation {
+    c0 = u32[] constant(0)
+    c1 = u32[] constant(1)
+    r = u32[] replica-id()
+    a = u32[] add(c1, r)
+    init = u32[2] broadcast(a), dimensions={}
+    while_init = (u32[], u32[2]) tuple(c0, init)
+    while_result = (u32[], u32[2]) while(while_init), body=body, condition=cond
+    ROOT result = u32[2] get-tuple-element(while_result), index=1
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+
+  CollectivePermuteDecomposer decomposer(/*threshold_in_bytes=*/0);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed_after_permute_decomp,
+                          decomposer.Run(module.get()));
+  EXPECT_TRUE(changed_after_permute_decomp);
+
+  P2PSchedulePreparation preparation;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed_after_schedule_prep,
+                          preparation.Run(module.get()));
+  EXPECT_TRUE(changed_after_schedule_prep);
+
+  EXPECT_OK(module->Verify());
 }
 
 }  // namespace
