@@ -344,22 +344,6 @@ absl::Status GpuDriver::FuncSetCacheConfig(CUfunction function,
                         "Failed to set CUDA kernel cache config");
 }
 
-absl::StatusOr<CUsharedconfig> GpuDriver::ContextGetSharedMemConfig(
-    GpuContext* context) {
-  CUsharedconfig shared_mem_config;
-  ScopedActivateContext activation(context);
-  TF_RETURN_IF_ERROR(cuda::ToStatus(cuCtxGetSharedMemConfig(&shared_mem_config),
-                                    "Failed to get shared memory config"));
-  return shared_mem_config;
-}
-
-absl::Status GpuDriver::ContextSetSharedMemConfig(
-    GpuContext* context, CUsharedconfig shared_mem_config) {
-  ScopedActivateContext activation(context);
-  return cuda::ToStatus(cuCtxSetSharedMemConfig(shared_mem_config),
-                        "Failed to set shared memory config");
-}
-
 absl::Status GpuDriver::CreateGraph(CUgraph* graph) {
   VLOG(2) << "Create new CUDA graph";
   TF_RETURN_IF_ERROR(cuda::ToStatus(cuGraphCreate(graph, /*flags=*/0),

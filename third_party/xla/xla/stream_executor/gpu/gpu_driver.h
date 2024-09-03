@@ -259,20 +259,6 @@ class GpuDriver {
   static absl::Status FuncSetCacheConfig(GpuFunctionHandle function,
                                          GpuFuncCachePreference cache_config);
 
-  // Gets the preferred shared memory bank configuration for the specified
-  // CONTEXT (not function!), either default or four- or eight-byte bank size.
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1g17153a1b8b8c756f7ab8505686a4ad74
-  // https://rocm.docs.amd.com/projects/HIP/en/latest/.doxygen/docBin/html/group___execution.html
-  static absl::StatusOr<GpuSharedMemConfig> ContextGetSharedMemConfig(
-      GpuContext* context);
-
-  // Sets the preferred shared memory bank configuration for the specified
-  // CONTEXT (not function!), either default or four- or eight-byte bank size.
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1g2574235fa643f8f251bf7bc28fac3692
-  // https://rocm.docs.amd.com/projects/HIP/en/latest/.doxygen/docBin/html/group___execution.html
-  static absl::Status ContextSetSharedMemConfig(
-      GpuContext* context, GpuSharedMemConfig shared_mem_config);
-
   // Launches a CUDA/ROCm kernel via cuLaunchKernel/hipModuleLaunchKernel.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EXEC.html#group__CUDA__EXEC_1gb8f3dc3031b40da29d5f9a7139e52e15
   // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#execution-control

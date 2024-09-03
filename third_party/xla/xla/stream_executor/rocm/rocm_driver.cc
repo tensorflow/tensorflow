@@ -428,23 +428,6 @@ static absl::Status InternalInit() {
   return absl::OkStatus();
 }
 
-/* static */ absl::StatusOr<hipSharedMemConfig>
-GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
-  hipSharedMemConfig shared_mem_config;
-  ScopedActivateContext activation{context};
-  RETURN_IF_ROCM_ERROR(wrap::hipDeviceGetSharedMemConfig(&shared_mem_config),
-                       "Failed to get shared memory config");
-  return shared_mem_config;
-}
-
-/* static */ absl::Status GpuDriver::ContextSetSharedMemConfig(
-    GpuContext* context, hipSharedMemConfig shared_mem_config) {
-  ScopedActivateContext activation{context};
-  RETURN_IF_ROCM_ERROR(wrap::hipDeviceSetSharedMemConfig(shared_mem_config),
-                       "Failed to set ROCM device shared memory config");
-  return absl::OkStatus();
-}
-
 /* static */ absl::Status GpuDriver::CreateGraph(hipGraph_t* graph) {
   VLOG(2) << "Create new HIP graph";
   RETURN_IF_ROCM_ERROR(wrap::hipGraphCreate(graph, /*flags=*/0),
