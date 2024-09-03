@@ -66,11 +66,10 @@ class GpuDriver {
 
   // Creates a new CUDA/HIP stream associated with the given context via
   // cuStreamCreate/hipStreamCreateWithFlags.
-  // stream is an outparam owned by the caller, must not be null.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__STREAM.html#group__CUDA__STREAM_1ga581f0c5833e21ded8b5a56594e243f4
   // https://rocm.docs.amd.com/projects/HIPIFY/en/latest/tables/CUDA_Driver_API_functions_supported_by_HIP.html#stream-management
-  static bool CreateStream(Context* context, GpuStreamHandle* stream,
-                           int priority = 0);
+  static absl::StatusOr<GpuStreamHandle> CreateStream(Context* context,
+                                                      int priority = 0);
 
   // Destroys a CUDA/HIP stream associated with the given context.
   // stream is owned by the caller, must not be null, and *stream is set to null

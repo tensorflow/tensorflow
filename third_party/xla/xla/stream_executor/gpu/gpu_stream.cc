@@ -61,10 +61,9 @@ absl::Status GpuStream::Init() {
     return GpuDriver::GetGpuStreamPriority(
         parent_->gpu_context(), std::get<StreamPriority>(stream_priority_));
   }();
-  if (!GpuDriver::CreateStream(parent_->gpu_context(), &gpu_stream_,
-                               priority)) {
-    return absl::InternalError("Failed to CreateStream");
-  }
+  TF_ASSIGN_OR_RETURN(
+      gpu_stream_, GpuDriver::CreateStream(parent_->gpu_context(), priority));
+
   return absl::OkStatus();
 }
 

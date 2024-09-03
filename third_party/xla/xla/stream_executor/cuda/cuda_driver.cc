@@ -1366,27 +1366,24 @@ void GpuDriver::UnloadModule(Context* context, CUmodule module) {
   }
 }
 
-bool GpuDriver::CreateStream(Context* context, CUstream* stream, int priority) {
-  ScopedActivateContext activated{context};
-  absl::Status status;
+absl::StatusOr<GpuStreamHandle> GpuDriver::CreateStream(Context* context,
+                                                        int priority) {
+  ScopedActivateContext activated(context);
+  GpuStreamHandle stream;
   // If the priority is 0, then use the previous api to create the stream with
   // the default priority for backward compatibility. Probably there is no
   // difference in using the new api call but leaving it as is for now.
   if (priority == 0) {
-    status = cuda::ToStatus(cuStreamCreate(stream, CU_STREAM_NON_BLOCKING));
+    TF_RETURN_IF_ERROR(
+        cuda::ToStatus(cuStreamCreate(&stream, CU_STREAM_NON_BLOCKING)));
   } else {
-    status = cuda::ToStatus(
-        cuStreamCreateWithPriority(stream, CU_STREAM_NON_BLOCKING, priority));
-  }
-  if (!status.ok()) {
-    LOG(ERROR) << "could not allocate CUDA stream for context " << context
-               << ": " << status;
-    return false;
+    TF_RETURN_IF_ERROR(cuda::ToStatus(
+        cuStreamCreateWithPriority(&stream, CU_STREAM_NON_BLOCKING, priority)));
   }
 
-  VLOG(2) << "successfully created stream " << *stream << " for context "
+  VLOG(2) << "successfully created stream " << stream << " for context "
           << context << " on thread";
-  return true;
+  return stream;
 }
 
 void GpuDriver::DestroyStream(Context* context, CUstream* stream) {

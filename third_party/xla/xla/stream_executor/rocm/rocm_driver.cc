@@ -1236,27 +1236,23 @@ absl::Status GpuDriver::LaunchKernel(
   }
 }
 
-/* static */ bool GpuDriver::CreateStream(Context* context,
-                                          GpuStreamHandle* stream,
-                                          int priority) {
-  ScopedActivateContext activated{context};
-  hipError_t res;
+absl::StatusOr<GpuStreamHandle> GpuDriver::CreateStream(Context* context,
+                                                        int priority) {
+  ScopedActivateContext activated(context);
+  GpuStreamHandle stream;
   if (priority == 0) {
-    res = wrap::hipStreamCreateWithFlags(
-        stream, hipStreamDefault);  // switch to hipStreamNonBlocking?
+    RETURN_IF_ROCM_ERROR(
+        wrap::hipStreamCreateWithFlags(&stream, hipStreamDefault),
+        "Failed to create stream");  // switch to hipStreamNonBlocking?
   } else {
-    res = wrap::hipStreamCreateWithPriority(
-        stream, hipStreamDefault, priority);  // switch to hipStreamNonBlocking?
-  }
-  if (res != hipSuccess) {
-    LOG(ERROR) << "could not allocate ROCM stream for device "
-               << context->device_ordinal() << ": " << ToString(res);
-    return false;
+    RETURN_IF_ROCM_ERROR(
+        wrap::hipStreamCreateWithPriority(&stream, hipStreamDefault, priority),
+        "Failed to create stream");  // switch to hipStreamNonBlocking?
   }
 
-  VLOG(2) << "successfully created stream " << *stream << " for device "
+  VLOG(2) << "successfully created stream " << stream << " for device "
           << context->device_ordinal() << " on thread";
-  return true;
+  return stream;
 }
 
 /* static */ void GpuDriver::DestroyStream(Context* context,
