@@ -3732,6 +3732,25 @@ ENTRY %main {
   TestShapeHasMemorySpace(gte_1->shape(), Layout::kDefaultMemorySpace);
 }
 
+TEST_F(HostOffloaderTest, OffloadPassedToEntryComputationRoot) {
+  const std::string& hlo_string = R"(
+HloModule m, entry_computation_layout={()->(s32[]{:T(128)})}
+
+ENTRY %main {
+  c = s32[] constant(1)
+  custom-call.331 = s32[]{:T(128)} custom-call(c), custom_call_target="MoveToHost"
+  custom-call.332 = s32[]{:T(128)} custom-call(custom-call.331), custom_call_target="MoveToDevice"
+  ROOT tuple = (s32[]{:T(128)}) tuple(custom-call.332)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+  VLOG(1) << "module after: " << module->ToString();
+}
+
 }  // namespace
 
 }  // namespace xla
