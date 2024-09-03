@@ -2161,6 +2161,7 @@ xla_cc_test(
         "//xla/service:hlo_parser",
         "//xla/service:hlo_pass_pipeline",
         "//xla/service:hlo_verifier",
+        "//xla/tests:filecheck",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/log:check",
