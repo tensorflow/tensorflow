@@ -19,17 +19,22 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status_matchers.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
-
+namespace gpu {
 namespace {
+using ::testing::HasSubstr;
+using ::tsl::testing::StatusIs;
 
 class TransposeDimensionGrouperTest : public HloTestBase {
  public:
   void CheckDimensionGrouper(absl::string_view hlo,
                              std::optional<absl::string_view> expected) {
-    RunAndFilecheckHloRewrite(hlo, gpu::TransposeDimensionGrouper{}, expected);
+    RunAndFilecheckHloRewrite(hlo, TransposeDimensionGrouper{}, expected);
   }
   void CheckDimensionGrouperUnchanged(absl::string_view hlo) {
     CheckDimensionGrouper(hlo, /*expected=*/std::nullopt);
@@ -61,9 +66,27 @@ ENTRY main {
   ROOT out = f32[32,64,128]{0,1,2} transpose(input), dimensions={0,2,1}
 }
 )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  TransposeDimensionGrouper dimension_grouper;
+  EXPECT_THAT(dimension_grouper.Run(module.get()),
+              StatusIs(tsl::error::FAILED_PRECONDITION,
+                       HasSubstr("Layout normalization")));
+}
 
-  // The output shape doesn't have the default layout.
-  CheckDimensionGrouperUnchanged(hlo);
+TEST_F(TransposeDimensionGrouperTest, NoTranspose3) {
+  const char* hlo = R"(
+HloModule NoTranspose3
+
+ENTRY main {
+  input = f32[32,128,64]{0,1,2} parameter(0)
+  ROOT out = f32[32,64,128]{2,1,0} transpose(input), dimensions={0,2,1}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  TransposeDimensionGrouper dimension_grouper;
+  EXPECT_THAT(dimension_grouper.Run(module.get()),
+              StatusIs(tsl::error::FAILED_PRECONDITION,
+                       HasSubstr("Layout normalization")));
 }
 
 // TODO(b/328656780): Do not normalize to 3D once the emitter supports any
@@ -227,4 +250,5 @@ ENTRY main {
 }
 
 }  // namespace
+}  // namespace gpu
 }  // namespace xla

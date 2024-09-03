@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/permutation_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/util.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -126,8 +127,7 @@ GetNormalizedTransposeShapeHelper(
 // shapes for the transpose are called the 0-1-2/0-2-1 shapes or the normalized
 // shapes. The original input/output shapes are called unnormalized shapes.
 //
-// 'output_shape' should have the default layout (descending minor to major),
-// otherwise std::nullopt is returned.
+// 'output_shape' should have the default layout (enforced by the caller).
 //
 // 'dimensions' specifies the kind of the unnormalized transpose and defines the
 // permutation of the input shape that will result in the provided output shape.
@@ -139,7 +139,7 @@ GetNormalizedTransposeShapeHelper(
 // std::nullopt is returned.
 //
 // The method returns the dimensions for the normalized transpose shape, or
-// std::nullopt in the cases mentioned above.
+// std::nullopt in the case mentioned above.
 //
 // Example: Suppose the unnormalized output shape is [32, 1, 10, 11], and
 // 'dimensions' is set to {3, 1, 0, 2}. This means the corresponding input shape
@@ -150,10 +150,6 @@ GetNormalizedLogicalTransposeShape(
     const Shape &output_shape, absl::Span<int64_t const> dimensions,
     absl::InlinedVector<int64_t, 3> &permutation) {
   permutation.clear();
-  if (!LayoutUtil::IsMonotonicWithDim0Major(output_shape.layout())) {
-    // Only works on default layouts.
-    return std::nullopt;
-  }
   // Drop degenerate dimensions.
   absl::InlinedVector<int64_t, 3> delta(output_shape.rank() + 1, 0);
   auto input_dimensions = ComposePermutations(output_shape.dimensions(),
@@ -180,6 +176,16 @@ class TransposeDimensionGroupVisitor : public DfsHloRewriteVisitor {
  public:
   absl::Status HandleTranspose(HloInstruction *transpose) override {
     VLOG(4) << "Input: " << transpose->ToString();
+    if (!LayoutUtil::IsMonotonicWithDim0Major(transpose->shape().layout()) ||
+        !LayoutUtil::IsMonotonicWithDim0Major(
+            transpose->operand(0)->shape().layout())) {
+      // TransposeDimensionGrouper runs almost immediately after
+      // LayoutNormalization. The passes in between have been verified to not
+      // introduce transposes with non-default layout.
+      return FailedPrecondition(
+          "Layout normalization should have assigned the default layout to "
+          "transpose and its operand");
+    }
     absl::InlinedVector<int64_t, 3> permutation;
     auto normalized_dims = GetNormalizedLogicalTransposeShape(
         transpose->shape(), transpose->dimensions(), permutation);
