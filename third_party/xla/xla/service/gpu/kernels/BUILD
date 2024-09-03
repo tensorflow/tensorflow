@@ -135,6 +135,7 @@ xla_test(
         "//xla/service/gpu/transforms:custom_kernel_fusion_rewriter",
         "//xla/tests:hlo_test_base",
         "//xla/tests:verified_hlo_module",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:test",

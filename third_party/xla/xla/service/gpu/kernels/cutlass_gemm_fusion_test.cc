@@ -17,10 +17,13 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "xla/array.h"
 #include "xla/array2d.h"
@@ -669,6 +672,169 @@ TEST_F(CutlassFusionTest,
   EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_cublas, hlo_text_custom_fusion,
                                       {&p0, &p1, &p2, &p3}, error_spec,
                                       /*run_hlo_passes=*/false));
+}
+
+TEST_F(CutlassFusionTest, GemmWithUpcastShouldBeFused) {
+  const char* hlo = R"(
+  ENTRY e {
+    p0 = f32[16,32]{1,0} parameter(0)
+    p1 = bf16[32,8]{1,0} parameter(1)
+    c1 = f32[32,8]{1,0} convert(p1)
+    ROOT dot = f32[16,8]{1,0} dot(p0, c1),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  })";
+
+  std::string expected = "CHECK: cutlass_gemm";
+
+  CustomKernelFusionPatternRegistry patterns;
+  patterns.Emplace<CutlassGemmWithUpcastPattern>();
+
+  auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  CustomKernelFusionRewriter pass(&device, &patterns);
+  RunAndFilecheckHloRewrite(hlo, std::move(pass), expected);
+  EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{1e-3, 1e-3}));
+}
+
+TEST_F(CutlassFusionTest,
+       GemmWithUpcastWithALhsColumnMajorOperandShouldNotBeFused) {
+  const char* hlo = R"(
+  ENTRY e {
+    p0 = f32[16,32]{0,1} parameter(0) // Column major operand.
+    p1 = bf16[32,8]{1,0} parameter(1)
+    c1 = f32[32,8]{1,0} convert(p1)
+    ROOT dot = f32[16,8]{1,0} dot(p0, c1),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  })";
+
+  CustomKernelFusionPatternRegistry patterns;
+  patterns.Emplace<CutlassGemmWithUpcastPattern>();
+
+  auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  CustomKernelFusionRewriter pass(&device, &patterns);
+  // Check that hlo is not rewritten after the pass, indicating that we don't
+  // match the upcast pattern.
+  RunAndFilecheckHloRewrite(hlo, std::move(pass), std::nullopt);
+}
+
+TEST_F(CutlassFusionTest,
+       GemmWithUpcastWithARhsColumnMajorOperandShouldNotBeFused) {
+  const char* hlo = R"(
+  ENTRY e {
+    p0 = f32[16,32]{1,0} parameter(0)
+    p1 = bf16[32,8]{0,1} parameter(1) // Column major operand.
+    c1 = f32[32,8]{0,1} convert(p1)
+    ROOT dot = f32[16,8]{1,0} dot(p0, c1),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  })";
+
+  CustomKernelFusionPatternRegistry patterns;
+  patterns.Emplace<CutlassGemmWithUpcastPattern>();
+
+  auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  CustomKernelFusionRewriter pass(&device, &patterns);
+  // Check that hlo is not rewritten after the pass, indicating that we don't
+  // match the upcast pattern.
+  RunAndFilecheckHloRewrite(hlo, std::move(pass), std::nullopt);
+}
+
+TEST_F(CutlassFusionTest,
+       GemmWithUpcastWithAColumnMajorDotResultShouldNotBeFused) {
+  const char* hlo = R"(
+  ENTRY e {
+    p0 = f32[16,32]{1,0} parameter(0)
+    p1 = bf16[32,8]{1,0} parameter(1)
+    c1 = f32[32,8]{1,0} convert(p1)
+    ROOT dot = f32[16,8]{0,1} dot(p0, c1), // Column major result.
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  })";
+
+  CustomKernelFusionPatternRegistry patterns;
+  patterns.Emplace<CutlassGemmWithUpcastPattern>();
+
+  auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  CustomKernelFusionRewriter pass(&device, &patterns);
+  // Check that hlo is not rewritten after the pass, indicating that we don't
+  // match the upcast pattern.
+  RunAndFilecheckHloRewrite(hlo, std::move(pass), std::nullopt);
+}
+
+TEST_F(CutlassFusionTest,
+       GemmWithUpcastLhsContractingDimensionShouldBeOnTheMinorAxis) {
+  const char* hlo = R"(
+  ENTRY e {
+    p0 = f32[32,16]{1,0} parameter(0)
+    p1 = bf16[32,8]{1,0} parameter(1)
+    c1 = f32[32,8]{1,0} convert(p1)
+    ROOT dot = f32[16,8]{1,0} dot(p0, c1),
+      lhs_contracting_dims={0}, // Lhs contracting dimension != minor axis (1).
+      rhs_contracting_dims={0}
+  })";
+  CustomKernelFusionPatternRegistry patterns;
+  patterns.Emplace<CutlassGemmWithUpcastPattern>();
+  auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  CustomKernelFusionRewriter pass(&device, &patterns);
+  // Check that hlo is not rewritten after the pass, indicating that we don't
+  // match the upcast pattern.
+  RunAndFilecheckHloRewrite(hlo, std::move(pass), std::nullopt);
+}
+
+TEST_F(CutlassFusionTest,
+       GemmWithUpcastRhsContractingDimensionShouldBeOnTheMajorAxis) {
+  const char* hlo = R"(
+  ENTRY e {
+    p0 = f32[16,32]{1,0} parameter(0)
+    p1 = bf16[8,32]{1,0} parameter(1)
+    c1 = f32[8,32]{1,0} convert(p1)
+    ROOT dot = f32[16,8]{1,0} dot(p0, c1),
+      lhs_contracting_dims={1},
+      rhs_contracting_dims={1} // Rhs contracting dimension != major axis (0).
+  })";
+  CustomKernelFusionPatternRegistry patterns;
+  patterns.Emplace<CutlassGemmWithUpcastPattern>();
+  auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  CustomKernelFusionRewriter pass(&device, &patterns);
+  // Check that hlo is not rewritten after the pass, indicating that we don't
+  // match the upcast pattern.
+  RunAndFilecheckHloRewrite(hlo, std::move(pass), std::nullopt);
+}
+
+TEST_F(CutlassFusionTest, GemmWithUpcastWithBatchDimensionShouldNotBeFused) {
+  const char* hlo = R"(
+  ENTRY e {
+    p0 = f32[4,16,32]{2,1,0} parameter(0)
+    p1 = bf16[4,32,8]{2,1,0} parameter(1)
+    c1 = f32[4,32,8]{2,1,0} convert(p1)
+    ROOT dot = f32[4,16,8]{2,1,0} dot(p0, c1),
+      lhs_batch_dims={0}, rhs_batch_dims={0},
+      lhs_contracting_dims={2}, rhs_contracting_dims={1}
+  })";
+
+  CustomKernelFusionPatternRegistry patterns;
+  patterns.Emplace<CutlassGemmWithUpcastPattern>();
+  auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  CustomKernelFusionRewriter pass(&device, &patterns);
+  // Check that hlo is not rewritten after the pass, indicating that we don't
+  // match the upcast pattern.
+  RunAndFilecheckHloRewrite(hlo, std::move(pass), std::nullopt);
+}
+
+TEST_F(CutlassFusionTest, GemmWithUpcastAndColumnMajorOperandsShouldBeFused) {
+  const char* hlo = R"(
+  ENTRY e {
+    p0 = f32[32,16]{0,1} parameter(0)
+    p1 = bf16[8,32]{0,1} parameter(1)
+    c1 = f32[8,32]{0,1} convert(p1)
+    ROOT dot = f32[16,8]{1,0} dot(p0, c1),
+      lhs_contracting_dims={0},
+      rhs_contracting_dims={1}
+  })";
+  CustomKernelFusionPatternRegistry patterns;
+  patterns.Emplace<CutlassGemmWithUpcastPattern>();
+  auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  CustomKernelFusionRewriter pass(&device, &patterns);
+  std::string expected = "CHECK: cutlass_gemm";
+  RunAndFilecheckHloRewrite(hlo, std::move(pass), expected);
+  EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{1e-3, 1e-3}));
 }
 
 }  // namespace xla::gpu
