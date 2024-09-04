@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 
 #include "tsl/platform/macros.h"
+#include "tsl/platform/platform.h"  // IWYU pragma: keep
 #include "tsl/profiler/lib/nvtx_utils.h"
 
 #if !defined(IS_MOBILE_PLATFORM)

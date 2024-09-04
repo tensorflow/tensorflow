@@ -319,6 +319,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":nvtx_utils",
+        "//tsl/platform",
         "//tsl/platform:macros",
         "//tsl/platform:types",
         "@com_google_absl//absl/strings",
@@ -350,6 +351,7 @@ cc_library(
         ":context_types_hdrs",
         ":traceme",
         ":traceme_encode",
+        "//tsl/platform:types",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],
