@@ -1,8 +1,6 @@
 """Macro that creates external repositories for remote config."""
 
 load("//third_party/gpus:rocm_configure.bzl", "remote_rocm_configure")
-load("//third_party/gpus/cuda/hermetic:cuda_configure.bzl", "remote_cuda_configure")
-load("//third_party/nccl/hermetic:nccl_configure.bzl", "remote_nccl_configure")
 load("//third_party/py:python_configure.bzl", "local_python_configure", "remote_python_configure")
 load("//third_party/remote_config:remote_platform_configure.bzl", "remote_platform_configure")
 load("//third_party/tensorrt:tensorrt_configure.bzl", "remote_tensorrt_configure")
@@ -12,7 +10,7 @@ def _container_image_uri(container_name):
     container = containers[container_name]
     return "docker://%s/%s@%s" % (container["registry"], container["repository"], container["digest"])
 
-def _tensorflow_rbe_config(name, compiler, python_versions, os, rocm_version = None, cuda_version = None, cudnn_version = None, tensorrt_version = None, tensorrt_install_path = None, cudnn_install_path = None, compiler_prefix = None, sysroot = None, python_install_path = "/usr"):
+def _tensorflow_rbe_config(name, compiler, python_versions, os, rocm_version = None, cuda_version = None, cudnn_version = None, tensorrt_version = None, tensorrt_install_path = None, compiler_prefix = None, python_install_path = "/usr"):
     if cuda_version != None and rocm_version != None:
         fail("Specifying both cuda_version and rocm_version is not supported.")
 
@@ -35,20 +33,12 @@ def _tensorflow_rbe_config(name, compiler, python_versions, os, rocm_version = N
         # The cuda toolchain currently contains its own C++ toolchain definition,
         # so we do not fetch local_config_cc.
         env.update({
-            "TF_NEED_CUDA": "1",
-            "TF_CUDA_CLANG": "1" if compiler.endswith("clang") else "0",
-            "TF_CUDA_COMPUTE_CAPABILITIES": "3.5,6.0",
             "TF_ENABLE_XLA": "1",
-            "TF_CUDNN_VERSION": cudnn_version,
-            "TF_CUDA_VERSION": cuda_version,
-            "CUDNN_INSTALL_PATH": cudnn_install_path if cudnn_install_path != None else "/usr/lib/x86_64-linux-gnu",
             "TF_NEED_TENSORRT": "0",
             "TF_TENSORRT_VERSION": tensorrt_version if tensorrt_version != None else "",
             "TENSORRT_INSTALL_PATH": tensorrt_install_path if tensorrt_install_path != None else "/usr/lib/x86_64-linux-gnu",
             "GCC_HOST_COMPILER_PATH": compiler if not compiler.endswith("clang") else "",
             "GCC_HOST_COMPILER_PREFIX": compiler_prefix if compiler_prefix != None else "/usr/bin",
-            "CLANG_CUDA_COMPILER_PATH": compiler if compiler.endswith("clang") else "",
-            "TF_SYSROOT": sysroot if sysroot else "",
         })
 
         cuda_version_in_container = ".".join(cuda_version.split(".")[:2])
@@ -63,18 +53,6 @@ def _tensorflow_rbe_config(name, compiler, python_versions, os, rocm_version = N
             "container-image": container_image,
             "Pool": "default",
         }
-
-        remote_cuda_configure(
-            name = "%s_config_cuda" % name,
-            environ = env,
-            exec_properties = exec_properties,
-        )
-
-        remote_nccl_configure(
-            name = "%s_config_nccl" % name,
-            environ = env,
-            exec_properties = exec_properties,
-        )
 
         remote_tensorrt_configure(
             name = "%s_config_tensorrt" % name,
@@ -180,18 +158,6 @@ def sigbuild_tf_configs(name_container_map, env):
             "container-image": container,
             "Pool": "default",
         }
-
-        remote_cuda_configure(
-            name = "%s_config_cuda" % name,
-            environ = env,
-            exec_properties = exec_properties,
-        )
-
-        remote_nccl_configure(
-            name = "%s_config_nccl" % name,
-            environ = env,
-            exec_properties = exec_properties,
-        )
 
         remote_tensorrt_configure(
             name = "%s_config_tensorrt" % name,

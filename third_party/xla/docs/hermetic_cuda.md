@@ -66,14 +66,7 @@ is specified in [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https:
    [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/tsl/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl)
    if needed.
 
-2. For RBE executions: update `TF_CUDA_VERSION` and/or `TF_CUDNN_VERSION` in
-   [toolchains/remote_config/rbe_config.bzl](https://github.com/openxla/xla/blob/main/third_party/tsl/tools/toolchains/remote_config/rbe_config.bzl).
-
-3. For RBE executions: update `cuda_version`, `cudnn_version`, `TF_CUDA_VERSION`
-   and `TF_CUDNN_VERSION` in
-   [toolchains/remote_config/configs.bzl](https://github.com/openxla/xla/blob/main/tools/toolchains/remote_config/configs.bzl).
-
-4. For each Google ML project create a separate pull request with updated
+2. For each Google ML project create a separate pull request with updated
    `HERMETIC_CUDA_VERSION` and `HERMETIC_CUDNN_VERSION` in `.bazelrc` file.
 
    The PR presubmit job executions will launch bazel tests and download hermetic
