@@ -56,7 +56,7 @@ using testing::Ge;
 class TempFileDesc {
  public:
   static constexpr struct AutoClose {
-  } kAutoCLose{};
+  } kAutoClose{};
 
 #if defined(_MSC_VER)
   TempFileDesc() : fd_() {
@@ -548,7 +548,7 @@ TEST_F(BuildMMapWeightCacheProviderTest,
 
 TEST_F(BuildMMapWeightCacheProviderTest, FinalizeWorks) {
   enum { kWeightIndex1, kBiasIndex, kWeightIndex2 };
-  TempFileDesc tmp_file(TempFileDesc::kAutoCLose);
+  TempFileDesc tmp_file(TempFileDesc::kAutoClose);
   ASSERT_TRUE(cache_provider.StartBuild(tmp_file.GetCPath()));
 
   ctx.PackTensors(&cache_provider.GetCacheProvider(), kAlgoSeed1, kWeightIndex1,
@@ -654,7 +654,7 @@ TEST_F(LoadMMapWeightCacheProviderTest, LookUpSucceeds) {
 
 TEST(MMapWeightCacheProviderTest, XnnpackCApiJourney) {
   using std::size;
-  TempFileDesc temp_fd(TempFileDesc::kAutoCLose);
+  TempFileDesc temp_fd(TempFileDesc::kAutoClose);
   const int32_t fake_packing_algo_seed = 0xBA0BAB;
   const char packed_data_ref_1[] = "abcdefghij";
   const char packed_data_ref_2[] = "klmnopqr";
