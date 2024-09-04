@@ -95,7 +95,10 @@ results {
   }
 })";
 
-  void SetUp() override { AutotunerUtil::ClearAutotuneResults(); }
+  void SetUp() override {
+    AutotunerUtil::ClearAutotuneResults();
+    AutotunerUtil::ClearCacheStats();
+  }
 
   std::string GetUniqueTempFilePath(absl::string_view suffix) {
     std::string filename = TempDir();
@@ -223,6 +226,8 @@ TEST_F(AutotunerUtilTest, FailIfRequireCompleteAotAutotuning) {
           absl::StatusCode::kNotFound,
           HasSubstr("Complete XLA AOT autotuning results are required, but "
                     "no AOT result was found for key: <key model")));
+  EXPECT_EQ(AutotunerUtil::GetCacheStats().cache_hits, 0);
+  EXPECT_EQ(AutotunerUtil::GetCacheStats().cache_misses, 1);
 }
 
 // Test that when JIT autotuning is disabled, but no cache miss due to AOT
@@ -242,6 +247,8 @@ TEST_F(AutotunerUtilTest, OkIfJitAutotuningDisabledButAlreadyLoadedAOT) {
     TF_EXPECT_OK(AutotunerUtil::Autotune(instruction, config, [&] {
                    return AutotuneResult();
                  }).status());
+    EXPECT_EQ(AutotunerUtil::GetCacheStats().cache_hits, 0);
+    EXPECT_EQ(AutotunerUtil::GetCacheStats().cache_misses, 1);
   }
 
   // Now require complete AOT autotuning results.
@@ -254,6 +261,8 @@ TEST_F(AutotunerUtilTest, OkIfJitAutotuningDisabledButAlreadyLoadedAOT) {
   TF_EXPECT_OK(AutotunerUtil::Autotune(instruction, config, [&] {
                  return AutotuneResult();
                }).status());
+  EXPECT_EQ(AutotunerUtil::GetCacheStats().cache_hits, 1);
+  EXPECT_EQ(AutotunerUtil::GetCacheStats().cache_misses, 1);
 }
 
 class FileBasedCacheTest : public AutotunerUtilTest {
@@ -351,6 +360,8 @@ TEST_F(FileBasedCacheTest, AutotuneCreatesTmpAndWritesResultToTheCacheDir) {
   TF_ASSERT_OK_AND_ASSIGN(
       AutotuneResult result,
       AutotunerUtil::Autotune(dot_, GetConfig(), [&] { return result1_; }));
+  EXPECT_EQ(AutotunerUtil::GetCacheStats().cache_hits, 0);
+  EXPECT_EQ(AutotunerUtil::GetCacheStats().cache_misses, 1);
   EXPECT_EQ(ToString(result), ToString(result1_));
 
   ASSERT_THAT(GetFilesInDir(cache_dir_),
@@ -369,6 +380,8 @@ TEST_F(FileBasedCacheTest, AutotuneReadsResultFromTheCacheDir) {
                           }));
 
   EXPECT_TRUE(cache_hit);
+  EXPECT_EQ(AutotunerUtil::GetCacheStats().cache_hits, 1);
+  EXPECT_EQ(AutotunerUtil::GetCacheStats().cache_misses, 0);
   EXPECT_EQ(ToString(result), ToString(result1_));
 }
 
@@ -393,11 +406,15 @@ TEST_F(FileBasedCacheTest,
 
   Write(cache_file_path, ToString(result1_));
   check_autotune_cache_hit(dot_, config, /*expected_result=*/result1_);
+  EXPECT_EQ(AutotunerUtil::GetCacheStats().cache_hits, 1);
+  EXPECT_EQ(AutotunerUtil::GetCacheStats().cache_misses, 0);
 
   constexpr absl::string_view kPlaceholderContent = "placeholder content";
   Write(cache_file_path, kPlaceholderContent);
   // File was not read again:
   check_autotune_cache_hit(dot_, config, /*expected_result=*/result1_);
+  EXPECT_EQ(AutotunerUtil::GetCacheStats().cache_hits, 2);
+  EXPECT_EQ(AutotunerUtil::GetCacheStats().cache_misses, 0);
   // File was not written again:
   EXPECT_EQ(Read(cache_file_path), kPlaceholderContent);
 }
@@ -410,6 +427,8 @@ TEST_F(FileBasedCacheTest,
                           AutotunerUtil::IsInCache(GetCacheKey(), GetConfig()));
 
   EXPECT_TRUE(is_in_cache);
+  EXPECT_EQ(AutotunerUtil::GetCacheStats().cache_hits, 1);
+  EXPECT_EQ(AutotunerUtil::GetCacheStats().cache_misses, 0);
 }
 
 TEST_F(FileBasedCacheTest, IsInCacheReturnsFalseIfTheResultIsNotInEitherCache) {
@@ -417,6 +436,8 @@ TEST_F(FileBasedCacheTest, IsInCacheReturnsFalseIfTheResultIsNotInEitherCache) {
                           AutotunerUtil::IsInCache(GetCacheKey(), GetConfig()));
 
   EXPECT_FALSE(is_in_cache);
+  EXPECT_EQ(AutotunerUtil::GetCacheStats().cache_hits, 0);
+  EXPECT_EQ(AutotunerUtil::GetCacheStats().cache_misses, 1);
 }
 
 TEST_F(FileBasedCacheTest, AddResultAddsTheResultToTheFileBasedCache) {
