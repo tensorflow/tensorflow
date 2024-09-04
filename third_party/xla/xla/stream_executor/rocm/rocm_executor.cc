@@ -675,7 +675,7 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
     return status;
   }
 
-  internal::DeviceDescriptionBuilder builder;
+  DeviceDescription desc;
 
   {
     int version = GpuDriver::GetDriverVersion().value_or(-1);
@@ -683,7 +683,7 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
         "%d (%s)", version,
         rocm::DriverVersionStatusToString(Diagnostician::FindDsoVersion())
             .c_str());
-    builder.set_driver_version(augmented_driver_version);
+    desc.set_driver_version(augmented_driver_version);
   }
 
   {
@@ -691,80 +691,80 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
 
     // Lower the hex characters to match sysfs.
     pci_bus_id = absl::AsciiStrToLower(pci_bus_id);
-    builder.set_pci_bus_id(pci_bus_id);
+    desc.set_pci_bus_id(pci_bus_id);
 
     // Read the NUMA node corresponding to the PCI bus ID out of sysfs.
     int numa_node = TryToReadNumaNode(pci_bus_id, device_ordinal);
-    builder.set_numa_node(numa_node);
+    desc.set_numa_node(numa_node);
   }
 
   hipDeviceProp_t prop;
   if (GpuDriver::GetDeviceProperties(&prop, device_ordinal)) {
-    builder.set_threads_per_block_limit(prop.maxThreadsPerBlock);
+    desc.set_threads_per_block_limit(prop.maxThreadsPerBlock);
 
     ThreadDim thread_dim_limit;
     thread_dim_limit.x = prop.maxThreadsDim[0];
     thread_dim_limit.y = prop.maxThreadsDim[1];
     thread_dim_limit.z = prop.maxThreadsDim[2];
-    builder.set_thread_dim_limit(thread_dim_limit);
+    desc.set_thread_dim_limit(thread_dim_limit);
 
     float clock_rate_ghz = static_cast<float>(prop.clockRate) / 1e6;
-    builder.set_clock_rate_ghz(clock_rate_ghz);
+    desc.set_clock_rate_ghz(clock_rate_ghz);
 
     // mem_bandwidth = 2 * mem_bus_width_in_bytes * mem_clock_rate_in_hz
     int64_t memory_bandwidth = 2 * (int64_t(prop.memoryBusWidth) / 8) *
                                (int64_t(prop.memoryClockRate) * 1000);
-    builder.set_memory_bandwidth(memory_bandwidth);
+    desc.set_memory_bandwidth(memory_bandwidth);
 
-    builder.set_l2_cache_size(prop.l2CacheSize);
+    desc.set_l2_cache_size(prop.l2CacheSize);
   }
 
   {
     bool ecc_enabled = false;
     (void)GpuDriver::IsEccEnabled(device, &ecc_enabled);
-    builder.set_ecc_enabled(ecc_enabled);
+    desc.set_ecc_enabled(ecc_enabled);
   }
 
   uint64_t device_memory_size = -1;
   (void)GpuDriver::GetDeviceTotalMemory(device, &device_memory_size);
-  builder.set_device_memory_size(device_memory_size);
+  desc.set_device_memory_size(device_memory_size);
 
   {
     BlockDim block_dim_limit;
     TF_RETURN_IF_ERROR(FillBlockDimLimit(device, &block_dim_limit));
-    builder.set_block_dim_limit(block_dim_limit);
+    desc.set_block_dim_limit(block_dim_limit);
   }
 
   {
     std::string device_name;
     TF_RETURN_IF_ERROR(GpuDriver::GetDeviceName(device, &device_name));
-    builder.set_name(device_name);
+    desc.set_name(device_name);
   }
 
-  builder.set_platform_version(
+  desc.set_platform_version(
       absl::StrCat("AMDGPU ISA version: ", gcn_arch_name));
 
   // TODO(leary) should be a way to query this from the driver, but this is
   // unlikely to change for us any time soon.
-  builder.set_device_address_bits(64);
+  desc.set_device_address_bits(64);
 
-  builder.set_device_vendor("Advanced Micro Devices, Inc");
-  builder.set_rocm_compute_capability(gcn_arch_name);
+  desc.set_device_vendor("Advanced Micro Devices, Inc");
+  desc.set_rocm_compute_capability(gcn_arch_name);
 
-  builder.set_shared_memory_per_core(
+  desc.set_shared_memory_per_core(
       GpuDriver::GetMaxSharedMemoryPerCore(device).value());
-  builder.set_shared_memory_per_block(
+  desc.set_shared_memory_per_block(
       GpuDriver::GetMaxSharedMemoryPerBlock(device).value());
   int core_count = GpuDriver::GetMultiprocessorCount(device).value();
-  builder.set_core_count(core_count);
-  builder.set_fpus_per_core(fpus_per_core(gcn_arch_name));
-  builder.set_threads_per_core_limit(
+  desc.set_core_count(core_count);
+  desc.set_fpus_per_core(fpus_per_core(gcn_arch_name));
+  desc.set_threads_per_core_limit(
       GpuDriver::GetMaxThreadsPerMultiprocessor(device).value());
-  builder.set_registers_per_block_limit(
+  desc.set_registers_per_block_limit(
       GpuDriver::GetMaxRegistersPerBlock(device).value());
-  builder.set_threads_per_warp(GpuDriver::GetThreadsPerWarp(device).value());
-  builder.set_registers_per_core_limit(64 * 1024);
-  builder.set_runtime_version(std::to_string(TF_ROCM_VERSION));
+  desc.set_threads_per_warp(GpuDriver::GetThreadsPerWarp(device).value());
+  desc.set_registers_per_core_limit(64 * 1024);
+  desc.set_runtime_version(std::to_string(TF_ROCM_VERSION));
 
   int cc_major = 0;
   int cc_minor = 0;
@@ -779,11 +779,11 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
   //
   // TODO(jlebar): This really should be more unique.  In CUDA land, we mix in
   // the clock speed and L2 cache size.
-  builder.set_model_str(absl::StrFormat("cc_%d.%d with %dB RAM, %d cores",
-                                        cc_major, cc_minor, device_memory_size,
-                                        core_count));
+  desc.set_model_str(absl::StrFormat("cc_%d.%d with %dB RAM, %d cores",
+                                     cc_major, cc_minor, device_memory_size,
+                                     core_count));
 
-  return builder.Build();
+  return std::make_unique<DeviceDescription>(std::move(desc));
 }
 
 }  // namespace gpu

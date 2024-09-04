@@ -22,7 +22,6 @@ limitations under the License.
 
 #include <cassert>
 #include <cstdint>
-#include <memory>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -38,9 +37,6 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 
 namespace stream_executor {
-namespace internal {
-class DeviceDescriptionBuilder;
-}  // namespace internal
 
 // CUDA compute capability, as reported by the device description.
 struct CudaComputeCapability {
@@ -143,8 +139,8 @@ class RocmComputeCapability {
  public:
   // gcn_arch_name example --  gfx90a:sramecc+:xnack-
   // gfx_version is the "gfx90a" part of the gcn_arch_name
-  explicit RocmComputeCapability(const std::string &gcn_arch_name)
-      : gcn_arch_name_(gcn_arch_name) {}
+  explicit RocmComputeCapability(std::string gcn_arch_name)
+      : gcn_arch_name_(std::move(gcn_arch_name)) {}
 
   explicit RocmComputeCapability(const RocmComputeCapabilityProto &proto)
       : gcn_arch_name_(proto.gcn_arch_name()) {}
@@ -453,17 +449,90 @@ class DeviceDescription {
 
   std::string ToString() const;
 
+  DeviceDescription() = default;
   explicit DeviceDescription(const GpuDeviceInfoProto &proto);
 
   // For string values that are not available via the underlying platform, this
   // value will be provided.
   static inline const char *const kUndefinedString = "<undefined>";
 
+  void set_gpu_compute_capability(const GpuComputeCapability &c) {
+    gpu_compute_capability_ = c;
+  }
+
+  void set_block_dim_limit_x(int64_t limit) { block_dim_limit_.x = limit; }
+
+  void set_block_dim_limit_y(int64_t limit) { block_dim_limit_.y = limit; }
+
+  void set_block_dim_limit_z(int64_t limit) { block_dim_limit_.z = limit; }
+
+  void set_device_vendor(std::string value) {
+    device_vendor_ = std::move(value);
+  }
+  void set_platform_version(std::string value) {
+    platform_version_ = std::move(value);
+  }
+  void set_driver_version(std::string value) {
+    driver_version_ = std::move(value);
+  }
+  void set_runtime_version(std::string value) {
+    runtime_version_ = std::move(value);
+  }
+  void set_pci_bus_id(std::string value) { pci_bus_id_ = std::move(value); }
+  void set_name(std::string value) { name_ = std::move(value); }
+  void set_model_str(std::string value) { model_str_ = std::move(value); }
+
+  void set_thread_dim_limit(const ThreadDim &value) {
+    thread_dim_limit_ = value;
+  }
+  void set_block_dim_limit(const BlockDim &value) { block_dim_limit_ = value; }
+
+  void set_threads_per_core_limit(int64_t value) {
+    threads_per_core_limit_ = value;
+  }
+  void set_threads_per_block_limit(int64_t value) {
+    threads_per_block_limit_ = value;
+  }
+  void set_threads_per_warp(int64_t value) { threads_per_warp_ = value; }
+
+  void set_registers_per_core_limit(int64_t value) {
+    registers_per_core_limit_ = value;
+  }
+  void set_registers_per_block_limit(int64_t value) {
+    registers_per_block_limit_ = value;
+  }
+
+  void set_device_address_bits(int64_t value) { device_address_bits_ = value; }
+  void set_device_memory_size(int64_t value) { device_memory_size_ = value; }
+  void set_l2_cache_size(int64_t value) { l2_cache_size_ = value; }
+  void set_memory_bandwidth(int64_t value) { memory_bandwidth_ = value; }
+
+  void set_shared_memory_per_core(int64_t value) {
+    shared_memory_per_core_ = value;
+  }
+  void set_shared_memory_per_block(int64_t value) {
+    shared_memory_per_block_ = value;
+  }
+  void set_shared_memory_per_block_optin(int64_t value) {
+    shared_memory_per_block_optin_ = value;
+  }
+
+  void set_clock_rate_ghz(float value) { clock_rate_ghz_ = value; }
+
+  void set_cuda_compute_capability(int major, int minor) {
+    gpu_compute_capability_ = CudaComputeCapability{major, minor};
+  }
+
+  void set_rocm_compute_capability(std::string gcn_arch_name) {
+    gpu_compute_capability_ = RocmComputeCapability(std::move(gcn_arch_name));
+  }
+
+  void set_numa_node(int value) { numa_node_ = value; }
+  void set_core_count(int value) { core_count_ = value; }
+  void set_fpus_per_core(int value) { fpus_per_core_ = value; }
+  void set_ecc_enabled(bool value) { ecc_enabled_ = value; }
+
  private:
-  friend class internal::DeviceDescriptionBuilder;
-
-  DeviceDescription() = default;
-
   // For description of the following members, see the corresponding accessor
   // above.
   //
@@ -511,141 +580,6 @@ class DeviceDescription {
   int fpus_per_core_ = kUninitialized<int>;
   bool ecc_enabled_ = false;
 };
-
-namespace internal {
-
-// Helper class the builds a device description, given that it has a large
-// number of fields that would be easily confused in constructor form.
-class DeviceDescriptionBuilder {
- public:
-  DeviceDescriptionBuilder() = default;
-
-  // For descriptions of the following fields, see comments on the corresponding
-  // DeviceDescription::* accessors above.
-
-  void set_gpu_compute_capability(GpuComputeCapability c) {
-    device_description_.gpu_compute_capability_ = c;
-  }
-
-  void set_block_dim_limit_x(int64_t limit) {
-    device_description_.block_dim_limit_.x = limit;
-  }
-
-  void set_block_dim_limit_y(int64_t limit) {
-    device_description_.block_dim_limit_.y = limit;
-  }
-
-  void set_block_dim_limit_z(int64_t limit) {
-    device_description_.block_dim_limit_.z = limit;
-  }
-
-  void set_device_vendor(const std::string &value) {
-    device_description_.device_vendor_ = value;
-  }
-  void set_platform_version(const std::string &value) {
-    device_description_.platform_version_ = value;
-  }
-  void set_driver_version(const std::string &value) {
-    device_description_.driver_version_ = value;
-  }
-  void set_runtime_version(const std::string &value) {
-    device_description_.runtime_version_ = value;
-  }
-  void set_pci_bus_id(const std::string &value) {
-    device_description_.pci_bus_id_ = value;
-  }
-  void set_name(const std::string &value) { device_description_.name_ = value; }
-  void set_model_str(const std::string &value) {
-    device_description_.model_str_ = value;
-  }
-
-  void set_thread_dim_limit(const ThreadDim &value) {
-    device_description_.thread_dim_limit_ = value;
-  }
-  void set_block_dim_limit(const BlockDim &value) {
-    device_description_.block_dim_limit_ = value;
-  }
-
-  void set_threads_per_core_limit(int64_t value) {
-    device_description_.threads_per_core_limit_ = value;
-  }
-  void set_threads_per_block_limit(int64_t value) {
-    device_description_.threads_per_block_limit_ = value;
-  }
-  void set_threads_per_warp(int64_t value) {
-    device_description_.threads_per_warp_ = value;
-  }
-
-  void set_registers_per_core_limit(int64_t value) {
-    device_description_.registers_per_core_limit_ = value;
-  }
-  void set_registers_per_block_limit(int64_t value) {
-    device_description_.registers_per_block_limit_ = value;
-  }
-
-  void set_device_address_bits(int64_t value) {
-    device_description_.device_address_bits_ = value;
-  }
-  void set_device_memory_size(int64_t value) {
-    device_description_.device_memory_size_ = value;
-  }
-  void set_l2_cache_size(int64_t value) {
-    device_description_.l2_cache_size_ = value;
-  }
-  void set_memory_bandwidth(int64_t value) {
-    device_description_.memory_bandwidth_ = value;
-  }
-
-  void set_shared_memory_per_core(int64_t value) {
-    device_description_.shared_memory_per_core_ = value;
-  }
-  void set_shared_memory_per_block(int64_t value) {
-    device_description_.shared_memory_per_block_ = value;
-  }
-  void set_shared_memory_per_block_optin(int64_t value) {
-    device_description_.shared_memory_per_block_optin_ = value;
-  }
-
-  void set_clock_rate_ghz(float value) {
-    device_description_.clock_rate_ghz_ = value;
-  }
-
-  void set_cuda_compute_capability(int major, int minor) {
-    device_description_.gpu_compute_capability_ =
-        CudaComputeCapability{major, minor};
-  }
-
-  void set_rocm_compute_capability(std::string gcn_arch_name) {
-    device_description_.gpu_compute_capability_ =
-        RocmComputeCapability(gcn_arch_name);
-  }
-
-  void set_numa_node(int value) { device_description_.numa_node_ = value; }
-  void set_core_count(int value) { device_description_.core_count_ = value; }
-  void set_fpus_per_core(int value) {
-    device_description_.fpus_per_core_ = value;
-  }
-  void set_ecc_enabled(bool value) { device_description_.ecc_enabled_ = value; }
-
-  // Returns a built DeviceDescription with ownership transferred to the
-  // caller. There are currently no restrictions on which fields must be set in
-  // order to build the descriptor.
-  //
-  // Once the description is built, this builder object should be discarded.
-  std::unique_ptr<DeviceDescription> Build() {
-    return std::make_unique<DeviceDescription>(device_description_);
-  }
-
-  DeviceDescription BuildObject() { return device_description_; }
-
- private:
-  DeviceDescription device_description_;
-
-  DeviceDescriptionBuilder(const DeviceDescriptionBuilder &) = delete;
-  void operator=(const DeviceDescriptionBuilder &) = delete;
-};
-
-}  // namespace internal
 
 // Returns whether the given thread_dim is acceptable given the limits described
 // in device_description. For detailed reasons for failing the predicate, enable
