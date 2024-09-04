@@ -658,6 +658,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":ifrt",
+        "@com_google_absl//absl/strings:cord",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -686,6 +687,7 @@ cc_library(
         ":sharding_serdes",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
         "@local_tsl//tsl/platform:statusor",
@@ -706,6 +708,7 @@ xla_cc_test(
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:cord",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
         "@local_tsl//tsl/platform:status_matchers",
