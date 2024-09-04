@@ -40,22 +40,10 @@ class GmockMatcher {
                        ::testing::MatchResultListener* listener) const {
     return MatchAndExplainImpl(&l, listener);
   }
-  bool MatchAndExplain(const Layout* l,
-                       ::testing::MatchResultListener* listener) const {
-    return MatchAndExplainImpl(l, listener);
-  }
-  bool MatchAndExplain(Layout* l,
-                       ::testing::MatchResultListener* listener) const {
-    return MatchAndExplainImpl(l, listener);
-  }
 
   bool MatchAndExplain(const Shape& s,
                        ::testing::MatchResultListener* listener) const {
     return MatchAndExplainImpl(&s, listener);
-  }
-  bool MatchAndExplain(const Shape* s,
-                       ::testing::MatchResultListener* listener) const {
-    return MatchAndExplainImpl(s, listener);
   }
   bool MatchAndExplain(Shape* s,
                        ::testing::MatchResultListener* listener) const {

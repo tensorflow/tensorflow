@@ -41,16 +41,6 @@ std::string Describe(const ::testing::Matcher<MatchedTy>& m) {
   return ss.str();
 }
 
-template <typename MatchedTy>
-std::string Explain(
-    const MatchedTy& val,
-    const ::testing::Matcher<typename std::remove_cv<MatchedTy>::type>& m) {
-  ::testing::StringMatchResultListener listener;
-  EXPECT_THAT(val, ::testing::Not(m));  // For the error message.
-  EXPECT_FALSE(m.MatchAndExplain(val, &listener));
-  return listener.str();
-}
-
 // This file tests the GmockMatch function.  The actual explanation and
 // description returned by matchers is tested in pattern_matchers_test.
 TEST(PatternMatcherGmock, MatchShape) {

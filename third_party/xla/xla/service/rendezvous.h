@@ -64,8 +64,6 @@ struct RendezvousResult<absl::StatusOr<R>> {
     if (!result.ok()) return result.status();
     return std::make_shared<R>(std::move(*result));
   }
-
-  static Type Empty() { return {std::shared_ptr<R>()}; }
 };
 
 template <typename R>
