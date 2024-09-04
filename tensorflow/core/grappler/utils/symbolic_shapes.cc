@@ -17,6 +17,9 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/bcast.h"
 
 namespace tensorflow {
