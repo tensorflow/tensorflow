@@ -65,20 +65,23 @@ class Exhaustive16BitBinaryTest
 
     int64_t begin, end;
     std::tie(begin, end) = GetParam();
-
-    uint16_t left_begin, left_end, right_begin, right_end;
-    if constexpr (kLeftToRightPacking) {
-      left_begin = std::bit_cast<uint16_t>(static_cast<int16_t>(begin >> 16));
-      left_end = std::bit_cast<uint16_t>(static_cast<int16_t>(end >> 16));
-      right_begin = std::bit_cast<uint16_t>(static_cast<int16_t>(begin));
-      right_end = std::bit_cast<uint16_t>(static_cast<int16_t>(end));
-    } else {
-      left_begin = std::bit_cast<uint16_t>(static_cast<int16_t>(begin));
-      left_end = std::bit_cast<uint16_t>(static_cast<int16_t>(end));
-      right_begin = std::bit_cast<uint16_t>(static_cast<int16_t>(begin >> 16));
-      right_end = std::bit_cast<uint16_t>(static_cast<int16_t>(end >> 16));
-    }
     if (VLOG_IS_ON(2)) {
+      uint16_t left_begin, left_end, right_begin, right_end;
+      if constexpr (kLeftToRightPacking) {
+        left_begin = std::bit_cast<uint16_t>(static_cast<int16_t>(begin >> 16));
+        left_end = std::bit_cast<uint16_t>(static_cast<int16_t>(end >> 16));
+        right_begin = std::bit_cast<uint16_t>(static_cast<int16_t>(begin));
+        right_end = std::bit_cast<uint16_t>(static_cast<int16_t>(end));
+      } else {
+        left_begin = std::bit_cast<uint16_t>(static_cast<int16_t>(begin));
+        left_end = std::bit_cast<uint16_t>(static_cast<int16_t>(end));
+        right_begin =
+            std::bit_cast<uint16_t>(static_cast<int16_t>(begin >> 16));
+        right_end = std::bit_cast<uint16_t>(static_cast<int16_t>(end >> 16));
+      }
+
+      // N.B.: Use INFO directly instead of doing another thread-safe VLOG
+      // check.
       LOG(INFO) << this->SuiteName() << this->TestName() << " Range:";
       LOG(INFO) << "\tfrom=(" << left_begin << ", " << right_begin << "); hex=("
                 << std::hex << left_begin << ", " << right_begin << "); float=("
@@ -143,6 +146,8 @@ class Exhaustive32BitOrMoreBinaryTest
     FpValues values_1;
     std::tie(values_0, values_1) = GetParam();
     if (VLOG_IS_ON(2)) {
+      // N.B.: Use INFO directly instead of doing another thread-safe VLOG
+      // check.
       LOG(INFO) << this->SuiteName() << this->TestName() << " Values:";
       LOG(INFO) << "\tleft values=" << values_0.ToString();
       LOG(INFO) << "\tright values=" << values_1.ToString();
