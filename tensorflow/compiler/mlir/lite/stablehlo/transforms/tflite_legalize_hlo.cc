@@ -372,6 +372,8 @@ void LegalizeHloToTfLitePass::runOnOperation() {
   target.addDynamicallyLegalOp<mhlo::CbrtOp>(IsCbrtLegal);
   target.addDynamicallyLegalOp<mhlo::NotOp>(IsNotOpLegal);
   target.addDynamicallyLegalOp<mhlo::CompareOp>(IsCompareLegal);
+  target.addDynamicallyLegalOp<mhlo::ConstantOp>(
+      [](mhlo::ConstantOp op) { return std::nullopt; });
 
   target.addIllegalOp<
       // go/keep-sorted start

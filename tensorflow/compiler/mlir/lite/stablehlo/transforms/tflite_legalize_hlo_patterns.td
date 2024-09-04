@@ -28,6 +28,12 @@ def ShapeToConst : NativeCodeCall<"ShapeToConst($_builder, $0)">;
 def CreateTFLCastToInt32Op : NativeCodeCall<
   "CreateCastToInt32($0, $_loc, $_builder)">;
 
+def : Pat<
+  (MHLO_ConstantOp:$output $value),
+  (Arith_ConstantOp $value),
+  [(TFL_TensorOf<[AnyType]> $output)]>;
+
+
 //===----------------------------------------------------------------------===//
 // data movement
 //===----------------------------------------------------------------------===//
