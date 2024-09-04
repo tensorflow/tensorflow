@@ -316,10 +316,10 @@ TEST(WeightCacheBuilderTest, NonExistingPathFails) {
   EXPECT_FALSE(builder.Start("/seldf/sedsft"));
 }
 
-#if TFLITE_XNNPACK_ENABLE_IN_MEMORY_WEIGHT_CACHE
 TEST(WeightCacheBuilderTest, InMemoryCacheTriggeredByCorrectPrefix) {
+  TfLiteXNNPackDelegateCanUseInMemoryWeightCacheProvider();
   if (!TfLiteXNNPackDelegateCanUseInMemoryWeightCacheProvider()) {
-    GTEST_SKIP() << "In-memory weight cache is enabled for this build but "
+    GTEST_SKIP() << "In-memory weight cache isn't enabled for this build or "
                     "isn't supported by the current system, skipping test.";
   }
   {  // Exact in-memory flag used starts an in-memory build.
@@ -341,11 +341,6 @@ TEST(WeightCacheBuilderTest, InMemoryCacheTriggeredByCorrectPrefix) {
     EXPECT_EQ(errno, ENOENT);
   }
 }
-#else
-TEST(WeightCacheBuilderTest, InMemoryCacheTriggeredByCorrectPrefix) {
-  GTEST_SKIP() << "In-memory weight cache isn't enabled, skipping test.";
-}
-#endif
 
 struct FakeContext {
   // Adds a new tensor and it's backing buffer to the context.

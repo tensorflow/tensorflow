@@ -73,7 +73,7 @@ off_t FileDescriptor::MovePos(off_t offset) {
 }
 
 bool InMemoryFileDescriptorAvailable() {
-#ifdef TFLITE_XNNPACK_IN_MEMORY_FILE_ENABLED
+#if TFLITE_XNNPACK_IN_MEMORY_FILE_ENABLED
   // Test if the syscall memfd_create is available.
   const int test_fd = syscall(SYS_memfd_create, "test fd", 0);
   if (test_fd != -1) {
