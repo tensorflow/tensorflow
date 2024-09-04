@@ -259,6 +259,7 @@ absl::StatusOr<Literal> MakeFakeLiteralInternal(
   new_shape.mutable_layout()->clear_tiles();
   new_shape.mutable_layout()->set_tail_padding_alignment_in_elements(1);
   new_shape.mutable_layout()->set_element_size_in_bits(0);
+  new_shape.mutable_layout()->set_memory_space(Layout::kDefaultMemorySpace);
   Literal literal(new_shape);
 
   TF_RETURN_IF_ERROR(primitive_util::PrimitiveTypeSwitch<absl::Status>(
