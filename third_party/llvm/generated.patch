@@ -1,86 +1,690 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/MachineConvergenceVerifier.cpp b/llvm/lib/CodeGen/MachineConvergenceVerifier.cpp
---- a/llvm/lib/CodeGen/MachineConvergenceVerifier.cpp
-+++ b/llvm/lib/CodeGen/MachineConvergenceVerifier.cpp
-@@ -51,7 +51,9 @@
-   const MachineRegisterInfo &MRI = Context.getFunction()->getRegInfo();
-   const MachineInstr *TokenDef = nullptr;
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+--- a/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
++++ b/llvm/lib/Transforms/Vectorize/SLPVectorizer.cpp
+@@ -3237,15 +3237,25 @@
+     /// When ReuseReorderShuffleIndices is empty it just returns position of \p
+     /// V within vector of Scalars. Otherwise, try to remap on its reuse index.
+     int findLaneForValue(Value *V) const {
+-      unsigned FoundLane = std::distance(Scalars.begin(), find(Scalars, V));
+-      assert(FoundLane < Scalars.size() && "Couldn't find extract lane");
+-      if (!ReorderIndices.empty())
+-        FoundLane = ReorderIndices[FoundLane];
+-      assert(FoundLane < Scalars.size() && "Couldn't find extract lane");
+-      if (!ReuseShuffleIndices.empty()) {
+-        FoundLane = std::distance(ReuseShuffleIndices.begin(),
+-                                  find(ReuseShuffleIndices, FoundLane));
++      unsigned FoundLane = getVectorFactor();
++      for (auto *It = find(Scalars, V), *End = Scalars.end(); It != End;
++           std::advance(It, 1)) {
++        if (*It != V)
++          continue;
++        FoundLane = std::distance(Scalars.begin(), It);
++        assert(FoundLane < Scalars.size() && "Couldn't find extract lane");
++        if (!ReorderIndices.empty())
++          FoundLane = ReorderIndices[FoundLane];
++        assert(FoundLane < Scalars.size() && "Couldn't find extract lane");
++        if (ReuseShuffleIndices.empty())
++          break;
++        if (auto *RIt = find(ReuseShuffleIndices, FoundLane);
++            RIt != ReuseShuffleIndices.end()) {
++          FoundLane = std::distance(ReuseShuffleIndices.begin(), RIt);
++          break;
++        }
+       }
++      assert(FoundLane < getVectorFactor() && "Unable to find given value.");
+       return FoundLane;
+     }
  
--  for (const MachineOperand &MO : MI.all_uses()) {
-+  for (const MachineOperand &MO : MI.operands()) {
-+    if (!MO.isReg() || !MO.isUse())
-+      continue;
-     Register OpReg = MO.getReg();
-     if (!OpReg.isVirtual())
-       continue;
-diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/MachineInstr.cpp b/llvm/lib/CodeGen/MachineInstr.cpp
---- a/llvm/lib/CodeGen/MachineInstr.cpp
-+++ b/llvm/lib/CodeGen/MachineInstr.cpp
-@@ -1041,9 +1041,10 @@
- /// Returns true if the MachineInstr has an implicit-use operand of exactly
- /// the given register (not considering sub/super-registers).
- bool MachineInstr::hasRegisterImplicitUseOperand(Register Reg) const {
--  for (const MachineOperand &MO : all_uses())
--    if (MO.isImplicit() && MO.getReg() == Reg)
-+  for (const MachineOperand &MO : operands()) {
-+    if (MO.isReg() && MO.isUse() && MO.isImplicit() && MO.getReg() == Reg)
-       return true;
-+  }
-   return false;
+@@ -13127,7 +13137,7 @@
+   }
+ 
+   bool IsReverseOrder = isReverseOrder(E->ReorderIndices);
+-  auto FinalShuffle = [&](Value *V, const TreeEntry *E, VectorType *VecTy) {
++  auto FinalShuffle = [&](Value *V, const TreeEntry *E) {
+     ShuffleInstructionBuilder ShuffleBuilder(ScalarTy, Builder, *this);
+     if (E->getOpcode() == Instruction::Store &&
+         E->State == TreeEntry::Vectorize) {
+@@ -13187,7 +13197,7 @@
+                                PH->getParent()->getFirstInsertionPt());
+         Builder.SetCurrentDebugLocation(PH->getDebugLoc());
+ 
+-        V = FinalShuffle(V, E, VecTy);
++        V = FinalShuffle(V, E);
+ 
+         E->VectorizedValue = V;
+         if (PostponedPHIs)
+@@ -13239,7 +13249,7 @@
+       if (const TreeEntry *TE = getTreeEntry(V))
+         V = TE->VectorizedValue;
+       setInsertPointAfterBundle(E);
+-      V = FinalShuffle(V, E, VecTy);
++      V = FinalShuffle(V, E);
+       E->VectorizedValue = V;
+       return V;
+     }
+@@ -13249,7 +13259,7 @@
+       Value *Ptr = LI->getPointerOperand();
+       LoadInst *V = Builder.CreateAlignedLoad(VecTy, Ptr, LI->getAlign());
+       Value *NewV = propagateMetadata(V, E->Scalars);
+-      NewV = FinalShuffle(NewV, E, VecTy);
++      NewV = FinalShuffle(NewV, E);
+       E->VectorizedValue = NewV;
+       return NewV;
+     }
+@@ -13464,7 +13474,7 @@
+       Value *V = (VecOpcode != ShuffleOrOp && VecOpcode == Instruction::BitCast)
+                      ? InVec
+                      : Builder.CreateCast(VecOpcode, InVec, VecTy);
+-      V = FinalShuffle(V, E, VecTy);
++      V = FinalShuffle(V, E);
+ 
+       E->VectorizedValue = V;
+       ++NumVectorInstructions;
+@@ -13508,7 +13518,7 @@
+       propagateIRFlags(V, E->Scalars, VL0);
+       // Do not cast for cmps.
+       VecTy = cast<FixedVectorType>(V->getType());
+-      V = FinalShuffle(V, E, VecTy);
++      V = FinalShuffle(V, E);
+ 
+       E->VectorizedValue = V;
+       ++NumVectorInstructions;
+@@ -13561,7 +13571,7 @@
+       assert(getNumElements(Cond->getType()) == TrueNumElements &&
+              "Cannot vectorize Instruction::Select");
+       Value *V = Builder.CreateSelect(Cond, True, False);
+-      V = FinalShuffle(V, E, VecTy);
++      V = FinalShuffle(V, E);
+ 
+       E->VectorizedValue = V;
+       ++NumVectorInstructions;
+@@ -13583,7 +13593,7 @@
+       if (auto *I = dyn_cast<Instruction>(V))
+         V = propagateMetadata(I, E->Scalars);
+ 
+-      V = FinalShuffle(V, E, VecTy);
++      V = FinalShuffle(V, E);
+ 
+       E->VectorizedValue = V;
+       ++NumVectorInstructions;
+@@ -13601,7 +13611,7 @@
+       }
+ 
+       Value *V = Builder.CreateFreeze(Op);
+-      V = FinalShuffle(V, E, VecTy);
++      V = FinalShuffle(V, E);
+ 
+       E->VectorizedValue = V;
+       ++NumVectorInstructions;
+@@ -13645,7 +13655,7 @@
+                 auto *CI = dyn_cast<ConstantInt>(Op);
+                 return CI && CI->getValue().countr_one() >= It->second.first;
+               })) {
+-            V = FinalShuffle(I == 0 ? RHS : LHS, E, VecTy);
++            V = FinalShuffle(I == 0 ? RHS : LHS, E);
+             E->VectorizedValue = V;
+             ++NumVectorInstructions;
+             return V;
+@@ -13678,7 +13688,7 @@
+           I->setHasNoUnsignedWrap(/*b=*/false);
+       }
+ 
+-      V = FinalShuffle(V, E, VecTy);
++      V = FinalShuffle(V, E);
+ 
+       E->VectorizedValue = V;
+       ++NumVectorInstructions;
+@@ -13770,7 +13780,7 @@
+       }
+       Value *V = propagateMetadata(NewLI, E->Scalars);
+ 
+-      V = FinalShuffle(V, E, VecTy);
++      V = FinalShuffle(V, E);
+       E->VectorizedValue = V;
+       ++NumVectorInstructions;
+       return V;
+@@ -13784,7 +13794,7 @@
+       if (VecValue->getType() != VecTy)
+         VecValue =
+             Builder.CreateIntCast(VecValue, VecTy, GetOperandSignedness(0));
+-      VecValue = FinalShuffle(VecValue, E, VecTy);
++      VecValue = FinalShuffle(VecValue, E);
+ 
+       Value *Ptr = SI->getPointerOperand();
+       Instruction *ST;
+@@ -13849,7 +13859,7 @@
+         V = propagateMetadata(I, GEPs);
+       }
+ 
+-      V = FinalShuffle(V, E, VecTy);
++      V = FinalShuffle(V, E);
+ 
+       E->VectorizedValue = V;
+       ++NumVectorInstructions;
+@@ -13931,7 +13941,7 @@
+       Value *V = Builder.CreateCall(CF, OpVecs, OpBundles);
+ 
+       propagateIRFlags(V, E->Scalars, VL0);
+-      V = FinalShuffle(V, E, VecTy);
++      V = FinalShuffle(V, E);
+ 
+       E->VectorizedValue = V;
+       ++NumVectorInstructions;
+@@ -14029,6 +14039,7 @@
+                      "Expected same type as operand.");
+               if (auto *I = dyn_cast<Instruction>(LHS))
+                 LHS = propagateMetadata(I, E->Scalars);
++              LHS = FinalShuffle(LHS, E);
+               E->VectorizedValue = LHS;
+               ++NumVectorInstructions;
+               return LHS;
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/fake-use-hpfloat.ll b/llvm/test/CodeGen/X86/fake-use-hpfloat.ll
+--- a/llvm/test/CodeGen/X86/fake-use-hpfloat.ll
++++ b/llvm/test/CodeGen/X86/fake-use-hpfloat.ll
+@@ -1,6 +1,6 @@
+ ; assert in DAGlegalizer with fake use of half precision float.
+ ; Changes to half float promotion.
+-; RUN: llc -stop-after=finalize-isel -o - %s | FileCheck %s
++; RUN: llc -stop-after=finalize-isel -mtriple=x86_64-unknown-linux -o - %s | FileCheck %s
+ ;
+ ; CHECK:      bb.0.entry:
+ ; CHECK-NEXT: %0:fr16 = FsFLD0SH
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/X86/fake-use-vector.ll b/llvm/test/CodeGen/X86/fake-use-vector.ll
+--- a/llvm/test/CodeGen/X86/fake-use-vector.ll
++++ b/llvm/test/CodeGen/X86/fake-use-vector.ll
+@@ -1,5 +1,5 @@
+ ; assert in DAGlegalizer with fake use of 1-element vectors.
+-; RUN: llc -stop-after=finalize-isel -filetype=asm -o - %s | FileCheck %s
++; RUN: llc -stop-after=finalize-isel -mtriple=x86_64-unknown-linux -filetype=asm -o - %s | FileCheck %s
+ ;
+ ; ModuleID = 't2.cpp'
+ ; source_filename = "t2.cpp"
+diff -ruN --strip-trailing-cr a/llvm/test/DebugInfo/X86/fake-use.ll b/llvm/test/DebugInfo/X86/fake-use.ll
+--- a/llvm/test/DebugInfo/X86/fake-use.ll
++++ b/llvm/test/DebugInfo/X86/fake-use.ll
+@@ -3,9 +3,9 @@
+ ; Make sure the fake use of 'b' at the end of 'foo' causes location information for 'b'
+ ; to extend all the way to the end of the function.
+ 
+-; RUN: %llc_dwarf -O2 -filetype=obj -dwarf-linkage-names=Abstract < %s | llvm-dwarfdump --debug-info --debug-line -v - -o %t
++; RUN: %llc_dwarf -O2 -filetype=obj -mtriple=x86_64-unknown-linux -dwarf-linkage-names=Abstract < %s | llvm-dwarfdump --debug-info --debug-line -v - -o %t
+ ; RUN: %python %p/../Inputs/check-fake-use.py %t
+-; RUN: sed -e 's,call void (...) @llvm.fake.use,;,' %s | %llc_dwarf - -O2 -filetype=obj -dwarf-linkage-names=Abstract | llvm-dwarfdump --debug-info --debug-line -v - -o %t
++; RUN: sed -e 's,call void (...) @llvm.fake.use,;,' %s | %llc_dwarf - -O2 -filetype=obj -mtriple=x86_64-unknown-linux -dwarf-linkage-names=Abstract | llvm-dwarfdump --debug-info --debug-line -v - -o %t
+ ; RUN: not %python %p/../Inputs/check-fake-use.py %t
+ 
+ ; Generated with:
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/AArch64/reused-scalar-repeated-in-node.ll b/llvm/test/Transforms/SLPVectorizer/AArch64/reused-scalar-repeated-in-node.ll
+--- a/llvm/test/Transforms/SLPVectorizer/AArch64/reused-scalar-repeated-in-node.ll
++++ b/llvm/test/Transforms/SLPVectorizer/AArch64/reused-scalar-repeated-in-node.ll
+@@ -0,0 +1,231 @@
++; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 5
++; RUN: opt -S --passes=slp-vectorizer -mtriple=aarch64-unknown-linux-gnu < %s | FileCheck %s
++
++define void @test() {
++; CHECK-LABEL: define void @test() {
++; CHECK-NEXT:  [[ENTRY:.*:]]
++; CHECK-NEXT:    br label %[[BB61:.*]]
++; CHECK:       [[BB61]]:
++; CHECK-NEXT:    br label %[[BB64:.*]]
++; CHECK:       [[BB62:.*]]:
++; CHECK-NEXT:    br i1 poison, label %[[BB63:.*]], label %[[BB64]]
++; CHECK:       [[BB63]]:
++; CHECK-NEXT:    br label %[[BB64]]
++; CHECK:       [[BB64]]:
++; CHECK-NEXT:    [[TMP0:%.*]] = phi <2 x float> [ poison, %[[BB61]] ], [ poison, %[[BB63]] ], [ poison, %[[BB62]] ]
++; CHECK-NEXT:    [[I66:%.*]] = load float, ptr poison, align 16
++; CHECK-NEXT:    [[I67:%.*]] = load float, ptr poison, align 4
++; CHECK-NEXT:    [[I68:%.*]] = load float, ptr poison, align 8
++; CHECK-NEXT:    [[I69:%.*]] = load float, ptr poison, align 4
++; CHECK-NEXT:    [[I70:%.*]] = load float, ptr poison, align 4
++; CHECK-NEXT:    [[I71:%.*]] = load float, ptr poison, align 16
++; CHECK-NEXT:    [[I72:%.*]] = load float, ptr poison, align 4
++; CHECK-NEXT:    [[I73:%.*]] = load float, ptr poison, align 8
++; CHECK-NEXT:    [[I74:%.*]] = load float, ptr poison, align 4
++; CHECK-NEXT:    [[I75:%.*]] = load float, ptr poison, align 16
++; CHECK-NEXT:    [[I76:%.*]] = load float, ptr poison, align 4
++; CHECK-NEXT:    [[TMP1:%.*]] = insertelement <16 x float> poison, float [[I76]], i32 0
++; CHECK-NEXT:    [[TMP2:%.*]] = insertelement <16 x float> [[TMP1]], float [[I75]], i32 1
++; CHECK-NEXT:    [[TMP3:%.*]] = insertelement <16 x float> [[TMP2]], float [[I74]], i32 2
++; CHECK-NEXT:    [[TMP4:%.*]] = insertelement <16 x float> [[TMP3]], float [[I73]], i32 3
++; CHECK-NEXT:    [[TMP5:%.*]] = insertelement <16 x float> [[TMP4]], float [[I71]], i32 4
++; CHECK-NEXT:    [[TMP6:%.*]] = insertelement <16 x float> [[TMP5]], float [[I70]], i32 5
++; CHECK-NEXT:    [[TMP7:%.*]] = insertelement <16 x float> [[TMP6]], float [[I68]], i32 6
++; CHECK-NEXT:    [[TMP8:%.*]] = insertelement <16 x float> [[TMP7]], float [[I66]], i32 7
++; CHECK-NEXT:    [[TMP9:%.*]] = insertelement <16 x float> [[TMP8]], float [[I72]], i32 13
++; CHECK-NEXT:    [[TMP10:%.*]] = insertelement <16 x float> [[TMP9]], float [[I69]], i32 14
++; CHECK-NEXT:    [[TMP11:%.*]] = insertelement <16 x float> [[TMP10]], float [[I67]], i32 15
++; CHECK-NEXT:    br i1 poison, label %[[BB167:.*]], label %[[BB77:.*]]
++; CHECK:       [[BB77]]:
++; CHECK-NEXT:    [[TMP12:%.*]] = shufflevector <16 x float> [[TMP11]], <16 x float> poison, <8 x i32> <i32 poison, i32 5, i32 6, i32 7, i32 15, i32 15, i32 14, i32 15>
++; CHECK-NEXT:    [[TMP13:%.*]] = shufflevector <2 x float> [[TMP0]], <2 x float> poison, <16 x i32> <i32 poison, i32 poison, i32 1, i32 0, i32 0, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 1, i32 poison, i32 poison>
++; CHECK-NEXT:    [[TMP14:%.*]] = shufflevector <2 x float> [[TMP0]], <2 x float> poison, <16 x i32> <i32 poison, i32 poison, i32 poison, i32 poison, i32 1, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 0, i32 poison, i32 poison>
++; CHECK-NEXT:    br label %[[BB78:.*]]
++; CHECK:       [[BB78]]:
++; CHECK-NEXT:    [[TMP15:%.*]] = phi <8 x float> [ [[TMP12]], %[[BB77]] ], [ [[TMP30:%.*]], %[[BB78]] ]
++; CHECK-NEXT:    [[TMP16:%.*]] = phi <2 x float> [ poison, %[[BB77]] ], [ [[TMP31:%.*]], %[[BB78]] ]
++; CHECK-NEXT:    [[TMP17:%.*]] = shufflevector <8 x float> [[TMP15]], <8 x float> poison, <16 x i32> <i32 0, i32 3, i32 1, i32 2, i32 3, i32 0, i32 2, i32 3, i32 2, i32 7, i32 2, i32 3, i32 0, i32 6, i32 7, i32 7>
++; CHECK-NEXT:    [[TMP18:%.*]] = fmul fast <16 x float> [[TMP17]], [[TMP13]]
++; CHECK-NEXT:    [[TMP19:%.*]] = shufflevector <8 x float> [[TMP15]], <8 x float> poison, <16 x i32> <i32 1, i32 poison, i32 0, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 1, i32 7, i32 6, i32 6>
++; CHECK-NEXT:    [[TMP20:%.*]] = shufflevector <2 x float> [[TMP16]], <2 x float> poison, <16 x i32> <i32 0, i32 1, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison>
++; CHECK-NEXT:    [[TMP21:%.*]] = shufflevector <16 x float> [[TMP19]], <16 x float> [[TMP20]], <16 x i32> <i32 0, i32 17, i32 2, i32 16, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 12, i32 13, i32 14, i32 15>
++; CHECK-NEXT:    [[TMP22:%.*]] = shufflevector <8 x float> [[TMP15]], <8 x float> poison, <16 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison>
++; CHECK-NEXT:    [[TMP23:%.*]] = shufflevector <16 x float> [[TMP21]], <16 x float> [[TMP22]], <16 x i32> <i32 0, i32 1, i32 2, i32 3, i32 4, i32 17, i32 6, i32 7, i32 8, i32 22, i32 10, i32 11, i32 12, i32 13, i32 14, i32 15>
++; CHECK-NEXT:    [[TMP24:%.*]] = shufflevector <16 x float> [[TMP23]], <16 x float> poison, <16 x i32> <i32 0, i32 1, i32 2, i32 3, i32 1, i32 5, i32 3, i32 1, i32 3, i32 9, i32 3, i32 1, i32 12, i32 13, i32 14, i32 15>
++; CHECK-NEXT:    [[TMP25:%.*]] = call <16 x float> @llvm.vector.insert.v16f32.v2f32(<16 x float> [[TMP14]], <2 x float> [[TMP0]], i64 2)
++; CHECK-NEXT:    [[TMP26:%.*]] = fmul fast <16 x float> [[TMP24]], [[TMP25]]
++; CHECK-NEXT:    [[TMP27:%.*]] = fadd fast <16 x float> [[TMP26]], [[TMP18]]
++; CHECK-NEXT:    [[TMP28:%.*]] = fadd fast <16 x float> [[TMP27]], poison
++; CHECK-NEXT:    [[TMP29:%.*]] = fadd fast <16 x float> [[TMP28]], poison
++; CHECK-NEXT:    [[TMP30]] = shufflevector <16 x float> [[TMP29]], <16 x float> poison, <8 x i32> <i32 12, i32 5, i32 6, i32 7, i32 15, i32 15, i32 14, i32 15>
++; CHECK-NEXT:    [[TMP31]] = shufflevector <16 x float> [[TMP29]], <16 x float> poison, <2 x i32> <i32 10, i32 11>
++; CHECK-NEXT:    br i1 poison, label %[[BB78]], label %[[BB167]]
++; CHECK:       [[BB167]]:
++; CHECK-NEXT:    [[TMP32:%.*]] = phi <16 x float> [ [[TMP11]], %[[BB64]] ], [ [[TMP29]], %[[BB78]] ]
++; CHECK-NEXT:    [[TMP33:%.*]] = extractelement <16 x float> [[TMP32]], i32 15
++; CHECK-NEXT:    store float [[TMP33]], ptr poison, align 1
++; CHECK-NEXT:    [[TMP34:%.*]] = extractelement <16 x float> [[TMP32]], i32 13
++; CHECK-NEXT:    store float [[TMP34]], ptr poison, align 1
++; CHECK-NEXT:    [[TMP35:%.*]] = extractelement <16 x float> [[TMP32]], i32 14
++; CHECK-NEXT:    br i1 poison, label %[[BB186:.*]], label %[[BB184:.*]]
++; CHECK:       [[BB184]]:
++; CHECK-NEXT:    br label %[[BB185:.*]]
++; CHECK:       [[BB185]]:
++; CHECK-NEXT:    br i1 poison, label %[[BB185]], label %[[BB186]]
++; CHECK:       [[BB186]]:
++; CHECK-NEXT:    [[I187:%.*]] = phi nsz float [ [[TMP35]], %[[BB167]] ], [ poison, %[[BB185]] ]
++; CHECK-NEXT:    ret void
++;
++entry:
++  br label %bb61
++
++bb61:
++  br label %bb64
++
++bb62:
++  br i1 poison, label %bb63, label %bb64
++
++bb63:
++  br label %bb64
++
++bb64:
++  %i = phi nsz float [ poison, %bb61 ], [ poison, %bb63 ], [ poison, %bb62 ]
++  %i65 = phi nsz float [ poison, %bb61 ], [ poison, %bb63 ], [ poison, %bb62 ]
++  %i66 = load float, ptr poison, align 16
++  %i67 = load float, ptr poison, align 4
++  %i68 = load float, ptr poison, align 8
++  %i69 = load float, ptr poison, align 4
++  %i70 = load float, ptr poison, align 4
++  %i71 = load float, ptr poison, align 16
++  %i72 = load float, ptr poison, align 4
++  %i73 = load float, ptr poison, align 8
++  %i74 = load float, ptr poison, align 4
++  %i75 = load float, ptr poison, align 16
++  %i76 = load float, ptr poison, align 4
++  br i1 poison, label %bb167, label %bb77
++
++bb77:
++  br label %bb78
++
++bb78:
++  %i79 = phi nsz float [ %i66, %bb77 ], [ %i103, %bb78 ]
++  %i80 = phi nsz float [ %i67, %bb77 ], [ %i104, %bb78 ]
++  %i81 = phi nsz float [ %i68, %bb77 ], [ %i105, %bb78 ]
++  %i82 = phi nsz float [ poison, %bb77 ], [ %i106, %bb78 ]
++  %i83 = phi nsz float [ poison, %bb77 ], [ %i123, %bb78 ]
++  %i84 = phi nsz float [ %i69, %bb77 ], [ %i124, %bb78 ]
++  %i85 = phi nsz float [ poison, %bb77 ], [ %i125, %bb78 ]
++  %i86 = phi nsz float [ %i70, %bb77 ], [ %i126, %bb78 ]
++  %i87 = fmul fast float %i79, poison
++  %i88 = fmul fast float %i80, poison
++  %i89 = fmul fast float %i81, poison
++  %i90 = fmul fast float %i82, poison
++  %i91 = fmul fast float %i83, poison
++  %i92 = fadd fast float %i91, %i87
++  %i93 = fmul fast float %i84, poison
++  %i94 = fadd fast float %i93, %i88
++  %i95 = fmul fast float %i85, poison
++  %i96 = fadd fast float %i95, %i89
++  %i97 = fmul fast float %i86, poison
++  %i98 = fadd fast float %i97, %i90
++  %i99 = fadd fast float %i92, poison
++  %i100 = fadd fast float %i94, poison
++  %i101 = fadd fast float %i96, poison
++  %i102 = fadd fast float %i98, poison
++  %i103 = fadd fast float %i99, poison
++  %i104 = fadd fast float %i100, poison
++  %i105 = fadd fast float %i101, poison
++  %i106 = fadd fast float %i102, poison
++  %i107 = fmul fast float %i79, poison
++  %i108 = fmul fast float %i80, poison
++  %i109 = fmul fast float %i81, poison
++  %i110 = fmul fast float %i82, poison
++  %i111 = fmul fast float %i83, poison
++  %i112 = fadd fast float %i111, %i107
++  %i113 = fmul fast float %i84, poison
++  %i114 = fadd fast float %i113, %i108
++  %i115 = fmul fast float %i85, poison
++  %i116 = fadd fast float %i115, %i109
++  %i117 = fmul fast float %i86, poison
++  %i118 = fadd fast float %i117, %i110
++  %i119 = fadd fast float %i112, poison
++  %i120 = fadd fast float %i114, poison
++  %i121 = fadd fast float %i116, poison
++  %i122 = fadd fast float %i118, poison
++  %i123 = fadd fast float %i119, poison
++  %i124 = fadd fast float %i120, poison
++  %i125 = fadd fast float %i121, poison
++  %i126 = fadd fast float %i122, poison
++  %i127 = fmul fast float %i79, %i
++  %i128 = fmul fast float %i80, %i
++  %i129 = fmul fast float %i81, %i
++  %i130 = fmul fast float %i82, %i
++  %i131 = fmul fast float %i83, %i65
++  %i132 = fadd fast float %i131, %i127
++  %i133 = fmul fast float %i84, %i65
++  %i134 = fadd fast float %i133, %i128
++  %i135 = fmul fast float %i85, %i65
++  %i136 = fadd fast float %i135, %i129
++  %i137 = fmul fast float %i86, %i65
++  %i138 = fadd fast float %i137, %i130
++  %i139 = fadd fast float %i132, poison
++  %i140 = fadd fast float %i134, poison
++  %i141 = fadd fast float %i136, poison
++  %i142 = fadd fast float %i138, poison
++  %i143 = fadd fast float %i139, poison
++  %i144 = fadd fast float %i140, poison
++  %i145 = fadd fast float %i141, poison
++  %i146 = fadd fast float %i142, poison
++  %i147 = fmul fast float %i79, poison
++  %i148 = fmul fast float %i80, poison
++  %i149 = fmul fast float %i81, poison
++  %i150 = fmul fast float %i82, poison
++  %i151 = fmul fast float %i83, poison
++  %i152 = fadd fast float %i151, %i147
++  %i153 = fmul fast float %i84, poison
++  %i154 = fadd fast float %i153, %i148
++  %i155 = fmul fast float %i85, poison
++  %i156 = fadd fast float %i155, %i149
++  %i157 = fmul fast float %i86, poison
++  %i158 = fadd fast float %i157, %i150
++  %i159 = fadd fast float %i152, poison
++  %i160 = fadd fast float %i154, poison
++  %i161 = fadd fast float %i156, poison
++  %i162 = fadd fast float %i158, poison
++  %i163 = fadd fast float %i159, poison
++  %i164 = fadd fast float %i160, poison
++  %i165 = fadd fast float %i161, poison
++  %i166 = fadd fast float %i162, poison
++  br i1 poison, label %bb78, label %bb167
++
++bb167:
++  %i168 = phi nsz float [ %i76, %bb64 ], [ %i166, %bb78 ]
++  %i169 = phi nsz float [ poison, %bb64 ], [ %i165, %bb78 ]
++  %i170 = phi nsz float [ poison, %bb64 ], [ %i164, %bb78 ]
++  %i171 = phi nsz float [ %i75, %bb64 ], [ %i163, %bb78 ]
++  %i172 = phi nsz float [ %i74, %bb64 ], [ %i146, %bb78 ]
++  %i173 = phi nsz float [ %i73, %bb64 ], [ %i145, %bb78 ]
++  %i174 = phi nsz float [ %i72, %bb64 ], [ %i144, %bb78 ]
++  %i175 = phi nsz float [ %i71, %bb64 ], [ %i143, %bb78 ]
++  %i176 = phi nsz float [ %i70, %bb64 ], [ %i126, %bb78 ]
++  %i177 = phi nsz float [ poison, %bb64 ], [ %i125, %bb78 ]
++  %i178 = phi nsz float [ %i69, %bb64 ], [ %i124, %bb78 ]
++  %i179 = phi nsz float [ poison, %bb64 ], [ %i123, %bb78 ]
++  %i180 = phi nsz float [ poison, %bb64 ], [ %i106, %bb78 ]
++  %i181 = phi nsz float [ %i68, %bb64 ], [ %i105, %bb78 ]
++  %i182 = phi nsz float [ %i67, %bb64 ], [ %i104, %bb78 ]
++  %i183 = phi nsz float [ %i66, %bb64 ], [ %i103, %bb78 ]
++  store float %i182, ptr poison, align 1
++  store float %i174, ptr poison, align 1
++  br i1 poison, label %bb186, label %bb184
++
++bb184:
++  br label %bb185
++
++bb185:
++  br i1 poison, label %bb185, label %bb186
++
++bb186:
++  %i187 = phi nsz float [ %i178, %bb167 ], [ poison, %bb185 ]
++  ret void
++}
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SLPVectorizer/resized-alt-shuffle-after-minbw.ll b/llvm/test/Transforms/SLPVectorizer/resized-alt-shuffle-after-minbw.ll
+--- a/llvm/test/Transforms/SLPVectorizer/resized-alt-shuffle-after-minbw.ll
++++ b/llvm/test/Transforms/SLPVectorizer/resized-alt-shuffle-after-minbw.ll
+@@ -0,0 +1,208 @@
++; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 5
++; RUN: opt -S --passes=slp-vectorizer -slp-vectorize-hor=false < %s | FileCheck %s
++
++define void @func(i32 %0) {
++; CHECK-LABEL: define void @func(
++; CHECK-SAME: i32 [[TMP0:%.*]]) {
++; CHECK-NEXT:    [[TMP2:%.*]] = insertelement <4 x i32> <i32 0, i32 poison, i32 0, i32 0>, i32 [[TMP0]], i32 1
++; CHECK-NEXT:    [[TMP3:%.*]] = shl <4 x i32> [[TMP2]], zeroinitializer
++; CHECK-NEXT:    [[TMP4:%.*]] = or <4 x i32> [[TMP2]], zeroinitializer
++; CHECK-NEXT:    [[TMP5:%.*]] = shufflevector <4 x i32> [[TMP3]], <4 x i32> [[TMP4]], <4 x i32> <i32 0, i32 1, i32 6, i32 7>
++; CHECK-NEXT:    [[TMP6:%.*]] = shl i32 [[TMP0]], 0
++; CHECK-NEXT:    [[TMP7:%.*]] = icmp eq i32 [[TMP6]], 0
++; CHECK-NEXT:    [[TMP8:%.*]] = shufflevector <4 x i32> [[TMP5]], <4 x i32> poison, <32 x i32> <i32 0, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 1, i32 2, i32 3>
++; CHECK-NEXT:    [[TMP9:%.*]] = sext i32 [[TMP6]] to i64
++; CHECK-NEXT:    [[TMP10:%.*]] = or i64 [[TMP9]], 0
++; CHECK-NEXT:    [[TMP11:%.*]] = shufflevector <4 x i32> [[TMP5]], <4 x i32> poison, <32 x i32> <i32 0, i32 1, i32 2, i32 3, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison>
++; CHECK-NEXT:    [[TMP12:%.*]] = shufflevector <32 x i32> [[TMP11]], <32 x i32> <i32 poison, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 0, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison>, <32 x i32> <i32 poison, i32 33, i32 34, i32 35, i32 36, i32 37, i32 38, i32 39, i32 40, i32 41, i32 42, i32 43, i32 44, i32 45, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 poison, i32 1, i32 1>
++; CHECK-NEXT:    [[TMP13:%.*]] = insertelement <32 x i32> [[TMP12]], i32 0, i32 0
++; CHECK-NEXT:    [[TMP14:%.*]] = call <32 x i32> @llvm.vector.insert.v32i32.v8i32(<32 x i32> [[TMP13]], <8 x i32> zeroinitializer, i64 16)
++; CHECK-NEXT:    [[TMP15:%.*]] = call <32 x i32> @llvm.vector.insert.v32i32.v4i32(<32 x i32> [[TMP14]], <4 x i32> zeroinitializer, i64 24)
++; CHECK-NEXT:    [[TMP16:%.*]] = call <32 x i32> @llvm.vector.insert.v32i32.v2i32(<32 x i32> [[TMP15]], <2 x i32> zeroinitializer, i64 14)
++; CHECK-NEXT:    [[TMP17:%.*]] = call <32 x i32> @llvm.vector.insert.v32i32.v2i32(<32 x i32> [[TMP16]], <2 x i32> zeroinitializer, i64 28)
++; CHECK-NEXT:    [[TMP18:%.*]] = or <32 x i32> [[TMP8]], [[TMP17]]
++; CHECK-NEXT:    [[TMP19:%.*]] = sext <32 x i32> [[TMP18]] to <32 x i64>
++; CHECK-NEXT:    [[TMP20:%.*]] = icmp slt <32 x i64> [[TMP19]], zeroinitializer
++; CHECK-NEXT:    [[TMP21:%.*]] = extractelement <32 x i1> [[TMP20]], i32 31
++; CHECK-NEXT:    [[TMP22:%.*]] = and i1 false, [[TMP21]]
++; CHECK-NEXT:    [[TMP23:%.*]] = extractelement <32 x i1> [[TMP20]], i32 30
++; CHECK-NEXT:    [[TMP24:%.*]] = and i1 false, [[TMP23]]
++; CHECK-NEXT:    [[TMP25:%.*]] = extractelement <32 x i1> [[TMP20]], i32 29
++; CHECK-NEXT:    [[TMP26:%.*]] = and i1 false, [[TMP25]]
++; CHECK-NEXT:    [[TMP27:%.*]] = extractelement <32 x i1> [[TMP20]], i32 28
++; CHECK-NEXT:    [[TMP28:%.*]] = and i1 false, [[TMP27]]
++; CHECK-NEXT:    [[TMP29:%.*]] = extractelement <32 x i1> [[TMP20]], i32 27
++; CHECK-NEXT:    [[TMP30:%.*]] = and i1 false, [[TMP29]]
++; CHECK-NEXT:    [[TMP31:%.*]] = extractelement <32 x i1> [[TMP20]], i32 26
++; CHECK-NEXT:    [[TMP32:%.*]] = and i1 false, [[TMP31]]
++; CHECK-NEXT:    [[TMP33:%.*]] = extractelement <32 x i1> [[TMP20]], i32 25
++; CHECK-NEXT:    [[TMP34:%.*]] = and i1 false, [[TMP33]]
++; CHECK-NEXT:    [[TMP35:%.*]] = extractelement <32 x i1> [[TMP20]], i32 24
++; CHECK-NEXT:    [[TMP36:%.*]] = and i1 false, [[TMP35]]
++; CHECK-NEXT:    [[TMP37:%.*]] = extractelement <32 x i1> [[TMP20]], i32 23
++; CHECK-NEXT:    [[TMP38:%.*]] = and i1 false, [[TMP37]]
++; CHECK-NEXT:    [[TMP39:%.*]] = extractelement <32 x i1> [[TMP20]], i32 22
++; CHECK-NEXT:    [[TMP40:%.*]] = and i1 false, [[TMP39]]
++; CHECK-NEXT:    [[TMP41:%.*]] = extractelement <32 x i1> [[TMP20]], i32 21
++; CHECK-NEXT:    [[TMP42:%.*]] = and i1 false, [[TMP41]]
++; CHECK-NEXT:    [[TMP43:%.*]] = extractelement <32 x i1> [[TMP20]], i32 20
++; CHECK-NEXT:    [[TMP44:%.*]] = and i1 false, [[TMP43]]
++; CHECK-NEXT:    [[TMP45:%.*]] = extractelement <32 x i1> [[TMP20]], i32 19
++; CHECK-NEXT:    [[TMP46:%.*]] = and i1 false, [[TMP45]]
++; CHECK-NEXT:    [[TMP47:%.*]] = extractelement <32 x i1> [[TMP20]], i32 18
++; CHECK-NEXT:    [[TMP48:%.*]] = and i1 false, [[TMP47]]
++; CHECK-NEXT:    [[TMP49:%.*]] = extractelement <32 x i1> [[TMP20]], i32 17
++; CHECK-NEXT:    [[TMP50:%.*]] = and i1 false, [[TMP49]]
++; CHECK-NEXT:    [[TMP51:%.*]] = extractelement <32 x i1> [[TMP20]], i32 16
++; CHECK-NEXT:    [[TMP52:%.*]] = and i1 false, [[TMP51]]
++; CHECK-NEXT:    [[TMP53:%.*]] = extractelement <32 x i1> [[TMP20]], i32 15
++; CHECK-NEXT:    [[TMP54:%.*]] = and i1 false, [[TMP53]]
++; CHECK-NEXT:    [[TMP55:%.*]] = extractelement <32 x i1> [[TMP20]], i32 14
++; CHECK-NEXT:    [[TMP56:%.*]] = and i1 false, [[TMP55]]
++; CHECK-NEXT:    [[TMP57:%.*]] = extractelement <32 x i1> [[TMP20]], i32 13
++; CHECK-NEXT:    [[TMP58:%.*]] = and i1 false, [[TMP57]]
++; CHECK-NEXT:    [[TMP59:%.*]] = extractelement <32 x i1> [[TMP20]], i32 12
++; CHECK-NEXT:    [[TMP60:%.*]] = and i1 false, [[TMP59]]
++; CHECK-NEXT:    [[TMP61:%.*]] = extractelement <32 x i1> [[TMP20]], i32 11
++; CHECK-NEXT:    [[TMP62:%.*]] = and i1 false, [[TMP61]]
++; CHECK-NEXT:    [[TMP63:%.*]] = extractelement <32 x i1> [[TMP20]], i32 10
++; CHECK-NEXT:    [[TMP64:%.*]] = and i1 false, [[TMP63]]
++; CHECK-NEXT:    [[TMP65:%.*]] = extractelement <32 x i1> [[TMP20]], i32 9
++; CHECK-NEXT:    [[TMP66:%.*]] = and i1 false, [[TMP65]]
++; CHECK-NEXT:    [[TMP67:%.*]] = extractelement <32 x i1> [[TMP20]], i32 8
++; CHECK-NEXT:    [[TMP68:%.*]] = and i1 false, [[TMP67]]
++; CHECK-NEXT:    [[TMP69:%.*]] = extractelement <32 x i1> [[TMP20]], i32 7
++; CHECK-NEXT:    [[TMP70:%.*]] = and i1 false, [[TMP69]]
++; CHECK-NEXT:    [[TMP71:%.*]] = extractelement <32 x i1> [[TMP20]], i32 6
++; CHECK-NEXT:    [[TMP72:%.*]] = and i1 false, [[TMP71]]
++; CHECK-NEXT:    [[TMP73:%.*]] = extractelement <32 x i1> [[TMP20]], i32 5
++; CHECK-NEXT:    [[TMP74:%.*]] = and i1 false, [[TMP73]]
++; CHECK-NEXT:    [[TMP75:%.*]] = extractelement <32 x i1> [[TMP20]], i32 4
++; CHECK-NEXT:    [[TMP76:%.*]] = and i1 false, [[TMP75]]
++; CHECK-NEXT:    [[TMP77:%.*]] = extractelement <32 x i32> [[TMP18]], i32 0
++; CHECK-NEXT:    [[TMP78:%.*]] = sext i32 [[TMP77]] to i64
++; CHECK-NEXT:    [[TMP79:%.*]] = getelementptr float, ptr addrspace(1) null, i64 [[TMP78]]
++; CHECK-NEXT:    ret void
++;
++  %2 = shl i32 %0, 0
++  %3 = sext i32 %2 to i64
++  %4 = shl i32 0, 0
++  %5 = sext i32 %4 to i64
++  %6 = or i32 0, 0
++  %7 = or i32 0, 0
++  %8 = zext i32 %6 to i64
++  %9 = zext i32 %7 to i64
++  %10 = zext i32 0 to i64
++  %11 = zext i32 0 to i64
++  %12 = zext i32 0 to i64
++  %13 = zext i32 0 to i64
++  %14 = zext i32 0 to i64
++  %15 = zext i32 0 to i64
++  %16 = zext i32 0 to i64
++  %17 = zext i32 0 to i64
++  %18 = zext i32 0 to i64
++  %19 = zext i32 0 to i64
++  %20 = zext i32 0 to i64
++  %21 = zext i32 0 to i64
++  %22 = zext i32 0 to i64
++  %23 = zext i32 0 to i64
++  %24 = zext i32 0 to i64
++  %25 = zext i32 0 to i64
++  %26 = zext i32 0 to i64
++  %27 = or i64 %3, 0
++  %28 = or i64 %3, %8
++  %29 = or i64 %3, %9
++  %30 = or i64 %3, %10
++  %31 = or i64 %3, %11
++  %32 = or i64 %3, %12
++  %33 = or i64 %3, %13
++  %34 = or i64 %3, %14
++  %35 = or i64 %3, %15
++  %36 = or i64 %3, %16
++  %37 = or i64 %3, %17
++  %38 = or i64 %3, %18
++  %39 = or i64 %3, %19
++  %40 = or i64 %3, %20
++  %41 = or i64 %3, %21
++  %42 = or i64 %3, %22
++  %43 = or i64 %3, %23
++  %44 = or i64 %3, %24
++  %45 = or i64 %3, %25
++  %46 = or i64 %3, 0
++  %47 = or i64 %3, 0
++  %48 = or i64 %3, 0
++  %49 = or i64 %3, 0
++  %50 = or i64 %3, 0
++  %51 = or i64 %3, 0
++  %52 = or i64 %3, 0
++  %53 = or i64 %3, 0
++  %54 = or i64 %3, 0
++  %55 = or i64 %3, 0
++  %56 = or i64 %3, 0
++  %57 = or i64 %3, 0
++  %58 = or i64 %3, 0
++  %59 = icmp slt i64 %28, 0
++  %60 = icmp slt i64 %29, 0
++  %61 = icmp slt i64 %30, 0
++  %62 = icmp slt i64 %31, 0
++  %63 = icmp slt i64 %32, 0
++  %64 = icmp slt i64 %33, 0
++  %65 = icmp slt i64 %34, 0
++  %66 = icmp slt i64 %35, 0
++  %67 = icmp slt i64 %36, 0
++  %68 = icmp slt i64 %37, 0
++  %69 = icmp slt i64 %38, 0
++  %70 = icmp slt i64 %39, 0
++  %71 = icmp slt i64 %40, 0
++  %72 = icmp slt i64 %41, 0
++  %73 = icmp slt i64 %42, 0
++  %74 = icmp slt i64 %43, 0
++  %75 = icmp slt i64 %44, 0
++  %76 = icmp slt i64 %45, 0
++  %77 = icmp slt i64 %46, 0
++  %78 = icmp slt i64 %47, 0
++  %79 = icmp slt i64 %48, 0
++  %80 = icmp slt i64 %49, 0
++  %81 = icmp slt i64 %50, 0
++  %82 = icmp slt i64 %51, 0
++  %83 = icmp slt i64 %52, 0
++  %84 = icmp slt i64 %53, 0
++  %85 = icmp slt i64 %54, 0
++  %86 = icmp slt i64 %55, 0
++  %87 = icmp slt i64 %56, 0
++  %88 = icmp slt i64 %57, 0
++  %89 = icmp slt i64 %58, 0
++  %90 = and i1 false, %59
++  %91 = and i1 false, %60
++  %92 = and i1 false, %61
++  %93 = and i1 false, %62
++  %94 = and i1 false, %63
++  %95 = and i1 false, %64
++  %96 = and i1 false, %65
++  %97 = and i1 false, %66
++  %98 = and i1 false, %67
++  %99 = and i1 false, %68
++  %100 = and i1 false, %69
++  %101 = and i1 false, %70
++  %102 = and i1 false, %71
++  %103 = and i1 false, %72
++  %104 = and i1 false, %73
++  %105 = and i1 false, %74
++  %106 = and i1 false, %75
++  %107 = and i1 false, %76
++  %108 = icmp eq i32 %2, 0
++  %109 = and i1 false, %77
++  %110 = and i1 false, %78
++  %111 = and i1 false, %79
++  %112 = and i1 false, %80
++  %113 = and i1 false, %81
++  %114 = and i1 false, %82
++  %115 = and i1 false, %83
++  %116 = and i1 false, %84
++  %117 = and i1 false, %85
++  %118 = and i1 false, %86
++  %119 = or i64 %5, %26
++  %120 = getelementptr float, ptr addrspace(1) null, i64 %119
++  %121 = icmp slt i64 %119, 0
++  ret void
++}
+diff -ruN --strip-trailing-cr a/llvm/unittests/IR/BasicBlockDbgInfoTest.cpp b/llvm/unittests/IR/BasicBlockDbgInfoTest.cpp
+--- a/llvm/unittests/IR/BasicBlockDbgInfoTest.cpp
++++ b/llvm/unittests/IR/BasicBlockDbgInfoTest.cpp
+@@ -1569,14 +1569,12 @@
+   // The trailing records should've been absorbed into NewBB.
+   EXPECT_FALSE(BB.getTrailingDbgRecords());
+   EXPECT_TRUE(NewBB->getTrailingDbgRecords());
+-  if (NewBB->getTrailingDbgRecords()) {
+-    EXPECT_EQ(
+-        llvm::range_size(NewBB->getTrailingDbgRecords()->getDbgRecordRange()),
+-        1u);
++  if (DbgMarker *Trailing = NewBB->getTrailingDbgRecords()) {
++    EXPECT_EQ(llvm::range_size(Trailing->getDbgRecordRange()), 1u);
++    // Drop the trailing records now, to prevent a cleanup assertion.
++    Trailing->eraseFromParent();
++    NewBB->deleteTrailingDbgRecords();
+   }
+-
+-  // Drop the trailing records now, to prevent a cleanup assertion.
+-  NewBB->deleteTrailingDbgRecords();
  }
  
-@@ -1263,8 +1264,10 @@
- /// clearKillInfo - Clears kill flags on all operands.
- ///
- void MachineInstr::clearKillInfo() {
--  for (MachineOperand &MO : all_uses())
--    MO.setIsKill(false);
-+  for (MachineOperand &MO : operands()) {
-+    if (MO.isReg() && MO.isUse())
-+      MO.setIsKill(false);
-+  }
- }
- 
- void MachineInstr::substituteRegister(Register FromReg, Register ToReg,
-@@ -1546,9 +1549,12 @@
- /// allDefsAreDead - Return true if all the defs of this instruction are dead.
- ///
- bool MachineInstr::allDefsAreDead() const {
--  for (const MachineOperand &MO : all_defs())
-+  for (const MachineOperand &MO : operands()) {
-+    if (!MO.isReg() || MO.isUse())
-+      continue;
-     if (!MO.isDead())
-       return false;
-+  }
-   return true;
- }
- 
-@@ -2057,8 +2063,8 @@
-                                       const TargetRegisterInfo *RegInfo) {
-   if (!Reg.isPhysical())
-     RegInfo = nullptr;
--  for (MachineOperand &MO : all_uses()) {
--    if (!MO.isKill())
-+  for (MachineOperand &MO : operands()) {
-+    if (!MO.isReg() || !MO.isUse() || !MO.isKill())
-       continue;
-     Register OpReg = MO.getReg();
-     if ((RegInfo && RegInfo->regsOverlap(Reg, OpReg)) || Reg == OpReg)
-diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/RegAllocFast.cpp b/llvm/lib/CodeGen/RegAllocFast.cpp
---- a/llvm/lib/CodeGen/RegAllocFast.cpp
-+++ b/llvm/lib/CodeGen/RegAllocFast.cpp
-@@ -1563,7 +1563,9 @@
-   bool ReArrangedImplicitMOs = true;
-   while (ReArrangedImplicitMOs) {
-     ReArrangedImplicitMOs = false;
--    for (MachineOperand &MO : MI.all_uses()) {
-+    for (MachineOperand &MO : MI.operands()) {
-+      if (!MO.isReg() || !MO.isUse())
-+        continue;
-       Register Reg = MO.getReg();
-       if (!Reg.isVirtual() || !shouldAllocateRegister(Reg))
-         continue;
+ } // End anonymous namespace.
 diff -ruN --strip-trailing-cr a/mlir/include/mlir/IR/Block.h b/mlir/include/mlir/IR/Block.h
 --- a/mlir/include/mlir/IR/Block.h
 +++ b/mlir/include/mlir/IR/Block.h
