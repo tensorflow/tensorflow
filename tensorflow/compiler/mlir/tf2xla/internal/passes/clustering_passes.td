@@ -441,4 +441,14 @@ def TPUShardingIdentificationPass : Pass<"tf-tpu-sharding-identification", "Modu
   }];
 }
 
+def TPUValidateSessionInputsPass : Pass<"tf-tpu-validate-session-inputs", "mlir::ModuleOp"> {
+  let summary = "Validates inputs to the TPU TF/XLA bridge in session api";
 
+  let description = [{
+    This pass checks that the IR has valid input to TPU TF/XLA bridge in session api.
+    It checks the relations of multiple ops. Properties of single ops are
+    checked by the 'verify' method of ops.
+  }];
+
+  let constructor = "tensorflow::tf2xla::internal::CreateTPUValidateSessionInputsPass()";
+}

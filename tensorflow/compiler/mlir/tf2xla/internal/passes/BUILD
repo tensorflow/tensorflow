@@ -30,6 +30,7 @@ cc_library(
         ":mark_ops_for_outside_compilation",
         ":tpu_cluster_formation",
         ":tpu_sharding_identification_pass",
+        ":tpu_validate_session_inputs",
         ":verify_clustering_pass",
         ":xla_broadcast",
         ":xla_cluster_formation",
@@ -503,5 +504,19 @@ tf_cc_test(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "tpu_validate_session_inputs",
+    srcs = ["tpu_validate_session_inputs.cc"],
+    textual_hdrs = [
+        "clustering_passes.h.inc",
+    ],
+    deps = [
+        ":clustering_passes_inc_gen",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
     ],
 )
