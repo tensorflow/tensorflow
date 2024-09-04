@@ -81,7 +81,7 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Extension_Base, next);
 // Minor changes include:
 // * Adding a new field to the XLA_FFI_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define XLA_FFI_API_MINOR 0
+#define XLA_FFI_API_MINOR 1
 
 struct XLA_FFI_Api_Version {
   size_t struct_size;
