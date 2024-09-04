@@ -52,6 +52,9 @@ _TAGS_TO_DOCUMENTATION_MAP = {
     "nozapfhahn": "Internal tag. Disables gathering coverage",
     "optonly": "Should only be tested with -c opt",
     "nodebug": "Should not be tested in debug builds.",
+    "config-cuda-only": (
+        "Meaningless in OSS as all GPU tests are built with `--config=cuda`"
+    ),
     # GPU tags
     "requires-gpu-amd": "Test requires AMD GPU to execute",
     "requires-gpu-nvidia": "Test requires NVIDIA GPU to execute",
