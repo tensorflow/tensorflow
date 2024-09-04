@@ -294,7 +294,7 @@ def InvokeNvcc(argv, log=False):
 
 
 def main():
-  if TMPDIR:
+  if TMPDIR and not USE_CLANG_COMPILER:
     os.environ['TMPDIR'] = TMPDIR
   parser = ArgumentParser()
   parser.add_argument('-x', nargs=1)
