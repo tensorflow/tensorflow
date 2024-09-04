@@ -2853,9 +2853,21 @@ absl::StatusOr<bool> ShardingPropagation::Run(
         << "allow-spmd-sharding-propagation-to-parameters-vector's size can be "
            "either 1 or the number of parameters in the entry computation.";
   }
+
   // Association of partitionable embedded computations with their parent
   // instruction.
   ComputationMap computation_map;
+  for (auto computation : module->computations(execution_threads)) {
+    for (auto instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kWhile ||
+          instruction->opcode() == HloOpcode::kConditional ||
+          instruction->opcode() == HloOpcode::kCall) {
+        for (HloComputation* c : instruction->called_computations()) {
+          computation_map[c] = instruction;
+        }
+      }
+    }
+  }
 
   // Instructions that are related through a computation and need to share the
   // same sharding.
@@ -2965,18 +2977,14 @@ absl::StatusOr<bool> ShardingPropagation::Run(
     }
   }
 
-  // Populate computation_map in order to associate while bodies and conditions
-  // to their while instructions.
+  // Propagate shardings to related instructions, which should share the same
+  // sharding, in case the user didn't shard all of them.
   for (auto computation : module->computations(execution_threads)) {
     for (auto instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kWhile ||
           instruction->opcode() == HloOpcode::kConditional ||
-          instruction->opcode() == HloOpcode::kCall) {
-        // Check if any of the related instructions has sharding, in which case
-        // propagate it to the other instructions, so they all share the same
-        // sharding, in case the user didn't shard all of them. We don't check
-        // that user shardings are consistent, because such check is already
-        // done by HLO verifier.
+          instruction->opcode() == HloOpcode::kCall ||
+          instruction->opcode() == HloOpcode::kParameter) {
         const HloInstruction* sharded_inst = nullptr;
         auto related_instructions = get_related_instructions(instruction);
         for (auto inst : related_instructions) {
@@ -2988,20 +2996,21 @@ absl::StatusOr<bool> ShardingPropagation::Run(
         if (sharded_inst != nullptr) {
           // Set the same sharding to all the other related instructions.
           for (auto inst : related_instructions) {
-            inst->copy_sharding(sharded_inst);
-          }
-        }
-        if (instruction->opcode() == HloOpcode::kWhile) {
-          computation_map[instruction->while_body()] = instruction;
-          computation_map[instruction->while_condition()] = instruction;
-        } else {
-          for (HloComputation* c : instruction->called_computations()) {
-            computation_map[c] = instruction;
+            if (sharded_inst == inst) {
+              continue;
+            }
+            if (inst->has_sharding()) {
+              CHECK(inst->sharding() == sharded_inst->sharding());
+            } else {
+              inst->copy_sharding(sharded_inst);
+              any_changed = true;
+            }
           }
         }
       }
     }
   }
+
   // Collect all pre-sharded instructions as we aren't allowed to modify their
   // sharding.
   absl::flat_hash_set<const HloInstruction*> provided_shardings;
@@ -3017,15 +3026,19 @@ absl::StatusOr<bool> ShardingPropagation::Run(
     }
   }
 
+  HloInstruction* entry_root = module->entry_computation()->root_instruction();
   if (!allow_spmd_sharding_propagation_to_output_ &&
-      (!module->entry_computation()->root_instruction()->has_sharding() ||
-       !module->entry_computation()
-            ->root_instruction()
-            ->sharding()
-            .IsUnknown())) {
+      (!entry_root->has_sharding() || !entry_root->sharding().IsUnknown())) {
     // Consider the root instruction of the entry module as one with provided
     // sharding as its sharding have to match with the one expected by the host.
-    provided_shardings.insert(module->entry_computation()->root_instruction());
+    provided_shardings.insert(entry_root);
+    if (entry_root->opcode() == HloOpcode::kWhile ||
+        entry_root->opcode() == HloOpcode::kConditional ||
+        entry_root->opcode() == HloOpcode::kCall) {
+      for (auto* related_instruction : get_related_instructions(entry_root)) {
+        provided_shardings.insert(related_instruction);
+      }
+    }
   }
 
   if (!allow_spmd_sharding_propagation_to_parameters_) {

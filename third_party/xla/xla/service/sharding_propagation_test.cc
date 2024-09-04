@@ -2852,8 +2852,7 @@ ENTRY %entry {
       ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
           .Run(module.get()));
   // The change happens before the fixpt loop
-  EXPECT_EQ(changed,
-            !GetParam().propagate_metadata && !GetParam().clear_metadata);
+  EXPECT_TRUE(changed);
   auto sharding =
       ParseSharding("{{maximal device=1}, {maximal device=1}}").value();
   auto while_instr = FindInstruction(module.get(), "while");
@@ -10921,14 +10920,14 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK_AND_ASSIGN(
       bool changed,
-      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true,
+                          /*allow_spmd_sharding_propagation_to_output=*/{true})
           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
+  LOG(WARNING) << module->ToString();
   EXPECT_TRUE(changed);
   auto* zero = FindInstruction(module.get(), "zero");
-  EXPECT_THAT(
-      zero,
-      op::Sharding("{devices=[2,4]<=[8] last_tile_dims={manual, replicated}}"));
+  EXPECT_THAT(zero, op::Sharding("{replicated}"));
 }
 
 TEST_F(ShardingPropagationTest, PropagateToOutput) {
@@ -12124,20 +12123,19 @@ ENTRY %elementwise {
           "last_tile_dim_replicate}}"));
 }
 
-TEST_F(ShardingPropagationTest, CallPropagation) {
+TEST_F(ShardingPropagationTest, CallPropagation1) {
   const absl::string_view hlo_string = R"(
 HloModule module
 
 called_computation {
-  p0 = bf16[20,2,68096,8512] parameter(0)
-  %add_called_comp = bf16[20,2,68096,8512] add(p0, p0)
-  ROOT tuple = (bf16[20,2,68096,8512]) tuple(add_called_comp)
+  p0 = bf16[20,2] parameter(0)
+  ROOT %add_called_comp = bf16[20,2] add(p0, p0)
 }
 
 ENTRY main {
-  %param0 = bf16[20,2,68096,8512] parameter(0)
-  %add = bf16[20,2,68096,8512] add(param0, param0)
-  ROOT %call = (bf16[20,2,68096,8512]) call(add), to_apply=%called_computation, sharding={{devices=[1,1,16,64]<=[64,16]T(1,0)}}
+  param0 = bf16[20,2] parameter(0)
+  add = bf16[20,2] add(param0, param0)
+  ROOT call = bf16[20,2] call(add), to_apply=%called_computation, sharding={devices=[2,2]<=[4]}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
@@ -12150,9 +12148,84 @@ ENTRY main {
           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
-  auto* add = FindInstruction(module.get(), "add");
-  ASSERT_NE(add, nullptr);
-  EXPECT_THAT(add, op::Sharding("{devices=[1,1,16,64]<=[64,16]T(1,0)}"));
+
+  for (absl::string_view name : {"add", "p0", "add_called_comp", "call"}) {
+    auto* instruction = FindInstruction(module.get(), name);
+    ASSERT_NE(instruction, nullptr);
+    EXPECT_THAT(instruction, op::Sharding("{devices=[2,2]<=[4]}"));
+  }
+}
+
+TEST_F(ShardingPropagationTest, CallPropagation2) {
+  const absl::string_view hlo_string = R"(
+HloModule module
+
+called_computation {
+  p0 = bf16[20,2] parameter(0), sharding={devices=[2,2]<=[4]}
+  ROOT %add_called_comp = bf16[20,2] add(p0, p0)
+}
+
+ENTRY main {
+  param0 = bf16[20,2] parameter(0)
+  add = bf16[20,2] add(param0, param0)
+  ROOT call = bf16[20,2] call(add), to_apply=%called_computation
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{false},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{false})
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+
+  for (absl::string_view name : {"add", "p0"}) {
+    auto* instruction = FindInstruction(module.get(), name);
+    ASSERT_NE(instruction, nullptr);
+    EXPECT_THAT(instruction, op::Sharding("{devices=[2,2]<=[4]}"));
+  }
+
+  for (absl::string_view name : {"add_called_comp", "call"}) {
+    auto* instruction = FindInstruction(module.get(), name);
+    ASSERT_NE(instruction, nullptr);
+    EXPECT_FALSE(instruction->has_sharding());
+  }
+}
+
+TEST_F(ShardingPropagationTest, CallPropagation3) {
+  const absl::string_view hlo_string = R"(
+HloModule module
+
+called_computation {
+  p0 = bf16[20,2] parameter(0)
+  ROOT %add_called_comp = bf16[20,2] add(p0, p0), sharding={devices=[2,2]<=[4]}
+}
+
+ENTRY main {
+  param0 = bf16[20,2] parameter(0)
+  add = bf16[20,2] add(param0, param0)
+  ROOT call = bf16[20,2] call(add), to_apply=%called_computation
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{false},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{false})
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+
+  for (absl::string_view name : {"add", "p0", "add_called_comp", "call"}) {
+    auto* instruction = FindInstruction(module.get(), name);
+    ASSERT_NE(instruction, nullptr);
+    EXPECT_THAT(instruction, op::Sharding("{devices=[2,2]<=[4]}"));
+  }
 }
 
 }  // namespace
