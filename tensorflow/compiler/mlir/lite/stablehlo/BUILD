@@ -842,6 +842,7 @@ cc_library(
     deps = [
         ":passes_inc_gen",
         ":prepare_hlo",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
