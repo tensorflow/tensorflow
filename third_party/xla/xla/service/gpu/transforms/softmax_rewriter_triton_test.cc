@@ -318,6 +318,44 @@ ENTRY main {
   EXPECT_FALSE(fusion_rewriter_.Run(module.get()).value());
 }
 
+TEST_F(SoftmaxRewriterTritonTest, DoesNotFuseReductionOnNonMinorAxis) {
+  const std::string hlo_string = R"(
+max_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+ENTRY main {
+  param_0 = f32[8,16,16]{2,1,0} parameter(0)
+  constant_neg_inf = f32[] constant(-inf)
+  reduce = f32[8,16]{1,0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f32[8,16,16]{2,1,0} broadcast(reduce), dimensions={0,1}
+  ROOT subtract = f32[8,16,16]{2,1,0} subtract(param_0, broadcast)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  EXPECT_FALSE(fusion_rewriter_.Run(module.get()).value());
+}
+
+TEST_F(SoftmaxRewriterTritonTest, DoesNotFuseReductionOnMultipleReductionAxes) {
+  const std::string hlo_string = R"(
+max_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+ENTRY main {
+  param_0 = f32[8,16,16]{2,1,0} parameter(0)
+  constant_neg_inf = f32[] constant(-inf)
+  reduce = f32[8]{0} reduce(param_0, constant_neg_inf), dimensions={2,1}, to_apply=max_computation
+  broadcast = f32[8,16,16]{2,1,0} broadcast(reduce), dimensions={0}
+  ROOT subtract = f32[8,16,16]{2,1,0} subtract(param_0, broadcast)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  EXPECT_FALSE(fusion_rewriter_.Run(module.get()).value());
+}
+
 TEST_F(SoftmaxRewriterTritonTest,
        CanFuseSoftmaxWithIntermediateUnaryElementwise) {
   const std::string hlo_string = R"(

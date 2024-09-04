@@ -483,6 +483,13 @@ FusionDecision ShouldFuseReduction(const HloInstruction& reduce,
     return FusionDecision(is_supported.Explain());
   }
 
+  if (reduce.dimensions().size() != 1 ||
+      reduce.dimensions(0) != reduce.operand(0)->shape().rank() - 1) {
+    return FusionDecision(
+        "The reductions in the diamond must reduce 1 dimension and that "
+        "dimension must be the last dimension of the operand.");
+  }
+
   // Ensure that the reduction's identity is either a constant or a supported
   // convert of a constant.
   const HloInstruction* identity = reduce.operand(1);
