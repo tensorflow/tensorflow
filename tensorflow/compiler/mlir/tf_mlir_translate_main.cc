@@ -19,21 +19,24 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_split.h"
-#include "llvm/Support/InitLLVM.h"
+#include "absl/types/span.h"
+#include "llvm/Support/CommandLine.h"
+#include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/AsmState.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/ToolUtilities.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_import_options.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
-#include "tensorflow/core/platform/init_main.h"
 
 // NOLINTNEXTLINE
 static llvm::cl::opt<std::string> input_filename(llvm::cl::Positional,
