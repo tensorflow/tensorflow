@@ -353,10 +353,27 @@ _KOKORO_JOB_NAME_TO_BUILD_MAP = {
 }
 
 
+def dump_all_build_commands():
+  """Used to generate what commands are run for each build."""
+  # Awkward workaround b/c Build instances are not hashable
+  type_to_build = {b.type_: b for b in _KOKORO_JOB_NAME_TO_BUILD_MAP.values()}
+  for t in sorted(type_to_build.keys(), key=str):
+    build = type_to_build[t]
+    sys.stdout.write(f"# BEGIN {build.type_}\n")
+    for cmd in build.commands():
+      sys.stdout.write(" ".join(cmd) + "\n")
+    sys.stdout.write(f"# END {build.type_}\n")
+
+
 def main():
   logging.basicConfig()
   logging.getLogger().setLevel(logging.INFO)
   kokoro_job_name = os.getenv("KOKORO_JOB_NAME")
+
+  if kokoro_job_name == "GOLDENS":  # HACK!!
+    dump_all_build_commands()
+    return
+
   build = _KOKORO_JOB_NAME_TO_BUILD_MAP[kokoro_job_name]
 
   for cmd in build.commands():
