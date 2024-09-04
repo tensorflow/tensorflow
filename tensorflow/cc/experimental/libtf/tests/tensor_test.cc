@@ -14,17 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include <cstdint>
 
+#include "absl/log/check.h"
 #include "tensorflow/c/eager/abstract_context.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/c_api_unified_experimental.h"
-#include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
 #include "tensorflow/c/eager/unified_api_testutil.h"
+#include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/cc/experimental/libtf/object.h"
 #include "tensorflow/cc/experimental/libtf/value.h"
-#include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tf {

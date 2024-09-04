@@ -14,11 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include <cstdint>
 
+#include "benchmark/benchmark.h"  // from @com_google_benchmark
 #include "tensorflow/cc/experimental/libtf/object.h"
 #include "tensorflow/cc/experimental/libtf/value.h"
-#include "tensorflow/cc/experimental/libtf/value_iostream.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
+#include "tsl/platform/test_benchmark.h"
 
 namespace tf {
 namespace libtf {

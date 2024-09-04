@@ -14,19 +14,28 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/cc/experimental/libtf/function.h"
 
+#include "absl/log/check.h"
+#include "absl/strings/match.h"
 #include "tensorflow/c/eager/abstract_context.h"
 #include "tensorflow/c/eager/abstract_function.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
+#include "tensorflow/c/eager/c_api_unified_experimental.h"
 #include "tensorflow/c/eager/graph_function.h"
 #include "tensorflow/c/eager/unified_api_testutil.h"
+#include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/cc/experimental/libtf/object.h"
 #include "tensorflow/cc/experimental/libtf/value.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
+#include "tsl/platform/status.h"
 
 namespace tf {
 namespace libtf {

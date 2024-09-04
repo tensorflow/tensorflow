@@ -16,14 +16,19 @@ limitations under the License.
 
 #include <string>
 
+#include <gmock/gmock.h>
+#include "third_party/protobuf/text_format.h"
+#include "tensorflow/cc/experimental/libexport/load.h"
+#include "tensorflow/cc/experimental/libtf/object.h"
 #include "tensorflow/cc/experimental/libtf/runtime/core/core.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/cc/experimental/libtf/runtime/runtime.h"
 #include "tensorflow/core/platform/resource_loader.h"
-#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tf {
 namespace libtf {

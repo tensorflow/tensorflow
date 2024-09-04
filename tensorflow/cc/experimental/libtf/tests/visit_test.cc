@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include <cstdint>
 
+#include "tensorflow/cc/experimental/libtf/impl/scalars.h"
 #include "tensorflow/cc/experimental/libtf/value.h"
-#include "tensorflow/cc/experimental/libtf/value_iostream.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tf {
