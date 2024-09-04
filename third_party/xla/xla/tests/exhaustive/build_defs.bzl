@@ -53,5 +53,5 @@ def exhaustive_xla_test(name, srcs, partitions, tags, **kwargs):
 register_extension_info(
     extension = exhaustive_xla_test,
     # Needs to be kept up-to-date on all partition names defined in the invocations.
-    label_regex_for_dep = "{extension_name}_(f32_and_smaller|f64)_.*",
+    label_regex_for_dep = "{extension_name}_(f16_and_smaller|f32_and_smaller|f32|f64)_.*",
 )

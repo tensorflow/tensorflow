@@ -167,18 +167,38 @@ xla_test(
 )
 
 filegroup(
-    name = "exhaustive_binary_16_bit_test_srcs",
+    name = "exhaustive_binary_test_srcs",
+    testonly = True,
     srcs = [
-        "exhaustive_binary_16_bit_test.cc",
+        "exhaustive_binary_test_definitions.h",
+        "exhaustive_binary_test_functions.cc",
     ],
 )
 
-xla_test(
-    name = "exhaustive_binary_16_bit_test",
+filegroup(
+    name = "exhaustive_binary_test_f16_and_smaller_srcs",
+    testonly = True,
+    srcs = ["exhaustive_binary_test_f16_and_smaller_instantiation.cc"],
+)
+
+filegroup(
+    name = "exhaustive_binary_test_f32_srcs",
+    testonly = True,
+    srcs = ["exhaustive_binary_test_f32_instantiation.cc"],
+)
+
+filegroup(
+    name = "exhaustive_binary_test_f64_srcs",
+    testonly = True,
+    srcs = ["exhaustive_binary_test_f64_instantiation.cc"],
+)
+
+exhaustive_xla_test(
+    name = "exhaustive_binary_test",
     timeout = "long",
     srcs = [
         "exhaustive_test_main.cc",
-        ":exhaustive_binary_16_bit_test_srcs",
+        ":exhaustive_binary_test_srcs",
     ],
     # Nvidia close-sourced libraries are not TSAN friendly, but are doing their own synchronization.
     # This can lead to TSAN false positives that are hard to track down.
@@ -189,6 +209,16 @@ xla_test(
         "gpu",
         "cpu",
     ],
+    # Partition goal is to get under ~5 minute execution time without needlessly reserving hardware
+    # for each shard.
+    #
+    # exhasutive_xla_test needs to have all partition names added to allow other build tools to
+    # function.
+    partitions = {
+        "f16_and_smaller": [":exhaustive_binary_test_f16_and_smaller_srcs"],
+        "f32": [":exhaustive_binary_test_f32_srcs"],
+        "f64": [":exhaustive_binary_test_f64_srcs"],
+    },
     shard_count = 50,
     tags = [
         "optonly",
@@ -200,44 +230,6 @@ xla_test(
         ":exhaustive_op_test_utils",
         "//xla:literal",
         "//xla:types",
-        "//xla/client:xla_builder",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/util:command_line_flags",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/types:span",
-        "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:test",
-    ],
-)
-
-xla_test(
-    name = "exhaustive_binary_f32_f64_test",
-    timeout = "long",
-    srcs = [
-        "exhaustive_binary_f32_f64_test.cc",
-        "exhaustive_test_main.cc",
-    ],
-    # Nvidia close-sourced libraries are not TSAN friendly, but are doing their own synchronization.
-    # This can lead to TSAN false positives that are hard to track down.
-    backend_tags = {
-        "gpu": ["notsan"],
-    },
-    backends = [
-        "gpu",
-        "cpu",
-    ],
-    shard_count = 50,
-    tags = [
-        "optonly",
-        "test_xla_cpu_thunks",
-        # This is a big test that we skip for capacity reasons in OSS testing.
-        "no_oss",
-    ],
-    deps = [
-        ":exhaustive_op_test_utils",
-        "//xla:literal",
         "//xla/client:xla_builder",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/util:command_line_flags",
