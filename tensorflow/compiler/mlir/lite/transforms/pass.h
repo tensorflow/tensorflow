@@ -25,6 +25,8 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassOptions.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/transforms/pass_options.h"
+#include "tensorflow/compiler/mlir/lite/transforms/pass_options_setter.h"
 
 // Forward declaration for the visitor interface
 // class PassOptionsVisitor;
@@ -32,13 +34,19 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 
-struct EmptyPassOptions : public mlir::detail::PassOptions {};
+// Interface for setting options for TFLite Converter Pass/Pipeline Options.
+class MutableOptionsPass {
+ public:
+  virtual ~MutableOptionsPass() = default;
+  virtual void ApplyOptionsVisitor(const PassOptionsSetter &visitor) = 0;
+};
 
 // CRTP Class to ensure that the derived passes implement a Options struct
 template <typename DerivedPass, typename DerivedPassOptions = EmptyPassOptions,
           typename OpType = mlir::ModuleOp>
 class Pass : public PassWrapper<Pass<DerivedPass, DerivedPassOptions, OpType>,
-                                mlir::OperationPass<OpType>> {
+                                mlir::OperationPass<OpType>>,
+             public MutableOptionsPass {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(Pass);
 
@@ -81,6 +89,11 @@ class Pass : public PassWrapper<Pass<DerivedPass, DerivedPassOptions, OpType>,
     return std::move(pass);
   }
   void runOnOperation() override {}
+
+  // ApplyOptionsVisitor method to `accept` the visitor
+  void ApplyOptionsVisitor(const PassOptionsSetter &visitor) override {
+    visitor.SetOptions(GetOptions());
+  }
 
  protected:
   DerivedPassOptions &GetOptions() {
