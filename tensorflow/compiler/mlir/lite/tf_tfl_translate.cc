@@ -52,6 +52,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/translate/hlo_to_mhlo/translate.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
@@ -97,8 +98,9 @@ int main(int argc, char **argv) {
     // back to do it properly in the future
     mlir::DialectRegistry registry;
     RegisterAllTensorFlowDialects(registry);
-    registry.insert<mlir::func::FuncDialect, mlir::stablehlo::StablehloDialect,
-                    mlir::TFL::TensorFlowLiteDialect>();
+    registry
+        .insert<mlir::func::FuncDialect, mlir::stablehlo::StablehloDialect,
+                mlir::TFL::TensorFlowLiteDialect, mlir::mhlo::MhloDialect>();
     context->appendDialectRegistry(registry);
   }
 

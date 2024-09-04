@@ -2495,6 +2495,77 @@ void PackOp::getCanonicalizationPatterns(RewritePatternSet& results,
 // SliceOp
 //===----------------------------------------------------------------------===//
 
+OpFoldResult SliceOp::fold(FoldAdaptor adaptor) {
+  if (!getType().hasStaticShape()) {
+    return {};
+  }
+
+  auto input_type = getInput().getType();
+  if (input_type == getType()) {
+    return getInput();
+  }
+
+  auto input = adaptor.getInput();
+  if (!input) {
+    return {};
+  }
+  auto begin = adaptor.getBegin();
+  if (!begin) {
+    return {};
+  }
+  auto size = adaptor.getSize();
+  if (!size) {
+    return {};
+  }
+
+  auto begin_type = getBegin().getType();
+  auto size_type = getSize().getType();
+
+  if (size_type.getRank() != 1 || begin_type.getRank() != 1) {
+    return {};
+  }
+
+  if (begin_type.getDimSize(0) != input_type.getRank() ||
+      size_type.getDimSize(0) != input_type.getRank()) {
+    return {};
+  }
+
+  auto begin_data = dyn_cast_or_null<DenseIntElementsAttr>(begin);
+  if (!begin_data || !begin_data.isSplat() ||
+      !begin_data.getElementType().isSignlessInteger(32)) {
+    return {};
+  }
+  if (begin_data.getSplatValue<int32_t>() != 0) {
+    return {};
+  }
+
+  auto size_data = dyn_cast_or_null<DenseIntElementsAttr>(size);
+  if (!size_data.getElementType().isSignlessInteger(32)) {
+    return {};
+  }
+
+  auto size_vals = size_data.getValues<int32_t>();
+  for (int i = 1; i < input_type.getRank(); ++i) {
+    if (size_vals[i] != input_type.getShape()[i]) {
+      return {};
+    }
+  }
+  if (size_vals[0] == input_type.getShape()[0]) {
+    return adaptor.getInput();
+  }
+
+  auto input_data = dyn_cast_or_null<DenseElementsAttr>(input);
+  if (!input_data) {
+    return {};
+  }
+
+  auto input_begin = input_data.value_begin<Attribute>();
+  std::vector<Attribute> new_data(input_begin,
+                                  input_begin + getType().getNumElements());
+
+  return DenseElementsAttr::get(getType(), new_data);
+}
+
 mlir::LogicalResult SliceOp::verify() {
   SliceOp op = *this;
   auto input_type = mlir::cast<ShapedType>(op.getInput().getType());

@@ -1551,6 +1551,28 @@ func.func @relu() -> tensor<3xf32> {
 
 // CHECK: %cst = arith.constant dense<[0.000000e+00, 0.000000e+00, 9.900000e-01]> : tensor<3xf32>
 
+// CHECK-LABEL: slice
+func.func @slice_first_dim() -> tensor<1x1x5x6xf32> {
+  %cst_0 = arith.constant dense<9.000000e+00> : tensor<2x1x5x6xf32>
+  %cst_1 = arith.constant dense<0> : tensor<4xi32>
+  %cst_2 = arith.constant dense<[1, 1, 5, 6]> : tensor<4xi32>
+  %0 = "tfl.slice"(%cst_0, %cst_1, %cst_2) : (tensor<2x1x5x6xf32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x1x5x6xf32>
+  func.return %0 : tensor<1x1x5x6xf32>
+}
+
+// CHECK %cst = arith.constant dense<9.000000e+00> : tensor<1x1x5x6xf32>
+
+// CHECK-LABEL: slice_trivial
+func.func @slice_trivial(%arg0: tensor<2x1x5x6xf32>) -> tensor<2x1x5x6xf32> {
+  %cst_1 = arith.constant dense<0> : tensor<4xi32>
+  %cst_2 = arith.constant dense<[2, 1, 5, 6]> : tensor<4xi32>
+  %0 = "tfl.slice"(%arg0, %cst_1, %cst_2) : (tensor<2x1x5x6xf32>, tensor<4xi32>, tensor<4xi32>) -> tensor<2x1x5x6xf32>
+  func.return %0 : tensor<2x1x5x6xf32>
+}
+
+// CHECK-NOT: tfl.slice
+
+
 // CHECK-LABEL: gather
 func.func @gather() -> (tensor<2x3x4x5xi16>, tensor<2x3x4x5xi16>) {
   %params = arith.constant dense<[
