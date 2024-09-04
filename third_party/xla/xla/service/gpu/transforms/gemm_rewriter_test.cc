@@ -2057,6 +2057,12 @@ ENTRY test {
 
 // Test batch gemm matrix bias add fusion with mix type that is not supported.
 TEST_F(LegacyCublasGemmRewriteTest, MatrixBiasMixTypeNotSupported) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Ampere())) {
+    GTEST_SKIP()
+        << "Pre-Ampere rewrites to cutlass_gemm_with_upcast instead of cublas.";
+  }
+
   const char* hlo_text = R"(
 HloModule test
 
@@ -4216,6 +4222,12 @@ ENTRY test {
 // For bfloat16, the operands are padded if necessary on Ampere and newer
 // architectures so that the sizes of all dimensions are multiples of 8.
 TEST_F(CublasLtGemmRewriteTest, VectorBiasBF16Unpadded) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Ampere())) {
+    GTEST_SKIP()
+        << "Pre-Ampere rewrites to cutlass_gemm_with_upcast instead of cublas.";
+  }
+
   const char* hlo_text = R"(
 HloModule test
 
@@ -4265,6 +4277,12 @@ ENTRY test {
 // For bfloat16, the operands are padded if necessary on Ampere and newer
 // architectures so that the sizes of all dimensions are multiples of 8.
 TEST_F(CublasLtGemmRewriteTest, ReluActivationBF16Unpadded) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Ampere())) {
+    GTEST_SKIP()
+        << "Pre-Ampere rewrites to cutlass_gemm_with_upcast instead of cublas.";
+  }
+
   const char* hlo_text = R"(
 HloModule test
 
@@ -4315,6 +4333,12 @@ ENTRY test {
 // For bfloat16, the operands are padded if necessary on Ampere and newer
 // architectures so that the sizes of all dimensions are multiples of 8.
 TEST_F(CublasLtGemmRewriteTest, VectorBiasReluActivationBF16Unpadded) {
+  if (IsCuda() &&
+      !HasCudaComputeCapability(se::CudaComputeCapability::Ampere())) {
+    GTEST_SKIP()
+        << "Pre-Ampere rewrites to cutlass_gemm_with_upcast instead of cublas.";
+  }
+
   const char* hlo_text = R"(
 HloModule test
 
