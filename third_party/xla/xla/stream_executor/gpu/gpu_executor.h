@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/fft.h"
+#include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/gpu/gpu_collectives.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
@@ -233,7 +234,7 @@ class GpuExecutor : public StreamExecutorCommon {
   std::unique_ptr<GpuCommandBuffer> CreateCommandBuffer(
       CommandBuffer::Mode mode, GpuGraphHandle graph, bool is_owned_graph);
 
-  GpuContext* gpu_context();
+  Context* gpu_context();
 
   // Provide a type-erased way of attaching arbitrary XLA specific state to the
   // GpuExecutor. XLA based execution will use this method to attach per-stream
@@ -350,7 +351,7 @@ class GpuExecutor : public StreamExecutorCommon {
   GpuDeviceHandle device_;
 
   // Handle for session with the library/driver. Immutable post-initialization.
-  GpuContext* context_;
+  Context* context_;
 
   // The device ordinal value that this executor was initialized with; recorded
   // for use in getting device metadata. Immutable post-initialization.

@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "tsl/platform/casts.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -70,6 +71,13 @@ namespace gpu {
 
 namespace {
 
+hipCtx_t CurrentContextOrDie() {
+  hipCtx_t current = nullptr;
+  FAIL_IF_ROCM_ERROR(hipCtxGetCurrent(&current),
+                     "Failed to query current context");
+  return current;
+}
+
 // Returns the singleton ContextMap.
 ContextMap<hipCtx_t, GpuContext>* GetContextMap() {
   static ContextMap<hipCtx_t, GpuContext>* context_map =
@@ -86,6 +94,22 @@ ContextMap<hipCtx_t, GpuContext>* GetContextMap() {
         return device_ordinal;
       });
   return context_map;
+}
+
+absl::StatusOr<GpuContext*> GetPointerContext(hipDeviceptr_t pointer) {
+  GpuContext* context = nullptr;
+  hipError_t result = wrap::hipPointerGetAttribute(
+      &context, HIP_POINTER_ATTRIBUTE_CONTEXT, pointer);
+  if (result == hipSuccess) {
+    if (context == nullptr) {
+      return absl::UnavailableError(
+          "Empty context returned while querying context for device pointer");
+    }
+    return context;
+  }
+
+  return absl::InternalError(absl::StrCat(
+      "failed to query context for device pointer: ", ToString(result)));
 }
 
 }  // namespace
@@ -160,7 +184,7 @@ namespace {
 // created by StreamExecutor (to ensure that the HIP runtime didn't create a
 // context behind our backs).
 hipCtx_t CurrentContext() {
-  hipCtx_t current = rocm::CurrentContextOrDie();
+  hipCtx_t current = CurrentContextOrDie();
   if (current != nullptr && !GetContextMap()->Has(current)) {
     LOG(FATAL) << "current context was not created by the StreamExecutor "
                   "rocm_driver API: "
@@ -172,7 +196,7 @@ hipCtx_t CurrentContext() {
 }
 
 // Returns the device associated with the given context.
-absl::StatusOr<hipDevice_t> DeviceFromContext(GpuContext* context) {
+absl::StatusOr<hipDevice_t> DeviceFromContext(Context* context) {
   ScopedActivateContext activated{context};
   hipDevice_t device = -1;
   hipError_t result = wrap::hipCtxGetDevice(&device);
@@ -247,13 +271,13 @@ std::string ROCMPointerToMemorySpaceString(hipDeviceptr_t pointer) {
 // in the process of querying.
 std::string ROCMPointersToCanAccessString(hipDeviceptr_t from,
                                           hipDeviceptr_t to) {
-  auto from_context = GpuDriver::GetPointerContext(from);
+  auto from_context = GetPointerContext(from);
   if (!from_context.ok()) {
     LOG(ERROR) << "could not retrieve source pointer's context: "
                << from_context.status();
     return "source ptr error";
   }
-  auto to_context = GpuDriver::GetPointerContext(to);
+  auto to_context = GetPointerContext(to);
   if (!to_context.ok()) {
     LOG(ERROR) << "could not retrieve destination pointer's context: "
                << to_context.status();
@@ -317,7 +341,7 @@ static absl::Status InternalInit() {
 
 /* static */ absl::Status GpuDriver::CreateContext(int device_ordinal,
                                                    hipDevice_t device,
-                                                   GpuContext** context) {
+                                                   Context** context) {
   *context = nullptr;
 
   int flags = 0;
@@ -342,7 +366,7 @@ static absl::Status InternalInit() {
     }
   }
 
-  former_context = rocm::CurrentContextOrDie();
+  former_context = CurrentContextOrDie();
   res = wrap::hipDevicePrimaryCtxRetain(&new_context, device);
   if (former_context != nullptr) {
     hipDevice_t former_device;
@@ -390,10 +414,11 @@ static absl::Status InternalInit() {
   return absl::InternalError(message);
 }
 
-/* static */ void GpuDriver::DestroyContext(GpuContext* context) {
+/* static */ void GpuDriver::DestroyContext(Context* context) {
   if (context == nullptr) {
     return;
   }
+  GpuContext* gpu_context = tensorflow::down_cast<GpuContext*>(context);
   hipCtx_t former_context = CurrentContext();
   context->SetActive();
   hipDevice_t device;
@@ -406,7 +431,7 @@ static absl::Status InternalInit() {
     LOG(ERROR) << "failed to release HIP context; leaking: " << ToString(res);
   }
 
-  GetContextMap()->Remove(context->context());
+  GetContextMap()->Remove(gpu_context->context());
 }
 
 /* static */ absl::Status GpuDriver::FuncGetAttribute(
@@ -668,7 +693,7 @@ GpuDriver::GraphNodeGetType(hipGraphNode_t node) {
 }
 
 /* static */ absl::Status GpuDriver::GraphConditionalHandleCreate(
-    GpuGraphConditionalHandle* handle, hipGraph_t graph, GpuContext* context,
+    GpuGraphConditionalHandle* handle, hipGraph_t graph, Context* context,
     unsigned int default_launch_value, unsigned int flags) {
   VLOG(2) << "Create conditional handle for a graph " << graph
           << "; context: " << context
@@ -911,13 +936,13 @@ GpuDriver::GraphGetMemAllocNodeParams(GpuGraphNodeHandle node) {
 }
 
 /* static */ absl::Status GpuDriver::GraphAddMemcpyD2DNode(
-    GpuContext* context, GpuGraphNodeHandle* node, GpuGraphHandle graph,
+    Context* context, GpuGraphNodeHandle* node, GpuGraphHandle graph,
     absl::Span<const GpuGraphNodeHandle> deps, GpuDevicePtr gpu_dst,
     GpuDevicePtr gpu_src, uint64_t size) {
   VLOG(2) << "Add memcpy d2d node to a graph " << graph
           << "; dst: " << reinterpret_cast<void*>(gpu_dst)
           << "; src: " << reinterpret_cast<void*>(gpu_src) << "; size: " << size
-          << "; context: " << context->context() << "; deps: " << deps.size();
+          << "; context: " << context << "; deps: " << deps.size();
 
   RETURN_IF_ROCM_ERROR(wrap::hipGraphAddMemcpyNode1D(
                            node, graph, deps.data(), deps.size(), gpu_dst,
@@ -928,12 +953,12 @@ GpuDriver::GraphGetMemAllocNodeParams(GpuGraphNodeHandle node) {
 }
 
 /* static */ absl::Status GpuDriver::GraphExecMemcpyD2DNodeSetParams(
-    GpuContext* context, GpuGraphExecHandle exec, GpuGraphNodeHandle node,
+    Context* context, GpuGraphExecHandle exec, GpuGraphNodeHandle node,
     GpuDevicePtr gpu_dst, GpuDevicePtr gpu_src, uint64_t size) {
   VLOG(2) << "Set memcpy d2d node params " << node << " in graph executable "
           << exec << "; dst: " << reinterpret_cast<void*>(gpu_dst)
           << "; src: " << reinterpret_cast<void*>(gpu_src) << "; size: " << size
-          << "; context: " << context->context();
+          << "; context: " << context;
 
   RETURN_IF_ROCM_ERROR(
       wrap::hipGraphExecMemcpyNodeSetParams1D(exec, node, gpu_dst, gpu_src,
@@ -976,15 +1001,15 @@ struct BitPatternToValue {
 }  // namespace
 
 /* static */ absl::Status GpuDriver::GraphAddMemsetNode(
-    GpuContext* context, GpuGraphNodeHandle* node, GpuGraphHandle graph,
+    Context* context, GpuGraphNodeHandle* node, GpuGraphHandle graph,
     absl::Span<const GpuGraphNodeHandle> deps, GpuDevicePtr dst,
     std::variant<uint8_t, uint16_t, uint32_t> bit_pattern,
     uint64_t num_elements) {
   VLOG(2) << "Add memset node to a graph " << graph
           << "; dst: " << reinterpret_cast<void*>(dst)
           << "; bit_pattern: " << std::visit(BitPatternToString(), bit_pattern)
-          << "; num_elements: " << num_elements
-          << "; context: " << context->context() << "; deps: " << deps.size();
+          << "; num_elements: " << num_elements << "; context: " << context
+          << "; deps: " << deps.size();
 
   auto [value, element_size] = std::visit(BitPatternToValue(), bit_pattern);
 
@@ -1005,14 +1030,13 @@ struct BitPatternToValue {
 }
 
 /* static */ absl::Status GpuDriver::GraphExecMemsetNodeSetParams(
-    GpuContext* context, GpuGraphExecHandle exec, GpuGraphNodeHandle node,
+    Context* context, GpuGraphExecHandle exec, GpuGraphNodeHandle node,
     GpuDevicePtr dst, std::variant<uint8_t, uint16_t, uint32_t> bit_pattern,
     uint64_t num_elements) {
   VLOG(2) << "Set memset node params " << node << " in graph executable "
           << exec << "; dst: " << reinterpret_cast<void*>(dst)
           << "; bit_pattern: " << std::visit(BitPatternToString(), bit_pattern)
-          << "; num_elements: " << num_elements
-          << "; context: " << context->context();
+          << "; num_elements: " << num_elements << "; context: " << context;
 
   auto [value, element_size] = std::visit(BitPatternToValue(), bit_pattern);
 
@@ -1033,7 +1057,7 @@ struct BitPatternToValue {
 }
 
 /* static */ absl::Status GpuDriver::LaunchKernel(
-    GpuContext* context, absl::string_view kernel_name, hipFunction_t function,
+    Context* context, absl::string_view kernel_name, hipFunction_t function,
     unsigned int grid_dim_x, unsigned int grid_dim_y, unsigned int grid_dim_z,
     unsigned int block_dim_x, unsigned int block_dim_y,
     unsigned int block_dim_z, unsigned int shared_mem_bytes,
@@ -1071,13 +1095,13 @@ struct BitPatternToValue {
 }
 
 absl::Status GpuDriver::LaunchKernel(
-    GpuContext* context, absl::string_view kernel_name,
-    GpuFunctionHandle function, unsigned int cluster_dim_x,
-    unsigned int cluster_dim_y, unsigned int cluster_dim_z,
-    unsigned int grid_dim_x, unsigned int grid_dim_y, unsigned int grid_dim_z,
-    unsigned int block_dim_x, unsigned int block_dim_y,
-    unsigned int block_dim_z, unsigned int shared_mem_bytes,
-    GpuStreamHandle stream, void** kernel_params, void** extra) {
+    Context* context, absl::string_view kernel_name, GpuFunctionHandle function,
+    unsigned int cluster_dim_x, unsigned int cluster_dim_y,
+    unsigned int cluster_dim_z, unsigned int grid_dim_x,
+    unsigned int grid_dim_y, unsigned int grid_dim_z, unsigned int block_dim_x,
+    unsigned int block_dim_y, unsigned int block_dim_z,
+    unsigned int shared_mem_bytes, GpuStreamHandle stream, void** kernel_params,
+    void** extra) {
   if (cluster_dim_x != 1 || cluster_dim_y != 1 || cluster_dim_z != 1)
     return absl::UnimplementedError("Not implemented for ROCm");
   return LaunchKernel(context, kernel_name, function, grid_dim_x, grid_dim_y,
@@ -1085,21 +1109,21 @@ absl::Status GpuDriver::LaunchKernel(
                       shared_mem_bytes, stream, kernel_params, extra);
 }
 
-/* static */ absl::Status GpuDriver::LoadPtx(GpuContext* context,
+/* static */ absl::Status GpuDriver::LoadPtx(Context* context,
                                              const char* ptx_contents,
                                              hipModule_t* module) {
   LOG(ERROR) << "Feature not supported on ROCm platform (LoadPtx)";
   return absl::InternalError("Not Implemented");
 }
 
-/* static */ absl::Status GpuDriver::LoadCubin(GpuContext* context,
+/* static */ absl::Status GpuDriver::LoadCubin(Context* context,
                                                const char* cubin_bytes,
                                                hipModule_t* module) {
   return absl::Status{absl::StatusCode::kInternal,
                       "Feature not supported on ROCm platform (LoadCubin)"};
 }
 
-/* static */ absl::Status GpuDriver::LoadHsaco(GpuContext* context,
+/* static */ absl::Status GpuDriver::LoadHsaco(Context* context,
                                                const char* hsaco_contents,
                                                hipModule_t* module) {
   absl::Notification notification;
@@ -1126,7 +1150,7 @@ absl::Status GpuDriver::LaunchKernel(
 }
 
 /* static */ absl::Status GpuDriver::SynchronousMemsetUint8(
-    GpuContext* context, hipDeviceptr_t location, uint8 value, size_t size) {
+    Context* context, hipDeviceptr_t location, uint8 value, size_t size) {
   ScopedActivateContext activation{context};
   RETURN_IF_ROCM_ERROR(wrap::hipMemsetD8(location, value, size),
                        "Failed to memset memory");
@@ -1134,7 +1158,7 @@ absl::Status GpuDriver::LaunchKernel(
 }
 
 /* static */ absl::Status GpuDriver::SynchronousMemsetUint32(
-    GpuContext* context, hipDeviceptr_t location, uint32 value,
+    Context* context, hipDeviceptr_t location, uint32 value,
     size_t uint32_count) {
   ScopedActivateContext activation{context};
   void* pointer = absl::bit_cast<void*>(location);
@@ -1144,8 +1168,8 @@ absl::Status GpuDriver::LaunchKernel(
 }
 
 /* static */ absl::Status GpuDriver::AsynchronousMemsetUint8(
-    GpuContext* context, hipDeviceptr_t location, uint8 value,
-    size_t uint32_count, GpuStreamHandle stream) {
+    Context* context, hipDeviceptr_t location, uint8 value, size_t uint32_count,
+    GpuStreamHandle stream) {
   ScopedActivateContext activation{context};
   RETURN_IF_ROCM_ERROR(
       wrap::hipMemsetAsync(location, value, uint32_count, stream),
@@ -1154,7 +1178,7 @@ absl::Status GpuDriver::LaunchKernel(
 }
 
 /* static */ absl::Status GpuDriver::AsynchronousMemsetUint32(
-    GpuContext* context, hipDeviceptr_t location, uint32 value,
+    Context* context, hipDeviceptr_t location, uint32 value,
     size_t uint32_count, GpuStreamHandle stream) {
   ScopedActivateContext activation{context};
   void* pointer = absl::bit_cast<void*>(location);
@@ -1165,7 +1189,7 @@ absl::Status GpuDriver::LaunchKernel(
   return absl::OkStatus();
 }
 
-/* static */ bool GpuDriver::AddStreamCallback(GpuContext* context,
+/* static */ bool GpuDriver::AddStreamCallback(Context* context,
                                                GpuStreamHandle stream,
                                                StreamCallback callback,
                                                void* data) {
@@ -1178,7 +1202,7 @@ absl::Status GpuDriver::LaunchKernel(
 }
 
 /* static */ absl::Status GpuDriver::GetModuleFunction(
-    GpuContext* context, hipModule_t module, const char* kernel_name,
+    Context* context, hipModule_t module, const char* kernel_name,
     hipFunction_t* function) {
   ScopedActivateContext activated{context};
   CHECK(module != nullptr && kernel_name != nullptr);
@@ -1188,7 +1212,7 @@ absl::Status GpuDriver::LaunchKernel(
   return absl::OkStatus();
 }
 
-/* static */ absl::Status GpuDriver::GetModuleSymbol(GpuContext* context,
+/* static */ absl::Status GpuDriver::GetModuleSymbol(Context* context,
                                                      hipModule_t module,
                                                      const char* symbol_name,
                                                      hipDeviceptr_t* dptr,
@@ -1202,7 +1226,7 @@ absl::Status GpuDriver::LaunchKernel(
   return absl::OkStatus();
 }
 
-/* static */ void GpuDriver::UnloadModule(GpuContext* context,
+/* static */ void GpuDriver::UnloadModule(Context* context,
                                           hipModule_t module) {
   ScopedActivateContext activated{context};
   hipError_t res = wrap::hipModuleUnload(module);
@@ -1212,7 +1236,7 @@ absl::Status GpuDriver::LaunchKernel(
   }
 }
 
-/* static */ bool GpuDriver::CreateStream(GpuContext* context,
+/* static */ bool GpuDriver::CreateStream(Context* context,
                                           GpuStreamHandle* stream,
                                           int priority) {
   ScopedActivateContext activated{context};
@@ -1235,7 +1259,7 @@ absl::Status GpuDriver::LaunchKernel(
   return true;
 }
 
-/* static */ void GpuDriver::DestroyStream(GpuContext* context,
+/* static */ void GpuDriver::DestroyStream(Context* context,
                                            GpuStreamHandle* stream) {
   if (*stream == nullptr) {
     return;
@@ -1253,8 +1277,7 @@ absl::Status GpuDriver::LaunchKernel(
   }
 }
 
-/* static */ void* GpuDriver::DeviceAllocate(GpuContext* context,
-                                             uint64_t bytes) {
+/* static */ void* GpuDriver::DeviceAllocate(Context* context, uint64_t bytes) {
   if (bytes == 0) {
     return nullptr;
   }
@@ -1276,7 +1299,7 @@ absl::Status GpuDriver::LaunchKernel(
   return ptr;
 }
 
-/* static */ void GpuDriver::DeviceDeallocate(GpuContext* context,
+/* static */ void GpuDriver::DeviceDeallocate(Context* context,
                                               void* location) {
   ScopedActivateContext activation{context};
   hipDeviceptr_t pointer = absl::bit_cast<hipDeviceptr_t>(location);
@@ -1290,7 +1313,7 @@ absl::Status GpuDriver::LaunchKernel(
   }
 }
 
-/* static */ void* GpuDriver::UnifiedMemoryAllocate(GpuContext* context,
+/* static */ void* GpuDriver::UnifiedMemoryAllocate(Context* context,
                                                     uint64_t bytes) {
   ScopedActivateContext activated{context};
   hipDeviceptr_t result = 0;
@@ -1302,12 +1325,12 @@ absl::Status GpuDriver::LaunchKernel(
     return nullptr;
   }
   void* ptr = reinterpret_cast<void*>(result);
-  VLOG(2) << "allocated " << ptr << " for context " << context->context()
-          << " of " << bytes << " bytes in unified memory";
+  VLOG(2) << "allocated " << ptr << " for context " << context << " of "
+          << bytes << " bytes in unified memory";
   return ptr;
 }
 
-/* static */ void GpuDriver::UnifiedMemoryDeallocate(GpuContext* context,
+/* static */ void GpuDriver::UnifiedMemoryDeallocate(Context* context,
                                                      void* location) {
   ScopedActivateContext activation(context);
   hipDeviceptr_t pointer = absl::bit_cast<hipDeviceptr_t>(location);
@@ -1317,12 +1340,11 @@ absl::Status GpuDriver::LaunchKernel(
                << "; result: " << ToString(res);
   } else {
     VLOG(2) << "deallocated unified memory at " << location << " for context "
-            << context->context();
+            << context;
   }
 }
 
-/* static */ void* GpuDriver::HostAllocate(GpuContext* context,
-                                           uint64_t bytes) {
+/* static */ void* GpuDriver::HostAllocate(Context* context, uint64_t bytes) {
   ScopedActivateContext activation{context};
   void* host_mem = nullptr;
   // "Portable" memory is visible to all ROCM contexts. Safe for our use model.
@@ -1334,8 +1356,7 @@ absl::Status GpuDriver::LaunchKernel(
   return host_mem;
 }
 
-/* static */ void GpuDriver::HostDeallocate(GpuContext* context,
-                                            void* location) {
+/* static */ void GpuDriver::HostDeallocate(Context* context, void* location) {
   ScopedActivateContext activation{context};
   hipError_t res = wrap::hipHostFree(location);
   if (res != hipSuccess) {
@@ -1345,7 +1366,7 @@ absl::Status GpuDriver::LaunchKernel(
 }
 
 /* static */ int GpuDriver::GetGpuStreamPriority(
-    GpuContext* context, stream_executor::StreamPriority stream_priority) {
+    Context* context, stream_executor::StreamPriority stream_priority) {
   ScopedActivateContext activation(context);
   if (stream_priority == stream_executor::StreamPriority::Default) {
     return 0;
@@ -1361,7 +1382,7 @@ absl::Status GpuDriver::LaunchKernel(
                                                                      : lowest;
 }
 
-/* static */ absl::Status GpuDriver::DestroyEvent(GpuContext* context,
+/* static */ absl::Status GpuDriver::DestroyEvent(Context* context,
                                                   GpuEventHandle* event) {
   if (*event == nullptr) {
     return absl::Status{absl::StatusCode::kInvalidArgument,
@@ -1389,7 +1410,7 @@ absl::Status GpuDriver::LaunchKernel(
   }
 }
 
-/* static */ absl::Status GpuDriver::RecordEvent(GpuContext* context,
+/* static */ absl::Status GpuDriver::RecordEvent(Context* context,
                                                  GpuEventHandle event,
                                                  GpuStreamHandle stream) {
   ScopedActivateContext activated{context};
@@ -1411,7 +1432,7 @@ absl::Status GpuDriver::LaunchKernel(
   }
 }
 
-/* static */ bool GpuDriver::GetEventElapsedTime(GpuContext* context,
+/* static */ bool GpuDriver::GetEventElapsedTime(Context* context,
                                                  float* elapsed_milliseconds,
                                                  GpuEventHandle start,
                                                  GpuEventHandle stop) {
@@ -1433,7 +1454,7 @@ absl::Status GpuDriver::LaunchKernel(
   return true;
 }
 
-/* static */ bool GpuDriver::WaitStreamOnEvent(GpuContext* context,
+/* static */ bool GpuDriver::WaitStreamOnEvent(Context* context,
                                                GpuStreamHandle stream,
                                                GpuEventHandle event) {
   ScopedActivateContext activation{context};
@@ -1446,7 +1467,7 @@ absl::Status GpuDriver::LaunchKernel(
   return true;
 }
 
-/* static */ bool GpuDriver::SynchronizeContext(GpuContext* context) {
+/* static */ bool GpuDriver::SynchronizeContext(Context* context) {
   ScopedActivateContext activation{context};
   hipError_t res = wrap::hipDeviceSynchronize();
   if (res != hipSuccess) {
@@ -1458,7 +1479,7 @@ absl::Status GpuDriver::LaunchKernel(
   return true;
 }
 
-/* static */ absl::Status GpuDriver::SynchronizeStream(GpuContext* context,
+/* static */ absl::Status GpuDriver::SynchronizeStream(Context* context,
                                                        GpuStreamHandle stream) {
   ScopedActivateContext activated{context};
   CHECK(stream != nullptr);
@@ -1469,7 +1490,7 @@ absl::Status GpuDriver::LaunchKernel(
   return absl::OkStatus();
 }
 
-/* static */ bool GpuDriver::IsStreamIdle(GpuContext* context,
+/* static */ bool GpuDriver::IsStreamIdle(Context* context,
                                           GpuStreamHandle stream) {
   ScopedActivateContext activated{context};
   CHECK(stream != nullptr);
@@ -1485,8 +1506,7 @@ absl::Status GpuDriver::LaunchKernel(
 }
 
 /* static */ absl::Status GpuDriver::SynchronousMemcpyD2H(
-    GpuContext* context, void* host_dst, hipDeviceptr_t gpu_src,
-    uint64_t size) {
+    Context* context, void* host_dst, hipDeviceptr_t gpu_src, uint64_t size) {
   ScopedActivateContext activation{context};
   RETURN_IF_ROCM_ERROR(
       wrap::hipMemcpyDtoH(host_dst, gpu_src, size),
@@ -1499,7 +1519,7 @@ absl::Status GpuDriver::LaunchKernel(
 }
 
 /* static */ absl::Status GpuDriver::SynchronousMemcpyH2D(
-    GpuContext* context, hipDeviceptr_t gpu_dst, const void* host_src,
+    Context* context, hipDeviceptr_t gpu_dst, const void* host_src,
     uint64_t size) {
   ScopedActivateContext activation{context};
   RETURN_IF_ROCM_ERROR(
@@ -1512,7 +1532,7 @@ absl::Status GpuDriver::LaunchKernel(
   return absl::OkStatus();
 }
 
-/* static */ bool GpuDriver::AsynchronousMemcpyD2H(GpuContext* context,
+/* static */ bool GpuDriver::AsynchronousMemcpyD2H(Context* context,
                                                    void* host_dst,
                                                    hipDeviceptr_t gpu_src,
                                                    uint64_t size,
@@ -1534,7 +1554,7 @@ absl::Status GpuDriver::LaunchKernel(
   return true;
 }
 
-/* static */ bool GpuDriver::AsynchronousMemcpyH2D(GpuContext* context,
+/* static */ bool GpuDriver::AsynchronousMemcpyH2D(Context* context,
                                                    hipDeviceptr_t gpu_dst,
                                                    const void* host_src,
                                                    uint64_t size,
@@ -1557,7 +1577,7 @@ absl::Status GpuDriver::LaunchKernel(
   return true;
 }
 
-/* static */ bool GpuDriver::AsynchronousMemcpyD2D(GpuContext* context,
+/* static */ bool GpuDriver::AsynchronousMemcpyD2D(Context* context,
                                                    hipDeviceptr_t gpu_dst,
                                                    hipDeviceptr_t gpu_src,
                                                    uint64_t size,
@@ -1588,7 +1608,7 @@ absl::Status GpuDriver::LaunchKernel(
   return true;
 }
 
-/* static */ absl::Status GpuDriver::InitEvent(GpuContext* context,
+/* static */ absl::Status GpuDriver::InitEvent(Context* context,
                                                GpuEventHandle* event,
                                                EventFlags flags) {
   int hipflags;
@@ -1657,23 +1677,6 @@ absl::Status GpuDriver::LaunchKernel(
       absl::StatusCode::kInternal,
       absl::StrFormat("failed to get pointer into for device pointer %p; %s",
                       reinterpret_cast<void*>(dptr), ToString(result).c_str())};
-}
-
-/* static */ absl::StatusOr<GpuContext*> GpuDriver::GetPointerContext(
-    hipDeviceptr_t pointer) {
-  GpuContext* context = nullptr;
-  hipError_t result = wrap::hipPointerGetAttribute(
-      &context, HIP_POINTER_ATTRIBUTE_CONTEXT, pointer);
-  if (result == hipSuccess) {
-    if (context == nullptr) {
-      return absl::UnavailableError(
-          "Empty context returned while querying context for device pointer");
-    }
-    return context;
-  }
-
-  return absl::InternalError(absl::StrCat(
-      "failed to query context for device pointer: ", ToString(result)));
 }
 
 /* static */ absl::StatusOr<MemoryType> GpuDriver::GetPointerMemorySpace(
@@ -1918,7 +1921,7 @@ static absl::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
   return true;
 }
 
-/* static */ bool GpuDriver::GetDeviceMemoryInfo(GpuContext* context,
+/* static */ bool GpuDriver::GetDeviceMemoryInfo(Context* context,
                                                  int64_t* free_out,
                                                  int64_t* total_out) {
   ScopedActivateContext activation{context};
@@ -1983,8 +1986,7 @@ static absl::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
   return pci_bus_id;
 }
 
-/* static */ bool GpuDriver::CanEnablePeerAccess(GpuContext* from,
-                                                 GpuContext* to) {
+/* static */ bool GpuDriver::CanEnablePeerAccess(Context* from, Context* to) {
   // A context can always access its own memory.
   if (from == to) return true;
 
@@ -2016,15 +2018,15 @@ static absl::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
   return can_access_peer;
 }
 
-/* static */ absl::Status GpuDriver::EnablePeerAccess(GpuContext* from,
-                                                      GpuContext* to) {
+/* static */ absl::Status GpuDriver::EnablePeerAccess(Context* from,
+                                                      Context* to) {
   if (from == to) {
     return absl::OkStatus();  // A device can always access its own memory.
   }
 
   ScopedActivateContext activated{from};
-  hipError_t result =
-      wrap::hipCtxEnablePeerAccess(to->context(), 0 /* = flags */);
+  hipError_t result = wrap::hipCtxEnablePeerAccess(
+      tensorflow::down_cast<GpuContext*>(to)->context(), 0 /* = flags */);
   if (result != hipSuccess && result != hipErrorPeerAccessAlreadyEnabled) {
     return absl::Status{
         absl::StatusCode::kInternal,
@@ -2037,7 +2039,7 @@ static absl::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
 }
 
 /* static */ absl::StatusOr<int> GpuDriver::GetMaxOccupiedBlocksPerCore(
-    GpuContext* context, hipFunction_t kernel, int threads_per_block,
+    Context* context, hipFunction_t kernel, int threads_per_block,
     size_t dynamic_shared_memory_bytes) {
   ScopedActivateContext activation{context};
 
@@ -2050,26 +2052,4 @@ static absl::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
 }
 
 }  // namespace gpu
-
-namespace rocm {
-
-absl::Status OccupancyGetMaxPotentialBlockSize(int* gridSize, int* blockSize,
-                                               hipFunction_t kernel,
-                                               size_t dynSharedMemPerBlk,
-                                               int blockSizeLimit) {
-  RETURN_IF_ROCM_ERROR(
-      wrap::hipModuleOccupancyMaxPotentialBlockSize(
-          gridSize, blockSize, kernel, dynSharedMemPerBlk, blockSizeLimit),
-      "Failed to calculate maximal potential block size");
-  return absl::OkStatus();
-}
-
-hipCtx_t CurrentContextOrDie() {
-  hipCtx_t current = nullptr;
-  FAIL_IF_ROCM_ERROR(hipCtxGetCurrent(&current),
-                     "Failed to query current context");
-  return current;
-}
-
-}  // namespace rocm
 }  // namespace stream_executor

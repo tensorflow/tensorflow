@@ -18,9 +18,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
-#include "xla/stream_executor/cuda/cuda_driver.h"
+#include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/gpu/gpu_collectives.h"
-#include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/numbers.h"
@@ -32,7 +31,7 @@ limitations under the License.
 namespace stream_executor::gpu {
 
 /* static */ absl::StatusOr<void*> GpuCollectives::CollectiveMemoryAllocate(
-    GpuContext* context, uint64_t bytes) {
+    Context* context, uint64_t bytes) {
   if (bytes == 0) return nullptr;
 
   ScopedActivateContext activated(context);
@@ -47,8 +46,8 @@ namespace stream_executor::gpu {
         tsl::strings::HumanReadableNumBytes(bytes), bytes,
         ncclGetErrorString(res), ncclGetLastError(nullptr)));
   }
-  VLOG(2) << "Allocated collective memory " << ptr << " for context "
-          << context->context() << " of " << bytes << " bytes";
+  VLOG(2) << "Allocated collective memory " << ptr << " for context " << context
+          << " of " << bytes << " bytes";
   return ptr;
 #else
   return absl::FailedPreconditionError("XLA was compiled without NCCL support");
@@ -56,7 +55,7 @@ namespace stream_executor::gpu {
 }
 
 /* static */ absl::Status GpuCollectives::CollectiveMemoryDeallocate(
-    GpuContext* context, void* location) {
+    Context* context, void* location) {
   ScopedActivateContext activation(context);
 
 #ifdef STREAM_EXECUTOR_GPU_ENABLE_XCCL
@@ -69,7 +68,7 @@ namespace stream_executor::gpu {
   }
 
   VLOG(2) << "Deallocated collective memory " << location << " for context "
-          << context->context();
+          << context;
   return absl::OkStatus();
 #else
   return absl::FailedPreconditionError("XLA was compiled without NCCL support");

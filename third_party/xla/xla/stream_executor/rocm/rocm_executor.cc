@@ -85,11 +85,7 @@ static hipDeviceptr_t AsROCmDevicePtr(DeviceMemoryBase* gpu_mem) {
   return AsROCmDevicePtr(*gpu_mem);
 }
 
-static GpuContext* GetGpuContext(Stream* stream) {
-  return static_cast<GpuExecutor*>(stream->parent())->gpu_context();
-}
-
-GpuContext* ExtractGpuContext(GpuExecutor* rocm_exec) {
+Context* ExtractGpuContext(GpuExecutor* rocm_exec) {
   CHECK(rocm_exec != nullptr);
   return rocm_exec->gpu_context();
 }
@@ -597,7 +593,7 @@ std::unique_ptr<GpuCommandBuffer> GpuExecutor::CreateCommandBuffer(
                                             is_owned_graph);
 }
 
-GpuContext* GpuExecutor::gpu_context() { return context_; }
+Context* GpuExecutor::gpu_context() { return context_; }
 
 // Attempts to read the NUMA node corresponding to the GPU device's PCI bus out
 // of SysFS. Returns -1 if it cannot.

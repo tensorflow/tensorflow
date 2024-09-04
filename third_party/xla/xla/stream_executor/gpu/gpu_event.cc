@@ -19,14 +19,14 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/status/status.h"
+#include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 
 namespace stream_executor {
 namespace gpu {
 
-GpuEvent::GpuEvent(GpuContext* context)
-    : context_(context), gpu_event_(nullptr) {}
+GpuEvent::GpuEvent(Context* context) : context_(context), gpu_event_(nullptr) {}
 
 GpuEvent::~GpuEvent() { Destroy().IgnoreError(); }
 

@@ -33,7 +33,7 @@ namespace gpu {
 // Error summaries taken from:
 std::string ToString(hipError_t result);
 
-// RocmContext implements the Context class for ROCm GPUs.
+// GpuContext implements the Context class for ROCm GPUs.
 class GpuContext : public Context {
  public:
   GpuContext(hipCtx_t context, const int ordinal)
@@ -56,19 +56,6 @@ class GpuContext : public Context {
 };
 
 }  // namespace gpu
-
-namespace rocm {
-
-// TODO: this function shall be added to the GpuDriver API as well
-absl::Status OccupancyGetMaxPotentialBlockSize(int* gridSize, int* blockSize,
-                                               hipFunction_t func,
-                                               size_t dynSharedMemPerBlk,
-                                               int blockSizeLimit);
-
-// Returns the current context set in ROCm. This is done by calling ROCm
-// driver (e.g., this value is not our cached view of the current context).
-hipCtx_t CurrentContextOrDie();
-}  // namespace rocm
 }  // namespace stream_executor
 
 #endif  // XLA_STREAM_EXECUTOR_ROCM_ROCM_DRIVER_H_
