@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/delegates/xnnpack/file_util.h"
 #include "tensorflow/lite/delegates/xnnpack/flexbuffers_util.h"
 #include "tensorflow/lite/delegates/xnnpack/quantization_util.h"
 #include "tensorflow/lite/delegates/xnnpack/weight_cache.h"
@@ -56,13 +57,6 @@ limitations under the License.
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
-
-// These includes are below the non-system includes because the macro may be
-// defined in lite/delegates/xnnpack/weight_cache.h.
-#if TFLITE_XNNPACK_ENABLE_IN_MEMORY_WEIGHT_CACHE
-#include <sys/syscall.h>
-#include <unistd.h>
-#endif
 
 struct TfLiteXNNPackDelegateWeightsCache;
 
@@ -8104,15 +8098,7 @@ void TfLiteXNNPackDelegateWeightsCacheDelete(
 }
 
 bool TfLiteXNNPackDelegateCanUseInMemoryWeightCacheProvider() {
-#if TFLITE_XNNPACK_ENABLE_IN_MEMORY_WEIGHT_CACHE
-  // Test if the syscall memfd_create is available.
-  const int test_fd = syscall(SYS_memfd_create, "test fd", 0);
-  if (test_fd != -1) {
-    close(test_fd);
-    return true;
-  }
-#endif
-  return false;
+  return tflite::xnnpack::InMemoryFileDescriptorAvailable();
 }
 
 const char* TfLiteXNNPackDelegateInMemoryFilePath() {

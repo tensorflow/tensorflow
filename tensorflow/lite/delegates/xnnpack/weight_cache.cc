@@ -24,9 +24,6 @@ limitations under the License.
 #include <sys/mman.h>
 #include <unistd.h>
 #endif
-#if TFLITE_XNNPACK_ENABLE_IN_MEMORY_WEIGHT_CACHE
-#include <sys/syscall.h>
-#endif
 
 #include <algorithm>
 #include <cerrno>  // IWYU pragma: keep
@@ -44,6 +41,7 @@ limitations under the License.
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "flatbuffers/verifier.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/delegates/xnnpack/file_util.h"
 #include "tensorflow/lite/delegates/xnnpack/weight_cache_schema_generated.h"
 #include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
@@ -119,29 +117,6 @@ bool FileExists(const char* path) {
 }
 
 }  // namespace
-
-FileDescriptor FileDescriptor::Duplicate() const {
-  return FileDescriptor(dup(fd_));
-}
-
-void FileDescriptor::Reset(int new_fd) {
-  if (IsValid()) {
-    close(fd_);
-  }
-  fd_ = new_fd;
-}
-
-void FileDescriptor::Close() { Reset(-1); }
-
-off_t FileDescriptor::GetPos() const { return lseek(fd_, 0, SEEK_CUR); }
-
-off_t FileDescriptor::SetPos(off_t position) {
-  return lseek(fd_, position, SEEK_SET);
-}
-
-off_t FileDescriptor::MovePos(off_t offset) {
-  return lseek(fd_, offset, SEEK_CUR);
-}
 
 void swap(MMapHandle& a, MMapHandle& b) {
   using std::swap;
@@ -284,14 +259,7 @@ bool WeightCacheBuilder::Start(const char* path) {
 
   file_path_ = path;
   if (IsInMemoryCachePath(file_path_)) {
-#if TFLITE_XNNPACK_ENABLE_IN_MEMORY_WEIGHT_CACHE
-    fd_.Reset(syscall(SYS_memfd_create, "XNNPack in-memory weight cache", 0));
-#else
-    TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
-                    "XNNPack weight cache: in-memory cache is not enabled for "
-                    "this build.");
-    return false;
-#endif
+    fd_ = CreateInMemoryFileDescriptor("XNNPack in-memory weight cache");
   } else {
     fd_.Reset(open(file_path_.c_str(), O_CREAT | O_TRUNC | O_WRONLY, 0644));
   }
