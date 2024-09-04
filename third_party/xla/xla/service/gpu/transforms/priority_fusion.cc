@@ -364,7 +364,7 @@ class PriorityFusionQueue {
 
   // Prepare for incremental updates
   void ComputeRuntimesOfRemovedConsumers() {
-    for (auto pair : operands_to_new_consumers_) {
+    for (const auto& pair : operands_to_new_consumers_) {
       auto operand = pair.first;
       // Checks if this producer's priority was calculated before. If so, we can
       // do incremental update here.
