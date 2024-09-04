@@ -109,7 +109,11 @@ std::string CompilerOptionToString(const GpuInfo& gpu_info,
     case CompilerOptions::kClFastRelaxedMath:
       return "-cl-fast-relaxed-math";
     case CompilerOptions::kClRegisterAllocation64:
-      return "-fregister-allocation=64";
+      if (gpu_info.opencl_info.supports_register_allocation_arm) {
+        return "-fregister-allocation=64";
+      } else {
+        return "";
+      }
     case CompilerOptions::kClDisableOptimizations:
       return "-cl-opt-disable";
     case CompilerOptions::kCl20:
