@@ -1068,7 +1068,7 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
     PjRtMemorySpace* memory_space, const Layout* device_layout) {
   return BufferFromHostBufferInternal(
       data, type, dims, byte_strides, host_buffer_semantics,
-      std::move(on_done_with_host_buffer), memory_space->devices()[0],
+      std::move(on_done_with_host_buffer), memory_space->device(),
       device_layout, memory_space);
 }
 
@@ -1111,7 +1111,7 @@ PjRtStreamExecutorClient::CreateErrorBuffer(absl::Status error,
     return absl::InvalidArgumentError(
         "Memory space is not attached to this client");
   }
-  auto* device = memory->devices()[0];
+  auto* device = memory->device();
   VLOG(1) << "PjRtStreamExecutorClient::CreateErrorBuffer: shape: "
           << shape.ToString() << " device: " << device->DebugString()
           << " error: " << error;
@@ -1200,13 +1200,10 @@ PjRtStreamExecutorClient::BufferFromHostLiteral(const LiteralSlice& literal,
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 PjRtStreamExecutorClient::BufferFromHostLiteral(const LiteralSlice& literal,
                                                 PjRtMemorySpace* memory_space) {
-  if (memory_space->devices().size() == 1) {
-    return BufferFromHostLiteral(literal, memory_space->devices()[0]);
+  if (PjRtDevice* device = memory_space->device(); device != nullptr) {
+    return BufferFromHostLiteral(literal, device);
   }
-  return absl::UnimplementedError(absl::StrCat(
-      "BufferFromHostLiteral with PjRtMemorySpace is not implemented on "
-      "platform: ",
-      platform_name()));
+  return absl::InvalidArgumentError("Memory space is not attached to a device");
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
@@ -2034,11 +2031,10 @@ PjRtStreamExecutorBuffer::CopyToDeviceMemorySpace(
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 PjRtStreamExecutorBuffer::CopyToMemorySpace(PjRtMemorySpace* dst_memory_space) {
-  if (dst_memory_space->devices().size() == 1) {
-    return CopyToDeviceMemorySpace(dst_memory_space->devices()[0],
-                                   dst_memory_space);
+  if (PjRtDevice* device = dst_memory_space->device(); device != nullptr) {
+    return CopyToDeviceMemorySpace(device, dst_memory_space);
   }
-  return Unimplemented("CopyToMemorySpace is not supported");
+  return absl::InvalidArgumentError("Memory space is not attached to a device");
 }
 
 void PjRtStreamExecutorBuffer::CopyToRemoteDevice(

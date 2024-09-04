@@ -85,8 +85,8 @@ class PjRtMemorySpace {
   // The owner of this memory space.
   virtual PjRtClient* client() const = 0;
 
-  // The devices that this memory space is attached to.
-  virtual absl::Span<PjRtDevice* const> devices() const = 0;
+  // The device that this memory space is attached to or nullptr if none.
+  virtual PjRtDevice* device() const = 0;
 
   // The ID of this memory space. IDs are globally unique across all hosts.
   virtual int id() const = 0;

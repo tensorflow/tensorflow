@@ -226,9 +226,7 @@ class PjRtStreamExecutorMemorySpace : public PjRtMemorySpace {
 
   PjRtClient* client() const override { return device_->client(); }
 
-  absl::Span<PjRtDevice* const> devices() const override {
-    return absl::Span<PjRtDevice* const>(&device_, device_ != nullptr ? 1 : 0);
-  }
+  PjRtDevice* device() const override { return device_; }
 
   int id() const override { return id_; }
 

@@ -912,7 +912,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::CreateErrorBuffer(
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::CreateErrorBuffer(
     absl::Status error, const Shape& shape, PjRtMemorySpace* memory) {
-  return CreateErrorBuffer(std::move(error), shape, memory->devices()[0]);
+  CHECK_NE(memory->device(), nullptr);
+  return CreateErrorBuffer(std::move(error), shape, memory->device());
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
@@ -937,8 +938,8 @@ TfrtCpuClient::CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
 absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
 TfrtCpuClient::CreateBuffersForAsyncHostToDevice(
     absl::Span<const Shape> shapes, PjRtMemorySpace* memory_space) {
-  CHECK_EQ(memory_space->devices().size(), 1);
-  return CreateBuffersForAsyncHostToDevice(shapes, memory_space->devices()[0]);
+  CHECK_NE(memory_space->device(), nullptr);
+  return CreateBuffersForAsyncHostToDevice(shapes, memory_space->device());
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostBuffer(
@@ -992,11 +993,11 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostBuffer(
     HostBufferSemantics host_buffer_semantics,
     absl::AnyInvocable<void() &&> on_done_with_host_buffer,
     PjRtMemorySpace* memory_space, const Layout* device_layout) {
-  CHECK_EQ(memory_space->devices().size(), 1);
+  CHECK_NE(memory_space->device(), nullptr);
   return BufferFromHostBuffer(data, type, dims, byte_strides,
                               host_buffer_semantics,
                               std::move(on_done_with_host_buffer),
-                              memory_space->devices()[0], device_layout);
+                              memory_space->device(), device_layout);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
@@ -1022,8 +1023,8 @@ TfrtCpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 TfrtCpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
                                      PjRtMemorySpace* memory_space) {
-  CHECK_EQ(memory_space->devices().size(), 1);
-  return BufferFromHostLiteral(literal, memory_space->devices()[0]);
+  CHECK_NE(memory_space->device(), nullptr);
+  return BufferFromHostLiteral(literal, memory_space->device());
 }
 
 TfrtCpuBuffer::TfrtCpuBuffer(
@@ -1093,8 +1094,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuBuffer::CopyToDevice(
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuBuffer::CopyToMemorySpace(
     PjRtMemorySpace* dst_memory_space) {
-  CHECK_EQ(dst_memory_space->devices().size(), 1);
-  return CopyToDevice(dst_memory_space->devices()[0]);
+  CHECK_NE(dst_memory_space->device(), nullptr);
+  return CopyToDevice(dst_memory_space->device());
 }
 
 TfrtCpuExecutable::TfrtCpuExecutable(
