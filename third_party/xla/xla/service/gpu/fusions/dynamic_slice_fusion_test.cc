@@ -88,7 +88,7 @@ class DynamicSliceFusionTest : public HloTestBase {
 
   HloModuleConfig GetModuleConfigWithDeterministicOps() {
     DebugOptions debug_options = GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_deterministic_ops(true);
+    debug_options.set_xla_gpu_exclude_nondeterministic_ops(true);
     HloModuleConfig config;
     config.set_debug_options(debug_options);
     return config;
