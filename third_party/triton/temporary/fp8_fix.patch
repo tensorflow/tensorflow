@@ -23,18 +23,18 @@ The corresponding import patch has already been added.
      return false;
  
 +  auto F8E4M3FN = TypeID::get<Float8E4M3FNType>();
+   auto F8E5M2 = TypeID::get<Float8E5M2Type>();
    auto F8E4M3FNUZ = TypeID::get<Float8E4M3FNUZType>();
    auto F8E5M2FNUZ = TypeID::get<Float8E5M2FNUZType>();
-   auto F16 = TypeID::get<Float16Type>();
-@@ -435,6 +436,7 @@
+@@ -436,6 +437,7 @@
        {F32, F32},
        {F16, F16},
        {BF16, BF16},
 +      {F8E4M3FN, F8E4M3FN},
+       {F8E5M2, F8E5M2},
        {F8E4M3FNUZ, F8E4M3FNUZ},
        {F8E4M3FNUZ, F8E5M2FNUZ},
-       {F8E5M2FNUZ, F8E4M3FNUZ},
-@@ -493,14 +495,14 @@
+@@ -495,14 +497,14 @@
        return false;
      if (!(numWarps % 4 == 0 && retShapePerCTA[rank - 2] % 64 == 0 &&
            retShapePerCTA[rank - 1] % 8 == 0 &&
