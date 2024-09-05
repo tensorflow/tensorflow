@@ -392,6 +392,19 @@ TEST(CallORToolsSolverTest, HonorsMaxCost) {
   EXPECT_TRUE(absl::IsInternal(result.status.status()));
 }
 
+TEST(CallORToolsSolverTest, HandlesExtremelyHighMaxCost) {
+  AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
+  request.mutable_max_cost()->set_coeff(1e19);
+
+  const AutoShardingSolverResult result = CallORToolsSolver(request);
+
+  const std::vector<NodeStrategyIdx> s_val = {0, 0, 0, 0, 0};
+  const double objective_value = 7650.0;
+  const AutoShardingSolverOutput expected_output = {s_val, objective_value};
+  const AutoShardingSolverResult expected_result = {expected_output, false};
+  EXPECT_EQ(result, expected_result);
+}
+
 TEST(CallORToolsSolverTest, HandlesMemoryEdgeCosts) {
   AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
   const EdgeMatrix live_edges = {{}, {0}, {0, 1}, {1}, {}};

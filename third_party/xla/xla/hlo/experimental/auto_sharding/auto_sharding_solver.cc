@@ -71,6 +71,10 @@ constexpr double kMaxCostEpsilon = 1.0001;
 // beware that significantly larger / smaller values can cause numerical issues.
 constexpr double kMemoryMultiplier = 1e6;
 
+// Maximum costs above this threshold can lead to Invalid MIPs.
+// TODO(moffitt): Handle hints properly for problems with high overbudget costs.
+constexpr double kMaxCostValue = 1e18;
+
 bool AutoShardingSolverOutput::operator==(
     const AutoShardingSolverOutput& other) const {
   return s_val == other.s_val && cost == other.cost &&
@@ -683,7 +687,7 @@ AutoShardingSolverResult CallORToolsSolver(
       }
     }
   }
-  if (request.has_max_cost()) {
+  if (request.has_max_cost() && request.max_cost().coeff() < kMaxCostValue) {
     double max_cost = kMaxCostEpsilon * request.max_cost().coeff();
     max_cost -= solver->Objective().offset();
     MPConstraint* cost_constraint = solver->MakeRowConstraint(
@@ -693,7 +697,8 @@ AutoShardingSolverResult CallORToolsSolver(
     }
   }
 
-  if (!request.s_hint().empty() && !request.deterministic_mode()) {
+  if (!request.s_hint().empty() && !request.deterministic_mode() &&
+      (!request.has_max_cost() || request.max_cost().coeff() < kMaxCostValue)) {
     std::vector<std::pair<const MPVariable*, double>> hint;
     for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
       if (request.s_follow(node_idx) >= 0) continue;
