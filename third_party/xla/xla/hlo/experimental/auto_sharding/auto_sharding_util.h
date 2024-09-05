@@ -604,6 +604,11 @@ absl::StatusOr<int64_t> GetPartialReduceReductionDim(const HloInstruction* ins);
 // encountering a SPMDFullToShardShape custom call on the call.
 bool OpEncountersShardToFull(const HloInstruction* op);
 
+// Ensures that the modules entry_computation_layout has input/output shapes
+// with layouts. If this is not the case, this function will add the layout
+// information by extracting it from the HLO ops.
+absl::Status EnsureEntryComputationLayoutHasShapeLayouts(HloModule* module);
+
 }  // namespace spmd
 }  // namespace xla
 

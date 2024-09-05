@@ -19,9 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <iterator>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <queue>
 #include <string>
@@ -54,9 +52,11 @@ limitations under the License.
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/service/call_graph.h"
+#include "xla/service/computation_layout.h"
 #include "xla/service/sharding_propagation.h"
 #include "xla/service/while_loop_analysis.h"
 #include "xla/shape.h"
+#include "xla/shape_layout.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
@@ -2489,6 +2489,22 @@ bool OpEncountersShardToFull(const HloInstruction* op) {
   }
 
   return false;
+}
+
+absl::Status EnsureEntryComputationLayoutHasShapeLayouts(HloModule* module) {
+  ComputationLayout computation_layout_with_layouts =
+      module->compute_computation_layout();
+  ComputationLayout* computation_layout =
+      module->mutable_entry_computation_layout();
+  for (int i = 0; i < computation_layout->parameter_count(); ++i) {
+    TF_RETURN_IF_ERROR(
+        computation_layout->mutable_parameter_layout(i)->CopyLayoutFromShape(
+            computation_layout_with_layouts.parameter_layout(i).shape()));
+  }
+  TF_RETURN_IF_ERROR(
+      computation_layout->mutable_result_layout()->CopyLayoutFromShape(
+          computation_layout_with_layouts.result_layout().shape()));
+  return absl::OkStatus();
 }
 
 }  // namespace spmd

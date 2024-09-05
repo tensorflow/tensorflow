@@ -3883,7 +3883,9 @@ absl::StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
   // Handle donated args by resolving them into input-output aliases. While we
   // want to perform this resolution, we do not want to modify the module, which
   // is why we run the OptimizeInputOutputBufferAlias pass on a clone.
-  auto module_clone = module->Clone("");
+  std::unique_ptr<HloModule> module_clone = module->Clone("");
+  TF_RETURN_IF_ERROR(
+      spmd::EnsureEntryComputationLayoutHasShapeLayouts(module_clone.get()));
   OptimizeInputOutputBufferAlias input_output_buffer_alias_optimizer(
       /* registered_buffer_donor_only */ true);
   CHECK_OK(input_output_buffer_alias_optimizer.Run(module_clone.get()));
@@ -4297,7 +4299,6 @@ absl::StatusOr<bool> AutoSharding::Run(
 #endif
 
   TF_RETURN_IF_ERROR(module->RemoveUnusedComputations());
-
   TF_RETURN_IF_ERROR(option_.CheckAndSetup());
   LOG(INFO) << "AutoShardingOptions:\n" << option_.ToString();
 

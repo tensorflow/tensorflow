@@ -284,6 +284,7 @@ cc_library(
         ":auto_sharding_device_mesh",
         ":auto_sharding_strategy",
         "//xla:array",
+        "//xla:shape_layout",
         "//xla:shape_tree",
         "//xla:shape_util",
         "//xla:util",
@@ -293,6 +294,7 @@ cc_library(
         "//xla/hlo/ir:tile_assignment",
         "//xla/hlo/utils:hlo_sharding_util",
         "//xla/service:call_graph",
+        "//xla/service:computation_layout",
         "//xla/service:sharding_propagation",
         "//xla/service:while_loop_analysis",
         "@com_google_absl//absl/algorithm:container",
@@ -306,7 +308,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@jsoncpp_git//:jsoncpp",
-        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
