@@ -72,7 +72,7 @@ int32 ZlibOutputBuffer::AvailableInputSpace() const {
   return input_buffer_capacity_ - z_stream_->avail_in;
 }
 
-void ZlibOutputBuffer::AddToInputBuffer(StringPiece data) {
+void ZlibOutputBuffer::AddToInputBuffer(absl::string_view data) {
   size_t bytes_to_write = data.size();
   CHECK_LE(bytes_to_write, AvailableInputSpace());
 
@@ -132,7 +132,7 @@ absl::Status ZlibOutputBuffer::DeflateBuffered(int flush_mode) {
 absl::Status ZlibOutputBuffer::FlushOutputBufferToFile() {
   uint32 bytes_to_write = output_buffer_capacity_ - z_stream_->avail_out;
   if (bytes_to_write > 0) {
-    absl::Status s = file_->Append(StringPiece(
+    absl::Status s = file_->Append(absl::string_view(
         reinterpret_cast<char*>(z_stream_output_.get()), bytes_to_write));
     if (s.ok()) {
       z_stream_->next_out = z_stream_output_.get();
@@ -143,7 +143,7 @@ absl::Status ZlibOutputBuffer::FlushOutputBufferToFile() {
   return absl::OkStatus();
 }
 
-absl::Status ZlibOutputBuffer::Append(StringPiece data) {
+absl::Status ZlibOutputBuffer::Append(absl::string_view data) {
   // If there is sufficient free space in z_stream_input_ to fit data we
   // add it there and return.
   // If there isn't enough space we deflate the existing contents of
@@ -206,7 +206,7 @@ absl::Status ZlibOutputBuffer::Flush() {
   return file_->Flush();
 }
 
-absl::Status ZlibOutputBuffer::Name(StringPiece* result) const {
+absl::Status ZlibOutputBuffer::Name(absl::string_view* result) const {
   return file_->Name(result);
 }
 

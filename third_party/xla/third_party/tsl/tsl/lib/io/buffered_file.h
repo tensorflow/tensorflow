@@ -36,7 +36,7 @@ class BufferedWritableFile : public WritableFile {
   }
   ~BufferedWritableFile() override { Close().IgnoreError(); }
 
-  absl::Status Append(StringPiece str_data) override {
+  absl::Status Append(absl::string_view str_data) override {
     int64_t bytes_left = str_data.size();
     const char* data = str_data.data();
 
@@ -75,7 +75,8 @@ class BufferedWritableFile : public WritableFile {
 
   absl::Status Flush() override {
     if (buffer_pos_ > 0) {
-      TF_RETURN_IF_ERROR(file_->Append(StringPiece(&buffer_[0], buffer_pos_)));
+      TF_RETURN_IF_ERROR(
+          file_->Append(absl::string_view(&buffer_[0], buffer_pos_)));
       buffer_pos_ = 0;
     }
     return file_->Flush();

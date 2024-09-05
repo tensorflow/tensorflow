@@ -47,7 +47,7 @@ namespace xla {
 class TestBFloat16Support : public FloatSupport {
  public:
   TestBFloat16Support() : FloatSupport(BF16) {}
-  ~TestBFloat16Support() override = default;
+  ~TestBFloat16Support() override {}
 
   bool SupportsLowPrecisionOperand(const HloInstruction& hlo,
                                    int64_t operand_index) const override {
@@ -68,17 +68,16 @@ class TestBFloat16Support : public FloatSupport {
   }
 };
 
-template <typename FloatSupportType>
-class BFloat16PropagationTestTemplated : public HloTestBase {
+class BFloat16PropagationTest : public HloTestBase {
  protected:
-  BFloat16PropagationTestTemplated()
+  BFloat16PropagationTest()
       : HloTestBase(/*verifier_layout_sensitive=*/false,
                     /*allow_mixed_precision_in_hlo_verifier=*/true) {}
 
   // Runs the propagation pass on the given module, and returns whether the
   // module is changed after this pass.
   bool PropagatePrecision(HloModule* module) {
-    FloatSupportType bfloat16_support;
+    TestBFloat16Support bfloat16_support;
     BFloat16Propagation propagation(&bfloat16_support);
     absl::StatusOr<bool> result = propagation.Run(module);
     EXPECT_IS_OK(result.status());
@@ -106,9 +105,6 @@ class BFloat16PropagationTestTemplated : public HloTestBase {
                                      DefaultPrecisionConfig(2));
   }
 };
-
-using BFloat16PropagationTest =
-    BFloat16PropagationTestTemplated<TestBFloat16Support>;
 
 // Tests that BF16 can propagate through select over non-tuple buffers, but not
 // through add where reducing operand precision can affect the result.
@@ -1235,53 +1231,6 @@ ENTRY entry {
   EXPECT_FALSE(OutputsBF16(gte));
   EXPECT_FALSE(OutputsBF16(gte1));
   EXPECT_TRUE(OutputsBF16(gte2));
-}
-
-// A class specifying the BF16 support used to test the propagation pass. It
-// specifies that BF16 is supported in all HloInstructions, mixed precision is
-// supported in all HloInstructions except kCopy, and kDot reduces its operands
-// precision to BF16.
-class CopyDoesNotSupportMixedFloatSupport : public FloatSupport {
- public:
-  CopyDoesNotSupportMixedFloatSupport() : FloatSupport(BF16) {}
-  ~CopyDoesNotSupportMixedFloatSupport() override = default;
-
-  bool SupportsLowPrecisionOperand(const HloInstruction& hlo,
-                                   int64_t operand_index) const override {
-    return true;
-  }
-
-  bool SupportsLowPrecisionOutput(const HloInstruction& hlo) const override {
-    return true;
-  }
-
-  bool SupportsMixedPrecisions(const HloInstruction& hlo) const override {
-    return hlo.opcode() != HloOpcode::kCopy;
-  }
-
-  bool EffectiveOperandPrecisionIsLowPrecision(
-      const HloInstruction& hlo, int64_t operand_index) const override {
-    return hlo.opcode() == HloOpcode::kDot;
-  }
-};
-
-using BFloat16PropagationNoMixedCopyTest =
-    BFloat16PropagationTestTemplated<CopyDoesNotSupportMixedFloatSupport>;
-
-TEST_F(BFloat16PropagationNoMixedCopyTest, DoNotPropagateThroughCopy) {
-  const std::string module_str = R"(
-HloModule module
-
-ENTRY entry {
-  param0 = f32[4096,4096] parameter(0)
-  copy = f32[4096,4096] copy(param0)
-  ROOT dot = f32[4096,4096] dot(copy, copy), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-}
-)";
-
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str));
-  EXPECT_FALSE(PropagatePrecision(module.get()));
 }
 
 }  // namespace xla

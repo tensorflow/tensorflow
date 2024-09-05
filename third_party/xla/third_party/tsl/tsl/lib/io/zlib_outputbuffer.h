@@ -63,7 +63,7 @@ class ZlibOutputBuffer : public WritableFile {
   // to file when the buffer is full.
   //
   // To immediately write contents to file call `Flush()`.
-  absl::Status Append(StringPiece data) override;
+  absl::Status Append(absl::string_view data) override;
 
 #if defined(TF_CORD_SUPPORT)
   absl::Status Append(const absl::Cord& cord) override;
@@ -83,7 +83,7 @@ class ZlibOutputBuffer : public WritableFile {
   absl::Status Close() override;
 
   // Returns the name of the underlying file.
-  absl::Status Name(StringPiece* result) const override;
+  absl::Status Name(absl::string_view* result) const override;
 
   // Deflates any cached input, writes all output to file and syncs it.
   absl::Status Sync() override;
@@ -123,7 +123,7 @@ class ZlibOutputBuffer : public WritableFile {
 
   // Adds `data` to `z_stream_input_`.
   // Throws if `data.size()` > AvailableInputSpace().
-  void AddToInputBuffer(StringPiece data);
+  void AddToInputBuffer(absl::string_view data);
 
   // Returns the total space available in z_input_stream_ buffer.
   int32 AvailableInputSpace() const;
