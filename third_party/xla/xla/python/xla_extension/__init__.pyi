@@ -426,10 +426,10 @@ class HloSharding:
   def to_proto(self) -> OpSharding: ...
 
 class FftType(enum.IntEnum):
-  FFT: int
-  IFFT: int
-  RFFT: int
-  IRFFT: int
+  FFT: FftType
+  IFFT: FftType
+  RFFT: FftType
+  IRFFT: FftType
 
 # === END xla_compiler.cc
 
