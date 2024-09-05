@@ -185,7 +185,7 @@ GpuStream::~GpuStream() {
   }
 
   completed_event_.reset();
-  GpuDriver::DestroyStream(parent_->gpu_context(), &gpu_stream_);
+  GpuDriver::DestroyStream(parent_->gpu_context(), gpu_stream_);
 }
 
 void GpuStream::set_name(absl::string_view name) {

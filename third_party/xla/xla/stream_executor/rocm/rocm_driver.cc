@@ -1255,21 +1255,19 @@ absl::StatusOr<GpuStreamHandle> GpuDriver::CreateStream(Context* context,
   return stream;
 }
 
-/* static */ void GpuDriver::DestroyStream(Context* context,
-                                           GpuStreamHandle* stream) {
-  if (*stream == nullptr) {
+void GpuDriver::DestroyStream(Context* context, GpuStreamHandle stream) {
+  if (stream == nullptr) {
     return;
   }
 
-  ScopedActivateContext activated{context};
-  hipError_t res = wrap::hipStreamDestroy(*stream);
+  ScopedActivateContext activated(context);
+  hipError_t res = wrap::hipStreamDestroy(stream);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to destroy ROCM stream for device "
                << context->device_ordinal() << ": " << ToString(res);
   } else {
-    VLOG(2) << "successfully destroyed stream " << *stream << " for device "
+    VLOG(2) << "successfully destroyed stream " << stream << " for device "
             << context->device_ordinal();
-    *stream = nullptr;
   }
 }
 

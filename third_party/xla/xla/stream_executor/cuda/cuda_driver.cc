@@ -1386,20 +1386,19 @@ absl::StatusOr<GpuStreamHandle> GpuDriver::CreateStream(Context* context,
   return stream;
 }
 
-void GpuDriver::DestroyStream(Context* context, CUstream* stream) {
-  if (*stream == nullptr) {
+void GpuDriver::DestroyStream(Context* context, GpuStreamHandle stream) {
+  if (stream == nullptr) {
     return;
   }
 
   ScopedActivateContext activated{context};
-  auto status = cuda::ToStatus(cuStreamDestroy(*stream));
+  auto status = cuda::ToStatus(cuStreamDestroy(stream));
   if (!status.ok()) {
     LOG(ERROR) << "failed to destroy CUDA stream for context " << context
                << ": " << status;
   } else {
-    VLOG(2) << "successfully destroyed stream " << *stream << " for context "
+    VLOG(2) << "successfully destroyed stream " << stream << " for context "
             << context;
-    *stream = nullptr;
   }
 }
 
