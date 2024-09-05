@@ -708,8 +708,9 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
     desc.set_clock_rate_ghz(clock_rate_ghz);
 
     // mem_bandwidth = 2 * mem_bus_width_in_bytes * mem_clock_rate_in_hz
-    int64_t memory_bandwidth = 2 * (int64_t(prop.memoryBusWidth) / 8) *
-                               (int64_t(prop.memoryClockRate) * 1000);
+    int64_t memory_bandwidth =
+        2 * (static_cast<int64_t>(prop.memoryBusWidth) / 8) *
+        (static_cast<int64_t>(prop.memoryClockRate) * 1000);
     desc.set_memory_bandwidth(memory_bandwidth);
 
     desc.set_l2_cache_size(prop.l2CacheSize);
