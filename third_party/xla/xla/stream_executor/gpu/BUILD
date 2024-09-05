@@ -199,11 +199,6 @@ gpu_only_cc_library(
 )
 
 gpu_only_cc_library(
-    name = "gpu_kernels",
-    hdrs = ["gpu_kernels.h"],
-)
-
-gpu_only_cc_library(
     name = "gpu_command_buffer",
     srcs = ["gpu_command_buffer.cc"],
     hdrs = ["gpu_command_buffer.h"],
@@ -214,7 +209,6 @@ gpu_only_cc_library(
         ":gpu_driver_header",
         ":gpu_executor_header",
         ":gpu_kernel_header",
-        ":gpu_kernels",
         ":gpu_stream",
         ":gpu_types_header",
         "//xla/stream_executor",
@@ -240,9 +234,9 @@ gpu_only_cc_library(
         "@local_tsl//tsl/platform:statusor",
     ] + if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
-        "//xla/stream_executor/cuda:cuda_conditional_kernels",
+        "//xla/stream_executor/cuda:command_buffer_kernels",
     ]) + if_rocm_is_configured([
-        "//xla/stream_executor/rocm:hip_conditional_kernels",
+        "//xla/stream_executor/rocm:command_buffer_kernels",
     ]),
 )
 

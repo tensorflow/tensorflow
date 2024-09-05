@@ -15,7 +15,12 @@ limitations under the License.
 
 #include <string_view>
 
-namespace stream_executor::gpu {
+#include "absl/status/statusor.h"
+#include "xla/stream_executor/kernel_spec.h"
+
+namespace stream_executor {
+namespace cuda {
+namespace {
 
 // Collection of helper kernels required by command buffers on CUDA backends. We
 // use pre-compiled PTX instead of a CUDA C++ because conditional nodes require
@@ -41,8 +46,7 @@ namespace stream_executor::gpu {
 // }
 //
 // Easiest way to get PTX from C++ is to use https://godbolt.org.
-std::string_view GetSetIfConditionKernel() {
-  return R"(
+inline constexpr std::string_view kSetIfConditionKernel = R"(
 .version 4.0
 .target sm_50
 .address_size 64
@@ -108,7 +112,6 @@ $L__BB0_3:
         ret;
 
 })";
-}
 
 // PTX kernel compiled from:
 //
@@ -125,8 +128,7 @@ $L__BB0_3:
 // }
 //
 // Easiest way to get PTX from C++ is to use https://godbolt.org.
-std::string_view GetSetIfElseConditionKernel() {
-  return R"(
+inline constexpr std::string_view kSetIfElseConditionKernel = R"(
 .version 4.0
 .target sm_50
 .address_size 64
@@ -222,7 +224,6 @@ $L__BB0_3:
         ret;
 
 })";
-}
 
 // PTX kernel compiled from:
 //
@@ -257,8 +258,7 @@ $L__BB0_3:
 // }
 //
 // Easiest way to get PTX from C++ is to use https://godbolt.org.
-std::string_view GetSetCaseConditionKernel() {
-  return R"(
+inline constexpr std::string_view kSetCaseConditionKernel = R"(
 .version 4.0
 .target sm_50
 .address_size 64
@@ -578,7 +578,6 @@ $L__BB0_22:
         ret;
 
 })";
-}
 
 // PTX kernel compiled from:
 //
@@ -594,8 +593,7 @@ $L__BB0_22:
 // }
 //
 // Easiest way to get PTX from C++ is to use https://godbolt.org.
-std::string_view GetSetForConditionKernel() {
-  return R"(
+inline constexpr std::string_view kSetForConditionKernel = R"(
 .version 4.0
 .target sm_50
 .address_size 64
@@ -669,11 +667,9 @@ $L__BB0_3:
         ret;
 
 })";
-}
 
-std::string_view GetSetWhileConditionKernel() {
-  // While condition kernel is the same as an `If` with a single branch.
-  return R"(
+// While condition kernel is the same as an `If` with a single branch.
+inline constexpr std::string_view kSetWhileConditionKernel = R"(
 .version 4.0
 .target sm_50
 .address_size 64
@@ -739,6 +735,69 @@ $L__BB0_3:
         ret;
 
 })";
+
+// PTX kernel compiled from:
+//
+//  __global__ void noop() {}
+//
+// Easiest way to get PTX from C++ is to use https://godbolt.org.
+inline constexpr std::string_view kNoOpKernel = R"(
+.version 4.0
+.target sm_50
+.address_size 64
+
+.visible .entry noop()
+{
+
+        .loc    1 1 0
+
+        .loc    1 4 1
+        ret;
+
+})";
+
+}  // namespace
+}  // namespace cuda
+
+namespace gpu {
+
+absl::StatusOr<MultiKernelLoaderSpec> GetSetIfConditionKernelLoaderSpec() {
+  MultiKernelLoaderSpec spec(/*arity=*/2);
+  spec.AddCudaPtxInMemory(cuda::kSetIfConditionKernel, "set_if_condition");
+  return spec;
 }
 
-}  // namespace stream_executor::gpu
+absl::StatusOr<MultiKernelLoaderSpec> GetSetIfElseConditionKernelLoaderSpec() {
+  MultiKernelLoaderSpec spec(/*arity=*/3);
+  spec.AddCudaPtxInMemory(cuda::kSetIfElseConditionKernel,
+                          "set_if_else_condition");
+  return spec;
+}
+
+absl::StatusOr<MultiKernelLoaderSpec> GetSetCaseConditionKernelLoaderSpec() {
+  MultiKernelLoaderSpec spec(/*arity=*/10);
+  spec.AddCudaPtxInMemory(cuda::kSetCaseConditionKernel, "set_case_condition");
+  return spec;
+}
+
+absl::StatusOr<MultiKernelLoaderSpec> GetSetForConditionKernelLoaderSpec() {
+  MultiKernelLoaderSpec spec(/*arity=*/3);
+  spec.AddCudaPtxInMemory(cuda::kSetForConditionKernel, "set_for_condition");
+  return spec;
+}
+
+absl::StatusOr<MultiKernelLoaderSpec> GetSetWhileConditionKernelLoaderSpec() {
+  MultiKernelLoaderSpec spec(/*arity=*/2);
+  spec.AddCudaPtxInMemory(cuda::kSetWhileConditionKernel,
+                          "set_while_condition");
+  return spec;
+}
+
+absl::StatusOr<MultiKernelLoaderSpec> GetNoOpKernelLoaderSpec() {
+  MultiKernelLoaderSpec spec(/*arity=*/0);
+  spec.AddCudaPtxInMemory(cuda::kNoOpKernel, "noop");
+  return spec;
+}
+
+}  // namespace gpu
+}  // namespace stream_executor

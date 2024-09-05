@@ -206,10 +206,14 @@ cc_library(
     alwayslink = True,
 )
 
-rocm_library(
-    name = "hip_conditional_kernels",
-    srcs = if_rocm_is_configured(["hip_conditional_kernels.cu.cc"]),
-    deps = if_rocm_is_configured(["@local_config_rocm//rocm:rocm_headers"]),
+cc_library(
+    name = "command_buffer_kernels",
+    srcs = ["command_buffer_kernels.cc"],
+    deps = [
+        "//xla/stream_executor:kernel_spec",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
 )
 
 cc_library(

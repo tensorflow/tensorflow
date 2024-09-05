@@ -524,8 +524,12 @@ cuda_only_cc_library(
 )
 
 cc_library(
-    name = "cuda_conditional_kernels",
-    srcs = ["cuda_conditional_kernels.cc"],
+    name = "command_buffer_kernels",
+    srcs = ["command_buffer_kernels.cc"],
+    deps = [
+        "//xla/stream_executor:kernel_spec",
+        "@com_google_absl//absl/status:statusor",
+    ],
 )
 
 # TODO(leary) we likely need to canonicalize/eliminate this.
