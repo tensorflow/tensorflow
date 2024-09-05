@@ -90,7 +90,7 @@ func TestSavedModelHalfPlusTwo(t *testing.T) {
 
 func TestSavedModelWithEmptyTags(t *testing.T) {
 	var (
-		exportDir = "testdata/saved_model/half_plus_two/00000123"
+		exportDir = "testdata/saved_model/half_plus_two_empty_tags/00000123"
 		tags      = []string{}
 		options   = new(SessionOptions)
 	)
