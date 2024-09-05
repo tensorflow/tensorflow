@@ -1129,6 +1129,25 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
     }
 
     // Stable HLO ops
+    case kTfLiteBuiltinStablehloBroadcastInDim:
+      if (!CheckInputsConstsOutputs(op_sig, /*required_runtime_inputs=*/1,
+                                    /*required_const_inputs=*/1,
+                                    /*required_outputs=*/1)
+               .ok()) {
+        return absl::InvalidArgumentError(
+            "requires one runtime input, one const input, and one output");
+      }
+      if (op_sig.inputs[1].dims.size() != 1) {
+        return absl::InvalidArgumentError("Only support 1D indices");
+      }
+      if (op_sig.inputs[1].type != kTfLiteInt32) {
+        return absl::InvalidArgumentError("Only support int32 indices");
+      }
+      if (op_sig.inputs[0].dims.size() != op_sig.inputs[1].dims[0]) {
+        return absl::InvalidArgumentError(
+            "Require size(indices) = rank(operand)");
+      }
+      return absl::OkStatus();
     case kTfLiteBuiltinStablehloClamp:
       if ((op_sig.inputs.at(0).type != op_sig.inputs.at(1).type) ||
           (op_sig.inputs.at(1).type != op_sig.inputs.at(2).type)) {
