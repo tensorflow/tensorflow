@@ -448,7 +448,7 @@ TEST_F(TestKernelAttr, StringList) {
 
   AttrValue v;
   std::string attr_in[] = {"bugs", "bunny", "duck"};
-  SetAttrValue(gtl::ArraySlice<std::string>(attr_in, 3), &v);
+  SetAttrValue(absl::Span<const std::string>(attr_in, 3), &v);
   CreateAndCallKernelWithAttr(my_create_func, "TestKernelAttrStringList", v);
 }
 
@@ -634,7 +634,7 @@ TEST_F(TestKernelAttr, IntList) {
 
   AttrValue v;
   int64_t attr_in[] = {1, 2, 3, 4};
-  SetAttrValue(gtl::ArraySlice<int64_t>(attr_in, 4), &v);
+  SetAttrValue(absl::Span<const int64_t>(attr_in, 4), &v);
   CreateAndCallKernelWithAttr(my_create_func, "TestKernelAttrIntList", v);
 }
 
@@ -684,7 +684,7 @@ TEST_F(TestKernelAttr, FloatList) {
 
   AttrValue v;
   float attr_in[] = {1.414, 2.718, 3.1415};
-  SetAttrValue(gtl::ArraySlice<float>(attr_in, 3), &v);
+  SetAttrValue(absl::Span<const float>(attr_in, 3), &v);
   CreateAndCallKernelWithAttr(my_create_func, "TestKernelAttrFloatList", v);
 }
 
@@ -734,7 +734,7 @@ TEST_F(TestKernelAttr, BoolList) {
 
   AttrValue v;
   bool attr_in[] = {true, false, true, false};
-  SetAttrValue(gtl::ArraySlice<bool>(attr_in, 4), &v);
+  SetAttrValue(absl::Span<const bool>(attr_in, 4), &v);
   CreateAndCallKernelWithAttr(my_create_func, "TestKernelAttrBoolList", v);
 }
 
@@ -784,7 +784,7 @@ TEST_F(TestKernelAttr, TypeList) {
 
   AttrValue v;
   DataType attr_in[] = {DT_FLOAT, DT_DOUBLE, DT_HALF, DT_COMPLEX128};
-  SetAttrValue(gtl::ArraySlice<DataType>(attr_in, 4), &v);
+  SetAttrValue(absl::Span<const DataType>(attr_in, 4), &v);
   CreateAndCallKernelWithAttr(my_create_func, "TestKernelAttrTypeList", v);
 }
 #undef EXPECT_TF_SIZE
