@@ -2391,7 +2391,8 @@ absl::StatusOr<bool> LatencyHidingScheduler::Run(
     }
   }
   LOG(INFO) << "LatencyHidingScheduler current memory usage: "
-            << scheduler_core_->GetMemoryPeak() << " bytes.";
+            << scheduler_core_->GetMemoryPeak()
+            << " bytes. Current limit: " << scheduler_core_->GetMemoryLimit();
   for (HloComputation* computation : computations_to_schedule) {
     VLOG(1) << "Statistics before scheduling:";
     LogScheduleStatistics(computation);
