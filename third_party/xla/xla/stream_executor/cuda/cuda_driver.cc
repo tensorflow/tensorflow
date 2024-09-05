@@ -1682,20 +1682,6 @@ bool GpuDriver::AsynchronousMemcpyD2D(Context* context, CUdeviceptr gpu_dst,
     CUcontext src_context =
         GetContextMap()->GetAnyContext(absl::bit_cast<void*>(gpu_src));
 
-    if (static_cast<void*>(dst_context) == nullptr) {
-      absl::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_dst);
-      if (tmp_context.ok()) {
-        dst_context = tmp_context.value()->context();
-      }
-    }
-
-    if (static_cast<void*>(src_context) == nullptr) {
-      absl::StatusOr<GpuContext*> tmp_context = GetPointerContext(gpu_src);
-      if (tmp_context.ok()) {
-        src_context = tmp_context.value()->context();
-      }
-    }
-
     if (dst_context == src_context) {
       // Since the CUDA context is the same, the src and dst are within the same
       // GPU. So we can use cuMemcpyDtoD.
