@@ -511,8 +511,7 @@ llvm::SmallVector<Cluster> FindClustersInTheBlock(
   llvm::DenseMap<unsigned, Cluster> root_clusters;
 
   for (Member &member : state.members) {
-    unsigned root = state.FindRoot(member.root);
-    Cluster &cluster = root_clusters.FindAndConstruct(root).getSecond();
+    Cluster &cluster = root_clusters[state.FindRoot(member.root)];
 
     // If member is a root of the cluster, copy inferred constraints.
     if (state.FindRoot(member.root) == member.root)
