@@ -286,11 +286,11 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
 // `std::unreachable` not available until CC23.
 #ifdef __GNUC__  // GCC, Clang, ICC
 
-#define unreachable() (__builtin_unreachable())
+#define TFL_UNREACHABLE() (__builtin_unreachable())
 
 #elif defined(_MSC_VER)  // MSVC
 
-#define unreachable() (__assume(false))
+#define TFL_UNREACHABLE() (__assume(false))
 
 #endif
 
