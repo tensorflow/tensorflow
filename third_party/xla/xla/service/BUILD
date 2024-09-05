@@ -1238,17 +1238,17 @@ xla_cc_test(
     deps = [
         ":call_graph",
         ":flatten_call_graph",
-        "//xla:literal",
+        "//xla:comparison_util",
+        "//xla:literal_util",
         "//xla:shape_util",
-        "//xla:status_macros",
         "//xla:test",
-        "//xla:test_helpers",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
