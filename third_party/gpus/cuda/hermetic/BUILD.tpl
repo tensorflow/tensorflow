@@ -65,7 +65,8 @@ cc_library(
             ":cusparse_headers",
             ":curand_headers",
             ":cupti_headers",
-            ":nvml_headers"],
+            ":nvml_headers",
+            ":nvjitlink_headers"],
 )
 
 cc_library(
@@ -136,6 +137,11 @@ alias(
 alias(
   name = "curand_headers",
   actual = "@cuda_curand//:headers",
+)
+
+alias(
+  name = "nvjitlink_headers",
+  actual = "@cuda_nvjitlink//:headers",
 )
 
 alias(
