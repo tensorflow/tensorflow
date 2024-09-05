@@ -3585,8 +3585,8 @@ class Subgraph {
 
     const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
     TF_LITE_ENSURE_STATUS(
-        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, input_tensor,
-                                       node->inputs->data[0], node_index));
+        CheckTensorFloat32OrQInt8Type(delegate, logging_context, input_tensor,
+                                      node->inputs->data[0], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorShape(
         logging_context, input_tensor, 4, node->inputs->data[0],
         BuiltinOperator_CONV_2D, node_index));
@@ -3629,8 +3629,8 @@ class Subgraph {
 
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
     TF_LITE_ENSURE_STATUS(
-        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, output_tensor,
-                                       node->outputs->data[0], node_index));
+        CheckTensorFloat32OrQInt8Type(delegate, logging_context, output_tensor,
+                                      node->outputs->data[0], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorShape(
         logging_context, output_tensor, 4, node->outputs->data[0],
         BuiltinOperator_CONV_2D, node_index));
@@ -3800,8 +3800,8 @@ class Subgraph {
 
     const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
     TF_LITE_ENSURE_STATUS(
-        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, input_tensor,
-                                       node->inputs->data[0], node_index));
+        CheckTensorFloat32OrQInt8Type(delegate, logging_context, input_tensor,
+                                      node->inputs->data[0], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorShape(
         logging_context, input_tensor, 4, node->inputs->data[0],
         BuiltinOperator_DEPTHWISE_CONV_2D, node_index));
@@ -3844,8 +3844,8 @@ class Subgraph {
 
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
     TF_LITE_ENSURE_STATUS(
-        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, output_tensor,
-                                       node->outputs->data[0], node_index));
+        CheckTensorFloat32OrQInt8Type(delegate, logging_context, output_tensor,
+                                      node->outputs->data[0], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorShape(
         logging_context, output_tensor, 4, node->outputs->data[0],
         BuiltinOperator_DEPTHWISE_CONV_2D, node_index));
@@ -4128,8 +4128,8 @@ class Subgraph {
 
     const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
     TF_LITE_ENSURE_STATUS(
-        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, input_tensor,
-                                       node->inputs->data[0], node_index));
+        CheckTensorFloat32OrQInt8Type(delegate, logging_context, input_tensor,
+                                      node->inputs->data[0], node_index));
     TF_LITE_ENSURE_STATUS(
         CheckTensorNonDynamicAllocation(delegate, logging_context, input_tensor,
                                         node->inputs->data[0], node_index));
@@ -4194,8 +4194,8 @@ class Subgraph {
 
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
     TF_LITE_ENSURE_STATUS(
-        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, output_tensor,
-                                       node->outputs->data[0], node_index));
+        CheckTensorFloat32OrQInt8Type(delegate, logging_context, output_tensor,
+                                      node->outputs->data[0], node_index));
     TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
         delegate, logging_context, output_tensor, node->outputs->data[0],
         node_index));
@@ -7252,8 +7252,8 @@ class Subgraph {
     const int input_tensor_index = node->inputs->data[2];
     const TfLiteTensor& input_tensor = tensors[input_tensor_index];
     TF_LITE_ENSURE_STATUS(
-        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, input_tensor,
-                                       input_tensor_index, node_index));
+        CheckTensorFloat32OrQInt8Type(delegate, logging_context, input_tensor,
+                                      input_tensor_index, node_index));
     TF_LITE_ENSURE_STATUS(
         CheckTensorShape(logging_context, input_tensor, 4, input_tensor_index,
                          BuiltinOperator_TRANSPOSE_CONV, node_index));
@@ -7292,8 +7292,8 @@ class Subgraph {
     const int output_tensor_index = node->outputs->data[0];
     const TfLiteTensor& output_tensor = tensors[output_tensor_index];
     TF_LITE_ENSURE_STATUS(
-        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, output_tensor,
-                                       output_tensor_index, node_index));
+        CheckTensorFloat32OrQInt8Type(delegate, logging_context, output_tensor,
+                                      output_tensor_index, node_index));
     TF_LITE_ENSURE_STATUS(
         CheckTensorShape(logging_context, output_tensor, 4, output_tensor_index,
                          BuiltinOperator_TRANSPOSE_CONV, node_index));
