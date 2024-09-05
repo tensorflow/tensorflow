@@ -551,3 +551,11 @@ func.func @scatter(%input_tensor: tensor<200x100x300xf32>,
 // CHECK-NEXT:  }) : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<10x300xf32>) -> tensor<200x100x300xf32>
 // CHECK-NEXT:  return %0 : tensor<200x100x300xf32>
 // CHECK-NEXT: }
+
+// CHECK-LABEL: @shift_left
+func.func @shift_left(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  %0 = "vhlo.shift_left_v1"(%arg0, %arg1) : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+  func.return %0 : tensor<2x2xi32>
+}
+
+// CHECK: "vhlo.shift_left_v1"(%arg0, %arg1) : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>

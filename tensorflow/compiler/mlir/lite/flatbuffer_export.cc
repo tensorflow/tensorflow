@@ -113,6 +113,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/tools/versioning/gpu_compatibility.h"
 #include "tensorflow/lite/tools/versioning/op_version.h"
@@ -2225,6 +2226,15 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
     if (auto vhlo_op = llvm::dyn_cast<mlir::vhlo::PadOpV1>(inst)) {
       return BuildVhloPadV1Op(vhlo_op, operands, results, vhlo_type_converter);
     }
+    if (auto vhlo_op = llvm::dyn_cast<mlir::vhlo::ShiftLeftOpV1>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results,
+          tflite::BuiltinOperator_STABLEHLO_SHIFT_LEFT);
+    }
+    if (auto vhlo_op = llvm::dyn_cast<mlir::vhlo::AndOpV1>(inst)) {
+      return BuildStablehloOperatorwithoutOptions(
+          inst, operands, results, tflite::BuiltinOperator_STABLEHLO_AND);
+    }
     if (auto vhlo_op = llvm::dyn_cast<mlir::vhlo::CompositeOpV1>(inst)) {
       auto op = BuildVhloCompositeV1Op(vhlo_op, operands, results,
                                        inst->getName().getStringRef().str());
@@ -2265,10 +2275,6 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
       if (auto vhlo_op = llvm::dyn_cast<mlir::vhlo::AddOpV1>(inst)) {
         return BuildStablehloOperatorwithoutOptions(
             inst, operands, results, tflite::BuiltinOperator_STABLEHLO_ADD);
-      }
-      if (auto vhlo_op = llvm::dyn_cast<mlir::vhlo::AndOpV1>(inst)) {
-        return BuildStablehloOperatorwithoutOptions(
-            inst, operands, results, tflite::BuiltinOperator_STABLEHLO_AND);
       }
       if (auto vhlo_op = llvm::dyn_cast<mlir::vhlo::CosineOpV1>(inst)) {
         return BuildStablehloOperatorwithoutOptions(
