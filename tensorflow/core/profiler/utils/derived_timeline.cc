@@ -286,8 +286,9 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
        GetSortedEvents<XEventVisitor>(plane_visitor)) {
     GpuEventStats stats(&event);
     // For HLO/TF op lines, only use kernel events (i.e. excluding memcpy or
-    // allocation events).
-    if (!stats.IsKernel()) continue;
+    // allocation events). Also CudaGraph executions are also treated as kernel
+    // events.
+    if (!stats.IsKernel() && !stats.IsCudaGraphExecution()) continue;
     tsl::profiler::Timespan event_span = event.GetTimespan();
 
     if (!stats.hlo_module_name.empty()) {

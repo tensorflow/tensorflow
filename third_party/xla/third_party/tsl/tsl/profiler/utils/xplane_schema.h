@@ -323,8 +323,12 @@ enum StatType {
   kEdgeTpuMlir,
   kDroppedTraces,
   kCudaGraphId,
-  kCudaGraphDetails,
-  kLastStatType = kCudaGraphDetails,
+  // Many events have kCudaGraphId, such as graph sub events when tracing is in
+  // node level. Yet kCudaGraphExecId is used only for CudaGraphExecution events
+  // on the GPU device when tracing is in graph level.
+  kCudaGraphExecId,
+  kCudaGraphOrigId,
+  kLastStatType = kCudaGraphOrigId,
 };
 
 enum MegaScaleStatType : uint8_t {

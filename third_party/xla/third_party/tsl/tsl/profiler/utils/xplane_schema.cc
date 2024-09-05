@@ -338,7 +338,8 @@ const StatTypeMap& GetStatTypeMap() {
       {"dcn_loop_index", kDcnLoopIndex},
       {"dropped_traces", kDroppedTraces},
       {"cuda_graph_id", kCudaGraphId},
-      {"cuda_graph_details", kCudaGraphDetails},
+      {"cuda_graph_exec_id", kCudaGraphExecId},
+      {"cuda_graph_orig_id", kCudaGraphOrigId},
   });
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;

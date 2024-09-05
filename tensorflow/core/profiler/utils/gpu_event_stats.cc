@@ -67,6 +67,9 @@ GpuEventStats::GpuEventStats(const XEventVisitor* event) {
       case StatType::kIsEager:
         is_eager = stat.BoolValue();
         break;
+      case StatType::kCudaGraphExecId:
+        cuda_graph_exec_id = stat.UintValue();
+        break;
       default:
         break;
     }
