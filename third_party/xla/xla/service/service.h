@@ -89,18 +89,7 @@ class GlobalData {
 
   const GlobalDataHandle& handle() const { return handle_; }
 
-  // Releases a set of GlobalData handles. A single RPC will be issued
-  // per unique Service of the given GlobalData objects.
-  static void Release(std::vector<std::unique_ptr<GlobalData>> instances);
-
  private:
-  // Detaches the global data handle from the object, such that the destructor
-  // will not try to release it.
-  GlobalDataHandle Release() {
-    parent_ = nullptr;
-    return handle_;
-  }
-
   GlobalDataHandle handle_;  // Handle being wrapped.
   Service* parent_;          // Service used to unregister handle_.
 

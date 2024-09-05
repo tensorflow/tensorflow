@@ -1151,18 +1151,4 @@ GlobalData::~GlobalData() {
   }
 }
 
-/* static */ void GlobalData::Release(
-    std::vector<std::unique_ptr<GlobalData>> instances) {
-  absl::flat_hash_map<Service*, std::vector<GlobalDataHandle>>
-      parent_handles_map;
-  for (auto& instance : instances) {
-    if (instance->parent_ != nullptr) {
-      parent_handles_map[instance->parent_].push_back(instance->Release());
-    }
-  }
-  for (auto& parent_handles : parent_handles_map) {
-    ReleaseHandles(parent_handles.first, parent_handles.second);
-  }
-}
-
 }  // namespace xla
