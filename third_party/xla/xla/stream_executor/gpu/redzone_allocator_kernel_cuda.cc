@@ -123,8 +123,7 @@ absl::StatusOr<const ComparisonKernel*> GetComparisonKernel(
     StreamExecutor* executor, GpuAsmOpts gpu_asm_opts) {
   absl::Span<const uint8_t> compiled_ptx = {};
   absl::StatusOr<absl::Span<const uint8_t>> compiled_ptx_or =
-      CompileGpuAsmOrGetCached(executor->device_ordinal(), redzone_checker_ptx,
-                               gpu_asm_opts);
+      CompileGpuAsmOrGetCached(executor, redzone_checker_ptx, gpu_asm_opts);
   if (compiled_ptx_or.ok()) {
     compiled_ptx = compiled_ptx_or.value();
   } else {

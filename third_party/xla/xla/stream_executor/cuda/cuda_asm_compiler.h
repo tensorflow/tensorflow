@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_CUDA_CUDA_ASM_COMPILER_H_
 #define XLA_STREAM_EXECUTOR_CUDA_CUDA_ASM_COMPILER_H_
 
-#include <array>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -28,17 +27,18 @@ limitations under the License.
 #include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/semantic_version.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor {
 // Compiles the given PTX string using ptxas and returns the resulting machine
 // code (i.e. a cubin) as a byte array. The generated cubin matches the compute
-// capabilities of the device associated with 'device_ordinal'.
+// capabilities of the device associated with 'stream_executor'.
 //
 // 'options' is used to query for the CUDA location in case it is
 // customized in a passed flag, and for controlling ptxas optimizations.
-absl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int device_ordinal,
-                                                   const char* ptx_contents,
-                                                   GpuAsmOpts options);
+absl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(
+    stream_executor::StreamExecutor* executor, const char* ptx_contents,
+    GpuAsmOpts options);
 
 // Compiles the given PTX string using ptxas and returns the resulting machine
 // code (i.e. a cubin) as a byte array. The generated cubin matches the compute
@@ -59,7 +59,8 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(
 //
 // A copy of the string provided in ptx will be made.
 absl::StatusOr<absl::Span<const uint8_t>> CompileGpuAsmOrGetCached(
-    int device_ordinal, const char* ptx, GpuAsmOpts compilation_options);
+    stream_executor::StreamExecutor* executor, const char* ptx,
+    GpuAsmOpts compilation_options);
 
 struct CubinOrPTXImage {
   std::string profile;
