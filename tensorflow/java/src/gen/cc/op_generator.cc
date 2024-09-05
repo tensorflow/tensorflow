@@ -560,7 +560,7 @@ Status OpGenerator::Run(const OpList& op_list, const string& base_package,
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace java

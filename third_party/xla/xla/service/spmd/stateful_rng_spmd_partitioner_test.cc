@@ -243,7 +243,7 @@ ENTRY %test {
       auto module,
       PartitionComputation(hlo_string, /*num_partitions=*/4, debug_options));
   const HloInstruction *whileOp =
-      module->entry_computation()->root_instruction();
+      module->entry_computation()->GetInstructionWithName("while.1");
   const HloInstruction *root =
       whileOp->while_body()->GetInstructionWithName("concatenate");
   auto rotate =
@@ -257,7 +257,7 @@ ENTRY %test {
   TF_ASSERT_OK_AND_ASSIGN(
       module,
       PartitionComputation(hlo_string, /*num_partitions=*/4, debug_options));
-  whileOp = module->entry_computation()->root_instruction();
+  whileOp = module->entry_computation()->GetInstructionWithName("while.1");
   root = whileOp->while_body()->GetInstructionWithName("concatenate");
   rotate = op::Concatenate(op::CollectivePermute(op::Slice()), op::Slice());
   EXPECT_THAT(root, AllOf(rotate, op::Shape("f32[3]")));

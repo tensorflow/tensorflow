@@ -10925,10 +10925,9 @@ ENTRY entry {
           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
-  auto* zero = FindInstruction(module.get(), "zero");
-  EXPECT_THAT(
-      zero,
-      op::Sharding("{devices=[2,4]<=[8] last_tile_dims={manual, replicated}}"));
+  auto* tuple = FindInstruction(module.get(), "tuple.13");
+  EXPECT_THAT(tuple, op::Sharding("{{replicated}, {devices=[1,1,1,2,4]<=[8] "
+                                  "last_tile_dims={manual, replicated}}}"));
 }
 
 TEST_F(ShardingPropagationTest, PropagateToOutput) {
