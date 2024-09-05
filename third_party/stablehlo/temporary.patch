@@ -1,1 +1,13 @@
+diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
+--- stablehlo/BUILD.bazel
++++ stablehlo/BUILD.bazel
+@@ -941,7 +941,7 @@
+         ":stablehlo_serialization",
+         ":version",
+         "@llvm-project//llvm:Support",
+-        "@llvm-project//mlir:CAPIIR",
++        "@llvm-project//mlir:CAPIIRObjects",
+         "@llvm-project//mlir:IR",
+         "@llvm-project//mlir:Support",
+     ],
 
