@@ -592,9 +592,10 @@ class GpuDriver {
   static bool AsynchronousMemcpyH2D(Context* context, GpuDevicePtr gpu_dst,
                                     const void* host_src, uint64_t size,
                                     GpuStreamHandle stream);
-  static bool AsynchronousMemcpyD2D(Context* context, GpuDevicePtr gpu_dst,
-                                    GpuDevicePtr gpu_src, uint64_t size,
-                                    GpuStreamHandle stream);
+  static absl::Status AsynchronousMemcpyD2D(Context* context,
+                                            GpuDevicePtr gpu_dst,
+                                            GpuDevicePtr gpu_src, uint64_t size,
+                                            GpuStreamHandle stream);
 
   // The CUDA stream callback type signature.
   // The data passed to AddStreamCallback is subsequently passed to this
