@@ -120,6 +120,7 @@ tf_cc_test(
         ":test_matchers",
         "//tensorflow/compiler/jit",
         "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
+        "//tensorflow/compiler/mlir/tf2xla/internal/utils:test_metadata_config",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/core:framework",

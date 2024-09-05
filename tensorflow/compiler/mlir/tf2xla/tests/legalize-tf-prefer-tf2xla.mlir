@@ -45,11 +45,25 @@ func.func @xla_svd(%arg0: tensor<1x1xf32>) -> (tensor<1xf32>, tensor<1x1xf32>, t
 
 // CHECK-LABEL: func @random_uniform_simple
 func.func @random_uniform_simple(%arg0: tensor<3xi32>) -> tensor<12x?x64xf32> {
-  // expected-remark@+1 {{lowering requires operand #0 to be a constant}}
+  // expected-remark@+1 {{must be a compile-time constant}}
   %0 = "tf.RandomUniform"(%arg0) {device = "", seed = 0 : i64, seed2 = 0 : i64} : (tensor<3xi32>) -> tensor<12x?x64xf32>
   func.return %0 : tensor<12x?x64xf32>
 }
 
+// -----
+module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
+
+// Uses default values for seeds.
+// CHECK-LABEL: func @random_uniform_without_seeds
+func.func @random_uniform_without_seeds(%arg0: tensor<4xi32>) -> tensor<32x12x12x64xf32> {
+  // CHECK: %0 = mhlo.constant dense<[32, 12, 12, 64]> : tensor<4xi32>
+  // CHECK-NOT: "tf.RandomUniform"
+  %cst = "tf.Const"() {value = dense<[32, 12, 12, 64]> : tensor<4xi32>} : () -> tensor<4xi32>
+  %0 = "tf.RandomUniform"(%cst) {} : (tensor<4xi32>) -> tensor<32x12x12x64xf32>
+  // CHECK: return {{.*}} : tensor<32x12x12x64xf32>
+  func.return %0 : tensor<32x12x12x64xf32>
+}
+}
 // -----
 // CHECK-LABEL: func @random_uniform_with_seeds
 func.func @random_uniform_with_seeds(%arg0: tensor<4xi32>) -> tensor<32x12x12x64xf32> {
@@ -146,7 +160,7 @@ func.func @simple_strided_slice(%input: tensor<4x8xf32>) -> tensor<3x2xf32> {
   %output = "tf.StridedSlice"(%input, %begin, %end, %strides)
       : (tensor<4x8xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<3x2xf32>
   func.return %output : tensor<3x2xf32>
-  // CHECK: return %4 : tensor<3x2xf32>
+  // CHECK: return {{.*}} : tensor<3x2xf32>
 }
 
 //===----------------------------------------------------------------------===//

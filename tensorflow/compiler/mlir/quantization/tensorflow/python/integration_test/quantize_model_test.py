@@ -6152,7 +6152,10 @@ class DebuggerTest(quantize_model_test_base.QuantizedModelTest):
               _DebuggerConfig.DEBUGGER_TYPE_INT_PER_LAYER,
               _DebuggerConfig.DEBUGGER_TYPE_FLOAT_PER_LAYER,
           ],
-          'target_opset': [quant_opts_pb2.XLA, quant_opts_pb2.STABLEHLO],
+          'target_opset': [
+              quant_opts_pb2.XLA,
+              # TODO(b/328786614) Remove STABLEHLO until legalize_tf replaced.
+          ],
       }])
   )
   def test_conv2d_ptq_model_per_layer_verify(

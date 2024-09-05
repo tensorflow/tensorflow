@@ -37,7 +37,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/legalize_tf_with_tf2xla_passes.h"
-#include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
@@ -102,11 +101,10 @@ void TFToMhloPass::runOnOperation() {
   MLIRContext *context = func->getContext();
 
   RewritePatternSet patterns(context);
-  mhlo::PopulateLegalizeTfPatterns(context, &patterns);
   TF::PopulateTFLoweringBeforeHLOPatterns(context, &patterns);
   mhlo::Tf2XlaTypeConverter converter;
-  mhlo::PopulateLegalizeTfWithTf2XlaPatterns(
-      "XLA_CPU_JIT", patterns, context, converter, /*prefer_tf2xla=*/false);
+  mhlo::PopulateLegalizeTfWithTf2XlaPatterns("XLA_CPU_JIT", patterns, context,
+                                             converter, /*prefer_tf2xla=*/true);
   stablehlo::StablehloToHloTypeConverter hlo_converter;
   chlo::populateChloToHloPatterns(context, &hlo_converter, &patterns);
   chlo::ConstantLikeOp::getCanonicalizationPatterns(patterns, context);

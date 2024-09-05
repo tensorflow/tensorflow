@@ -51,6 +51,7 @@ cc_library(
     hdrs = ["test_metadata_config.h"],
     visibility = [
         "//tensorflow/compiler/mlir/tf2xla/api:__subpackages__",
+        "//tensorflow/compiler/mlir/tf2xla/internal:__subpackages__",
     ],
     deps = [
         "//tensorflow/compiler/jit",

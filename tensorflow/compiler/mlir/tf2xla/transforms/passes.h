@@ -78,7 +78,7 @@ LogicalResult legalizeTF(
     Operation* op, bool allow_partial_conversion = false,
     bool legalize_chlo = true,
     std::optional<StringRef> tf2xla_fallback_device_type = std::nullopt,
-    bool prefer_tf2xla = false);
+    bool prefer_tf2xla = true);
 
 // Legalizes TF/XLA communication ops (TF dialect) to HLO dialect communication
 // ops.

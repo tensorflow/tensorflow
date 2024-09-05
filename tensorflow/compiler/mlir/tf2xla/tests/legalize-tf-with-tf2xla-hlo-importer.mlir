@@ -18,7 +18,9 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   // CHECK-LABEL: constant_parameter
   func.func @constant_parameter(%arg0: tensor<2xf32>) -> tensor<2xf32> {
     %0 = "tf.Const"() {value = dense<1.42> : tensor<2xf32>} : () -> tensor<2xf32>
-    // CHECK: mhlo.atan2 %arg0, %2
+    // CHECK: %[[BROADCAST0:.*]] = "mhlo.broadcast_in_dim"{{.*}}
+    // CHECK: %[[BROADCAST1:.*]] = "mhlo.broadcast_in_dim"{{.*}}
+    // CHECK: mhlo.atan2 %arg0, %[[BROADCAST1]]
     %1 = "tf.Atan2"(%arg0, %0) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
     func.return %0 : tensor<2xf32>
   }

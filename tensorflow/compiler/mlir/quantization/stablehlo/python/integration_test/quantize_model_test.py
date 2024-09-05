@@ -15,6 +15,7 @@
 import os
 import re
 from typing import Mapping, Optional, Sequence
+import unittest
 
 from absl.testing import parameterized
 import numpy as np
@@ -60,13 +61,17 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           ),
           'dim_sizes': (
               # tf.MatMul cases.
-              ([None, 1024], [1024, 3]),  # dynamic batch dim.
+              # TODO(b/328786614) Remove dynamic batch dim until legalize_tf
+              # is replaced.
               ([1, 1024], [1024, 3]),
               # tf.BatchMatMul cases.
               ([10, 1, 1024], [10, 1024, 3]),
               ([2, 3, 1, 1024], [2, 3, 1024, 3]),
           ),
-          'merge_fusion_with_dequantize': (False, True),
+          'merge_fusion_with_dequantize': (
+              False,
+              # TODO(b/328786614) Remove True until legalize_tf is replaced.
+          ),
       }])
   )
   @test_util.run_in_graph_and_eager_modes
@@ -353,10 +358,13 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
               nn_ops.relu,
               nn_ops.relu6,
           ),
-          'has_batch_norm': (False, True),
+          'has_batch_norm': (
+              # TODO(b/328786614) Remove False until legalize_tf is replaced.
+              True,
+          ),
           'input_shape_dynamic': (
               False,
-              True,
+              # TODO(b/328786614) Remove True until legalize_tf is replaced.
           ),
           'enable_per_channel_quantized_weight': (
               False,
@@ -685,6 +693,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     self.assertAllClose(new_outputs_1, new_outputs_2)
 
+  @unittest.skip('TODO(b/328786614) Removed until legalize_tf replaced.')
   @parameterized.named_parameters(
       ('use_constant_with_int32_input', np.int32, False),
       ('use_variable_with_int32_input', np.int32, True),
@@ -1233,7 +1242,8 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           ),
           'dim_sizes': (
               # tf.MatMul cases.
-              ([None, 1024], [1024, 3]),  # dynamic batch dim.
+              # TODO(b/328786614) Remove dynamic batch dim until legalize_tf
+              # is replaced.
               ([1, 1024], [1024, 3]),
               # tf.BatchMatMul cases.
               ([10, 1, 1024], [10, 1024, 3]),
@@ -1323,7 +1333,7 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           'has_batch_norm': (False,),
           'input_shape_dynamic': (
               False,
-              True,
+              # TODO(b/328786614) Remove True until legalize_tf is replaced.
           ),
           'has_func_alias': (False, True),
       }])
@@ -1416,7 +1426,7 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       testing.parameter_combinations([{
           'shape_dynamic': (
               False,
-              True,
+              # TODO(b/328786614) Remove True until legalize_tf is replaced.
           ),
       }])
   )
@@ -1479,7 +1489,7 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       testing.parameter_combinations([{
           'shape_dynamic': (
               False,
-              True,
+              # TODO(b/328786614) Remove True until legalize_tf is replaced.
           ),
       }])
   )

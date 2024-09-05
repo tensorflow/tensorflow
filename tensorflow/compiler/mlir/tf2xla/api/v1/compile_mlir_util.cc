@@ -333,6 +333,7 @@ static void RegisterDialects(mlir::DialectRegistry& registry) {
   mlir::RegisterAllTensorFlowDialects(registry);
   mlir::mhlo::registerAllMhloDialects(registry);
   mlir::stablehlo::registerAllDialects(registry);
+  registry.insert<mlir::tensor::TensorDialect>();
 }
 
 // Checks if functions can be inlined after TF -> HLO legalization. Currently

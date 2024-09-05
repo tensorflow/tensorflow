@@ -1,7 +1,7 @@
 //RUN: tf_tfl_translate --enable-stablehlo-conversion --input-mlir %s -o /tmp/temp.stablehlo; [ -f /tmp/temp.stablehlo ]
 
 
-module {
+module attributes {tf.versions = {producer = 12 : i32}} {
 func.func @main(%arg0: tensor<2xi32>) -> tensor<2xi32> {
   %0 = "tf.Div"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
   func.return %0 : tensor<2xi32>
