@@ -1659,6 +1659,28 @@ def FuseSliceAndPack : Pat<(
     ), $_, $_), (replaceWithValue $input0),
     [(IsSame $input0, $input1), (IsSame $input0, $input2)]>;
 
+def FuseSliceAndPack4D : Pat<(
+  TFL_PackOp
+    (variadic
+      (TFL_ReshapeOp
+        (TFL_SliceOp $input0,
+          (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[1]>,"0">),
+          (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[1]>,"1">)), $_),
+      (TFL_ReshapeOp
+        (TFL_SliceOp $input1,
+          (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[1]>,"1">),
+          (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[1]>,"1">)), $_),
+      (TFL_ReshapeOp
+        (TFL_SliceOp $input2,
+          (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[1]>,"2">),
+          (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[1]>,"1">)), $_),
+      (TFL_ReshapeOp
+        (TFL_SliceOp $input3,
+          (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[1]>,"3">),
+          (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[1]>,"1">)), $_)
+    ), $_, $_), (replaceWithValue $input0),
+    [(IsSame $input0, $input1), (IsSame $input0, $input2), (IsSame $input0, $input3)]>;
+
 // Given a value, checks if dim `d` is static.
 class HasStaticDim<int d> : Constraint<CPred<
   "!$0.getType().cast<ShapedType>().isDynamicDim(" # d # ")">>;
