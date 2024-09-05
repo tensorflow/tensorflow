@@ -68,10 +68,13 @@ def _write_to_sponge_config(key, value) -> None:
 
 
 class BuildType(enum.Enum):
+  """Enum representing all types of builds."""
   CPU_X86 = enum.auto()
   CPU_ARM64 = enum.auto()
   GPU = enum.auto()
   GPU_CONTINUOUS = enum.auto()
+
+  MACOS_CPU_X86 = enum.auto()
 
   JAX_CPU = enum.auto()
   JAX_GPU = enum.auto()
@@ -259,6 +262,49 @@ _GPU_BUILD = nvidia_gpu_build_with_compute_capability(
     compute_capability=75,
 )
 
+macos_tag_filter = (
+    "-no_oss",
+    "-gpu",
+    "-no_mac",
+    "-mac_excluded",
+    "-requires-gpu-nvidia",
+    "-requires-gpu-amd",
+)
+
+_MACOS_X86_BUILD = Build(
+    type_=BuildType.MACOS_CPU_X86,
+    repo="openxla/xla",
+    image_url=None,
+    configs=("nonccl",),
+    target_patterns=(
+        "//xla/...",
+        "-//xla/hlo/experimental/...",
+        "-//xla/python_api/...",
+        "-//xla/python/...",
+        "-//xla/service/gpu/...",
+    ),
+    options=dict(
+        **_DEFAULT_BAZEL_OPTIONS,
+        macos_minimum_os="10.15",
+        test_tmpdir="/Volumes/BuildData/bazel_output",
+    ),
+    build_tag_filters=macos_tag_filter,
+    test_tag_filters=macos_tag_filter,
+    extra_setup_commands=(
+        [
+            "sudo",
+            "wget",
+            "--no-verbose",
+            "-O",
+            "/usr/local/bin/bazel",
+            "https://github.com/bazelbuild/bazelisk/releases/download/v1.11.0/bazelisk-darwin-amd64",
+        ],
+        ["chmod", "+x", "/usr/local/bin/bazel"],
+        ["bazel", "--version"],  # Sanity check due to strange failures
+        ["mkdir", "-p", "/Volumes/BuildData/bazel_output"],
+    ),
+)
+
 _JAX_CPU_BUILD = Build(
     type_=BuildType.JAX_CPU,
     repo="google/jax",
@@ -359,6 +405,7 @@ _KOKORO_JOB_NAME_TO_BUILD_MAP = {
     "tensorflow/xla/linux/github_continuous/arm64/build_cpu": _CPU_ARM64_BUILD,
     "tensorflow/xla/linux/github_continuous/build_gpu": _GPU_BUILD,
     "tensorflow/xla/linux/github_continuous/build_cpu": _CPU_X86_BUILD,
+    "tensorflow/xla/macos/github_continuous/cpu_py39_full": _MACOS_X86_BUILD,
     "tensorflow/xla/jax/cpu/build_cpu": _JAX_CPU_BUILD,
     "tensorflow/xla/jax/gpu/build_gpu": _JAX_GPU_BUILD,
     "tensorflow/xla/tensorflow/cpu/build_cpu": _TENSORFLOW_CPU_BUILD,
