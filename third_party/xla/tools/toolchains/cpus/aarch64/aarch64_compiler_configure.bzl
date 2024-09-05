@@ -1,6 +1,5 @@
 """Configurations of AARCH64 builds used with Docker container."""
 
-load("//third_party/py:python_configure.bzl", "remote_python_configure")
 load("//third_party/remote_config:remote_platform_configure.bzl", "remote_platform_configure")
 load("//tools/toolchains:cpus/aarch64/aarch64.bzl", "remote_aarch64_configure")
 
@@ -21,13 +20,6 @@ def ml2014_tf_aarch64_configs(name_container_map, env):
             name = "%s_config_aarch64_platform" % name,
             platform = "linux",
             platform_exec_properties = exec_properties,
-        )
-
-        remote_python_configure(
-            name = "%s_config_python" % name,
-            environ = env,
-            exec_properties = exec_properties,
-            platform_constraint = "@%s_config_aarch64_platform//:platform_constraint" % name,
         )
 
 def aarch64_compiler_configure():
@@ -54,6 +46,11 @@ def aarch64_compiler_configure():
             "HOST_CXX_COMPILER": "/dt10/usr/bin/gcc",
             "HOST_C_COMPILER": "/dt10/usr/bin/gcc",
             "PYTHON_BIN_PATH": "/usr/local/bin/python3",
+            "TENSORRT_INSTALL_PATH": "",
+            "TF_CUDA_CLANG": "0",
+            "TF_CUDA_COMPUTE_CAPABILITIES": "",
+            "TF_CUDA_VERSION": "",
+            "TF_CUDNN_VERSION": "",
             "TF_ENABLE_XLA": "1",
             "TF_SYSROOT": "/dt10",
         },
@@ -81,7 +78,6 @@ def aarch64_compiler_configure():
             "CLANG_COMPILER_PATH": "/usr/lib/llvm-18/bin/clang",
             "HOST_CXX_COMPILER": "/usr/lib/llvm-18/bin/clang",
             "HOST_C_COMPILER": "/usr/lib/llvm-18/bin/clang",
-            "PYTHON_BIN_PATH": "/usr/local/bin/python3",
             "TF_ENABLE_XLA": "1",
             "TF_SYSROOT": "/dt10",
         },

@@ -13,8 +13,6 @@ def initialize_rbe_configs():
         cuda_version = "12.3.2",
         cudnn_version = "8.9.7.29",
         os = "ubuntu20.04-manylinux2014-multipython",
-        python_versions = ["3.9", "3.10", "3.11", "3.12"],
-        python_install_path = "/usr/local",
     )
 
     tensorflow_rbe_config(
@@ -23,8 +21,6 @@ def initialize_rbe_configs():
         cuda_version = "12.3.2",
         cudnn_version = "9.1.1",
         os = "ubuntu20.04-manylinux2014-multipython",
-        python_versions = ["3.9", "3.10", "3.11", "3.12"],
-        python_install_path = "/usr/local",
     )
 
     tensorflow_rbe_config(
@@ -34,8 +30,6 @@ def initialize_rbe_configs():
         cuda_version = "12.3.2",
         cudnn_version = "8.9.7.29",
         os = "ubuntu20.04-manylinux2014-multipython",
-        python_versions = ["3.9", "3.10", "3.11", "3.12"],
-        python_install_path = "/usr/local",
     )
 
     tensorflow_rbe_config(
@@ -44,8 +38,6 @@ def initialize_rbe_configs():
         cuda_version = "12.3.2",
         cudnn_version = "8.9.7.29",
         os = "ubuntu22.04-manylinux2014-multipython",
-        python_versions = ["3.9", "3.10", "3.11", "3.12"],
-        python_install_path = "/usr/local",
     )
 
     tensorflow_rbe_config(
@@ -55,8 +47,6 @@ def initialize_rbe_configs():
         cuda_version = "12.3.2",
         cudnn_version = "8.9.7.29",
         os = "ubuntu22.04-manylinux2014-multipython",
-        python_versions = ["3.9", "3.10", "3.11", "3.12"],
-        python_install_path = "/usr/local",
     )
 
     tensorflow_rbe_win_config(
@@ -97,7 +87,6 @@ def initialize_rbe_configs():
             "GCC_HOST_COMPILER_PREFIX": "/usr/bin",
             "HOST_CXX_COMPILER": "/dt9/usr/bin/gcc",
             "HOST_C_COMPILER": "/dt9/usr/bin/gcc",
-            "PYTHON_BIN_PATH": "/usr/bin/python3",
             "TENSORRT_INSTALL_PATH": "/usr/lib/x86_64-linux-gnu",
             "TF_ENABLE_XLA": "1",
             "TF_NEED_TENSORRT": "0",
@@ -128,7 +117,6 @@ def initialize_rbe_configs():
             "CLEAR_CACHE": "1",
             "HOST_CXX_COMPILER": "/usr/lib/llvm-17/bin/clang",
             "HOST_C_COMPILER": "/usr/lib/llvm-17/bin/clang",
-            "PYTHON_BIN_PATH": "/usr/bin/python3",
             "TENSORRT_INSTALL_PATH": "/usr/lib/x86_64-linux-gnu",
             "TF_ENABLE_XLA": "1",
             "TF_NEED_TENSORRT": "0",
@@ -162,6 +150,10 @@ def initialize_rbe_configs():
             "HOST_CXX_COMPILER": "/dt9/usr/bin/gcc",
             "HOST_C_COMPILER": "/dt9/usr/bin/gcc",
             "PYTHON_BIN_PATH": "/usr/bin/python3",
+            "TF_CUDA_CLANG": "0",
+            "TF_CUDA_COMPUTE_CAPABILITIES": "3.5,6.0",
+            "TF_CUDA_VERSION": "12.3.2",
+            "TF_CUDNN_VERSION": "8.9.7.29",
             "TF_ENABLE_XLA": "1",
             "TF_NEED_TENSORRT": "0",
             "TF_TENSORRT_VERSION": "8.6",
@@ -192,6 +184,10 @@ def initialize_rbe_configs():
             "HOST_CXX_COMPILER": "/usr/lib/llvm-18/bin/clang",
             "HOST_C_COMPILER": "/usr/lib/llvm-18/bin/clang",
             "PYTHON_BIN_PATH": "/usr/bin/python3",
+            "TF_CUDA_CLANG": "1",
+            "TF_CUDA_COMPUTE_CAPABILITIES": "3.5,6.0",
+            "TF_CUDA_VERSION": "12.3.2",
+            "TF_CUDNN_VERSION": "8.9.7.29",
             "TF_ENABLE_XLA": "1",
             "TF_NEED_TENSORRT": "0",
             "TF_TENSORRT_VERSION": "8.6",
@@ -221,7 +217,6 @@ def initialize_rbe_configs():
             "CLEAR_CACHE": "1",
             "HOST_CXX_COMPILER": "/usr/lib/llvm-18/bin/clang",
             "HOST_C_COMPILER": "/usr/lib/llvm-18/bin/clang",
-            "PYTHON_BIN_PATH": "/usr/bin/python3",
             "TF_ENABLE_XLA": "1",
             "TF_NEED_TENSORRT": "0",
             "TF_TENSORRT_VERSION": "10.0",
