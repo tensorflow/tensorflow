@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/lookup_util.h"
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/lookup_interface.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -49,11 +50,11 @@ Status GetNumLinesInTextFile(Env* env, const string& vocab_file,
     next_id++;
     s = input_buffer.ReadLine(&line);
   }
-  if (!errors::IsOutOfRange(s)) {
+  if (!absl::IsOutOfRange(s)) {
     return s;
   }
   *num_lines = next_id;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Iterator that reads a text file. Each iteration process one line, it parses
@@ -110,7 +111,7 @@ class TextFileLineIterator
     string line;
     status_ = input_buffer_->ReadLine(&line);
     if (!status_.ok()) {
-      if (errors::IsOutOfRange(status_) && vocab_size_ != -1 &&
+      if (absl::IsOutOfRange(status_) && vocab_size_ != -1 &&
           next_id_ != vocab_size_) {
         status_ = errors::InvalidArgument("Invalid vocab_size in ", filename_,
                                           ": expected ", vocab_size_,
@@ -209,7 +210,7 @@ class TextFileLineIterator
                   int64_t index, Tensor* tensor) {
     if (index == kLineNumber) {
       tensor->flat<int64_t>()(0) = next_id_ + offset_;
-      return OkStatus();
+      return absl::OkStatus();
     }
     const string& token = (index == kWholeLine) ? line : tokens[index];
     const DataType& dtype = tensor->dtype();
@@ -258,10 +259,11 @@ class TextFileLineIterator
         return errors::InvalidArgument("Data type ", DataTypeString(dtype),
                                        " not supported.");
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TextFileLineIterator);
+  TextFileLineIterator(const TextFileLineIterator&) = delete;
+  void operator=(const TextFileLineIterator&) = delete;
 };
 
 Status GetTableHandle(StringPiece input_name, OpKernelContext* ctx,
@@ -281,7 +283,7 @@ Status GetTableHandle(StringPiece input_name, OpKernelContext* ctx,
     *container = h(0);
     *table_handle = h(1);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -343,7 +345,7 @@ Status GetInitializableLookupTable(StringPiece input_name, OpKernelContext* ctx,
                                      " is not initializable");
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status CheckTableDataTypes(const LookupInterface& table, DataType key_dtype,
@@ -355,7 +357,7 @@ Status CheckTableDataTypes(const LookupInterface& table, DataType key_dtype,
         DataTypeString(table.key_dtype()), "-",
         DataTypeString(table.value_dtype()), " for table ", table_name);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Helper function to initialize an InitializableLookupTable from a text file.
@@ -408,10 +410,10 @@ Status InitializeTableFromTextFile(
   // avoid trying to initialize the same table from the same file at the same
   // time.
   Status s = table->Initialize(iter, std::move(serializer));
-  if (errors::IsFailedPrecondition(s) && table->is_initialized()) {
+  if (absl::IsFailedPrecondition(s) && table->is_initialized()) {
     LOG(INFO) << "Table trying to initialize from file " << filename
               << " is already initialized.";
-    return OkStatus();
+    return absl::OkStatus();
   }
   return s;
 }

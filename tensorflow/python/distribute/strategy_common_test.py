@@ -18,7 +18,7 @@ from absl.testing import parameterized
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
@@ -51,7 +51,7 @@ class StrategyTest(test.TestCase, parameterized.TestCase):
 
     @def_function.function
     def f():
-      return ds_context.get_replica_context().replica_id_in_sync_group
+      return distribute_lib.get_replica_context().replica_id_in_sync_group
 
     @def_function.function
     def g():
@@ -76,7 +76,7 @@ class StrategyTest(test.TestCase, parameterized.TestCase):
         def replica_fn():
 
           with ops.init_scope():
-            y = ds_context.get_replica_context().merge_call(merge_fn)
+            y = distribute_lib.get_replica_context().merge_call(merge_fn)
             z = y + 1
             return z
 
@@ -176,7 +176,7 @@ class StrategyLocalResultTest(test.TestCase):
     @def_function.function
     def model_fn():
       return distribution.extended._get_local_replica_id(
-          ds_context.get_replica_context().replica_id_in_sync_group)
+          distribute_lib.get_replica_context().replica_id_in_sync_group)
 
     with distribution.scope():
       result = distribution.run(model_fn)
@@ -189,7 +189,7 @@ class StrategyLocalResultTest(test.TestCase):
     @def_function.function
     def model_fn():
       replica_id = distribution.extended._get_local_replica_id(
-          ds_context.get_replica_context().replica_id_in_sync_group)
+          distribute_lib.get_replica_context().replica_id_in_sync_group)
       return {
           'a': math_ops.cast(replica_id + 1, dtype=float),
           'b': math_ops.cast(replica_id + 2, dtype=float)
@@ -282,7 +282,7 @@ class ReplicaCtxUpdateTest(test.TestCase, parameterized.TestCase):
     def replica_fn():
       value = array_ops.constant(2.)
       python_literal = 1.
-      replica_context = ds_context.get_replica_context()
+      replica_context = distribute_lib.get_replica_context()
       fn_sets = {
           'assign': lambda var, value: var.assign(value),
           'assign_add': lambda var, value: var.assign_add(value),
@@ -423,7 +423,7 @@ class ReplicaCtxAllReduceTest(test.TestCase, parameterized.TestCase):
 
     @tf_function
     def replica_fn():
-      replica_context = ds_context.get_replica_context()
+      replica_context = distribute_lib.get_replica_context()
       replica_id = replica_context.replica_id_in_sync_group
       var.assign(math_ops.cast(replica_id, dtype=float) * 3.0)
 
@@ -472,7 +472,7 @@ class AllReduceTest(test.TestCase, parameterized.TestCase):
 
       def replica_fn():
         value = array_ops.identity(1.0)
-        rep_ctx = ds_context.get_replica_context()
+        rep_ctx = distribute_lib.get_replica_context()
         reduced = rep_ctx.all_reduce(reduce_util.ReduceOp.SUM, value)
         return reduced
 
@@ -493,7 +493,7 @@ class AllReduceTest(test.TestCase, parameterized.TestCase):
             values=array_ops.identity([[1.0]]),
             indices=array_ops.identity([0]),
             dense_shape=array_ops.identity([5, 1]))
-        rep_ctx = ds_context.get_replica_context()
+        rep_ctx = distribute_lib.get_replica_context()
         reduced = rep_ctx.all_reduce(reduce_util.ReduceOp.MEAN, value)
         return reduced
 
@@ -526,7 +526,7 @@ class AllReduceTest(test.TestCase, parameterized.TestCase):
             values=array_ops.identity([[2.0]]),
             indices=array_ops.identity([0]),
             dense_shape=array_ops.identity([5, 1]))
-        rep_ctx = ds_context.get_replica_context()
+        rep_ctx = distribute_lib.get_replica_context()
         reduced = rep_ctx.all_reduce(reduce_util.ReduceOp.SUM, [value1, value2])
         return reduced
 
@@ -569,7 +569,7 @@ class AllReduceTest(test.TestCase, parameterized.TestCase):
                      values=array_ops.identity([[2.0]]),
                      indices=array_ops.identity([1]),
                      dense_shape=array_ops.identity([5, 1])))
-        rep_ctx = ds_context.get_replica_context()
+        rep_ctx = distribute_lib.get_replica_context()
         reduced = rep_ctx.all_reduce(reduce_util.ReduceOp.SUM, value)
         return reduced
 

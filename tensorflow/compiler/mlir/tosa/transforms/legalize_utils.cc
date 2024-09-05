@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
 
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <functional>
 #include <optional>
 
 #include "llvm/ADT/SmallVector.h"
@@ -26,10 +30,14 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/kernels/internal/common.h"
+#include "tensorflow/compiler/mlir/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
+#include "xla/tsl/framework/fixedpoint/FixedPoint.h"
 
 // Implements legalization and post-legalization optimization helper functions
 
@@ -38,7 +46,7 @@ namespace tosa {
 
 LogicalResult getDynamicDims(PatternRewriter& rewriter, Operation* op,
                              Value value, llvm::SmallVector<Value>& dims) {
-  auto value_ty = value.getType().dyn_cast<ShapedType>();
+  auto value_ty = dyn_cast<ShapedType>(value.getType());
   if (!value_ty || !value_ty.hasRank()) return failure();
 
   dims.resize(value_ty.getRank());
@@ -71,12 +79,11 @@ std::optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
                                                  Value input_value,
                                                  ShapedType output_type,
                                                  llvm::ArrayRef<Value> dims) {
-  auto e_ty = input_value.getType().cast<ShapedType>().getElementType();
+  auto e_ty = mlir::cast<ShapedType>(input_value.getType()).getElementType();
   llvm::SmallVector<int64_t> static_dims;
 
   if (output_type.hasRank()) {
-    static_dims.append(output_type.getShape().begin(),
-                       output_type.getShape().end());
+    static_dims = tensorflow::ConvertMlirShapeToTF(output_type.getShape());
   } else {
     static_dims.resize(dims.size(), tensorflow::kTFDynamicSize);
   }
@@ -86,7 +93,7 @@ std::optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
     auto dim = dims[i];
     SplatElementsAttr dim_attr;
     if (matchPattern(dim, m_Constant(&dim_attr))) {
-      if (dim_attr.getType().cast<ShapedType>().getRank() != 0) {
+      if (mlir::cast<ShapedType>(dim_attr.getType()).getRank() != 0) {
         (void)rewriter.notifyMatchFailure(
             op, "dim for building tosa::ReshapeOp should be rank-0");
         return std::nullopt;
@@ -122,6 +129,25 @@ std::optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
       .getResult();
 }
 
+// Create a TOSA rescale op from TFLite scaling multiplier, scaling shift, zero
+// points and rounding mode
+Value buildRescale(PatternRewriter& rewriter, Operation* op,
+                   ShapedType output_type, Value input_val,
+                   int32_t scale_multiplier, int32_t scale_shit,
+                   int64_t input_zp, int64_t output_zp, bool double_round,
+                   bool scale32) {
+  auto rescale_op = CreateOpAndInfer<tosa::RescaleOp>(
+      rewriter, op->getLoc(), output_type, input_val,
+      rewriter.getI32IntegerAttr(static_cast<int32_t>(input_zp)),
+      rewriter.getI32IntegerAttr(static_cast<int32_t>(output_zp)),
+      rewriter.getDenseI32ArrayAttr({scale_multiplier}),
+      rewriter.getDenseI8ArrayAttr({static_cast<int8_t>(scale_shit)}),
+      rewriter.getBoolAttr(scale32), rewriter.getBoolAttr(double_round),
+      rewriter.getBoolAttr(false));
+
+  return rescale_op.getResult();
+}
+
 // Create a TOSA rescale op from TFLite scaling, zero points and rounding mode
 Value buildRescale(PatternRewriter& rewriter, Operation* op,
                    ShapedType output_type, Value input_val, double scale,
@@ -134,15 +160,8 @@ Value buildRescale(PatternRewriter& rewriter, Operation* op,
 
   computeMultiplierAndShift(scale, multiplier, shift, scale_width);
 
-  auto rescale_op = CreateOpAndInfer<tosa::RescaleOp>(
-      rewriter, op->getLoc(), output_type, input_val,
-      rewriter.getI32IntegerAttr(static_cast<int32_t>(input_zp)),
-      rewriter.getI32IntegerAttr(static_cast<int32_t>(output_zp)),
-      rewriter.getDenseI32ArrayAttr({multiplier}),
-      rewriter.getDenseI32ArrayAttr({shift}), rewriter.getBoolAttr(scale32),
-      rewriter.getBoolAttr(double_round), rewriter.getBoolAttr(false));
-
-  return rescale_op.getResult();
+  return buildRescale(rewriter, op, output_type, input_val, multiplier, shift,
+                      input_zp, output_zp, double_round, scale32);
 }
 
 // Removes the zero point and cast to int32, no need to handle roundings modes
@@ -153,21 +172,31 @@ Value removeZeroPointAndCastToInt32(PatternRewriter& rewriter, Operation* op,
 
 // Creates TOSA rescale op with int32 output
 Value buildRescaleToInt32(PatternRewriter& rewriter, Operation* op,
-                          Value input_val, double input_scale,
-                          int64_t input_zp) {
+                          Value input_val, int32_t input_scale_multiplier,
+                          int32_t input_scale_shift, int64_t input_zp) {
   // Output is always int32 type
-  auto input_type = input_val.getType().dyn_cast<mlir::ShapedType>();
+  auto input_type = dyn_cast<mlir::ShapedType>(input_val.getType());
   assert(input_type);
   auto output_type = input_type.clone(rewriter.getI32Type());
 
-#if TFLITE_SINGLE_ROUNDING
-  bool double_round = false;
-#else   // TFLITE_DOUBLE_ROUNDING
-  bool double_round = true;
-#endif  // TFLITE_SINGLE_ROUNDING
+  return buildRescale(rewriter, op, output_type, input_val,
+                      input_scale_multiplier, input_scale_shift, input_zp,
+                      /*input_zp=*/0, IsTFLDoubleRoundingMode(),
+                      /*scale32=*/true);
+}
 
-  return buildRescale(rewriter, op, output_type, input_val, input_scale,
-                      input_zp, 0, double_round, true);
+// Creates TOSA rescale op with int32 output
+Value buildRescaleToInt32(PatternRewriter& rewriter, Operation* op,
+                          Value input_val, double input_scale,
+                          int64_t input_zp) {
+  int32_t multiplier;
+  int32_t shift;
+
+  const int32_t scale_width = 32;
+  computeMultiplierAndShift(input_scale, multiplier, shift, scale_width);
+
+  return buildRescaleToInt32(rewriter, op, input_val, multiplier, shift,
+                             input_zp);
 }
 
 // Creates TOSA rescale op with int32 input
@@ -175,20 +204,15 @@ Value buildRescaleFromInt32(PatternRewriter& rewriter, Operation* op,
                             ShapedType output_type, Value input_val,
                             double output_scale, int64_t output_zp) {
   // Input should be int32 type
-  auto input_type = input_val.getType().dyn_cast<mlir::ShapedType>();
+  auto input_type = dyn_cast<mlir::ShapedType>(input_val.getType());
   (void)input_type;
   assert(input_type && input_type.getElementType().isInteger(32) &&
          "expected rescale input element type to be i32");
 
-#if TFLITE_SINGLE_ROUNDING
-  bool double_round = false;
-#else   // TFLITE_DOUBLE_ROUNDING
-  bool double_round = true;
-#endif  // TFLITE_SINGLE_ROUNDING
-
   // Potentially check input_shape == output_shape here
-  return buildRescale(rewriter, op, output_type, input_val, output_scale, 0,
-                      output_zp, double_round, true);
+  return buildRescale(rewriter, op, output_type, input_val, output_scale,
+                      /*input_zp=*/0, output_zp, IsTFLDoubleRoundingMode(),
+                      /*scale32=*/true);
 }
 
 // Creates a TOSA rescale op based on conv2d parameters.
@@ -196,9 +220,9 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
                                Value conv_val, ShapedType input_type,
                                ShapedType weight_type, ShapedType output_type) {
   auto input_qtype =
-      input_type.getElementType().dyn_cast<mlir::quant::UniformQuantizedType>();
-  auto output_qtype = output_type.getElementType()
-                          .dyn_cast<mlir::quant::UniformQuantizedType>();
+      dyn_cast<mlir::quant::UniformQuantizedType>(input_type.getElementType());
+  auto output_qtype =
+      dyn_cast<mlir::quant::UniformQuantizedType>(output_type.getElementType());
 
   double input_scale = input_qtype.getScale();
 
@@ -211,8 +235,8 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
   bool double_round = scale32;
 
   if (auto weight_per_tensor_qtype =
-          weight_type.getElementType()
-              .dyn_cast<mlir::quant::UniformQuantizedType>()) {
+          dyn_cast<mlir::quant::UniformQuantizedType>(
+              weight_type.getElementType())) {
     // Per-tensor quantization
     double weight_scale = weight_per_tensor_qtype.getScale();
 
@@ -227,17 +251,18 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
         rewriter, op->getLoc(), output_type, conv_val,
         rewriter.getI32IntegerAttr(0), rewriter.getI32IntegerAttr(output_zp),
         rewriter.getDenseI32ArrayAttr({multiplier}),
-        rewriter.getDenseI32ArrayAttr({shift}), rewriter.getBoolAttr(scale32),
-        rewriter.getBoolAttr(double_round), rewriter.getBoolAttr(false));
+        rewriter.getDenseI8ArrayAttr({static_cast<int8_t>(shift)}),
+        rewriter.getBoolAttr(scale32), rewriter.getBoolAttr(double_round),
+        rewriter.getBoolAttr(false));
 
     return rescale_op.getResult();
 
   } else if (auto weight_per_channel_qtype =
-                 weight_type.getElementType()
-                     .dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+                 dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(
+                     weight_type.getElementType())) {
     // Per-channel quantization
     SmallVector<int32_t> multiplier_arr;
-    SmallVector<int32_t> shift_arr;
+    SmallVector<int8_t> shift_arr;
 
     SmallVector<double> weight_scale_arr(
         weight_per_channel_qtype.getScales().begin(),
@@ -256,14 +281,14 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
                                 scale_width);
 
       multiplier_arr.push_back(multiplier);
-      shift_arr.push_back(shift);
+      shift_arr.push_back(static_cast<int8_t>(shift));
     }
 
     auto rescale_op = CreateOpAndInfer<tosa::RescaleOp>(
         rewriter, op->getLoc(), output_type, conv_val,
         rewriter.getI32IntegerAttr(0), rewriter.getI32IntegerAttr(output_zp),
         rewriter.getDenseI32ArrayAttr(multiplier_arr),
-        rewriter.getDenseI32ArrayAttr(shift_arr), rewriter.getBoolAttr(scale32),
+        rewriter.getDenseI8ArrayAttr(shift_arr), rewriter.getBoolAttr(scale32),
         rewriter.getBoolAttr(double_round), rewriter.getBoolAttr(true));
 
     return rescale_op.getResult();
@@ -272,6 +297,60 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
     op->emitOpError("buildConvRescaleOp: unknown weight quantized type");
     return nullptr;
   }
+}
+
+Value getTosaConstRsqrt8bitTable(PatternRewriter& rewriter, Operation* op,
+                                 float input_scale, int32_t input_zp,
+                                 float output_scale, int32_t output_zp) {
+  // See RsqrtEvalQuantized (elementwise.cc)
+  const int kMin = std::numeric_limits<int8_t>::min();
+  const int kMax = std::numeric_limits<int8_t>::max();
+  SmallVector<int8_t, 256> table;
+
+  int32_t output_scale_multiplier;
+  int32_t output_scale_shift;
+
+  const double scale = 1. / (std::sqrt(input_scale) * output_scale);
+  tflite_migration::QuantizeMultiplier(scale, &output_scale_multiplier,
+                                       &output_scale_shift);
+
+  std::function<int8_t(int8_t)> quantRsqrtFunc = [&](int8_t i) {
+    const int32_t value = (i - input_zp);
+    const int32_t kShift = 20;  // Shift to keep value integer.
+    if (value <= 0) {
+      // Assume that any value close to 0 (or negtive values) represents the max
+      // output value.
+      return static_cast<int8_t>(kMax);
+    }
+    int32_t inv_sqrt_multiplier;
+    int inv_sqrt_shift;
+    tflite_migration::GetInvSqrtQuantizedMultiplierExp(
+        value, tflite_migration::kReverseShift, &inv_sqrt_multiplier,
+        &inv_sqrt_shift);
+    const int32_t data = tflite_migration::MultiplyByQuantizedMultiplier(
+        1, inv_sqrt_multiplier, inv_sqrt_shift + kShift);
+    const int32_t output =
+        tflite_migration::MultiplyByQuantizedMultiplier(
+            data, output_scale_multiplier, output_scale_shift - kShift) +
+        output_zp;
+    return static_cast<int8_t>(std::min(std::max(output, kMin), kMax));
+  };
+
+  for (int32_t i = -128; i < 128; i++) {
+    table.push_back(quantRsqrtFunc(i));
+  }
+
+  auto element_qtype =
+      UniformQuantizedType::get(true, rewriter.getIntegerType(8),
+                                rewriter.getF32Type(), 1.0f, 0, -128, 127);
+  auto const_type = tensorflow::GetTypeFromTFTensorShape({256}, element_qtype);
+  auto storage_type = tensorflow::GetTypeFromTFTensorShape(
+      {256}, element_qtype.getStorageType());
+  auto const_attr = DenseElementsAttr::get(storage_type, llvm::ArrayRef(table));
+
+  auto const_op =
+      rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, const_attr);
+  return const_op.getResult();
 }
 
 // Create a 8-bit TOSA TABLE constant tensor with int8[256] array.
@@ -285,6 +364,13 @@ Value getTosaConst8bitTable(PatternRewriter& rewriter, Operation* op,
   for (int32_t i = -128; i < 128; i++) {
     double dequantized = input_scale * (i - input_zp);
     double transformed = func(dequantized);
+
+    double max = (output_scale > 1.0) ? DBL_MAX : (DBL_MAX * output_scale);
+    if (transformed >= max) {
+      table.push_back(INT8_MAX);
+      continue;
+    }
+
     int32_t rescaled = std::llround(transformed / output_scale);
     int32_t quantized = static_cast<int32_t>(rescaled + output_zp);
     table.push_back(
@@ -342,35 +428,42 @@ Value getTosaConst16bitTable(PatternRewriter& rewriter, Operation* op,
   return const_op.getResult();
 }
 
-// Create a 32-bit TOSA TABLE constant tensor with int16[513] array.
-// Output is restricted to [-1.0, 1.0] as s0.31 format.
-void getTosaConst32bitTable(PatternRewriter& rewriter, Operation* op,
-                            double input_scale, int32_t input_zp,
-                            std::function<double(double)> func,
-                            Value& first_const, Value& second_const,
-                            Value& third_const, Value& fourth_const) {
+// Create a 32-bit TOSA TABLE for Softmax Exp
+void getTosaConst32bitSoftmaxExpTable(PatternRewriter& rewriter, Operation* op,
+                                      double beta, double input_scale,
+                                      Value& first_const, Value& second_const,
+                                      Value& third_const, Value& fourth_const) {
+  const int kScaledDiffIntegerBits = 5;
+  using FixedPointScaledDiff =
+      gemmlowp::FixedPoint<int32_t, kScaledDiffIntegerBits>;
+
+  int32_t input_beta_multiplier;
+  int input_beta_left_shift;
+  tflite_migration::PreprocessSoftmaxScaling(
+      beta, input_scale, kScaledDiffIntegerBits, &input_beta_multiplier,
+      &input_beta_left_shift);
+
+  int diff_min = -tflite_migration::CalculateInputRadius(kScaledDiffIntegerBits,
+                                                         input_beta_left_shift);
+
   SmallVector<int16_t, 513> first_table, second_table, third_table,
       fourth_table;
-
-  double output_inv_scale = static_cast<double>(1L << 31);
-
-  for (int32_t i = -256; i <= 256; i++) {
-    double dequantized = input_scale * (i - input_zp);
-    double transformed = func(dequantized);
-    double truncated = std::min(std::max(transformed, -1.0), 1.0);
-    int64_t rescaled =
-        static_cast<int64_t>(std::round(truncated * output_inv_scale));
-
-    // 2^31 is not representable in int32_t, so store as 2^31 - 1 instead
-    if (rescaled == static_cast<int64_t>(1L << 31)) {
-      rescaled = static_cast<int64_t>(1L << 31) - 1;
+  for (int32_t input_diff = -256; input_diff <= 256; input_diff++) {
+    int32_t output = 0;
+    if (input_diff >= diff_min) {
+      const int32_t input_diff_rescaled =
+          tflite_migration::MultiplyByQuantizedMultiplierGreaterThanOne(
+              input_diff, input_beta_multiplier, input_beta_left_shift);
+      const FixedPointScaledDiff input_diff_fixed_point =
+          FixedPointScaledDiff::FromRaw(input_diff_rescaled);
+      output = gemmlowp::exp_on_negative_values(input_diff_fixed_point).raw();
     }
 
     // Only copy the 8-bit groups
-    int32_t first = (rescaled >> 24) & 0xFF;
-    int32_t second = (rescaled >> 16) & 0xFF;
-    int32_t third = (rescaled >> 8) & 0xFF;
-    int32_t fourth = (rescaled)&0xFF;
+    int32_t first = (output >> 24) & 0xFF;
+    int32_t second = (output >> 16) & 0xFF;
+    int32_t third = (output >> 8) & 0xFF;
+    int32_t fourth = (output) & 0xFF;
 
     first_table.push_back(first);
     second_table.push_back(second);
@@ -518,7 +611,7 @@ bool getPaddingValuesFromPadType(tensorflow::Padding tf_pad,
     ip_size = ip_size < 0 ? f_size * dim_dilation : ip_size;
     int64_t op_size, pad_before_tf,
         pad_after_tf;  // Complains if using int64_T
-    tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerboseV2(
+    tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerbose(
         ip_size, f_size, dim_dilation, dim_stride, tf_pad, &op_size,
         &pad_before_tf, &pad_after_tf);
     if (!status.ok()) return false;
@@ -552,8 +645,8 @@ DenseI64ArrayAttr getPaddingValuesFromExplicitPadAttr(
   for (int i = 0; i < 2; i++) {  // Two spatial dimensions X&Y
     int64_t dim = GetTensorSpatialDimIndex(4, data_format_tf,
                                            i);  // 4D tensor, NHWC/NCHW format
-    pad_before = explicit_pad[dim * 2].template cast<IntegerAttr>().getInt();
-    pad_after = explicit_pad[dim * 2 + 1].template cast<IntegerAttr>().getInt();
+    pad_before = mlir::cast<IntegerAttr>(explicit_pad[dim * 2]).getInt();
+    pad_after = mlir::cast<IntegerAttr>(explicit_pad[dim * 2 + 1]).getInt();
     computed_paddings.push_back(pad_before);
     computed_paddings.push_back(pad_after);
   }
@@ -710,8 +803,11 @@ LogicalResult ApplyPatternsWithShapeResolution(
   // This should be investigate for whether it is still necessary due to quant
   // type stripping changing.
   func.walk([&](tosa::ConstOp op) {
-    auto ety = op.getValue().getType().getElementType();
-    auto new_ty = op.getType().cast<TensorType>().clone(ety);
+    if (mlir::isa<QuantizedType>(op.getType().getElementType())) {
+      return;
+    }
+    auto ety = op.getValue().getShapedType().getElementType();
+    auto new_ty = mlir::cast<TensorType>(op.getType()).clone(ety);
     op.getResult().setType(new_ty);
   });
 

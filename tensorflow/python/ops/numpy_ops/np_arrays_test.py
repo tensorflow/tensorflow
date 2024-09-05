@@ -19,6 +19,7 @@ import numpy as np
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
 # Required for operator overloads
@@ -193,8 +194,8 @@ class ArrayTest(test.TestCase):
     # Each ndarray contains only one tensor, so the flattened output should be
     # just 2 tensors in a list.
     self.assertLen(flattened, 2)
-    self.assertIsInstance(flattened[0], ops.Tensor)
-    self.assertIsInstance(flattened[1], ops.Tensor)
+    self.assertIsInstance(flattened[0], tensor.Tensor)
+    self.assertIsInstance(flattened[1], tensor.Tensor)
 
     repacked = nest.pack_sequence_as(tensors, flattened, expand_composites=True)
     self.assertLen(repacked, 2)
@@ -208,7 +209,7 @@ if __name__ == '__main__':
   # TODO(wangpeng): Test in graph mode as well. Also test in V2 (the requirement
   # for setting _USE_EQUALITY points to V2 behavior not being on).
   ops.enable_eager_execution()
-  ops.Tensor._USE_EQUALITY = True
-  ops.enable_numpy_style_type_promotion()
+  tensor.Tensor._USE_EQUALITY = True
+  ops.set_dtype_conversion_mode('legacy')
   np_math_ops.enable_numpy_methods_on_tensor()
   test.main()

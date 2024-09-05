@@ -46,4 +46,9 @@ limitations under the License.
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
+- (void)testSpaceToDepthTensorShape1x6x6x1BlockSize3 {
+  auto status = SpaceToDepthTensorShape1x6x6x1BlockSize3Test(&exec_env_);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
 @end

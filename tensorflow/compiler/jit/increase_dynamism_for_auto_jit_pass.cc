@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/cc/ops/xla_ops.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/public/session_options.h"
@@ -184,7 +184,7 @@ Status ComputeSliceSize(const Scope& host_scope,
   if (absl::c_all_of(slice_inputs.size_as_vector,
                      [](int64_t i) { return i >= 0; })) {
     *size = slice_inputs.size;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Output input_shape =
@@ -227,7 +227,7 @@ Status ComputeSliceSize(const Scope& host_scope,
     *size = ops::Concat(host_scope.WithOpName("slice_size"), slice_size,
                         concat_axis);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Terminology: "static sized" slice is a slice with the
@@ -280,7 +280,6 @@ Status ConvertTensorFlowSliceToStaticShapedSlice(
 
 void ReplaceTensorFlowSliceWithStaticShapedSlice(Graph* g, Node* slice,
                                                  Node* static_shaped_slice) {
-  absl::InlinedVector<const Edge*, 6> edges_to_remove;
   std::vector<const Edge*> slice_out_edges;
   absl::c_copy(slice->out_edges(), std::back_inserter(slice_out_edges));
   for (const Edge* e : slice_out_edges) {
@@ -310,12 +309,12 @@ Status RewriteSlice(Graph* g, Node* slice, const SliceInputs& slice_inputs,
   TF_RETURN_IF_ERROR(ConvertTensorFlowSliceToStaticShapedSlice(
       g, slice, slice_inputs, cluster_name, &static_shaped_slice));
   ReplaceTensorFlowSliceWithStaticShapedSlice(g, slice, static_shaped_slice);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Return true if `n` is a slice we should rewrite to have a static shape
 // (i.e. have the output shape only depend on the "size" input).
-StatusOr<bool> ShouldRewriteSlice(Node* n) {
+absl::StatusOr<bool> ShouldRewriteSlice(Node* n) {
   if (n->type_string() != "Slice") {
     return false;
   }
@@ -368,7 +367,7 @@ Status FindAndRewriteSlices(Graph* g, bool* changed) {
 
   *changed = !slices_to_rewrite.empty();
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -387,7 +386,7 @@ Status IncreaseDynamismForAutoJitPass::Run(
                     options.flib_def);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ResourceScatterMin"
   input_arg {
     name: "resource"

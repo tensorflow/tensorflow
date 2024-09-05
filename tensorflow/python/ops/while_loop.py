@@ -19,26 +19,15 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import type_spec
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util as util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import while_v2
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import variable_utils
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
-
-
-# TODO(b/269483538): below lazy loads
-#   needed for references while refactors are in progress
-control_flow_ops = LazyLoader(
-    "control_flow_ops", globals(),
-    "tensorflow.python.ops.control_flow_ops")
-# This is to avoid circular dependencies:
-# while_v2 -> control_flow_ops
-# while_v2 -> gradients_util -> control_flow_ops
-while_v2 = LazyLoader("while_v2", globals(),
-                      "tensorflow.python.ops.while_v2")
 
 
 # @TODO(b/133606651) Replace "shape_invariants" with "loop_vars_signature".
@@ -76,7 +65,7 @@ def while_loop_v2(cond,
   ...     result += i * i
   ...     i += 1
   ...   return result
-  >>> sumSquare(10).numpy()
+  >>> print(sumSquare(10).numpy())
   285
 
   >>> @tf.function
@@ -85,7 +74,7 @@ def while_loop_v2(cond,
   ...   c = lambda i, _: tf.less(i, n)
   ...   b = lambda i, result: (i + 1, result + i * i)
   ...   return tf.while_loop(c, b, [i, result])[1]
-  >>> sumSquare2(10).numpy()
+  >>> print(sumSquare2(10).numpy())
   285
 
   For more information, see [tf.function and AutoGraph guide
@@ -180,7 +169,7 @@ def while_loop_v2(cond,
   >>> c = lambda i: tf.less(i, 10)
   >>> b = lambda i: (tf.add(i, 1), )
   >>> r = tf.while_loop(c, b, [i])[0]
-  >>> r.numpy()
+  >>> print(r.numpy())
   10
 
   Example with nesting and a namedtuple:
@@ -191,7 +180,7 @@ def while_loop_v2(cond,
   >>> c = lambda i, p: i < 10
   >>> b = lambda i, p: (i + 1, Pair((p.j + p.k), (p.j - p.k)))
   >>> ijk_final = tf.while_loop(c, b, ijk_0)[1]
-  >>> ijk_final[0].numpy(), ijk_final[1].numpy()
+  >>> ijk_final[0].numpy().item(), ijk_final[1].numpy().item()
   (32, 64)
 
   Example using shape_invariants:

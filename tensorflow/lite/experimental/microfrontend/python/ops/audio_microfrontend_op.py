@@ -20,13 +20,11 @@ from tensorflow.python.framework import load_library
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import resource_loader
-from tensorflow.python.util.tf_export import tf_export
 
 _audio_microfrontend_op = load_library.load_op_library(
     resource_loader.get_path_to_datafile("_audio_microfrontend_op.so"))
 
 
-@tf_export("lite.experimental.microfrontend.python.ops.audio_microfrontend")
 def audio_microfrontend(audio,
                         sample_rate=16000,
                         window_size=25,

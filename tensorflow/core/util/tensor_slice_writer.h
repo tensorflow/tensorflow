@@ -19,7 +19,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_TENSOR_SLICE_WRITER_H_
 #define TENSORFLOW_CORE_UTIL_TENSOR_SLICE_WRITER_H_
 
+#include <functional>
+#include <map>
 #include <unordered_map>
+#include <utility>
 
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
@@ -44,7 +47,7 @@ class TensorSliceWriter {
   // Abstract interface that TensorSliceWriter uses for building
   class Builder {
    public:
-    virtual ~Builder() {}
+    virtual ~Builder() = default;
     virtual void Add(StringPiece key, StringPiece value) = 0;
     virtual Status Finish(int64_t* file_size) = 0;
   };
@@ -52,7 +55,7 @@ class TensorSliceWriter {
 
   TensorSliceWriter(const string& filename,
                     CreateBuilderFunction create_builder);
-  virtual ~TensorSliceWriter() {}
+  virtual ~TensorSliceWriter() = default;
   // Adds a slice. We support float and int32 for now.
   // TODO(yangke): add more supports
   template <typename T>
@@ -83,7 +86,8 @@ class TensorSliceWriter {
 
   const string filename_;
   const CreateBuilderFunction create_builder_;
-  const string tmpname_;
+  string data_filename_;
+  bool use_temp_file_;
 
   // A mapping from the tensor names to their index in meta_.saved_slice_meta()
   std::unordered_map<string, int> name_to_index_;
@@ -93,7 +97,8 @@ class TensorSliceWriter {
   std::map<string, string> data_;
   // Total number of slices written
   int slices_;
-  TF_DISALLOW_COPY_AND_ASSIGN(TensorSliceWriter);
+  TensorSliceWriter(const TensorSliceWriter&) = delete;
+  void operator=(const TensorSliceWriter&) = delete;
 };
 
 template <typename T>
@@ -158,7 +163,7 @@ Status TensorSliceWriter::Add(const string& name, const TensorShape& shape,
     data_.insert(key_value);
   }
   ++slices_;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename T>
@@ -181,7 +186,7 @@ Status TensorSliceWriter::SaveData(const T* data, int64_t num_elements,
   Fill(data, num_elements, ss->mutable_data());
   DCHECK_GE(ss->ByteSize(), 0);
   DCHECK_LE(ss->ByteSize(), size_bound);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <>

@@ -63,7 +63,7 @@ Status CostModelManager::AddToCostGraphDef(const Graph* graph,
   }
   CostModel* cost_model = it->second;
   cost_model->AddToCostGraphDef(graph, cost_graph);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

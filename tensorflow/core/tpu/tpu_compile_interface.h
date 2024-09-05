@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_TPU_COMPILE_INTERFACE_H_
 #define TENSORFLOW_CORE_TPU_TPU_COMPILE_INTERFACE_H_
 
+#include <cstdint>
+
 #include "absl/strings/string_view.h"
 
 // Some legacy code requires different implementations for operations like

@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_UTILS_OP_METRICS_DB_UTILS_H_
 
 #include <algorithm>
+#include <cstdint>
+#include <optional>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
@@ -25,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
+#include "tsl/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -47,7 +50,8 @@ class OpMetricsDbBuilder {
   // Looks up the given OP name. If it is already in the database,
   // return its OpMetrics; otherwise, insert a new one.
   OpMetrics* LookupOrInsertNewOpMetrics(uint64 hlo_module_id,
-                                        absl::string_view name);
+                                        absl::string_view name,
+                                        uint64_t fingerprint);
 
   OpMetricsDb* db() { return db_; }
 
@@ -60,6 +64,26 @@ class OpMetricsDbBuilder {
 
   // The op database.
   OpMetricsDb* db_;
+};
+
+// Helps build an op metrics database (borrowed) from XEvents,
+class XEventsOpMetricsDbBuilder {
+ public:
+  // Add OpMetric from XEventVisitor.
+  void AddOpMetric(const tsl::profiler::XEventVisitor& xevent);
+
+  // Finalize OpMetricDb and add total time and Idle op.
+  OpMetricsDb Finalize(uint64_t total_time);
+
+  // Finalize OpMetricDb, but the total time is unknown at the moment, So ignore
+  // the total time and Idle Op and will be handled by the caller.
+  OpMetricsDb Finalize();
+
+ private:
+  using OpMetricBySymbol =
+      absl::flat_hash_map</*symbol_id=*/uint64_t, OpMetrics>;
+  absl::flat_hash_map</*program_id=*/uint64_t, OpMetricBySymbol>
+      flat_op_metric_;
 };
 
 // Sets the total time for OpMetricsDb, ensuring idle time is not negative.
@@ -100,7 +124,7 @@ inline uint64_t ChildrenTimePs(const OpMetrics& metrics) {
 
 // Returns the ratio of time spent sending data from the host to the device
 // relative to the total time the host was active.
-absl::optional<double> HostInfeedEnqueueRatio(const OpMetricsDb& db);
+std::optional<double> HostInfeedEnqueueRatio(const OpMetricsDb& db);
 
 // Converts from the device op metrics to Tf-op metrics.
 OpMetricsDb CreateTfMetricsDbFromDeviceOpMetricsDb(

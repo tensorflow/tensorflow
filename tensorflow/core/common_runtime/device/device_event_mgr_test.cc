@@ -19,14 +19,14 @@ limitations under the License.
 
 #include <atomic>
 
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
+#include "xla/stream_executor/gpu/gpu_init.h"
+#include "xla/tsl/framework/device_id.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
-#include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/stream_executor.h"
@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/version.h"
-#include "tensorflow/tsl/framework/device_id.h"
 
 namespace tensorflow {
 
@@ -47,12 +46,42 @@ class TEST_EventMgr : public EventMgr {
 
 class TEST_EventMgrHelper {
  public:
-  explicit TEST_EventMgrHelper(EventMgr* em) : em_(em) {}
+  explicit TEST_EventMgrHelper(EventMgr* em) : em_(em) {
+    // The polling loop can interfere with the measurements made here, and
+    // isn't needed since the member PollEvents() always clears the queue.
+    // The tested behavior is slightly different from what may occur in
+    // ordinary execution.
+    StopPollingLoop();
+  }
+
+  size_t queue_size() {
+    mutex_lock l(em_->mu_);
+    size_t n = 0;
+    for (const auto& [stream, events_and_callbacks] : em_->callbacks_) {
+      n += events_and_callbacks.size();
+    }
+    return n;
+  }
 
   size_t free_size() {
     mutex_lock l(em_->mu_);
     return em_->free_events_.size();
   }
+
+  void PollEvents() {
+    while (queue_size() > 0) {
+      EventMgr::ToFreeVector to_free;
+      {
+        mutex_lock l(em_->mu_);
+        em_->PollEvents(nullptr, &to_free);
+      }
+      em_->FreeMemory(to_free);
+    }
+  }
+
+  void StopPollingLoop() { return em_->StopPollingLoop(); }
+
+  void StartPollingLoop() { return em_->StartPollingLoop(); }
 
  private:
   EventMgr* em_;
@@ -81,15 +110,22 @@ class TestTensorBuffer : public TensorBuffer {
 
 namespace {
 
+TEST(EventMgr, Empty) {
+  auto stream_exec = se::GPUMachineManager()->ExecutorForDevice(0).value();
+  TEST_EventMgr em(stream_exec, GPUOptions());
+  TEST_EventMgrHelper th(&em);
+  EXPECT_EQ(0, th.queue_size());
+  EXPECT_EQ(0, th.free_size());
+}
+
 // Tests that WarnIfInCallback() triggers correctly.
 TEST(EventMgr, WarnIfInCallback) {
   auto stream_exec = se::GPUMachineManager()->ExecutorForDevice(0).value();
   TEST_EventMgr em(stream_exec, GPUOptions());
   TEST_EventMgrHelper th(&em);
-  std::unique_ptr<se::Stream> stream(new se::Stream(stream_exec));
-  CHECK(stream);
-  stream->Init();
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, stream_exec->CreateStream());
   bool hit = false;
+  th.StartPollingLoop();
   device_event_mgr::WarnIfInCallback([&hit] { hit = true; });
   EXPECT_FALSE(hit);
   Notification note;
@@ -175,7 +211,7 @@ class EMBenchmarkHelper {
                                    {tensor_size}, AllocationAttributes()));
     }
     gpu_outputs_.clear();
-    while (gpu_outputs_.size() < 1) {
+    while (gpu_outputs_.empty()) {
       gpu_outputs_.push_back(Tensor(gpu_helper_->gpu_allocator(), DT_FLOAT,
                                     {tensor_size}, AllocationAttributes()));
     }
@@ -190,7 +226,7 @@ class EMBenchmarkHelper {
       }
     }
     host_outputs_.clear();
-    while (host_outputs_.size() < 1) {
+    while (host_outputs_.empty()) {
       host_outputs_.push_back(Tensor(gpu_helper_->host_allocator(), DT_FLOAT,
                                      {tensor_size}, AllocationAttributes()));
       for (int i = 0; i < tensor_size; ++i) {
@@ -344,18 +380,20 @@ class EMBenchmarkHelper {
         times->at(r).iter = r;
         times->at(r).start = Env::Default()->NowMicros();
       }
-      gpu_helper_->h2d_stream()->ThenWaitFor(gpu_helper_->compute_stream());
+      TF_ASSERT_OK(
+          gpu_helper_->h2d_stream()->WaitFor(gpu_helper_->compute_stream()));
       // Begin by copying the input values from CPU to GPU.
       const int64_t src_bytes = host_inputs_[0].TotalBytes();
       se::DeviceMemoryBase gpu_dst_ptr0(DMAHelper::base(&gpu_inputs_[0]),
                                         src_bytes);
-      gpu_helper_->h2d_stream()->ThenMemcpy(
-          &gpu_dst_ptr0, DMAHelper::base(&host_inputs_[0]), src_bytes);
+      TF_ASSERT_OK(gpu_helper_->h2d_stream()->Memcpy(
+          &gpu_dst_ptr0, DMAHelper::base(&host_inputs_[0]), src_bytes));
       se::DeviceMemoryBase gpu_dst_ptr1(DMAHelper::base(&gpu_inputs_[1]),
                                         src_bytes);
-      gpu_helper_->h2d_stream()->ThenMemcpy(
-          &gpu_dst_ptr1, DMAHelper::base(&host_inputs_[1]), src_bytes);
-      gpu_helper_->compute_stream()->ThenWaitFor(gpu_helper_->h2d_stream());
+      TF_ASSERT_OK(gpu_helper_->h2d_stream()->Memcpy(
+          &gpu_dst_ptr1, DMAHelper::base(&host_inputs_[1]), src_bytes));
+      TF_ASSERT_OK(
+          gpu_helper_->compute_stream()->WaitFor(gpu_helper_->h2d_stream()));
       if (times) {
         gpu_helper_->event_mgr()->ThenExecute(
             gpu_helper_->compute_stream(), [times, r]() {
@@ -379,12 +417,13 @@ class EMBenchmarkHelper {
               times->at(r).compute_done = Env::Default()->NowMicros();
             });
       }
-      gpu_helper_->d2h_stream()->ThenWaitFor(gpu_helper_->compute_stream());
+      TF_ASSERT_OK(
+          gpu_helper_->d2h_stream()->WaitFor(gpu_helper_->compute_stream()));
       const int64_t return_bytes = ctx->mutable_output(0)->TotalBytes();
       se::DeviceMemoryBase gpu_src_ptr(DMAHelper::base(ctx->mutable_output(0)),
                                        return_bytes);
-      gpu_helper_->d2h_stream()->ThenMemcpy(DMAHelper::base(&host_outputs_[0]),
-                                            gpu_src_ptr, return_bytes);
+      TF_ASSERT_OK(gpu_helper_->d2h_stream()->Memcpy(
+          DMAHelper::base(&host_outputs_[0]), gpu_src_ptr, return_bytes));
       gpu_helper_->event_mgr()->ThenExecute(gpu_helper_->d2h_stream(),
                                             callback);
       if (times) {
@@ -402,9 +441,7 @@ static void BM_no_ops(::testing::benchmark::State& state) {
   const int iters = state.max_iterations;
 
   auto stream_exec = se::GPUMachineManager()->ExecutorForDevice(0).value();
-  std::unique_ptr<se::Stream> stream(new se::Stream(stream_exec));
-  CHECK(stream);
-  stream->Init();
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, stream_exec->CreateStream());
   TEST_EventMgr em(stream_exec, GPUOptions());
 
   auto benchmark_exec = [&]() {

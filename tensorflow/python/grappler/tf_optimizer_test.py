@@ -26,7 +26,7 @@ from tensorflow.python.grappler import item as gitem
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import variables
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import test
 
@@ -59,7 +59,7 @@ class PyWrapOptimizeGraphTest(test.TestCase):
   def testKeepNodes(self):
     g = ops.Graph()
     with g.as_default():
-      a1 = variables.VariableV1(
+      a1 = variable_v1.VariableV1(
           1.0)  # Must be preserved since it's in the collection 'variables'.
       a2 = constant_op.constant(0, shape=[50, 50], name='keep')
       ops.add_to_collection('a2', a2)  # Explicitly add to collection.

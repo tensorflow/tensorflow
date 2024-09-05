@@ -44,7 +44,7 @@ Status GenNode::BuildGraphInMap(const GraphDef& source, GenNodeMap* map) {
       return st;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GenNode::ParseInputs(const GenNodeMap* map) {
@@ -54,7 +54,7 @@ Status GenNode::ParseInputs(const GenNodeMap* map) {
     return Status(
         absl::StatusCode::kInvalidArgument,
         absl::StrFormat("Node '%s' contains an undefined operation '%s': %s",
-                        name(), opcode(), st.error_message()));
+                        name(), opcode(), st.message()));
   }
 
   int n_inputs = node_->input_size();
@@ -119,7 +119,7 @@ Status GenNode::ParseInputs(const GenNodeMap* map) {
     links_[this_port].emplace_back(LinkTarget(other_node, other_port));
     other_node->links_[other_port].emplace_back(LinkTarget(this, this_port));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool GenNode::IsMultiInput(Port port) const {

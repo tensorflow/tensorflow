@@ -23,7 +23,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "third_party/eigen3/Eigen/Core"
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/top_n.h"
@@ -152,7 +152,8 @@ class CTCBeamSearchDecoder : public CTCDecoder<T> {
   std::unique_ptr<BeamRoot> beam_root_;
   BaseBeamScorer<T, CTCBeamState>* beam_scorer_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CTCBeamSearchDecoder);
+  CTCBeamSearchDecoder(const CTCBeamSearchDecoder&) = delete;
+  void operator=(const CTCBeamSearchDecoder&) = delete;
 };
 
 template <typename T, typename CTCBeamState, typename CTCBeamComparer>
@@ -212,7 +213,7 @@ Status CTCBeamSearchDecoder<T, CTCBeamState, CTCBeamComparer>::Decode(
       (*scores)(b, i) = -beam_log_probabilities[i];
     }
   }  // for (int b...
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename T, typename CTCBeamState, typename CTCBeamComparer>
@@ -426,7 +427,7 @@ Status CTCBeamSearchDecoder<T, CTCBeamState, CTCBeamComparer>::TopPaths(
     paths->push_back(e->LabelSeq(merge_repeated));
     log_probs->push_back(e->newp.total);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace ctc

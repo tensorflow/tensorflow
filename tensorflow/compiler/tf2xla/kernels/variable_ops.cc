@@ -13,19 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <functional>
+#include <utility>
+
+#include "absl/status/status.h"
 #include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
 #include "tensorflow/compiler/tf2xla/kernels/shape_util.h"
 #include "tensorflow/compiler/tf2xla/lib/scatter.h"
-#include "tensorflow/compiler/tf2xla/shape_util.h"
-#include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/slicing.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/core/framework/kernel_def_builder.h"
-#include "tensorflow/core/framework/types.h"
+#include "tensorflow/compiler/tf2xla/xla_resource.h"
+#include "xla/client/lib/slicing.h"
+#include "xla/client/xla_builder.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/resource_variable_util.h"
 #include "tensorflow/core/kernels/scatter_nd_util.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace {
@@ -38,7 +47,7 @@ Status ValidateAssignUpdateVariableOpShapes(XlaOpKernelContext* ctx) {
       ctx->GetVariableTypeAndShape(0, &variable_dtype, &variable_shape));
   TF_RETURN_IF_ERROR(
       ValidateAssignUpdateVariableOpShapes(variable_shape, value_shape));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 class VarIsInitializedOp : public XlaOpKernel {
@@ -208,7 +217,7 @@ class ResourceScatterAddOp : public ResourceScatterOp {
       : ResourceScatterOp(context, /*indices_are_vectors=*/false, Combine) {}
 
  private:
-  static xla::XlaOp Combine(const xla::XlaOp& x, const xla::XlaOp& y,
+  static xla::XlaOp Combine(const xla::XlaOp x, const xla::XlaOp y,
                             xla::XlaBuilder* builder) {
     return xla::Add(x, y);
   }
@@ -221,7 +230,7 @@ class ResourceScatterSubOp : public ResourceScatterOp {
       : ResourceScatterOp(context, /*indices_are_vectors=*/false, Combine) {}
 
  private:
-  static xla::XlaOp Combine(const xla::XlaOp& x, const xla::XlaOp& y,
+  static xla::XlaOp Combine(const xla::XlaOp x, const xla::XlaOp y,
                             xla::XlaBuilder* builder) {
     return xla::Sub(x, y);
   }
@@ -234,7 +243,7 @@ class ResourceScatterMulOp : public ResourceScatterOp {
       : ResourceScatterOp(context, /*indices_are_vectors=*/false, Combine) {}
 
  private:
-  static xla::XlaOp Combine(const xla::XlaOp& x, const xla::XlaOp& y,
+  static xla::XlaOp Combine(const xla::XlaOp x, const xla::XlaOp y,
                             xla::XlaBuilder* builder) {
     return xla::Mul(x, y);
   }
@@ -247,7 +256,7 @@ class ResourceScatterDivOp : public ResourceScatterOp {
       : ResourceScatterOp(context, /*indices_are_vectors=*/false, Combine) {}
 
  private:
-  static xla::XlaOp Combine(const xla::XlaOp& x, const xla::XlaOp& y,
+  static xla::XlaOp Combine(const xla::XlaOp x, const xla::XlaOp y,
                             xla::XlaBuilder* builder) {
     return xla::Div(x, y);
   }
@@ -260,7 +269,7 @@ class ResourceScatterMinOp : public ResourceScatterOp {
       : ResourceScatterOp(context, /*indices_are_vectors=*/false, Combine) {}
 
  private:
-  static xla::XlaOp Combine(const xla::XlaOp& x, const xla::XlaOp& y,
+  static xla::XlaOp Combine(const xla::XlaOp x, const xla::XlaOp y,
                             xla::XlaBuilder* builder) {
     return xla::Min(x, y);
   }
@@ -273,7 +282,7 @@ class ResourceScatterMaxOp : public ResourceScatterOp {
       : ResourceScatterOp(context, /*indices_are_vectors=*/false, Combine) {}
 
  private:
-  static xla::XlaOp Combine(const xla::XlaOp& x, const xla::XlaOp& y,
+  static xla::XlaOp Combine(const xla::XlaOp x, const xla::XlaOp y,
                             xla::XlaBuilder* builder) {
     return xla::Max(x, y);
   }
@@ -303,7 +312,7 @@ class ResourceScatterNdAddOp : public ResourceScatterOp {
                           /*combiner=*/Combine) {}
 
  private:
-  static xla::XlaOp Combine(const xla::XlaOp& x, const xla::XlaOp& y,
+  static xla::XlaOp Combine(const xla::XlaOp x, const xla::XlaOp y,
                             xla::XlaBuilder* builder) {
     return xla::Add(x, y);
   }
@@ -317,7 +326,7 @@ class ResourceScatterNdSubOp : public ResourceScatterOp {
                           /*combiner=*/Combine) {}
 
  private:
-  static xla::XlaOp Combine(const xla::XlaOp& x, const xla::XlaOp& y,
+  static xla::XlaOp Combine(const xla::XlaOp x, const xla::XlaOp y,
                             xla::XlaBuilder* builder) {
     return xla::Sub(x, y);
   }

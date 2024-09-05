@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPH_GRAPH_DEF_BUILDER_H_
 #define TENSORFLOW_CORE_GRAPH_GRAPH_DEF_BUILDER_H_
 
+#include <string>
 #include <vector>
 
 #include "tensorflow/core/framework/function.pb.h"
@@ -81,7 +82,7 @@ class GraphDefBuilder {
     Options WithName(StringPiece name) const;
     Options WithDevice(StringPiece device) const;
     Options WithControlInput(Node* control_input) const;
-    Options WithControlInputs(gtl::ArraySlice<Node*> control_inputs) const;
+    Options WithControlInputs(absl::Span<Node* const> control_inputs) const;
 
     // Override the default value for an optional attr.
     template <class T>
@@ -104,7 +105,7 @@ class GraphDefBuilder {
     // Returns a string representation of the status associated with *this.
     // Returns the string `"OK"` if the status doesn't have any error.
     string StatusToString() const {
-      return status_->ok() ? "OK" : status_->error_message();
+      return status_->ok() ? "OK" : std::string(status_->message());
     }
 
     // Given the Op type name, return a name for a node of that type.
@@ -129,7 +130,7 @@ class GraphDefBuilder {
     Options WithNameImpl(StringPiece name);
     Options WithDeviceImpl(StringPiece device);
     Options WithControlInputImpl(Node* control_input);
-    Options WithControlInputsImpl(gtl::ArraySlice<Node*> control_inputs);
+    Options WithControlInputsImpl(absl::Span<Node* const> control_inputs);
     template <class T>
     Options WithAttrImpl(StringPiece name, T&& value) {
       attrs_.emplace_back(string(name), AttrValue());

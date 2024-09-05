@@ -21,10 +21,12 @@ populate_source_vars("${TFLITE_SOURCE_DIR}/tools/benchmark"
   FILTER "(_test|_plus_flex_main|_performance_options.*)\\.cc$"
 )
 list(APPEND TFLITE_BENCHMARK_SRCS
-  ${TF_SOURCE_DIR}/tsl/util/stats_calculator.cc
+  ${XLA_SOURCE_DIR}/xla/tsl/util/stats_calculator.cc
   ${TFLITE_SOURCE_DIR}/kernels/internal/utils/sparsity_format_converter.cc
   ${TFLITE_SOURCE_DIR}/profiling/memory_info.cc
   ${TFLITE_SOURCE_DIR}/profiling/memory_usage_monitor.cc
+  ${TFLITE_SOURCE_DIR}/profiling/model_runtime_info.cc
+  ${TFLITE_SOURCE_DIR}/profiling/profile_buffer.cc
   ${TFLITE_SOURCE_DIR}/profiling/profile_summarizer.cc
   ${TFLITE_SOURCE_DIR}/profiling/profile_summary_formatter.cc
   ${TFLITE_SOURCE_DIR}/profiling/root_profiler.cc
@@ -44,6 +46,14 @@ list(APPEND TFLITE_BENCHMARK_LIBS
   tensorflow-lite
 )
 
+list(APPEND TFLITE_BENCHMARK_LIBS
+  profiling_info_proto
+  feature_proto
+  example_proto
+  model_runtime_info_proto
+  protobuf::libprotobuf
+)
+
 # TODO(b/171007016): Enable performance options on Windows.
 if(NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Windows")
   list(APPEND TFLITE_BENCHMARK_SRCS
@@ -54,7 +64,7 @@ endif()
 if(TFLITE_ENABLE_XNNPACK)
   list(APPEND TFLITE_BENCHMARK_SRCS
     ${TFLITE_SOURCE_DIR}/tools/delegates/xnnpack_delegate_provider.cc
-    ${TFLITE_SOURCE_DIR}/core/experimental/acceleration/configuration/c/xnnpack_plugin.cc)
+    ${TFLITE_SOURCE_DIR}/core/acceleration/configuration/c/xnnpack_plugin.cc)
 else()
   set(TFLITE_BENCHMARK_CC_OPTIONS "-DTFLITE_WITHOUT_XNNPACK")
 endif()  # TFLITE_ENABLE_XNNPACK
@@ -90,6 +100,10 @@ add_executable(benchmark_model
 target_compile_options(benchmark_model
   PRIVATE
     ${TFLITE_BENCHMARK_CC_OPTIONS}
+)
+target_include_directories(benchmark_model
+  PUBLIC
+    ${CMAKE_BINARY_DIR}
 )
 target_link_libraries(benchmark_model
     ${TFLITE_BENCHMARK_LIBS}

@@ -115,7 +115,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   TF_LITE_ENSURE(context, NumDimensions(input) >= 1);
 
-  if (IsConstantTensor(axis)) {
+  if (IsConstantOrPersistentTensor(axis)) {
     TF_LITE_ENSURE_STATUS(ResizeOutput(context, input, axis, output));
   } else {
     SetTensorToDynamic(output);

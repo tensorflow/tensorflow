@@ -15,6 +15,12 @@ limitations under the License.
 
 #include "tensorflow/cc/training/coordinator.h"
 
+#include "absl/status/status.h"
+#include "tensorflow/core/framework/cost_graph.pb.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
+#include "tsl/protobuf/error_codes.pb.h"
+
 namespace tensorflow {
 
 Coordinator::Coordinator() : Coordinator(std::vector<error::Code>()) {}
@@ -45,7 +51,7 @@ Status Coordinator::RegisterRunner(std::unique_ptr<RunnerInterface> runner) {
   }
   mutex_lock l(runners_lock_);
   runners_.push_back(std::move(runner));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool Coordinator::AllRunnersStopped() {
@@ -66,7 +72,7 @@ Status Coordinator::RequestStop() {
   }
   should_stop_ = true;
   wait_for_stop_.notify_all();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool Coordinator::ShouldStop() {
@@ -123,7 +129,7 @@ Status Coordinator::ExportCostGraph(CostGraphDef* cost_graph) const {
       return s;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

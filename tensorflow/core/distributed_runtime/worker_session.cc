@@ -158,7 +158,7 @@ Status WorkerSession::UpdateWorkerCacheAndDevices(
   TF_RETURN_IF_ERROR(remote_device_mgr_->RemoveDevices(removed_remote_devices));
   TF_RETURN_IF_ERROR(
       remote_device_mgr_->AddDevices(std::move(added_remote_devices)));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 /* static */

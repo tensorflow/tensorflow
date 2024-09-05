@@ -19,6 +19,10 @@ cc_library(
     hdrs = [
         "runtime_client.h",
     ],
+    defines = select({
+        "//tensorflow/compiler/mlir/python:disable_mlir_config": ["DISABLE_MLIR"],
+        "//conditions:default": [],
+    }),
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/c/eager:abstract_tensor_handle",
@@ -26,9 +30,12 @@ cc_library(
         "//tensorflow/c/eager:immediate_execution_operation",
         "//tensorflow/c/eager:immediate_execution_tensor_handle",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/compiler/mlir/tensorflow:import_model",
+        "//tensorflow/compiler/mlir/tf2xla/api/v2:tf_executor_to_graph",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
-        "//tensorflow/core/common_runtime:device_mgr",
+        "//tensorflow/core/common_runtime:function_def_utils",
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/common_runtime/eager:core",
         "//tensorflow/core/framework:function_proto_cc",
@@ -48,7 +55,12 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-    ],
+    ] + select({
+        "//tensorflow/compiler/mlir/python:disable_mlir_config": [],
+        "//conditions:default": [
+            "//tensorflow/compiler/mlir/python:mlir",
+        ],
+    }),
     # TODO(mdan): Get rid of alwayslink, it's nonstandard.
     alwayslink = 1,
 )
@@ -65,8 +77,8 @@ cc_library(
         "//tensorflow/core/distributed_runtime:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/coordination:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
-        "//tensorflow/tsl/distributed_runtime:pywrap_required_hdrs",
-        "//tensorflow/tsl/distributed_runtime/coordination:pywrap_required_hdrs",
+        "@local_xla//xla/tsl/distributed_runtime:pywrap_required_hdrs",
+        "@local_xla//xla/tsl/distributed_runtime/coordination:pywrap_required_hdrs",
     ],
 )
 
@@ -98,24 +110,29 @@ tf_cc_test(
 tf_python_pybind_extension(
     name = "runtime_client_pybind",
     srcs = ["runtime_client_pybind.cc"],
+    data = [
+        "runtime_client_pybind.pyi",
+    ],
+    enable_stub_generation = True,
     deps = [
         ":runtime_client_headers",
-        "@pybind11",
         "//tensorflow/python/lib/core:pybind11_status",
+        "@com_google_absl//absl/status",
+        "@pybind11",
     ] + if_static(
         extra_deps = [
             "//tensorflow/core/framework:function_proto_cc",
             "//tensorflow/core/protobuf:eager_service_proto_cc",
             "//tensorflow/core/protobuf:master_proto_cc",
             "//tensorflow/core/protobuf:worker_proto_cc",
-            "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
+            "@local_tsl//tsl/protobuf:coordination_service_proto_cc",
         ],
         otherwise = [
             "//tensorflow/core/framework:function_proto_cc_headers_only",
             "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
             "//tensorflow/core/protobuf:master_proto_cc_headers_only",
             "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
-            "//tensorflow/tsl/protobuf:coordination_service_proto_cc_headers_only",
+            "@local_tsl//tsl/protobuf:coordination_service_proto_cc_headers_only",
         ],
     ),
 )
@@ -128,8 +145,9 @@ pytype_strict_library(
     ],
     srcs_version = "PY3",
     visibility = [
-        "//learning/brain/experimental/tfq:__pkg__",
+        "//learning/brain/experimental/tfq:__subpackages__",
         "//tensorflow/core/function/transform:__subpackages__",
+        "//tensorflow/python/eager:__subpackages__",
     ],
     deps = [
         ":runtime_client_pybind",
@@ -146,9 +164,9 @@ py_strict_test(
     tags = ["no_oss"],  # TODO(b/219089812)
     deps = [
         ":runtime_client_py",
+        #internal proto upb dep
         "//tensorflow/core/framework:function_proto_py",
         "//tensorflow/core/function/testing:test_pass_py",
-        "//tensorflow/python:math_ops",
         "//tensorflow/python:tf2",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
@@ -157,6 +175,7 @@ py_strict_test(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/platform:client_testlib",
     ],
 )

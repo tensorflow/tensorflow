@@ -18,21 +18,22 @@
 
 import abc
 
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
-from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.trackable import base as trackable
 from tensorflow.python.training import slot_creator
@@ -115,7 +116,7 @@ class _RefVariableProcessor(_OptimizableVariable):
     return self._v._ref()  # pylint: disable=protected-access
 
   def update_op(self, optimizer, g):
-    if isinstance(g, ops.Tensor):
+    if isinstance(g, tensor.Tensor):
       update_op = optimizer._apply_dense(g, self._v)  # pylint: disable=protected-access
       if self._v.constraint is not None:
         with ops.control_dependencies([update_op]):
@@ -168,7 +169,30 @@ class _DenseResourceVariableProcessor(_OptimizableVariable):
             "Cannot use a constraint function on a sparse variable.")
       return optimizer._resource_apply_sparse_duplicate_indices(
           g.values, self._v, g.indices)
-    update_op = optimizer._resource_apply_dense(g, self._v)
+
+    if context.xla_sharding_for_resource_variables_enabled():
+      # For each slot variable that is annotated with an XLA sharding, we read
+      # the variable and assign the value to itself. This is done to trigger the
+      # creation of an XlaShardingOp when a ReadVariableOp is created upon the
+      # call to `slot_var.read_value()`. This is needed to ensure that slot
+      # variables with XLA sharding are sharded correctly. Please see
+      # b/307541427 for more details.
+      assign_ops = []
+      for variable_dict in optimizer._slots.values():
+        for slot_var in variable_dict.values():
+          if (
+              isinstance(slot_var, resource_variable_ops.BaseResourceVariable)
+              and slot_var._get_xla_sharding() is not None
+          ):
+            assign_ops.append(slot_var.assign(slot_var.read_value()))
+
+      # The assign_ops created above are added as a control dependency for the
+      # update op to make sure these appear before the update_op.
+      with ops.control_dependencies(assign_ops):
+        update_op = optimizer._resource_apply_dense(g, self._v)
+    else:
+      update_op = optimizer._resource_apply_dense(g, self._v)
+
     if self._v.constraint is not None:
       with ops.control_dependencies([update_op]):
         return self._v.assign(self._v.constraint(self._v))
@@ -197,7 +221,7 @@ class _TensorProcessor(_OptimizableVariable):
 def _get_processor(v):
   """The processor of v."""
   if context.executing_eagerly():
-    if isinstance(v, ops.Tensor):
+    if isinstance(v, tensor.Tensor):
       return _TensorProcessor(v)
     else:
       return _DenseResourceVariableProcessor(v)
@@ -208,7 +232,7 @@ def _get_processor(v):
     return _DenseResourceVariableProcessor(v)
   if isinstance(v, variables.Variable):
     return _RefVariableProcessor(v)
-  if isinstance(v, ops.Tensor):
+  if isinstance(v, tensor.Tensor):
     return _TensorProcessor(v)
   raise NotImplementedError("Trying to optimize unsupported type ", v)
 
@@ -313,11 +337,10 @@ class Optimizer(
   (https://www.tensorflow.org/guide/keras/writing_a_training_loop_from_scratch)
   for examples.
 
-  If your TF1 code contains a `tf.compat.v1.train.Optimizer` symbol, whether it
-  is used with or without a `tf.estimator.Estimator`, you cannot simply replace
-  that with the corresponding `tf.keras.optimizers.Optimizer`s. To migrate to
-  TF2, it is advised the whole training program used with `Estimator` to be
-  migrated to Keras `Model.fit` based or TF2 custom training loops.
+  If your TF1 code contains a `tf.compat.v1.train.Optimizer` symbol, you cannot
+  simply replace that with the corresponding `tf.keras.optimizers.Optimizer`s.
+  To migrate to TF2, it is advised the whole training program to be migrated to
+  Keras `Model.fit` based, or TF2 custom training loops.
 
   #### Structural Mapping to Native TF2
 
@@ -612,7 +635,7 @@ class Optimizer(
   def _scale_loss(loss_value):
     ops.get_default_graph()._is_loss_scaled_by_optimizer = False  # pylint: disable=protected-access
     if distribute_utils.get_loss_reduction() == ds_reduce_util.ReduceOp.MEAN:
-      num_replicas = distribute_ctx.get_strategy().num_replicas_in_sync
+      num_replicas = distribute_lib.get_strategy().num_replicas_in_sync
       if num_replicas > 1:
         loss_value *= (1. / num_replicas)
         ops.get_default_graph()._is_loss_scaled_by_optimizer = True  # pylint: disable=protected-access
@@ -666,14 +689,14 @@ class Optimizer(
     # TODO(isaprykin): Get rid of `has_strategy()` check by
     # always calling _distributed_apply(), using the default distribution
     # as needed.
-    if distribute_ctx.has_strategy() and not skip_gradients_aggregation:
+    if distribute_lib.has_strategy() and not skip_gradients_aggregation:
       # Handle DistributionStrategy case.
-      if distribute_ctx.in_cross_replica_context():
+      if distribute_lib.in_cross_replica_context():
         raise RuntimeError("Use `_distributed_apply()` instead of "
                            "`apply_gradients()` in a cross-replica context.")
 
       grads_and_vars = get_filtered_grad_fn(lambda: grads_and_vars)()
-      return distribute_ctx.get_replica_context().merge_call(
+      return distribute_lib.get_replica_context().merge_call(
           self._distributed_apply, args=(grads_and_vars, global_step, name))
 
     # No DistributionStrategy case.
@@ -690,7 +713,7 @@ class Optimizer(
           raise TypeError(
               "Gradient must be convertible to a Tensor"
               " or IndexedSlices, or None: %s" % g)
-        if not isinstance(g, (ops.Tensor, indexed_slices.IndexedSlices)):
+        if not isinstance(g, (tensor.Tensor, indexed_slices.IndexedSlices)):
           raise TypeError(
               "Gradient must be a Tensor, IndexedSlices, or None: %s" % g)
       p = _get_processor(v)
@@ -739,7 +762,7 @@ class Optimizer(
               apply_updates = state_ops.assign_add(global_step, 1, name=name)
 
       if not context.executing_eagerly():
-        if isinstance(apply_updates, ops.Tensor):
+        if isinstance(apply_updates, tensor.Tensor):
           apply_updates = apply_updates.op
         train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
         if apply_updates not in train_op:
@@ -791,7 +814,7 @@ class Optimizer(
       except TypeError:
         raise TypeError("Gradient must be convertible to a Tensor"
                         " or IndexedSlices, or None: %s" % g)
-      if not isinstance(g, (ops.Tensor, indexed_slices.IndexedSlices)):
+      if not isinstance(g, (tensor.Tensor, indexed_slices.IndexedSlices)):
         raise TypeError(
             "Gradient must be a Tensor, IndexedSlices, or None: %s" % g)
       p = _get_processor(v)
@@ -834,7 +857,7 @@ class Optimizer(
               kwargs={"name": name})
 
       if not context.executing_eagerly():
-        if isinstance(apply_updates, ops.Tensor):
+        if isinstance(apply_updates, tensor.Tensor):
           apply_updates = apply_updates.op
         train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
         if apply_updates not in train_op:
@@ -918,14 +941,14 @@ class Optimizer(
     v = self._non_slot_dict.get(key, None)
     if v is None:
       self._maybe_initialize_trackable()
-      distribution_strategy = distribute_ctx.get_strategy()
+      distribution_strategy = distribute_lib.get_strategy()
       with distribution_strategy.extended.colocate_vars_with(colocate_with):
         if eager:
           restored_initial_value = self._preload_simple_restoration(
               name=name)
           if restored_initial_value is not None:
             initial_value = restored_initial_value
-        v = variable_scope.variable(
+        v = variable_v1.VariableV1(
             initial_value, name=name, trainable=False,
             use_resource=resource_variable_ops.is_resource_variable(
                 colocate_with))
@@ -961,9 +984,9 @@ class Optimizer(
     )
     return current_graph_non_slot_variables
 
-  def _lookup_dependency(self, name):
+  def _lookup_dependency(self, name, cached_dependencies=None):
     """From Trackable. Find a non-slot variable in the current graph."""
-    unconditional = super()._lookup_dependency(name)
+    unconditional = super()._lookup_dependency(name, cached_dependencies)
     if unconditional is not None:
       return unconditional
     graph = None if context.executing_eagerly() else ops.get_default_graph()

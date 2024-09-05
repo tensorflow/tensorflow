@@ -18,6 +18,7 @@ limitations under the License.
 #include <unordered_set>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/match.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
@@ -134,7 +135,7 @@ bool DependencyOptimizer::SafeToConvertToNoOp(const NodeDef& node) const {
             << " to NoOp. Node has side effect.";
     return false;
   }
-  if (node.op().rfind("Submodel", 0) == 0) {
+  if (absl::StartsWith(node.op(), "Submodel")) {
     return false;
   }
   const OpDef* op_def = nullptr;
@@ -324,12 +325,9 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
       nodes_to_simplify->PushBack(node_to_idx_[old_input_node]);
       ++pos;
     }
-    node->set_op("NoOp");
+    ChangeToNoOp(node);
     EraseRegularNodeAttributes(node);
     DedupControlInputs(node);
-    // Noop nodes have no outputs. Remove any full type information describing
-    // the outputs that were not consumed.
-    node->clear_experimental_type();
     nodes_to_simplify->PushBack(node_to_idx_[node]);
     return;
   }
@@ -500,7 +498,7 @@ Status DependencyOptimizer::OptimizeDependencies() {
     node_map_.reset(new NodeMap(optimized_graph_));
     BuildNodeToIdx();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -628,7 +626,7 @@ Status DependencyOptimizer::TransitiveReduction() {
   }
   VLOG(1) << "Removed " << num_controls_removed << " out of " << num_controls
           << " control dependencies";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void DependencyOptimizer::BuildNodeToIdx() {
@@ -773,7 +771,7 @@ Status DependencyOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     } else {
       LOG(ERROR) << "Iteration = " << iteration
                  << ", topological sort failed with message: "
-                 << topo_sort_status.error_message();
+                 << topo_sort_status.message();
     }
     // Turn nodes with only control outputs into NoOps, prune NoOp and Identity
     // nodes.
@@ -789,7 +787,7 @@ Status DependencyOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     GroupCrossDeviceControlEdges(/*host_granularity=*/true);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // end namespace grappler

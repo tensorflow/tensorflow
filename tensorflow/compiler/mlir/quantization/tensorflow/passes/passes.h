@@ -17,14 +17,17 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PASSES_PASSES_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 
 namespace mlir {
 namespace quant {
@@ -40,48 +43,50 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateConvertFakeQuantToQdqPass();
 
 // Lifts the quantizable spots as composite functions.
 std::unique_ptr<OperationPass<ModuleOp>>
-CreateLiftQuantizableSpotsAsFunctionsPass(OpSet target_opset,
-                                          bool enable_two_input_tensors);
+CreateLiftQuantizableSpotsAsFunctionsPass(
+    const tensorflow::quantization::QuantizationOptions& quant_options);
 
 // Apply graph optimizations such as fusing and constant folding to prepare
 // lifting.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareLiftingPass(
-    OpSet target_opset);
+    tensorflow::quantization::OpSet target_opset);
 
 // Lifts the dynamic range quantizable spots as composite functions.
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateLiftQuantizableSpotsAsFunctionsDRQPass(
-    tensorflow::quantization::QuantizationMethod::ExperimentalMethod
+    tensorflow::quantization::QuantizationMethod::PresetMethod
         quantization_method,
-    OpSet op_set, int min_num_elements_for_weights);
+    tensorflow::quantization::OpSet op_set, int min_num_elements_for_weights);
 
 // Replaces tf.CustomAggregator ops with quant.Stats ops for finalizing the
 // calibration procedure.
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateConvertCustomAggregationOpToQuantStatsPass();
 
-// Issues IDs of custom aggregation ops for preparing the calibration procedure.
-std::unique_ptr<OperationPass<ModuleOp>>
-CreateIssueIDsOfCustomAggregationOpsPass();
-
 // Inserts quantized function library.
 std::unique_ptr<OperationPass<ModuleOp>> CreateInsertQuantizedFunctionsPass(
-    tensorflow::quantization::QuantizationMethod::ExperimentalMethod
+    tensorflow::quantization::QuantizationMethod::PresetMethod
         quantization_method,
-    OpSet target_opset);
+    tensorflow::quantization::OpSet target_opset);
 
 // Inserts custom aggregation operators for the calibration procedure.
 std::unique_ptr<OperationPass<func::FuncOp>>
-CreateInsertCustomAggregationOpsPass();
+CreateInsertCustomAggregationOpsPass(
+    const ::stablehlo::quantization::CalibrationOptions& calib_opts);
 
 // Replaces composite functions with quantized composite functions. After this
 // pass runs, functions in the given graph will be replaced with their quantized
 // versions. By doing so, the quantization will be applied to the given input.
+// mlir_dump_file_prefix is an optional field that is used for debugging to save
+// mlir dump files.
 std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizeCompositeFunctionsPass(
-    tensorflow::quantization::QuantizationMethod::ExperimentalMethod
+    tensorflow::quantization::QuantizationMethod::PresetMethod
         quantization_method,
-    OpSet target_opset, bool enable_per_channel_quantization,
-    int min_num_elements_for_weight, bool enable_legacy_weight_only = false);
+    tensorflow::quantization::OpSet target_opset,
+    bool enable_per_channel_quantization, int min_num_elements_for_weights,
+    bool enable_legacy_weight_only = false,
+    std::optional<const absl::string_view> mlir_dump_file_prefix =
+        std::nullopt);
 
 // Converts dequantize-(quantizable) call-quantize pattern to a single call op
 // that has quantized input and output types. It is expected for this pass to
@@ -92,33 +97,33 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass();
 
 // Overloading of CreateQuantizePass which takes QuantizationSpecs.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(
-    QuantizationSpecs quant_specs, OpSet target_opset);
+    QuantizationSpecs quant_specs,
+    tensorflow::quantization::OpSet target_opset);
 
 // Creates an instance of the PrepareQuantize pass, which will perform similar
 // transformations as TFL::PrepareQuantizePass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareQuantizePass(
     const QuantizationSpecs& quant_specs,
-    tensorflow::quantization::QuantizationMethod::ExperimentalMethod
+    tensorflow::quantization::QuantizationMethod::PresetMethod
         quantization_method);
 
 // Creates an instance of the PrepareQuantizeDRQ pass, which will
 // perform similar transformations as TFL::PrepareQuantizeDynamicRangePass.
 std::unique_ptr<OperationPass<ModuleOp>> CreatePrepareQuantizeDRQPass(
-    const QuantizationSpecs& quant_specs, OpSet op_set);
+    const QuantizationSpecs& quant_specs,
+    tensorflow::quantization::OpSet op_set);
 
 // Creates an instance of the PreprocessOp pass, which will perform op
 // preprocessing to allow multi-axis quantization, prior to quantization.
 std::unique_ptr<OperationPass<ModuleOp>> CreatePreprocessOpPass(
-    const QuantizationSpecs& quant_specs, OpSet op_set);
+    tensorflow::quantization::OpSet op_set,
+    tensorflow::quantization::QuantizationMethod::PresetMethod
+        quantization_method,
+    bool enable_per_channel_quantization);
 
 // Creates an instance of the PostQuantize pass, which will remove unnecessary
 // ops from the final quantized graph.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePostQuantizePass();
-
-// Creates an instance of the ConvertTFQuantOpsToMHLOPass pass, which will
-// convert TF uniform quantized ops to the corresponding quantized MHLO ops.
-std::unique_ptr<OperationPass<func::FuncOp>>
-CreateConvertTFQuantOpsToMHLOPass();
 
 // Applies optimization patterns after quantization.
 std::unique_ptr<OperationPass<mlir::func::FuncOp>> CreateOptimizePass();
@@ -198,6 +203,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateMarkFunctionsNoinlinePass(
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateRemoveVariableInitializationByConstPass();
 
+// Creates a pass that converts Tensorflow Xla ops to non-Xla ops.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateConvertTfXlaOpToTfOpPass();
+
 // Creates a pass that converts TPU models for CPU by removing TPU related ops
 // such as TPUPartitionedCall, TPUReplicatedOp, etc. The TF quantizer does not
 // work with models specifically designed for TPU, so this pass makes the input
@@ -209,6 +217,32 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateConvertTpuModelToCpuPass();
 // pass is a part of the ConvertTpuModelToCpu pass to support BF16 optimized TPU
 // model quantization.
 std::unique_ptr<OperationPass<ModuleOp>> CreateCastBf16OpsToF32Pass();
+
+// Creates a pass that lifts HashTable ops as function arguments. In the graph
+// execution mode, resource ops with the same `shared_name` attribute point to
+// the same underlying resource. This is not true in the eager execution mode.
+// Lifting resource ops as arguments will help unifying them across functions.
+std::unique_ptr<OperationPass<ModuleOp>> CreateLiftHashTableOpsAsArgsPass();
+
+// Creates a pass that merges duplicate resource ops in each function. Two
+// resource ops are considered duplicated if they have the same `shared_name`.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateMergeDuplicateResourceOpsPass();
+
+// Apply quantization to weights based on the provided schemes.
+std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizeWeightsPass(
+    const tensorflow::quantization::QuantizationOptions& quant_options);
+
+// Propagate quantized type through allowed ops.
+std::unique_ptr<OperationPass<ModuleOp>> CreatePropagateQuantizeTypePass();
+
+// Create a pass that inserts dump tensor to quantizable layer's output.
+std::unique_ptr<OperationPass<ModuleOp>> CreateAddDumpTensorOpPass(
+    ::stablehlo::quantization::DebuggerConfig::DebuggerType debugger_type,
+    std::string log_dir_path);
+
+// Creates a pass that add QuantizationUnitLoc to quantizable layers.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateAddQuantizationUnitLocPass();
 
 }  // namespace quant
 }  // namespace mlir

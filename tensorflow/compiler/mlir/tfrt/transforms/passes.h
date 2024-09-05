@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_PASSES_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_PASSES_H_
 
+#include <cstdint>
 #include <memory>
 
 #include "llvm/Support/CommandLine.h"
@@ -25,7 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/tfrt_pipeline_options.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h"
-#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace mlir {
 class PassManager;
@@ -66,6 +67,15 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateMergeTfIfOpsPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateDeduplicateFunctionsInovkedByBatchFunctionPass();
 
+// Create a pass to lower bound the number of threads in tf.BatchFunction.
+struct ReconfigBatchOpPassOptions {
+  int64_t min_num_batch_threads = 1;
+  int64_t min_max_enqueued_batches = 1;
+  std::string batch_padding_policy = "";
+};
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateReconfigBatchOpPass(
+    ReconfigBatchOpPassOptions options);
+
 // Create a pass to fuse the TPU Ops for TFRT.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateFuseTpuCompileAndExecutePass();
@@ -75,6 +85,10 @@ std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateOptimizeTfForTfrtPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateTfrtXlaRewritePass();
+
+// Create a pass to deduplicate results of tf.If ops.
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateDeduplicateIfResultPass();
 
 }  // namespace tfrt_compiler
 
@@ -88,7 +102,8 @@ CreateSinkInInvariantOpsPass();
 // Create a pass that rewrites tf_saved_model dialect's ops according to TFRT's
 // requirements.
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateLowerTFSavedModelPass(bool hoist_invariant_ops);
+CreateLowerTFSavedModelPass(bool hoist_invariant_ops,
+                            bool fuse_get_resource_ops);
 
 // Create a pass that converts ref variables to resource variables in a limited
 // number of cases.
@@ -116,19 +131,28 @@ CreateCrossDeviceTransferPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateTfToTfrtConversionPass(const TfrtPipelineOptions& options);
 
-// Creates a pipeline of passes that lowers MLIR TF Executor dialect to TF
-// dialect for CoreRT purposes.
-tsl::Status CreateTFExecutorToTFPipeline(mlir::PassManager& pm,
-                                         const TfrtPipelineOptions& options);
-
 // Creates a pipeline of passes that lowers MLIR TF dialect to TFRT dialects.
 void CreateTfToTfrtPipeline(mlir::OpPassManager& pm,
                             const TfrtPipelineOptions& options);
 
 // Creates a pipeline of passes that lowers MLIR TF dialect from tf.function to
 // TFRT dialect. SavedModel related conversions are not included.
-tsl::Status CreateTfExecutorToTfrtPipeline(mlir::PassManager& pm,
-                                           const TfrtPipelineOptions& options);
+Status CreateTfExecutorToTfrtPipeline(mlir::PassManager& pm,
+                                      const TfrtPipelineOptions& options);
+
+// Creates a pipeline of passes that lowers MLIR TF Executor dialect to TF
+// dialect for CoreRT purposes.
+Status CreateTFExecutorToTFPipeline(mlir::PassManager& pm,
+                                    const TfrtPipelineOptions& options);
+
+// TODO(deqiangc): refactor below helpers once mlrt is OSSed.
+void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
+    mlir::OpPassManager& pm, const TfrtPipelineOptions& options);
+void CreateTFExecutorToTFInvariantOptimizationPipelineHelper(
+    mlir::OpPassManager& pm, const TfrtPipelineOptions& options);
+
+Status CreateTFExecutorToTFPreInvariantOptimizationPipeline(
+    mlir::PassManager& pm, const TfrtPipelineOptions& options);
 
 }  // namespace tensorflow
 

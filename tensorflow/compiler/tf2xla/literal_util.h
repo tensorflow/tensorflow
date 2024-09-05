@@ -18,10 +18,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_LITERAL_UTIL_H_
 #define TENSORFLOW_COMPILER_TF2XLA_LITERAL_UTIL_H_
 
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/literal.h"
+#include "xla/shape.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
@@ -39,7 +42,7 @@ Status HostTensorToBorrowingLiteral(const xla::Shape& xla_shape,
 
 // Returns a Literal with the contents of 'host_tensor', backed by its own
 // storage (i.e., not reusing 'host_tensor's buffers.)
-StatusOr<xla::Literal> HostTensorToLiteral(const Tensor& host_tensor);
+absl::StatusOr<xla::Literal> HostTensorToLiteral(const Tensor& host_tensor);
 
 // Returns a MutableBorrowingLiteral that utilizes the same underlying buffer
 // owned by 'host_tensor', but is mutable via the xla::Literal methods.

@@ -2,4 +2,4 @@ syntax = "proto3";
 
 package tensorflow.dummy;
 
-import public "tensorflow/tsl/profiler/protobuf/profiler_service.proto";
+import public "tsl/profiler/protobuf/profiler_service.proto";

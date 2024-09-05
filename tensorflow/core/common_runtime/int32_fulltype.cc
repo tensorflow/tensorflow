@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/tsl/protobuf/error_codes.pb.h"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 
@@ -37,9 +37,9 @@ Status Int32FulltypePass::Int32FullTypeForTensor(DataType dtype,
         return Status(
             absl::StatusCode::kInvalidArgument,
             absl::StrCat("Full type for node='", node->name(), "' (op='",
-                         node->op_def().name(), "') has TFT_TENSOR output ",
-                         output_idx, " which has ", tensor_t->args_size(),
-                         " args instead of 1.\n got:\n",
+                         node->op_def().name(), "') in '", debug_location_,
+                         "' has TFT_TENSOR output ", output_idx, " which has ",
+                         tensor_t->args_size(), " args instead of 1.\n got:\n",
                          tensor_t->DebugString()));
       } else {
         return Status(absl::StatusCode::kInvalidArgument,
@@ -58,7 +58,7 @@ Status Int32FulltypePass::Int32FullTypeForTensor(DataType dtype,
     tensor_t->set_type_id(TFT_SHAPE_TENSOR);
     (*tensor_t->add_args()) = data_t;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 static bool is_host_memory_int32(MemoryType mtype, DataType dtype) {
@@ -135,7 +135,7 @@ Status Int32FulltypePass::ProcessGraph(Graph* graph, bool ints_on_device) {
               << t.DebugString();
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

@@ -1,16 +1,13 @@
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
 load("//tensorflow/java:build_defs.bzl", "JAVACOPTS")
 load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_jni_library")
-load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
-load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 # Following targets are using for testing selective-built flex delegate
 # in Java. Please don't use them for other purposes.
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
-        "//tensorflow/lite/android:__subpackages__",
-    ],
     licenses = ["notice"],
 )
 
@@ -95,7 +92,7 @@ ios_static_framework(
     testonly = 1,
     avoid_deps = ["//tensorflow/lite/core/c:common"],
     bundle_name = "TestTensorFlowLiteSelectTfOps",
-    minimum_os_version = "11.0",
+    minimum_os_version = "12.0",
     deps = [
         ":test_flex_delegate",
     ],

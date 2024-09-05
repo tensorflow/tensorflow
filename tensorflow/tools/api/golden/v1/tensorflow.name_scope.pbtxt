@@ -1,7 +1,7 @@
 path: "tensorflow.name_scope"
 tf_class {
   is_instance: "<class \'tensorflow.python.framework.ops.name_scope_v1\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'contextlib.AbstractContextManager\'>"
   member {
     name: "name"
     mtype: "<type \'property\'>"

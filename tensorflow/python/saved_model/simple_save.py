@@ -45,10 +45,7 @@ def simple_save(session, export_dir, inputs, outputs, legacy_init_op=None):
     - The SavedModel will load in TensorFlow Serving and supports the
       [Predict
       API](https://github.com/tensorflow/serving/blob/master/tensorflow_serving/apis/predict.proto).
-      To use the Classify, Regress, or MultiInference APIs, please
-      use either
-      [tf.Estimator](https://www.tensorflow.org/api_docs/python/tf/estimator/Estimator)
-      or the lower level
+      To use the Classify, Regress, or MultiInference APIs, please see the
       [SavedModel
       APIs](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md).
     - Some TensorFlow ops depend on information on disk or other information

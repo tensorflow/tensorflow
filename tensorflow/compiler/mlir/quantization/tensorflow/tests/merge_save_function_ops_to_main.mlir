@@ -32,10 +32,10 @@ module attributes {tf_saved_model.semantics} {
 // CHECK: func.func @main
 // CHECK-SAME: %[[ARG_0:.*]]: tensor<!tf_type.string> {tf_saved_model.index_path = ["__tf_file_prefix"]}
 // CHECK: tf_executor.graph
-// CHECK: %[[VAR_HANDLE:.*]], {{.*}} = tf_executor.island wraps "tf.VarHandleOp"() {{{.*shared_name = "var_0".*}}}
+// CHECK: %[[VAR_HANDLE:.*]], {{.*}} = tf_executor.island wraps "tf.VarHandleOp"() <{{{.*shared_name = "var_0".*}}}>
 // CHECK: %[[READ_VARIABLE:.*]], {{.*}} = tf_executor.island wraps "tf.ReadVariableOp"(%[[VAR_HANDLE]])
-// CHECK-DAG: %[[CST_0:.*]], {{.*}} = tf_executor.island wraps "tf.Const"() {{{.*value = dense<"var_0"> : tensor<1x!tf_type\.string>.*}}}
-// CHECK-DAG: %[[CST_1:.*]], {{.*}} = tf_executor.island wraps "tf.Const"() {{{.*value = dense<""> : tensor<1x!tf_type\.string>.*}}}
+// CHECK-DAG: %[[CST_0:.*]], {{.*}} = tf_executor.island wraps "tf.Const"() <{{{.*value = dense<"var_0"> : tensor<1x!tf_type\.string>.*}}}>
+// CHECK-DAG: %[[CST_1:.*]], {{.*}} = tf_executor.island wraps "tf.Const"() <{{{.*value = dense<""> : tensor<1x!tf_type\.string>.*}}}>
 // CHECK: %[[CTL_0:.*]] = tf_executor.island wraps "tf.SaveV2"(%[[ARG_0]], %[[CST_0]], %[[CST_1]], %[[READ_VARIABLE]]) : (tensor<!tf_type.string>, tensor<1x!tf_type.string>, tensor<1x!tf_type.string>, tensor<2xf32>) -> ()
 
 // Test that the Identity op has been created to fetch the file prefix
@@ -150,10 +150,10 @@ module attributes {tf_saved_model.semantics} {
 // CHECK-SAME: %[[ARG_0:.*]]: tensor<!tf_type.string> {tf_saved_model.index_path = ["__tf_file_prefix"]}
 // CHECK-SAME: tf.entry_function = {inputs = "__tf_file_prefix:0", outputs = ""}
 // CHECK: tf_executor.graph
-// CHECK: %[[VAR_HANDLE:.*]], {{.*}} = tf_executor.island wraps "tf.VarHandleOp"() {{{.*shared_name = "var_0".*}}}
+// CHECK: %[[VAR_HANDLE:.*]], {{.*}} = tf_executor.island wraps "tf.VarHandleOp"() <{{{.*shared_name = "var_0".*}}}>
 // CHECK: %[[READ_VARIABLE:.*]], {{.*}} = tf_executor.island wraps "tf.ReadVariableOp"(%[[VAR_HANDLE]])
-// CHECK-DAG: %[[CST_0:.*]], {{.*}} = tf_executor.island wraps "tf.Const"() {{{.*value = dense<"var_0"> : tensor<1x!tf_type\.string>.*}}}
-// CHECK-DAG: %[[CST_1:.*]], {{.*}} = tf_executor.island wraps "tf.Const"() {{{.*value = dense<""> : tensor<1x!tf_type\.string>.*}}}
+// CHECK-DAG: %[[CST_0:.*]], {{.*}} = tf_executor.island wraps "tf.Const"() <{{{.*value = dense<"var_0"> : tensor<1x!tf_type\.string>.*}}}>
+// CHECK-DAG: %[[CST_1:.*]], {{.*}} = tf_executor.island wraps "tf.Const"() <{{{.*value = dense<""> : tensor<1x!tf_type\.string>.*}}}>
 // CHECK: %[[CTL_0:.*]] = tf_executor.island wraps "tf.SaveV2"(%[[ARG_0]], %[[CST_0]], %[[CST_1]], %[[READ_VARIABLE]]) : (tensor<!tf_type.string>, tensor<1x!tf_type.string>, tensor<1x!tf_type.string>, tensor<2xf32>) -> ()
 
 // Test that the Identity op has been created to fetch the file prefix

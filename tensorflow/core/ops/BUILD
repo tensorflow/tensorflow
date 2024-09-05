@@ -2,6 +2,10 @@
 # Tensorflow default op definitions.
 
 load(
+    "@local_xla//xla/tsl/mkl:build_defs.bzl",
+    "if_mkl",
+)
+load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
 )
@@ -13,10 +17,6 @@ load(
 load(
     "//tensorflow/core/platform:rules_cc.bzl",
     "cc_library",
-)
-load(
-    "//third_party/mkl:build_defs.bzl",
-    "if_mkl",
 )
 
 # A lot of packages try to minimize binary size by depending on individual ops,\
@@ -84,12 +84,12 @@ tf_gen_op_libs(
         "set_ops",
         "script_ops",
         "sendrecv_ops",
-        "sparse_csr_matrix_ops",
         "sparse_ops",
         "spectral_ops",
         "state_ops",
         "stateless_random_ops",
         "stateless_random_ops_v2",
+        "stochastic_cast_op",
         "sync_ops",
         "summary_ops",
         "training_ops",
@@ -98,6 +98,18 @@ tf_gen_op_libs(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_gen_op_libs(
+    is_external = False,
+    op_lib_names = ["sparse_csr_matrix_ops"],
+    sub_directory = "",
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -268,6 +280,7 @@ cc_library(
         ":checkpoint_ops_op_lib",
         ":clustering_ops_op_lib",
         ":collective_ops_op_lib",
+        ":composite_tensor_ops_op_lib",
         ":control_flow_ops_op_lib",
         ":count_ops_op_lib",
         ":ctc_ops_op_lib",
@@ -278,19 +291,17 @@ cc_library(
         ":decode_proto_ops_op_lib",
         ":encode_proto_ops_op_lib",
         ":experimental_dataset_ops_op_lib",
-        ":composite_tensor_ops_op_lib",
         ":filesystem_ops_op_lib",
         ":function_ops_op_lib",
         ":functional_ops_op_lib",
         ":image_ops_op_lib",
         ":io_ops_op_lib",
         ":linalg_ops_op_lib",
-        ":sync_ops_op_lib",
         ":list_ops_op_lib",
-        ":map_ops_op_lib",
         ":logging_ops_op_lib",
         ":lookup_ops_op_lib",
         ":manip_ops_op_lib",
+        ":map_ops_op_lib",
         ":math_ops_op_lib",
         ":nccl_ops_op_lib",
         ":nn_ops_op_lib",
@@ -303,8 +314,6 @@ cc_library(
         ":resource_variable_ops_op_lib",
         ":risc_ops_op_lib",
         ":rnn_ops_op_lib",
-        ":special_math_ops_op_lib",
-        ":stateful_random_ops_op_lib",
         ":scoped_allocator_ops_op_lib",
         ":script_ops_op_lib",
         ":sdca_ops_op_lib",
@@ -312,12 +321,16 @@ cc_library(
         ":set_ops_op_lib",
         ":sparse_csr_matrix_ops_op_lib",
         ":sparse_ops_op_lib",
-        ":summary_ops_op_lib",
+        ":special_math_ops_op_lib",
         ":spectral_ops_op_lib",
         ":state_ops_op_lib",
+        ":stateful_random_ops_op_lib",
         ":stateless_random_ops_op_lib",
         ":stateless_random_ops_v2_op_lib",
+        ":stochastic_cast_op_op_lib",
         ":string_ops_op_lib",
+        ":summary_ops_op_lib",
+        ":sync_ops_op_lib",
         ":training_ops_op_lib",
         ":uniform_quant_ops_op_lib",
         ":word2vec_ops",
@@ -328,16 +341,16 @@ cc_library(
         "//conditions:default": [
             ":tpu_configuration_ops_op_lib",
             ":tpu_cross_replica_ops_op_lib",
-            ":tpu_embedding_ops_op_lib",
             ":tpu_embedding_load_retrieve_ops_op_lib",
+            ":tpu_embedding_ops_op_lib",
             ":tpu_functional_ops_op_lib",
             ":tpu_heartbeat_ops_op_lib",
             ":tpu_host_compute_ops_op_lib",
-            ":tpu_sharding_util_ops_op_lib",
             ":tpu_infeed_ops_op_lib",
-            ":tpu_outfeed_ops_op_lib",
             ":tpu_ordinal_selector_ops_op_lib",
+            ":tpu_outfeed_ops_op_lib",
             ":tpu_replication_ops_op_lib",
+            ":tpu_sharding_util_ops_op_lib",
         ],
     }) + if_mkl([
         ":mkl_array_ops_op_lib",
@@ -393,9 +406,9 @@ cc_library(
     srcs = ["nn_grad.cc"],
     linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
     deps = [
+        ":nn_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        ":nn_ops_op_lib",
     ] + if_mkl([
         ":mkl_nn_ops_op_lib",
     ]),
@@ -458,7 +471,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:math",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -486,7 +499,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:data_flow",
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:math",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -515,6 +528,7 @@ tf_cc_test(
         "sparse_ops_test.cc",
         "spectral_ops_test.cc",
         "state_ops_test.cc",
+        "stochastic_cast_op_test.cc",
         "string_ops_test.cc",
         "tpu_cross_replica_ops_test.cc",
         "training_ops_test.cc",
@@ -535,6 +549,5 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/common_runtime:type_inference",
-        "//third_party/eigen3",
     ],
 )

@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Operators for manipulating tensors."""
+"""Operators for manipulating tensors.
+
+API docstring: tensorflow.manip
+"""
 
 from tensorflow.python.ops import gen_manip_ops as _gen_manip_ops
 from tensorflow.python.util import deprecation

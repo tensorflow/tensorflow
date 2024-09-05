@@ -23,16 +23,21 @@ limitations under the License.
 
 namespace tflite {
 
+// Bitwise flags to specify GPU compatibility. Multiple flags can be set.
+enum class GpuCompatibilityFlags {
+  kStandard = 0,
+  kEnhancedBroadcast = 1 << 0,  // Set when backend supports enhanced broadcast.
+};
+
 // Check if the given op signature is compatible with GPU delegate.
-// WARNING: It's not fully implemented and still under development. Only use the
-// function for an experiemental feature.
-// WARNING: This is an experimental API and subject to change.
-absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig);
+absl::Status CheckGpuDelegateCompatibility(
+    const OpSignature& op_sig,
+    GpuCompatibilityFlags flags = GpuCompatibilityFlags::kStandard);
 
 // Check if the given operator in a TFLite flatbuffer model is compatible with
 // GPU delegate.
 // WARNING: It's not fully implemented and still under development. Only use the
-// function for an experiemental feature.
+// function for an experimental feature.
 // WARNING: This is an experimental API and subject to change.
 absl::Status CheckGpuDelegateCompatibility(const OperatorCode* op_code,
                                            const Operator* op,
@@ -40,13 +45,10 @@ absl::Status CheckGpuDelegateCompatibility(const OperatorCode* op_code,
                                            const Model* model);
 
 // Check if the given TfLiteNode op is compatible with GPU delegate.
-// WARNING: It's not fully implemented and still under development. Only use
-// the function for an experiemental feature.
-// WARNING: This is an experimental API and subject to change.
 absl::Status CheckGpuDelegateCompatibility(
     const TfLiteContext* context, const TfLiteNode* node,
-    const TfLiteRegistration* registration);
-
+    const TfLiteRegistration* registration,
+    GpuCompatibilityFlags flags = GpuCompatibilityFlags::kStandard);
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_TOOLS_VERSIONING_GPU_COMPATIBILITY_H_

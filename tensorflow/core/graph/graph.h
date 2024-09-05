@@ -64,14 +64,16 @@ namespace tensorflow {
 class Edge;
 class EdgeSetTest;
 class Graph;
+class GraphDebugInfo;
 class GraphDef;
+class GraphTest;
 class Node;
 struct OutputTensor;
 class VersionDef;
 class WhileContext;
 
-class NeighborIter;     // Declared below
-class NodeIter;         // Declared below
+class NeighborIter;  // Declared below
+class NodeIter;      // Declared below
 
 // Indicates where the graph instance is originated from.
 enum class ConstructionContext {
@@ -373,7 +375,8 @@ class Node {
   // this set.)
   WhileContext* while_ctx_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Node);
+  Node(const Node&) = delete;
+  void operator=(const Node&) = delete;
 };
 
 // Stores debug information associated with the Node.
@@ -454,6 +457,7 @@ class Edge {
   Edge() {}
 
   friend class EdgeSetTest;
+  friend class GraphTest;
   friend class Graph;
   Node* src_;
   Node* dst_;
@@ -559,7 +563,7 @@ class Graph {
   Node* AddNode(NodeDef node_def, Status* status);
 
   // Same as above, but using StatusOr. This method is always preferred.
-  StatusOr<Node*> AddNode(NodeDef node_def);
+  absl::StatusOr<Node*> AddNode(NodeDef node_def);
 
   // Copies *node, which may belong to another graph, to a new node,
   // which is returned.  Does not copy any edges.  *this owns the
@@ -611,6 +615,10 @@ class Graph {
   // is also updated.
   Status UpdateEdge(Node* new_src, int new_src_index, Node* dst, int dst_index);
 
+  // Add an input to dst that comes from the "src_slot" output of the
+  // node named by "src_name".
+  static void AddInput(NodeDef* dst, StringPiece src_name, int src_slot);
+
   // Like AddEdge but updates dst's NodeDef. Used to add an input edge to a
   // "While" op during gradient construction, see AddInputWhileHack in
   // python_api.h for more details.
@@ -619,8 +627,30 @@ class Graph {
   // Adds the function and gradient definitions in `fdef_lib` to this graph's op
   // registry. Ignores duplicate functions, and returns a bad status if an
   // imported function differs from an existing function or op with the same
-  // name.
+  // name. This overload adds the function definitions with no stack traces.
   Status AddFunctionLibrary(const FunctionDefLibrary& fdef_lib);
+  Status AddFunctionLibrary(FunctionDefLibrary&& fdef_lib);
+
+  // Adds the function and gradient definitions in `fdef_lib` to this graph's op
+  // registry. Ignores duplicate functions, and returns a bad status if an
+  // imported function differs from an existing function or op with the same
+  // name.
+  Status AddFunctionLibrary(const FunctionDefLibrary& fdef_lib,
+                            const FunctionDefLibraryStackTraces& stack_traces);
+  Status AddFunctionLibrary(FunctionDefLibrary&& fdef_lib,
+                            const FunctionDefLibraryStackTraces& stack_traces);
+
+  // Adds the function definition and its stacktraces to this graph's op
+  // registry. Ignores duplicate functions, and returns a bad status if an
+  // imported function differs from an existing function or op with the same
+  // name.
+  Status AddFunctionDef(const FunctionDef& fdef,
+                        const StackTracesMap& stack_traces);
+
+  // Adds the gradient definition to this graph's op registry. Ignores duplicate
+  // gradients of the same function, and returns a bad status if an imported
+  // gradient differs from an existing gradient of the same function name.
+  Status AddGradientDef(const GradientDef& gdef);
 
   // The number of live nodes in the graph.
   //
@@ -645,10 +675,36 @@ class Graph {
   int num_edges() const { return num_edges_; }
 
   // Serialize the nodes starting at `from_node_id` to a GraphDef.
-  void ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const;
+  // `include_flib_def` indicates whether the function library will be populated
+  // in the `graph_def`. `include_flib_def` should be usually set to true so
+  // that the populated `graph_def` will be complete. Setting `include_flib_def`
+  // to false would mean that the returned `graph_def` is incomplete and may
+  // contain references to functions whose definition is not included. It can
+  // make sense to do this in cases where the caller already has a copy of the
+  // function library.
+  // If `include_debug_info` is true, the `debug_info` field of the GraphDef
+  // will be populated with stack traces from the nodes and the function
+  // library. Note that if `include_debug_info` is true and `include_flib_def`
+  // is false, then `debug_info` will contain stack traces for nodes in the
+  // function library, which will not itself be included in the GraphDef.
+  void ToGraphDefSubRange(GraphDef* graph_def, int from_node_id,
+                          bool include_flib_def = true,
+                          bool include_debug_info = false) const;
 
-  // Serialize to a GraphDef.
-  void ToGraphDef(GraphDef* graph_def) const;
+  // Serialize to a GraphDef. `include_flib_def` indicates whether the function
+  // library will be populated in the `graph_def`. `include_flib_def` should be
+  // usually set to true so that the populated `graph_def` will be complete.
+  // Setting `include_flib_def` to false would mean that the returned
+  // `graph_def` is incomplete and may contain references to functions whose
+  // definition is not included. It can make sense to do this in cases where the
+  // caller already has a copy of the function library.
+  // If `include_debug_info` is true, the `debug_info` field of the GraphDef
+  // will be populated with stack traces from the nodes and the function
+  // library. Note that if `include_debug_info` is true and `include_flib_def`
+  // is false, then `debug_info` will contain stack traces for nodes in the
+  // function library, which will not itself be included in the GraphDef.
+  void ToGraphDef(GraphDef* graph_def, bool include_flib_def = true,
+                  bool include_debug_info = false) const;
 
   // This version can be called from debugger to inspect the graph content.
   // Use the previous version outside debug context for efficiency reasons.
@@ -777,6 +833,12 @@ class Graph {
   // information in the map.
   void NodeType(StringPiece name, const FullTypeDef** result);
 
+  // Builds a GraphDebugInfo from the functions and nodes in this graph. Stack
+  // traces associated with function definitions will have a key of the form
+  // <node_name> '@' <function_name>. Stack traces associated with other Nodes
+  // will use the node name as the key.
+  GraphDebugInfo BuildDebugInfo() const;
+
   // TODO(josh11b): uint64 hash() const;
 
  private:
@@ -857,7 +919,8 @@ class Graph {
   // Indicates the context that this Graph instance is constructed.
   ConstructionContext construction_context_ = ConstructionContext::kNotTracked;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Graph);
+  Graph(const Graph&) = delete;
+  void operator=(const Graph&) = delete;
 };
 
 // TODO(josh11b): We may want to support keeping an index on various
@@ -907,10 +970,14 @@ inline bool IsDistributedCommunication(const Node* n) {
 // https://en.cppreference.com/w/cpp/iterator/iterator).
 
 // Iterator for stepping through the nodes of a graph.
-class NodeIter
-    : public std::iterator<std::forward_iterator_tag, Node, std::ptrdiff_t,
-                           /*Pointer*/ Node*, /*Reference*/ Node*> {
+class NodeIter {
  public:
+  using iterator_category = std::forward_iterator_tag;
+  using value_type = Node;
+  using difference_type = std::ptrdiff_t;
+  using pointer = Node*;
+  using reference = Node*;
+
   NodeIter(const Graph* graph, int id);
   bool operator==(const NodeIter& rhs) const;
   bool operator!=(const NodeIter& rhs) const;
@@ -925,10 +992,14 @@ class NodeIter
 };
 
 // Iterator for stepping through the neighbors of a node.
-class NeighborIter
-    : public std::iterator<std::forward_iterator_tag, Node, std::ptrdiff_t,
-                           /*Pointer*/ Node*, /*Reference*/ Node*> {
+class NeighborIter {
  public:
+  using iterator_category = std::forward_iterator_tag;
+  using value_type = Node;
+  using difference_type = std::ptrdiff_t;
+  using pointer = Node*;
+  using reference = Node*;
+
   NeighborIter(EdgeSet::const_iterator iter, bool incoming);
   bool operator==(const NeighborIter& rhs) const;
   bool operator!=(const NeighborIter& rhs) const;

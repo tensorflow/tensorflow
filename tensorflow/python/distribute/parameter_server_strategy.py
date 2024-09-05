@@ -28,8 +28,8 @@ from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import ps_values
 from tensorflow.python.distribute import values
-from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
-from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
+from tensorflow.python.distribute.cluster_resolver import cluster_resolver as cluster_resolver_lib
+from tensorflow.python.distribute.cluster_resolver import tfconfig_cluster_resolver
 from tensorflow.python.distribute.v1 import input_lib as input_lib_v1
 from tensorflow.python.eager import context
 from tensorflow.python.framework import device as tf_device
@@ -108,7 +108,7 @@ class ParameterServerStrategyV1(distribute_lib.StrategyV1):
         `tf.distribute.cluster_resolver.TFConfigClusterResolver`.
     """
     if cluster_resolver is None:
-      cluster_resolver = TFConfigClusterResolver()
+      cluster_resolver = tfconfig_cluster_resolver.TFConfigClusterResolver()
     super(ParameterServerStrategyV1, self).__init__(
         ParameterServerStrategyExtended(
             self, cluster_resolver=cluster_resolver))
@@ -202,7 +202,8 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
     """
     # TODO(b/126786766): TFConfigClusterResolver returns wrong number of GPUs in
     # some cases.
-    if isinstance(cluster_resolver, TFConfigClusterResolver):
+    if isinstance(
+        cluster_resolver, tfconfig_cluster_resolver.TFConfigClusterResolver):
       num_gpus = context.num_gpus()
     else:
       num_gpus = cluster_resolver.num_accelerators().get("GPU", 0)
@@ -602,7 +603,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
     if cluster_spec:
       # Use the num_gpus_per_worker recorded in constructor since _configure
       # doesn't take num_gpus.
-      cluster_resolver = SimpleClusterResolver(
+      cluster_resolver = cluster_resolver_lib.SimpleClusterResolver(
           cluster_spec=multi_worker_util.normalize_cluster_spec(cluster_spec),
           task_type=task_type,
           task_id=task_id,

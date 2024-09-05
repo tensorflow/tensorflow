@@ -81,8 +81,7 @@ TEST_F(SavedConcreteFunctionLoadingTest, TooFewInputsInSavedConcreteFunction) {
   std::unique_ptr<TFConcreteFunction> result;
   Status status =
       internal::LoadTFConcreteFunction(saved, &func, {}, context(), &result);
-  EXPECT_EQ(status.code(), error::FAILED_PRECONDITION)
-      << status.error_message();
+  EXPECT_EQ(status.code(), error::FAILED_PRECONDITION) << status.message();
 }
 
 // A SavedConcreteFunction whose canonicalized input signature length +
@@ -105,8 +104,7 @@ TEST_F(SavedConcreteFunctionLoadingTest,
   std::unique_ptr<TFConcreteFunction> result;
   Status status = internal::LoadTFConcreteFunction(saved, &func, captures,
                                                    context(), &result);
-  EXPECT_EQ(status.code(), error::FAILED_PRECONDITION)
-      << status.error_message();
+  EXPECT_EQ(status.code(), error::FAILED_PRECONDITION) << status.message();
 }
 
 // A SavedConcreteFunction whose canonicalized input signature
@@ -124,8 +122,7 @@ TEST_F(SavedConcreteFunctionLoadingTest, TooManyInputsInSavedConcreteFunction) {
   std::unique_ptr<TFConcreteFunction> result;
   Status status =
       internal::LoadTFConcreteFunction(saved, &func, {}, context(), &result);
-  EXPECT_EQ(status.code(), error::FAILED_PRECONDITION)
-      << status.error_message();
+  EXPECT_EQ(status.code(), error::FAILED_PRECONDITION) << status.message();
 }
 
 // A SavedConcreteFunction whose canonicalized input signature
@@ -149,8 +146,7 @@ TEST_F(SavedConcreteFunctionLoadingTest,
   std::unique_ptr<TFConcreteFunction> result;
   Status status = internal::LoadTFConcreteFunction(saved, &func, captures,
                                                    context(), &result);
-  EXPECT_EQ(status.code(), error::FAILED_PRECONDITION)
-      << status.error_message();
+  EXPECT_EQ(status.code(), error::FAILED_PRECONDITION) << status.message();
 }
 
 // A SavedConcreteFunction whose capture refers to an index not in the capture
@@ -174,8 +170,7 @@ TEST_F(SavedConcreteFunctionLoadingTest, ImproperCaptureIndex) {
   std::unique_ptr<TFConcreteFunction> result;
   Status status = internal::LoadTFConcreteFunction(saved, &func, captures,
                                                    context(), &result);
-  EXPECT_EQ(status.code(), error::FAILED_PRECONDITION)
-      << status.error_message();
+  EXPECT_EQ(status.code(), error::FAILED_PRECONDITION) << status.message();
 }
 
 // A SavedConcreteFunction whose outputs are fewer than its corresponding
@@ -193,8 +188,7 @@ TEST_F(SavedConcreteFunctionLoadingTest, TooFewOutputsInSavedConcreteFunction) {
   std::unique_ptr<TFConcreteFunction> result;
   Status status =
       internal::LoadTFConcreteFunction(saved, &func, {}, context(), &result);
-  EXPECT_EQ(status.code(), error::FAILED_PRECONDITION)
-      << status.error_message();
+  EXPECT_EQ(status.code(), error::FAILED_PRECONDITION) << status.message();
 }
 
 // A SavedConcreteFunction whose outputs exceed its corresponding functiondef
@@ -213,8 +207,7 @@ TEST_F(SavedConcreteFunctionLoadingTest,
   std::unique_ptr<TFConcreteFunction> result;
   Status status =
       internal::LoadTFConcreteFunction(saved, &func, {}, context(), &result);
-  EXPECT_EQ(status.code(), error::FAILED_PRECONDITION)
-      << status.error_message();
+  EXPECT_EQ(status.code(), error::FAILED_PRECONDITION) << status.message();
 }
 
 // A SavedConcreteFunction whose (inputs + captures) = functiondef inputs,
@@ -238,7 +231,7 @@ TEST_F(SavedConcreteFunctionLoadingTest, SuccessfulLoad) {
   std::unique_ptr<TFConcreteFunction> result;
   Status status = internal::LoadTFConcreteFunction(saved, &func, captures,
                                                    context(), &result);
-  TF_EXPECT_OK(status) << status.error_message();
+  TF_EXPECT_OK(status) << status.message();
 }
 
 // A TFConcreteFunction should register functiondefs on creation, and
@@ -257,7 +250,7 @@ TEST_F(SavedConcreteFunctionLoadingTest, RegistersAndRemovesFunctionDefs) {
     std::unique_ptr<TFConcreteFunction> result;
     Status status =
         internal::LoadTFConcreteFunction(saved, &func, {}, context(), &result);
-    TF_EXPECT_OK(status) << status.error_message();
+    TF_EXPECT_OK(status) << status.message();
     // The function should be registered with context.
     EXPECT_TRUE(context()->FindFunctionByName(func_name));
   }

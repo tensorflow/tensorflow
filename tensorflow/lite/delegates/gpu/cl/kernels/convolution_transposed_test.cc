@@ -29,12 +29,12 @@ namespace {
 
 TEST_F(OpenCLOperationTest, ConvolutionTransposedSimpleWeights) {
   auto status = ConvolutionTransposedSimpleWeightsTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, ConvolutionTransposed) {
   auto status = ConvolutionTransposedTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 }  // namespace

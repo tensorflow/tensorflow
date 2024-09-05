@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package third_party.tensorflow.compiler.mlir.lite.experimental.tac;
+
+// A list of filters for TAC users to run ops/functions on ML hardwares. The
+// intuition is that, for ops/functions that can be run on ML hardware (e.g.
+// EdgeTPU) and TFLite CPU, TAC users give a hint that they're more performant
+// to run on TFLite CPU. These filters give the TAC users freedom to specify the
+// parts that they want to use other hardware to accelerate.
+message TacFilters {
+  // A list of filters/rules to specify the parts that user wants to run on
+  // other hardware.
+  repeated TacFilter tac_filters = 1;
+}
+
+// A filter can be used for an op or function.
+message TacFilter {
+  oneof filter {
+    OpFilter op_filter = 1;
+    FunctionFilter function_filter = 2;
+  }
+}
+
+// Function filter is to include/exclude a function in the target annotation
+// pass in the TAC tool pipeline.
+message FunctionFilter {
+  // Function filter types that are supported. If one function is matched for
+  // two rules with conflict, INCLUDE_TARGET_ANNOTATION has higher priority.
+  enum FunctionFilterType {
+    // To skip this function in the target annotation pass. This means all ops
+    // in this function run on TFLite CPU.
+    SKIP_TARGET_ANNOTATION = 0;
+    // To include this function in the target annotation pass. This has higher
+    // priority than `SKIP_TARGET_ANNOTATION`.
+    INCLUDE_TARGET_ANNOTATION = 1;
+  }
+  // This name corresponds to the TFLite subgraph name in the flatbuffer.
+  // `function_name_pattern` supports regex matching.
+  string function_name_pattern = 1;
+  FunctionFilterType filter_type = 2;
+}
+
+// Op filter is to filter out ops that user wants to run. Ops with this filter
+// run on TFLite CPU.
+message OpFilter {
+  // This name corresponds to the mlir::Location of the tensor.
+  // `op_name_pattern` supports regex matching.
+  string op_name_pattern = 1;
+}

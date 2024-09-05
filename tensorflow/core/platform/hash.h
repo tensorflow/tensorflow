@@ -18,7 +18,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_HASH_H_
 #define TENSORFLOW_CORE_PLATFORM_HASH_H_
 
-#include "tensorflow/tsl/platform/hash.h"
+#include "tsl/platform/hash.h"
 
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)

@@ -16,6 +16,8 @@
 # Description:
 #   Contains the Keras Mixed Precision API (TensorFlow version).
 
+load("//tensorflow:py.default.bzl", "py_library")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
@@ -23,6 +25,7 @@ package(
         "//tensorflow/python/distribute:__pkg__",  # For collective_all_reduce_strategy_test
         "//tensorflow/python/keras:__subpackages__",
         "//tensorflow/tools/pip_package:__pkg__",
+        "//tensorflow/tools/pip_package:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -52,8 +55,9 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":device_compatibility_check",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:mixed_precision_global_state",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/platform:tf_logging",
+        "//tensorflow/python/training/experimental:mixed_precision_global_state",
     ],
 )
 
@@ -62,7 +66,7 @@ py_library(
     srcs = ["device_compatibility_check.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:config",
+        "//tensorflow/python/framework:config",
     ],
 )
 
@@ -82,17 +86,18 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_utils",
         "//tensorflow/python/distribute:ps_values",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/framework:tensor_conversion_registry",
+        "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/keras/distribute",
-        "//tensorflow/python/types",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:resource_variable_ops",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/types:core",
     ],
 )
 
@@ -101,8 +106,8 @@ py_library(
     srcs = ["loss_scale.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:loss_scale",
         "//tensorflow/python/keras/utils:generic_utils",
+        "//tensorflow/python/training/experimental:loss_scale",
     ],
 )
 
@@ -112,7 +117,6 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":loss_scale",
-        "//tensorflow/python:cond",
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:mirrored_strategy",
@@ -120,6 +124,8 @@ py_library(
         "//tensorflow/python/distribute:tpu_strategy",
         "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/keras/optimizer_v2",
+        "//tensorflow/python/ops:cond",
+        "//tensorflow/python/ops:variable_v1",
         "//tensorflow/python/trackable:base_delegate",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -130,9 +136,10 @@ py_library(
     srcs = ["test_util.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:cond",
-        "//tensorflow/python:framework",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/keras",
+        "//tensorflow/python/ops:cond",
     ],
 )

@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_POD_STATE_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_POD_STATE_H_
 
+#include <memory>
 #include <string>
 #include <vector>
 

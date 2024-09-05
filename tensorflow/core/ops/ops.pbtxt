@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "Abort"
   attr {
     name: "error_msg"
@@ -2545,6 +2545,7 @@ op {
         type: DT_COMPLEX128
         type: DT_BOOL
         type: DT_VARIANT
+        type: DT_STRING
       }
     }
   }
@@ -4060,6 +4061,63 @@ op {
     }
   }
   attr {
+    name: "low_priority_max_batch_size"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "low_priority_batch_timeout_micros"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "low_priority_allowed_batch_sizes"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "low_priority_max_enqueued_batches"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "mixed_priority_policy"
+    type: "string"
+    default_value {
+      s: "low_priority_padding_with_max_batch_size"
+    }
+    allowed_values {
+      list {
+        s: "low_priority_padding_with_max_batch_size"
+        s: "low_priority_padding_with_next_allowed_batch_size"
+        s: "priority_isolation"
+      }
+    }
+  }
+  attr {
+    name: "batch_padding_policy"
+    type: "string"
+    default_value {
+      s: "PAD_UP"
+    }
+    allowed_values {
+      list {
+        s: "PAD_UP"
+        s: "BATCH_DOWN"
+        s: "MINIMIZE_TPU_COST_PER_REQUEST"
+      }
+    }
+  }
+  attr {
     name: "Tin"
     type: "list(type)"
     has_minimum: true
@@ -4174,6 +4232,20 @@ op {
       b: false
     }
   }
+  attr {
+    name: "grad_x"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "grad_y"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "BatchMatMulV2"
@@ -4219,6 +4291,20 @@ op {
   }
   attr {
     name: "adj_y"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "grad_x"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "grad_y"
     type: "bool"
     default_value {
       b: false
@@ -4303,6 +4389,20 @@ op {
   }
   attr {
     name: "adj_y"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "grad_x"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "grad_y"
     type: "bool"
     default_value {
       b: false
@@ -7882,6 +7982,21 @@ op {
   is_stateful: true
 }
 op {
+  name: "CheckPinned"
+  input_arg {
+    name: "tensor"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}
+op {
   name: "Cholesky"
   input_arg {
     name: "input"
@@ -8189,6 +8304,13 @@ op {
     type: "float"
     default_value {
       f: 0
+    }
+  }
+  attr {
+    name: "is_stateless"
+    type: "bool"
+    default_value {
+      b: false
     }
   }
   attr {
@@ -8609,6 +8731,13 @@ op {
     }
   }
   attr {
+    name: "is_stateless"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
     name: "Nordering_token"
     type: "int"
     default_value {
@@ -8862,6 +8991,13 @@ op {
     }
   }
   attr {
+    name: "is_stateless"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
     name: "Nordering_token"
     type: "int"
     default_value {
@@ -8954,6 +9090,13 @@ op {
     type: "float"
     default_value {
       f: 0
+    }
+  }
+  attr {
+    name: "is_stateless"
+    type: "bool"
+    default_value {
+      b: false
     }
   }
   attr {
@@ -9273,6 +9416,42 @@ op {
   }
 }
 op {
+  name: "ComputeDedupDataSize"
+  output_arg {
+    name: "num_elements"
+    type: DT_INT32
+  }
+  attr {
+    name: "config"
+    type: "string"
+  }
+  is_stateful: true
+}
+op {
+  name: "ComputeDedupDataSizeV2"
+  output_arg {
+    name: "num_elements"
+    type: DT_INT32
+  }
+  attr {
+    name: "config"
+    type: "string"
+  }
+  attr {
+    name: "embedding_partitions"
+    type: "string"
+  }
+  attr {
+    name: "hbm_buffers_config"
+    type: "string"
+  }
+  attr {
+    name: "tpu_topology"
+    type: "string"
+  }
+  is_stateful: true
+}
+op {
   name: "ComputeDedupDataTupleMask"
   output_arg {
     name: "output_shape"
@@ -9280,6 +9459,30 @@ op {
   }
   attr {
     name: "config"
+    type: "string"
+  }
+  is_stateful: true
+}
+op {
+  name: "ComputeDedupDataTupleMaskV2"
+  output_arg {
+    name: "output_shape"
+    type: DT_INT32
+  }
+  attr {
+    name: "config"
+    type: "string"
+  }
+  attr {
+    name: "embedding_partitions"
+    type: "string"
+  }
+  attr {
+    name: "hbm_buffers_config"
+    type: "string"
+  }
+  attr {
+    name: "tpu_topology"
     type: "string"
   }
   is_stateful: true
@@ -9318,12 +9521,12 @@ op {
   }
   input_arg {
     name: "shape"
-    type: DT_INT32
+    type_attr: "shape_type"
     number_attr: "N"
   }
   output_arg {
     name: "offset"
-    type: DT_INT32
+    type_attr: "shape_type"
     number_attr: "N"
   }
   attr {
@@ -9331,6 +9534,19 @@ op {
     type: "int"
     has_minimum: true
     minimum: 2
+  }
+  attr {
+    name: "shape_type"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
   }
 }
 op {
@@ -9695,6 +9911,92 @@ op {
 }
 op {
   name: "ControlTrigger"
+}
+op {
+  name: "Conv"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "filter"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_BFLOAT16
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+      }
+    }
+  }
+  attr {
+    name: "strides"
+    type: "list(int)"
+  }
+  attr {
+    name: "padding"
+    type: "string"
+    allowed_values {
+      list {
+        s: "SAME"
+        s: "VALID"
+        s: "EXPLICIT"
+      }
+    }
+  }
+  attr {
+    name: "explicit_paddings"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "data_format"
+    type: "string"
+    default_value {
+      s: "CHANNELS_LAST"
+    }
+    allowed_values {
+      list {
+        s: "CHANNELS_FIRST"
+        s: "CHANNELS_LAST"
+      }
+    }
+  }
+  attr {
+    name: "dilations"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "batch_dims"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+  attr {
+    name: "groups"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
 }
 op {
   name: "Conv2D"
@@ -10480,6 +10782,222 @@ op {
   }
 }
 op {
+  name: "ConvertToCooTensor"
+  input_arg {
+    name: "indices_or_row_splits"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "values"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "weights"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "row_ids"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "col_ids"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "gains"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "sample_count"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "combiner"
+    type: "string"
+  }
+  is_stateful: true
+}
+op {
+  name: "ConvertToListOfSparseCoreCooTensors"
+  input_arg {
+    name: "indices_or_row_splits"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "values"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "weights"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "row_ids_list"
+    type: DT_INT32
+    number_attr: "num_sc_per_chip"
+  }
+  output_arg {
+    name: "col_ids_list"
+    type: DT_INT32
+    number_attr: "num_sc_per_chip"
+  }
+  output_arg {
+    name: "gains_list"
+    type: DT_FLOAT
+    number_attr: "num_sc_per_chip"
+  }
+  attr {
+    name: "sample_count"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_sc_per_chip"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "row_offset"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "col_offset"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "col_shift"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "num_sc_shards"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "stacked_table_sample_count"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "combiner"
+    type: "string"
+  }
+}
+op {
+  name: "ConvertToSparseCoreCsrWrappedCooTensor"
+  input_arg {
+    name: "sorted_row_ids_list"
+    type: DT_INT32
+    number_attr: "num_sc_per_chip"
+  }
+  input_arg {
+    name: "sorted_col_ids_list"
+    type: DT_INT32
+    number_attr: "num_sc_per_chip"
+  }
+  input_arg {
+    name: "sorted_gains_list"
+    type: DT_FLOAT
+    number_attr: "num_sc_per_chip"
+  }
+  input_arg {
+    name: "id_counts_list"
+    type: DT_INT32
+    number_attr: "num_sc_per_chip"
+  }
+  input_arg {
+    name: "splits"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "row_pointers"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "sorted_sample_ids"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "sorted_token_ids"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "sorted_gains"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "row_pointers_unpadded_size"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "ids_unpadded_size"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "num_minibatches_per_sc"
+    type: DT_INT32
+  }
+  attr {
+    name: "sample_count_per_sc"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_replica"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "max_minibatches_per_sc"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "max_ids_per_chip_per_sample"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "table_vocab_size"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "feature_width"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_sc_per_chip"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+  }
+  attr {
+    name: "allow_id_dropping"
+    type: "bool"
+  }
+}
+op {
   name: "Copy"
   input_arg {
     name: "input"
@@ -10552,7 +11070,7 @@ op {
     type_attr: "T"
   }
   attr {
-    name: "layout"
+    name: "mesh"
     type: "string"
   }
   attr {
@@ -10573,13 +11091,6 @@ op {
   output_arg {
     name: "output"
     type_attr: "T"
-  }
-  attr {
-    name: "reference_layout"
-    type: "string"
-    default_value {
-      s: ""
-    }
   }
   attr {
     name: "T"
@@ -10973,6 +11484,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
@@ -11118,6 +11630,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
@@ -11260,6 +11773,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
@@ -11406,6 +11920,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
@@ -11524,6 +12039,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
@@ -11633,6 +12149,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
@@ -11745,6 +12262,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
@@ -11865,6 +12383,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
@@ -11974,6 +12493,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
@@ -12106,6 +12626,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
@@ -12231,6 +12752,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_BFLOAT16
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
@@ -13082,6 +13604,17 @@ op {
   }
 }
 op {
+  name: "DatasetFingerprint"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "fingerprint"
+    type: DT_UINT64
+  }
+}
+op {
   name: "DatasetFromGraph"
   input_arg {
     name: "graph_def"
@@ -13371,6 +13904,73 @@ op {
     }
   }
   is_stateful: true
+}
+op {
+  name: "DebugIdentityV3"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "device_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "tensor_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "io_of_node"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "is_input"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "io_index"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "debug_urls"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "gated_grpc"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  is_stateful: true
+  allows_uninitialized_input: true
 }
 op {
   name: "DebugNanCount"
@@ -15413,6 +16013,106 @@ op {
   attr {
     name: "combiners"
     type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "DynamicEnqueueTPUEmbeddingRaggedTensorBatch"
+  input_arg {
+    name: "sample_splits"
+    type_attr: "T1"
+    number_attr: "N"
+  }
+  input_arg {
+    name: "embedding_indices"
+    type_attr: "T2"
+    number_attr: "N"
+  }
+  input_arg {
+    name: "aggregation_weights"
+    type_attr: "T3"
+    number_attr: "N"
+  }
+  input_arg {
+    name: "mode_override"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "device_ordinal"
+    type: DT_INT32
+  }
+  attr {
+    name: "T1"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "T2"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "T3"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "combiners"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "table_ids"
+    type: "list(int)"
+  }
+  attr {
+    name: "max_sequence_lengths"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "num_features"
+    type: "list(int)"
     default_value {
       list {
       }
@@ -17563,6 +18263,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "force_synchronous"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "ExperimentalMatchingFilesDataset"
@@ -18895,6 +19602,38 @@ op {
   }
 }
 op {
+  name: "FFTND"
+  input_arg {
+    name: "input"
+    type_attr: "Tcomplex"
+  }
+  input_arg {
+    name: "fft_length"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "axes"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "Tcomplex"
+  }
+  attr {
+    name: "Tcomplex"
+    type: "type"
+    default_value {
+      type: DT_COMPLEX64
+    }
+    allowed_values {
+      list {
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
   name: "FIFOQueue"
   output_arg {
     name: "handle"
@@ -19468,6 +20207,26 @@ op {
   }
   input_arg {
     name: "memory_config"
+    type: DT_STRING
+  }
+  is_stateful: true
+}
+op {
+  name: "FinalizeTPUEmbeddingV2"
+  input_arg {
+    name: "common_config"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "memory_config"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "embedding_partitions"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "hbm_buffers_config"
     type: DT_STRING
   }
   is_stateful: true
@@ -20843,6 +21602,7 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -21123,6 +21883,13 @@ op {
       }
     }
   }
+  attr {
+    name: "bad_indices_policy"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "GatherV2"
@@ -21373,6 +22140,198 @@ op {
   }
 }
 op {
+  name: "GetMinibatchSplitsWithPhysicalReplica"
+  input_arg {
+    name: "program_key"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "row_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "col_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "gains"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "sorted_row_ids"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "sorted_col_ids"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "sorted_gains"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "splits"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "id_counts"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "max_ids"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "max_uniques"
+    type: DT_INT32
+  }
+  attr {
+    name: "sample_count"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_replica"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "table_vocab_size"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "feature_width"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_sc_per_chip"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+  }
+  attr {
+    name: "mini_batch_splits"
+    type: "string"
+  }
+  is_stateful: true
+}
+op {
+  name: "GetMinibatchesInCsrWithPhysicalReplica"
+  input_arg {
+    name: "program_key"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "row_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "col_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "gains"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "splits"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "id_counts"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "row_pointers"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "sorted_sample_ids"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "sorted_token_ids"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "sorted_gains"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "row_pointers_unpadded_size"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "ids_unpadded_size"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "num_minibatches_per_physical_sparse_core"
+    type: DT_INT32
+  }
+  attr {
+    name: "sample_count"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_replica"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "max_minibatches_per_sc"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "max_ids_per_chip_per_sample"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "table_vocab_size"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "feature_width"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_sc_per_chip"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+  }
+  attr {
+    name: "mini_batch_in_csr"
+    type: "string"
+  }
+  is_stateful: true
+}
+op {
   name: "GetOptions"
   input_arg {
     name: "input_dataset"
@@ -21428,6 +22387,159 @@ op {
   attr {
     name: "dtype"
     type: "type"
+  }
+  is_stateful: true
+}
+op {
+  name: "GetStatsFromListOfSparseCoreCooTensors"
+  input_arg {
+    name: "row_ids_list"
+    type: DT_INT32
+    number_attr: "N"
+  }
+  input_arg {
+    name: "col_ids_list"
+    type: DT_INT32
+    number_attr: "N"
+  }
+  input_arg {
+    name: "gains_list"
+    type: DT_FLOAT
+    number_attr: "N"
+  }
+  output_arg {
+    name: "max_ids_per_sparse_core"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "max_unique_ids_per_sparse_core"
+    type: DT_INT32
+  }
+  attr {
+    name: "sample_count_list"
+    type: "list(int)"
+  }
+  attr {
+    name: "col_offset_list"
+    type: "list(int)"
+  }
+  attr {
+    name: "num_replica"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "table_vocab_size"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "feature_width"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_sc_per_chip"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+}
+op {
+  name: "GetTpuTaskId"
+  output_arg {
+    name: "tpu_task_id"
+    type: DT_INT32
+  }
+}
+op {
+  name: "GlobalIterId"
+  output_arg {
+    name: "iter_id"
+    type: DT_INT64
+  }
+  is_stateful: true
+}
+op {
+  name: "GlobalShuffleDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "seed"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "seed2"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "seed_generator"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
+      }
+    }
+  }
+  attr {
+    name: "reshuffle_each_iteration"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   is_stateful: true
 }
@@ -21973,6 +23085,38 @@ op {
   }
 }
 op {
+  name: "IFFTND"
+  input_arg {
+    name: "input"
+    type_attr: "Tcomplex"
+  }
+  input_arg {
+    name: "fft_length"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "axes"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "Tcomplex"
+  }
+  attr {
+    name: "Tcomplex"
+    type: "type"
+    default_value {
+      type: DT_COMPLEX64
+    }
+    allowed_values {
+      list {
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
   name: "IRFFT"
   input_arg {
     name: "input"
@@ -22062,6 +23206,51 @@ op {
   }
   input_arg {
     name: "fft_length"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "Treal"
+  }
+  attr {
+    name: "Treal"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "Tcomplex"
+    type: "type"
+    default_value {
+      type: DT_COMPLEX64
+    }
+    allowed_values {
+      list {
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
+  name: "IRFFTND"
+  input_arg {
+    name: "input"
+    type_attr: "Tcomplex"
+  }
+  input_arg {
+    name: "fft_length"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "axes"
     type: DT_INT32
   }
   output_arg {
@@ -22415,6 +23604,7 @@ op {
         type: DT_INT32
         type: DT_INT64
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -22463,6 +23653,7 @@ op {
         type: DT_INT32
         type: DT_INT64
         type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }
@@ -22629,6 +23820,86 @@ op {
         type: DT_INT32
         type: DT_INT64
       }
+    }
+  }
+}
+op {
+  name: "IndexFlatMapDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "map_func_other_args"
+    type_list_attr: "Tmap_func_args"
+  }
+  input_arg {
+    name: "index_map_func_other_args"
+    type_list_attr: "Tindex_map_func_args"
+  }
+  input_arg {
+    name: "output_cardinality"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
+      }
+    }
+  }
+  attr {
+    name: "map_func"
+    type: "func"
+  }
+  attr {
+    name: "index_map_func"
+    type: "func"
+  }
+  attr {
+    name: "Tmap_func_args"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Tindex_map_func_args"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
     }
   }
 }
@@ -23422,6 +24693,18 @@ op {
   }
   output_arg {
     name: "device"
+    type: DT_STRING
+  }
+  is_stateful: true
+}
+op {
+  name: "IteratorGetModelProto"
+  input_arg {
+    name: "iterator"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "model_proto"
     type: DT_STRING
   }
   is_stateful: true
@@ -24529,6 +25812,50 @@ op {
       }
     }
   }
+}
+op {
+  name: "ListSnapshotChunksDataset"
+  input_arg {
+    name: "snapshot_path"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
+      }
+    }
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
 }
 op {
   name: "LoadAllTPUEmbeddingParameters"
@@ -26008,6 +27335,13 @@ op {
     }
   }
   attr {
+    name: "force_synchronous"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
     name: "metadata"
     type: "string"
     default_value {
@@ -26410,6 +27744,20 @@ op {
         type: DT_COMPLEX64
         type: DT_COMPLEX128
       }
+    }
+  }
+  attr {
+    name: "grad_a"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "grad_b"
+    type: "bool"
+    default_value {
+      b: false
     }
   }
 }
@@ -31674,6 +33022,13 @@ op {
   }
   attr {
     name: "preserve_cardinality"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "use_unbounded_threadpool"
     type: "bool"
     default_value {
       b: false
@@ -38187,6 +39542,51 @@ op {
   }
 }
 op {
+  name: "RFFTND"
+  input_arg {
+    name: "input"
+    type_attr: "Treal"
+  }
+  input_arg {
+    name: "fft_length"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "axes"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "Tcomplex"
+  }
+  attr {
+    name: "Treal"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "Tcomplex"
+    type: "type"
+    default_value {
+      type: DT_COMPLEX64
+    }
+    allowed_values {
+      list {
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
   name: "RGBToHSV"
   input_arg {
     name: "images"
@@ -40736,14 +42136,14 @@ op {
   }
 }
 op {
-  name: "RelayoutGrad"
+  name: "RelayoutLike"
   input_arg {
     name: "input"
     type_attr: "T"
   }
   input_arg {
-    name: "forward_input"
-    type_attr: "T"
+    name: "layout_input"
+    type_attr: "U"
   }
   output_arg {
     name: "output"
@@ -40751,6 +42151,10 @@ op {
   }
   attr {
     name: "T"
+    type: "type"
+  }
+  attr {
+    name: "U"
     type: "type"
   }
 }
@@ -43331,6 +44735,13 @@ op {
       b: true
     }
   }
+  attr {
+    name: "bad_indices_policy"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
   is_stateful: true
 }
 op {
@@ -43366,6 +44777,13 @@ op {
     type: "bool"
     default_value {
       b: true
+    }
+  }
+  attr {
+    name: "bad_indices_policy"
+    type: "string"
+    default_value {
+      s: ""
     }
   }
   is_stateful: true
@@ -43405,6 +44823,13 @@ op {
       b: true
     }
   }
+  attr {
+    name: "bad_indices_policy"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
   is_stateful: true
 }
 op {
@@ -43442,6 +44867,13 @@ op {
       b: true
     }
   }
+  attr {
+    name: "bad_indices_policy"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
   is_stateful: true
 }
 op {
@@ -43477,6 +44909,13 @@ op {
     type: "bool"
     default_value {
       b: true
+    }
+  }
+  attr {
+    name: "bad_indices_policy"
+    type: "string"
+    default_value {
+      s: ""
     }
   }
   is_stateful: true
@@ -48273,6 +49712,13 @@ op {
       }
     }
   }
+  attr {
+    name: "bad_indices_policy"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "ScatterNdAdd"
@@ -48336,6 +49782,13 @@ op {
     type: "bool"
     default_value {
       b: false
+    }
+  }
+  attr {
+    name: "bad_indices_policy"
+    type: "string"
+    default_value {
+      s: ""
     }
   }
 }
@@ -48403,6 +49856,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "bad_indices_policy"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "ScatterNdMin"
@@ -48468,6 +49928,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "bad_indices_policy"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "ScatterNdNonAliasingAdd"
@@ -48523,6 +49990,13 @@ op {
         type: DT_INT32
         type: DT_INT64
       }
+    }
+  }
+  attr {
+    name: "bad_indices_policy"
+    type: "string"
+    default_value {
+      s: ""
     }
   }
 }
@@ -48590,6 +50064,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "bad_indices_policy"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "ScatterNdUpdate"
@@ -48630,6 +50111,13 @@ op {
     type: "bool"
     default_value {
       b: true
+    }
+  }
+  attr {
+    name: "bad_indices_policy"
+    type: "string"
+    default_value {
+      s: ""
     }
   }
 }
@@ -50919,6 +52407,56 @@ op {
   }
 }
 op {
+  name: "SnapshotChunkDataset"
+  input_arg {
+    name: "chunk_file"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
+      }
+    }
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "compression"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+}
+op {
   name: "SnapshotDataset"
   input_arg {
     name: "input_dataset"
@@ -51470,6 +53008,94 @@ op {
         type: DT_DOUBLE
       }
     }
+  }
+}
+op {
+  name: "SortListOfSparseCoreCooTensors"
+  input_arg {
+    name: "row_ids_list"
+    type: DT_INT32
+    number_attr: "N"
+  }
+  input_arg {
+    name: "col_ids_list"
+    type: DT_INT32
+    number_attr: "N"
+  }
+  input_arg {
+    name: "gains_list"
+    type: DT_FLOAT
+    number_attr: "N"
+  }
+  output_arg {
+    name: "sorted_row_ids"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "sorted_col_ids"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "sorted_gains"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "id_counts"
+    type: DT_INT32
+  }
+  attr {
+    name: "sample_count_list"
+    type: "list(int)"
+  }
+  attr {
+    name: "col_offset_list"
+    type: "list(int)"
+  }
+  attr {
+    name: "num_replica"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "table_vocab_size"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "feature_width"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_sc_per_chip"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "max_ids_per_sparse_core"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "max_unique_ids_per_sparse_core"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
   }
 }
 op {
@@ -54225,6 +55851,13 @@ op {
       }
     }
   }
+  attr {
+    name: "sparse_gradient"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "SparseSegmentMeanGrad"
@@ -54247,6 +55880,71 @@ op {
   output_arg {
     name: "output"
     type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "Tsegmentids"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
+  name: "SparseSegmentMeanGradV2"
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tidx"
+  }
+  input_arg {
+    name: "segment_ids"
+    type_attr: "Tsegmentids"
+  }
+  input_arg {
+    name: "dense_output_dim0"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "sorted_unique_indices"
+    type_attr: "Tidx"
   }
   attr {
     name: "T"
@@ -54360,6 +56058,13 @@ op {
       }
     }
   }
+  attr {
+    name: "sparse_gradient"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "SparseSegmentSqrtN"
@@ -54417,6 +56122,13 @@ op {
       }
     }
   }
+  attr {
+    name: "sparse_gradient"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "SparseSegmentSqrtNGrad"
@@ -54439,6 +56151,71 @@ op {
   output_arg {
     name: "output"
     type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "Tsegmentids"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
+  name: "SparseSegmentSqrtNGradV2"
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tidx"
+  }
+  input_arg {
+    name: "segment_ids"
+    type_attr: "Tsegmentids"
+  }
+  input_arg {
+    name: "dense_output_dim0"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "sorted_unique_indices"
+    type_attr: "Tidx"
   }
   attr {
     name: "T"
@@ -54552,6 +56329,13 @@ op {
       }
     }
   }
+  attr {
+    name: "sparse_gradient"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "SparseSegmentSum"
@@ -54617,6 +56401,13 @@ op {
       }
     }
   }
+  attr {
+    name: "sparse_gradient"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "SparseSegmentSumGrad"
@@ -54639,6 +56430,71 @@ op {
   output_arg {
     name: "output"
     type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_BFLOAT16
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "Tsegmentids"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
+  name: "SparseSegmentSumGradV2"
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    type_attr: "Tidx"
+  }
+  input_arg {
+    name: "segment_ids"
+    type_attr: "Tsegmentids"
+  }
+  input_arg {
+    name: "dense_output_dim0"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "sorted_unique_indices"
+    type_attr: "Tidx"
   }
   attr {
     name: "T"
@@ -54758,6 +56614,13 @@ op {
         type: DT_INT32
         type: DT_INT64
       }
+    }
+  }
+  attr {
+    name: "sparse_gradient"
+    type: "bool"
+    default_value {
+      b: false
     }
   }
 }
@@ -57695,6 +59558,52 @@ op {
   is_stateful: true
 }
 op {
+  name: "StochasticCastToInt"
+  input_arg {
+    name: "input"
+    type_attr: "Tin"
+  }
+  input_arg {
+    name: "key"
+    type: DT_UINT64
+  }
+  input_arg {
+    name: "counter"
+    type: DT_UINT64
+  }
+  input_arg {
+    name: "alg"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "Tout"
+  }
+  attr {
+    name: "Tin"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_BFLOAT16
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "Tout"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+      }
+    }
+  }
+}
+op {
   name: "StopGradient"
   input_arg {
     name: "input"
@@ -57708,6 +59617,54 @@ op {
     name: "T"
     type: "type"
   }
+}
+op {
+  name: "StoreMinibatchStatisticsInFdo"
+  input_arg {
+    name: "program_key"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "max_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "max_uniques"
+    type: DT_INT32
+  }
+  attr {
+    name: "sample_count"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_replica"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "feature_width"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_sc_per_chip"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+  }
+  attr {
+    name: "mini_batch_splits"
+    type: "string"
+  }
+  is_stateful: true
 }
 op {
   name: "StridedSlice"
@@ -57988,7 +59945,6 @@ op {
     name: "N"
     type: "int"
     has_minimum: true
-    minimum: 1
   }
   attr {
     name: "separator"
@@ -58245,6 +60201,8 @@ op {
         type: DT_DOUBLE
         type: DT_INT32
         type: DT_INT64
+        type: DT_UINT32
+        type: DT_UINT64
       }
     }
   }
@@ -58567,6 +60525,46 @@ op {
   is_stateful: true
 }
 op {
+  name: "TFRecordDatasetV2"
+  input_arg {
+    name: "filenames"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "compression_type"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "buffer_size"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "byte_offsets"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_TENSOR
+        args {
+          type_id: TFT_STRING
+        }
+      }
+    }
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "TFRecordReader"
   output_arg {
     name: "reader_handle"
@@ -58626,6 +60624,24 @@ op {
     default_value {
       s: ""
     }
+  }
+  is_stateful: true
+}
+op {
+  name: "TPUAnnotateTensorsWithDynamicShape"
+  input_arg {
+    name: "tensors"
+    type_list_attr: "T"
+  }
+  output_arg {
+    name: "tpu_tensors"
+    type_list_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
   }
   is_stateful: true
 }
@@ -58691,6 +60707,34 @@ op {
   input_arg {
     name: "compilation_status"
     type: DT_STRING
+  }
+  is_stateful: true
+}
+op {
+  name: "TPUCopyWithDynamicShape"
+  input_arg {
+    name: "tensors"
+    type_list_attr: "T"
+  }
+  input_arg {
+    name: "unpadded_sizes"
+    type: DT_INT32
+    number_attr: "N"
+  }
+  output_arg {
+    name: "tpu_tensors"
+    type_list_attr: "T"
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "T"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
   }
   is_stateful: true
 }
@@ -61131,6 +63175,13 @@ op {
       }
     }
   }
+  attr {
+    name: "bad_indices_policy"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "TensorScatterMax"
@@ -61162,6 +63213,13 @@ op {
         type: DT_INT32
         type: DT_INT64
       }
+    }
+  }
+  attr {
+    name: "bad_indices_policy"
+    type: "string"
+    default_value {
+      s: ""
     }
   }
 }
@@ -61197,6 +63255,13 @@ op {
       }
     }
   }
+  attr {
+    name: "bad_indices_policy"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "TensorScatterSub"
@@ -61228,6 +63293,13 @@ op {
         type: DT_INT32
         type: DT_INT64
       }
+    }
+  }
+  attr {
+    name: "bad_indices_policy"
+    type: "string"
+    default_value {
+      s: ""
     }
   }
 }
@@ -61263,6 +63335,13 @@ op {
         type: DT_INT64
         type: DT_UINT16
       }
+    }
+  }
+  attr {
+    name: "bad_indices_policy"
+    type: "string"
+    default_value {
+      s: ""
     }
   }
 }
@@ -61863,7 +63942,7 @@ op {
   }
   input_arg {
     name: "k"
-    type: DT_INT32
+    type_attr: "Tk"
   }
   output_arg {
     name: "values"
@@ -61871,7 +63950,7 @@ op {
   }
   output_arg {
     name: "indices"
-    type: DT_INT32
+    type_attr: "index_type"
   }
   attr {
     name: "sorted"
@@ -61897,6 +63976,34 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "Tk"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "index_type"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
       }
     }
   }
@@ -64032,6 +66139,21 @@ op {
   }
 }
 op {
+  name: "UpdateTaskIdAndGlobalCoreArray"
+  input_arg {
+    name: "tpu_task_id_to_shard_id"
+    type: DT_INT32
+    number_attr: "task_count"
+  }
+  attr {
+    name: "task_count"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}
+op {
   name: "UpperBound"
   input_arg {
     name: "sorted_inputs"
@@ -64078,6 +66200,13 @@ op {
   }
   attr {
     name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "debug_name"
     type: "string"
     default_value {
       s: ""
@@ -64199,6 +66328,74 @@ op {
     }
   }
   is_stateful: true
+}
+op {
+  name: "WeightedFlatMapDataset"
+  input_arg {
+    name: "input_datasets"
+    type: DT_VARIANT
+    number_attr: "N"
+  }
+  input_arg {
+    name: "weights"
+    type: DT_DOUBLE
+    number_attr: "M"
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_DATASET
+      args {
+        type_id: TFT_FOR_EACH
+        args {
+          type_id: TFT_PRODUCT
+        }
+        args {
+          type_id: TFT_TENSOR
+          args {
+            type_id: TFT_VAR
+            s: "output_types"
+          }
+        }
+        args {
+          type_id: TFT_VAR
+          s: "output_types"
+        }
+      }
+    }
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 2
+  }
+  attr {
+    name: "M"
+    type: "int"
+    has_minimum: true
+    minimum: 2
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "metadata"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
 }
 op {
   name: "Where"
@@ -64877,6 +67074,41 @@ op {
   is_stateful: true
 }
 op {
+  name: "XlaRecvTPUEmbeddingActivationsV2"
+  input_arg {
+    name: "deduplication_data"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "outputs"
+    type: DT_FLOAT
+    number_attr: "num_tables"
+  }
+  attr {
+    name: "num_tables"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "config"
+    type: "string"
+  }
+  attr {
+    name: "embedding_partitions"
+    type: "string"
+  }
+  attr {
+    name: "hbm_buffers_config"
+    type: "string"
+  }
+  attr {
+    name: "tpu_topology"
+    type: "string"
+  }
+  is_stateful: true
+}
+op {
   name: "XlaRecvTPUEmbeddingDeduplicationData"
   output_arg {
     name: "output"
@@ -64884,6 +67116,30 @@ op {
   }
   attr {
     name: "config"
+    type: "string"
+  }
+  is_stateful: true
+}
+op {
+  name: "XlaRecvTPUEmbeddingDeduplicationDataV2"
+  output_arg {
+    name: "output"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "config"
+    type: "string"
+  }
+  attr {
+    name: "embedding_partitions"
+    type: "string"
+  }
+  attr {
+    name: "hbm_buffers_config"
+    type: "string"
+  }
+  attr {
+    name: "tpu_topology"
     type: "string"
   }
   is_stateful: true
@@ -64925,6 +67181,54 @@ op {
   is_stateful: true
 }
 op {
+  name: "XlaSendTPUEmbeddingGradientsV2"
+  input_arg {
+    name: "gradients"
+    type: DT_FLOAT
+    number_attr: "NumTables"
+  }
+  input_arg {
+    name: "learning_rates"
+    type: DT_FLOAT
+    number_attr: "NumLearningRateTags"
+  }
+  input_arg {
+    name: "deduplication_data"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "NumTables"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "NumLearningRateTags"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "config"
+    type: "string"
+  }
+  attr {
+    name: "embedding_partitions"
+    type: "string"
+  }
+  attr {
+    name: "hbm_buffers_config"
+    type: "string"
+  }
+  attr {
+    name: "tpu_topology"
+    type: "string"
+  }
+  is_stateful: true
+}
+op {
   name: "XlaSendToHost"
   input_arg {
     name: "input"
@@ -64939,6 +67243,1350 @@ op {
     type: "string"
   }
   is_stateful: true
+}
+op {
+  name: "XlaSparseCoreAdagrad"
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "gradient"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "learning_rate"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "accumulator"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "embedding_table"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "updated_embedding_table"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "updated_accumulator"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "feature_width"
+    type: "int"
+  }
+  is_stateful: true
+}
+op {
+  name: "XlaSparseCoreAdagradMomentum"
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "gradient"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "learning_rate"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "beta_1"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "epsilon"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "accumulator"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "momentum"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "embedding_table"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "updated_embedding_table"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "updated_accumulator"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "updated_momentum"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "feature_width"
+    type: "int"
+  }
+  attr {
+    name: "use_nesterov"
+    type: "bool"
+  }
+  attr {
+    name: "beta_2"
+    type: "float"
+  }
+  attr {
+    name: "exponent"
+    type: "float"
+  }
+  is_stateful: true
+}
+op {
+  name: "XlaSparseCoreAdam"
+  input_arg {
+    name: "embedding_table"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "gradient"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "learning_rate"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "momentum"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "velocity"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "beta_1"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "beta_2"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "epsilon"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "updated_embedding_table"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "updated_velocity"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "updated_momentum"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "feature_width"
+    type: "int"
+  }
+  attr {
+    name: "use_sum_inside_sqrt"
+    type: "bool"
+  }
+  is_stateful: true
+}
+op {
+  name: "XlaSparseCoreFtrl"
+  input_arg {
+    name: "embedding_table"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "accumulator"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "linear"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "learning_rate"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "gradient"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "beta"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "learning_rate_power"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "l2_regularization_strength"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "updated_embedding_table"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "updated_accumulator"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "updated_linear"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "feature_width"
+    type: "int"
+  }
+  attr {
+    name: "multiply_linear_by_learning_rate"
+    type: "bool"
+  }
+  attr {
+    name: "l1_regularization_strength"
+    type: "float"
+  }
+  is_stateful: true
+}
+op {
+  name: "XlaSparseCoreSgd"
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "gradient"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "learning_rate"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "embedding_table"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "updated_embedding_table"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "feature_width"
+    type: "int"
+  }
+  is_stateful: true
+}
+op {
+  name: "XlaSparseDenseMatmul"
+  input_arg {
+    name: "row_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "col_ids"
+    type: DT_UINT32
+  }
+  input_arg {
+    name: "values"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "offsets"
+    type: DT_UINT32
+  }
+  input_arg {
+    name: "embedding_table"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "activations"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "row_pointers"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "sorted_embedding_ids"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "sorted_sample_ids"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "sorted_gains"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "max_ids_per_partition"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "max_unique_ids_per_partition"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "input_size"
+    type: "int"
+    has_minimum: true
+  }
+}
+op {
+  name: "XlaSparseDenseMatmulGradWithAdagradAndCsrInput"
+  input_arg {
+    name: "row_pointers"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_sample_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_token_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_gains"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "activation_gradients"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "learning_rate"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "embedding_table"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "accumulator"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "num_minibatches_per_physical_sparse_core"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "updated_embedding_table"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "updated_accumulator"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "clip_weight_min"
+    type: "float"
+    default_value {
+      f: -inf
+    }
+  }
+  attr {
+    name: "clip_weight_max"
+    type: "float"
+    default_value {
+      f: inf
+    }
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+  }
+}
+op {
+  name: "XlaSparseDenseMatmulGradWithAdagradAndStaticBufferSize"
+  input_arg {
+    name: "row_pointers"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_sample_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_token_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_gains"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "activation_gradients"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "learning_rate"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "embedding_table"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "accumulator"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "num_minibatches_per_physical_sparse_core"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "updated_embedding_table"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "updated_accumulator"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "clip_weight_min"
+    type: "float"
+    default_value {
+      f: -inf
+    }
+  }
+  attr {
+    name: "clip_weight_max"
+    type: "float"
+    default_value {
+      f: inf
+    }
+  }
+  attr {
+    name: "max_ids_per_sparse_core"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "max_unique_ids_per_sparse_core"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+  }
+}
+op {
+  name: "XlaSparseDenseMatmulGradWithAdagradMomentumAndCsrInput"
+  input_arg {
+    name: "row_pointers"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_sample_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_token_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_gains"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "activation_gradients"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "learning_rate"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "embedding_table"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "accumulator"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "momenta"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "num_minibatches_per_physical_sparse_core"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "updated_embedding_table"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "updated_accumulator"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "updated_momenta"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "use_nesterov"
+    type: "bool"
+  }
+  attr {
+    name: "exponent"
+    type: "float"
+  }
+  attr {
+    name: "beta1"
+    type: "float"
+  }
+  attr {
+    name: "beta2"
+    type: "float"
+  }
+  attr {
+    name: "epsilon"
+    type: "float"
+  }
+  attr {
+    name: "clip_weight_min"
+    type: "float"
+    default_value {
+      f: -inf
+    }
+  }
+  attr {
+    name: "clip_weight_max"
+    type: "float"
+    default_value {
+      f: inf
+    }
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+  }
+}
+op {
+  name: "XlaSparseDenseMatmulGradWithAdagradMomentumAndStaticBufferSize"
+  input_arg {
+    name: "row_pointers"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_sample_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_token_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_gains"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "activation_gradients"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "learning_rate"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "embedding_table"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "accumulator"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "momenta"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "num_minibatches_per_physical_sparse_core"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "updated_embedding_table"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "updated_accumulator"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "updated_momenta"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "use_nesterov"
+    type: "bool"
+  }
+  attr {
+    name: "exponent"
+    type: "float"
+  }
+  attr {
+    name: "beta1"
+    type: "float"
+  }
+  attr {
+    name: "beta2"
+    type: "float"
+  }
+  attr {
+    name: "epsilon"
+    type: "float"
+  }
+  attr {
+    name: "clip_weight_min"
+    type: "float"
+    default_value {
+      f: -inf
+    }
+  }
+  attr {
+    name: "clip_weight_max"
+    type: "float"
+    default_value {
+      f: inf
+    }
+  }
+  attr {
+    name: "max_ids_per_sparse_core"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "max_unique_ids_per_sparse_core"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+  }
+}
+op {
+  name: "XlaSparseDenseMatmulGradWithAdamAndCsrInput"
+  input_arg {
+    name: "row_pointers"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_sample_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_token_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_gains"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "activation_gradients"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "learning_rate"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "embedding_table"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "momenta"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "velocity"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "num_minibatches_per_physical_sparse_core"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "updated_embedding_table"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "updated_momenta"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "updated_velocity"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "use_sum_inside_sqrt"
+    type: "bool"
+  }
+  attr {
+    name: "beta1"
+    type: "float"
+  }
+  attr {
+    name: "beta2"
+    type: "float"
+  }
+  attr {
+    name: "epsilon"
+    type: "float"
+  }
+  attr {
+    name: "clip_weight_min"
+    type: "float"
+    default_value {
+      f: -inf
+    }
+  }
+  attr {
+    name: "clip_weight_max"
+    type: "float"
+    default_value {
+      f: inf
+    }
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+  }
+}
+op {
+  name: "XlaSparseDenseMatmulGradWithAdamAndStaticBufferSize"
+  input_arg {
+    name: "row_pointers"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_sample_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_token_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_gains"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "activation_gradients"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "learning_rate"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "embedding_table"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "momenta"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "velocity"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "num_minibatches_per_physical_sparse_core"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "updated_embedding_table"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "updated_momenta"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "updated_velocity"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "use_sum_inside_sqrt"
+    type: "bool"
+  }
+  attr {
+    name: "beta1"
+    type: "float"
+  }
+  attr {
+    name: "beta2"
+    type: "float"
+  }
+  attr {
+    name: "epsilon"
+    type: "float"
+  }
+  attr {
+    name: "clip_weight_min"
+    type: "float"
+    default_value {
+      f: -inf
+    }
+  }
+  attr {
+    name: "clip_weight_max"
+    type: "float"
+    default_value {
+      f: inf
+    }
+  }
+  attr {
+    name: "max_ids_per_sparse_core"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "max_unique_ids_per_sparse_core"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+  }
+}
+op {
+  name: "XlaSparseDenseMatmulGradWithCsrInput"
+  input_arg {
+    name: "row_pointers"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_sample_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_token_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_gains"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "activation_gradients"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "tables"
+    type: DT_FLOAT
+    number_attr: "N"
+  }
+  input_arg {
+    name: "hyperparameters"
+    type: DT_FLOAT
+    number_attr: "M"
+  }
+  input_arg {
+    name: "num_minibatches_per_physical_sparse_core"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "updated_tables"
+    type: DT_FLOAT
+    number_attr: "N"
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "M"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "custom_computation"
+    type: "func"
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+  }
+}
+op {
+  name: "XlaSparseDenseMatmulGradWithFtrlAndCsrInput"
+  input_arg {
+    name: "row_pointers"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_sample_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_token_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_gains"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "activation_gradients"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "learning_rate"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "embedding_table"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "accumulator"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "linear"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "num_minibatches_per_physical_sparse_core"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "updated_embedding_table"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "updated_accumulator"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "updated_linear"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "multiply_linear_by_learning_rate"
+    type: "bool"
+  }
+  attr {
+    name: "beta"
+    type: "float"
+  }
+  attr {
+    name: "learning_rate_power"
+    type: "float"
+  }
+  attr {
+    name: "l1_regularization_strength"
+    type: "float"
+  }
+  attr {
+    name: "l2_regularization_strength"
+    type: "float"
+  }
+  attr {
+    name: "clip_weight_min"
+    type: "float"
+    default_value {
+      f: -inf
+    }
+  }
+  attr {
+    name: "clip_weight_max"
+    type: "float"
+    default_value {
+      f: inf
+    }
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+  }
+}
+op {
+  name: "XlaSparseDenseMatmulGradWithFtrlAndStaticBufferSize"
+  input_arg {
+    name: "row_pointers"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_sample_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_token_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_gains"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "activation_gradients"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "learning_rate"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "embedding_table"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "accumulator"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "linear"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "num_minibatches_per_physical_sparse_core"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "updated_embedding_table"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "updated_accumulator"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "updated_linear"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "multiply_linear_by_learning_rate"
+    type: "bool"
+  }
+  attr {
+    name: "beta"
+    type: "float"
+  }
+  attr {
+    name: "learning_rate_power"
+    type: "float"
+  }
+  attr {
+    name: "l1_regularization_strength"
+    type: "float"
+  }
+  attr {
+    name: "l2_regularization_strength"
+    type: "float"
+  }
+  attr {
+    name: "clip_weight_min"
+    type: "float"
+    default_value {
+      f: -inf
+    }
+  }
+  attr {
+    name: "clip_weight_max"
+    type: "float"
+    default_value {
+      f: inf
+    }
+  }
+  attr {
+    name: "max_ids_per_sparse_core"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "max_unique_ids_per_sparse_core"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+  }
+}
+op {
+  name: "XlaSparseDenseMatmulGradWithSgdAndCsrInput"
+  input_arg {
+    name: "row_pointers"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_sample_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_token_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_gains"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "activation_gradients"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "learning_rate"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "embedding_table"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "num_minibatches_per_physical_sparse_core"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "updated_embedding_table"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "clip_weight_min"
+    type: "float"
+    default_value {
+      f: -inf
+    }
+  }
+  attr {
+    name: "clip_weight_max"
+    type: "float"
+    default_value {
+      f: inf
+    }
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+  }
+}
+op {
+  name: "XlaSparseDenseMatmulGradWithSgdAndStaticBufferSize"
+  input_arg {
+    name: "row_pointers"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_sample_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_token_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_gains"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "activation_gradients"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "learning_rate"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "embedding_table"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "num_minibatches_per_physical_sparse_core"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "updated_embedding_table"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "clip_weight_min"
+    type: "float"
+    default_value {
+      f: -inf
+    }
+  }
+  attr {
+    name: "clip_weight_max"
+    type: "float"
+    default_value {
+      f: inf
+    }
+  }
+  attr {
+    name: "max_ids_per_sparse_core"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "max_unique_ids_per_sparse_core"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+  }
+}
+op {
+  name: "XlaSparseDenseMatmulWithCsrInput"
+  input_arg {
+    name: "row_pointers"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_sample_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_token_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_gains"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "embedding_table"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "num_minibatches_per_physical_sparse_core"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "activations"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "input_size"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "quantization_config_low"
+    type: "float"
+  }
+  attr {
+    name: "quantization_config_high"
+    type: "float"
+  }
+  attr {
+    name: "quantization_config_num_buckets"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+  }
+}
+op {
+  name: "XlaSparseDenseMatmulWithStaticBufferSize"
+  input_arg {
+    name: "row_pointers"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_sample_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_token_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_gains"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "embedding_table"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "num_minibatches_per_physical_sparse_core"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "activations"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "input_size"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "quantization_config_low"
+    type: "float"
+  }
+  attr {
+    name: "quantization_config_high"
+    type: "float"
+  }
+  attr {
+    name: "quantization_config_num_buckets"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "max_ids_per_sparse_core"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "max_unique_ids_per_sparse_core"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+  }
 }
 op {
   name: "XlaSplitND"

@@ -16,12 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_INIT_MLIR_H_
 #define TENSORFLOW_COMPILER_MLIR_INIT_MLIR_H_
 
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Support/InitLLVM.h"
-
 namespace tensorflow {
 
-// Initializer to perform both InitLLVM and TF's InitMain initialization.
+// Initializer to perform TF's InitMain initialization.
 // InitMain also performs flag parsing and '--' is used to separate flags passed
 // to it: Flags before the first '--' are parsed by InitMain and argc and argv
 // progressed to the flags post. If there is no separator, then no flags are
@@ -29,9 +26,6 @@ namespace tensorflow {
 class InitMlir {
  public:
   InitMlir(int *argc, char ***argv);
-
- private:
-  llvm::InitLLVM init_llvm_;
 };
 
 }  // namespace tensorflow

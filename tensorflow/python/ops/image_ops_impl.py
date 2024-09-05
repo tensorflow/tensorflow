@@ -15,6 +15,7 @@
 """Implementation of image ops."""
 
 import functools
+
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -24,6 +25,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -35,9 +37,10 @@ from tensorflow.python.ops import control_flow_case
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import nn
+from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import ref_variable  # pylint: disable=unused-import
 from tensorflow.python.ops import sort_ops
 from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import string_ops
@@ -45,6 +48,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.ops import while_loop
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
+from tensorflow.python.util import numpy_compat
 from tensorflow.python.util.tf_export import tf_export
 
 ops.NotDifferentiable('RandomCrop')
@@ -98,7 +102,7 @@ def _is_tensor(x):
   Returns:
     `True` if `x` is a `tf.Tensor` or `tf.Variable`, otherwise `False`.
   """
-  return isinstance(x, (ops.Tensor, variables.Variable))
+  return isinstance(x, (tensor_lib.Tensor, variables.Variable))
 
 
 def _ImageDimensions(image, rank):
@@ -1083,10 +1087,14 @@ def pad_to_bounding_box_internal(image, offset_height, offset_width,
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.
-    offset_height: Number of rows of zeros to add on top.
-    offset_width: Number of columns of zeros to add on the left.
-    target_height: Height of output image.
-    target_width: Width of output image.
+    offset_height: Number of rows of zeros to add on top.Must be 0-D `Tensor` of
+      dtype int32 or int64. Can also a python integer.
+    offset_width: Number of columns of zeros to add on the left.Must be 0-D
+      `Tensor` of dtype int32 or int64. Can also a python integer.
+    target_height: Height of output image.Must be 0-D `Tensor` of dtype int32 or
+      int64. Can also a python integer.
+    target_width: Width of output image.Must be 0-D `Tensor` of dtype int32 or
+      int64. Can also a python integer.
     check_dims: If True, assert that dimensions are non-negative and in range.
       In multi-GPU distributed settings, assertions can cause program slowdown.
       Setting this parameter to `False` avoids this, resulting in faster speed
@@ -1188,11 +1196,13 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
     image: 4-D `Tensor` of shape `[batch, height, width, channels]` or 3-D
       `Tensor` of shape `[height, width, channels]`.
     offset_height: Vertical coordinate of the top-left corner of the bounding
-      box in `image`.
+      box in `image`. Must be 0-D int32 `Tensor` or python integer.
     offset_width: Horizontal coordinate of the top-left corner of the bounding
-      box in `image`.
-    target_height: Height of the bounding box.
-    target_width: Width of the bounding box.
+      box in `image`. Must be 0-D int32 `Tensor` or python integer.
+    target_height: Height of the bounding box. Must be 0-D int32 `Tensor` or
+      python integer.
+    target_width: Width of the bounding box. Must be 0-D int32 `Tensor` or
+      python integer.
 
   Returns:
     If `image` was 4-D, a 4-D `Tensor` of shape
@@ -2021,7 +2031,8 @@ def random_brightness(image, max_delta, seed=None):
 
   Args:
     image: An image or images to adjust.
-    max_delta: float, must be non-negative.
+    max_delta: float, must be non-negative. This parameter controls the maximum
+      relative change in brightness.
     seed: A Python integer. Used to create a random seed. See
       `tf.compat.v1.set_random_seed` for behavior.
 
@@ -2704,7 +2715,7 @@ def stateless_random_hue(image, max_delta, seed):
     image: RGB image or images. The size of the last dimension must be 3.
     max_delta: float. The maximum value for the random delta.
     seed: A shape [2] Tensor, the seed to the random number generator. Must have
-      dtype `int32` or `int64`. (When using XLA, only `int32` is allowed.)
+      dtype `int32` or `int64`.
 
   Returns:
     Adjusted image(s), same shape and DType as `image`.
@@ -2911,7 +2922,7 @@ def stateless_random_jpeg_quality(image,
 
 @tf_export('image.adjust_jpeg_quality')
 @dispatch.add_dispatch_support
-def adjust_jpeg_quality(image, jpeg_quality, name=None):
+def adjust_jpeg_quality(image, jpeg_quality, dct_method='', name=None):
   """Adjust jpeg encoding quality of an image.
 
   This is a convenience method that converts an image to uint8 representation,
@@ -2947,7 +2958,7 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
          [[1., 1., 1.],
           [1., 1., 1.]]], dtype=float32)>
 
-  Note that `jpeg_quality` 100 is still lossy compresson.
+  Note that `jpeg_quality` 100 is still lossy compression.
 
   >>> x = tf.constant([[[1, 2, 3],
   ...                   [4, 5, 6]],
@@ -2963,6 +2974,10 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
   Args:
     image: 3D image. The size of the last dimension must be None, 1 or 3.
     jpeg_quality: Python int or Tensor of type int32. jpeg encoding quality.
+    dct_method: An optional string. Specifies the DCT method to use for JPEG
+      decompression. Currently available options are ["INTEGER_FAST",
+      "INTEGER_ACCURATE"]. Defaults to "" which maps to "INTEGER_FAST",
+      sacrificing image quality for speed.
     name: A name for this operation (optional).
 
   Returns:
@@ -2983,7 +2998,9 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
       jpeg_quality = ops.convert_to_tensor(jpeg_quality, dtype=dtypes.int32)
     image = gen_image_ops.encode_jpeg_variable_quality(image, jpeg_quality)
 
-    image = gen_image_ops.decode_jpeg(image, channels=channels)
+    image = gen_image_ops.decode_jpeg(
+        image, channels=channels, dct_method=dct_method
+    )
     return convert_image_dtype(image, orig_dtype, saturate=True)
 
 
@@ -3180,39 +3197,39 @@ def _is_png(contents, name=None):
     return math_ops.equal(substr, b'\211PN', name=name)
 
 
-tf_export(
+decode_and_crop_jpeg = tf_export(
     'io.decode_and_crop_jpeg',
     'image.decode_and_crop_jpeg',
     v1=['io.decode_and_crop_jpeg', 'image.decode_and_crop_jpeg'])(
         dispatch.add_dispatch_support(gen_image_ops.decode_and_crop_jpeg))
 
-tf_export(
+decode_bmp = tf_export(
     'io.decode_bmp',
     'image.decode_bmp',
     v1=['io.decode_bmp', 'image.decode_bmp'])(
         dispatch.add_dispatch_support(gen_image_ops.decode_bmp))
-tf_export(
+decode_gif = tf_export(
     'io.decode_gif',
     'image.decode_gif',
     v1=['io.decode_gif', 'image.decode_gif'])(
         dispatch.add_dispatch_support(gen_image_ops.decode_gif))
-tf_export(
+decode_jpeg = tf_export(
     'io.decode_jpeg',
     'image.decode_jpeg',
     v1=['io.decode_jpeg', 'image.decode_jpeg'])(
         dispatch.add_dispatch_support(gen_image_ops.decode_jpeg))
-tf_export(
+decode_png = tf_export(
     'io.decode_png',
     'image.decode_png',
     v1=['io.decode_png', 'image.decode_png'])(
         dispatch.add_dispatch_support(gen_image_ops.decode_png))
 
-tf_export(
+encode_jpeg = tf_export(
     'io.encode_jpeg',
     'image.encode_jpeg',
     v1=['io.encode_jpeg', 'image.encode_jpeg'])(
         dispatch.add_dispatch_support(gen_image_ops.encode_jpeg))
-tf_export(
+extract_jpeg_shape = tf_export(
     'io.extract_jpeg_shape',
     'image.extract_jpeg_shape',
     v1=['io.extract_jpeg_shape', 'image.extract_jpeg_shape'])(
@@ -3224,8 +3241,8 @@ tf_export(
 def encode_png(image, compression=-1, name=None):
   r"""PNG-encode an image.
 
-  `image` is a 3-D uint8 or uint16 Tensor of shape `[height, width, channels]`
-  where `channels` is:
+  `image` is a rank-N Tensor of type uint8 or uint16 with shape `batch_dims +
+  [height, width, channels]`, where `channels` is:
 
   *   1: for grayscale.
   *   2: for grayscale + alpha.
@@ -3238,7 +3255,7 @@ def encode_png(image, compression=-1, name=None):
 
   Args:
     image: A `Tensor`. Must be one of the following types: `uint8`, `uint16`.
-      3-D with shape `[height, width, channels]`.
+      Rank N >= 3 with shape `batch_dims + [height, width, channels]`.
     compression: An optional `int`. Defaults to `-1`. Compression level.
     name: A name for the operation (optional).
 
@@ -4348,7 +4365,8 @@ def _ssim_per_channel(img1,
   def reducer(x):
     shape = array_ops.shape(x)
     x = array_ops.reshape(x, shape=array_ops.concat([[-1], shape[-3:]], 0))
-    y = nn.depthwise_conv2d(x, kernel, strides=[1, 1, 1, 1], padding='VALID')
+    y = nn_impl.depthwise_conv2d(
+        x, kernel, strides=[1, 1, 1, 1], padding='VALID')
     return array_ops.reshape(
         y, array_ops.concat([shape[:-3], array_ops.shape(y)[1:]], 0))
 
@@ -4713,7 +4731,7 @@ def sobel_edges(image):
   kernels = [[[-1, -2, -1], [0, 0, 0], [1, 2, 1]],
              [[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]]]
   num_kernels = len(kernels)
-  kernels = np.transpose(np.asarray(kernels), (1, 2, 0))
+  kernels = np.transpose(numpy_compat.np_asarray(kernels), (1, 2, 0))
   kernels = np.expand_dims(kernels, -2)
   kernels_tf = constant_op.constant(kernels, dtype=image.dtype)
 
@@ -4726,7 +4744,7 @@ def sobel_edges(image):
 
   # Output tensor has shape [batch_size, h, w, d * num_kernels].
   strides = [1, 1, 1, 1]
-  output = nn.depthwise_conv2d(padded, kernels_tf, strides, 'VALID')
+  output = nn_impl.depthwise_conv2d(padded, kernels_tf, strides, 'VALID')
 
   # Reshape to [batch_size, h, w, d, num_kernels].
   shape = array_ops.concat([image_shape, [num_kernels]], 0)
@@ -4735,6 +4753,14 @@ def sobel_edges(image):
   return output
 
 
+@tf_export(v1=['image.resize_bicubic'])
+@dispatch.add_dispatch_support
+@deprecation.deprecated(
+    date=None,
+    instructions=(
+        'Use `tf.image.resize(...method=ResizeMethod.BICUBIC...)` instead.'
+    ),
+)
 def resize_bicubic(images,
                    size,
                    align_corners=False,
@@ -4748,6 +4774,14 @@ def resize_bicubic(images,
       name=name)
 
 
+@tf_export(v1=['image.resize_bilinear'])
+@dispatch.add_dispatch_support
+@deprecation.deprecated(
+    date=None,
+    instructions=(
+        'Use `tf.image.resize(...method=ResizeMethod.BILINEAR...)` instead.'
+    ),
+)
 def resize_bilinear(images,
                     size,
                     align_corners=False,
@@ -4761,6 +4795,15 @@ def resize_bilinear(images,
       name=name)
 
 
+@tf_export(v1=['image.resize_nearest_neighbor'])
+@dispatch.add_dispatch_support
+@deprecation.deprecated(
+    date=None,
+    instructions=(
+        'Use `tf.image.resize(...method=ResizeMethod.NEAREST_NEIGHBOR...)` '
+        'instead.'
+    ),
+)
 def resize_nearest_neighbor(images,
                             size,
                             align_corners=False,
@@ -4778,32 +4821,11 @@ resize_area_deprecation = deprecation.deprecated(
     date=None,
     instructions=(
         'Use `tf.image.resize(...method=ResizeMethod.AREA...)` instead.'))
-tf_export(v1=['image.resize_area'])(
+resize_area = tf_export(v1=['image.resize_area'])(
     resize_area_deprecation(
-        dispatch.add_dispatch_support(gen_image_ops.resize_area)))
-
-resize_bicubic_deprecation = deprecation.deprecated(
-    date=None,
-    instructions=(
-        'Use `tf.image.resize(...method=ResizeMethod.BICUBIC...)` instead.'))
-tf_export(v1=['image.resize_bicubic'])(
-    dispatch.add_dispatch_support(resize_bicubic_deprecation(resize_bicubic)))
-
-resize_bilinear_deprecation = deprecation.deprecated(
-    date=None,
-    instructions=(
-        'Use `tf.image.resize(...method=ResizeMethod.BILINEAR...)` instead.'))
-tf_export(v1=['image.resize_bilinear'])(
-    dispatch.add_dispatch_support(resize_bilinear_deprecation(resize_bilinear)))
-
-resize_nearest_neighbor_deprecation = deprecation.deprecated(
-    date=None,
-    instructions=(
-        'Use `tf.image.resize(...method=ResizeMethod.NEAREST_NEIGHBOR...)` '
-        'instead.'))
-tf_export(v1=['image.resize_nearest_neighbor'])(
-    dispatch.add_dispatch_support(
-        resize_nearest_neighbor_deprecation(resize_nearest_neighbor)))
+        dispatch.add_dispatch_support(gen_image_ops.resize_area)
+    )
+)
 
 
 @tf_export('image.crop_and_resize', v1=[])

@@ -19,7 +19,9 @@ limitations under the License.
 #include <utility>
 
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -47,12 +49,12 @@ namespace tfg {
 // of an operation or a block operand if a function argument) and store the
 // result in the provided name string. The `control_ty` is the instance of the
 // `ControlType` to compare against and detect a control dependency case.
-static tensorflow::StatusOr<std::string> GetValueName(Value operand,
-                                                      Type control_ty) {
+static absl::StatusOr<std::string> GetValueName(Value operand,
+                                                Type control_ty) {
   bool is_control = (operand.getType() == control_ty);
-  OpResult op_result = operand.dyn_cast<OpResult>();
+  OpResult op_result = mlir::dyn_cast<OpResult>(operand);
   if (!op_result) {
-    BlockArgument block_operand = operand.dyn_cast<BlockArgument>();
+    BlockArgument block_operand = mlir::dyn_cast<BlockArgument>(operand);
     int arg_num = block_operand.getArgNumber();
 
     // Function arguments are coming as pair: the even are the actual tensors
@@ -60,7 +62,8 @@ static tensorflow::StatusOr<std::string> GetValueName(Value operand,
     std::string name;
     if (is_control) name = "^";
     DictionaryAttr arg_attrs = function_interface_impl::getArgAttrDict(
-        block_operand.getParentBlock()->getParentOp(), arg_num - is_control);
+        FunctionOpInterface(block_operand.getParentBlock()->getParentOp()),
+        arg_num - is_control);
     if (!arg_attrs)
       return InvalidArgument("Missing attribute for argument #", arg_num);
     StringAttr arg_name = arg_attrs.getAs<StringAttr>("tfg.name");
@@ -138,10 +141,10 @@ static Status ExportArgDef(OpDef::ArgDef *arg, DictionaryAttr arg_attrs,
         sig_arg_attrs.getValue(), /*attrs_to_ignore=*/{},
         /*remove_ref_type=*/false, arg_def_attrs->mutable_attr()));
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
-tensorflow::StatusOr<FunctionDef> ConvertGenericFunctionToFunctionDef(
+absl::StatusOr<FunctionDef> ConvertGenericFunctionToFunctionDef(
     GraphFuncOp func_op) {
   if (!func_op.getGeneric())
     return InvalidArgument(
@@ -172,7 +175,8 @@ tensorflow::StatusOr<FunctionDef> ConvertGenericFunctionToFunctionDef(
     for (NamedAttribute attr : attrs) {
       OpDef_AttrDef *func_attr = signature->add_attr();
       func_attr->set_name(attr.getName().str());
-      DictionaryAttr dict_attr = attr.getValue().dyn_cast<DictionaryAttr>();
+      DictionaryAttr dict_attr =
+          mlir::dyn_cast<DictionaryAttr>(attr.getValue());
       if (!dict_attr) return InvalidArgument("Expects dict attribute");
       if (StringAttr type = dict_attr.getAs<StringAttr>("function_type"))
         func_attr->set_type(type.getValue().str());
@@ -196,7 +200,7 @@ tensorflow::StatusOr<FunctionDef> ConvertGenericFunctionToFunctionDef(
   if (auto control_outputs =
           func_op->getAttrOfType<ArrayAttr>("control_output")) {
     for (Attribute attr : control_outputs) {
-      StringAttr output = attr.dyn_cast<StringAttr>();
+      StringAttr output = mlir::dyn_cast<StringAttr>(attr);
       if (!output)
         return InvalidArgument(
             "Can't export function with non-string \"control_output\" "
@@ -214,7 +218,7 @@ tensorflow::StatusOr<FunctionDef> ConvertGenericFunctionToFunctionDef(
     if (arg_num >= args_attr.size())
       return InvalidArgument("Can't export function ", func_op.getName().str(),
                              " because missing attributes for arg #", arg_num);
-    DictionaryAttr arg_attrs = args_attr[arg_num].cast<DictionaryAttr>();
+    DictionaryAttr arg_attrs = mlir::cast<DictionaryAttr>(args_attr[arg_num]);
     FunctionDef::ArgAttrs func_def_arg_attrs;
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
         ExportArgDef(arg, arg_attrs, &func_def_arg_attrs),
@@ -240,7 +244,7 @@ tensorflow::StatusOr<FunctionDef> ConvertGenericFunctionToFunctionDef(
       return InvalidArgument("Can't export function ", func_op.getName().str(),
                              " because missing attributes for result #",
                              res_num);
-    auto res_attrs = results_attr[res_num].cast<DictionaryAttr>();
+    auto res_attrs = mlir::cast<DictionaryAttr>(results_attr[res_num]);
     auto name = res_attrs.getAs<StringAttr>("tfg.name");
     if (!name)
       return InvalidArgument(

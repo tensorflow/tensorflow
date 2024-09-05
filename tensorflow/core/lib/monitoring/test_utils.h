@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/lib/monitoring/types.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/tsl/lib/monitoring/test_utils.h"
+#include "tsl/lib/monitoring/test_utils.h"
 // NOLINTBEGIN(misc-unused-using-decls)
 namespace tensorflow {
 namespace monitoring {

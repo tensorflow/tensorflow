@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "UniformQuantize"
   input_arg {
     name: "input"

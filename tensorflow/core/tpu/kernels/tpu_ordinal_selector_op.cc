@@ -30,13 +30,13 @@ class TPUOrdinalSelectorOp : public OpKernel {
  public:
   explicit TPUOrdinalSelectorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
-  ~TPUOrdinalSelectorOp() override {}
+  ~TPUOrdinalSelectorOp() override = default;
 
   void Compute(OpKernelContext* ctx) override {
     Tensor output(DT_INT32, TensorShape({}));
     output.flat<int>().setValues({tpu::kDeferredCoreSelectionReserved});
     ctx->set_output(0, output);
-    ctx->SetStatus(OkStatus());
+    ctx->SetStatus(absl::OkStatus());
   }
 
   bool IsExpensive() override { return false; }

@@ -1,11 +1,9 @@
-This directory contains shim header files that forward to the TF Lite
-C API and to the key headers of the TF Lite C++ API.
+This directory contains build macros such as `cc_library_with_tflite`,
+`java_library_with_tflite`, etc.
 
-The intent is that the shims in this directory could be modified to optionally
-redirect to a different implementation of those APIs (for example,
-one built into the underlying operating system platform).
+`cc_library_with_tflite` generates a `cc_library` target by default.
+The target will not use TF Lite in Play Services.
 
-These should be used as follows: #includes from .cc files that are
-_implementing_ the shimmed TF Lite APIs should include the regular TF
-Lite API headers.  #includes from files that are _using_ the shimmed
-APIs should include the shimmed headers.
+The intent is that the build macros in this directory could be modified to
+optionally redirect to a different implementation of TF Lite C and C++ APIs
+(for example, one built into the underlying operating system platform).

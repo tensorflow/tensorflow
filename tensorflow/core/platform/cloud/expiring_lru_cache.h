@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/cloud/expiring_lru_cache.h"
+#include "tsl/platform/cloud/expiring_lru_cache.h"
 
 namespace tensorflow {
 using tsl::ExpiringLRUCache;  // NOLINT(misc-unused-using-decls)

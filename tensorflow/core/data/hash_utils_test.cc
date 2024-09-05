@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/data/hash_utils.h"
 
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -131,7 +134,7 @@ TEST_F(DatasetHashUtilsTest, HashFunctionDifferentFunctions) {
   EXPECT_NE(GetHash(fl, *f1), GetHash(fl, *f2));
   Status s = CheckEqual(fl, *f1, *f2);
   EXPECT_NE(s.code(), error::OK);
-  EXPECT_THAT(s.error_message(), ContainsRegex("Add"));
+  EXPECT_THAT(s.message(), ContainsRegex("Add"));
 }
 
 TEST_F(DatasetHashUtilsTest, HashFunctionDifferentInternalNodeNames) {
@@ -273,8 +276,8 @@ TEST_F(DatasetHashUtilsTest, HashNodeDifferentGraphs) {
   EXPECT_NE(hash1, hash2);
   Status s = CheckSubgraphsEqual(gd, n3, gd, n4);
   EXPECT_NE(s.code(), error::OK);
-  EXPECT_THAT(s.error_message(), ContainsRegex("Add"));
-  EXPECT_THAT(s.error_message(), ContainsRegex("Mul"));
+  EXPECT_THAT(s.message(), ContainsRegex("Add"));
+  EXPECT_THAT(s.message(), ContainsRegex("Mul"));
 }
 
 TEST_F(DatasetHashUtilsTest, HashSameGraphDifferentSeeds) {
@@ -434,7 +437,7 @@ TEST_F(DatasetHashUtilsTest, HashNodeReversedOrder) {
   EXPECT_NE(hash1, hash2);
   Status s = CheckSubgraphsEqual(gd, n3, gd, n4);
   EXPECT_NE(s.code(), error::OK);
-  EXPECT_THAT(s.error_message(), ContainsRegex("AttrValues are different"));
+  EXPECT_THAT(s.message(), ContainsRegex("AttrValues are different"));
 }
 
 TEST_F(DatasetHashUtilsTest, HashNodeInputPortChanged) {
@@ -473,7 +476,7 @@ TEST_F(DatasetHashUtilsTest, HashNodeInputPortChanged) {
   EXPECT_NE(hash1, hash2);
   Status s = CheckSubgraphsEqual(gd, n3, gd, n4);
   EXPECT_NE(s.code(), error::OK);
-  EXPECT_THAT(s.error_message(), ContainsRegex("Node inputs"));
+  EXPECT_THAT(s.message(), ContainsRegex("Node inputs"));
 }
 
 TEST_F(DatasetHashUtilsTest, HashNodeSameFunctionDifferentNames) {
@@ -702,7 +705,7 @@ TEST_F(DatasetHashUtilsTest, HashNodeDifferentFunctionsOps) {
   Status s = CheckSubgraphsEqual(gd, n2, gd, n3);
   EXPECT_NE(s.code(), error::OK);
   EXPECT_THAT(
-      s.error_message(),
+      s.message(),
       ContainsRegex("Functions AddAndMul and AddAndMul2 are not the same"));
 }
 
@@ -773,7 +776,7 @@ TEST_F(DatasetHashUtilsTest, HashNodeDifferentFunctions) {
   Status s = CheckSubgraphsEqual(gd, n2, gd, n3);
   EXPECT_NE(s.code(), error::OK);
   EXPECT_THAT(
-      s.error_message(),
+      s.message(),
       ContainsRegex("Functions AddAndMul and AddAndMul2 are not the same"));
 }
 
@@ -846,7 +849,7 @@ TEST_F(DatasetHashUtilsTest, HashNodeDifferentFunctionLists) {
   Status s = CheckSubgraphsEqual(gd, n2, gd, n3);
   EXPECT_NE(s.code(), error::OK);
   EXPECT_THAT(
-      s.error_message(),
+      s.message(),
       ContainsRegex("Functions AddAndMul and AddAndMul2 are not the same"));
 }
 
@@ -891,8 +894,7 @@ TEST_F(DatasetHashUtilsTest, HashNodeDifferentControlInputs) {
   EXPECT_NE(hash1, hash2);
   Status s = CheckSubgraphsEqual(gd, n4, gd, n5);
   EXPECT_NE(s.code(), error::OK);
-  EXPECT_THAT(s.error_message(),
-              ContainsRegex("Control dependencies are different"));
+  EXPECT_THAT(s.message(), ContainsRegex("Control dependencies are different"));
 }
 
 TEST_F(DatasetHashUtilsTest, HashNodeControlInputDifferentOrdering) {
@@ -1222,7 +1224,7 @@ static void BM_ParallelFunctionCallsGraph(benchmark::State& state) {
 
   uint64 hash_value;
   for (auto _ : state) {
-    CHECK(HashNode(graph_def, *target, &hash_value).ok());
+    TF_CHECK_OK(HashNode(graph_def, *target, &hash_value));
   }
 }
 BENCHMARK(BM_ParallelFunctionCallsGraph);
@@ -1274,7 +1276,7 @@ static void BM_ChainedFunctionCallsGraph(benchmark::State& state) {
 
   uint64 hash_value;
   for (auto _ : state) {
-    CHECK(HashNode(graph_def, target, &hash_value).ok());
+    TF_CHECK_OK(HashNode(graph_def, target, &hash_value));
   }
 }
 BENCHMARK(BM_ChainedFunctionCallsGraph);
@@ -1347,7 +1349,7 @@ static void BM_ComposedFunctionCallsGraph(benchmark::State& state) {
 
   uint64 hash_value;
   for (auto _ : state) {
-    CHECK(HashNode(graph_def, target, &hash_value).ok());
+    TF_CHECK_OK(HashNode(graph_def, target, &hash_value));
   }
 }
 BENCHMARK(BM_ComposedFunctionCallsGraph);

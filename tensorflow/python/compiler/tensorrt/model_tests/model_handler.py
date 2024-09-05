@@ -80,10 +80,12 @@ def _generate_random_tensor_ops(shape: Sequence[int], dtype: tf_dtypes.DType,
           shape=shape,
           dtype=random_dtype,
           # Limits maximum value as 255 to simulate pixel values, avoid
-          # generating large numbers and casuing overflows.
-          maxval=min(dtype_max, random_dtype.max, 255)),
+          # generating large numbers and causing overflows.
+          maxval=min(dtype_max, random_dtype.max, 255),
+      ),
       dtype=dtype,
-      name=name)
+      name=name,
+  )
 
 
 def _generate_random_tensor_v1(tensor_info: meta_graph_pb2.TensorInfo,

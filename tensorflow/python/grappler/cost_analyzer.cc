@@ -37,7 +37,7 @@ Status CostAnalyzer::GenerateReport(std::ostream& os, bool per_node_report,
   PreprocessCosts();
   AnalyzeCosts();
   PrintAnalysis(os, per_node_report, verbose);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void CostAnalyzer::PredictCosts(CostEstimator* cost_estimator,
@@ -53,7 +53,7 @@ void CostAnalyzer::PredictCosts(CostEstimator* cost_estimator,
   *total_time = costs.execution_time.count();
   if (!status.ok()) {
     LOG(ERROR) << "Could not estimate the cost for item " << item_->id << ": "
-               << status.error_message();
+               << status.message();
     return;
   }
 }

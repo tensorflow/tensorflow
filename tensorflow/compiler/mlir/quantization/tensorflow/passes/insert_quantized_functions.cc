@@ -19,12 +19,17 @@ limitations under the License.
 #include <tuple>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/SourceMgr.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/quantized_function_library.h"
@@ -36,8 +41,8 @@ namespace mlir {
 namespace quant {
 namespace {
 
-using QuantMethod =
-    tensorflow::quantization::QuantizationMethod::ExperimentalMethod;
+using QuantMethod = tensorflow::quantization::QuantizationMethod::PresetMethod;
+using ::tensorflow::quantization::OpSet;
 
 class InsertQuantizedFunctionsPass
     : public PassWrapper<InsertQuantizedFunctionsPass,
@@ -81,16 +86,18 @@ class InsertQuantizedFunctionsPass
 
   Option<QuantMethod> quantization_method_{
       *this, "quantization-method",
-      llvm::cl::init(
-          tensorflow::quantization::QuantizationMethod::STATIC_RANGE),
+      llvm::cl::init(tensorflow::quantization::QuantizationMethod::
+                         METHOD_STATIC_RANGE_INT8),
       llvm::cl::desc("Choose quantization method."),
       llvm::cl::values(
-          clEnumValN(tensorflow::quantization::QuantizationMethod::STATIC_RANGE,
+          clEnumValN(tensorflow::quantization::QuantizationMethod::
+                         METHOD_STATIC_RANGE_INT8,
                      "ptq", "Post-training static-range quantization"),
-          clEnumValN(
-              tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE,
-              "drq", "Post-training dynamic-range quantizaiton"),
-          clEnumValN(tensorflow::quantization::QuantizationMethod::WEIGHT_ONLY,
+          clEnumValN(tensorflow::quantization::QuantizationMethod::
+                         METHOD_DYNAMIC_RANGE_INT8,
+                     "drq", "Post-training dynamic-range quantizaiton"),
+          clEnumValN(tensorflow::quantization::QuantizationMethod::
+                         METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8,
                      "weight_only", "Post-training weight_only quantizaiton"))};
 
   Option<OpSet> op_set_{
@@ -108,14 +115,15 @@ llvm::StringRef InsertQuantizedFunctionsPass::GetFunctionLibrary(
     QuantMethod quantization_method, OpSet op_set) {
   absl::flat_hash_map<OpSet, llvm::StringRef> function_library_map;
   if (quantization_method ==
-      tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE) {
+      tensorflow::quantization::QuantizationMethod::METHOD_DYNAMIC_RANGE_INT8) {
     function_library_map = {
         {OpSet::TF, kQuantizedFunctionLibraryInMLIR_TF_DRQ},
         {OpSet::UNIFORM_QUANTIZED,
          kQuantizedFunctionLibraryInMLIR_UNIFORM_QUANTIZED_DRQ},
         {OpSet::XLA, kQuantizedFunctionLibraryInMLIR_TF_DRQ}};
   } else if (quantization_method ==
-             tensorflow::quantization::QuantizationMethod::WEIGHT_ONLY) {
+             tensorflow::quantization::QuantizationMethod::
+                 METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8) {
     // Uniform quantized opset is not supported for weight-only as inputs for
     // weight quantization are floats. And only dequantize_i8 is used from the
     // quantized function library.
@@ -171,9 +179,8 @@ void InsertQuantizedFunctionsPass::runOnOperation() {
 
   StatusScopedDiagnosticHandler diagnostic_handler(context);
   if (failed(pm.run(*module_ref))) {
-    emitError(module.getLoc())
-        << "failed to apply the optimization: "
-        << diagnostic_handler.ConsumeStatus().error_message();
+    emitError(module.getLoc()) << "failed to apply the optimization: "
+                               << diagnostic_handler.ConsumeStatus().message();
     signalPassFailure();
     return;
   }

@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -62,20 +63,20 @@ class DequantizeConverter : public OpRewritePattern<SrcOp> {
     bool allTypesFp = true;
     bool allTypesQuantizedOrInt = true;
     for (auto operand : op->getOperands()) {
-      ShapedType type = operand.getType().template dyn_cast<ShapedType>();
+      ShapedType type = mlir::dyn_cast<ShapedType>(operand.getType());
       if (!type) continue;
-      allTypesFp &= !type.getElementType().isa<quant::QuantizedType>();
+      allTypesFp &= !mlir::isa<quant::QuantizedType>(type.getElementType());
       allTypesQuantizedOrInt &=
-          (type.getElementType().isa<quant::QuantizedType>() ||
-           type.getElementType().isa<IntegerType>());
+          (mlir::isa<quant::QuantizedType>(type.getElementType()) ||
+           mlir::isa<IntegerType>(type.getElementType()));
     }
 
     for (auto result : op->getResults()) {
-      ShapedType type = result.getType().template cast<ShapedType>();
-      allTypesFp &= !type.getElementType().isa<quant::QuantizedType>();
+      ShapedType type = mlir::cast<ShapedType>(result.getType());
+      allTypesFp &= !mlir::isa<quant::QuantizedType>(type.getElementType());
       allTypesQuantizedOrInt &=
-          (type.getElementType().isa<quant::QuantizedType>() ||
-           type.getElementType().isa<IntegerType>());
+          (mlir::isa<quant::QuantizedType>(type.getElementType()) ||
+           mlir::isa<IntegerType>(type.getElementType()));
     }
 
     // If all quantized or floating point then types are consistent.

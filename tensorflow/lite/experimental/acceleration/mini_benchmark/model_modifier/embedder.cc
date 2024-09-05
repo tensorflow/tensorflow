@@ -21,8 +21,9 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "flatbuffers/reflection_generated.h"  // from @flatbuffers
+#include "flatbuffers/vector.h"  // from @flatbuffers
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/interpreter_builder.h"
 #include "tensorflow/lite/core/kernels/register.h"
@@ -137,7 +138,7 @@ absl::Status Embedder::ValidateInputs() {
   VALIDATE(
       validation_input_count == main_output_count * 2,
       "validation subgraph input count must be 2 times main subgraph output "
-      "count (validation output count: %d, main subgraph output count: %d)",
+      "count (validation input count: %d, main subgraph output count: %d)",
       validation_input_count, main_output_count);
   for (int i = 0; i < main_output_count; i++) {
     auto main_output_tensor =

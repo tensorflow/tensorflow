@@ -1,0 +1,27 @@
+path: "tensorflow.quantization.experimental"
+tf_module {
+  member {
+    name: "QuantizationComponentSpec"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
+    name: "QuantizationMethod"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
+    name: "QuantizationOptions"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
+    name: "TfRecordRepresentativeDatasetSaver"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "UnitWiseQuantizationSpec"
+    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member_method {
+    name: "quantize_saved_model"
+    argspec: "args=[\'saved_model_path\', \'output_directory\', \'quantization_options\', \'representative_dataset\', \'overwrite_output_directory\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'False\'], "
+  }
+}

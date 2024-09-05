@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "Asin"
   input_arg {
     name: "x"

@@ -24,14 +24,15 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
-#include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/clustering_bridge_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "xla/mlir_hlo/mhlo/transforms/passes.h"
 
 namespace tensorflow {
 
 void PopulateLowerToMlProgramAndHloPipeline(mlir::OpPassManager& pm) {
-  mlir::TF::CreateTFXLABridgePipeline(pm);
+  tensorflow::tf2xla::internal::AddNonReplicatedBridgeClusteringPipelinePasses(
+      pm);
 
   // Remove unused global tensors, or make then immutable if possible.
   pm.addPass(mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
@@ -64,9 +65,9 @@ void PopulateLowerToMlProgramAndHloPipeline(mlir::OpPassManager& pm) {
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
 
   llvm::StringRef tf2xla_fallback_device_type = "XLA_CPU_JIT";
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createLegalizeTFPass(
-      /*allow_partial_conversion=*/true, /*legalize_chlo=*/true,
-      tf2xla_fallback_device_type, /*prefer_tf2xla=*/false));
+  pm.addPass(mlir::mhlo::createLegalizeTFPass(
+      /*legalize_chlo=*/true, tf2xla_fallback_device_type,
+      /*prefer_tf2xla=*/false));
 
   pm.addPass(mlir::TF::CreateStripTfAttributesPass());
 

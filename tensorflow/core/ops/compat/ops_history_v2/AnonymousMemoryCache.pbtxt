@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "AnonymousMemoryCache"
   output_arg {
     name: "handle"

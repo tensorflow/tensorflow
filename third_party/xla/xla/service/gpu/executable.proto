@@ -1,0 +1,53 @@
+/* Copyright 2022 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto3";
+
+package xla.gpu;
+
+import "xla/service/hlo.proto";
+import "xla/xla.proto";
+
+message CompilationResultProto {
+  HloModuleProtoWithConfig hlo_module_with_config = 1;
+  BufferAssignmentProto buffer_assignment = 2;
+  string asm_text = 3;
+  bytes binary = 4;
+  map<string, string> dnn_compiled_graphs = 5;
+}
+
+message LaunchDimensionsProto {
+  uint64 num_blocks = 1;
+  uint64 num_threads_per_block = 2;
+}
+
+message ClusterDimProto {
+  uint64 x = 1;
+  uint64 y = 2;
+  uint64 z = 3;
+}
+
+message CompilationCacheEntryProto {
+  string fingerprint = 1;
+  LaunchDimensionsProto launch_dimensions = 2;
+  optional ClusterDimProto cluster_dim = 3;
+  int64 shmem_bytes = 4;
+  bytes binary = 5;
+}
+
+message CompilationCacheProto {
+  // Key is the kernel name.
+  map<string, CompilationCacheEntryProto> entries = 1;
+}

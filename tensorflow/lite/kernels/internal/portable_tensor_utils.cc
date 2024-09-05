@@ -70,13 +70,25 @@ void ApplySignbitToVector(const float* __restrict__ vector, int v_size,
 
 void UnpackDenseInt4IntoInt8(const int8_t* src_buffer, int num_elements,
                              int8_t* dst_buffer) {
-  for (int i = 0; i < num_elements; i += 2) {
+  // num_elements means the number of elements regardless of packed or unpacked.
+  // For example, 3 elements means both
+  //   1) Packed: 3 int4's = 12 bit -> 16 bits (padded) = 2 bytes.
+  //      stored in src_buffer[0] and src_buffer[1] (i = 0..1)
+  //   2) Unpacked: 3 int8's = 3 bytes.
+  //.     stored in dst_buffer[0], dst_buffer[1] and dst_buffer[2] (j = 0..2)
+  for (int i = 0; i < num_elements / 2; i++) {
+    int8_t byte = src_buffer[i];
     // Shift left first so that sign is properly extended when shifted right
-    dst_buffer[i] = static_cast<int8_t>(src_buffer[i / 2] << 4) >> 4;
-    // Break early if the tensor has odd length and the higher nibble should be
-    // ignored.
-    if (i + 1 == num_elements) break;
-    dst_buffer[i + 1] = static_cast<int8_t>(src_buffer[i / 2]) >> 4;
+    int8_t lower = static_cast<int8_t>(byte << 4) >> 4;
+    int8_t higher = byte >> 4;
+    dst_buffer[2 * i] = lower;
+    dst_buffer[2 * i + 1] = higher;
+  }
+
+  // If the buffer size is odd, extract the final lower nibble.
+  if (num_elements % 2 != 0) {
+    dst_buffer[num_elements - 1] =
+        static_cast<int8_t>(src_buffer[num_elements / 2] << 4) >> 4;
   }
 }
 

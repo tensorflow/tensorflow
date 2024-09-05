@@ -53,12 +53,9 @@ using ::tfrt::AsyncValue;
 using ::tfrt::BEFFile;
 using ::tfrt::ExecutionContext;
 using ::tfrt::Function;
-using ::tfrt::HostContext;
 using ::tfrt::MakeAvailableAsyncValueRef;
 using ::tfrt::RCReference;
-using ::tfrt::RequestContext;
 using ::tfrt::RequestContextBuilder;
-using ::tfrt::ResourceContext;
 
 using ::tensorflow::Env;
 using ::tensorflow::thread::ThreadPool;
@@ -113,8 +110,7 @@ RuntimeFallbackExecutor::RuntimeFallbackExecutor(int64_t num_threads)
   // Initialize fallback kernels state with a custom intra-op thread pool.
   auto status = tensorflow::tfd::SetUpKernelFallbackCompatRequestContext(
       &builder, /*runner_table=*/nullptr, eager_context, intra_op_.get());
-  CHECK(status.ok()) << "Failed to setup request context: "
-                     << status.error_message();
+  CHECK(status.ok()) << "Failed to setup request context: " << status.message();
 
   auto req_ctx = std::move(builder).build();
   if (auto err = req_ctx.takeError())
@@ -150,9 +146,7 @@ void RuntimeFallbackExecutor::Prepare(llvm::StringRef mlir_input) {
   pipeline_opts.hoist_invariant_ops = true;
   pipeline_opts.sink_in_invariant_ops = false;
   pipeline_opts.cost_threshold = 1024;
-  pipeline_opts.upper_cost_threshold = 100000;
   pipeline_opts.merge_inter_dependent_streams = true;
-  pipeline_opts.func_use_fallback_tensor = true;
 
   mlir::PassManager pm(module->getContext());
   pm.addPass(CreateTfToTfrtConversionPass(pipeline_opts));

@@ -18,6 +18,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -28,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -84,20 +86,20 @@ bool IsCompatibleTypeWithTFLCastOp(Type type) {
       elemType.isF64())
     return true;
 
-  // I1, I8 I16, I32, I64 types are allowed.
-  if (elemType.isInteger(1) || elemType.isInteger(8) ||
+  // I1, I4, I8, I16, I32, I64 types are allowed.
+  if (elemType.isInteger(1) || elemType.isInteger(4) || elemType.isInteger(8) ||
       elemType.isInteger(16) || elemType.isInteger(32) ||
       elemType.isInteger(64))
     return true;
 
   // Complex<F<32>> is allowed.
-  if (elemType.isa<ComplexType>() &&
-      elemType.cast<ComplexType>().getElementType().isF32())
+  if (mlir::isa<ComplexType>(elemType) &&
+      mlir::cast<ComplexType>(elemType).getElementType().isF32())
     return true;
 
   // QUINT8 and UI8 are allowed.
-  if (elemType.isa<TF::Quint8Type>() ||
-      (elemType.isInteger(8) && elemType.cast<IntegerType>().isUnsigned()))
+  if (mlir::isa<TF::Quint8Type>(elemType) ||
+      (elemType.isInteger(8) && mlir::cast<IntegerType>(elemType).isUnsigned()))
     return true;
 
   return false;
@@ -210,9 +212,11 @@ void WhileOutlinePass::OutlineWhile(WhileOp while_op) {
     llvm::SetVector<Value> region_extern_values;
     getUsedValuesDefinedAbove(*it.value(), region_extern_values);
 
-    // Sink down constants into the functions.
+    // Sink down constants (including quantized constant) into the functions.
     for (auto extern_value : region_extern_values) {
-      if (!matchPattern(extern_value, m_Constant())) {
+      if (!matchPattern(extern_value, m_Constant()) &&
+          !llvm::dyn_cast_or_null<TFL::QConstOp>(
+              extern_value.getDefiningOp())) {
         extern_values.insert(extern_value);
         continue;
       }

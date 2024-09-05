@@ -26,6 +26,7 @@ class TFRecordDatasetOp : public DatasetOpKernel {
   static constexpr const char* const kFileNames = "filenames";
   static constexpr const char* const kCompressionType = "compression_type";
   static constexpr const char* const kBufferSize = "buffer_size";
+  static constexpr const char* const kByteOffsets = "byte_offsets";
 
   explicit TFRecordDatasetOp(OpKernelConstruction* ctx);
 
@@ -34,6 +35,7 @@ class TFRecordDatasetOp : public DatasetOpKernel {
 
  private:
   class Dataset;
+  int op_version_;
 };
 
 }  // namespace data

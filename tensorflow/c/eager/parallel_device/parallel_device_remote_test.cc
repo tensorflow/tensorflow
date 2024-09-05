@@ -14,16 +14,20 @@ limitations under the License.
 ==============================================================================*/
 
 #include <array>
+#include <memory>
 #include <string>
 
-#include "tensorflow/c/c_api.h"
-#include "tensorflow/c/c_api_experimental.h"
+#include "absl/log/log.h"
 #include "tensorflow/c/eager/c_api.h"
-#include "tensorflow/c/eager/c_api_experimental.h"
-#include "tensorflow/c/eager/parallel_device/parallel_device.h"
+#include "tensorflow/c/eager/parallel_device/parallel_device_lib.h"
 #include "tensorflow/c/eager/parallel_device/parallel_device_testlib.h"
+#include "tensorflow/c/tf_status.h"
+#include "tensorflow/core/distributed_runtime/master_env.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
+#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/cluster.pb.h"
+#include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 
 tensorflow::ServerDef GetServerDef(const std::string& job_name, int num_tasks) {
   tensorflow::ServerDef server_def;
@@ -37,6 +41,8 @@ tensorflow::ServerDef GetServerDef(const std::string& job_name, int num_tasks) {
     int port = tensorflow::testing::PickUnusedPortOrDie();
     job_def->mutable_tasks()->insert(
         {i, tensorflow::strings::StrCat("localhost", ":", port)});
+    LOG(INFO) << "Picked test port: " << port << " for job: " << job_name
+              << ", task: " << i;
   }
   return server_def;
 }

@@ -463,7 +463,7 @@ std::optional<const TensorShapeProto*> FindLeadingShape(
 
 // Returns the inputs that are relevant to determinate the batch size of the
 // operation. This routine handles the following cases:
-//   . Operations that support implicit boradcasting, such as operation mul.
+//   . Operations that support implicit broadcasting, such as operation mul.
 //     In this case, we need to inspect all the inputs in order to determine the
 //     batch size of the operation.
 //   . Special cases. Such as "Conv2DBackpropInput", "Conv3DBackpropInputV2".
@@ -765,7 +765,7 @@ string GenerateNonConversionReport(
         // Log the error in case of issue, however do not stop execution.
         LOG(ERROR) << "Problem encountered while generating the TF-TRT "
                    << "Non-Conversion Report in CSV Format:\n"
-                   << status.error_message();
+                   << status.message();
       }
       show_detailed_conversion_report = true;
     } else if (std::stoi(detailed_report_var) >= 1) {
@@ -919,9 +919,8 @@ Status SegmentGraph(const Graph* tf_graph,
     const string node_op_type{node->tf_node()->type_string()};
 
     auto exclude_node = [&](absl::string_view reason) {
-      VLOG(1) << "Not a TF-TRT candidate, "
-              << "(Op type: " << node_op_type << "), "
-              << "(Op name: " << node->name() << "), "
+      VLOG(1) << "Not a TF-TRT candidate, " << "(Op type: " << node_op_type
+              << "), " << "(Op name: " << node->name() << "), "
               << "(Reason: " << reason << ")";
       nonconverted_ops_map[node_op_type][string(reason)]++;
       node = nullptr;
@@ -949,7 +948,7 @@ Status SegmentGraph(const Graph* tf_graph,
     } else {
       const Status status = candidate_fn(node->tf_node());
       if (!status.ok()) {
-        exclude_node(status.error_message());
+        exclude_node(status.message());
       } else if (tftrt_op_denylist.contains(node->tf_node()->type_string())) {
         // WARNING verbosity since the user explicitly requests this behavior.
         LOG_WARNING_WITH_PREFIX
@@ -1276,8 +1275,7 @@ Status SegmentGraph(const Graph* tf_graph,
         if (mask[i]) {
           VLOG(1) << "[*] Segment " << i
                   << " [node count: " << effective_nodes_counts[i]
-                  << "] accepted. Re-assigned "
-                  << "segment id=" << j;
+                  << "] accepted. Re-assigned " << "segment id=" << j;
           segments->at(j) = segments->at(i);
           j++;
         }

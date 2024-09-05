@@ -17,6 +17,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
@@ -97,7 +98,7 @@ class BroadcastMatrixBatchDimsTest(test.TestCase):
   def test_one_batch_matrix_returned_after_tensor_conversion(self):
     arr = rng.rand(2, 3, 4)
     tensor, = linear_operator_util.broadcast_matrix_batch_dims([arr])
-    self.assertTrue(isinstance(tensor, ops.Tensor))
+    self.assertTrue(isinstance(tensor, tensor_lib.Tensor))
 
     self.assertAllClose(arr, self.evaluate(tensor))
 

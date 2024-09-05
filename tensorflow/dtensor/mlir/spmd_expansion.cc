@@ -13,21 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+#include <optional>
+#include <vector>
+
 #include "absl/types/optional.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -35,20 +40,21 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/dtensor/cc/constants.h"
+#include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
 #include "tensorflow/dtensor/mlir/spmd_expander.h"
 #include "tensorflow/dtensor/mlir/spmd_expander_common.h"
+#include "tensorflow/dtensor/mlir/topological_iterator.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -103,7 +109,7 @@ mlir::Operation* NextTFOp(mlir::Operation* op) {
 // this function is an no-op.
 mlir::LogicalResult UpdateResourceArgumentType(
     const int arg_index, mlir::func::FuncOp function,
-    absl::optional<mlir::RankedTensorType> new_subtype = absl::nullopt) {
+    std::optional<mlir::RankedTensorType> new_subtype = std::nullopt) {
   auto resource_arg = function.getArgument(arg_index);
   if (new_subtype) {
     auto new_var_type = mlir::RankedTensorType::get(
@@ -145,7 +151,7 @@ mlir::LogicalResult UpdateResourceArgumentType(
   } else {
     auto layout_or_status = ExtractLayoutFromOperand(resource_arg);
     if (!layout_or_status.ok())
-      return function.emitOpError(layout_or_status.status().error_message());
+      return function.emitOpError(layout_or_status.status().message());
 
     const auto& layout = layout_or_status.value();
     if (!layout) return mlir::success();
@@ -174,17 +180,19 @@ mlir::LogicalResult UpdateResourceArgumentType(
 
 // Returns whether `value` is used by AssignVariable op, skipping DTensorLayout
 // op.
-bool IsValueUsedByAssignVariableOp(
+bool GetResourceArgIndexIfUsedInAssignmentOp(
     mlir::Value value, int* resource_argument_index_for_assign_variable) {
   for (auto user : value.getUsers()) {
     if (auto assign_variable_op =
             llvm::dyn_cast_or_null<mlir::TF::AssignVariableOp>(
                 NextTFOp(user))) {
-      *resource_argument_index_for_assign_variable =
-          GetForwardedDTensorLayoutInput(assign_variable_op.getResource())
-              .cast<mlir::BlockArgument>()
-              .getArgNumber();
-      return true;
+      auto resource =
+          GetForwardedDTensorLayoutInput(assign_variable_op.getResource());
+      if (llvm::isa<mlir::BlockArgument>(resource)) {
+        *resource_argument_index_for_assign_variable =
+            resource.cast<mlir::BlockArgument>().getArgNumber();
+        return true;
+      }
     }
   }
   return false;
@@ -202,10 +210,11 @@ mlir::LogicalResult UpdateFunctionArgsUsingLayout(mlir::func::FuncOp function) {
     if (!arg_layout.ok())
       return function.emitOpError(llvm::formatv(
           "Invalid layout attribute found during SPMD expansion: {0}",
-          arg_layout.status().error_message()));
+          arg_layout.status().message()));
 
     // XLA SPMD will handle argument shape updating for us.
-    if (arg_layout->mesh().use_xla_spmd()) {
+    if (arg_layout->mesh().IsSingleDevice() ||
+        arg_layout->mesh().use_xla_spmd()) {
       continue;
     }
 
@@ -235,12 +244,14 @@ mlir::LogicalResult UpdateFunctionArgsUsingLayout(mlir::func::FuncOp function) {
         arg_local_shape, ranked_type.getElementType());
     UpdateFunctionInputShape(argument_index, new_arg_type, function);
 
-    // If non-resource value was used for AssignVariable op, then ensure that
+    // If Resource is an input to the function and a non-resource value was used
+    // for AssignVariable op, then ensure that
     // resource shape of updated/assigned resource is consistent with the
     // local shape of assigned value.
     int assigned_resource_argument_index = -1;
-    if (IsValueUsedByAssignVariableOp(function.getArgument(argument_index),
-                                      &assigned_resource_argument_index)) {
+    if (GetResourceArgIndexIfUsedInAssignmentOp(
+            function.getArgument(argument_index),
+            &assigned_resource_argument_index)) {
       (void)UpdateResourceArgumentType(assigned_resource_argument_index,
                                        function, new_arg_type);
     }
@@ -324,7 +335,7 @@ mlir::LogicalResult ConductSPMDExpansion(mlir::ModuleOp module) {
   TopologicalIterator iterator(main_func);
   while (iterator.hasNext()) {
     mlir::Operation* op = iterator.next();
-    absl::optional<mlir::func::FuncOp> func = MaybeFindFunction(op);
+    std::optional<mlir::func::FuncOp> func = MaybeFindFunction(op);
     if (func.has_value()) {
       if (mlir::failed(
               UpdateFunctionWithLocalInputShapes(op->getOpOperands(), *func)))
@@ -345,7 +356,7 @@ mlir::LogicalResult ConductSPMDExpansion(mlir::ModuleOp module) {
       if (expanded_op != nullptr) emit_op = expanded_op;
       return emit_op->emitError(WithContext(status, __FILE__, __LINE__,
                                             "While computing SPMD expansion")
-                                    .error_message());
+                                    .message());
     }
 
     // If expanded op is terminator of tf_device.Cluster or a function, then

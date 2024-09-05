@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "WholeFileReader"
   output_arg {
     name: "reader_handle"

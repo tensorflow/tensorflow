@@ -13,17 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This transformation pass converts stateful and stateless paritioned calls
+// This transformation pass converts stateful and stateless partitioned calls
 // with _xla_compile_device_type attribute to XLA launch ops.
 
 #include <stack>
 
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/call_graph_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/call_graph_util.h"
 
 #define DEBUG_TYPE "tf-xla-rewrite"
 
@@ -44,15 +45,14 @@ void MoveResourceArgsToEnd(func::FuncOp callee) {
   // Copy the resource-type parameters to the end.
   for (unsigned i = 0; i < num_params; ++i) {
     BlockArgument param = callee.getArgument(i);
-    if (getElementTypeOrSelf(param.getType())
-            .template isa<TF::ResourceType>()) {
+    if (mlir::isa<TF::ResourceType>(getElementTypeOrSelf(param.getType()))) {
       removed_params.set(i);
       callee.getBody().addArgument(param.getType(), param.getLoc());
       param.replaceAllUsesWith(callee.getArguments().back());
       removed_params.push_back(false);
     }
   }
-  // Remove old reousrce-type parameters.
+  // Remove old resource-type parameters.
   callee.getBody().front().eraseArguments(removed_params);
   // Update function type.
   callee.setFunctionType(FunctionType::get(callee.getContext(),
@@ -65,7 +65,7 @@ void RewriteCall(tf_device::ClusterFuncOp cluster_func_op, SymbolTable &symtab,
   llvm::SmallVector<Value> non_resource_args, resource_args;
   bool has_resources = false, in_order = true;
   for (const Value &arg : cluster_func_op.getOperands()) {
-    if (!getElementTypeOrSelf(arg.getType()).template isa<TF::ResourceType>()) {
+    if (!mlir::isa<TF::ResourceType>(getElementTypeOrSelf(arg.getType()))) {
       non_resource_args.push_back(arg);
       if (has_resources) in_order = false;
     } else {
@@ -97,20 +97,6 @@ void XlaRewritePass::runOnOperation() {
   OpBuilder builder(&getContext());
   module.walk([&](tf_device::ClusterFuncOp cluster_func_op) {
     RewriteCall(cluster_func_op, symtab, builder);
-  });
-
-  // Verify that there are no nested XLA launch ops.
-  module.walk([&](TF::XlaLaunchOp xla_launch_op) {
-    llvm::SmallVector<mlir::Operation *> nested_launch_ops;
-    func::FuncOp root = symtab.lookup<func::FuncOp>(
-        xla_launch_op.getFunctionAttr().getRootReference());
-    if (failed(GetOutermostOpsOfType<TF::XlaLaunchOp>(root, symtab,
-                                                      nested_launch_ops)))
-      return signalPassFailure();
-    if (!nested_launch_ops.empty()) {
-      xla_launch_op.emitError() << "Nested XLA launch ops detected";
-      return signalPassFailure();
-    }
   });
 }
 

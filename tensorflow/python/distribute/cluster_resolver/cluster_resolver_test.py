@@ -14,12 +14,10 @@
 # ==============================================================================
 """Tests for Cluster Resolvers."""
 
-from tensorflow.python import framework
 from tensorflow.python.client import session
-from tensorflow.python.distribute.cluster_resolver.cluster_resolver import ClusterResolver
-from tensorflow.python.distribute.cluster_resolver.cluster_resolver import SimpleClusterResolver
-from tensorflow.python.distribute.cluster_resolver.cluster_resolver import UnionClusterResolver
-from tensorflow.python.eager.context import LogicalDevice
+from tensorflow.python.distribute.cluster_resolver import cluster_resolver
+from tensorflow.python.eager import context
+from tensorflow.python.framework import config
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
@@ -27,7 +25,7 @@ from tensorflow.python.training import server_lib
 mock = test.mock
 
 
-class MockBaseClusterResolver(ClusterResolver):
+class MockBaseClusterResolver(cluster_resolver.ClusterResolver):
 
   def cluster_spec(self):
     return None
@@ -42,15 +40,15 @@ class MockBaseClusterResolver(ClusterResolver):
 @test_util.run_all_in_graph_and_eager_modes
 class BaseClusterResolverTest(test.TestCase):
 
-  @mock.patch.object(framework.config, "list_logical_devices")
+  @mock.patch.object(config, "list_logical_devices")
   @mock.patch.object(session.BaseSession, "list_devices")
   def testNumAcceleratorsSuccess(self, mock_list_devices,
                                  mock_eager_list_devices):
     devices = [
-        LogicalDevice("/job:worker/task:0/device:GPU:0", "GPU"),
-        LogicalDevice("/job:worker/task:0/device:GPU:1", "GPU"),
-        LogicalDevice("/job:worker/task:0/device:GPU:2", "GPU"),
-        LogicalDevice("/job:worker/task:0/device:GPU:3", "GPU"),
+        context.LogicalDevice("/job:worker/task:0/device:GPU:0", "GPU"),
+        context.LogicalDevice("/job:worker/task:0/device:GPU:1", "GPU"),
+        context.LogicalDevice("/job:worker/task:0/device:GPU:2", "GPU"),
+        context.LogicalDevice("/job:worker/task:0/device:GPU:3", "GPU"),
     ]
     device_list = [
         session._DeviceAttributes(d.name, d.device_type, 1024, 0)
@@ -62,19 +60,19 @@ class BaseClusterResolverTest(test.TestCase):
     resolver = MockBaseClusterResolver()
     self.assertEqual(resolver.num_accelerators(), {"GPU": 4})
 
-  @mock.patch.object(framework.config, "list_logical_devices")
+  @mock.patch.object(config, "list_logical_devices")
   @mock.patch.object(session.BaseSession, "list_devices")
   def testNumAcceleratorsMultiDeviceSuccess(self, mock_list_devices,
                                             mock_eager_list_devices):
     devices = [
-        LogicalDevice("/job:worker/task:0/device:TPU:0", "TPU"),
-        LogicalDevice("/job:worker/task:0/device:TPU:1", "TPU"),
-        LogicalDevice("/job:worker/task:0/device:TPU:2", "TPU"),
-        LogicalDevice("/job:worker/task:0/device:TPU:3", "TPU"),
-        LogicalDevice("/job:worker/task:0/device:GPU:0", "GPU"),
-        LogicalDevice("/job:worker/task:0/device:GPU:1", "GPU"),
-        LogicalDevice("/job:worker/task:0/device:GPU:2", "GPU"),
-        LogicalDevice("/job:worker/task:0/device:GPU:3", "GPU"),
+        context.LogicalDevice("/job:worker/task:0/device:TPU:0", "TPU"),
+        context.LogicalDevice("/job:worker/task:0/device:TPU:1", "TPU"),
+        context.LogicalDevice("/job:worker/task:0/device:TPU:2", "TPU"),
+        context.LogicalDevice("/job:worker/task:0/device:TPU:3", "TPU"),
+        context.LogicalDevice("/job:worker/task:0/device:GPU:0", "GPU"),
+        context.LogicalDevice("/job:worker/task:0/device:GPU:1", "GPU"),
+        context.LogicalDevice("/job:worker/task:0/device:GPU:2", "GPU"),
+        context.LogicalDevice("/job:worker/task:0/device:GPU:3", "GPU"),
     ]
     device_list = [
         session._DeviceAttributes(d.name, d.device_type, 1024, 0)
@@ -86,19 +84,19 @@ class BaseClusterResolverTest(test.TestCase):
     resolver = MockBaseClusterResolver()
     self.assertEqual(resolver.num_accelerators(), {"TPU": 4, "GPU": 4})
 
-  @mock.patch.object(framework.config, "list_logical_devices")
+  @mock.patch.object(config, "list_logical_devices")
   @mock.patch.object(session.BaseSession, "list_devices")
   def testNumAcceleratorsFilterTasks(self, mock_list_devices,
                                      mock_eager_list_devices):
     devices = [
-        LogicalDevice("/job:worker1/task:0/device:TPU:0", "TPU"),
-        LogicalDevice("/job:worker1/task:0/device:TPU:1", "TPU"),
-        LogicalDevice("/job:worker1/task:0/device:GPU:0", "GPU"),
-        LogicalDevice("/job:worker1/task:0/device:GPU:1", "GPU"),
-        LogicalDevice("/job:worker2/task:1/device:TPU:2", "TPU"),
-        LogicalDevice("/job:worker2/task:2/device:TPU:3", "TPU"),
-        LogicalDevice("/job:worker2/task:3/device:GPU:2", "GPU"),
-        LogicalDevice("/job:worker2/task:4/device:GPU:3", "GPU"),
+        context.LogicalDevice("/job:worker1/task:0/device:TPU:0", "TPU"),
+        context.LogicalDevice("/job:worker1/task:0/device:TPU:1", "TPU"),
+        context.LogicalDevice("/job:worker1/task:0/device:GPU:0", "GPU"),
+        context.LogicalDevice("/job:worker1/task:0/device:GPU:1", "GPU"),
+        context.LogicalDevice("/job:worker2/task:1/device:TPU:2", "TPU"),
+        context.LogicalDevice("/job:worker2/task:2/device:TPU:3", "TPU"),
+        context.LogicalDevice("/job:worker2/task:3/device:GPU:2", "GPU"),
+        context.LogicalDevice("/job:worker2/task:4/device:GPU:3", "GPU"),
     ]
     device_list = [
         session._DeviceAttributes(d.name, d.device_type, 1024, 0)
@@ -136,8 +134,8 @@ class UnionClusterResolverTest(test.TestCase):
         "ps": ["ps0:2222", "ps1:2222"],
         "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]
     })
-    simple_resolver = SimpleClusterResolver(base_cluster_spec)
-    union_resolver = UnionClusterResolver(simple_resolver)
+    simple_resolver = cluster_resolver.SimpleClusterResolver(base_cluster_spec)
+    union_resolver = cluster_resolver.UnionClusterResolver(simple_resolver)
 
     expected_proto = """
     job { name: 'ps' tasks { key: 0 value: 'ps0:2222' }
@@ -155,10 +153,12 @@ class UnionClusterResolverTest(test.TestCase):
         "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]
     })
 
-    simple_resolver = SimpleClusterResolver(base_cluster_spec, task_type="ps",
-                                            task_id=1, environment="cloud",
-                                            num_accelerators={"GPU": 8},
-                                            rpc_layer="grpc")
+    simple_resolver = cluster_resolver.SimpleClusterResolver(
+        base_cluster_spec, task_type="ps",
+        task_id=1, environment="cloud",
+        num_accelerators={"GPU": 8},
+        rpc_layer="grpc",
+    )
 
     self.assertEqual(simple_resolver.task_type, "ps")
     self.assertEqual(simple_resolver.task_id, 1)
@@ -172,10 +172,12 @@ class UnionClusterResolverTest(test.TestCase):
         "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]
     })
 
-    simple_resolver = SimpleClusterResolver(base_cluster_spec, task_type="ps",
-                                            task_id=1, environment="cloud",
-                                            num_accelerators={"GPU": 8},
-                                            rpc_layer="grpc")
+    simple_resolver = cluster_resolver.SimpleClusterResolver(
+        base_cluster_spec, task_type="ps",
+        task_id=1, environment="cloud",
+        num_accelerators={"GPU": 8},
+        rpc_layer="grpc",
+    )
 
     simple_resolver.task_type = "worker"
     simple_resolver.task_id = 2
@@ -191,7 +193,7 @@ class UnionClusterResolverTest(test.TestCase):
         "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]
     })
 
-    simple_resolver = SimpleClusterResolver(base_cluster_spec)
+    simple_resolver = cluster_resolver.SimpleClusterResolver(base_cluster_spec)
     actual_master = simple_resolver.master("worker", 0, rpc_layer="grpc")
     self.assertEqual(actual_master, "grpc://worker0:2222")
 
@@ -201,7 +203,7 @@ class UnionClusterResolverTest(test.TestCase):
         "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]
     })
 
-    simple_resolver = SimpleClusterResolver(base_cluster_spec)
+    simple_resolver = cluster_resolver.SimpleClusterResolver(base_cluster_spec)
     actual_master = simple_resolver.master("worker", 2, rpc_layer="grpc")
     self.assertEqual(actual_master, "grpc://worker2:2222")
 
@@ -211,7 +213,7 @@ class UnionClusterResolverTest(test.TestCase):
         "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]
     })
 
-    simple_resolver = SimpleClusterResolver(base_cluster_spec)
+    simple_resolver = cluster_resolver.SimpleClusterResolver(base_cluster_spec)
     actual_master = simple_resolver.master("worker", 2)
     self.assertEqual(actual_master, "worker2:2222")
 
@@ -220,21 +222,25 @@ class UnionClusterResolverTest(test.TestCase):
         "ps": ["ps0:2222", "ps1:2222"],
         "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]
     })
-    resolver1 = SimpleClusterResolver(cluster_spec_1, task_type="ps",
-                                      task_id=1, environment="cloud",
-                                      num_accelerators={"GPU": 8},
-                                      rpc_layer="grpc")
+    resolver1 = cluster_resolver.SimpleClusterResolver(
+        cluster_spec_1, task_type="ps",
+        task_id=1, environment="cloud",
+        num_accelerators={"GPU": 8},
+        rpc_layer="grpc",
+    )
 
     cluster_spec_2 = server_lib.ClusterSpec({
         "ps": ["ps2:2222", "ps3:2222"],
         "worker": ["worker3:2222", "worker4:2222", "worker5:2222"]
     })
-    resolver2 = SimpleClusterResolver(cluster_spec_2, task_type="worker",
-                                      task_id=2, environment="local",
-                                      num_accelerators={"GPU": 16},
-                                      rpc_layer="http")
+    resolver2 = cluster_resolver.SimpleClusterResolver(
+        cluster_spec_2, task_type="worker",
+        task_id=2, environment="local",
+        num_accelerators={"GPU": 16},
+        rpc_layer="http",
+    )
 
-    union_resolver = UnionClusterResolver(resolver1, resolver2)
+    union_resolver = cluster_resolver.UnionClusterResolver(resolver1, resolver2)
 
     self.assertEqual(union_resolver.task_type, "ps")
     self.assertEqual(union_resolver.task_id, 1)
@@ -264,10 +270,11 @@ class UnionClusterResolverTest(test.TestCase):
             "worker2:2222"
         ]
     })
-    cluster_resolver_1 = SimpleClusterResolver(cluster_spec_1)
-    cluster_resolver_2 = SimpleClusterResolver(cluster_spec_2)
+    cluster_resolver_1 = cluster_resolver.SimpleClusterResolver(cluster_spec_1)
+    cluster_resolver_2 = cluster_resolver.SimpleClusterResolver(cluster_spec_2)
 
-    union_cluster = UnionClusterResolver(cluster_resolver_1, cluster_resolver_2)
+    union_cluster = cluster_resolver.UnionClusterResolver(
+        cluster_resolver_1, cluster_resolver_2)
     cluster_spec = union_cluster.cluster_spec()
 
     expected_proto = """
@@ -293,10 +300,11 @@ class UnionClusterResolverTest(test.TestCase):
             "worker2:2222"
         ]
     })
-    cluster_resolver_1 = SimpleClusterResolver(cluster_spec_1)
-    cluster_resolver_2 = SimpleClusterResolver(cluster_spec_2)
+    cluster_resolver_1 = cluster_resolver.SimpleClusterResolver(cluster_spec_1)
+    cluster_resolver_2 = cluster_resolver.SimpleClusterResolver(cluster_spec_2)
 
-    union_cluster = UnionClusterResolver(cluster_resolver_1, cluster_resolver_2)
+    union_cluster = cluster_resolver.UnionClusterResolver(
+        cluster_resolver_1, cluster_resolver_2)
 
     unspecified_master = union_cluster.master()
     self.assertEqual(unspecified_master, "")
@@ -321,10 +329,11 @@ class UnionClusterResolverTest(test.TestCase):
             "worker2:2222"
         ]
     })
-    cluster_resolver_1 = SimpleClusterResolver(cluster_spec_1)
-    cluster_resolver_2 = SimpleClusterResolver(cluster_spec_2)
+    cluster_resolver_1 = cluster_resolver.SimpleClusterResolver(cluster_spec_1)
+    cluster_resolver_2 = cluster_resolver.SimpleClusterResolver(cluster_spec_2)
 
-    union_cluster = UnionClusterResolver(cluster_resolver_1, cluster_resolver_2)
+    union_cluster = cluster_resolver.UnionClusterResolver(
+        cluster_resolver_1, cluster_resolver_2)
     cluster_spec = union_cluster.cluster_spec()
 
     expected_proto = """
@@ -350,10 +359,11 @@ class UnionClusterResolverTest(test.TestCase):
             7: "worker2:2222"
         }
     })
-    cluster_resolver_1 = SimpleClusterResolver(cluster_spec_1)
-    cluster_resolver_2 = SimpleClusterResolver(cluster_spec_2)
+    cluster_resolver_1 = cluster_resolver.SimpleClusterResolver(cluster_spec_1)
+    cluster_resolver_2 = cluster_resolver.SimpleClusterResolver(cluster_spec_2)
 
-    union_cluster = UnionClusterResolver(cluster_resolver_1, cluster_resolver_2)
+    union_cluster = cluster_resolver.UnionClusterResolver(
+        cluster_resolver_1, cluster_resolver_2)
     self.assertRaises(KeyError, union_cluster.cluster_spec)
 
   def testOverlappingDictAndListThrowError(self):
@@ -370,10 +380,11 @@ class UnionClusterResolverTest(test.TestCase):
             3: "worker2:2222"
         }
     })
-    cluster_resolver_1 = SimpleClusterResolver(cluster_spec_1)
-    cluster_resolver_2 = SimpleClusterResolver(cluster_spec_2)
+    cluster_resolver_1 = cluster_resolver.SimpleClusterResolver(cluster_spec_1)
+    cluster_resolver_2 = cluster_resolver.SimpleClusterResolver(cluster_spec_2)
 
-    union_cluster = UnionClusterResolver(cluster_resolver_1, cluster_resolver_2)
+    union_cluster = cluster_resolver.UnionClusterResolver(
+        cluster_resolver_1, cluster_resolver_2)
     self.assertRaises(KeyError, union_cluster.cluster_spec)
 
   def testOverlappingJobNonOverlappingKey(self):
@@ -390,10 +401,11 @@ class UnionClusterResolverTest(test.TestCase):
             7: "worker2:2222"
         }
     })
-    cluster_resolver_1 = SimpleClusterResolver(cluster_spec_1)
-    cluster_resolver_2 = SimpleClusterResolver(cluster_spec_2)
+    cluster_resolver_1 = cluster_resolver.SimpleClusterResolver(cluster_spec_1)
+    cluster_resolver_2 = cluster_resolver.SimpleClusterResolver(cluster_spec_2)
 
-    union_cluster = UnionClusterResolver(cluster_resolver_1, cluster_resolver_2)
+    union_cluster = cluster_resolver.UnionClusterResolver(
+        cluster_resolver_1, cluster_resolver_2)
     cluster_spec = union_cluster.cluster_spec()
 
     expected_proto = """
@@ -419,10 +431,11 @@ class UnionClusterResolverTest(test.TestCase):
             7: "worker2:2222"
         }
     })
-    cluster_resolver_1 = SimpleClusterResolver(cluster_spec_1)
-    cluster_resolver_2 = SimpleClusterResolver(cluster_spec_2)
+    cluster_resolver_1 = cluster_resolver.SimpleClusterResolver(cluster_spec_1)
+    cluster_resolver_2 = cluster_resolver.SimpleClusterResolver(cluster_spec_2)
 
-    union_cluster = UnionClusterResolver(cluster_resolver_1, cluster_resolver_2)
+    union_cluster = cluster_resolver.UnionClusterResolver(
+        cluster_resolver_1, cluster_resolver_2)
     cluster_spec = union_cluster.cluster_spec()
 
     expected_proto = """
@@ -443,8 +456,9 @@ class UnionClusterResolverTest(test.TestCase):
         }
     })
 
-    base_cluster_resolver = SimpleClusterResolver(base_cluster_spec)
-    union_cluster = UnionClusterResolver(base_cluster_resolver)
+    base_cluster_resolver = cluster_resolver.SimpleClusterResolver(
+        base_cluster_spec)
+    union_cluster = cluster_resolver.UnionClusterResolver(base_cluster_resolver)
     cluster_spec = union_cluster.cluster_spec()
 
     expected_proto = """

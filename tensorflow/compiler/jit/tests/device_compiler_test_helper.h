@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
@@ -32,17 +33,17 @@ class JitCompilationListener : public XlaActivityListener {
  public:
   Status Listen(
       const XlaAutoClusteringActivity& auto_clustering_activity) override {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Listen(
       const XlaJitCompilationActivity& jit_compilation_activity) override {
     activity_history_.push_back(jit_compilation_activity);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Listen(const XlaOptimizationRemark& optimization_remark) override {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   ~JitCompilationListener() override = default;
@@ -51,10 +52,10 @@ class JitCompilationListener : public XlaActivityListener {
       bool expect_persistent_cache_use) {
     for (const auto& activity : activity_history_) {
       if (activity.used_persistent_cache() != expect_persistent_cache_use) {
-        return errors::FailedPrecondition("Unexpected listener history.");
+        return absl::FailedPreconditionError("Unexpected listener history.");
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   std::vector<XlaJitCompilationActivity> GetListenerHistory() {

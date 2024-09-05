@@ -60,7 +60,7 @@ static std::unique_ptr<Device> NewDevice(const string& type, const string& name,
    public:
     explicit FakeDevice(const DeviceAttributes& attr, Allocator* allocator)
         : Device(nullptr, attr), allocator_(allocator) {}
-    Status Sync() override { return OkStatus(); }
+    Status Sync() override { return absl::OkStatus(); }
     Allocator* GetAllocator(AllocatorAttributes) override { return allocator_; }
 
    private:
@@ -104,7 +104,7 @@ class FakeWorker : public TestWorkerInterface {
     for (const auto& da : dev_attr) {
       *response->add_device_attributes() = da;
     }
-    done(OkStatus());
+    done(absl::OkStatus());
   }
 
   void RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
@@ -202,7 +202,7 @@ class FakeCache : public TestWorkerCache {
     for (const auto& it : resp.device_attributes()) {
       if (it.name() == device) {
         *locality = it.locality();
-        done(OkStatus());
+        done(absl::OkStatus());
         return;
       }
     }
@@ -470,7 +470,7 @@ TEST_P(CollRMADistTest, ConsFirstAbort) {
       });
   rma_->StartAbort(errors::Internal("Deliberate Failure"));
   consumer_note.WaitForNotification();
-  EXPECT_EQ(consumer_status.error_message(), "Cancelled");
+  EXPECT_EQ(consumer_status.message(), "Cancelled");
 }
 
 TEST_P(CollRMADistTest, ResponseTooLarge) {
@@ -506,7 +506,7 @@ TEST_P(CollRMADistTest, ResponseTooLarge) {
         consumer_note.Notify();
       });
   consumer_note.WaitForNotification();
-  EXPECT_THAT(consumer_status.error_message(),
+  EXPECT_THAT(consumer_status.message(),
               ::testing::HasSubstr("Tensor Size Mismatch"));
   producer_note.WaitForNotification();
   TF_EXPECT_OK(producer_status);

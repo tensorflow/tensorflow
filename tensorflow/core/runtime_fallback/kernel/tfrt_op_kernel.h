@@ -29,8 +29,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_KERNEL_TFRT_OP_KERNEL_H_
 #define TENSORFLOW_CORE_RUNTIME_FALLBACK_KERNEL_TFRT_OP_KERNEL_H_
 
+#include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
@@ -48,12 +50,7 @@ namespace tfrt {
 class AsyncKernelFrame;
 }  // namespace tfrt
 
-namespace tsl {
-class Status;
-}  // namespace tsl
-
 namespace tensorflow {
-using tsl::Status;
 
 class TFRTOpKernel;
 class TFRTOpMeta;
@@ -79,7 +76,7 @@ class TFRTOpKernelConstruction {
                         const DataTypeSlice expected_outputs) {
     // TODO(annarev): Move MatchSignatureHelper out of op_kernel.h
     // and call it here.
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   const std::optional<std::string>& error();
@@ -116,7 +113,7 @@ Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
   if (!success) {
     return MissingAttributeError(attr_name);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // An implementation of OpKernelContext that fetches inputs from a
@@ -174,7 +171,7 @@ class TFRTOpKernelContext {
 class TFRTOpKernel {
  public:
   explicit TFRTOpKernel(TFRTOpKernelConstruction* context) {}
-  virtual ~TFRTOpKernel() {}
+  virtual ~TFRTOpKernel() = default;
   virtual void Compute(TFRTOpKernelContext* context) = 0;
 };
 

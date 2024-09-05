@@ -1,5 +1,5 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow/core/profiler/builds:build_config.bzl",
     "tf_profiler_copts",
@@ -20,8 +20,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/tsl/profiler/protobuf:profiler_service_proto_cc",
-        "//tensorflow/tsl/profiler/rpc/client:save_profile",
+        "@local_tsl//tsl/profiler/protobuf:profiler_service_proto_cc",
+        "@local_tsl//tsl/profiler/rpc/client:save_profile",
     ],
 )
 
@@ -33,16 +33,16 @@ tf_profiler_pybind_cc_library_wrapper(
 cc_library(
     name = "profiler_client",
     hdrs = ["profiler_client.h"],
-    visibility = ["//tensorflow/compiler/xla:__subpackages__"],
+    visibility = ["//visibility:private"],
     deps = [
         ":profiler_client_impl",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/profiler/protobuf:profiler_analysis_cc_grpc_proto",
-        "//tensorflow/tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
-        "//tensorflow/tsl/profiler/rpc/client:profiler_client",
-        "//tensorflow/tsl/profiler/rpc/client:profiler_client_impl",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
+        "@local_tsl//tsl/profiler/protobuf:profiler_analysis_cc_grpc_proto",
+        "@local_tsl//tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
+        "@local_tsl//tsl/profiler/rpc/client:profiler_client",
+        "@local_tsl//tsl/profiler/rpc/client:profiler_client_impl",
     ],
 )
 
@@ -58,15 +58,15 @@ cc_library(
         "//tensorflow/python:__pkg__",
     ],
     deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/tsl/profiler/protobuf:profiler_analysis_cc_grpc_proto",
-        "//tensorflow/tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
-        "//tensorflow/tsl/profiler/rpc/client:profiler_client",
-        "//tensorflow/tsl/profiler/rpc/client:profiler_client_impl",
+        "@local_tsl//tsl/profiler/protobuf:profiler_analysis_cc_grpc_proto",
+        "@local_tsl//tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
+        "@local_tsl//tsl/profiler/rpc/client:profiler_client",
+        "@local_tsl//tsl/profiler/rpc/client:profiler_client_impl",
     ] + tf_grpc_cc_dependencies(),
     alwayslink = True,
 )
@@ -78,7 +78,7 @@ cc_library(
     deps = [
         ":profiler_client_for_pybind",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/profiler/rpc/client:remote_profiler_session_manager",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/profiler/rpc/client:remote_profiler_session_manager",
     ],
 )

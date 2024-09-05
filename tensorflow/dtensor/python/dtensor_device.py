@@ -23,7 +23,6 @@ import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.dtensor.python import config
-from tensorflow.dtensor.python import gen_dtensor_ops
 from tensorflow.dtensor.python import layout as layout_lib
 from tensorflow.python import _pywrap_dtensor_device
 from tensorflow.python.eager import context
@@ -33,8 +32,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.ops import variables
+from tensorflow.python.util import _pywrap_utils
 
 
 # TODO(allenl): Allow something other than "CUSTOM" so we don't need device
@@ -72,14 +70,14 @@ class DTensorDevice(object):
       self.name = "{}/device:CUSTOM:{}".format(ctx.host_address_space(),
                                                _next_device_number)
       _next_device_number += 1
-    device, device_info = _pywrap_dtensor_device.Allocate(self.name)
+    device, device_info = _pywrap_dtensor_device.Allocate(
+        self.name, is_async, in_flight_nodes_limit
+    )
     context.register_custom_device(device, self.name, device_info)
 
     self._device_info = device_info
     self._current_output_layout = None
     self._current_default_mesh = None
-    self._is_async = is_async
-    self._in_flight_nodes_limit = in_flight_nodes_limit
     self._meshes = set()
     self._mesh_lock = threading.Lock()
     for mesh in meshes:
@@ -99,76 +97,26 @@ class DTensorDevice(object):
     ]
     return global_device_ids, local_device_ids, local_device_list
 
-  def _create_embedding_host_mesh(self, tpu_mesh: layout_lib.Mesh):
-    """Returns Embedding host mesh for each client."""
-    if tpu_mesh.device_type().upper() != "TPU":
-      raise ValueError("Must pass input of a tpu mesh.")
-
-    # Global device ids are global host ids, while local device ids contains
-    # local host id.
-
-    ts_local_device_ids = []
-    ts_local_devices = []
-    for local_device_str in tpu_mesh.local_devices():
-      # We only need to keep TPU:0 for each client.
-      if not local_device_str.endswith("TPU:0"):
-        continue
-
-      device_spec = tf_device.DeviceSpec.from_string(local_device_str)
-      ts_local_device_ids.append(device_spec.task)
-      ts_local_devices.append(device_spec.replace(device_type="CPU"))
-
-    if not ts_local_device_ids or not ts_local_device_ids:
-      logging.info(
-          "Cannot create tpu system mesh as %s has no `TPU:0` local device "
-          "found", tpu_mesh.to_string())
-      return None
-
-    ts_global_device_ids = np.arange(config.num_clients())
-    # TODO(zhonglinhan): parse global device specs as input when not None.
-    return layout_lib.Mesh(
-        dim_names=[tpu_mesh.dim_names[0]],  # 1D mesh.
-        global_device_ids=ts_global_device_ids,
-        local_device_ids=ts_local_device_ids,
-        local_devices=ts_local_devices)
-
   def _register_mesh(self, mesh: layout_lib.Mesh):
     """Idempotently register `mesh` with the dtensor device."""
     with self._mesh_lock:
       if mesh not in self._meshes:
-        _pywrap_dtensor_device.AddMesh(self._device_info, mesh.to_string(),
-                                       self._is_async, False,
-                                       self._in_flight_nodes_limit)
+        _pywrap_dtensor_device.AddMesh(
+            self._device_info, mesh.to_string(), False
+        )
         self._meshes.add(mesh)
         if mesh.device_type().upper() == "TPU":
           logging.info(
               "Registering virtual 1:1 mapped host mesh %s for mesh %s",
               mesh.host_mesh().to_string(), mesh.to_string())
-          _pywrap_dtensor_device.AddMesh(self._device_info,
-                                         mesh.host_mesh().to_string(),
-                                         self._is_async, True,
-                                         self._in_flight_nodes_limit)
+          _pywrap_dtensor_device.AddMesh(
+              self._device_info, mesh.host_mesh().to_string(), True
+          )
           self._meshes.add(mesh.host_mesh())
-          embedding_host_mesh = self._create_embedding_host_mesh(mesh)
-          if embedding_host_mesh:
-            logging.info(
-                "Registering embedding host mesh %s on each client for mesh %s",
-                embedding_host_mesh.to_string(), mesh.to_string())
-            _pywrap_dtensor_device.AddMesh(self._device_info,
-                                           embedding_host_mesh.to_string(),
-                                           self._is_async, False,
-                                           self._in_flight_nodes_limit)
-            self._meshes.add(embedding_host_mesh)
 
   @property
   def meshes(self) -> Set[layout_lib.Mesh]:
     return self._meshes
-
-  def copy_to_mesh(self, tensor, new_layout) -> ops.Tensor:
-    """Copy `tensor` to `device` with the given layout."""
-    self._register_mesh(new_layout.mesh)
-    with ops.device(self.name):
-      return gen_dtensor_ops.copy_to_mesh(tensor, layout=new_layout.to_string())
 
   def pack(self, tensors: Sequence[Any], layout: layout_lib.Layout) -> Any:
     """Packs tensors into a DTensor handle on this DTensor device.
@@ -194,11 +142,6 @@ class DTensorDevice(object):
     """
     if not context.executing_eagerly():
       raise RuntimeError("`pack` must be called eagerly.")
-    if any(
-        issubclass(type(t), resource_variable_ops.BaseResourceVariable)
-        for t in tensors):
-      raise TypeError(
-          "Received Variable input to Pack, Variable is not supported.")
     self._register_mesh(layout.mesh)
     with ops.device(self.name):
       if all(isinstance(t, sparse_tensor.SparseTensor) for t in tensors):
@@ -245,9 +188,6 @@ class DTensorDevice(object):
     """
     if not context.executing_eagerly():
       raise RuntimeError("`unpack` must be called eagerly.")
-    if issubclass(type(dtensor), resource_variable_ops.BaseResourceVariable):
-      raise TypeError(
-          "Received Variable input to unpack, Variable is not supported.")
     try:
       tensors = _pywrap_dtensor_device.Unpack(
           context.context()._handle,  # pylint: disable=protected-access
@@ -285,7 +225,7 @@ class DTensorDevice(object):
     """
     if not context.executing_eagerly():
       raise RuntimeError("`fetch_layout` must be called eagerly.")
-    if issubclass(type(dtensor), resource_variable_ops.BaseResourceVariable):
+    if _pywrap_utils.IsVariable(dtensor):
       dtensor = dtensor.read_value()
     try:
       layout_string = _pywrap_dtensor_device.FetchLayout(
@@ -294,6 +234,9 @@ class DTensorDevice(object):
           self._device_info)
     except core._NotOkStatusException as e:  # pylint: disable=protected-access
       raise core._status_to_exception(e) from None  # pylint: disable=protected-access
+
+    if layout_string is None:
+      return None
     return layout_lib.Layout.from_string(layout_string)
 
   def is_dtensor(self, tensor: Any) -> bool:
@@ -315,9 +258,8 @@ class DTensorDevice(object):
       raise RuntimeError("`is_dtensor` must be called eagerly.")
     if not tensor_util.is_tensor(tensor):
       return False
-    if isinstance(tensor, variables.Variable):
-      # Get the resource handle for tf.Variable
-      tensor = tensor._handle   # pylint: disable=protected-access
+    if _pywrap_utils.IsVariable(tensor):
+      tensor = tensor._handle  # pylint: disable=protected-access
     return _pywrap_dtensor_device.IsDTensor(
         context.context()._handle,  # pylint: disable=protected-access
         tensor,
@@ -366,7 +308,7 @@ class DTensorDevice(object):
         self._device_info,
         tpu_core_locations)
 
-  def _get_function_cache_stats(self):
+  def _get_stats(self):
     """Returns the number of cache hit and miss for function compilation.
 
     Returns:
@@ -376,7 +318,7 @@ class DTensorDevice(object):
         'size': size of cache;
       miss count.
     """
-    return _pywrap_dtensor_device.GetFunctionCacheStats(
+    return _pywrap_dtensor_device.GetStats(
         context.context()._handle,  # pylint: disable=protected-access,
         self._device_info,
     )

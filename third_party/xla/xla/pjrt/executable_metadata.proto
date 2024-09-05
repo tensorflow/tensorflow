@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package xla;
+
+import "xla/service/hlo.proto";
+
+// Mirror of xla::CompiledMemoryStats.
+message CompiledMemoryStatsProto {
+  // Device default memory (e.g., HBM for GPU/TPU) usage stats.
+  int64 generated_code_size_in_bytes = 1;
+  int64 argument_size_in_bytes = 2;
+  int64 output_size_in_bytes = 3;
+  int64 alias_size_in_bytes = 4;
+  int64 temp_size_in_bytes = 5;
+  xla.HloProto hlo_proto = 6;
+
+  // Host memory usage stats.
+  int64 host_generated_code_size_in_bytes = 7;
+  int64 host_argument_size_in_bytes = 8;
+  int64 host_output_size_in_bytes = 9;
+  int64 host_alias_size_in_bytes = 10;
+  int64 host_temp_size_in_bytes = 11;
+}

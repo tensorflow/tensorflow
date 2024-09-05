@@ -49,6 +49,18 @@ class DataServiceContext {
                                               std::function<void()> fn) = 0;
   virtual void RecordBufferEnqueue(const std::vector<Tensor>& element) = 0;
   virtual void RecordBufferDequeue(const std::vector<Tensor>& element) = 0;
+  // Returns the time in nanoseconds a tf.data input pipeline can take to
+  // produce an element such that the downstream processor wait time is 0.
+  // Returns 0 if there are not sufficient recorded iterator gap times to
+  // produce a good estimate, or the tf.data Model instance is null.
+  virtual double GetTargetProcessingTimeNsec() const = 0;
+  // Updates the `max_outstanding_requests` with
+  // `requested_outstanding_requests`.
+  // Returns the new max outstanding requests which may be different from the
+  // requested one depending on available ram.
+  virtual int64_t UpdateMaxOutstandingRequests(
+      int64_t max_outstanding_requests,
+      int64_t requested_outstanding_requests) = 0;
 };
 
 using DataServiceContextFactory =
@@ -68,11 +80,13 @@ class DataServiceClient {
   DataServiceClient& operator=(const DataServiceClient&) = delete;
 
   // Initializes the client.
-  Status Initialize();
+  Status Initialize(
+      const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info,
+      Allocator* allocator);
 
   // Reads the next element from tf.data workers. Blocks if the next element is
   // not ready.
-  virtual StatusOr<GetNextResult> GetNext(
+  virtual absl::StatusOr<GetNextResult> GetNext(
       DataServiceContextFactory context_factory);
 
   // Cancels the client.
@@ -98,6 +112,9 @@ class DataServiceClient {
     bool in_use TF_GUARDED_BY(&DataServiceClient::mu_) = false;
     // Indicates whether the worker has returned end_of_sequence for the task.
     bool end_of_sequence TF_GUARDED_BY(&DataServiceClient::mu_) = false;
+    // Number of retries. The more it is retried, the longer it should wait
+    // before the next retry.
+    int64_t num_retries = 0;
   };
 
   struct Result {
@@ -136,10 +153,15 @@ class DataServiceClient {
   void TryBlockRound(int64_t round) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   void UpdateIterationFinished(bool iteration_finished);
   Status AddTask(const TaskInfo& task_info);
-  StatusOr<std::unique_ptr<DataServiceWorkerClient>> CreateWorkerClient(
+  absl::StatusOr<std::unique_ptr<DataServiceWorkerClient>> CreateWorkerClient(
       const TaskInfo& task_info);
-  StatusOr<std::unique_ptr<DataServiceWorkerClient>> CreateWorkerClient(
+  absl::StatusOr<std::unique_ptr<DataServiceWorkerClient>> CreateWorkerClient(
       const std::string& protocol, const TaskInfo& task_info);
+  absl::StatusOr<std::unique_ptr<DataServiceWorkerClient>>
+  CreateGrpcWorkerClient(const TaskInfo& task_info);
+  absl::StatusOr<std::unique_ptr<DataServiceWorkerClient>>
+  CreateAlternativeWorkerClientWithGrpcFallback(
+      const DataTransferServerInfo& transfer_server, const TaskInfo& task_info);
   void Heartbeat();
   void UpdateTasks(const ClientHeartbeatResponse& resp);
   bool ShouldReadFromTask(const TaskInfo& task) const;
@@ -154,15 +176,17 @@ class DataServiceClient {
   // task a chance to proceed.
   std::shared_ptr<Task> GetTaskToProcess();
   void AdvanceTaskIndex();
-  Status TryGetElement(const Task& task, GetElementResult& result);
+  Status TryGetElement(const Task& task, bool allow_skip,
+                       GetElementResult& result);
   void ProcessGetElementResponse(bool enqueue_result,
                                  GetElementResult& get_element_result,
                                  std::shared_ptr<Result> result, Task& task);
   Status GetElementTraced(Task* task, int64_t deadline_micros,
-                          bool enqueue_result, std::shared_ptr<Result> result);
+                          bool enqueue_result, bool allow_skip,
+                          std::shared_ptr<Result> result);
   Status MaybeRemoveTask(Task& task, int64_t deadline_micros, Result& result);
   Status GetElement(Task* task, int64_t deadline_micros, bool enqueue_result,
-                    std::shared_ptr<Result> result);
+                    bool allow_skip, std::shared_ptr<Result> result);
   bool ResultReady() const;
   std::shared_ptr<Result> PopNextResult();
   bool IsCoordinatedRead() const;
@@ -209,7 +233,7 @@ class DataServiceClient {
 
   // A status to be returned from the next call to `GetNext`. This is set by
   // asynchronous threads when they encounter errors.
-  Status status_ TF_GUARDED_BY(mu_) = OkStatus();
+  Status status_ TF_GUARDED_BY(mu_) = absl::OkStatus();
   // A queue of results for `GetElement` requests to read from. When doing
   // strict round robin reads, the queue will contain placeholder results with
   // their `Result::ready` field false until their data has been retrieved
@@ -224,6 +248,8 @@ class DataServiceClient {
   int64_t job_id_;
   int64_t iteration_client_id_;
   std::unique_ptr<DataServiceDispatcherClient> dispatcher_;
+  const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info_;
+  Allocator* allocator_;
 
   int64_t get_next_index_ TF_GUARDED_BY(mu_) = 0;
 

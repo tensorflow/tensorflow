@@ -239,6 +239,7 @@ class BinaryOpTest(test.TestCase):
   def testFloatDifferentShapes(self):
     x = np.array([1, 2, 3, 4]).reshape(2, 2).astype(np.float32)
     y = np.array([1, 2]).reshape(2, 1).astype(np.float32)
+    self._compareBoth(y, x, np.arctan2, math_ops.atan2)
     with self.cached_session() as sess:
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
@@ -882,7 +883,10 @@ class BinaryOpTest(test.TestCase):
     z = math_ops.pow(x, y)
     self.assertAllEqual(self.evaluate(z), [0, 1, 1, 1, -1])
 
-  def testFloorModInfDenominator(self):
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm, skip_message="On ROCm this test fails"
+  )
+  def testFloorModfInfDenominator(self):
     """Regression test for GitHub issue #58369."""
     if not test_util.is_gpu_available():
       self.skipTest("Requires GPU")

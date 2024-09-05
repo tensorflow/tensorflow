@@ -35,7 +35,7 @@ class StatsAggregatorWithTagAndPrefix : public StatsAggregator {
       const string& prefix)
       : wrapped_(stats_aggregator), tag_(tag), prefix_(prefix) {}
 
-  void AddToHistogram(const string& name, gtl::ArraySlice<double> values,
+  void AddToHistogram(const string& name, absl::Span<const double> values,
                       int64_t steps) override {
     wrapped_->AddToHistogram(TaggedName(name), values, steps);
   }
@@ -75,7 +75,9 @@ class StatsAggregatorWithTagAndPrefix : public StatsAggregator {
   std::shared_ptr<StatsAggregator> wrapped_;
   string tag_;
   string prefix_;
-  TF_DISALLOW_COPY_AND_ASSIGN(StatsAggregatorWithTagAndPrefix);
+  StatsAggregatorWithTagAndPrefix(const StatsAggregatorWithTagAndPrefix&) =
+      delete;
+  void operator=(const StatsAggregatorWithTagAndPrefix&) = delete;
 };
 
 class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
@@ -86,8 +88,9 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
     core::RefCountPtr<StatsAggregatorResource> resource;
-    OP_REQUIRES_OK(ctx,
-                   LookupResource(ctx, HandleFromInput(ctx, 1), &resource));
+    ResourceHandle handle;
+    OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 1, &handle));
+    OP_REQUIRES_OK(ctx, LookupResource(ctx, handle, &resource));
     tstring tag;
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "tag", &tag));
     tstring prefix;
@@ -143,7 +146,7 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
       inputs->push_back(input_);
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status CheckExternalState() const override {
@@ -165,7 +168,7 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
       TF_RETURN_IF_ERROR(b->AddDataset(
           this, {input_graph_node, resource_handle_node, tag_node, prefix_node},
           output));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    private:

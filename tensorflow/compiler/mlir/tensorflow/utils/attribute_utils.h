@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/tf2xla/tf2xla_defs.h"
 
 namespace mlir {
@@ -31,10 +32,19 @@ namespace TF {
 // don't do this to avoid explicit casts (implicit conversion from
 // `absl::string_view` to `llvm::StringRef` is not supported until C++17).
 
+// Whether soft placement is allowed. If true, the marked node is eligible for
+// outside compilation.
+inline constexpr llvm::StringRef kAllowSoftPlacementAttr =
+    "allow_soft_placement";
+
 // Marks a node for XLA compilation. The attribute value indicates the
 // compilation device type.
 inline constexpr llvm::StringRef kCompileDeviceTypeAttr =
     "_xla_compile_device_type";
+// The attribute value speicifes the preferred outlined function name in
+// ClusterOutliningPass.
+inline constexpr llvm::StringRef kClusterOutlinedFunctionNameAttr =
+    "_cluster_outlined_function_name";
 // Marks a node for replication. The attribute value indicates the replication
 // metadata op.
 inline constexpr llvm::StringRef kReplicationInfoAttr = "_replication_info";
@@ -43,12 +53,20 @@ inline constexpr llvm::StringRef kReplicationInfoAttr = "_replication_info";
 inline constexpr llvm::StringRef kTpuReplicateAttr = "_tpu_replicate";
 // Device types.
 inline constexpr llvm::StringRef kTpuDevice = "TPU";
+// _xla_outside_compilation
+inline constexpr llvm::StringRef kXlaOutsideCompilationAttr =
+    "_xla_outside_compilation";
+// device attr
+inline constexpr llvm::StringRef kDeviceAttr = "device";
 // Function attribute to signal that a function should be skipped from TPU
 // island outlining. The attribute is set in
 // `TpuV1BridgeExecutorIslandCoarsening` and removed in the subsequent
 // `TPUBridgeExecutorIslandOutlining` pass.
 inline constexpr llvm::StringRef kSkipIslandOutlining =
     "_skip_island_outlining";
+// Function attribute to signal which argument contains bounded dynamic
+// dimension.
+inline constexpr llvm::StringRef kDynamicArgIndexAttr = "_dynamic_arg_index";
 
 // This string attribute encodes parallel execution groups and their associated
 // branches. It has the following format:
@@ -104,6 +122,19 @@ inline constexpr llvm::StringRef kSkipIslandOutlining =
 inline constexpr llvm::StringRef kParallelExecAnnotation =
     "_parallel_execution_ids";
 
+// Logging
+
+// Name of component for error logging. This name is fixed and required to
+// enable logging.
+inline const char kBridgeComponent[] = "TFXLABridge";
+inline const char kMlirPh1BridgeCounterReplicated[] = "replicated";
+inline const char kMlirPh1BridgeCounterNonReplicated[] = "nonreplicated";
+inline const char kMlirPh1BridgeCounterV1[] = "v1";
+inline const char kMlirPh1BridgeCounterV2[] = "v2";
+inline const char kMlirPh1BridgeCounterTpu[] = "tpu";
+inline const char kMlirPh1BridgeCounterNonTpu[] = "cpu/gpu";
+inline const char kXlaOutsideCompilation[] = "_xla_outside_compilation";
+
 // Copies attributes that satisfy the given predicate from `from` to `to`.
 template <typename Predicate>
 void CopyAttributes(Operation *from, Operation *to, Predicate P) {
@@ -115,6 +146,14 @@ void CopyAttributes(Operation *from, Operation *to, Predicate P) {
 inline void CopyUnderscoredAttributes(Operation *from, Operation *to) {
   CopyAttributes(from, to, [](const NamedAttribute &attr) {
     return attr.getName().strref().front() == '_';
+  });
+}
+
+// Copies outside compilation attribute from `from` to `to`.
+inline void CopyXlaOutsideCompilationAttributes(Operation *from,
+                                                Operation *to) {
+  CopyAttributes(from, to, [](const NamedAttribute &attr) {
+    return attr.getName().strref() == kXlaOutsideCompilationAttr;
   });
 }
 
@@ -138,7 +177,7 @@ class IdentityNOp;
 // as an attribute.
 template <typename AttrT>
 bool GetValueAsConstant(Value val, AttrT &attr) {
-  while (auto result = val.dyn_cast<OpResult>()) {
+  while (auto result = mlir::dyn_cast<OpResult>(val)) {
     Operation *op = result.getOwner();
     if (!isa<IdentityOp>(op) && !isa<IdentityNOp>(op)) break;
     val = op->getOperand(result.getResultNumber());

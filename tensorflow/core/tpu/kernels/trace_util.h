@@ -16,7 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_TPU_KERNELS_TRACE_UTIL_H_
 
 #ifdef PLATFORM_GOOGLE
-#include "base/tracer.h"
+#include "base/tracer.h"  // IWYU pragma: export
 #else
 #undef TRACESTRING
 #define TRACESTRING(x)

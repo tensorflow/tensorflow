@@ -15,6 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/parsing_ops.cc.
 
+#include "absl/strings/escaping.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -46,8 +47,8 @@ class ParseTensorOp : public OpKernel {
     TensorProto proto;
     OP_REQUIRES(ctx, ParseProtoUnlimited(&proto, serialized_t()),
                 errors::InvalidArgument(
-                    "Could not parse `serialized` as TensorProto: '",
-                    serialized_t(), "'"));
+                    "Could not parse `serialized` as TensorProto, base64: ",
+                    absl::Base64Escape(serialized_t())));
 
     Tensor output;
     OP_REQUIRES_OK(ctx, ctx->device()->MakeTensorFromProto(
@@ -86,8 +87,9 @@ class SerializeTensorOp : public OpKernel {
         Tensor ts_ = tensor::DeepCopy(tensor);
         OP_REQUIRES_OK(context, ByteSwapTensor(&ts_));
         ts_.AsProtoTensorContent(&proto);
-      } else
+      } else {
         tensor.AsProtoTensorContent(&proto);
+      }
     }
     Tensor* proto_string = nullptr;
     OP_REQUIRES_OK(context,

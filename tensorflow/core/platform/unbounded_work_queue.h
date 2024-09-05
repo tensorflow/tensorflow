@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_UNBOUNDED_WORK_QUEUE_H_
 
 #include "tensorflow/core/platform/platform.h"
-#include "tensorflow/tsl/platform/unbounded_work_queue.h"
+#include "tsl/platform/unbounded_work_queue.h"
 
 // An `UnboundedWorkQueue` feeds potentially-blocking work into a thread-pool
 // whose size automatically increases with demand.

@@ -17,13 +17,12 @@ limitations under the License.
 #include <limits>
 
 #include <gtest/gtest.h>
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
-
-using errors::IsInvalidArgument;
 
 TEST(MathUtilsTest, AffineQuantize) {
   TensorShape shape({2, 2, 2});
@@ -115,13 +114,13 @@ TEST(MathUtilsTest, QuantizeMultiplierInvalidArgument) {
   int32_t quantized_multiplier;
   int shift;
 
-  EXPECT_TRUE(
-      IsInvalidArgument(QuantizeMultiplier(0, quantized_multiplier, shift)));
-  EXPECT_TRUE(
-      IsInvalidArgument(QuantizeMultiplier(-1, quantized_multiplier, shift)));
-  EXPECT_TRUE(IsInvalidArgument(QuantizeMultiplier(
+  EXPECT_TRUE(absl::IsInvalidArgument(
+      QuantizeMultiplier(0, quantized_multiplier, shift)));
+  EXPECT_TRUE(absl::IsInvalidArgument(
+      QuantizeMultiplier(-1, quantized_multiplier, shift)));
+  EXPECT_TRUE(absl::IsInvalidArgument(QuantizeMultiplier(
       std::numeric_limits<double>::infinity(), quantized_multiplier, shift)));
-  EXPECT_TRUE(IsInvalidArgument(QuantizeMultiplier(
+  EXPECT_TRUE(absl::IsInvalidArgument(QuantizeMultiplier(
       std::numeric_limits<double>::quiet_NaN(), quantized_multiplier, shift)));
 }
 

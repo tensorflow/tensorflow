@@ -108,6 +108,16 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "compiled_node_test",
+    srcs = ["compiled_node_test.cc"],
+    deps = [
+        ":compiled_node",
+        "//tensorflow/lite/delegates/gpu/gl:variable",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "fuse_inplace",
     srcs = ["fuse_inplace.cc"],

@@ -16,6 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_CTSTRING_INTERNAL_H_
 #define TENSORFLOW_CORE_PLATFORM_CTSTRING_INTERNAL_H_
 
-#include "tensorflow/tsl/platform/ctstring_internal.h"
+#include "tsl/platform/ctstring_internal.h"
 
 #endif  // TENSORFLOW_CORE_PLATFORM_CTSTRING_INTERNAL_H_

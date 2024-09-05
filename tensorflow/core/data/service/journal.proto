@@ -8,7 +8,7 @@ import "tensorflow/core/protobuf/data_service.proto";
 // Message representing journaled dispatcher metadata updates. When we apply
 // one of these changes to the dispatcher's in-memory state, we also write an
 // Update message to the journal.
-// Next tag: 16
+// Next tag: 17
 message Update {
   oneof update_type {
     RegisterDatasetUpdate register_dataset = 1;
@@ -25,6 +25,7 @@ message Update {
     CreateTaskUpdate create_task = 3;
     FinishTaskUpdate finish_task = 4;
     SnapshotUpdate snapshot = 15;
+    CompressionDisabledAtRuntimeUpdate compression_disabled_at_runtime = 16;
   }
   reserved 13;
 }
@@ -151,4 +152,10 @@ message FinishTaskUpdate {
 // Next tag: 2
 message SnapshotUpdate {
   string path = 1;
+}
+
+// Next tag: 3
+message CompressionDisabledAtRuntimeUpdate {
+  string dataset_id = 1;
+  bool compression_disabled = 2;
 }

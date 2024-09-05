@@ -4,8 +4,4 @@ tf_module {
     name: "Function"
     mtype: "<type \'type\'>"
   }
-  member_method {
-    name: "defun_with_attributes"
-    argspec: "args=[\'func\', \'input_signature\', \'attributes\', \'autograph\', \'experimental_autograph_options\', \'jit_compile\', \'reduce_retracing\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\', \'None\', \'None\', \'False\'], "
-  }
 }

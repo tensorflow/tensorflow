@@ -21,6 +21,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/tsl/distributed_runtime/coordination/coordination_service.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/activity_watcher/activity.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
@@ -33,11 +35,9 @@ limitations under the License.
 #include "tensorflow/core/protobuf/cluster.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service.h"
-#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
-#include "tensorflow/tsl/protobuf/coordination_config.pb.h"
-#include "tensorflow/tsl/protobuf/coordination_service.pb.h"
-#include "tensorflow/tsl/protobuf/distributed_runtime_payloads.pb.h"
+#include "tsl/protobuf/coordination_config.pb.h"
+#include "tsl/protobuf/coordination_service.pb.h"
+#include "tsl/protobuf/distributed_runtime_payloads.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -108,7 +108,8 @@ SessionMgr::SessionMgr(
 /* static */
 std::string SessionMgr::WorkerNameFromServerDef(const ServerDef& server_def) {
   return strings::StrCat("/job:", server_def.job_name(),
-                         "/replica:0/task:", server_def.task_index());
+                         "/replica:", server_def.replica(),
+                         "/task:", server_def.task_index());
 }
 
 Status SessionMgr::CreateSession(const std::string& session,
@@ -181,7 +182,10 @@ Status SessionMgr::CreateSession(
     worker_cache->SetLogging(this->is_logging_active_);
   }
 
-  CHECK(!worker_env_->local_devices.empty())
+  CHECK(worker_env_->device_mgr)  // Crash OK
+      << "The WorkerEnv must have a device manager.";
+  std::vector<Device*> local_devices = worker_env_->device_mgr->ListDevices();
+  CHECK(!local_devices.empty())  // Crash OK
       << "The WorkerEnv must have at least one device in `local_devices`.";
 
   std::shared_ptr<WorkerSession> worker_session;
@@ -197,8 +201,8 @@ Status SessionMgr::CreateSession(
 
     // Create a private copy of the DeviceMgr for the WorkerSession.
     std::vector<std::unique_ptr<Device>> renamed_devices;
-    renamed_devices.reserve(worker_env_->local_devices.size());
-    for (Device* d : worker_env_->local_devices) {
+    renamed_devices.reserve(local_devices.size());
+    for (Device* d : local_devices) {
       renamed_devices.push_back(RenamedDevice::NewRenamedDevice(
           worker_name, d, false, isolate_session_state));
     }
@@ -265,6 +269,7 @@ Status SessionMgr::CreateSession(
   CoordinationServiceConfig coordination_config =
       server_def.default_session_config().experimental().coordination_config();
   if (!coordination_config.service_type().empty() &&
+      !coordination_config.force_disable() &&
       coordination_service_agent_ == nullptr) {
     std::unique_ptr<CoordinationClientCache> client_cache;
     TF_RETURN_IF_ERROR(worker_cache->GetCoordinationClientCache(&client_cache));
@@ -302,7 +307,7 @@ Status SessionMgr::CreateSession(
     activity_watcher::MaybeEnableMultiWorkersWatching(
         coordination_service_agent_.get());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void SessionMgr::ResetDefaultWorkerCache(WorkerCacheInterface* worker_cache) {
@@ -369,7 +374,7 @@ Status SessionMgr::UpdateSession(
   TF_RETURN_IF_ERROR(worker_session->UpdateWorkerCacheAndDevices(
       std::unique_ptr<WorkerCacheInterface>(worker_cache),
       std::move(added_remote_devices), removed_remote_devices));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status SessionMgr::DeleteSession(const std::string& session) {
@@ -378,7 +383,20 @@ Status SessionMgr::DeleteSession(const std::string& session) {
   if (it != sessions_.end()) {
     sessions_.erase(it);
   }
-  return OkStatus();
+  return absl::OkStatus();
+}
+
+Status SessionMgr::DeleteAllSessions() {
+  std::map<std::string, std::shared_ptr<WorkerSession>> tmp_sessions;
+  {
+    mutex_lock l(mu_);
+    swap(sessions_, tmp_sessions);
+  }
+  for (auto& session : tmp_sessions) {
+    session.second.reset();
+  }
+
+  return absl::OkStatus();
 }
 
 Status SessionMgr::WorkerSessionForSessionLocked(
@@ -401,7 +419,7 @@ Status SessionMgr::WorkerSessionForSessionLocked(
       *out_session = it->second;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status SessionMgr::WorkerSessionForSession(

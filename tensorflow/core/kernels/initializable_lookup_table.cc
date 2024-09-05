@@ -54,7 +54,7 @@ Status InitializableLookupTable::ImportValues(OpKernelContext* ctx,
                                .WithAttr("Tout", values.dtype()));
         *out = ops::UnaryOp("Identity", table,
                             builder->opts().WithControlInput(import_table));
-        return OkStatus();
+        return absl::OkStatus();
       });
 
   return Initialize(iter, std::move(serializer));
@@ -84,7 +84,7 @@ Status InitializableLookupTable::Initialize(
           "Table was already initialized with "
           "different data.");
     } else {
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
   TF_RETURN_IF_ERROR(DoLazyPrepare([&iter]() { return iter.total_size(); }));
@@ -98,13 +98,13 @@ Status InitializableLookupTable::Initialize(
 
   initializer_serializer_ = std::move(serializer);
   is_initialized_.store(true, std::memory_order_release);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status InitializableLookupTable::AreEntriesSame(const InitTableIterator& iter,
                                                 bool* result) {
   *result = static_cast<size_t>(iter.total_size()) == size();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace lookup

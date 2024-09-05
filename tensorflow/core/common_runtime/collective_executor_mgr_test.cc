@@ -89,7 +89,7 @@ TEST_F(CollectiveExecutorMgrTest, StepSequenceRelated) {
                                    });
   ss_note.WaitForNotification();
   EXPECT_FALSE(ss_status.ok());
-  EXPECT_EQ(ss_status.error_message(),
+  EXPECT_EQ(ss_status.message(),
             "CollectiveExecutorMgr does not implement RefreshStepIdSequence.");
   Notification gs_note;
   Status gs_status;
@@ -102,7 +102,7 @@ TEST_F(CollectiveExecutorMgrTest, StepSequenceRelated) {
                              });
   gs_note.WaitForNotification();
   EXPECT_FALSE(gs_status.ok());
-  EXPECT_EQ(gs_status.error_message(),
+  EXPECT_EQ(gs_status.message(),
             "CollectiveExecutorMgr does not implement GetStepSequence.");
 }
 

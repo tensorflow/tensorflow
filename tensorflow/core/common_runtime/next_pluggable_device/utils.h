@@ -16,7 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_UTILS_H_
 
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "tensorflow/compiler/xla/c/c_api_decl.h"
+#include "xla/c/c_api_decl.h"
 
 namespace tensorflow {
 

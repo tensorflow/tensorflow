@@ -104,14 +104,17 @@ else
   cd /tensorflow_src
 
   # Run configure.
+  # -Wno-c++20-designator can be removed once tf supports C++20.
+  # -Wno-gnu-inline-cpp-without-extern is needed for NEON2SSE. Can remove after
+  # https://github.com/intel/ARM_NEON_2_x86_SSE/issues/57 is resolved.
   configs=(
     '/usr/bin/python3'
     '/usr/lib/python3/dist-packages'
     'N'
     'N'
-    'N'
-    'N'
-    '-march=native -Wno-sign-compare'
+    'Y'
+    '/usr/lib/llvm-18/bin/clang'
+    '-Wno-sign-compare -Wno-c++20-designator -Wno-gnu-inline-cpp-without-extern'
     'y'
     '/android/sdk'
   )

@@ -41,6 +41,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import indexed_slices as indexed_slices_lib
 from tensorflow.python.framework import kernels
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.ops import math_ops
@@ -52,7 +53,7 @@ def _get_devices(devices):
     return tuple(device_util.resolve(d) for d in devices)
   elif isinstance(devices, value_lib.DistributedValues):
     return devices._devices
-  elif isinstance(devices, ops.Tensor):
+  elif isinstance(devices, tensor_lib.Tensor):
     return (device_util.resolve(devices.device),)
   return (device_util.resolve(devices),)
 
@@ -422,7 +423,7 @@ class SingleWorkerCrossDeviceOpsTest(CrossDeviceOpsTestBase):
     else:
       result = cross_device_ops_instance.reduce(reduce_util.ReduceOp.MEAN, v, v)
     for v in result.values:
-      self.assertIsInstance(v, ops.Tensor)
+      self.assertIsInstance(v, tensor_lib.Tensor)
     self.evaluate(variables.global_variables_initializer())
     self.assertAllEqual(self.evaluate(result.values), [1.0, 1.0])
 

@@ -24,18 +24,19 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/protobuf/struct.pb.h"
 
 namespace tensorflow {
 
 using tsl::StatusOr;
 
 // Converts an TensorFlow tensor proto into an MLIR elements attribute.
-StatusOr<mlir::ElementsAttr> ConvertTensorProto(const TensorProto& input_tensor,
-                                                mlir::Builder* builder);
+absl::StatusOr<mlir::ElementsAttr> ConvertTensorProto(
+    const TensorProto& input_tensor, mlir::Builder* builder);
 
 // Converts an TensorFlow tensor into an MLIR elements attribute.
-StatusOr<mlir::ElementsAttr> ConvertTensor(const Tensor& input_tensor,
-                                           mlir::Builder* builder);
+absl::StatusOr<mlir::ElementsAttr> ConvertTensor(const Tensor& input_tensor,
+                                                 mlir::Builder* builder);
 
 // Converts a shape from MLIR to a TensorFlow tensor shape proto.
 void ConvertToTensorShapeProto(llvm::ArrayRef<int64_t> shape,
@@ -47,9 +48,13 @@ PartialTensorShape ConvertTypeToTensorShape(const mlir::Type& type);
 // Converts an MLIR shaped type to a TensorFlow shape attribute.
 mlir::TF::ShapeAttr ConvertTypeToTensorShapeAttr(const mlir::Type& type);
 
+// Converts an MLIR shaped type to a Tensorflow tensor spec proto.
+absl::StatusOr<TensorSpecProto> ConvertTypeToTensorSpecProto(
+    const mlir::Type& type);
+
 // Converts a TensorFlow shape attribute to an MLIR shape attribute.
-StatusOr<mlir::Attribute> ConvertTensorShapeProto(const TensorShapeProto& shape,
-                                                  mlir::MLIRContext* context);
+absl::StatusOr<mlir::Attribute> ConvertTensorShapeProto(
+    const TensorShapeProto& shape, mlir::MLIRContext* context);
 
 // Converts an MLIR elements attribute to a TensorFlow tensor proto.
 Status ConvertToTensorProto(mlir::ElementsAttr attr,

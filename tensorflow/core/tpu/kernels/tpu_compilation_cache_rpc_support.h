@@ -1,3 +1,4 @@
+#include "absl/status/statusor.h"
 /* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "grpcpp/security/credentials.h"
@@ -84,11 +86,11 @@ std::shared_ptr<::grpc::ChannelCredentials> CreateChannelCredentials();
 // `cache_entry` will be instantiated by the function.
 template <typename ResponseType>
 Status DeserializeRpcResponseToCacheEntry(
-    const absl::string_view local_proto_key, ResponseType* response,
+    absl::string_view local_proto_key, ResponseType* response,
     std::shared_ptr<CacheEntry>* cache_entry);
 
 // Serializes `TpuCompilationCacheEntry` to gRPC bufer slices.
-xla::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(
+absl::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(
     const TpuCompilationCacheEntry& cache_entry);
 }  // namespace tpu
 }  // namespace tensorflow

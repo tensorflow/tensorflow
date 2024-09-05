@@ -17,7 +17,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -330,6 +330,10 @@ class SplitOpGPU : public SplitOpBase<GPUDevice, T> {
                           SplitOpCPU<type>)
 
 TF_CALL_ALL_TYPES(REGISTER_SPLIT);
+TF_CALL_float8_e5m2(REGISTER_SPLIT);
+TF_CALL_float8_e4m3fn(REGISTER_SPLIT);
+TF_CALL_int4(REGISTER_SPLIT);
+TF_CALL_uint4(REGISTER_SPLIT);
 REGISTER_SPLIT(quint8);
 
 #undef REGISTER_SPLIT

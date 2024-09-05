@@ -40,11 +40,13 @@ GpuInfo CreateGpuInfoFromMetalDevice(id<MTLDevice> device) {
     }
   }
 
-  const bool a7_or_a8 =
-      gpu_info.IsApple() && (gpu_info.apple_info.IsA7GenerationGpu() ||
-                             gpu_info.apple_info.IsA8GenerationGpu());
-  gpu_info.metal_info.image2d_max_width = a7_or_a8 ? 1024 * 8 : 1024 * 16;
-  gpu_info.metal_info.image2d_max_height = a7_or_a8 ? 1024 * 8 : 1024 * 16;
+  const bool family_apple1_or_2 =
+      gpu_info.IsApple() &&
+      gpu_info.apple_info.IsFamilyOrLower(AppleInfo::Family::kApple2);
+  gpu_info.metal_info.image2d_max_width =
+      family_apple1_or_2 ? 1024 * 8 : 1024 * 16;
+  gpu_info.metal_info.image2d_max_height =
+      family_apple1_or_2 ? 1024 * 8 : 1024 * 16;
   gpu_info.metal_info.image_array_max_layers = 2048;
   gpu_info.metal_info.image3d_max_width = 2048;
   gpu_info.metal_info.image3d_max_height = 2048;

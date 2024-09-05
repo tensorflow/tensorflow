@@ -96,7 +96,7 @@ class RestoreV2OpTest : public OpsTestBase {
       std::unique_ptr<Device> device(
           DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));
 
-      gtl::InlinedVector<TensorValue, 4> inputs;
+      absl::InlinedVector<TensorValue, 4> inputs;
 
       Status status;
       std::unique_ptr<OpKernel> op(

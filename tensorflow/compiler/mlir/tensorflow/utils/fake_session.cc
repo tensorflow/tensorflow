@@ -14,6 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tensorflow/utils/fake_session.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/strings/match.h"
 #include "llvm/Support/CommandLine.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -72,7 +77,7 @@ void FakeSession::BuildDeviceManager() {
 void FakeSession::InitVariables() {
   tensorflow::Device* device = nullptr;
   auto status = device_mgr_->LookupDevice(kDeviceName, &device);
-  if (status != ::tensorflow::OkStatus()) return;
+  if (status != absl::OkStatus()) return;
   auto container = device->resource_manager()->default_container();
 
   // Create 2 resources and initialize them with dummy values.
@@ -104,7 +109,7 @@ Status FakeSession::LocalDeviceManager(
   if (kSessionOptions->fail_to_fetch_local_device_manager)
     return Status(absl::StatusCode::kUnknown, "No Local Device Manager");
   *deviceMgrPtr = device_mgr_.get();
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 Status FakeSession::Run(
@@ -180,7 +185,7 @@ Status FakeSession::Run(
       outputs->push_back(t);
     }
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace test_util

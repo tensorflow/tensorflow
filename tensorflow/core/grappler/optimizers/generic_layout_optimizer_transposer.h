@@ -308,6 +308,14 @@ class MaxPoolV2Transposer : public LayoutSensitiveOpTransposer {
                        utils::MutableNodeView* node) override;
 };
 
+class MaxPool3DTransposer : public LayoutSensitiveOpTransposer {
+ public:
+  explicit MaxPool3DTransposer() : LayoutSensitiveOpTransposer() {}
+
+  Status TransposeNode(TransposeContext* context,
+                       utils::MutableNodeView* node) override;
+};
+
 class MaxPoolGradTransposer : public LayoutSensitiveOpTransposer {
  public:
   explicit MaxPoolGradTransposer() : LayoutSensitiveOpTransposer() {}
@@ -585,7 +593,7 @@ Status PermuteSingle(absl::string_view location,
   for (V& element : *values) {
     element = elements[permutation[index++]];
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Permutes two elements at a time according to permutation and replaces the
@@ -608,7 +616,7 @@ Status PermuteDouble(absl::string_view location,
     (*values)[i] = elements[permutation_index * 2];
     (*values)[i + 1] = elements[permutation_index * 2 + 1];
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 string GetDeviceName(const NodeDef& node);
@@ -626,6 +634,8 @@ bool IsTernaryOp(const NodeDef& node);
 bool IsUnaryGrad(const NodeDef& node);
 
 bool IsMaxPoolV2(const NodeDef& node);
+
+bool IsMaxPool3D(const NodeDef& node);
 
 bool IsMaxPoolGradV2(const NodeDef& node);
 

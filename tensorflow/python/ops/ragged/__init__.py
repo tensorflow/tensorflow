@@ -22,5 +22,7 @@ different lengths.  For example, the inner (column) dimension of
 (`rt[0, :]`, ..., `rt[4, :]`) have different lengths.  For a more detailed
 description of ragged tensors, see the `tf.RaggedTensor` class documentation
 and the [Ragged Tensor Guide](/guide/ragged_tensor).
-"""
 
+API docstring: tensorflow.ragged
+"""
+from tensorflow.python.ops.ragged import ragged_tensor

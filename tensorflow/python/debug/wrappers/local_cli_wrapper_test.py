@@ -39,6 +39,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 from tensorflow.python.training import monitored_session
@@ -69,7 +70,7 @@ class LocalCLIDebuggerWrapperSessionForTest(
     """
 
     local_cli_wrapper.LocalCLIDebugWrapperSession.__init__(
-        self, sess, dump_root=dump_root, log_usage=False)
+        self, sess, dump_root=dump_root)
 
     self._command_sequence = command_sequence
     self._command_pointer = 0
@@ -134,8 +135,8 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
   def setUp(self):
     self._tmp_dir = tempfile.mkdtemp()
 
-    self.v = variables.VariableV1(10.0, name="v")
-    self.w = variables.VariableV1(21.0, name="w")
+    self.v = variable_v1.VariableV1(10.0, name="v")
+    self.w = variable_v1.VariableV1(21.0, name="w")
     self.delta = constant_op.constant(1.0, name="delta")
     self.inc_v = state_ops.assign_add(self.v, self.delta, name="inc_v")
 
@@ -171,8 +172,7 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
       file_io.delete_recursively(self._tmp_dir)
 
   def testConstructWrapper(self):
-    local_cli_wrapper.LocalCLIDebugWrapperSession(
-        session.Session(), log_usage=False)
+    local_cli_wrapper.LocalCLIDebugWrapperSession(session.Session())
 
   def testConstructWrapperWithExistingNonEmptyDumpRoot(self):
     dir_path = os.path.join(self._tmp_dir, "foo")
@@ -182,7 +182,7 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegex(
         ValueError, "dump_root path points to a non-empty directory"):
       local_cli_wrapper.LocalCLIDebugWrapperSession(
-          session.Session(), dump_root=self._tmp_dir, log_usage=False)
+          session.Session(), dump_root=self._tmp_dir)
 
   def testConstructWrapperWithExistingFileDumpRoot(self):
     file_path = os.path.join(self._tmp_dir, "foo")
@@ -190,7 +190,7 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     self.assertTrue(os.path.isfile(file_path))
     with self.assertRaisesRegex(ValueError, "dump_root path points to a file"):
       local_cli_wrapper.LocalCLIDebugWrapperSession(
-          session.Session(), dump_root=file_path, log_usage=False)
+          session.Session(), dump_root=file_path)
 
   def testRunsUnderDebugMode(self):
     wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
@@ -351,7 +351,7 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
   def testDebuggingMakeCallableTensorRunnerWorks(self):
     wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
         [["run"], ["run"]], self.sess, dump_root=self._tmp_dir)
-    v = variables.VariableV1(42)
+    v = variable_v1.VariableV1(42)
     tensor_runner = wrapped_sess.make_callable(v)
     self.sess.run(v.initializer)
 
@@ -375,7 +375,7 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
   def testDebuggingMakeCallableOperationRunnerWorks(self):
     wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
         [["run"], ["run"]], self.sess, dump_root=self._tmp_dir)
-    v = variables.VariableV1(10.0)
+    v = variable_v1.VariableV1(10.0)
     inc_v = state_ops.assign_add(v, 1.0)
     op_runner = wrapped_sess.make_callable(inc_v.op)
     self.sess.run(v.initializer)
@@ -396,7 +396,7 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     self.assertEqual(1, len(wrapped_sess.observers["debug_dumps"]))
 
   def testDebuggingMakeCallableFromOptionsWithZeroFeedWorks(self):
-    variable_1 = variables.VariableV1(
+    variable_1 = variable_v1.VariableV1(
         10.5, dtype=dtypes.float32, name="variable_1")
     a = math_ops.add(variable_1, variable_1, "callable_a")
     math_ops.add(a, a, "callable_b")
@@ -475,7 +475,7 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
       self.assertIn("callable_b", node_names)
 
   def testDebugMakeCallableFromOptionsWithCustomOptionsAndMetadataWorks(self):
-    variable_1 = variables.VariableV1(
+    variable_1 = variable_v1.VariableV1(
         10.5, dtype=dtypes.float32, name="variable_1")
     a = math_ops.add(variable_1, variable_1, "callable_a")
     math_ops.add(a, a, "callable_b")

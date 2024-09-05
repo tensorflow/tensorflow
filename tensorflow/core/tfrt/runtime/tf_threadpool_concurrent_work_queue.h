@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_RUNTIME_TF_THREADPOOL_CONCURRENT_WORK_QUEUE_H_
 #define TENSORFLOW_CORE_TFRT_RUNTIME_TF_THREADPOOL_CONCURRENT_WORK_QUEUE_H_
 
+#include <memory>
 #include <optional>
 #include <string>
 
@@ -48,11 +49,11 @@ class TfThreadPoolWorkQueue : public WorkQueueInterface {
         intra_op_threadpool_(intra_op_threadpool),
         inter_op_threadpool_(inter_op_threadpool) {}
 
-  StatusOr<std::unique_ptr<WorkQueueInterface>> InitializeRequest(
+  absl::StatusOr<std::unique_ptr<WorkQueueInterface>> InitializeRequest(
       int64_t request_id) const override;
 
   int GetParallelismLevel() const override {
-    return tensorflow::port::MaxParallelism();
+    return inter_op_threadpool_->NumThreads();
   }
   std::string name() const override { return "TfThreadPoolWorkQueue"; }
 
@@ -61,6 +62,7 @@ class TfThreadPoolWorkQueue : public WorkQueueInterface {
   std::optional<tfrt::TaskFunction> AddBlockingTask(
       tfrt::TaskFunction work, bool allow_queuing) override;
 
+  ABSL_DEPRECATED("Use the destructor instead.")
   void Quiesce() override;
 
   void Await(

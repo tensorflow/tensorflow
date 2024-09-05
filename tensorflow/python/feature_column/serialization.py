@@ -16,8 +16,7 @@
 
 import six
 
-from tensorflow.python.feature_column import feature_column_v2 as fc_lib
-from tensorflow.python.feature_column import sequence_feature_column as sfc_lib
+from tensorflow.python.feature_column import feature_column_v2_types as fc_types
 from tensorflow.python.ops import init_ops
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_decorator
@@ -40,15 +39,7 @@ _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING = (
     'a functional equivalent in `tf.keras.layers` for feature preprocessing '
     'when training a Keras model.')
 
-_FEATURE_COLUMNS = [
-    fc_lib.BucketizedColumn, fc_lib.CrossedColumn, fc_lib.EmbeddingColumn,
-    fc_lib.HashedCategoricalColumn, fc_lib.IdentityCategoricalColumn,
-    fc_lib.IndicatorColumn, fc_lib.NumericColumn,
-    fc_lib.SequenceCategoricalColumn, fc_lib.SequenceDenseColumn,
-    fc_lib.SharedEmbeddingColumn, fc_lib.VocabularyFileCategoricalColumn,
-    fc_lib.VocabularyListCategoricalColumn, fc_lib.WeightedCategoricalColumn,
-    init_ops.TruncatedNormal, sfc_lib.SequenceNumericColumn
-]
+_FEATURE_COLUMNS = [init_ops.TruncatedNormal]
 
 
 @doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
@@ -98,11 +89,10 @@ def serialize_feature_column(fc):
   """
   if isinstance(fc, six.string_types):
     return fc
-  elif isinstance(fc, fc_lib.FeatureColumn):
+  elif isinstance(fc, fc_types.FeatureColumn):
     return {'class_name': fc.__class__.__name__, 'config': fc.get_config()}
   else:
     raise ValueError('Instance: {} is not a FeatureColumn'.format(fc))
-
 
 
 @doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
@@ -148,7 +138,7 @@ def deserialize_feature_column(config,
       custom_objects=custom_objects,
       printable_module_name='feature_column_v2')
 
-  if not issubclass(cls, fc_lib.FeatureColumn):
+  if not issubclass(cls, fc_types.FeatureColumn):
     raise ValueError(
         'Expected FeatureColumn class, instead found: {}'.format(cls))
 
@@ -162,7 +152,6 @@ def deserialize_feature_column(config,
   # (new_instance remains unused).
   return columns_by_name.setdefault(
       _column_name_with_class_name(new_instance), new_instance)
-
 
 
 def serialize_feature_columns(feature_columns):
@@ -356,3 +345,9 @@ def _get_registered_object(name, custom_objects=None, module_objects=None):
   elif module_objects and name in module_objects:
     return module_objects[name]
   return None
+
+
+def register_feature_column(fc):
+  """Decorator that registers a FeatureColumn for serialization."""
+  _FEATURE_COLUMNS.append(fc)
+  return fc

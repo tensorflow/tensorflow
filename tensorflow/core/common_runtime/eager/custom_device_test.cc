@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/custom_device.h"
 
+#include <string>
+#include <utility>
+
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
@@ -40,7 +43,7 @@ class TestCustomDevice : public CustomDevice {
                             ImmediateExecutionTensorHandle** result) override {
     tensor->Ref();
     *result = tensor;
-    return OkStatus();
+    return absl::OkStatus();
   }
   Status CopyTensorFromDevice(
       ImmediateExecutionTensorHandle* tensor,
@@ -48,7 +51,7 @@ class TestCustomDevice : public CustomDevice {
       ImmediateExecutionTensorHandle** result) override {
     tensor->Ref();
     *result = tensor;
-    return OkStatus();
+    return absl::OkStatus();
   }
   Status Execute(const ImmediateExecutionOperation* op,
                  ImmediateExecutionTensorHandle** retvals,
@@ -62,7 +65,7 @@ class TestCustomDevice : public CustomDevice {
   }
 
   // Pins `op` to `device`.
-  StatusOr<bool> ShallPinToThisDevice(
+  absl::StatusOr<bool> ShallPinToThisDevice(
       const ImmediateExecutionOperation* op) override {
     return errors::Unimplemented("No preference in custom device pinning.");
   }
@@ -81,12 +84,12 @@ class TestCustomDeviceTensorHandle : public CustomDeviceTensorHandle {
   void* DevicePointer() const override { return nullptr; }
   Status NumDims(int* num_dims) const override {
     *num_dims = 1;
-    return OkStatus();
+    return absl::OkStatus();
   }
   Status Dim(int dim_index, int64_t* dim) const override {
     if (dim_index == 0) {
       *dim = length_;
-      return OkStatus();
+      return absl::OkStatus();
     } else {
       return errors::Internal("Dim out of bounds");
     }
@@ -94,7 +97,7 @@ class TestCustomDeviceTensorHandle : public CustomDeviceTensorHandle {
 
   Status SummarizeValue(std::string& summary) const override {
     summary = std::string("TestValue");
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -116,14 +119,14 @@ TEST(CustomDevice, TestTensorHandle) {
                                        /*length=*/3));
   Status s;
   std::string device_type = tensor->DeviceType(&s);
-  ASSERT_TRUE(s.ok()) << s.error_message();
+  ASSERT_TRUE(s.ok()) << s.message();
   EXPECT_EQ("CUSTOM", device_type);
   int device_index = tensor->DeviceId(&s);
-  ASSERT_TRUE(s.ok()) << s.error_message();
+  ASSERT_TRUE(s.ok()) << s.message();
   EXPECT_EQ(15, device_index);
   int64_t num_elements = 0;
   s = tensor->NumElements(&num_elements);
-  ASSERT_TRUE(s.ok()) << s.error_message();
+  ASSERT_TRUE(s.ok()) << s.message();
   EXPECT_EQ(3, num_elements);
   EXPECT_THAT(
       tensor->DebugString(),
@@ -149,7 +152,7 @@ TEST(CustomDevice, TestTensorHandleUnknownDimNumElements) {
   int64_t num_elements;
   Status s = tensor->NumElements(&num_elements);
   EXPECT_FALSE(s.ok());
-  EXPECT_THAT(s.error_message(), HasSubstr("representing varying shapes"));
+  EXPECT_THAT(s.message(), HasSubstr("representing varying shapes"));
 }
 
 TEST(CustomDevice, TestResourcePlacement) {

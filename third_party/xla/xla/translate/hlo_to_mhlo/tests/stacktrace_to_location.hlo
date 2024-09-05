@@ -1,0 +1,201 @@
+# RUN: xla-translate -split-input-file -hlo-to-mlir-hlo -mlir-print-debuginfo %s | FileCheck %s
+
+# Checks no locations
+# CHECK: %0 = mhlo.after_all %arg0 {xla_shape = "token[]"} : !mhlo.token
+name: "main"
+entry_computation_name: "main.3"
+computations {
+  name: "main.3"
+  instructions {
+    name: "Arg_0.1"
+    opcode: "parameter"
+    shape {
+      element_type: TOKEN
+    }
+    id: 1
+  }
+  instructions {
+    name: "after-all.2"
+    opcode: "after-all"
+    shape {
+      element_type: TOKEN
+    }
+    id: 2
+    operand_ids: 1
+  }
+  program_shape {
+    parameters {
+      element_type: TOKEN
+    }
+    result {
+      element_type: TOKEN
+    }
+    parameter_names: "Arg_0"
+  }
+  id: 3
+  root_id: 2
+}
+host_program_shape {
+  parameters {
+    element_type: TOKEN
+  }
+  result {
+    element_type: TOKEN
+  }
+  parameter_names: "Arg_0"
+}
+id: 3
+entry_computation_id: 3
+
+// -----
+
+# Checks single named frame location
+# CHECK: %0 = mhlo.after_all %arg0 {xla_shape = "token[]"} : !mhlo.token loc(#loc4)
+# CHECK: #loc2 = loc("file_name":2:8)
+# CHECK-NEXT: #loc3 = loc("function_name"(#loc2))
+# CHECK-NEXT: #loc4 = loc("name(anothername)"(#loc3))
+name: "main"
+entry_computation_name: "main.3"
+computations {
+  name: "main.3"
+  instructions {
+    name: "Arg_0.1"
+    opcode: "parameter"
+    shape {
+      element_type: TOKEN
+    }
+    id: 1
+  }
+  instructions {
+    name: "after-all.2"
+    opcode: "after-all"
+    shape {
+      element_type: TOKEN
+    }
+    metadata {
+      op_name: "name(anothername)"
+      stack_frame_id: 1
+    }
+    id: 2
+    operand_ids: 1
+  }
+  program_shape {
+    parameters {
+      element_type: TOKEN
+    }
+    result {
+      element_type: TOKEN
+    }
+    parameter_names: "Arg_0"
+  }
+  id: 3
+  root_id: 2
+}
+host_program_shape {
+  parameters {
+    element_type: TOKEN
+  }
+  result {
+    element_type: TOKEN
+  }
+  parameter_names: "Arg_0"
+}
+id: 3
+entry_computation_id: 3
+stack_frame_index {
+  file_names: "file_name"
+  function_names: "function_name"
+  file_locations {
+    file_name_id: 1
+    function_name_id: 1
+    line: 2
+    column: 8
+  }
+  stack_frames {
+    file_location_id: 1
+  }
+}
+
+// -----
+
+# Check several frames
+# CHECK: %0 = mhlo.after_all %arg0 {xla_shape = "token[]"} : !mhlo.token loc(#loc7)
+# CHECK: #loc2 = loc("file_name_2":3:4)
+# CHECK-NEXT: #loc3 = loc("file_name":2:8)
+# CHECK-NEXT: #loc4 = loc("function_name_2"(#loc2))
+# CHECK-NEXT: #loc5 = loc("function_name"(#loc3))
+# CHECK-NEXT: #loc6 = loc(callsite(#loc4 at #loc5))
+# CHECK-NEXT: #loc7 = loc("name(anothername)"(#loc6))
+name: "main"
+entry_computation_name: "main.3"
+computations {
+  name: "main.3"
+  instructions {
+    name: "Arg_0.1"
+    opcode: "parameter"
+    shape {
+      element_type: TOKEN
+    }
+    id: 1
+  }
+  instructions {
+    name: "after-all.2"
+    opcode: "after-all"
+    shape {
+      element_type: TOKEN
+    }
+    metadata {
+      op_name: "name(anothername)"
+      stack_frame_id: 2
+    }
+    id: 2
+    operand_ids: 1
+  }
+  program_shape {
+    parameters {
+      element_type: TOKEN
+    }
+    result {
+      element_type: TOKEN
+    }
+    parameter_names: "Arg_0"
+  }
+  id: 3
+  root_id: 2
+}
+host_program_shape {
+  parameters {
+    element_type: TOKEN
+  }
+  result {
+    element_type: TOKEN
+  }
+  parameter_names: "Arg_0"
+}
+id: 3
+entry_computation_id: 3
+stack_frame_index {
+  file_names: "file_name"
+  file_names: "file_name_2"
+  function_names: "function_name"
+  function_names: "function_name_2"
+  file_locations {
+    file_name_id: 1
+    function_name_id: 1
+    line: 2
+    column: 8
+  }
+  file_locations {
+    file_name_id: 2
+    function_name_id: 2
+    line: 3
+    column: 4
+  }
+  stack_frames {
+    file_location_id: 1
+  }
+  stack_frames {
+    file_location_id: 2
+    parent_frame_id: 1
+  }
+}

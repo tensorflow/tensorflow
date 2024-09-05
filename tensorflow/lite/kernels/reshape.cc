@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstring>
 #include <memory>
 
+#include "tensorflow/lite/array.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -42,8 +43,7 @@ TfLiteIntArray* GetOutputShape(TfLiteContext*, TfLiteNode*);
 
 TfLiteStatus ResizeOutput(TfLiteContext* context, TfLiteNode* node) {
   TfLiteIntArray* output_shape = GetOutputShape(context, node);
-  std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)>
-      scoped_output_shape(output_shape, TfLiteIntArrayFree);
+  IntArrayUniquePtr scoped_output_shape(output_shape);
 
   const TfLiteTensor* input;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
@@ -224,8 +224,18 @@ void Free(TfLiteContext* context, void* buffer) {
 }  // namespace reshape
 
 TfLiteRegistration* Register_RESHAPE() {
-  static TfLiteRegistration r = {reshape::Init, reshape::Free, reshape::Prepare,
-                                 reshape::Eval};
+  static TfLiteRegistration r = {
+      reshape::Init,
+      reshape::Free,
+      reshape::Prepare,
+      reshape::Eval,
+      /*profiling_string=*/nullptr,
+      /*builtin_code=*/0,
+      /*custom_name=*/nullptr,
+      /*version=*/0,
+      /*registration_external=*/nullptr,
+      /*async_kernel=*/nullptr,
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpDataUnmodified};
   return &r;
 }
 

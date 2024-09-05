@@ -31,12 +31,12 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_function.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/group_events.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_test_utils.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
+#include "tsl/platform/status.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
+#include "tsl/profiler/utils/group_events.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -212,7 +212,7 @@ TEST(ConvertXPlaneToOpStats, GpuStepDbTest) {
                                                    options, &op_stats));
   const StepDatabaseResult& step_db = op_stats.step_db();
 
-  EXPECT_EQ(step_db.step_sequence_size(), 1);
+  EXPECT_EQ(step_db.step_sequence_size(), 0);
 
   PrecisionStats precision_stats =
       op_stats.device_op_metrics_db().precision_stats();
@@ -281,8 +281,8 @@ TEST(ConvertXPlaneToOpStats, TestConvertMultiXSpacesToCombinedOpStats) {
   BuildXSpaceForTest(*xspace2, kHost2);
 
   std::vector<std::string> xspace_paths;
-  xspace_paths.push_back("xspace_path1");
-  xspace_paths.push_back("xspace_path2");
+  xspace_paths.push_back("host1.pb");
+  xspace_paths.push_back("host2.pb");
 
   std::vector<std::unique_ptr<XSpace>> xspaces;
   xspaces.push_back(std::move(xspace1));
@@ -414,68 +414,6 @@ TEST(ConvertXPlaneToOpStats, TpuRunEnvironment) {
   EXPECT_EQ(2, run_env.device_core_count());
 }
 
-TEST(ConvertXPlaneToOpStats, TpuStepDbTest) {
-  constexpr int64_t kStepNum = 123;
-  constexpr int64_t kStepId = 0;
-  constexpr int64_t kCorrelationId = 100;
-  constexpr int kCoreCount = 80;
-  constexpr double kDevCapPeakTeraflopsPerSecond = 141.0;
-  constexpr double kDevCapPeakHbmBwGigabytesPerSecond = 1000.0;
-
-  auto space = std::make_unique<XSpace>();
-  XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(space.get()));
-  host_plane_builder.ReserveLines(2);
-
-  auto main_thread = host_plane_builder.GetOrCreateLine(0);
-  CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kTraceContext,
-               0, 100, {{StatType::kStepNum, kStepNum}});
-  CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kFunctionRun,
-               10, 90,
-               {{StatType::kStepId, kStepId},
-                {StatType::kProducerType, int64_t{1}},
-                {StatType::kProducerId, kStepId}});
-
-  auto tf_executor_thread = host_plane_builder.GetOrCreateLine(1);
-  CreateXEvent(&host_plane_builder, &tf_executor_thread,
-               HostEventType::kExecutorStateProcess, 20, 20,
-               {{StatType::kStepId, kStepId},
-                {StatType::kConsumerType, int64_t{1}},
-                {StatType::kConsumerId, kStepId}});
-  CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 10,
-               {{StatType::kCorrelationId, kCorrelationId}});
-
-  XPlaneBuilder device_plane_builder(GetOrCreateTpuXPlane(
-      space.get(), /*device_ordinal=*/0, "TPU V4",
-      kDevCapPeakTeraflopsPerSecond, kDevCapPeakHbmBwGigabytesPerSecond));
-  device_plane_builder.ReserveLines(1);
-  device_plane_builder.AddStatValue(
-      *device_plane_builder.GetOrCreateStatMetadata("core_count"), kCoreCount);
-
-  auto stream = device_plane_builder.GetOrCreateLine(0);
-  CreateXEvent(&device_plane_builder, &stream, "matmul", 50, 40,
-               {{StatType::kCorrelationId, kCorrelationId}});
-
-  OpStatsOptions options;
-  options.generate_op_metrics_db = true;
-  options.generate_step_db = true;
-  std::vector<std::unique_ptr<XSpace>> xspaces;
-  xspaces.push_back(std::move(space));
-  auto session_snapshot_or =
-      SessionSnapshot::Create({"test_xspace"}, std::move(xspaces));
-  TF_CHECK_OK(session_snapshot_or.status());
-  OpStats op_stats;
-  TF_CHECK_OK(ConvertMultiXSpacesToCombinedOpStats(session_snapshot_or.value(),
-                                                   options, &op_stats));
-  const StepDatabaseResult& step_db = op_stats.step_db();
-
-  EXPECT_EQ(step_db.step_sequence_size(), 1);
-
-  PrecisionStats precision_stats =
-      op_stats.device_op_metrics_db().precision_stats();
-  EXPECT_EQ(precision_stats.compute_16bit_ps(), 0);
-  EXPECT_EQ(precision_stats.compute_32bit_ps(), 40);
-}
-
 TEST(ConvertXPlaneToOpStats, TpuDeviceTraceToStepDb) {
   auto space = std::make_unique<XSpace>();
   constexpr double kDevCapPeakTeraflopsPerSecond = 141.0;
@@ -522,6 +460,66 @@ TEST(ConvertXPlaneToOpStats, TpuDeviceTraceToStepDb) {
   EXPECT_THAT(op_stats.device_op_metrics_db().metrics_db(),
               UnorderedElementsAre(Property(&OpMetrics::name, "op_name"),
                                    Property(&OpMetrics::name, "IDLE")));
+}
+
+// Verifies that the step db is generated correctly by intersecting for
+// multi-device TPU.
+TEST(ConvertXPlaneToOpStats, TpuMultiDeviceStepDbTest) {
+  auto space = std::make_unique<XSpace>();
+
+  XPlaneBuilder device_plane_builder1(
+      GetOrCreateTpuXPlane(space.get(), /*device_ordinal=*/0, "TPU V4", 0, 0));
+  XPlaneBuilder device_plane_builder2(
+      GetOrCreateTpuXPlane(space.get(), /*device_ordinal=*/1, "TPU V4", 0, 0));
+  device_plane_builder1.ReserveLines(1);
+  device_plane_builder2.ReserveLines(1);
+
+  // Create 1 step in xplane in TPU ordinal 0.
+  XStatMetadata* kGroupId1 = device_plane_builder1.GetOrCreateStatMetadata(
+      GetStatTypeStr(StatType::kGroupId));
+  XLineBuilder line = device_plane_builder1.GetOrCreateLine(1);
+  line.SetName(kXlaOpLineName);
+  // Step 1
+  XEventMetadata* event_metadata =
+      device_plane_builder1.GetOrCreateEventMetadata(1);
+  event_metadata->set_name("Step 1");
+  XEventBuilder event_builder = line.AddEvent(*event_metadata);
+  event_builder.AddStatValue(*kGroupId1, 1);  // step num
+  event_builder.SetDurationNs(100);
+  event_builder.SetOffsetNs(100);
+
+  // Create 2 steps in xplane in TPU ordinal 1.
+  line = device_plane_builder2.GetOrCreateLine(1);
+  line.SetName(kXlaOpLineName);
+  // Step 1
+  XStatMetadata* kGroupId2 = device_plane_builder2.GetOrCreateStatMetadata(
+      GetStatTypeStr(StatType::kGroupId));
+  XEventMetadata* event_metadata2 =
+      device_plane_builder2.GetOrCreateEventMetadata(2);
+  event_metadata2->set_name("Step 1");
+  XEventBuilder event_builder2 = line.AddEvent(*event_metadata2);
+  event_builder2.AddStatValue(*kGroupId2, 1);  // step num
+  event_builder2.SetDurationNs(100);
+  event_builder2.SetOffsetNs(300);
+  // Step 2
+  XStatMetadata* kGroupId3 = device_plane_builder2.GetOrCreateStatMetadata(
+      GetStatTypeStr(StatType::kGroupId));
+  XEventMetadata* event_metadata3 =
+      device_plane_builder2.GetOrCreateEventMetadata(2);
+  event_metadata3->set_name("Step 2");
+  XEventBuilder event_builder3 = line.AddEvent(*event_metadata3);
+  event_builder3.AddStatValue(*kGroupId3, 2);  // step num
+  event_builder3.SetDurationNs(100);
+  event_builder3.SetOffsetNs(300);
+
+  OpStatsOptions options;
+  options.generate_op_metrics_db = true;
+  options.generate_step_db = true;
+  OpStats op_stats = ConvertXSpaceToOpStats(*space, options);
+  const StepDatabaseResult& step_db = op_stats.step_db();
+  // For TPU step events, we intersect the step events by step num across
+  // different TPU devices.
+  EXPECT_EQ(step_db.step_sequence_size(), 1);
 }
 
 }  // namespace

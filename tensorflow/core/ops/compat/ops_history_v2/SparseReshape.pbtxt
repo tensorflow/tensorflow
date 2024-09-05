@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "SparseReshape"
   input_arg {
     name: "input_indices"

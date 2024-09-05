@@ -1,4 +1,4 @@
-# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -o - | FileCheck %s
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false -tf-set-original-tf-func-name-on-import=true %s -o - | FileCheck %s
 
 node {
   name: "custom_relu_func_call"
@@ -49,5 +49,5 @@ library {
   }
 }
 
-# CHECK-DAG: func private @custom_relu{{[0-9]*}}(){{.+}}tf._implements = #tf_type.func<@tensorflow.relu, {}>}
-# CHECK-DAG: func private @custom_embedding_matmul{{[0-9]*}}(){{.+}}tf._implements = #tf_type.func<@tensorflow.embedding_matmul, {key1 = 2 : i64, key2 = false}>}
+# CHECK-DAG: func private @custom_relu{{[0-9]*}}(){{.+}}tf._implements = #tf_type.func<@tensorflow.relu, {}>, tf._original_func_name = "custom_relu"}
+# CHECK-DAG: func private @custom_embedding_matmul{{[0-9]*}}(){{.+}}tf._implements = #tf_type.func<@tensorflow.embedding_matmul, {key1 = 2 : i64, key2 = false}>, tf._original_func_name = "custom_embedding_matmul"}

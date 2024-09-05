@@ -1,0 +1,24 @@
+// RUN: xla-translate -mlir-print-debuginfo -hlo-text-to-mlir-hlo %s -o - | FileCheck %s
+
+HloModule Test
+
+// CHECK-LABEL: func @main
+ENTRY A {
+  // CHECK: loc("x")
+  %arg0 = f32[4] parameter(0), metadata={op_name="x"}
+  // CHECK: loc("y")
+  %arg1 = f32[4] parameter(1), metadata={op_name="y"}
+
+  // CHECK: loc(#[[LOC0:.*]])
+  %add0 = f32[4] add(f32[4] %arg0, f32[4] %arg1)
+  // CHECK: loc(#[[LOC1:.*]])
+  %add1 = f32[4] add(f32[4] %add0, f32[4] %arg1), metadata={op_type="Add" op_name="embedded_inference/Add_0"}
+  // CHECK: loc(#[[LOC4:.*]])
+  ROOT %add2 = f32[4] add(f32[4] %add1, f32[4] %arg1), metadata={op_type="Add" op_name="embedded_inference/Add_1", source_file="source.txt", source_line=17}
+
+  // CHECK: #[[LOC0]] = loc("add0")
+  // CHECK: #[[LOC1]] = loc("embedded_inference/Add_0")
+  // CHECK: #[[LOC2:.*]] = loc("embedded_inference/Add_1")
+  // CHECK: #[[LOC3:.*]] = loc("source.txt":17:0)
+  // CHECK: #[[LOC4]] = loc(fused[#[[LOC2]], #[[LOC3]]])
+}

@@ -20,7 +20,7 @@ import numpy as np
 from tensorflow.python.autograph.operators import control_flow
 from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.data.ops import iterator_ops
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import cond
 from tensorflow.python.util import nest
@@ -51,7 +51,7 @@ def _verify_spec_compatible(input_name, spec_name, input_, spec):
 
   # TODO(mdan): Use TensorCompatible when ready.
   if isinstance(input_, (bool, int, float, str, np.ndarray)):
-    input_ = ops.convert_to_tensor_v2(input_)
+    input_ = tensor_conversion.convert_to_tensor_v2(input_)
 
   input_dtype = getattr(input_, "dtype", None)
 

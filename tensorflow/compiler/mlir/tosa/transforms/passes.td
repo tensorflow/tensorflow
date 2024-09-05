@@ -88,3 +88,42 @@ def TosaDequantizeTFLSoftmaxPass : Pass<"tosa-dequantize-tfl-softmax", "mlir::fu
   let constructor = "createDequantizeTFLSoftmaxPass()";
   let dependentDialects = ["mlir::TFL::TFLDialect", "quantfork::QuantizationForkDialect"];
 }
+
+def RetainCallOnceFuncs :
+    Pass<"tflite-retain-call-once-funcs", "mlir::ModuleOp"> {
+  let summary = "Guarantees that functions used by tfl.call_once are retained.";
+  let constructor = "createRetainCallOnceFuncsPass()";
+}
+
+def StripFunctionMetadata :
+    Pass<"tosa-tflite-strip-function-metadata", "mlir::func::FuncOp"> {
+  let summary = "Strip all unneeded TF/TFLite specific metadata.";
+  let constructor = "createStripFunctionMetadataPass()";
+}
+
+def StripModuleMetadata :
+    Pass<"tosa-tflite-strip-module-metadata", "mlir::ModuleOp"> {
+  let summary = "Strip all unneeded TF/TFLite specific metadata.";
+  let constructor = "createStripModuleMetadataPass()";
+}
+
+def VerifyFullyConverted :
+    Pass<"tosa-tflite-verify-fully-converted", "mlir::func::FuncOp"> {
+  let summary = "Verifies that all TFLite frontend ops were converted and none remain.";
+  let constructor = "createVerifyFullyConvertedPass()";
+}
+
+def ConvertFunctionMetadata :
+    Pass<"tosa-tflite-convert-function-metadata", "mlir::func::FuncOp"> {
+  let summary = "Converts TFLite input attributes to MLProgram arg attributes on functions.";
+  let constructor = "createConvertFunctionMetadataPass()";
+}
+
+def TosaLegalizeTFLStatefulPass : Pass<"tosa-legalize-tfl-stateful-tensors", "mlir::ModuleOp"> {
+  let summary = "Legalize tfl stateful operators to tosa stateful operators";
+  let description = [{
+    This pass is legalizing the tfl.call_once op to tosa stateful operators
+  }];
+  let constructor = "createLegalizeTFLStatefulPass()";
+  let dependentDialects = ["mlir::TFL::TFLDialect"];
+}

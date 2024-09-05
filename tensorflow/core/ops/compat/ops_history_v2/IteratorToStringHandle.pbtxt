@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "IteratorToStringHandle"
   input_arg {
     name: "resource_handle"

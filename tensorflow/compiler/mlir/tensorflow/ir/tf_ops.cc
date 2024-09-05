@@ -144,8 +144,9 @@ struct TFInlinerInterface : public DialectInlinerInterface {
   // a TF operation.
   bool isLegalToInline(Operation *call, Operation *callable,
                        bool wouldBeCloned) const final {
-    // Skip inlining for TPUPartitionedCalls.
+    // Skip inlining for TPUPartitionedCalls and RemoteCalls.
     if (isa<TPUPartitionedCallOp>(call)) return false;
+    if (isa<RemoteCallOp>(call)) return false;
     // Maintain inlining for  `tf.function`s with jit_compile option.
     if (callable->hasAttr("tf._XlaMustCompile")) return true;
     auto noinline_attr_name = absl::StrCat("tf.", tensorflow::kNoInlineAttr);
@@ -190,7 +191,8 @@ struct TFInlinerInterface : public DialectInlinerInterface {
   Operation *materializeCallConversion(OpBuilder &builder, Value input,
                                        Type result_type,
                                        Location conversion_loc) const final {
-    if (!result_type.isa<TensorType>() || !input.getType().isa<TensorType>())
+    if (!mlir::isa<TensorType>(result_type) ||
+        !mlir::isa<TensorType>(input.getType()))
       return nullptr;
     return builder.create<TF::CastOp>(conversion_loc, result_type, input,
                                       /*truncate=*/builder.getBoolAttr(false));
@@ -310,7 +312,7 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
       >();
   addOperations<
 #define GET_OP_LIST
-#include "tensorflow/compiler/mlir/tensorflow/ir/tfrt_ops.cc.inc"
+#include "tensorflow/compiler/mlir/tensorflow/ir/host_runtime/tfrt_ops.cc.inc"
       >();
   addInterfaces<TFInlinerInterface, TFConstantFoldInterface>();
   fallback_effect_op_interface_ =

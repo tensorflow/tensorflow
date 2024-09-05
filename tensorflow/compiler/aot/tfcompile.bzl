@@ -55,6 +55,7 @@ def _tfcompile_model_library_rule_impl(ctx):
                       "--xla_cpu_fast_math_honor_functions=false " +
                       "--xla_cpu_fast_math_honor_division=false " +
                       "--xla_cpu_enable_fast_min_max=true " +
+                      ctx.attr.xla_flags + " " +
                       "$${XLA_FLAGS:-}' "),
         "CUDA_VISIBLE_DEVICES": "",
     }
@@ -127,6 +128,7 @@ _tfcompile_model_library = rule(
         "dfsan_abilists": attr.label_list(default = [], allow_files = True),
         "is_linux": attr.bool(),
         "gen_compiler_log": attr.bool(),
+        "xla_flags": attr.string(),
     },
 )
 
@@ -151,7 +153,8 @@ def _tf_library(
         mlir_components = "None",
         deps = None,
         tags = [],
-        copts = []):
+        copts = [],
+        xla_flags = None):
     if not cpp_class:
         fail("cpp_class must be specified")
 
@@ -268,7 +271,7 @@ def _tf_library(
         tfcompile_config = config,
         entry_point = ep,
         cpp_class = cpp_class,
-        target_cpu = tfcompile_target_cpu(),
+        target_cpu = tfcompile_target_cpu(name),
         target_triple = target_llvm_triple(),
         flags = flags,
         extra_flags = debug_info_flags + profiling_flags + mlir_flags + traceme_flags,
@@ -281,6 +284,7 @@ def _tf_library(
         visibility = visibility,
         testonly = testonly,
         tags = tags,
+        xla_flags = xla_flags,
     )
 
     tfcompile_gen_object_files = tfcompile_gen + "_object_files"
@@ -309,25 +313,21 @@ def _tf_library(
         ] + (need_xla_data_proto and [
             # If we're generating the program shape, we must depend on the
             # proto.
-            "//tensorflow/compiler/xla:xla_data_proto_cc",
+            "@local_xla//xla:xla_data_proto_cc",
         ] or []) + (enable_xla_hlo_profiling and [
-            "//tensorflow/compiler/xla/service:hlo_profile_printer_data_cc",
+            "@local_xla//xla/service:hlo_profile_printer_data_cc",
         ] or []) + (include_standard_runtime_deps and [
             # TODO(cwhipkey): only depend on kernel code that the model actually
             # needed.
-            "//tensorflow/compiler/xla/service/cpu:runtime_conv2d",
-            "//tensorflow/compiler/xla/service/cpu:runtime_custom_call_status",
-            "//tensorflow/compiler/xla/service/cpu:runtime_key_value_sort",
-            "//tensorflow/compiler/xla/service/cpu:runtime_matmul",
-            "//tensorflow/compiler/xla/service/cpu:runtime_topk",
-            "//tensorflow/compiler/xla/service/cpu:runtime_single_threaded_conv2d",
-            "//tensorflow/compiler/xla/service/cpu:runtime_single_threaded_matmul",
-            "//third_party/eigen3",
-        ] or []) + (
-            mlir_components.count("HloLowering") > 0 and [
-                "//tensorflow/compiler/xla/service/cpu:runtime_mlir_utils",
-            ] or []
-        ) + (deps or []),
+            "@local_xla//xla/service/cpu:runtime_conv2d",
+            "@local_xla//xla/service/cpu:runtime_custom_call_status",
+            "@local_xla//xla/service/cpu:runtime_key_value_sort",
+            "@local_xla//xla/service/cpu:runtime_matmul",
+            "@local_xla//xla/service/cpu:runtime_topk",
+            "@local_xla//xla/service/cpu:runtime_single_threaded_conv2d",
+            "@local_xla//xla/service/cpu:runtime_single_threaded_matmul",
+            "@eigen_archive//:eigen3",
+        ] or []) + (deps or []),
         tags = tags,
         copts = copts,
     )
@@ -379,8 +379,8 @@ def _tf_library(
             deps = [
                 ":" + name,
                 "//tensorflow/compiler/aot:tf_library_test_main",
-                "//tensorflow/compiler/xla:executable_run_options",
-                "//third_party/eigen3",
+                "@local_xla//xla:executable_run_options",
+                "@eigen_archive//:eigen3",
             ] + if_oss([
                 "//tensorflow/core:lib",
                 "//tensorflow/core:test",
@@ -391,6 +391,7 @@ def _tf_library(
             ]),
             tags = tags,
             extra_copts = copts,
+            visibility = visibility,
         )
 
     if gen_benchmark:
@@ -431,12 +432,13 @@ def _tf_library(
             deps = [
                 ":" + name,
                 "//tensorflow/compiler/aot:benchmark",
-                "//tensorflow/compiler/xla:executable_run_options",
-                "//third_party/eigen3",
+                "@local_xla//xla:executable_run_options",
+                "@eigen_archive//:eigen3",
             ] + if_android([
                 "//tensorflow/compiler/aot:benchmark_extra_android",
             ]),
             tags = tags,
+            visibility = visibility,
         )
 
 def tf_library(
@@ -460,7 +462,8 @@ def tf_library(
         mlir_components = "None",
         deps = None,
         tags = [],
-        copts = []):
+        copts = [],
+        xla_flags = None):
     """Compiles a TensorFlow graph into an executable with fast math enabled.
 
     Given an invocation of tf_library(name="foo", ...), generates the following
@@ -543,31 +546,8 @@ def tf_library(
         deps,
         tags,
         copts,
+        xla_flags,
     )
-    if mlir_components == "None":
-        _tf_library(
-            name + "_mlir",
-            graph,
-            config,
-            debug_info,
-            freeze_checkpoint,
-            freeze_saver,
-            cpp_class,
-            gen_test,
-            gen_benchmark,
-            gen_compiler_log,
-            visibility,
-            testonly,
-            tfcompile_flags,
-            tfcompile_tool,
-            include_standard_runtime_deps,
-            enable_xla_hlo_profiling,
-            enable_tracemes,
-            "HloLowering",
-            deps,
-            tags + ["notap", "local", "manual"],
-            copts,
-        )
 
 def target_llvm_triple():
     """Returns the target LLVM triple to be used for compiling the target."""

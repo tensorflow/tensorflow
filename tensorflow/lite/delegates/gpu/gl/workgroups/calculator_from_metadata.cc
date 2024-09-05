@@ -15,13 +15,15 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl/workgroups/calculator_from_metadata.h"
 
+#include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/gl/compiler/shader_code.h"
+
 #ifndef TFLITE_GPU_BINARY_RELEASE
 
 #include <memory>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/memory/memory.h"
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/gl/metadata_generated.h"

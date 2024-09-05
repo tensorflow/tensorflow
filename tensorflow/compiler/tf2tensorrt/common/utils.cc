@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 
+#include <tuple>
+
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "absl/base/call_once.h"
 #include "absl/strings/str_cat.h"
@@ -213,6 +215,11 @@ std::ostream& operator<<(std::ostream& os, const nvinfer1::DataType& v) {
     case nvinfer1::DataType::kHALF:
       os << "kHalf";
       break;
+#if IS_TRT_VERSION_GE(8, 6, 0, 0)
+    case nvinfer1::DataType::kFP8:
+      os << "kFP8";
+      break;
+#endif
     case nvinfer1::DataType::kINT8:
       os << "kINT8";
       break;

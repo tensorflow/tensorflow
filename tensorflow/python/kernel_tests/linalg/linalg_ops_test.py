@@ -23,6 +23,7 @@ import scipy.linalg
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
@@ -180,10 +181,10 @@ class EyeTest(parameterized.TestCase, test.TestCase):
         batch_shape=batch_shape)
     self.assertEqual(4, identity_matrix.shape.ndims)
     self.assertEqual((2, 3), identity_matrix.shape[:2])
-    if num_rows is not None and not isinstance(num_rows, ops.Tensor):
+    if num_rows is not None and not isinstance(num_rows, tensor.Tensor):
       self.assertEqual(2, identity_matrix.shape[-2])
 
-    if num_columns is not None and not isinstance(num_columns, ops.Tensor):
+    if num_columns is not None and not isinstance(num_columns, tensor.Tensor):
       self.assertEqual(3, identity_matrix.shape[-1])
 
   @parameterized.parameters(
@@ -335,7 +336,7 @@ class _PinvTest(object):
     a_pinv = np.zeros(s, dtype=a.dtype)
     for i in np.ndindex(a.shape[:(a.ndim - 2)]):
       a_pinv[i] = np.linalg.pinv(
-          a[i], rcond=rcond if isinstance(rcond, float) else rcond[i])
+          a[i], rcond=rcond if isinstance(rcond.tolist(), float) else rcond[i])
     return a_pinv
 
   def test_symmetric(self):

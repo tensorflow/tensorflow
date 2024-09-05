@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/flags.h"
 
+#include <limits>
 #include <mutex>  // NOLINT
+#include <optional>
 #include <vector>
 
 #include "absl/base/call_once.h"
@@ -23,8 +25,9 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_graph.h"
-#include "tensorflow/compiler/xla/parse_flags_from_env.h"
+#include "xla/parse_flags_from_env.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/tpu/kernels/sparse_core_xla_flags_defaults.h"
 #include "tensorflow/core/util/command_line_flags.h"
 
 namespace tensorflow {
@@ -33,7 +36,9 @@ namespace {
 BuildXlaOpsPassFlags* build_ops_flags;
 MarkForCompilationPassFlags* mark_for_compilation_flags;
 XlaDeviceFlags* device_flags;
+XlaSparseCoreFlags* sparse_core_flags;
 XlaOpsCommonFlags* ops_flags;
+XlaCallModuleFlags* call_module_flags;
 MlirCommonFlags* mlir_flags;
 JitRtFlags* jitrt_flags;
 std::vector<Flag>* jitrt_flag_list;
@@ -73,6 +78,13 @@ bool SetterForXlaAutoJitFlag(const string& value) {
 
   mark_for_compilation_flags->xla_auto_jit_flag.optimization_level_single_gpu =
       opt_level;
+  return true;
+}
+
+bool SetterForXlaCallModuleDisabledChecks(const string& value) {
+  auto directives = absl::StrSplit(value, ',', absl::SkipEmpty());
+  call_module_flags->disabled_checks.insert(directives.begin(),
+                                            directives.end());
   return true;
 }
 
@@ -147,6 +159,14 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
            &mark_for_compilation_flags->tf_xla_persistent_cache_directory,
            "If non-empty, JIT-compiled executables are saved to and loaded "
            "from the specified file system directory path. Empty by default."),
+      Flag("tf_xla_persistent_cache_device_types",
+           &mark_for_compilation_flags->tf_xla_persistent_cache_device_types,
+           "If non-empty, the persistent cache will only be used for the "
+           "specified devices (comma separated). Each device type should be "
+           "able to be converted to `DeviceType`."),
+      Flag("tf_xla_persistent_cache_read_only",
+           &mark_for_compilation_flags->tf_xla_persistent_cache_read_only,
+           "If true, the persistent cache will be read-only."),
       Flag("tf_xla_disable_strict_signature_checks",
            &mark_for_compilation_flags->tf_xla_disable_strict_signature_checks,
            "If true, entires loaded into the XLA compile cache will not have "
@@ -154,7 +174,23 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
       Flag("tf_xla_persistent_cache_prefix",
            &mark_for_compilation_flags->tf_xla_persistent_cache_prefix,
            "Specifies the persistance cache prefix. Default is "
-           "\"xla_compile_cache\"")};
+           "\"xla_compile_cache\""),
+      Flag("tf_xla_sparse_core_disable_table_stacking",
+           &sparse_core_flags->tf_xla_sparse_core_disable_table_stacking,
+           "Disable table stacking for all the tables passed to the SparseCore"
+           "mid level API."),
+      Flag("tf_xla_sparse_core_minibatch_max_division_level",
+           &sparse_core_flags->tf_xla_sparse_core_minibatch_max_division_level,
+           "Max level of division to split input data into minibatches."),
+      Flag("tf_xla_sparse_core_stacking_mem_limit_bytes",
+           &sparse_core_flags->tf_xla_sparse_core_stacking_mem_limit_bytes,
+           "If non-zero, limits the size of the activations for a given table"
+           "to be below these many bytes."),
+      Flag("tf_xla_sparse_core_stacking_table_shard_limit_bytes",
+           &sparse_core_flags
+                ->tf_xla_sparse_core_stacking_table_shard_limit_bytes,
+           "If non-zero, limits the size of any table shard to be below these"
+           "many bytes.")};
   flag_list->insert(flag_list->end(), new_flags.begin(), new_flags.end());
 }
 
@@ -184,6 +220,8 @@ void AllocateAndParseFlags() {
   build_ops_flags->tf_xla_check_cluster_input_numerics = false;
   build_ops_flags->tf_xla_check_cluster_output_numerics = false;
   build_ops_flags->tf_xla_disable_constant_folding = false;
+  build_ops_flags->tf_xla_disable_full_embedding_pipelining = false;
+  build_ops_flags->tf_xla_embedding_parallel_iterations = 0;
 
   mark_for_compilation_flags = new MarkForCompilationPassFlags;
   mark_for_compilation_flags->xla_auto_jit_flag.optimization_level_single_gpu =
@@ -202,6 +240,8 @@ void AllocateAndParseFlags() {
       ->tf_xla_disable_resource_variable_safety_checks_for_debugging = false;
   mark_for_compilation_flags->tf_xla_deterministic_cluster_names = false;
   mark_for_compilation_flags->tf_xla_persistent_cache_directory = "";
+  mark_for_compilation_flags->tf_xla_persistent_cache_device_types = "";
+  mark_for_compilation_flags->tf_xla_persistent_cache_read_only = false;
   mark_for_compilation_flags->tf_xla_disable_strict_signature_checks = false;
   mark_for_compilation_flags->tf_xla_persistent_cache_prefix =
       "xla_compile_cache";
@@ -210,11 +250,26 @@ void AllocateAndParseFlags() {
   device_flags->tf_xla_compile_on_demand = false;
   device_flags->tf_xla_enable_xla_devices = false;
 
+  sparse_core_flags = new XlaSparseCoreFlags;
+  sparse_core_flags->tf_xla_sparse_core_minibatch_max_division_level =
+      kDefaultSparseCoreMinibatchMaxDivisionLevel;
+  sparse_core_flags->tf_xla_sparse_core_disable_table_stacking =
+      kDefaultDisableTableStacking;
+  sparse_core_flags->tf_xla_sparse_core_stacking_mem_limit_bytes =
+      kDefaultXlaSparseCoreStackingMemLimit;
+  sparse_core_flags->tf_xla_sparse_core_stacking_table_shard_limit_bytes =
+      kDefaultXlaSparseCoreStackingTableShardLimit;
+
   ops_flags = new XlaOpsCommonFlags;
   ops_flags->tf_xla_always_defer_compilation = false;
   ops_flags->tf_xla_async_compilation = false;
-  ops_flags->tf_xla_use_device_api = false;
+  ops_flags->tf_xla_use_device_api.enabled_for_xla_launch_ = true;
+  ops_flags->tf_xla_use_device_api.enabled_for_compile_on_demand_ = true;
+  ops_flags->tf_xla_use_device_api.enabled_for_compile_and_run_ = true;
+  ops_flags->tf_xla_use_device_api.enabled_for_all_ = false;
+  ops_flags->tf_xla_use_device_api.enabled_for_gpu_ = true;
 
+  call_module_flags = new XlaCallModuleFlags;
   // The `enable_mlir_bridge` flag allows the user to explicitly request that
   // their program is (or isn't) compiled using the MLIR-based TF-to-XLA bridge.
   //
@@ -227,9 +282,12 @@ void AllocateAndParseFlags() {
   bool enable_mlir_bridge_is_explicit = false;
   bool enable_mlir_merge_control_flow_pass = true;
   bool enable_mlir_convert_control_to_data_outputs_pass = false;
+  bool enable_mlir_composite_tpuexecute_side_effects = false;
+  bool enable_mlir_strict_clusters = false;
+  bool enable_mlir_multiple_local_cpu_devices = false;
   // Dump graphs in TFG dialect.
   bool use_tfg_graph_dumper = false;
-  bool enable_mlir_generic_outside_compilation = false;
+  bool enable_tpu_variable_runtime_reformatting_pass = true;
 
   flag_list = new std::vector<Flag>(
       {Flag("tf_xla_enable_lazy_compilation",
@@ -250,6 +308,15 @@ void AllocateAndParseFlags() {
             &build_ops_flags->tf_xla_disable_constant_folding,
             "If true then disables constant folding on TF graph before XLA "
             "compilation."),
+       Flag("tf_xla_disable_full_embedding_pipelining",
+            &build_ops_flags->tf_xla_disable_full_embedding_pipelining,
+            "If true then disables full embedding pipelining and instead use "
+            "strict SparseCore / TensorCore sequencing."),
+       Flag("tf_xla_embedding_parallel_iterations",
+            &build_ops_flags->tf_xla_embedding_parallel_iterations,
+            "If >0 then use this many parallel iterations in "
+            "embedding_pipelining and embedding_sequency. By default, use the "
+            "parallel_iterations on the original model WhileOp."),
 
        Flag("tf_xla_compile_on_demand", &device_flags->tf_xla_compile_on_demand,
             "Switch a device into 'on-demand' mode, where instead of "
@@ -267,9 +334,36 @@ void AllocateAndParseFlags() {
             "When lazy compilation is enabled, asynchronous compilation starts "
             "the cluster compilation in the background, and the fallback path "
             "is executed until the compilation has finished."),
-       Flag("tf_xla_use_device_api", &ops_flags->tf_xla_use_device_api,
-            "If true, uses the Device API (PjRt) for single device compilation."
-            " Defaults to false."),
+       Flag("tf_xla_use_device_api_for_xla_launch",
+            &ops_flags->tf_xla_use_device_api.enabled_for_xla_launch_,
+            "If true, uses Device API (PjRt) for single device compilation and "
+            "execution of functions marked for JIT compilation i.e. "
+            "jit_compile=True. Defaults to false."),
+       Flag("tf_xla_use_device_api_for_compile_on_demand",
+            &ops_flags->tf_xla_use_device_api.enabled_for_compile_on_demand_,
+            "If true, uses Device API (PjRt) for compiling and executing ops "
+            "one by one in 'on-demand' mode. Defaults to false."),
+       Flag("tf_xla_use_device_api_for_auto_jit",
+            &ops_flags->tf_xla_use_device_api.enabled_for_compile_and_run_,
+            "If true, uses Device API (PjRt) for compilation and execution "
+            "when auto-clustering is enabled. Defaults to false."),
+       Flag("tf_xla_use_device_api",
+            &ops_flags->tf_xla_use_device_api.enabled_for_all_,
+            "If true, uses Device API (PjRt) for compilation and execution "
+            "of ops one-by-one in 'on-demand' mode, for functions marked for "
+            "JIT compilation, or when auto-clustering is enabled. Defaults to "
+            "false."),
+       Flag("tf_xla_enable_device_api_for_gpu",
+            &ops_flags->tf_xla_use_device_api.enabled_for_gpu_,
+            "If true, uses Device API (PjRt) for TF GPU device. This is a "
+            "helper flag so that individual tests can turn on PjRt for GPU "
+            "specifically."),
+
+       Flag("tf_xla_call_module_disabled_checks",
+            SetterForXlaCallModuleDisabledChecks, "",
+            "A comma-sepated list of directives specifying the safety checks "
+            "to be skipped when compiling XlaCallModuleOp. See the op "
+            "documentation for the recognized values."),
 
        Flag("tf_mlir_enable_mlir_bridge", &enable_mlir_bridge,
             "Enables experimental MLIR-Based TensorFlow Compiler Bridge.",
@@ -282,13 +376,25 @@ void AllocateAndParseFlags() {
             &enable_mlir_convert_control_to_data_outputs_pass,
             "Enables `tf-executor-convert-control-to-data-outputs` pass for "
             "MLIR-Based TensorFlow Compiler Bridge."),
+       Flag("tf_mlir_composite_tpuexecute_side_effects",
+            &enable_mlir_composite_tpuexecute_side_effects,
+            "Enables certain TPUExecute ops to run in parallel if they only "
+            "operate on resources that live on composite devices."),
+       Flag("tf_mlir_enable_strict_clusters", &enable_mlir_strict_clusters,
+            "Do not allow clusters that have cyclic control dependencies."),
+       Flag("tf_mlir_enable_multiple_local_cpu_devices",
+            &enable_mlir_multiple_local_cpu_devices,
+            "Enable multiple local CPU devices. CPU ops which are outside "
+            "compiled inside the tpu cluster will also be replicated across "
+            "multiple cpu devices."),
        Flag("tf_dump_graphs_in_tfg", &use_tfg_graph_dumper,
             "When tf_dump_graphs_in_tfg is true, graphs after transformations "
             "are dumped in MLIR TFG dialect and not in GraphDef"),
-       Flag("tf_mlir_enable_generic_outside_compilation",
-            &enable_mlir_generic_outside_compilation,
-            "Enables OutsideCompilation passes for MLIR-Based TensorFlow "
-            "Generic Compiler Bridge.")});
+       Flag("tf_mlir_enable_tpu_variable_runtime_reformatting_pass",
+            &enable_tpu_variable_runtime_reformatting_pass,
+            "Enables TPUVariableRuntimeReformatting pass for MLIR-Based "
+            "TensorFlow Compiler Bridge. This enables weight update sharding "
+            "and creates TPUReshardVariables ops.")});
 
   AppendMarkForCompilationPassFlagsInternal(flag_list);
   xla::ParseFlagsFromEnvAndDieIfUnknown("TF_XLA_FLAGS", *flag_list);
@@ -308,8 +414,13 @@ void AllocateAndParseFlags() {
       enable_mlir_merge_control_flow_pass;
   mlir_flags->tf_mlir_enable_convert_control_to_data_outputs_pass =
       enable_mlir_convert_control_to_data_outputs_pass;
-  mlir_flags->tf_mlir_enable_generic_outside_compilation =
-      enable_mlir_generic_outside_compilation;
+  mlir_flags->tf_mlir_enable_composite_tpuexecute_side_effects =
+      enable_mlir_composite_tpuexecute_side_effects;
+  mlir_flags->tf_mlir_enable_strict_clusters = enable_mlir_strict_clusters;
+  mlir_flags->tf_mlir_enable_tpu_variable_runtime_reformatting_pass =
+      enable_tpu_variable_runtime_reformatting_pass;
+  mlir_flags->tf_mlir_enable_multiple_local_cpu_devices =
+      enable_mlir_multiple_local_cpu_devices;
 
   if (use_tfg_graph_dumper) {
     UseMlirForGraphDump(MlirDumpConfig{}.elide_large_attributes().emit_dialect(
@@ -348,6 +459,11 @@ MarkForCompilationPassFlags* GetMarkForCompilationPassFlags() {
   return mark_for_compilation_flags;
 }
 
+XlaSparseCoreFlags* GetXlaSparseCoreFlags() {
+  absl::call_once(flags_init, &AllocateAndParseFlags);
+  return sparse_core_flags;
+}
+
 XlaDeviceFlags* GetXlaDeviceFlags() {
   absl::call_once(flags_init, &AllocateAndParseFlags);
   return device_flags;
@@ -356,6 +472,11 @@ XlaDeviceFlags* GetXlaDeviceFlags() {
 XlaOpsCommonFlags* GetXlaOpsCommonFlags() {
   absl::call_once(flags_init, &AllocateAndParseFlags);
   return ops_flags;
+}
+
+XlaCallModuleFlags* GetXlaCallModuleFlags() {
+  absl::call_once(flags_init, &AllocateAndParseFlags);
+  return call_module_flags;
 }
 
 MlirCommonFlags* GetMlirCommonFlags() {

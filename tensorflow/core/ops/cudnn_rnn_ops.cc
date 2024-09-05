@@ -41,7 +41,7 @@ REGISTER_OP("CudnnRNNParamsSize")
     .Input("num_layers: int32")
     .Input("num_units: int32")
     .Input("input_size: int32")
-    .Attr("T: {float16, float32, float64}")
+    .Attr("T: {bfloat16, float16, float32, float64}")
     .Attr("S: {int32, int64}")
     .Attr(kRNNModeAttrs)
     .Attr(kRNNInputModeAttrs)
@@ -59,7 +59,7 @@ REGISTER_OP("CudnnRNNParamsSize")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
 
       c->set_output(0, c->Vector(1));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("CudnnRNN")
@@ -72,7 +72,7 @@ REGISTER_OP("CudnnRNN")
     .Output("output_h: T")
     .Output("output_c: T")
     .Output("reserve_space: T")
-    .Attr("T: {float16, float32, float64}")
+    .Attr("T: {bfloat16, float16, float32, float64}")
     .Attr(kRNNModeAttrs)
     .Attr(kRNNInputModeAttrs)
     .Attr(kRNNDirectionAttrs)
@@ -107,7 +107,7 @@ REGISTER_OP("CudnnRNN")
       c->set_output(1, output_h_shape);
       c->set_output(2, output_c_shape);
       c->set_output(3, c->UnknownShape());
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("CudnnRNNV2")
@@ -121,7 +121,7 @@ REGISTER_OP("CudnnRNNV2")
     .Output("output_c: T")
     .Output("reserve_space: T")
     .Output("host_reserved: int8")
-    .Attr("T: {float16, float32, float64}")
+    .Attr("T: {bfloat16, float16, float32, float64}")
     .Attr(kRNNModeAttrs)
     .Attr(kRNNInputModeAttrs)
     .Attr(kRNNDirectionAttrs)
@@ -156,7 +156,7 @@ REGISTER_OP("CudnnRNNV2")
       c->set_output(2, output_c_shape);
       c->set_output(3, c->UnknownShape());
       c->set_output(4, c->UnknownShape());
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("CudnnRNNV3")
@@ -171,7 +171,7 @@ REGISTER_OP("CudnnRNNV3")
     .Output("output_c: T")
     .Output("reserve_space: T")
     .Output("host_reserved: int8")
-    .Attr("T: {float16, float32, float64}")
+    .Attr("T: {bfloat16, float16, float32, float64}")
     .Attr(kRNNModeAttrs)
     .Attr(kRNNInputModeAttrs)
     .Attr(kRNNDirectionAttrs)
@@ -215,7 +215,7 @@ REGISTER_OP("CudnnRNNV3")
       c->set_output(2, output_c_shape);
       c->set_output(3, c->UnknownShape());
       c->set_output(4, c->UnknownShape());
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("CudnnRNNBackprop")
@@ -235,7 +235,7 @@ REGISTER_OP("CudnnRNNBackprop")
     .Output("input_h_backprop: T")
     .Output("input_c_backprop: T")
     .Output("params_backprop: T")
-    .Attr("T: {float16, float32, float64}")
+    .Attr("T: {bfloat16, float16, float32, float64}")
     .Attr(kRNNModeAttrs)
     .Attr(kRNNInputModeAttrs)
     .Attr(kRNNDirectionAttrs)
@@ -251,7 +251,7 @@ REGISTER_OP("CudnnRNNBackprop")
       c->set_output(1, input_h_shape);
       c->set_output(2, input_c_shape);
       c->set_output(3, params_shape);
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("CudnnRNNBackpropV2")
@@ -272,7 +272,7 @@ REGISTER_OP("CudnnRNNBackpropV2")
     .Output("input_h_backprop: T")
     .Output("input_c_backprop: T")
     .Output("params_backprop: T")
-    .Attr("T: {float16, float32, float64}")
+    .Attr("T: {bfloat16, float16, float32, float64}")
     .Attr(kRNNModeAttrs)
     .Attr(kRNNInputModeAttrs)
     .Attr(kRNNDirectionAttrs)
@@ -288,7 +288,7 @@ REGISTER_OP("CudnnRNNBackpropV2")
       c->set_output(1, input_h_shape);
       c->set_output(2, input_c_shape);
       c->set_output(3, params_shape);
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("CudnnRNNBackpropV3")
@@ -310,7 +310,7 @@ REGISTER_OP("CudnnRNNBackpropV3")
     .Output("input_h_backprop: T")
     .Output("input_c_backprop: T")
     .Output("params_backprop: T")
-    .Attr("T: {float16, float32, float64}")
+    .Attr("T: {bfloat16, float16, float32, float64}")
     .Attr(kRNNModeAttrs)
     .Attr(kRNNInputModeAttrs)
     .Attr(kRNNDirectionAttrs)
@@ -328,7 +328,7 @@ REGISTER_OP("CudnnRNNBackpropV3")
       c->set_output(1, input_h_shape);
       c->set_output(2, input_c_shape);
       c->set_output(3, params_shape);
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("CudnnRNNParamsToCanonical")
@@ -338,7 +338,7 @@ REGISTER_OP("CudnnRNNParamsToCanonical")
     .Input("params: T")
     .Output("weights: num_params * T")
     .Output("biases: num_params * T")
-    .Attr("T: {float16, float32, float64}")
+    .Attr("T: {bfloat16, float16, float32, float64}")
     .Attr("num_params: int")
     .Attr(kRNNModeAttrs)
     .Attr(kRNNInputModeAttrs)
@@ -360,7 +360,7 @@ REGISTER_OP("CudnnRNNParamsToCanonical")
       for (int i = 0; i < num_params; i++) {
         c->set_output(num_params + i, c->Vector(InferenceContext::kUnknownDim));
       }
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("CudnnRNNParamsToCanonicalV2")
@@ -370,7 +370,7 @@ REGISTER_OP("CudnnRNNParamsToCanonicalV2")
     .Input("params: T")
     .Output("weights: num_params_weights * T")
     .Output("biases: num_params_biases * T")
-    .Attr("T: {float16, float32, float64}")
+    .Attr("T: {bfloat16, float16, float32, float64}")
     .Attr("num_params_weights: int")
     .Attr("num_params_biases: int")
     .Attr(kRNNModeAttrs)
@@ -397,7 +397,7 @@ REGISTER_OP("CudnnRNNParamsToCanonicalV2")
         c->set_output(num_params_weights + i,
                       c->Vector(InferenceContext::kUnknownDim));
       }
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("CudnnRNNCanonicalToParams")
@@ -407,7 +407,7 @@ REGISTER_OP("CudnnRNNCanonicalToParams")
     .Input("weights: num_params * T")
     .Input("biases: num_params * T")
     .Output("params: T")
-    .Attr("T: {float16, float32, float64}")
+    .Attr("T: {bfloat16, float16, float32, float64}")
     .Attr("num_params: int")
     .Attr(kRNNModeAttrs)
     .Attr(kRNNInputModeAttrs)
@@ -417,7 +417,7 @@ REGISTER_OP("CudnnRNNCanonicalToParams")
     .Attr("seed2: int = 0")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("CudnnRNNCanonicalToParamsV2")
@@ -427,7 +427,7 @@ REGISTER_OP("CudnnRNNCanonicalToParamsV2")
     .Input("weights: num_params_weights * T")
     .Input("biases: num_params_biases * T")
     .Output("params: T")
-    .Attr("T: {float16, float32, float64}")
+    .Attr("T: {bfloat16, float16, float32, float64}")
     .Attr("num_params_weights: int")
     .Attr("num_params_biases: int")
     .Attr(kRNNModeAttrs)
@@ -439,7 +439,7 @@ REGISTER_OP("CudnnRNNCanonicalToParamsV2")
     .Attr("num_proj: int = 0")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 }  // namespace tensorflow

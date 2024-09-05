@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -250,7 +251,7 @@ TEST(RandomStandardNormalOpTest, OutputMeanAndVariance) {
 class MultinomialOpTestSuite : public testing::TestWithParam<InputType> {};
 
 TEST_P(MultinomialOpTestSuite, NonDeterministicOutputWithSeedsEqualToZero) {
-  const std::initializer_list<float> kLogits = {log(0.3f), log(0.7f)};
+  const std::initializer_list<float> kLogits = {logf(0.3f), logf(0.7f)};
   const int kNumBatches = 1;
   const int kNumClasses = 2;
   const int kNumSamples = 30;
@@ -280,7 +281,7 @@ TEST_P(MultinomialOpTestSuite, NonDeterministicOutputWithSeedsEqualToZero) {
 }
 
 TEST_P(MultinomialOpTestSuite, DeterministicOutputWithNonZeroSeeds) {
-  const std::initializer_list<float> kLogits = {log(0.3f), log(0.7f)};
+  const std::initializer_list<float> kLogits = {logf(0.3f), logf(0.7f)};
   const int kNumBatches = 1;
   const int kNumClasses = 2;
   const int kNumSamples = 30;
@@ -377,8 +378,8 @@ TEST(MultinomialTest,
   const std::vector<float> kProb = {0.1f, 0.2f, 0.7f, 0.2f, 0.3f,
                                     0.5f, 0.1f, 0.1f, 0.8f};
   const std::initializer_list<float> kLogits = {
-      log(0.1f), log(0.2f), log(0.7f), log(0.2f), log(0.3f),
-      log(0.5f), log(0.1f), log(0.1f), log(0.8f)};
+      logf(0.1f), logf(0.2f), logf(0.7f), logf(0.2f), logf(0.3f),
+      logf(0.5f), logf(0.1f), logf(0.1f), logf(0.8f)};
   const int kNumBatches = 3;
   const int kNumClasses = 3;
   const int kNumSamples = 10;
@@ -407,8 +408,8 @@ TEST(MultinomialTest, ValidateClassProbabilities) {
   const std::vector<float> kProb = {0.1f, 0.9f, 0.2f, 0.8f, 0.3f,
                                     0.7f, 0.4f, 0.6f, 0.5f, 0.5f};
   const std::initializer_list<float> kLogits = {
-      log(0.1f), log(0.9f), log(0.2f), log(0.8f), log(0.3f),
-      log(0.7f), log(0.4f), log(0.6f), log(0.5f), log(0.5f)};
+      logf(0.1f), logf(0.9f), logf(0.2f), logf(0.8f), logf(0.3f),
+      logf(0.7f), logf(0.4f), logf(0.6f), logf(0.5f), logf(0.5f)};
   const int kNumBatches = 5;
   const int kNumClasses = 2;
   const int kNumSamples = 10000;

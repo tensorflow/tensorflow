@@ -81,20 +81,8 @@ class StatelessRandomOp : public StatelessRandomOpBaseWithKeyCounter {
  protected:
   void Fill(OpKernelContext* ctx, Algorithm alg, const Tensor& key,
             const Tensor& counter, Tensor* output) override {
-    typedef typename Distribution::ResultElementType T;
-    auto flat = output->flat<T>();
-    if (alg == RNG_ALG_PHILOX) {
-      // Reuse the compute kernels from the stateful random ops
-      auto key_data = key.flat<uint64>().data();
-      auto counter_data = counter.flat<uint64>().data();
-      functor::FillPhiloxRandom<Device, Distribution>()(
-          ctx, ctx->eigen_device<Device>(), key_data, counter_data,
-          random::PhiloxRandom() /*dummy*/, flat.data(), flat.size(),
-          Distribution());
-    } else {
-      OP_REQUIRES(ctx, false,
-                  errors::InvalidArgument("Unsupported algorithm id: ", alg));
-    }
+    FillRandomTensor<Device, Distribution>(ctx, alg, key, counter,
+                                           Distribution(), output);
   }
 };
 
@@ -128,19 +116,8 @@ class StatelessRandomUniformIntOp : public StatelessRandomOpBaseWithKeyCounter {
     typedef random::UniformDistribution<random::PhiloxRandom, IntType>
         Distribution;
     Distribution dist(lo, hi);
-
-    auto flat = output->flat<IntType>();
-    if (alg == RNG_ALG_PHILOX) {
-      // Reuse the compute kernels from the stateful random ops
-      auto key_data = key.flat<uint64>().data();
-      auto counter_data = counter.flat<uint64>().data();
-      functor::FillPhiloxRandom<Device, Distribution>()(
-          ctx, ctx->eigen_device<Device>(), key_data, counter_data,
-          random::PhiloxRandom() /*dummy*/, flat.data(), flat.size(), dist);
-    } else {
-      OP_REQUIRES(ctx, false,
-                  errors::InvalidArgument("Unsupported algorithm id: ", alg));
-    }
+    FillRandomTensor<Device, Distribution>(ctx, alg, key, counter, dist,
+                                           output);
   }
 };
 
@@ -154,23 +131,10 @@ class StatelessRandomUniformFullIntOp
  protected:
   void Fill(OpKernelContext* ctx, Algorithm alg, const Tensor& key,
             const Tensor& counter, Tensor* output) override {
-    // Build distribution
     typedef random::UniformFullIntDistribution<random::PhiloxRandom, IntType>
         Distribution;
-    Distribution dist;
-
-    auto flat = output->flat<IntType>();
-    if (alg == RNG_ALG_PHILOX) {
-      // Reuse the compute kernels from the stateful random ops
-      auto key_data = key.flat<uint64>().data();
-      auto counter_data = counter.flat<uint64>().data();
-      functor::FillPhiloxRandom<Device, Distribution>()(
-          ctx, ctx->eigen_device<Device>(), key_data, counter_data,
-          random::PhiloxRandom() /*dummy*/, flat.data(), flat.size(), dist);
-    } else {
-      OP_REQUIRES(ctx, false,
-                  errors::InvalidArgument("Unsupported algorithm id: ", alg));
-    }
+    FillRandomTensor<Device, Distribution>(ctx, alg, key, counter,
+                                           Distribution(), output);
   }
 };
 

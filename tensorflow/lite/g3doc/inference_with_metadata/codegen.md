@@ -22,7 +22,6 @@ above
 
 1.  Right-click on the module you would like to use the TFLite model or click on
     `File`, then `New` > `Other` > `TensorFlow Lite Model`
-    ![Right-click menus to access the TensorFlow Lite import functionality](../images/android/right_click_menu.png)
 
 1.  Select the location of your TFLite file. Note that the tooling will
     configure the module's dependency on your behalf with ML Model binding and
@@ -31,7 +30,6 @@ above
 
     Optional: Select the second checkbox for importing TensorFlow GPU if you
     want to use GPU acceleration.
-    ![Import dialog for TFLite model](../images/android/import_dialog.png)
 
 1.  Click `Finish`.
 
@@ -39,7 +37,6 @@ above
     using the model, select Kotlin or Java, copy and paste the code under the
     `Sample Code` section. You can get back to this screen by double clicking
     the TFLite model under the `ml` directory in Android Studio.
-    ![Model details page in Android Studio](../images/android/model_details.png)
 
 ### Accelerating model inference {:#acceleration}
 

@@ -431,7 +431,10 @@ function(_OverridableFetchContent_SetProperty CONTENT_NAME PROPERTY_NAME
     BRIEF_DOCS "${DOCUMENTATION}"
     FULL_DOCS "${DOCUMENTATION}"
   )
-  set_property(GLOBAL PROPERTY "${GLOBAL_PROPERTY_NAME}" "${PROPERTY_VALUE}")
+set_property(
+  GLOBAL PROPERTY "${GLOBAL_PROPERTY_NAME}"
+  "${PROPERTY_VALUE}"
+)
 endfunction()
 
 
@@ -505,7 +508,10 @@ function(OverridableFetchContent_GetProperties CONTENT_NAME)
     )
     set(PROPERTY_VALUE "${${EXPORT_PROPERTY}}")
     if(PROPERTY_VALUE)
-      set(${CONTENT_NAME}_${EXPORT_PROPERTY} "${PROPERTY_VALUE}" PARENT_SCOPE)
+      set(${CONTENT_NAME_LOWER}_${EXPORT_PROPERTY}
+        "${PROPERTY_VALUE}"
+        PARENT_SCOPE
+      )
     endif()
   endforeach()
   FetchContent_GetProperties("${CONTENT_NAME}" ${OUTPUT_ARGS})
@@ -534,8 +540,8 @@ function(OverridableFetchContent_Populate CONTENT_NAME)
   # If a license file isn't cached try finding it in the repo.
   set(LICENSE_FILE "${${CONTENT_NAME_LOWER}_LICENSE_FILE}")
   set(LICENSE_URL "${${CONTENT_NAME_LOWER}_LICENSE_URL}")
+  set(SOURCE_DIR "${${CONTENT_NAME_LOWER}_SOURCE_DIR}")
   if(${CONTENT_NAME}_POPULATED AND NOT LICENSE_FILE)
-    set(SOURCE_DIR "${${CONTENT_NAME_LOWER}_SOURCE_DIR}")
     find_file(_${CONTENT_NAME_LOWER}_LICENSE_FILE
       NAMES LICENSE LICENSE.md LICENSE.txt NOTICE COPYING
       PATHS "${SOURCE_DIR}"
@@ -548,6 +554,33 @@ function(OverridableFetchContent_Populate CONTENT_NAME)
       file(RELATIVE_PATH LICENSE_FILE "${SOURCE_DIR}" "${LICENSE_FILE}")
       file(TO_CMAKE_PATH "${LICENSE_FILE}" LICENSE_FILE)
     endif()
+  endif()
+  # If LICENSE_FILE was not found but a URL was specified then try downloading
+  # the license.
+  set(LICENSE_FILE_FULL_PATH "${SOURCE_DIR}/${LICENSE_FILE}")
+  if(NOT EXISTS "${LICENSE_FILE_FULL_PATH}" AND LICENSE_URL)
+    set(LICENSE_FILE_DOWNLOAD "${SOURCE_DIR}/${CONTENT_NAME}_LICENSE.txt")
+    if(NOT EXISTS "${LICENSE_FILE_DOWNLOAD}")
+      message(STATUS
+        "${CONTENT_NAME} '${LICENSE_FILE_FULL_PATH}' does not exist "
+        "downloading ${LICENSE_URL} --> ${LICENSE_FILE_DOWNLOAD}")
+      file(DOWNLOAD "${LICENSE_URL}" "${LICENSE_FILE_DOWNLOAD}" STATUS RESULT)
+      list(GET RESULT 0 RESULT)
+      if(NOT RESULT EQUAL 0)
+        message(
+          FATAL_ERROR
+          "Failed to download ${LICENSE_URL} for ${CONTENT_NAME} to "
+          "${LICENSE_FILE_DOWNLOAD}"
+        )
+      endif()
+    endif()
+    file(RELATIVE_PATH LICENSE_FILE "${SOURCE_DIR}" "${LICENSE_FILE_DOWNLOAD}")
+    _OverridableFetchContent_SetProperty(
+      "${CONTENT_NAME}"
+      LICENSE_FILE
+      "License for ${CONTENT_NAME}"
+      "${LICENSE_FILE}"
+    )
   endif()
   # If a LICENSE_FILE was found populate the URL.
   if(LICENSE_FILE AND NOT LICENSE_URL)

@@ -459,7 +459,7 @@ TEST_F(GradientsTest, UnreachableInput) {
   Status status =
       AddSymbolicGradients(scope_test_, {m1}, {z}, {dm1}, &grad_outputs);
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
-  EXPECT_EQ(status.error_message(),
+  EXPECT_EQ(status.message(),
             "Cannot compute the partial derivative"
             " for node 'z' as it's unreachable from the output node(s).");
 }

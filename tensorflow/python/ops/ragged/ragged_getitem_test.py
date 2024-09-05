@@ -24,6 +24,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import tensor_getitem_override
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged.ragged_tensor import RaggedTensor
 
@@ -289,14 +290,16 @@ class RaggedGetItemTest(test_util.TensorFlowTestCase, parameterized.TestCase):
        'Cannot index into an inner ragged dimension'),
 
       # Tests for type errors
-      (SLICE_BUILDER[0.5], TypeError, re.escape(array_ops._SLICE_TYPE_ERROR)),
+      (SLICE_BUILDER[0.5], TypeError, re.escape(
+          tensor_getitem_override._SLICE_TYPE_ERROR)),
       (SLICE_BUILDER[1:3:0.5], TypeError, re.escape(
-          array_ops._SLICE_TYPE_ERROR)),
+          tensor_getitem_override._SLICE_TYPE_ERROR)),
       (SLICE_BUILDER[:, 1:3:0.5], TypeError,
        'slice strides must be integers or None'),
       (SLICE_BUILDER[:, 0.5:1.5], TypeError,
        'slice offsets must be integers or None'),
-      (SLICE_BUILDER['foo'], TypeError, re.escape(array_ops._SLICE_TYPE_ERROR)),
+      (SLICE_BUILDER['foo'], TypeError, re.escape(
+          tensor_getitem_override._SLICE_TYPE_ERROR)),
       (SLICE_BUILDER[:, 'foo':'foo'], TypeError,
        'slice offsets must be integers or None'),
 

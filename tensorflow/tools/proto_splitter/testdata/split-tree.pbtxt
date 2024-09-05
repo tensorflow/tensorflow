@@ -1,0 +1,28 @@
+val: "0"
+child_nodes {
+  val: "010"
+  child_nodes {
+    val: "01020"
+    child_nodes {
+      val: "0102030"
+    }
+    child_nodes {
+      val: "0102031"
+    }
+    child_nodes {
+      val: "0102032"
+    }
+  }
+  child_nodes {
+    val: "01021"
+    child_nodes {
+      val: "0102130"
+    }
+    child_nodes {
+      val: "0102131"
+    }
+    child_nodes {
+      val: "0102132"
+    }
+  }
+}

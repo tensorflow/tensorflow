@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_GATHER_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_GATHER_H_
 
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
@@ -24,7 +25,7 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 
-GPUOperation CreateGather(const OperationDef& op_def,
+GPUOperation CreateGather(const GpuInfo& gpu_info, const OperationDef& op_def,
                           const GatherAttributes& attr);
 
 }  // namespace gpu

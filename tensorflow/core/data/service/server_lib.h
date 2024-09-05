@@ -119,6 +119,7 @@ class DispatchGrpcDataServer : public GrpcDataServerBase {
  protected:
   void AddDataServiceToBuilder(::grpc::ServerBuilder& builder) override;
   Status StartServiceInternal() override;
+  void StopServiceInternal() override;
 
  private:
   const experimental::DispatcherConfig config_;
@@ -131,9 +132,11 @@ struct SnapshotTaskProgressWrapper {
   SnapshotTaskProgressWrapper() = default;
   explicit SnapshotTaskProgressWrapper(const SnapshotTaskProgress& progress)
       : snapshot_task_base_path(progress.snapshot_task().base_path()),
-        snapshot_task_stream_index(progress.snapshot_task().stream_index()) {}
+        snapshot_task_stream_index(progress.snapshot_task().stream_index()),
+        completed(progress.completed()) {}
   std::string snapshot_task_base_path;
   int64_t snapshot_task_stream_index;
+  bool completed;
 };
 
 class WorkerGrpcDataServer : public GrpcDataServerBase {

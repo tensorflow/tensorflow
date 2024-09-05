@@ -15,6 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_UTILS_THREAD_POOL_H_
 #define TENSORFLOW_CORE_TFRT_UTILS_THREAD_POOL_H_
 
+#include <functional>
+#include <string>
+#include <utility>
+
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/platform/threadpool_interface.h"

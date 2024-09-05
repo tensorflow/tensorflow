@@ -44,11 +44,11 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
-    name: "shuffle_and_repeat_fusion"
+    name: "seq_interleave_prefetch"
     mtype: "<type \'property\'>"
   }
   member {
-    name: "warm_start"
+    name: "shuffle_and_repeat_fusion"
     mtype: "<type \'property\'>"
   }
   member_method {

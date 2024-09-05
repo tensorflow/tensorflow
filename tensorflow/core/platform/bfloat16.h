@@ -18,7 +18,7 @@ limitations under the License.
 
 // clang-format off
 #include "tensorflow/core/platform/byte_order.h"
-#include "tensorflow/tsl/platform/bfloat16.h"
+#include "tsl/platform/bfloat16.h"
 // clang-format on
 
 namespace tensorflow {

@@ -17,7 +17,7 @@
 import numpy as np
 
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import random_crop_ops
 from tensorflow.python.platform import test
 
 
@@ -29,7 +29,7 @@ class RandomCropTest(test.TestCase):
     for shape in (2, 1, 1), (2, 1, 3), (4, 5, 3):
       value = np.arange(0, np.prod(shape), dtype=np.int32).reshape(shape)
       with self.cached_session():
-        crop = random_ops.random_crop(value, shape).eval()
+        crop = random_crop_ops.random_crop(value, shape).eval()
         self.assertAllEqual(crop, value)
 
   def testContains(self):
@@ -40,7 +40,7 @@ class RandomCropTest(test.TestCase):
       value_set = set(
           tuple(value[i:i + 2, j:j + 3, k:k + 4].ravel())
           for i in range(2) for j in range(3) for k in range(4))
-      crop = random_ops.random_crop(value, size=target)
+      crop = random_crop_ops.random_crop(value, size=target)
       for _ in range(20):
         y = self.evaluate(crop)
         self.assertAllEqual(y.shape, target)
@@ -57,7 +57,7 @@ class RandomCropTest(test.TestCase):
     value = np.arange(size).reshape(shape)
 
     with self.cached_session():
-      crop = random_ops.random_crop(value, single, seed=7)
+      crop = random_crop_ops.random_crop(value, single, seed=7)
       counts = np.zeros(size, dtype=np.int32)
       for _ in range(num_samples):
         y = self.evaluate(crop)
@@ -79,7 +79,7 @@ class StatelessRandomCropTest(test.TestCase):
     # No random cropping is performed since the size is value.shape.
     for shape in (2, 1, 1), (2, 1, 3), (4, 5, 3):
       value = np.arange(0, np.prod(shape), dtype=np.int32).reshape(shape)
-      crop = random_ops.stateless_random_crop(value, shape, seed=(1, 2))
+      crop = random_crop_ops.stateless_random_crop(value, shape, seed=(1, 2))
       self.evaluate(crop)
       self.assertAllEqual(crop, value)
 
@@ -100,7 +100,8 @@ class StatelessRandomCropTest(test.TestCase):
       # Check that the result is valid by making sure that it is one of all
       # possible values for randomly cropping `value` with `target` shape.
       for seed in test_seeds:
-        crop = random_ops.stateless_random_crop(value, size=target, seed=seed)
+        crop = random_crop_ops.stateless_random_crop(
+            value, size=target, seed=seed)
         y = self.evaluate(crop)
         self.assertAllEqual(y.shape, target)
         self.assertIn(tuple(y.ravel()), value_set)
@@ -122,7 +123,8 @@ class StatelessRandomCropTest(test.TestCase):
       test_seed = (1, 2)
       observations = [[] for _ in range(iterations)]
       for observation in observations:
-        crop = random_ops.stateless_random_crop(value, single, seed=test_seed)
+        crop = random_crop_ops.stateless_random_crop(
+            value, single, seed=test_seed)
         counts = np.zeros(size, dtype=np.int32)
         for _ in range(num_samples):
           y = self.evaluate(crop)
@@ -144,7 +146,7 @@ class StatelessRandomCropTest(test.TestCase):
       for observation in observations:
         counts = np.zeros(size, dtype=np.int32)
         for seed in test_seeds:
-          crop = random_ops.stateless_random_crop(
+          crop = random_crop_ops.stateless_random_crop(
               value, single, seed=seed)
           y = self.evaluate(crop)
           self.assertAllEqual(y.shape, single)

@@ -21,8 +21,11 @@ limitations under the License.
 #include <complex>
 #include <limits>
 #include <memory>
+
 #ifndef TF_LITE_STATIC_MEMORY
 #include <string>
+
+#include "tensorflow/lite/array.h"
 #endif  // TF_LITE_STATIC_MEMORY
 
 #include "tensorflow/lite/context_util.h"
@@ -422,8 +425,7 @@ TfLiteStatus GetOutputShapeFromInput(TfLiteContext* context,
     return kTfLiteError;
   }
   const int output_dims = SizeOfDimension(input, 0);
-  std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> shape(
-      TfLiteIntArrayCreate(output_dims), TfLiteIntArrayFree);
+  IntArrayUniquePtr shape(TfLiteIntArrayCreate(output_dims));
   for (int i = 0; i < output_dims; i++) {
     shape->data[i] = input->data.i32[i];
   }
@@ -454,6 +456,12 @@ std::string GetShapeDebugString(const TfLiteIntArray* shape) {
   return str;
 }
 
+std::string GetTensorDebugString(const TfLiteTensor* tensor) {
+  return std::string("{\n  type: ") + TfLiteTypeGetName(tensor->type) +
+         "\n  data: {...}\n  dims: " + GetShapeDebugString(tensor->dims) +
+         "\n}";
+}
+
 TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
                                         const TfLiteTensor* input1,
                                         const TfLiteTensor* input2,
@@ -462,8 +470,7 @@ TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
   const int dims2 = NumDimensions(input2);
   const int out_dims = std::max(dims1, dims2);
 
-  std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> shape(
-      TfLiteIntArrayCreate(out_dims), TfLiteIntArrayFree);
+  IntArrayUniquePtr shape(TfLiteIntArrayCreate(out_dims));
   for (int i = 0; i < out_dims; ++i) {
     const int d1 = i >= dims1 ? 1 : SizeOfDimension(input1, dims1 - i - 1);
     const int d2 = i >= dims2 ? 1 : SizeOfDimension(input2, dims2 - i - 1);
@@ -494,8 +501,7 @@ TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
   const int dims2 = NumDimensions(input2);
   const int dims3 = NumDimensions(input3);
   const int out_dims = std::max(std::max(dims1, dims2), dims3);
-  std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> shape(
-      TfLiteIntArrayCreate(out_dims), TfLiteIntArrayFree);
+  IntArrayUniquePtr shape(TfLiteIntArrayCreate(out_dims));
   for (int i = 0; i < out_dims; ++i) {
     const int d1 = i >= dims1 ? 1 : SizeOfDimension(input1, dims1 - i - 1);
     const int d2 = i >= dims2 ? 1 : SizeOfDimension(input2, dims2 - i - 1);
@@ -572,12 +578,11 @@ int TfLiteTypeGetSize(TfLiteType type) {
 bool IsMobilePlatform() {
 #if defined(ANDROID) || defined(__ANDROID__)
   return true;
-#elif defined(__APPLE__)
-#if TARGET_IPHONE_SIMULATOR || TARGET_OS_IPHONE
+#elif defined(__APPLE__) && (TARGET_IPHONE_SIMULATOR || TARGET_OS_IPHONE)
   return true;
-#endif
-#endif
+#else
   return false;
+#endif
 }
 
 bool HasUnspecifiedDimension(const TfLiteTensor* tensor) {

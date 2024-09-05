@@ -26,15 +26,16 @@ namespace grappler {
 // CUDA: convert to float16 on GPU
 // BF16: convert to bfloat16 on CPU
 // CPU: emulate float16 on CPU without changing operator kernel
-enum class AutoMixedPrecisionMode { CUDA, BF16, CPU };
+// FP16_CPU : convert to float16 on CPU
+enum class AutoMixedPrecisionMode { CUDA, BF16, CPU, FP16_CPU };
 
 // Convert data types to float16 or bfloat16 where appropriate to improve
 // performance on GPUs or CPUs.
 class AutoMixedPrecision : public GraphOptimizer {
  public:
-  // If 'mode' is CUDA, converts nodes to float16 on Nvidia GPUs. If BF16,
-  // converts nodes to bfloat16 on CPUs in order to take advantage of oneDNN
-  // performance improvements with bfloat16.
+  // If 'mode' is CUDA, converts nodes to float16 on Nvidia GPUs. If BF16 or
+  // FP16_CPU, converts nodes to bfloat16/fp16 on CPUs in order to take
+  // advantage of oneDNN performance improvements with bfloat16/fp16.
   explicit AutoMixedPrecision(
       AutoMixedPrecisionMode mode = AutoMixedPrecisionMode::CUDA)
       : mode_(mode) {}
@@ -49,6 +50,9 @@ class AutoMixedPrecision : public GraphOptimizer {
         return "auto_mixed_precision_onednn_bfloat16";
       case AutoMixedPrecisionMode::CPU:
         return "auto_mixed_precision_cpu";
+      case AutoMixedPrecisionMode::FP16_CPU:
+        // Note: using different name than GPU for ease of debugging.
+        return "auto_mixed_precision_onednn_float16";
       default:
         LOG(FATAL) << "Invalid value for AutoMixedPrecisionMode: "  // Crash Ok
                    << static_cast<int>(mode_);

@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function_testlib.h"
+#include "tensorflow/core/common_runtime/int32_fulltype.h"
 #include "tensorflow/core/common_runtime/placer.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -98,8 +99,8 @@ class PartitioningUtilsTest : public ::testing::Test {
   // where each node has type `dtype` and arg/ret nodes have
   // indices `arg_index` and `ret_index`.
   void SubGraph(Graph* subgraph, DataType dtype,
-                gtl::ArraySlice<int> arg_indices,
-                gtl::ArraySlice<int> ret_indices) {
+                absl::Span<const int> arg_indices,
+                absl::Span<const int> ret_indices) {
     Scope s = Scope::NewRootScope();
     Scope s1 = s.WithDevice("/job:a/replica:0/task:0/device:CPU:0");
     CHECK_EQ(arg_indices.size(), ret_indices.size());
@@ -345,6 +346,10 @@ TEST_F(PartitioningUtilsTest, UpdateArgsAndRetsIntsNotOnDevice) {
   std::vector<int> ret_indices;
   std::vector<AllocatorAttributes> arg_alloc_attrs;
   std::vector<AllocatorAttributes> ret_alloc_attrs;
+
+  Int32FulltypePass int32_fulltype;
+  TF_ASSERT_OK(
+      int32_fulltype.ProcessGraph(graph.get(), /*ints_on_device=*/false));
 
   Status status = UpdateArgAndRetvalMetadata(
       graph.get(), &arg_indices, &ret_indices, &arg_alloc_attrs,

@@ -50,6 +50,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt64:
     case kTfLiteInt32:
     case kTfLiteString:
+    case kTfLiteBool:
       break;
     default:
       TF_LITE_KERNEL_LOG(context,
@@ -156,6 +157,9 @@ TfLiteStatus EvalGatherNd(TfLiteContext* context, const TfLiteTensor* params,
       break;
     case kTfLiteString:
       status = GatherNdString<IndicesT>(params, indices, output);
+      break;
+    case kTfLiteBool:
+      status = GatherNd<bool, IndicesT>(params, indices, output);
       break;
     default:
       TF_LITE_KERNEL_LOG(context,

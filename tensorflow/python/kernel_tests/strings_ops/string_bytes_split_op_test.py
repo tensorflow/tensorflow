@@ -69,7 +69,7 @@ class StringsToBytesOpTest(test_util.TensorFlowTestCase,
       return ragged_string_ops.string_bytes_split(v)
 
     with self.assertRaisesRegex(TypeError,
-                                'Binding inputs to tf.function `f` failed'):
+                                'Binding inputs to tf.function failed'):
       f(['foo'])
 
 

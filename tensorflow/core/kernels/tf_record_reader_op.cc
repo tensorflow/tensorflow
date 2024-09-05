@@ -16,6 +16,8 @@ limitations under the License.
 // See docs in ../ops/io_ops.cc.
 
 #include <memory>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/reader_base.h"
 #include "tensorflow/core/framework/reader_op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -41,26 +43,26 @@ class TFRecordReader : public ReaderBase {
     io::RecordReaderOptions options =
         io::RecordReaderOptions::CreateRecordReaderOptions(compression_type_);
     reader_.reset(new io::RecordReader(file_.get(), options));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status OnWorkFinishedLocked() override {
     reader_.reset(nullptr);
     file_.reset(nullptr);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status ReadLocked(tstring* key, tstring* value, bool* produced,
                     bool* at_end) override {
     *key = strings::StrCat(current_work(), ":", offset_);
     Status status = reader_->ReadRecord(&offset_, value);
-    if (errors::IsOutOfRange(status)) {
+    if (absl::IsOutOfRange(status)) {
       *at_end = true;
-      return OkStatus();
+      return absl::OkStatus();
     }
     if (!status.ok()) return status;
     *produced = true;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status ResetLocked() override {

@@ -52,13 +52,14 @@ class FunctionalizeCondTest : public ::testing::Test {
     return fc_->state_map_.CondStateToString(id);
   }
 
-  StatusOr<StateMap::CondId> JoinCondStatesNonMerge(StateMap::CondId src,
-                                                    StateMap::CondId dst) {
+  absl::StatusOr<StateMap::CondId> JoinCondStatesNonMerge(
+      StateMap::CondId src, StateMap::CondId dst) {
     return fc_->JoinCondStatesNonMerge(src, dst);
   }
 
-  StatusOr<StateMap::CondId> JoinCondStatesMerge(Node* n, StateMap::CondId src,
-                                                 StateMap::CondId dst) {
+  absl::StatusOr<StateMap::CondId> JoinCondStatesMerge(Node* n,
+                                                       StateMap::CondId src,
+                                                       StateMap::CondId dst) {
     return fc_->JoinCondStatesMerge(n, src, dst);
   }
 

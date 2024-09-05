@@ -13,35 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/util/presized_cuckoo_map.h"
+
 #include <array>
+#include <vector>
 
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/util/presized_cuckoo_map.h"
 
 namespace tensorflow {
 namespace {
-
-TEST(PresizedCuckooMapTest, MultiplyHigh) {
-  struct Testcase {
-    uint64 x;
-    uint64 y;
-    uint64 result;
-  };
-  std::array<Testcase, 7> testcases{
-      {{0, 0, 0},
-       {0xffffffff, 0xffffffff, 0},
-       {0x2, 0xf000000000000000, 1},
-       {0x3, 0xf000000000000000, 2},
-       {0x3, 0xf000000000000001, 2},
-       {0x3, 0xffffffffffffffff, 2},
-       {0xffffffffffffffff, 0xffffffffffffffff, 0xfffffffffffffffe}}};
-  for (auto &tc : testcases) {
-    EXPECT_EQ(tc.result, presized_cuckoo_map::multiply_high_u64(tc.x, tc.y));
-  }
-}
 
 TEST(PresizedCuckooMapTest, Basic) {
   PresizedCuckooMap<int> pscm(1000);

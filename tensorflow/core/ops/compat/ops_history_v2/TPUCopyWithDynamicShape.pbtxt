@@ -1,0 +1,28 @@
+op {
+  name: "TPUCopyWithDynamicShape"
+  input_arg {
+    name: "tensors"
+    type_list_attr: "T"
+  }
+  input_arg {
+    name: "unpadded_sizes"
+    type: DT_INT32
+    number_attr: "N"
+  }
+  output_arg {
+    name: "tpu_tensors"
+    type_list_attr: "T"
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "T"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}

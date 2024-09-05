@@ -17,6 +17,7 @@
 
 #include <gtest/gtest.h>
 #include "fuzztest/fuzztest.h"
+#include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/security/fuzzing/cc/core/framework/datatype_domains.h"
@@ -28,13 +29,13 @@ namespace tensorflow {
 namespace fuzzing {
 
 // Creates FuzzIdentity class that wraps a single operation node session.
-BINARY_INPUT_OP_FUZZER(DT_UINT8, Add);
+BINARY_INPUT_OP_FUZZER(DT_UINT8, DT_UINT8, Add);
 // Setup up fuzzing test.
 FUZZ_TEST_F(FuzzAdd, Fuzz)
-    .WithDomains(AnyValidTensor(AnyValidTensorShape(3, 0, 5),
-                                AnyValidDataType()),
-                 AnyValidTensor(AnyValidTensorShape(3, 0, 5),
-                                AnyValidDataType()));
+    .WithDomains(AnyValidNumericTensor(AnyValidTensorShape(3, 0, 5),
+                                       AnyValidDataType()),
+                 AnyValidNumericTensor(AnyValidTensorShape(3, 0, 5),
+                                       AnyValidDataType()));
 
 }  // end namespace fuzzing
 }  // end namespace tensorflow

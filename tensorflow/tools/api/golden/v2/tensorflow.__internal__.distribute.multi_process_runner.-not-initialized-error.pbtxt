@@ -9,4 +9,7 @@ tf_class {
   member_method {
     name: "__init__"
   }
+  member_method {
+    name: "add_note"
+  }
 }

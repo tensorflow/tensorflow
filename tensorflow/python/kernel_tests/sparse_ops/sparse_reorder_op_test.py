@@ -19,10 +19,12 @@ import numpy as np
 
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import sparse_ops
 import tensorflow.python.ops.sparse_grad  # pylint: disable=unused-import
@@ -165,6 +167,19 @@ class SparseReorderTest(test.TestCase, parameterized.TestCase):
     sp_output = sparse_ops.sparse_reorder(sp_input)
     self.assertAllEqual((4096, 4096, 4096, 4096, 4096, 4096),
                         sp_output.get_shape())
+
+  def testInvalidSparseInput(self):
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "Number of elements .* do not match",
+    ):
+      self.evaluate(
+          gen_sparse_ops.sparse_reorder(
+              input_indices=[[0, 0, 0]],
+              input_values=[0, 1, 2],
+              input_shape=[3, 3],
+          )
+      )
 
 
 if __name__ == "__main__":

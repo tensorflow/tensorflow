@@ -20,12 +20,18 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/platform/errors.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "tensorflow/core/platform/status.h"
+#include "tsl/profiler/lib/traceme.h"
+#include "tsl/profiler/lib/traceme_encode.h"
+#include "tsl/protobuf/coordination_service.pb.h"
 
 namespace tensorflow {
 
@@ -33,15 +39,15 @@ std::pair<Status, bool> BarrierProxy::Wait() {
   mutex_lock l(mu_);
   if (status_set_) {
     return std::make_pair(
-        errors::FailedPrecondition(
-            "The barrier has already passed or timed out. key=", key_),
+        absl::FailedPreconditionError(absl::StrCat(
+            "The barrier has already passed or timed out. key=", key_)),
         false);
   }
   if (num_entered_ >= num_local_threads_) {
-    return std::make_pair(
-        errors::FailedPrecondition("Wait() called too many (>",
-                                   num_local_threads_, ") times. key=", key_),
-        false);
+    return std::make_pair(absl::FailedPreconditionError(absl::StrCat(
+                              "Wait() called too many (>", num_local_threads_,
+                              ") times. key=", key_)),
+                          false);
   }
   // Now that `Wait` has passed pre-condition check, the thread has entered the
   // barrier.
@@ -53,12 +59,12 @@ std::pair<Status, bool> BarrierProxy::Wait() {
   if (num_entered_ == num_local_threads_) {
     // Now that all threads are waiting, starts waiting at the global barrier.
     if (tasks_.size() != 1) {
-      profiler::TraceMe traceme("BarrierProxy::Wait::WaitAtBarrier");
+      tsl::profiler::TraceMe traceme("BarrierProxy::Wait::WaitAtBarrier");
       // TODO(b/198475014) the barrier status will be stored in memory forever.
       // We should have a mechanism to remove it after it has been passed.
       status_ = agent_->WaitAtBarrier(key_, timeout_, tasks_);
     } else {
-      status_ = OkStatus();
+      status_ = absl::OkStatus();
     }
     status_set_ = true;
     cv_.notify_all();
@@ -71,7 +77,8 @@ std::pair<Status, bool> BarrierProxy::Wait() {
         // cancelled for any reason.
         agent_->CancelBarrier(key_).IgnoreError();
       }
-      status_ = errors::DeadlineExceeded("BarrierProxy timeout: key=", key_);
+      status_ = absl::DeadlineExceededError(
+          absl::StrCat("BarrierProxy timeout: key=", key_));
       status_set_ = true;
       cv_.notify_all();
     }
@@ -95,14 +102,15 @@ Status BarrierProxyManager::Wait(tsl::CoordinationServiceAgent* agent,
                                  int num_local_threads, absl::string_view key,
                                  absl::Duration timeout) {
   // Only one device, no need to wait.
-  if (tasks.size() == 1 && num_local_threads <= 1) return OkStatus();
+  if (tasks.size() == 1 && num_local_threads <= 1) return absl::OkStatus();
 
-  profiler::TraceMe traceme([&] {
-    return profiler::TraceMeEncode("BarrierProxyManager::Wait",
-                                   {
-                                       {"num_tasks", tasks.size()},
-                                       {"num_local_threads", num_local_threads},
-                                   });
+  tsl::profiler::TraceMe traceme([&] {
+    return tsl::profiler::TraceMeEncode(
+        "BarrierProxyManager::Wait",
+        {
+            {"num_tasks", tasks.size()},
+            {"num_local_threads", num_local_threads},
+        });
   });
 
   std::shared_ptr<BarrierProxy> barrier;

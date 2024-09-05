@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "RFFT"
   input_arg {
     name: "input"

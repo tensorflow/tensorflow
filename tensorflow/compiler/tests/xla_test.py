@@ -14,6 +14,7 @@
 # ==============================================================================
 """Definition of XLA test case."""
 
+from collections.abc import Iterator
 import contextlib
 import os
 import random
@@ -105,7 +106,7 @@ class XLATestCase(test.TestCase):
       context.context().enable_xla_devices()
 
     # Check if the mlir bridge has been explicitly enabled or disabled. If
-    # is_mlir_bridge_enabled() returns None, the user did not explictly enable
+    # is_mlir_bridge_enabled() returns None, the user did not explicitly enable
     # or disable the bridge so do not update enable_mlir_bridge.
     if test_util.is_mlir_bridge_enabled():
       context.context().enable_mlir_bridge = True
@@ -237,7 +238,7 @@ class XLATestCase(test.TestCase):
     logging.info('End test case: %s', self._testMethodName)
 
   @contextlib.contextmanager
-  def session(self):
+  def session(self) -> Iterator[session.Session]:
     """Custom implementation of session() for XLA tests.
 
     We override the standard Tensorflow session() since it is too

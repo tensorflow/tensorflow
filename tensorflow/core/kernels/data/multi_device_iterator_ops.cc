@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include <utility>
 
+#include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
@@ -40,6 +41,8 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tsl/profiler/lib/traceme.h"
+#include "tsl/profiler/lib/traceme_encode.h"
 
 namespace tensorflow {
 namespace data {
@@ -127,12 +130,17 @@ class MultiDeviceIterator : public ResourceBase {
     multi_device_buffer_ = std::make_unique<MultiDeviceBuffer>(
         devices_.size(), max_buffer_size, incarnation_id_, std::move(iterator),
         this);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status GetNextFromShard(OpKernelContext* ctx, int shard_num,
                           int64_t incarnation_id,
                           MultiDeviceIteratorCallback callback) {
+    tsl::profiler::TraceMe traceme([&] {
+      return tsl::profiler::TraceMeEncode(
+          absl::StrCat("GetNextFromShard", shard_num),
+          {{"shard_num", shard_num}});
+    });
     tf_shared_lock l(mu_);
     IteratorContext::Params params(ctx);
     params.flr = flr_;
@@ -144,7 +152,7 @@ class MultiDeviceIterator : public ResourceBase {
     IteratorContext iter_ctx(std::move(params));
     multi_device_buffer_->GetNextFromShard(&iter_ctx, shard_num, incarnation_id,
                                            std::move(callback));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   const DataTypeVector& output_types() const { return output_types_; }
@@ -547,7 +555,7 @@ class MultiDeviceIteratorHandleOp : public OpKernel {
                                        output_shapes_, devices_,
                                        std::move(flib_def), std::move(pflr),
                                        flr, std::move(function_handle_cache));
-                                   return OkStatus();
+                                   return absl::OkStatus();
                                  }));
           Status s = VerifyResource(resource);
           if (TF_PREDICT_FALSE(!s.ok())) {
@@ -575,7 +583,7 @@ class MultiDeviceIteratorHandleOp : public OpKernel {
         VerifyTypesMatch(output_types_, resource->output_types()));
     TF_RETURN_IF_ERROR(
         VerifyShapesCompatible(output_shapes_, resource->output_shapes()));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   mutex mu_;
@@ -620,7 +628,7 @@ class AnonymousMultiDeviceIteratorOp
         new MultiDeviceIterator(ctx->env(), output_dtypes_, output_shapes_,
                                 devices_, std::move(flib_def), std::move(pflr),
                                 lib, std::move(function_handle_cache));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   std::vector<string> devices_;

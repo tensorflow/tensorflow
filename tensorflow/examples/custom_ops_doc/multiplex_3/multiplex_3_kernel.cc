@@ -16,10 +16,17 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 
 // Please use the appropriate namespace for your project
 namespace tensorflow {
@@ -110,7 +117,7 @@ class MultiplexSparseOp : public OpKernel {
         cur_row = b_indices(b_index, 0);
         is_b_at_cur = true;
       }
-      // Deterimine if `cond` has a value at the current location
+      // Determine if `cond` has a value at the current location
       bool cond_flag = false;
       while (cond_index < cond_elements) {
         const int64_t cond_row = cond_indices(cond_index, 0);
@@ -164,7 +171,7 @@ class MultiplexSparseOp : public OpKernel {
     }
     // Expand the shape of the output sparse tensor so that it is as large
     // as the shape of the largest input in each dimension.
-    // An alternative behavoir would be to require that the shapes be the
+    // An alternative behavior would be to require that the shapes be the
     // same and implement error checking that all the corresponding values
     // in the shape tensors are the same (e.g.
     // `cond_shape(i) == a_shape(i)` and `a_shape(i) == b_shape(i)` in

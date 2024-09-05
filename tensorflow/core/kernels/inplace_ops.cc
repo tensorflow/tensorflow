@@ -37,7 +37,7 @@ Status DoParallelConcatUpdate(const Device& d, const Tensor& value, int32_t loc,
   auto nrows = Toutput.dimension(0);
   auto r = (loc % nrows + nrows) % nrows;  // Guard index range.
   Toutput.template chip<0>(r).device(d) = Tvalue.template chip<0>(0);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <>
@@ -291,10 +291,10 @@ Status DoInplace(const CPUDevice& device, InplaceOpType op, const Tensor& i,
   if (op == I_UPDATE) {
     if (v.dtype() == DT_STRING) {
       DoInplaceStringUpdateOp(device, i, v, y);
-      return OkStatus();
+      return absl::OkStatus();
     } else if (v.dtype() == DT_BOOL) {
       DoInplaceOp<bool>(device, op, i, v, y);
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
   switch (v.dtype()) {
@@ -308,7 +308,7 @@ Status DoInplace(const CPUDevice& device, InplaceOpType op, const Tensor& i,
       return errors::InvalidArgument("Unsupported data type: ",
                                      DataTypeString(v.dtype()));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // end namespace functor
@@ -378,7 +378,7 @@ Status DoCopy(const CPUDevice& device, const Tensor& x, Tensor* y) {
       return errors::InvalidArgument("Unsupported data type: ",
                                      DataTypeString(x.dtype()));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // end namespace functor
@@ -430,21 +430,16 @@ REGISTER_KERNEL_BUILDER(Name("DeepCopy").Device(DEVICE_CPU), CopyOp<CPUDevice>);
                               .TypeConstraint<type>("dtype"), \
                           EmptyOp<dev##Device, type>)
 
-REGISTER_EMPTY(float, CPU)
-REGISTER_EMPTY(bfloat16, CPU)
-REGISTER_EMPTY(double, CPU)
-REGISTER_EMPTY(Eigen::half, CPU)
-REGISTER_EMPTY(tstring, CPU)
-REGISTER_EMPTY(int32, CPU)
-REGISTER_EMPTY(int64_t, CPU)
-REGISTER_EMPTY(bool, CPU)
-REGISTER_EMPTY(uint8, CPU)
+#define REGISTER(TYPE) REGISTER_EMPTY(TYPE, CPU);
+TF_CALL_POD_STRING_TYPES(REGISTER);
+#undef REGISTER
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 typedef Eigen::GpuDevice GPUDevice;
 
 #define REGISTER(TYPE)                                                    \
+  REGISTER_EMPTY(TYPE, GPU);                                              \
   REGISTER_KERNEL_BUILDER(                                                \
       Name("InplaceUpdate").Device(DEVICE_GPU).TypeConstraint<TYPE>("T"), \
       InplaceOp<GPUDevice, functor::I_UPDATE>);                           \
@@ -461,18 +456,14 @@ typedef Eigen::GpuDevice GPUDevice;
 REGISTER_KERNEL_BUILDER(
     Name("InplaceUpdate").Device(DEVICE_GPU).TypeConstraint<bool>("T"),
     InplaceOp<GPUDevice, functor::I_UPDATE>);
-REGISTER(float);
-REGISTER(double);
-REGISTER(Eigen::half);
-REGISTER(Eigen::bfloat16);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER);
+REGISTER(int8_t);
+REGISTER(uint8_t);
 REGISTER(int64_t);
+REGISTER(uint64_t);
 
-REGISTER_EMPTY(float, GPU);
-REGISTER_EMPTY(double, GPU);
-REGISTER_EMPTY(Eigen::half, GPU);
-REGISTER_EMPTY(Eigen::bfloat16, GPU);
-REGISTER_EMPTY(int64_t, GPU);
 REGISTER_EMPTY(int32, GPU);
+#undef REGISTER
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

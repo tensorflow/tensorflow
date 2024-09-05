@@ -18,13 +18,15 @@ This module contains classes and functions for reading the SavedModel
 fingerprint.
 """
 
+from typing import Any
+
 from tensorflow.core.protobuf import fingerprint_pb2
 from tensorflow.python.saved_model.pywrap_saved_model import fingerprinting as fingerprinting_pywrap
 from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export("saved_model.experimental.Fingerprint", v1=[])
-class Fingerprint(object):
+class Fingerprint:
   """The SavedModel fingerprint.
 
   Each attribute of this class is named after a field name in the
@@ -42,12 +44,12 @@ class Fingerprint(object):
 
   def __init__(
       self,
-      saved_model_checksum=None,
-      graph_def_program_hash=None,
-      signature_def_hash=None,
-      saved_object_graph_hash=None,
-      checkpoint_hash=None,
-      version=None,
+      saved_model_checksum: int = None,
+      graph_def_program_hash: int = None,
+      signature_def_hash: int = None,
+      saved_object_graph_hash: int = None,
+      checkpoint_hash: int = None,
+      version: int = None,
   ):
     """Initializes the instance based on values in the SavedModel fingerprint.
 
@@ -67,7 +69,7 @@ class Fingerprint(object):
     self.version = version
 
   @classmethod
-  def from_proto(cls, proto):
+  def from_proto(cls, proto: fingerprint_pb2.FingerprintDef) -> "Fingerprint":
     """Constructs Fingerprint object from protocol buffer message."""
     if isinstance(proto, bytes):
       proto = fingerprint_pb2.FingerprintDef.FromString(proto)
@@ -84,7 +86,7 @@ class Fingerprint(object):
           f"Given proto could not be deserialized as fingerprint."
           f"{e}") from None
 
-  def __eq__(self, other):
+  def __eq__(self, other: Any) -> bool:
     if (isinstance(other, Fingerprint) or
         isinstance(other, fingerprint_pb2.FingerprintDef)):
       try:
@@ -98,7 +100,24 @@ class Fingerprint(object):
         pass
     return False
 
-  def singleprint(self):
+  def __str__(self) -> str:
+    return "\n".join([
+        "SavedModel Fingerprint",
+        f"  saved_model_checksum: {self.saved_model_checksum}",
+        f"  graph_def_program_hash: {self.graph_def_program_hash}",
+        f"  signature_def_hash: {self.signature_def_hash}",
+        f"  saved_object_graph_hash: {self.saved_object_graph_hash}",
+        f"  checkpoint_hash: {self.checkpoint_hash}"
+    ])
+
+  def __repr__(self) -> str:
+    return (f"Fingerprint({self.saved_model_checksum}, "
+            f"{self.graph_def_program_hash}, "
+            f"{self.signature_def_hash}, "
+            f"{self.saved_object_graph_hash}, "
+            f"{self.checkpoint_hash})")
+
+  def singleprint(self) -> fingerprinting_pywrap.Singleprint:
     """Canonical fingerprinting ID for a SavedModel.
 
     Uniquely identifies a SavedModel based on the regularized fingerprint
@@ -107,7 +126,7 @@ class Fingerprint(object):
 
     Returns:
       The string concatenation of `graph_def_program_hash`,
-      `signature_def_hash`, and `saved_object_graph_hash`
+      `signature_def_hash`, `saved_object_graph_hash`, and `checkpoint_hash`
       fingerprint attributes (separated by '/').
 
     Raises:
@@ -130,7 +149,7 @@ class Fingerprint(object):
 
 
 @tf_export("saved_model.experimental.read_fingerprint", v1=[])
-def read_fingerprint(export_dir):
+def read_fingerprint(export_dir: str) -> Fingerprint:
   """Reads the fingerprint of a SavedModel in `export_dir`.
 
   Returns a `tf.saved_model.experimental.Fingerprint` object that contains
@@ -151,7 +170,9 @@ def read_fingerprint(export_dir):
   """
   try:
     fingerprint = fingerprinting_pywrap.ReadSavedModelFingerprint(export_dir)
-  except fingerprinting_pywrap.FingerprintException as e:
+  except fingerprinting_pywrap.FileNotFoundException as e:
     raise FileNotFoundError(f"SavedModel Fingerprint Error: {e}") from None  # pylint: disable=raise-missing-from
+  except fingerprinting_pywrap.FingerprintException as e:
+    raise RuntimeError(f"SavedModel Fingerprint Error: {e}") from None  # pylint: disable=raise-missing-from
   return Fingerprint.from_proto(
       fingerprint_pb2.FingerprintDef().FromString(fingerprint))

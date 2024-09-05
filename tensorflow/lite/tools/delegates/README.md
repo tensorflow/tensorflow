@@ -151,6 +151,10 @@ delegate library is built with "-DCL_DELEGATE_NO_GL" macro.
     this parameter. To disable this implicit application, set the value to
     `false` explicitly.
 
+*   `xnnpack_force_fp16`: `bool` (default=false) \
+    Enforce float16 inference. Internaly, set flag
+    `TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16` on XNNPackDelegateOptions.
+
 ### CoreML delegate provider
 
 *   `use_coreml`: `bool` (default=false) \
@@ -174,7 +178,7 @@ delegate library is built with "-DCL_DELEGATE_NO_GL" macro.
 The stable delegate provider provides a `TfLiteOpaqueDelegate` object pointer
 and its corresponding deleter by loading a dynamic library that encapsulates the
 actual TFLite delegate implementation in a
-[`TfLiteStableDelegate`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/core/experimental/acceleration/configuration/c/stable_delegate.h)
+[`TfLiteStableDelegate`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/core/acceleration/configuration/c/stable_delegate.h)
 struct instance.
 
 While the structure of the stable delegate provider is similar to the external
@@ -194,7 +198,7 @@ different.
 The stable delegates and the external delegates use different APIs for
 diagnosing errors, creating and destroying the delegates. For more details of
 the concrete API differences, please check
-[stable_delegate.h](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/core/experimental/acceleration/configuration/c/stable_delegate.h)
+[stable_delegate.h](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/core/acceleration/configuration/c/stable_delegate.h)
 and
 [external_delegate.h](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/external/external_delegate.h).
 

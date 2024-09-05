@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/cc/framework/cc_op_gen_util.h"
 
+#include <cmath>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -29,13 +30,14 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace cc_op {
 
-tsl::StatusOr<ApiDefMap> LoadOpsAndApiDefs(
+absl::StatusOr<ApiDefMap> LoadOpsAndApiDefs(
     OpList& ops, bool include_internal,
     const std::vector<string>& api_def_dirs) {
   OpRegistry::Global()->Export(include_internal, &ops);
@@ -206,7 +208,12 @@ string PrintAttrValue(const string& op, const AttrValue& attr_value) {
       return strings::StrCat(attr_value.i());
     case AttrValue::kF: {
       const float f = attr_value.f();
-      return strings::StrCat(attr_value.f(), floorf(f) == f ? ".0" : "", "f");
+      if (std::isinf(f)) {
+        return strings::StrCat(f < 0.0f ? "-" : "+",
+                               "std::numeric_limits<float>::infinity()");
+      } else {
+        return strings::StrCat(attr_value.f(), floorf(f) == f ? ".0" : "", "f");
+      }
     }
     case AttrValue::kB:
       return attr_value.b() ? "true" : "false";

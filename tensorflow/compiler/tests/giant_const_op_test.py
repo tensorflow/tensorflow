@@ -22,10 +22,10 @@ from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.platform import flags
-from tensorflow.python.tpu import tpu_strategy_util
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string("tpu", "", "Name of TPU to connect to.")
@@ -45,7 +45,7 @@ def get_tpu_cluster_resolver():
 def get_tpu_strategy():
   resolver = get_tpu_cluster_resolver()
   remote.connect_to_cluster(resolver)
-  tpu_strategy_util.initialize_tpu_system(resolver)
+  tpu_cluster_resolver.initialize_tpu_system(resolver)
   return tpu_lib.TPUStrategyV2(resolver)
 
 
@@ -56,21 +56,13 @@ def get_tpu_strategy():
 # tensors.
 class GiantConstOp(test.TestCase):
 
-  def setUp(self):
-    super(GiantConstOp, self).setUp()
-    # Make sure TF_XLA_FLAGS is not already set to avoid dropping the existing
-    # value silently.
-    assert "TF_XLA_FLAGS" not in os.environ
-
-    # Disable tfxla constant folding that always creates full Tensors and will
-    # fail for giant tensors.
-    os.environ["TF_XLA_FLAGS"] = "--tf_xla_disable_constant_folding=true"
-
   # Verifies that graphs containing giant const tensors that won't fit in memory
   # are compiled correctly to HLO.
   def testGiantConst(self):
+    # Disabling Mlir bridge since using the tf2xla implementation of
+    # StridedSliceop which would get executed in this GiantConst test.
+    config.disable_mlir_bridge()
     strategy = get_tpu_strategy()
-
     types = {
         dtypes.bool,
         dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64,
@@ -106,4 +98,12 @@ class GiantConstOp(test.TestCase):
         self.assertAllEqual(output, expected)
 
 if __name__ == "__main__":
+  # Make sure TF_XLA_FLAGS is not already set to avoid dropping the existing
+  # value silently.
+  assert "TF_XLA_FLAGS" not in os.environ
+
+  # Disable tfxla constant folding that always creates full Tensors and will
+  # fail for giant tensors.
+  os.environ["TF_XLA_FLAGS"] = "--tf_xla_disable_constant_folding=true"
+
   test.main()

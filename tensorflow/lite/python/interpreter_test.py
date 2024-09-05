@@ -205,7 +205,7 @@ class InterpreterTest(test_util.TensorFlowTestCase):
     input_details = interpreter.get_input_details()
     self.assertEqual(2, len(input_details))
     self.assertEqual('input', input_details[0]['name'])
-    self.assertEqual(np.string_, input_details[0]['dtype'])
+    self.assertEqual(np.bytes_, input_details[0]['dtype'])
     self.assertTrue(([10] == input_details[0]['shape']).all())
     self.assertEqual((0.0, 0), input_details[0]['quantization'])
     self.assertQuantizationParamsEqual(
@@ -220,7 +220,7 @@ class InterpreterTest(test_util.TensorFlowTestCase):
     output_details = interpreter.get_output_details()
     self.assertEqual(1, len(output_details))
     self.assertEqual('output', output_details[0]['name'])
-    self.assertEqual(np.string_, output_details[0]['dtype'])
+    self.assertEqual(np.bytes_, output_details[0]['dtype'])
     self.assertTrue(([3] == output_details[0]['shape']).all())
     self.assertEqual((0.0, 0), output_details[0]['quantization'])
     self.assertQuantizationParamsEqual(
@@ -308,10 +308,16 @@ class InterpreterTest(test_util.TensorFlowTestCase):
 
 class InterpreterTestErrorPropagation(test_util.TensorFlowTestCase):
 
+  # Model must have at least 7 bytes to hold model identifier
+  def testTooShortModelContent(self):
+    with self.assertRaisesRegex(ValueError,
+                                'The model is not a valid Flatbuffer buffer'):
+      interpreter_wrapper.Interpreter(model_content=b'short')
+
   def testInvalidModelContent(self):
     with self.assertRaisesRegex(ValueError,
-                                'Model provided has model identifier \''):
-      interpreter_wrapper.Interpreter(model_content=b'garbage')
+                                'The model is not a valid Flatbuffer buffer'):
+      interpreter_wrapper.Interpreter(model_content=b'wrong_identifier')
 
   def testInvalidModelFile(self):
     with self.assertRaisesRegex(ValueError,
@@ -416,6 +422,36 @@ class InterpreterTensorAccessorTest(test_util.TensorFlowTestCase):
     in0safe = self.interpreter.tensor(self.input0)
     _ = self.interpreter.allocate_tensors()
     del in0safe  # make sure in0Safe is held but lint doesn't complain
+
+
+class InterpreterNodeAccessTest(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+    super().setUp()
+    self.interpreter = interpreter_wrapper.Interpreter(
+        model_path=resource_loader.get_path_to_datafile(
+            'testdata/permute_float.tflite'
+        )
+    )
+    self.interpreter.allocate_tensors()
+    self.input0 = self.interpreter.get_input_details()[0]['index']
+    self.initial_data = np.array([[-1.0, -2.0, -3.0, -4.0]], np.float32)
+
+  def testValidNode(self):
+    """Check that tensor returns a reference."""
+    ops_details = self.interpreter._get_ops_details()
+    self.assertEqual(ops_details[0]['index'], 0)
+    self.assertEqual(ops_details[0]['op_name'], 'FULLY_CONNECTED')
+    self.assertAllEqual(ops_details[0]['inputs'], [0, 1, -1])
+    self.assertAllEqual(ops_details[0]['outputs'], [2])
+    self.assertAllEqual(
+        ops_details[0]['operand_types'], [np.float32, np.float32]
+    )
+    self.assertAllEqual(ops_details[0]['result_types'], [np.float32])
+
+  def testInvalidNode(self):
+    with self.assertRaisesRegex(ValueError, 'Invalid node index'):
+      self.interpreter._get_op_details(4)
 
 
 class InterpreterDelegateTest(test_util.TensorFlowTestCase):

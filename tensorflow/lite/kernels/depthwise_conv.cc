@@ -405,9 +405,6 @@ TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
 
   KernelType effective_kernel_type = kernel_type;
 
-  if (filter->type == kTfLiteInt4) {
-    effective_kernel_type = kReference;
-  }
   const int8_t* filter_data;
   const size_t bytes_unpacked = filter->bytes * 2;
   auto unpacked_filter_data = std::make_unique<int8_t[]>(bytes_unpacked);

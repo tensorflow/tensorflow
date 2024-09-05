@@ -16,15 +16,19 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_process_state.h"
 
 #include <cstring>
+#include <memory>
 #include <unordered_map>
 #include <vector>
 
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
-#include "tensorflow/compiler/xla/stream_executor/device_id_utils.h"
+#include "xla/stream_executor/integrations/device_mem_allocator.h"
+#include "xla/tsl/framework/device_id_utils.h"
 #include "tensorflow/core/common_runtime/device/device_host_allocator.h"
 #include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/common_runtime/device/device_id_manager.h"
+#include "tensorflow/core/common_runtime/device/device_mem_allocator.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/device_id_utils.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_bfc_allocator.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_init.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_simple_allocator.h"
@@ -68,7 +72,7 @@ int PluggableDeviceProcessState::BusIdForPluggableDevice(
     TfDeviceId tf_device_id) {
   // Return the NUMA node associated with the PluggableDevice's StreamExecutor.
   se::Platform* platform = PluggableDeviceMachineManager(platform_name_);
-  se::StreamExecutor* se = se::DeviceIdUtil::ExecutorForTfDeviceId(
+  se::StreamExecutor* se = DeviceIdUtil::ExecutorForTfDeviceId(
                                DeviceType(device_type_), platform, tf_device_id)
                                .value();
   int numa_node = se->GetDeviceDescription().numa_node();
@@ -82,8 +86,8 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceAllocator(
   const string& allocator_type = options.allocator_type();
   se::Platform* platform = PluggableDeviceMachineManager(platform_name_);
   mutex_lock lock(mu_);
-  se::DeviceIdUtil::CheckValidTfDeviceId(DeviceType(device_type_), platform,
-                                         tf_device_id);
+  tsl::CheckValidTfDeviceId(DeviceType(device_type_),
+                            platform->VisibleDeviceCount(), tf_device_id);
 
   if (tf_device_id.value() >=
       static_cast<int64_t>(pluggable_device_allocators_.size())) {
@@ -110,12 +114,12 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceAllocator(
 
     bool use_unified_memory = options.per_process_gpu_memory_fraction() > 1.0 ||
                               options.experimental().use_unified_memory();
-    DeviceMemAllocator* sub_allocator =
-        new DeviceMemAllocator(se::DeviceIdUtil::ExecutorForPlatformDeviceId(
-                                   platform, platform_device_id)
-                                   .value(),
-                               platform_device_id, use_unified_memory,
-                               pluggable_device_visitors_[bus_id], {});
+    DeviceMemAllocator* sub_allocator = new DeviceMemAllocator(
+        platform->ExecutorForDevice(platform_device_id.value()).value(),
+        platform_device_id,
+        use_unified_memory ? stream_executor::MemoryType::kUnified
+                           : stream_executor::MemoryType::kDevice,
+        pluggable_device_visitors_[bus_id], {});
 
     Allocator* device_allocator = nullptr;
     auto cplatform = dynamic_cast<se::CPlatform*>(platform);
@@ -167,8 +171,8 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceHostAllocator(
   for (int i = 0; i < static_cast<int>(pluggable_device_allocators_.size());
        ++i) {
     if (pluggable_device_allocators_[i].allocator != nullptr) {
-      se = se::DeviceIdUtil::ExecutorForTfDeviceId(DeviceType(device_type_),
-                                                   platform, TfDeviceId(i))
+      se = DeviceIdUtil::ExecutorForTfDeviceId(DeviceType(device_type_),
+                                               platform, TfDeviceId(i))
                .value();
       break;
     }
@@ -192,8 +196,7 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceHostAllocator(
                                         1LL << 17 /*128GB max by default*/,
                                         &pluggable_device_host_mem_limit_in_mb);
     if (!status.ok()) {
-      LOG(ERROR) << "GetPluggableDeviceHostAllocator: "
-                 << status.error_message();
+      LOG(ERROR) << "GetPluggableDeviceHostAllocator: " << status.message();
     }
     int64_t pluggable_device_host_mem_limit =
         pluggable_device_host_mem_limit_in_mb << 20;

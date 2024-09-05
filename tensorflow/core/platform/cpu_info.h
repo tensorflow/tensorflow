@@ -21,13 +21,15 @@ limitations under the License.
 // TODO(ahentz): This is not strictly required here but, for historical
 // reasons, many people depend on cpu_info.h in order to use kLittleEndian.
 #include "tensorflow/core/platform/byte_order.h"
-#include "tensorflow/tsl/platform/cpu_info.h"
+#include "tsl/platform/cpu_info.h"
 
 namespace tensorflow {
 namespace port {
+using tsl::port::Aarch64CPU;
 using tsl::port::ADX;
 using tsl::port::AES;
 using tsl::port::AMX_BF16;
+using tsl::port::AMX_FP16;
 using tsl::port::AMX_INT8;
 using tsl::port::AMX_TILE;
 using tsl::port::AVX;
@@ -35,6 +37,7 @@ using tsl::port::AVX2;
 using tsl::port::AVX512_4FMAPS;
 using tsl::port::AVX512_4VNNIW;
 using tsl::port::AVX512_BF16;
+using tsl::port::AVX512_FP16;
 using tsl::port::AVX512_VNNI;
 using tsl::port::AVX512BW;
 using tsl::port::AVX512CD;
@@ -45,7 +48,9 @@ using tsl::port::AVX512IFMA;
 using tsl::port::AVX512PF;
 using tsl::port::AVX512VBMI;
 using tsl::port::AVX512VL;
+using tsl::port::AVX_NE_CONVERT;
 using tsl::port::AVX_VNNI;
+using tsl::port::AVX_VNNI_INT8;
 using tsl::port::BMI1;
 using tsl::port::BMI2;
 using tsl::port::CMOV;
@@ -80,6 +85,7 @@ using tsl::port::SSE3;
 using tsl::port::SSE4_1;
 using tsl::port::SSE4_2;
 using tsl::port::SSSE3;
+using tsl::port::TestAarch64CPU;
 using tsl::port::TestCPUFeature;
 
 }  // namespace port

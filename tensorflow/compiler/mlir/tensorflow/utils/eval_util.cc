@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/eval_util.h"
 
+#include <algorithm>
+#include <string>
+
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -50,7 +53,7 @@ static bool IsOk(const TF_Status* s) {
 
 static bool IsOk(const Status& s) {
   if (s.ok()) return true;
-  VLOG(2) << s.error_message();
+  VLOG(2) << s.message();
   return false;
 }
 
@@ -99,7 +102,7 @@ mlir::LogicalResult EvaluateOperation(
     RETURN_FAILURE_IF_ERROR(status);
   }
 
-  VLOG(1) << "Start to evaluate node: " << node_def->DebugString();
+  VLOG(1) << "Start to evaluate node: " << *node_def;
 
   // Adds inputs to the TF operation.
   for (const auto operand : operands) {

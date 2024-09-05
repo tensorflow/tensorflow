@@ -24,10 +24,10 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "tensorflow/compiler/xla/client/value_inference.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/client/value_inference.h"
+#include "xla/client/xla_builder.h"
+#include "xla/client/xla_computation.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/util/overflow.h"
@@ -84,12 +84,13 @@ TensorShape XlaOpKernelContext::InputShape(absl::string_view name) {
   return GetInputTensorByName(name).shape();
 }
 
-StatusOr<xla::Shape> XlaOpKernelContext::InputXlaShape(int index) {
-  return builder()->GetShape(Input(index));
+absl::StatusOr<xla::Shape> XlaOpKernelContext::InputXlaShape(int index) {
+  return InputExpression(index).GetXlaShape();
 }
 
-StatusOr<xla::Shape> XlaOpKernelContext::InputXlaShape(absl::string_view name) {
-  return builder()->GetShape(Input(name));
+absl::StatusOr<xla::Shape> XlaOpKernelContext::InputXlaShape(
+    absl::string_view name) {
+  return InputExpression(name).GetXlaShape();
 }
 
 DataType XlaOpKernelContext::input_type(int index) const {
@@ -150,8 +151,8 @@ Status XlaOpKernelContext::ConstantInput(int index,
                                constant_literal, mode);
 }
 
-static StatusOr<int> InputIndex(XlaOpKernelContext* context,
-                                absl::string_view name) {
+static absl::StatusOr<int> InputIndex(XlaOpKernelContext* context,
+                                      absl::string_view name) {
   int start, stop;
   TF_RETURN_IF_ERROR(context->op_kernel().InputRange(name, &start, &stop));
   if (stop != start + 1) {
@@ -196,23 +197,25 @@ Status XlaOpKernelContext::ConstantInputReshaped(
   }
 
   TF_ASSIGN_OR_RETURN(*constant_literal, HostTensorToLiteral(temp));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-// Converts an int32 or int64 scalar literal to an int64.
+// Converts an int16, int32 or int64 scalar literal to an int64.
 static Status LiteralToInt64Scalar(const xla::LiteralSlice& literal,
                                    int64_t* out) {
   if (literal.shape().rank() != 0) {
     return errors::InvalidArgument("value is not a scalar");
   }
-  if (literal.shape().element_type() == xla::S32) {
+  if (literal.shape().element_type() == xla::S16) {
+    *out = literal.Get<int16>({});
+  } else if (literal.shape().element_type() == xla::S32) {
     *out = literal.Get<int32>({});
   } else if (literal.shape().element_type() == xla::S64) {
     *out = literal.Get<int64_t>({});
   } else {
-    return errors::InvalidArgument("value must be either int32 or int64");
+    return errors::InvalidArgument("value must be int16, int32, or int64");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Converts an float32 or float64 scalar literal to a float64.
@@ -228,7 +231,7 @@ static Status LiteralToFloat64Scalar(const xla::LiteralSlice& literal,
   } else {
     return errors::InvalidArgument("value must be either float32 or float64");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaOpKernelContext::ConstantInputAsIntScalar(
@@ -244,7 +247,7 @@ Status XlaOpKernelContext::ConstantInputAsIntScalar(
   return ConstantInputAsIntScalar(index, out, mode);
 }
 
-StatusOr<int64_t> XlaOpKernelContext::ConstantInputAsIntScalar(
+absl::StatusOr<int64_t> XlaOpKernelContext::ConstantInputAsIntScalar(
     absl::string_view name, xla::ValueInferenceMode mode) {
   int64_t out;
   TF_RETURN_IF_ERROR(ConstantInputAsIntScalar(name, &out, mode));
@@ -271,13 +274,13 @@ static Status LiteralToPredVector(const xla::LiteralSlice& literal,
   for (int64_t i = 0; i < size; ++i) {
     out->push_back(literal.Get<bool>({i}));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaOpKernelContext::ResolveInputDynamismIntoPred(int index, bool* out) {
   xla::Literal literal;
   XlaExpression e = InputExpression(index);
-  StatusOr<Tensor> dynamism_or_status = e.ResolveDynamism();
+  absl::StatusOr<Tensor> dynamism_or_status = e.ResolveDynamism();
   if (!dynamism_or_status.ok()) {
     // When failed to resolve dynamism, conservatively consider the value
     // dynamic. This could happen if the input depends on some ops like
@@ -286,7 +289,7 @@ Status XlaOpKernelContext::ResolveInputDynamismIntoPred(int index, bool* out) {
     // TODO(b/176993339): Support resolving dynamism across computations so
     // resolving dynamism will not fail in those cases.
     *out = true;
-    return OkStatus();
+    return absl::OkStatus();
   }
   Tensor dynamism = dynamism_or_status.value();
 
@@ -300,7 +303,7 @@ Status XlaOpKernelContext::ResolveInputDynamismIntoPred(int index, bool* out) {
 
   TF_ASSIGN_OR_RETURN(literal, HostTensorToLiteral(temp));
   *out = literal.Get<bool>({});
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaOpKernelContext::ResolveInputDynamismIntoPredVector(
@@ -319,7 +322,7 @@ Status XlaOpKernelContext::ResolveInputDynamismReshaped(
     int index, absl::Span<const int64_t> new_dims,
     xla::Literal* dynamism_literal) {
   XlaExpression e = InputExpression(index);
-  StatusOr<Tensor> dynamism_or_status = e.ResolveDynamism();
+  absl::StatusOr<Tensor> dynamism_or_status = e.ResolveDynamism();
   if (!dynamism_or_status.ok()) {
     xla::Literal true_literal = xla::LiteralUtil::CreateR0<bool>(true);
     // When failed to resolve dynamism, conservatively consider the value
@@ -330,7 +333,7 @@ Status XlaOpKernelContext::ResolveInputDynamismReshaped(
             .Broadcast(xla::ShapeUtil::MakeShape(xla::PRED, new_dims), {})
             .value();
 
-    return OkStatus();
+    return absl::OkStatus();
   }
   Tensor dynamism = dynamism_or_status.value();
 
@@ -344,7 +347,7 @@ Status XlaOpKernelContext::ResolveInputDynamismReshaped(
   }
 
   TF_ASSIGN_OR_RETURN(*dynamism_literal, HostTensorToLiteral(temp));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaOpKernelContext::ResolveInputDynamismIntoPredVector(
@@ -375,7 +378,7 @@ static Status LiteralToInt64Vector(const xla::LiteralSlice& literal,
   } else {
     return errors::InvalidArgument("value must be either int32 or int64");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaOpKernelContext::ConstantInputAsIntVector(
@@ -422,11 +425,11 @@ Status XlaOpKernelContext::ConstantInputAsInt64Literal(
       for (int64_t i = 0; i < src_data.size(); ++i) {
         out->data<int64_t>()[i] = src_data[i];
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
     case xla::S64:
       *out = std::move(literal);
-      return OkStatus();
+      return absl::OkStatus();
 
     default:
       return errors::InvalidArgument(
@@ -460,7 +463,7 @@ Status XlaOpKernelContext::ConstantInputAsShape(int index, TensorShape* shape,
           ", result: ", num_elements);
   }
   *shape = TensorShape(dims);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaOpKernelContext::ConstantInputAsPartialShape(
@@ -476,12 +479,12 @@ Status XlaOpKernelContext::ConstantInputAsPartialShape(
           "Cannot convert value to PartialTensorShape: ", shape_val);
     }
     *shape = PartialTensorShape();  // Shape with unknown rank.
-    return OkStatus();
+    return absl::OkStatus();
   }
   std::vector<int64_t> dims;
   TF_RETURN_IF_ERROR(LiteralToInt64Vector(literal, &dims));
   *shape = PartialTensorShape(dims);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaOpKernelContext::InputList(absl::string_view name,
@@ -496,7 +499,7 @@ Status XlaOpKernelContext::InputList(absl::string_view name,
         XlaExpression::CastExpressionFromTensor(input)->AsXlaOp(builder()));
     shapes->push_back(input.shape());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status XlaOpKernelContext::ConstantInputList(absl::string_view name,
@@ -508,14 +511,14 @@ Status XlaOpKernelContext::ConstantInputList(absl::string_view name,
   for (int i = start; i < stop; ++i) {
     TF_RETURN_IF_ERROR(ConstantInput(i, &(*outputs)[i], mode));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<Tensor> XlaOpKernelContext::ConstantInputTensor(
+absl::StatusOr<Tensor> XlaOpKernelContext::ConstantInputTensor(
     int index, xla::ValueInferenceMode mode) {
   XlaExpression e = InputExpression(index);
   auto* client = compiler() ? compiler()->client() : nullptr;
-  StatusOr<std::optional<Tensor>> constant_or_status =
+  absl::StatusOr<std::optional<Tensor>> constant_or_status =
       e.ResolveConstant(client, dynamic_dimension_is_minus_one_, mode);
   if (!constant_or_status.ok()) {
     Status status = constant_or_status.status();
@@ -569,7 +572,7 @@ Status ReadVariableInputTensor(const Tensor& tensor, DataType type,
     TF_ASSIGN_OR_RETURN(xla::Literal literal,
                         HostTensorToLiteral(*expression->constant_value()));
     *value = xla::ConstantLiteral(ctx->builder(), literal);
-    return OkStatus();
+    return absl::OkStatus();
   }
   auto shape_determination_fns =
       ctx->compiler()->options().shape_determination_fns;
@@ -588,7 +591,7 @@ Status ReadVariableInputTensor(const Tensor& tensor, DataType type,
   } else {
     *value = xla::Reshape(variable->value(), variable->shape().dim_sizes());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -623,7 +626,7 @@ Status XlaOpKernelContext::GetVariableTypeAndShape(int index, DataType* type,
   }
   *type = variable->type();
   *shape = variable->shape();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void XlaOpKernelContext::SetOutputExpression(int index,
@@ -654,7 +657,7 @@ void XlaOpKernelContext::SetOutputExpression(int index,
     }
     XlaExpression::AssignExpressionToTensor(expression,
                                             context_->mutable_output(index));
-    return OkStatus();
+    return absl::OkStatus();
   }();
   if (!status.ok()) {
     SetStatus(status);
@@ -695,7 +698,7 @@ Status XlaOpKernelContext::GetResourceInput(int index, XlaResource** resource) {
       XlaExpression::CastExpressionFromTensor(context_->input(index));
   TF_RET_CHECK(expression->resource() != nullptr);
   *resource = expression->resource();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -754,8 +757,7 @@ Status XlaOpKernelContext::AssignVariable(absl::string_view name, DataType type,
 static Status GetStatusWithStackTrace(const Status& s,
                                       const XlaOpKernelContext* ctx) {
   if (s.code() == error::INVALID_ARGUMENT) {
-    return Status{s.code(),
-                  absl::StrCat(s.error_message(), "\n", ctx->StackTrace())};
+    return Status{s.code(), absl::StrCat(s.message(), "\n", ctx->StackTrace())};
   }
   return s;
 }

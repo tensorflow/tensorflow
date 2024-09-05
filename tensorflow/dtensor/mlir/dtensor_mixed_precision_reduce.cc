@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include "absl/strings/string_view.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -67,9 +69,7 @@ template <class ReduceOpType>
 mlir::LogicalResult MaybeUpcastForReduction(ReduceOpType reduce_op,
                                             bool* changed) {
   const mlir::RankedTensorType& input_type =
-      reduce_op.getInput()
-          .getType()
-          .template dyn_cast<mlir::RankedTensorType>();
+      mlir::dyn_cast<mlir::RankedTensorType>(reduce_op.getInput().getType());
   if (!input_type.getElementType().isBF16()) {
     // Upcast only applies for bfloat16 input.
     return mlir::success();
@@ -89,14 +89,12 @@ mlir::LogicalResult MaybeUpcastForReduction(ReduceOpType reduce_op,
   if (!reduce_layout.ok())
     return reduce_op.emitOpError(llvm::formatv(
         "Malformed layout specification for DTensor reduce op found: {0}",
-        reduce_layout.status().error_message()));
+        reduce_layout.status().message()));
 
   // The original output tensor type that would have been used by all users of
   // the reduce op.
   const mlir::RankedTensorType& output_type =
-      reduce_op.getOutput()
-          .getType()
-          .template dyn_cast<mlir::RankedTensorType>();
+      mlir::dyn_cast<mlir::RankedTensorType>(reduce_op.getOutput().getType());
 
   mlir::TF::CastOp upcast = builder.create<mlir::TF::CastOp>(
       loc,

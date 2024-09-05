@@ -6,6 +6,11 @@ package(
     licenses = ["notice"],
 )
 
+exports_files(
+    srcs = glob(["*.sh"]),
+    visibility = ["//visibility:public"],
+)
+
 sh_binary(
     name = "install_bazel",
     srcs = ["install_bazel.sh"],

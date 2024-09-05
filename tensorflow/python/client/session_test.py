@@ -55,6 +55,7 @@ from tensorflow.python.ops import math_ops
 # Import resource_variable_ops for the variables-to-tensor implicit conversion.
 from tensorflow.python.ops import resource_variable_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import googletest
@@ -1051,7 +1052,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     with session.Session():
       a = constant_op.constant(1.0, shape=[1, 2])
       b = constant_op.constant(2.0, shape=[1, 2], name='b')
-      v = variables.VariableV1(a, a.dtype)
+      v = variable_v1.VariableV1(a, a.dtype)
       assign_a_to_v = state_ops.assign(v, a)
 
       self.evaluate(assign_a_to_v)
@@ -1329,7 +1330,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       sess.close()
 
   @test_util.run_v1_only('b/120545219')
-  def testMultipleInteractiveSessionsWarning(self):
+  def testMultipleInteractiveSessionsError(self):
     # Reinitialize the global state to ensure that the expected warnings will
     # be emitted.
     session.InteractiveSession._active_session_count = 0  # pylint: disable=protected-access
@@ -1338,21 +1339,27 @@ class SessionTest(test_util.TensorFlowTestCase):
     sess.run(constant_op.constant(4.0))  # Run so that the session is "opened".
     sess.close()
     # Opening and closing interactive sessions serially should not warn.
-    with warnings.catch_warnings(record=True) as w:
+    with self.assertNoLogs(level='ERROR'):
       sess = session.InteractiveSession()
       sess.close()
-    self.assertEqual(0, len(w))
 
-    with warnings.catch_warnings(record=True) as w:
+    with self.assertNoLogs(level='ERROR'):
       sess = session.InteractiveSession()
-    self.assertEqual(0, len(w))
-    with warnings.catch_warnings(record=True) as w:
+
+    with self.assertLogs(level='ERROR') as log_output:
       sess2 = session.InteractiveSession()
-    self.assertEqual(1, len(w))
-    self.assertIn('An interactive session is already active. This can cause '
-                  'out-of-memory errors in some cases. You must explicitly '
-                  'call `InteractiveSession.close()` to release resources '
-                  'held by the other session(s).', str(w[0].message))
+
+    self.assertLen(log_output.output, 1)
+
+    self.assertIn(
+        'An interactive session is already active. This can cause'
+        ' out-of-memory errors or some other unexpected errors (due to'
+        ' the unpredictable timing of garbage collection) in some cases.'
+        ' You must explicitly call `InteractiveSession.close()` to release'
+        ' resources held by the other session(s). Please use `tf.Session()`'
+        ' if you intend to productionize.',
+        log_output.output[0],
+    )
     sess2.close()
     sess.close()
 

@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/managed_stack_trace.h"
@@ -33,7 +34,7 @@ StatusScopedDiagnosticHandler::StatusScopedDiagnosticHandler(
     this->shouldShowLocFn = [](Location loc) -> bool {
       // For a Location to be surfaced in the stack, it must evaluate to true.
       // For any Location that is a FileLineColLoc:
-      if (FileLineColLoc fileLoc = loc.dyn_cast<FileLineColLoc>()) {
+      if (FileLineColLoc fileLoc = mlir::dyn_cast<FileLineColLoc>(loc)) {
         return !tensorflow::IsInternalFrameForFilename(
             fileLoc.getFilename().str());
       } else {
@@ -47,15 +48,13 @@ StatusScopedDiagnosticHandler::StatusScopedDiagnosticHandler(
 }
 
 Status StatusScopedDiagnosticHandler::ConsumeStatus() {
-  return tensorflow::FromAbslStatus(
-      BaseScopedDiagnosticHandler::ConsumeStatus());
+  return BaseScopedDiagnosticHandler::ConsumeStatus();
 }
 
 Status StatusScopedDiagnosticHandler::Combine(Status status) {
-  absl::Status absl_s =
-      BaseScopedDiagnosticHandler::Combine(tensorflow::ToAbslStatus(status));
+  absl::Status absl_s = BaseScopedDiagnosticHandler::Combine(status);
 
-  return tensorflow::FromAbslStatus(absl_s);
+  return absl_s;
 }
 
 }  // namespace mlir

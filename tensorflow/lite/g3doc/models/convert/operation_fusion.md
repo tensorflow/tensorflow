@@ -127,8 +127,9 @@ Note that, the name to register the op with should be similar to the name
 specified in the `name` attribute in the implements signature.
 
 An example for the op in the example is
+
 ```c++
-  TfLiteRegistration reg;
+  TfLiteRegistration reg = {};
   // This name must match the name specified in the implements signature.
   static constexpr char kOpName[] = "my_custom_fused_op";
   reg.custom_name = kOpName;
@@ -137,7 +138,7 @@ An example for the op in the example is
     return kTfLiteOk;
   };
   reg.invoke = [](TfLiteContext* context, TfLiteNode* node) -> TfLiteStatus {
-    // Add your coder.
+    // Add your code.
     return kTfLiteOk;
   };
   reg.builtin_code = kTfLiteCustom;

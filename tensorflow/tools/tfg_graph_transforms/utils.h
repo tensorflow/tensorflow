@@ -18,11 +18,15 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
+#include "tsl/platform/errors.h"
 
 namespace mlir {
 namespace tfg {
@@ -89,8 +93,15 @@ tensorflow::Status SerializeProto(T model_proto,
                                      model_proto),
         "Error while writing the resulting model proto");
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
+
+// Read and write to the experimental SavedModel Image format.
+tensorflow::Status ReadSavedModelImageFormat(
+    const std::string& input_file, tensorflow::SavedModel& model_proto);
+tensorflow::Status WriteSavedModelImageFormat(
+    tensorflow::SavedModel* model_proto, const std::string& output_file,
+    int debug_max_size);
 
 }  // namespace graph_transforms
 }  // namespace tfg

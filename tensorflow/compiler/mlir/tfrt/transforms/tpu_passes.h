@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Pass/PassOptions.h"
+#include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 
 namespace tensorflow {
 
@@ -54,6 +55,8 @@ struct TfrtTpuExecuteOpConversionOptions {
   bool use_bundled_transfer = false;
   bool transfer_result_to_host = false;
   bool use_tpu_host_allocator_for_inputs = false;
+  TfrtCompileOptions::TpuAllowUnpaddedBatch allow_unpadded_batch =
+      TfrtCompileOptions::TpuAllowUnpaddedBatch::kDisabled;
 };
 
 // Registers a set of dialects used in TFRT TPU lowering.
@@ -70,6 +73,12 @@ inline void AddTPUTargetDialectAndPatterns(
 // Rewrites specific TF TPU ops to equivalent TF ops in a module.
 inline mlir::LogicalResult RunTPUBackwardCompatConversion(
     mlir::ModuleOp module, const TfrtTpuCompileOptions &options) {
+  return mlir::failure();
+}
+
+// The rewrite rules to support the fallback execution of TPUPartitionedCallOp.
+inline mlir::LogicalResult RunTPUPartitionedCallFallbackCompatConversion(
+    mlir::ModuleOp module) {
   return mlir::failure();
 }
 

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "SegmentSumV2"
   input_arg {
     name: "data"

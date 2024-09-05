@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/shape_inference.h"
 
+#include <string>
+
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -151,7 +153,7 @@ TEST_F(ShapeInferenceTest, Run) {
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 6, &h));
       c->set_output(0, c->input(0));
       c->set_output(1, c->input(0));
-      return OkStatus();
+      return absl::OkStatus();
     };
     TF_ASSERT_OK(c.Run(fn));
   }
@@ -162,7 +164,7 @@ TEST_F(ShapeInferenceTest, Run) {
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 0, &h));
       c->set_output(0, c->input(0));
       c->set_output(1, c->input(0));
-      return OkStatus();
+      return absl::OkStatus();
     };
     // Extra error message is attached when Run fails.
     EXPECT_THAT(
@@ -187,7 +189,7 @@ TEST_F(ShapeInferenceTest, AttachContext) {
       ShapeHandle h;
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 0, &h));
       c->set_output(0, c->input(0));
-      return OkStatus();
+      return absl::OkStatus();
     };
     EXPECT_THAT(
         c.Run(fn),
@@ -210,7 +212,7 @@ TEST_F(ShapeInferenceTest, AttachContext) {
       ShapeHandle h;
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 0, &h));
       c->set_output(0, c->input(0));
-      return OkStatus();
+      return absl::OkStatus();
     };
     EXPECT_THAT(
         c.Run(fn),
@@ -236,7 +238,7 @@ TEST_F(ShapeInferenceTest, AttachContext) {
       ShapeHandle h;
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 0, &h));
       c->set_output(0, c->input(0));
-      return OkStatus();
+      return absl::OkStatus();
     };
     EXPECT_THAT(
         c.Run(fn),
@@ -262,7 +264,7 @@ TEST_F(ShapeInferenceTest, AttachContext) {
       ShapeHandle h;
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 0, &h));
       c->set_output(0, c->input(0));
-      return OkStatus();
+      return absl::OkStatus();
     };
     EXPECT_THAT(
         c.Run(fn),
@@ -1109,7 +1111,7 @@ TEST_F(ShapeInferenceTest, MakeShapeFromShapeTensor) {
       return c.DebugString(out);
     } else {
       EXPECT_FALSE(IsSet(out));
-      return s.error_message();
+      return std::string(s.message());
     }
   };
 
@@ -1163,7 +1165,7 @@ TEST_F(ShapeInferenceTest, MakeShapeFromShapeTensor) {
                        {}, {});
     ShapeHandle out;
     EXPECT_EQ("Shape must be rank 1 but is rank 2",
-              c.MakeShapeFromShapeTensor(0, &out).error_message());
+              c.MakeShapeFromShapeTensor(0, &out).message());
   }
 }
 

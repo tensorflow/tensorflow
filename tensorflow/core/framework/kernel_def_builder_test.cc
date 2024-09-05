@@ -94,7 +94,7 @@ TEST(KernelDefBuilderTest, Int64Constraint) {
   def = KernelDefBuilder("C")
             .Device(DEVICE_GPU)
             .AttrConstraint("U",
-                            gtl::ArraySlice<int64_t>{int64_t{5}, int64_t{17}})
+                            absl::Span<const int64_t>{int64_t{5}, int64_t{17}})
             .AttrConstraint("V", string("proto"))
             .Build();
 
@@ -135,7 +135,7 @@ TEST(KernelDefBuilderTest, StringConstraint) {
 
   def = KernelDefBuilder("C")
             .Device(DEVICE_GPU)
-            .AttrConstraint("U", gtl::ArraySlice<const char*>{"boo", "ya"})
+            .AttrConstraint("U", absl::Span<const char* const>{"boo", "ya"})
             .AttrConstraint("V", string("proto"))
             .Build();
 

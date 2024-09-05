@@ -56,8 +56,8 @@ LogicalResult MarkInitializedVariablesInFunction(func::FuncOp function,
   const tensorflow::DeviceMgr* mgr = nullptr;
   auto status = session->LocalDeviceManager(&mgr);
   if (!status.ok())
-    return function->emitError("failed to fetch device manager: " +
-                               status.error_message());
+    return function->emitError(
+        absl::StrCat("failed to fetch device manager: ", status.message()));
 
   // Fetch all varHandleOp in the function.
   llvm::SmallVector<TF::VarHandleOp, 4> var_ops;

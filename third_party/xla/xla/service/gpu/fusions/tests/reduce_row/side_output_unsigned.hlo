@@ -1,0 +1,15 @@
+// RUN: test_correctness %s
+
+add {
+  lhs = u32[] parameter(0)
+  rhs = u32[] parameter(1)
+  ROOT add = u32[] add(lhs, rhs)
+}
+
+fusion {
+  param_0 = u32[8,2048] parameter(0)
+  param_1 = u32[] parameter(1)
+  add = u32[8,2048] add(param_0, param_0)
+  reduce = u32[8] reduce(param_0, param_1), dimensions={1}, to_apply=add
+  ROOT t = (u32[8], u32[8,2048]) tuple(reduce, add)
+}

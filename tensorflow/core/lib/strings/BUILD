@@ -11,10 +11,7 @@ package(
         "//tensorflow/core:__pkg__",
         # tensorflow/core/framework references some of the headers in this package
         "//tensorflow/core/framework:__subpackages__",
-        # tensorflow/core/platform still references some of the headers in this package
-        "//tensorflow/core/platform:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
-        "//tensorflow/compiler/xla/stream_executor:__subpackages__",
         # For proto_serialization library
         "//tensorflow/cc/experimental/tf2:__subpackages__",
     ],
@@ -46,6 +43,7 @@ cc_library(
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:types",
+        "@local_xla//xla/tsl/lib/core:bits",
     ],
 )
 
@@ -53,7 +51,7 @@ cc_library(
     name = "proto_serialization",
     hdrs = ["proto_serialization.h"],
     deps = [
-        "//tensorflow/tsl/lib/strings:proto_serialization",
+        "@local_xla//xla/tsl/lib/strings:proto_serialization",
     ],
 )
 
@@ -118,7 +116,7 @@ filegroup(
         "ordered_code.cc",
         "ordered_code.h",
         "proto_serialization.h",
-        "//tensorflow/tsl/lib/strings:mobile_srcs_only_runtime",
+        "@local_xla//xla/tsl/lib/strings:mobile_srcs_only_runtime",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -135,7 +133,7 @@ filegroup(
         "str_util.h",
         "strcat.h",
         "stringprintf.h",
-        "//tensorflow/tsl/lib/strings:legacy_lib_strings_all_headers",
+        "@local_xla//xla/tsl/lib/strings:legacy_lib_strings_all_headers",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -167,7 +165,7 @@ filegroup(
         "str_util.h",
         "strcat.h",
         "stringprintf.h",
-        "//tensorflow/tsl/lib/strings:legacy_lib_string_headers",
+        "@local_xla//xla/tsl/lib/strings:legacy_lib_string_headers",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -180,7 +178,7 @@ filegroup(
         "proto_serialization.h",
         "proto_text_util.h",
         "scanner.h",
-        "//tensorflow/tsl/lib/strings:legacy_lib_internal_public_string_headers",
+        "@local_xla//xla/tsl/lib/strings:legacy_lib_internal_public_string_headers",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

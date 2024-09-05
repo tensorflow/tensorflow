@@ -28,6 +28,10 @@ namespace tensorflow {
 // mechanisms using full type information to always place int32 on host.
 class Int32FulltypePass {
  public:
+  Int32FulltypePass() = default;
+  explicit Int32FulltypePass(string debug_location)
+      : debug_location_(debug_location) {}
+
   // For each node in this graph that outputs int32 tensors, set full
   // type information such that the int32 tensors use TFT_SHAPE_TENSOR
   // (or TFT_TENSOR if ints_on_device is true, which is only for single
@@ -50,6 +54,10 @@ class Int32FulltypePass {
   Status Int32FullTypeForTensor(DataType dtype, FullTypeDef* tensor_t,
                                 bool set_only_int32, Node* node = nullptr,
                                 int output_idx = 0);
+
+ private:
+  // Location of where annotations were added for debug messages.
+  string debug_location_;
 };
 
 }  // namespace tensorflow

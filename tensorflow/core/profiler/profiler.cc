@@ -22,18 +22,25 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "linenoise.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/c/checkpoint_reader.h"
+#include "tensorflow/c/tf_status.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/internal/advisor/tfprof_advisor.h"
 #include "tensorflow/core/profiler/internal/tfprof_stats.h"
 #include "tensorflow/core/profiler/internal/tfprof_utils.h"
 #include "tensorflow/core/profiler/tfprof_log.pb.h"
 #include "tensorflow/core/profiler/tfprof_options.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/util/command_line_flags.h"
 
 namespace tensorflow {
@@ -42,7 +49,7 @@ void completion(const char* buf, linenoiseCompletions* lc) {
   string buf_str = buf;
   if (buf_str.find(' ') == buf_str.npos) {
     for (const char* opt : kCmds) {
-      if (string(opt).find(buf_str) == 0) {
+      if (absl::StartsWith(string(opt), buf_str)) {
         linenoiseAddCompletion(lc, opt);
       }
     }
@@ -56,7 +63,7 @@ void completion(const char* buf, linenoiseCompletions* lc) {
     buf_str = buf_str.substr(last_dash + 1, kint32max);
   }
   for (const char* opt : kOptions) {
-    if (string(opt).find(buf_str) == 0) {
+    if (absl::StartsWith(string(opt), buf_str)) {
       linenoiseAddCompletion(lc, (prefix + opt).c_str());
     }
   }
@@ -94,7 +101,7 @@ int Run(int argc, char** argv) {
   }
 
   std::vector<Flag> flag_list = {
-      Flag("profile_path", &FLAGS_profile_path, "Profile binary file name."),
+      Flag("profile_path", &FLAGS_profile_path, "Profile binary file name"),
       Flag("graph_path", &FLAGS_graph_path, "GraphDef proto text file name"),
       Flag("run_meta_path", &FLAGS_run_meta_path,
            "Comma-separated list of RunMetadata proto binary "
@@ -161,7 +168,7 @@ int Run(int argc, char** argv) {
   string output_type;
   std::map<string, string> output_options;
   Status s = ParseOutput(FLAGS_output, &output_type, &output_options);
-  CHECK(s.ok()) << s.ToString();
+  CHECK(s.ok()) << s;
 
   string cmd = "";
   if (argc == 1 && FLAGS_graph_path.empty() && FLAGS_profile_path.empty() &&
@@ -184,8 +191,8 @@ int Run(int argc, char** argv) {
   std::unique_ptr<checkpoint::CheckpointReader> ckpt_reader;
   TF_Status* status = TF_NewStatus();
   if (!FLAGS_checkpoint_path.empty()) {
-    ckpt_reader.reset(
-        new checkpoint::CheckpointReader(FLAGS_checkpoint_path, status));
+    ckpt_reader = std::make_unique<checkpoint::CheckpointReader>(
+        FLAGS_checkpoint_path, status);
     if (TF_GetCode(status) != TF_OK) {
       absl::FPrintF(stderr, "%s\n", TF_Message(status));
       TF_DeleteStatus(status);
@@ -196,7 +203,8 @@ int Run(int argc, char** argv) {
 
   std::unique_ptr<TFStats> tf_stat;
   if (!FLAGS_profile_path.empty()) {
-    tf_stat.reset(new TFStats(FLAGS_profile_path, std::move(ckpt_reader)));
+    tf_stat =
+        std::make_unique<TFStats>(FLAGS_profile_path, std::move(ckpt_reader));
   } else {
     absl::PrintF(
         "Try to use a single --profile_path instead of "
@@ -223,8 +231,8 @@ int Run(int argc, char** argv) {
         return 1;
       }
     }
-    tf_stat.reset(new TFStats(std::move(graph), nullptr, std::move(op_log),
-                              std::move(ckpt_reader)));
+    tf_stat = std::make_unique<TFStats>(
+        std::move(graph), nullptr, std::move(op_log), std::move(ckpt_reader));
 
     std::vector<string> run_meta_files =
         absl::StrSplit(FLAGS_run_meta_path, ',', absl::SkipEmpty());

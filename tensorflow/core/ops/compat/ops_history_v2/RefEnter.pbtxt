@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "RefEnter"
   input_arg {
     name: "data"

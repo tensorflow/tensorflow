@@ -15,28 +15,40 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/next_pluggable_device/c_plugin_op_kernel.h"
 
+#include <cstdint>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/experimental/next_pluggable_device/c_api.h"
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/c/kernels_experimental.h"
+#include "tensorflow/c/tf_buffer.h"
 #include "tensorflow/c/tf_buffer_internal.h"
+#include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
-#include "tensorflow/c/tf_tensor_internal.h"
+#include "tensorflow/c/tf_tensor_helper.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c_plugin_variable.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/plugin_coordination_service_agent.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_coordination_service_agent_helper.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_variable.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/resource_handle.pb.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tsl/platform/mutex.h"
 
 constexpr int kInvalidLineNumber = -1;
 
@@ -72,7 +84,7 @@ Status CPluginOpKernelConstruction::GetInt32AttrList(
                                       &total_size, status);
   TF_RETURN_IF_ERROR(StatusFromTF_Status(status));
 
-  value->reserve(list_size);
+  value->resize(list_size);
 
   TF_OpKernelConstruction_GetAttrInt32List(
       ctx_, attr_name.data(), value->data(), /*max_vals=*/list_size, status);
@@ -111,7 +123,7 @@ Status CPluginOpKernelConstruction::GetFunctionAttr(
   TF_RETURN_IF_ERROR(StatusFromTF_Status(status));
   TF_RETURN_IF_ERROR(BufferToMessage(serialized_function, function));
   TF_DeleteBuffer(serialized_function);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void CPluginOpKernelConstruction::CtxFailure(const Status& status) {
@@ -121,7 +133,7 @@ void CPluginOpKernelConstruction::CtxFailure(const Status& status) {
 void CPluginOpKernelConstruction::CtxFailure(const char* file, int line,
                                              const Status& status) {
   TF_StatusPtr c_status_ptr(TF_NewStatus());
-  Set_TF_Status_from_Status(c_status_ptr.get(), status);
+  tsl::Set_TF_Status_from_Status(c_status_ptr.get(), status);
   if (line != kInvalidLineNumber) {
     LOG(WARNING) << "Plugin OP_REQUIRES failed at " << file << ": " << line
                  << ": " << status;
@@ -153,7 +165,7 @@ Status CPluginOpKernelContext::LookupOrCreateResource(
   return StatusFromTF_Status(status);
 }
 
-PluginCoordinationServiceAgent*
+std::unique_ptr<PluginCoordinationServiceAgent>
 CPluginOpKernelContext::GetPluginCoordinationServiceAgent() const {
   auto* agent = TF_GetCoordinationServiceAgent(ctx_);
   return CreatePluginCoordinationServiceAgent(agent);
@@ -168,7 +180,7 @@ Status CPluginOpKernelContext::CreatePluginVariable(
     return StatusFromTF_Status(c_status_ptr.get());
   }
   *variable = new CPluginVariable(c_var_info);
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 Status CPluginOpKernelContext::AllocateTempForPluginVariable(
@@ -178,7 +190,7 @@ Status CPluginOpKernelContext::AllocateTempForPluginVariable(
       reinterpret_cast<CPluginVariable*>(variable);
   TF_AllocateTempForVariableInfo(ctx_, c_plugin_variable->var_info_,
                                  c_status_ptr.get());
-  tsl::Status status = StatusFromTF_Status(c_status_ptr.get());
+  absl::Status status = StatusFromTF_Status(c_status_ptr.get());
   if (status.ok()) {
     // Invalidate the cached tensor since we allocated a new one.
     c_plugin_variable->tensor_obtained_ = false;
@@ -186,7 +198,8 @@ Status CPluginOpKernelContext::AllocateTempForPluginVariable(
   return status;
 }
 
-Status CPluginOpKernelContext::GetInput(int index, Tensor* tensor) const {
+absl::Status CPluginOpKernelContext::GetInput(int index,
+                                              const Tensor** tensor) const {
   TF_StatusPtr c_status_ptr(TF_NewStatus());
   TF_Tensor* c_tensor;
   TF_GetInput(ctx_, index, &c_tensor, c_status_ptr.get());
@@ -194,21 +207,29 @@ Status CPluginOpKernelContext::GetInput(int index, Tensor* tensor) const {
   if (TF_GetCode(c_status_ptr.get()) != TF_OK) {
     return StatusFromTF_Status(c_status_ptr.get());
   }
-  return TF_TensorToTensor(c_tensor, tensor);
+  Tensor tensor_tmp;
+  absl::Status status = TF_TensorToTensor(c_tensor, &tensor_tmp);
+  if (status.ok()) {
+    tsl::mutex_lock lock(mu_);
+    *tensor = &obtained_tensors_.emplace_back(std::move(tensor_tmp));
+  }
+  return status;
 }
 
-Status CPluginOpKernelContext::GetInput(const char* name,
-                                        const Tensor** tensor) {
+absl::Status CPluginOpKernelContext::GetInput(const char* name,
+                                              const Tensor** tensor) const {
   TF_StatusPtr c_status_ptr(TF_NewStatus());
   TF_Tensor* c_tensor;
   TF_GetInputByName(ctx_, name, &c_tensor, c_status_ptr.get());
   TF_TensorPtr c_tensor_ptr(c_tensor);
+  if (TF_GetCode(c_status_ptr.get()) != TF_OK) {
+    return StatusFromTF_Status(c_status_ptr.get());
+  }
   Tensor tensor_tmp;
-  tsl::Status status = TF_TensorToTensor(c_tensor, &tensor_tmp);
+  absl::Status status = TF_TensorToTensor(c_tensor, &tensor_tmp);
   if (status.ok()) {
-    mutex_lock lock(mu_);
-    obtained_tensors_.push_back(std::move(tensor_tmp));
-    *tensor = &(obtained_tensors_.back());
+    tsl::mutex_lock lock(mu_);
+    *tensor = &obtained_tensors_.emplace_back(std::move(tensor_tmp));
   }
   return status;
 }
@@ -222,7 +243,7 @@ Status CPluginOpKernelContext::GetInputRange(std::string_view name,
   TF_RETURN_IF_ERROR(StatusFromTF_Status(args.status));
   range->first = args.start;
   range->second = args.stop;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 DataType CPluginOpKernelContext::GetInputDataType(int index) const {
@@ -238,6 +259,11 @@ std::string_view CPluginOpKernelContext::GetOpKernelRequestedInput(
 std::string_view CPluginOpKernelContext::GetOpKernelName() const {
   TF_StringView op_kernel_name = TF_GetOpKernelName(ctx_);
   return {op_kernel_name.data, op_kernel_name.len};
+}
+
+std::string_view CPluginOpKernelContext::GetDeviceName() const {
+  TF_StringView device_name = TF_GetDeviceName(ctx_);
+  return {device_name.data, device_name.len};
 }
 
 Status CPluginOpKernelContext::GetConfigProto(
@@ -268,7 +294,7 @@ Status CPluginOpKernelContext::GetFunctionLibraryDefinition(
   auto flib_def_ptr =
       new FunctionLibraryDefinition(OpRegistry::Global(), fdef_lib);
   *flib_def = flib_def_ptr;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status CPluginOpKernelContext::GetResourceHandle(
@@ -286,7 +312,7 @@ Status CPluginOpKernelContext::GetResourceHandle(
   const ResourceHandle* handle_ptr = new ResourceHandle(handle_proto);
 
   *handle = handle_ptr;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status CPluginOpKernelContext::AllocateOutput(int index,
@@ -324,7 +350,7 @@ void CPluginOpKernelContext::CtxFailure(const Status& status) {
 void CPluginOpKernelContext::CtxFailure(const char* file, int line,
                                         const Status& status) {
   TF_StatusPtr c_status_ptr(TF_NewStatus());
-  Set_TF_Status_from_Status(c_status_ptr.get(), status);
+  tsl::Set_TF_Status_from_Status(c_status_ptr.get(), status);
   if (line != kInvalidLineNumber) {
     LOG(WARNING) << "Plugin OP_REQUIRES failed at " << file << ": " << line
                  << ": " << status;

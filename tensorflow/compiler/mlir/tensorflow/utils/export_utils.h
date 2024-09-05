@@ -46,18 +46,18 @@ Status AddTensorFlowOpPrefix(std::string);
 
 // Maps an MLIR op name in the TensorFlow dialect or the TensorFlow control
 // dialect back into a TensorFlow valid op name.
-StatusOr<llvm::StringRef> GetTensorFlowOpName(llvm::StringRef);
+absl::StatusOr<llvm::StringRef> GetTensorFlowOpName(llvm::StringRef);
 
 // Converts an MLIR operation to TensorFlow NodeDef with given node name. This
 // name should be unique to the graph it is being inserted into.
-StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
+absl::StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
     mlir::Operation* inst, llvm::StringRef name);
 
 // Converts MLIR attributes with values to their tensorflow equivalent.
 // "name" and "device" attributes are ignored by default. Use attrs_to_ignore to
 // specify any other attributes that should be ignored.
 Status ConvertAttributes(
-    const llvm::ArrayRef<mlir::NamedAttribute> attrs,
+    llvm::ArrayRef<mlir::NamedAttribute> attrs,
     const absl::flat_hash_set<absl::string_view>& attrs_to_ignore,
     bool remove_ref_type, AttrValueMap* values);
 

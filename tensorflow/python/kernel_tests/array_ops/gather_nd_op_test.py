@@ -28,6 +28,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import ref_variable
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -35,6 +36,8 @@ from tensorflow.python.platform import test
 
 _TEST_DTYPES = (
     dtypes.bfloat16.as_numpy_dtype,
+    dtypes.float8_e5m2.as_numpy_dtype,
+    dtypes.float8_e4m3fn.as_numpy_dtype,
     np.float16,
     np.float32,
     np.float64,
@@ -223,6 +226,45 @@ class GatherNdTest(test.TestCase):
           r"indices\[0,1\] = \[7\] does not index into param shape \[3\]"):
         self.evaluate(gather_nd)
 
+  @test_util.run_deprecated_v1
+  @test_util.disable_xla("XLA does not have assertions in kernels.")
+  def testBadIndicesCPUWithDefaultPolicy(self):
+    with self.session(use_gpu=False):
+      params = [0, 1, 2]
+      indices = [[[0], [7]]]  # Make this one higher rank
+      gather_nd = array_ops.gather_nd(
+          params, indices, bad_indices_policy="DEFAULT"
+      )
+      with self.assertRaisesOpError(
+          r"indices\[0,1\] = \[7\] does not index into param shape \[3\]"
+      ):
+        self.evaluate(gather_nd)
+
+  @test_util.run_deprecated_v1
+  @test_util.disable_xla("XLA does not have assertions in kernels.")
+  def testBadIndicesCPUWithExplicitErrorPolicy(self):
+    with self.session(use_gpu=False):
+      params = [0, 1, 2]
+      indices = [[[0], [7]]]  # Make this one higher rank
+      gather_nd = array_ops.gather_nd(
+          params, indices, bad_indices_policy="ERROR"
+      )
+      with self.assertRaisesOpError(
+          r"indices\[0,1\] = \[7\] does not index into param shape \[3\]"
+      ):
+        self.evaluate(gather_nd)
+
+  @test_util.disable_xla("XLA does not have assertions in kernels.")
+  def testBadIndicesCPUIgnore(self):
+    with self.session(use_gpu=False):
+      params = [10, 1, 2]
+      indices = [[0], [7], [1]]  # Make this one higher rank
+      gather_nd = array_ops.gather_nd(
+          params, indices, bad_indices_policy="IGNORE"
+      )
+      gather_nd_val = self.evaluate(gather_nd)
+    self.assertAllEqual(gather_nd_val, [10, 0, 1])
+
   def _disabledTestBadIndicesGPU(self):
     # TODO disabled due to different behavior on GPU and CPU
     # On GPU the bad indices do not raise error but fetch 0 values
@@ -373,7 +415,8 @@ class GatherNdTest(test.TestCase):
   @test_util.run_v1_only("RefVariable is not supported in v2")
   def testGatherNdRefVariable(self):
     with self.cached_session():
-      v = variables.RefVariable(constant_op.constant([[1, 2], [3, 4], [5, 6]]))
+      v = ref_variable.RefVariable(
+          constant_op.constant([[1, 2], [3, 4], [5, 6]]))
       self.evaluate(variables.global_variables_initializer())
       gather = array_ops.gather_nd(v, [[0, 1], [2, 0]])
       if not context.executing_eagerly():  # .op doesn't make sense in Eager

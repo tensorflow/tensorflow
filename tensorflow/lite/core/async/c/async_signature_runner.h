@@ -128,16 +128,46 @@ TFL_CAPI_EXPORT extern bool TfLiteAsyncSignatureRunnerReconcileRestrictions(
     const TfLiteAttributeMap* user_provided_attributes,
     TfLiteAttributeMap* merged, TfLiteAttributeMap* conflict);
 
+/// Reconciles restrictions with the backend for I/O tensor at `tensor_index`.
+/// The backend will read `user_provided_attributes` and tries to reconcile
+/// those attributes. The backend will also populate its own restrictions
+/// back to the caller.
+/// The merged attributes will be populated to `merged`. For attributes that
+/// the backend does not know or not care about, those will also be copied to
+/// `merged` attributes.
+/// If there's a conflicting attribute, it will be populated to `conflict` if
+/// it's provided.
+/// `user_provided_attributes` and `merged` should not be nullptr.
+/// Returns true if the reconcilation succeeded and there's no
+/// conflicting attributes.
+TFL_CAPI_EXPORT extern bool
+TfLiteAsyncSignatureRunnerReconcileRestrictionsByIndex(
+    const TfLiteAsyncSignatureRunner* async_signature_runner, int tensor_index,
+    const TfLiteAttributeMap* user_provided_attributes,
+    TfLiteAttributeMap* merged, TfLiteAttributeMap* conflict);
+
 /// Finalizes I/O tensor `name`'s attributes with `attrs`.
 /// The attributes will be forwarded to all backend kernels that depends on
 /// tensor. Must call `TfLiteAsyncSignatureRunnerPrepareBackends` after setting
 /// new attributes.
-/// Callers needs to ensure the livetime of `name` and `attrs` before this
+/// Callers needs to ensure the lifetime of `name` and `attrs` before this
 /// function returns, and those may be deallocated afterwards.
 /// Returns true if all backends accept the `attrs`.
 TFL_CAPI_EXPORT extern TfLiteStatus TfLiteAsyncSignatureRunnerSetAttributes(
     TfLiteAsyncSignatureRunner* async_signature_runner, TfLiteIoType io_type,
     const char* name, const TfLiteAttributeMap* attrs);
+
+/// Finalizes I/O tensor at `tensor_index`'s attributes with `attrs`.
+/// The attributes will be forwarded to all backend kernels that depends on
+/// tensor. Must call `TfLiteAsyncSignatureRunnerPrepareBackends` after setting
+/// new attributes.
+/// Callers needs to ensure the lifetime of `name` and `attrs` before this
+/// function returns, and those may be deallocated afterwards.
+/// Returns true if all backends accept the `attrs`.
+TFL_CAPI_EXPORT extern TfLiteStatus
+TfLiteAsyncSignatureRunnerSetAttributesByIndex(
+    TfLiteAsyncSignatureRunner* async_signature_runner, int tensor_index,
+    const TfLiteAttributeMap* attrs);
 
 /// Prepares delegate backends for execution.
 /// Must be called after `TfLiteAsyncSignatureRunnerSetAttributes` and before
@@ -269,6 +299,39 @@ TfLiteAsyncSignatureRunnerGetOutputTensor(
 /// Destroys the async signature runner.
 TFL_CAPI_EXPORT extern void TfLiteAsyncSignatureRunnerDelete(
     TfLiteAsyncSignatureRunner* signature_runner);
+
+/// Returns a pointer to an array of input tensor indices.  The length of the
+/// array can be obtained via a call to
+/// `TfLiteAsyncSignatureRunnerGetInputCount`.
+///
+/// NOTE: The lifetime of the returned tensor is the same as (and depends on)
+/// the lifetime of `async_signature_runner`.
+TFL_CAPI_EXPORT extern const int* TfLiteAsyncSignatureRunnerInputTensorIndices(
+    const TfLiteAsyncSignatureRunner* async_signature_runner);
+
+/// Returns a pointer to an array of output tensor indices.  The length of the
+/// array can be obtained via a call to
+/// `TfLiteAsyncSignatureRunnerGetOutputCount`.
+///
+/// NOTE: The lifetime of the returned tensor is the same as (and depends on)
+/// the lifetime of `async_signature_runner`.
+TFL_CAPI_EXPORT extern const int* TfLiteAsyncSignatureRunnerOutputTensorIndices(
+    const TfLiteAsyncSignatureRunner* async_signature_runner);
+
+/// Returns the tensor metadata identified by `index` in the given
+/// signature.
+/// Returns nullptr if the given index is not valid or out of bound.
+///
+/// NOTE: For AsyncSignatureRunner, tensor data are not stored within
+/// `TfLiteOpaqueTensors` but in platform-specific hardware buffer objects.
+/// This method is only used for accessing the metadata like shape and data type
+/// of the input tensors.
+///
+/// NOTE: The lifetime of the returned tensor is the same as (and depends on)
+/// the lifetime of `async_signature_runner`.
+TFL_CAPI_EXPORT extern const TfLiteOpaqueTensor*
+TfLiteAsyncSignatureRunnerGetTensor(
+    const TfLiteAsyncSignatureRunner* async_signature_runner, int index);
 
 #ifdef __cplusplus
 }  // extern "C"

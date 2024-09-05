@@ -3,7 +3,7 @@ op {
   in_arg {
     name: "input"
     description: <<END
-1-D or higher.
+Can be of any rank.
 END
   }
   in_arg {

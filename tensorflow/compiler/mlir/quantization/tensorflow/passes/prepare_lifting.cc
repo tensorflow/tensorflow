@@ -13,34 +13,43 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <iterator>
 #include <memory>
-#include <string>
 #include <utility>
-#include <vector>
 
-#include "absl/algorithm/container.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/cc/constant_fold.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/remove_identity_op_pattern.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/einsum.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace mlir {
 namespace quant {
 namespace {
+
+using ::tensorflow::quantization::OpSet;
 
 class PrepareLiftingPass
     : public PassWrapper<PrepareLiftingPass, OperationPass<func::FuncOp>> {
@@ -89,8 +98,8 @@ class PrepareLiftingPass
 // indices in `val2`.
 bool HasEqualElementSize(Value val1, Value val2, ArrayRef<int> val1_indices,
                          ArrayRef<int> val2_indices) {
-  ShapedType val1_shape = val1.getType().cast<ShapedType>();
-  ShapedType val2_shape = val2.getType().cast<ShapedType>();
+  ShapedType val1_shape = mlir::cast<ShapedType>(val1.getType());
+  ShapedType val2_shape = mlir::cast<ShapedType>(val2.getType());
   if (!val1_shape.hasRank() || !val2_shape.hasRank()) return false;
 
   int val1_result = 1;
@@ -114,6 +123,27 @@ bool HasEqualElementSize(Value val1, Value val2, ArrayRef<int> val1_indices,
   return val1_result == val2_result;
 }
 
+// Checks if a shape has dim sizes of all ones except the right most dim.
+bool ReshapableTo1DTensor(ShapedType rhs_shape) {
+  for (auto rank = 0; rank < rhs_shape.getRank() - 1; rank++) {
+    if (rhs_shape.getDimSize(rank) != 1) {
+      return false;
+    }
+  }
+  return true;
+}
+
+Value ReshapeTo1DTensor(OpBuilder& builder, Location loc, Value value) {
+  auto shape = mlir::cast<ShapedType>(value.getType());
+  if (shape.getRank() != 1) {
+    SmallVector<int64_t> new_shape;
+    new_shape.push_back(shape.getNumElements());
+    value = builder.create<TF::ReshapeOp>(
+        loc, value, Create1DConstValue(builder, loc, new_shape));
+  }
+  return ConstantFoldOpIfPossible(value.getDefiningOp()).front();
+}
+
 // Matches convolution op with "NHWC" data format or matmul op with false adj_y.
 // The list of supported ops in this function is:
 // - Conv2DOp
@@ -127,11 +157,15 @@ LogicalResult MatchSupportedAffineOp(Operation* op, Value& binding_output,
   bool is_supported_affine_op = false;
   if (llvm::isa<TF::Conv2DOp, TF::Conv3DOp, TF::DepthwiseConv2dNativeOp>(op)) {
     if (const auto data_format = op->getAttrOfType<StringAttr>("data_format")) {
-      is_supported_affine_op = data_format.getValue().equals("NHWC") ||
-                               data_format.getValue().equals("NDHWC");
+      is_supported_affine_op =
+          data_format.getValue() == "NHWC" || data_format.getValue() == "NDHWC";
     }
-  } else if (llvm::isa<TF::MatMulOp, TF::BatchMatMulV2Op>(op)) {
+  } else if (llvm::isa<TF::BatchMatMulV2Op>(op)) {
     if (const auto adj_y = op->getAttrOfType<BoolAttr>("adj_y")) {
+      is_supported_affine_op = !adj_y.getValue();
+    }
+  } else if (llvm::isa<TF::MatMulOp>(op)) {
+    if (const auto adj_y = op->getAttrOfType<BoolAttr>("transpose_b")) {
       is_supported_affine_op = !adj_y.getValue();
     }
   }
@@ -148,14 +182,14 @@ LogicalResult MatchSupportedAffineOp(Operation* op, Value& binding_output,
 // Makes the 1D value broadcastable with the `rhs_shape`.
 Value MakeOneDimValueBroadcastable(OpBuilder& builder, Location loc,
                                    Value value, ShapedType rhs_shape) {
-  ShapedType value_shape = value.getType().dyn_cast_or_null<ShapedType>();
+  ShapedType value_shape = mlir::dyn_cast_or_null<ShapedType>(value.getType());
   if (!value_shape || value_shape.getRank() != 1 ||
       !value_shape.hasStaticShape() || !rhs_shape.hasStaticShape()) {
     return {};
   }
 
   int64_t num_elements = value_shape.getNumElements();
-  llvm::SmallVector<int64_t> new_shape;
+  SmallVector<int64_t> new_shape;
   for (auto idx : llvm::reverse(llvm::seq<int32_t>(0, rhs_shape.getRank()))) {
     const int64_t rhs_dim = rhs_shape.getDimSize(idx);
     if (num_elements % rhs_dim != 0) {
@@ -172,12 +206,13 @@ Value MakeOneDimValueBroadcastable(OpBuilder& builder, Location loc,
   return ConstantFoldOpIfPossible(reshape_op).front();
 }
 
-// Checks if a value can be symetrically quantized.
+// Checks if a value can be symmetrically quantized.
 bool CanBeSymmetricallyQuantized(Value weight) {
   auto dq_op = weight.getDefiningOp<quantfork::DequantizeCastOp>();
   if (!dq_op) return true;
 
-  auto qtype = dq_op.getArg().getType().cast<TensorType>().getElementType();
+  auto qtype =
+      mlir::cast<TensorType>(dq_op.getArg().getType()).getElementType();
   if (auto uniform_type = llvm::dyn_cast_or_null<UniformQuantizedType>(qtype)) {
     return uniform_type.getZeroPoint() == 0;
   } else if (auto per_axis_type =
@@ -205,25 +240,25 @@ SmallVector<T> MultiplyTwoArrays(ArrayRef<T> a, ArrayRef<T> b) {
 }
 
 // Multiplies the value followed by a FakeQuant op and adjusts the quantization
-// params. This funtion only supports symetrically quantized values.
+// params. This function only supports symmetrically quantized values.
 Value MultiplyFakeQuantValue(OpBuilder& builder, Location loc, Value value,
                              Value multiplier) {
   auto dq_op = value.getDefiningOp<quantfork::DequantizeCastOp>();
   if (!dq_op) {
     auto mul_op = builder.create<TF::MulOp>(loc, value, multiplier);
-    return ConstantFoldOpIfPossible(mul_op).front();
+    return mul_op.getResult();
   }
   auto q_op = dq_op.getArg().getDefiningOp<quantfork::QuantizeCastOp>();
   if (!q_op) return {};
 
   Value float_value = q_op.getArg();
   Value new_value = builder.create<TF::MulOp>(loc, float_value, multiplier);
-  auto new_value_type = new_value.getType().cast<TensorType>();
+  auto new_value_type = mlir::cast<TensorType>(new_value.getType());
 
   // Get multiplier value in double.
   DenseFPElementsAttr multiplier_attr;
   if (!matchPattern(multiplier, m_Constant(&multiplier_attr)) ||
-      multiplier_attr.getType().cast<ShapedType>().getRank() > 1) {
+      mlir::cast<ShapedType>(multiplier_attr.getType()).getRank() > 1) {
     return {};
   }
   std::vector<double> multiplier_values;
@@ -234,7 +269,7 @@ Value MultiplyFakeQuantValue(OpBuilder& builder, Location loc, Value value,
 
   // Multiply the quantization parameters by the multiplier.
   QuantizedType new_qtype;
-  auto element_type = q_op.getType().cast<TensorType>().getElementType();
+  auto element_type = mlir::cast<TensorType>(q_op.getType()).getElementType();
   if (auto uniform_type = llvm::dyn_cast<UniformQuantizedType>(element_type)) {
     if (multiplier_attr.isSplat()) {
       double new_scale = multiplier_array.front() * uniform_type.getScale();
@@ -271,108 +306,7 @@ Value MultiplyFakeQuantValue(OpBuilder& builder, Location loc, Value value,
       q_op.getLoc(), new_value_type.clone(new_qtype), new_value);
   auto dequantize = builder.create<quantfork::DequantizeCastOp>(
       dq_op.getLoc(), new_value_type, quantize.getResult());
-  return ConstantFoldOpIfPossible(dequantize).front();
-}
-
-// Generate an einsum equation from the given DotDimensionNumber.
-std::string CreateEinsumEquation(
-    const xla::DotDimensionNumbers& dot_dimension_numbers, const int lhs_rank,
-    const int rhs_rank) {
-  // Prepare necessary indices.
-  absl::flat_hash_set<int64_t> lhs_batch_idx, rhs_batch_idx;
-  absl::flat_hash_set<int64_t> lhs_contract_idx, rhs_contract_idx;
-  lhs_batch_idx.insert(dot_dimension_numbers.lhs_batch_dimensions().begin(),
-                       dot_dimension_numbers.lhs_batch_dimensions().end());
-  lhs_contract_idx.insert(
-      dot_dimension_numbers.lhs_contracting_dimensions().begin(),
-      dot_dimension_numbers.lhs_contracting_dimensions().end());
-  rhs_batch_idx.insert(dot_dimension_numbers.rhs_batch_dimensions().begin(),
-                       dot_dimension_numbers.rhs_batch_dimensions().end());
-  rhs_contract_idx.insert(
-      dot_dimension_numbers.rhs_contracting_dimensions().begin(),
-      dot_dimension_numbers.rhs_contracting_dimensions().end());
-
-  // Generate equation.
-  std::string lhs_eq = "";
-  std::string rhs_eq = "";
-  std::string out_eq = "";
-  char c = 'a';
-  std::vector<char> lhs_batch_dims;
-  std::vector<char> lhs_contract_dims;
-  for (int i = 0; i < lhs_rank; i++) {
-    absl::StrAppend(&lhs_eq, std::string(1, c));
-    if (lhs_batch_idx.contains(i)) {
-      lhs_batch_dims.push_back(c);
-    } else if (lhs_contract_idx.contains(i)) {
-      lhs_contract_dims.push_back(c);
-    }
-    c++;
-  }
-
-  int batch_trace_idx = 0;
-  int contract_trace_idx = 0;
-  const bool rhs_only_batch = lhs_batch_dims.empty();
-  for (int i = 0; i < rhs_rank; i++) {
-    if (rhs_batch_idx.contains(i)) {
-      if (rhs_only_batch) {
-        rhs_eq.push_back(c);
-        lhs_batch_dims.push_back(c);
-        c++;
-      } else {
-        rhs_eq.push_back(lhs_batch_dims[batch_trace_idx]);
-        batch_trace_idx++;
-      }
-    } else if (rhs_contract_idx.contains(i)) {
-      absl::StrAppend(&rhs_eq,
-                      std::string(1, lhs_contract_dims[contract_trace_idx]));
-      contract_trace_idx++;
-    } else {
-      rhs_eq += c;
-      c++;
-    }
-  }
-
-  // Create out_eq by merging lhs and rhs.
-  // In XlaDotv2 style - batch dim - leftover from lhs - leftover from rhs.
-  for (const char c : lhs_batch_dims) {
-    absl::StrAppend(&out_eq, std::string(1, c));
-  }
-  for (const char c : lhs_eq) {
-    if (!absl::StrContains(out_eq, c) && !absl::StrContains(rhs_eq, c)) {
-      absl::StrAppend(&out_eq, std::string(1, c));
-    }
-  }
-  for (const char c : rhs_eq) {
-    if (!absl::StrContains(out_eq, c) && !absl::StrContains(lhs_eq, c)) {
-      absl::StrAppend(&out_eq, std::string(1, c));
-    }
-  }
-
-  return absl::StrCat(lhs_eq, ",", rhs_eq, "->", out_eq);
-}
-
-Value CreateEinsumOpFromXlaDotV2Op(OpBuilder& builder, const Location loc,
-                                   Value lhs, Value rhs, Value output,
-                                   StringAttr dot_dimension_numbers_str) {
-  xla::DotDimensionNumbers dot_dimension_numbers;
-  dot_dimension_numbers.ParseFromString(dot_dimension_numbers_str.str());
-  SmallVector<Value> input_arguments = {lhs, rhs};
-  const int lhs_rank =
-      lhs.getType().template cast<ShapedType>().getShape().size();
-  const int rhs_rank =
-      rhs.getType().template cast<ShapedType>().getShape().size();
-
-  const std::string einsum_equation =
-      CreateEinsumEquation(dot_dimension_numbers, lhs_rank, rhs_rank);
-
-  return builder.create<TF::EinsumOp>(loc, output.getType(), input_arguments,
-                                      builder.getStringAttr(einsum_equation));
-}
-
-bool IsPrecisionEmpty(StringAttr prec_str) {
-  xla::PrecisionConfig prec;
-  prec.ParseFromString(prec_str.str());
-  return !prec.operand_precision_size();
+  return dequantize.getResult();
 }
 
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/prepare_lifting.inc"
@@ -385,7 +319,7 @@ void PrepareLiftingPass::runOnOperation() {
   // with a constant operand to a preceding affine operation.
   RewritePatternSet patterns(ctx);
   populateWithGenerated(patterns);
-  patterns.add<RemoveIdentity>(ctx);
+  patterns.add<RemoveIdentity, ConstantFoldQuantizableOperands>(ctx);
   if (op_set_ != OpSet::XLA) {
     // Convert Einsum into BatchMatMul for non-XLA opsets.
     // For the uniform opset, it is requested to maintain the BatchMatmul logic.
@@ -395,7 +329,7 @@ void PrepareLiftingPass::runOnOperation() {
   }
 
   if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
-    func.emitError() << "quant-internal-prepare-lifting failed.";
+    func.emitError() << "quant-prepare-lifting failed.";
     signalPassFailure();
   }
 }

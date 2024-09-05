@@ -1,7 +1,6 @@
 # Description:
 #   Tensor bundle: a module to efficiently serialize and deserialize tensors.
 
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_not_windows",
@@ -10,6 +9,7 @@ load(
     "tf_copts",
 )
 load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -55,10 +55,14 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/tsl/lib/io:buffered_file",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/lib/io:buffered_file",
+        "@local_xla//xla/tsl/util:byte_swap_array",
     ],
 )
 
@@ -82,7 +86,7 @@ cc_library(
         "//tensorflow/core/platform:byte_order",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
-        "//tensorflow/tsl/util:byte_swap_array",
+        "@local_xla//xla/tsl/util:byte_swap_array",
     ],
 )
 
@@ -96,6 +100,12 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:byte_order",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:platform_port",
     ],
 )
 
@@ -109,6 +119,7 @@ tf_cc_test(
     ],
     deps = [
         ":byteswaptensor",
+        ":naming",
         ":tensor_bundle",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -117,5 +128,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/framework:tensor_testutil",
+        "@com_google_absl//absl/status",
     ],
 )

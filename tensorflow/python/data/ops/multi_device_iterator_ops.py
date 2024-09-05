@@ -20,7 +20,6 @@ from tensorflow.python.data.ops import prefetch_op
 from tensorflow.python.data.util import structure
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -41,6 +40,7 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
   def __init__(self, shard_num, multi_device_iterator_resource, incarnation_id,
                source_device, element_spec, iterator_is_anonymous):
     self._element_spec = element_spec
+    self._name = f"device_generator_{shard_num}"
 
     multi_device_iterator_string_handle = (
         gen_dataset_ops.multi_device_iterator_to_string_handle(
@@ -87,9 +87,9 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
     next_func_concrete = _next_func.get_concrete_function()
 
     # TODO(b/124254153): Enable autograph once the overhead is low enough.
-    @function.defun_with_attributes(
+    @def_function.function(
         input_signature=[tensor_spec.TensorSpec([], dtypes.string)],
-        attributes={"experimental_ints_on_device": True},
+        experimental_attributes={"experimental_ints_on_device": True},
         autograph=False)  # Pure graph code.
     def _remote_next_func(string_handle):
       return_values = functional_ops.remote_call(
@@ -173,6 +173,8 @@ class _ReincarnatedPerDeviceGenerator(dataset_ops.DatasetV2):
 
   def __init__(self, per_device_dataset, incarnation_id):
     # pylint: disable=protected-access
+    if hasattr(per_device_dataset, "_name"):
+      self._name = per_device_dataset._name
     self._element_spec = per_device_dataset.element_spec
     self._init_func = per_device_dataset._init_func
     self._init_captured_args = self._init_func.captured_inputs
@@ -215,7 +217,7 @@ def _create_device_dataset(prototype_ds, incarnation_id, prefetch_buffer_size,
       ds = prefetch_op._PrefetchDataset(  # pylint: disable=protected-access
           ds, prefetch_buffer_size, slack_period=1)
     else:
-      ds = ds.prefetch(prefetch_buffer_size)
+      ds = ds.prefetch(prefetch_buffer_size, name="device_prefetch")
   return ds
 
 

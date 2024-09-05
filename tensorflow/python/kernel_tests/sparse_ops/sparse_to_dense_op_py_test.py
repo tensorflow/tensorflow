@@ -62,7 +62,7 @@ class SparseToDenseTest(test.TestCase, parameterized.TestCase):
 
   def testString(self):
     tf_ans = sparse_ops.sparse_to_dense([1, 3], [5], "a", "b")
-    np_ans = np.array(["b", "a", "b", "a", "b"]).astype(np.string_)
+    np_ans = np.array(["b", "a", "b", "a", "b"]).astype(np.bytes_)
     self.assertAllEqual(np_ans, tf_ans)
 
   def testSetValue(self):

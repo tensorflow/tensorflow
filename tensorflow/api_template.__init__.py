@@ -25,18 +25,19 @@ Note that the file `__init__.py` in the TensorFlow source code tree is actually
 only a placeholder to enable test cases to run. The TensorFlow build replaces
 this file with a file generated from [`api_template.__init__.py`](https://www.github.com/tensorflow/tensorflow/blob/master/tensorflow/api_template.__init__.py)
 """
+# pylint: disable=g-bad-import-order,protected-access,g-import-not-at-top
 
 import distutils as _distutils
 import importlib
 import inspect as _inspect
-import logging as _logging
 import os as _os
 import site as _site
 import sys as _sys
-import typing as _typing
 
+# Do not remove this line; See https://github.com/tensorflow/tensorflow/issues/42596
+from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python.tools import module_util as _module_util
-from tensorflow.python.util.lazy_loader import LazyLoader as _LazyLoader
+from tensorflow.python.util.lazy_loader import KerasLazyLoader as _KerasLazyLoader
 
 # Make sure code inside the TensorFlow codebase can use tf2.enabled() at import.
 _os.environ["TF2_BEHAVIOR"] = "1"
@@ -60,44 +61,27 @@ elif _tf_api_dir not in __path__:
   __path__.append(_tf_api_dir)
 
 # Hook external TensorFlow modules.
-# Import compat before trying to import summary from tensorboard, so that
-# reexport_tf_summary can get compat from sys.modules. Only needed if using
-# lazy loading.
-_current_module.compat.v2  # pylint: disable=pointless-statement
-try:
-  from tensorboard.summary._tf import summary
-  _current_module.__path__ = (
-      [_module_util.get_parent_dir(summary)] + _current_module.__path__)
-  setattr(_current_module, "summary", summary)
-except ImportError:
-  _logging.warning(
-      "Limited tf.summary API due to missing TensorBoard installation.")
 
 # Load tensorflow-io-gcs-filesystem if enabled
-# pylint: disable=g-import-not-at-top
 if (_os.getenv("TF_USE_MODULAR_FILESYSTEM", "0") == "true" or
     _os.getenv("TF_USE_MODULAR_FILESYSTEM", "0") == "1"):
   import tensorflow_io_gcs_filesystem as _tensorflow_io_gcs_filesystem
-# pylint: enable=g-import-not-at-top
 
-# Lazy-load estimator.
-_estimator_module = "tensorflow_estimator.python.estimator.api._v2.estimator"
-estimator = _LazyLoader("estimator", globals(), _estimator_module)
-_module_dir = _module_util.get_parent_dir_for_name(_estimator_module)
-if _module_dir:
-  _current_module.__path__ = [_module_dir] + _current_module.__path__
-setattr(_current_module, "estimator", estimator)
-
-_keras_module = "keras.api._v2.keras"
-_keras = _LazyLoader("keras", globals(), _keras_module)
-_module_dir = _module_util.get_parent_dir_for_name(_keras_module)
-if _module_dir:
-  _current_module.__path__ = [_module_dir] + _current_module.__path__
-setattr(_current_module, "keras", _keras)
+# Lazy-load Keras v2/3.
+_tf_uses_legacy_keras = (
+    _os.environ.get("TF_USE_LEGACY_KERAS", None) in ("true", "True", "1"))
+setattr(_current_module, "keras", _KerasLazyLoader(globals()))
+_module_dir = _module_util.get_parent_dir_for_name("keras._tf_keras.keras")
+_current_module.__path__ = [_module_dir] + _current_module.__path__
+if _tf_uses_legacy_keras:
+  _module_dir = _module_util.get_parent_dir_for_name("tf_keras.api._v2.keras")
+else:
+  _module_dir = _module_util.get_parent_dir_for_name("keras.api._v2.keras")
+_current_module.__path__ = [_module_dir] + _current_module.__path__
 
 
 # Enable TF2 behaviors
-from tensorflow.python.compat import v2_compat as _compat  # pylint: disable=g-import-not-at-top
+from tensorflow.python.compat import v2_compat as _compat
 _compat.enable_v2_behavior()
 _major_api_version = 2
 
@@ -150,59 +134,38 @@ if _os.getenv("TF_PLUGGABLE_DEVICE_LIBRARY_PATH", ""):
       _os.getenv("TF_PLUGGABLE_DEVICE_LIBRARY_PATH")
   )
 
-# Add module aliases
-if hasattr(_current_module, "keras"):
-  # It is possible that keras is a lazily loaded module, which might break when
-  # actually trying to import it. Have a Try-Catch to make sure it doesn't break
-  # when it doing some very initial loading, like tf.compat.v2, etc.
-  try:
-    _keras_package = "keras.api._v2.keras."
-    _losses = _LazyLoader("losses", globals(), _keras_package + "losses")
-    _metrics = _LazyLoader("metrics", globals(), _keras_package + "metrics")
-    _optimizers = _LazyLoader(
-        "optimizers", globals(), _keras_package + "optimizers")
-    _initializers = _LazyLoader(
-        "initializers", globals(), _keras_package + "initializers")
-    setattr(_current_module, "losses", _losses)
-    setattr(_current_module, "metrics", _metrics)
-    setattr(_current_module, "optimizers", _optimizers)
-    setattr(_current_module, "initializers", _initializers)
-  except ImportError:
-    pass
+# Add Keras module aliases
+_losses = _KerasLazyLoader(globals(), submodule="losses", name="losses")
+_metrics = _KerasLazyLoader(globals(), submodule="metrics", name="metrics")
+_optimizers = _KerasLazyLoader(
+    globals(), submodule="optimizers", name="optimizers")
+_initializers = _KerasLazyLoader(
+    globals(), submodule="initializers", name="initializers")
+setattr(_current_module, "losses", _losses)
+setattr(_current_module, "metrics", _metrics)
+setattr(_current_module, "optimizers", _optimizers)
+setattr(_current_module, "initializers", _initializers)
 
-  # Do an eager load for Keras' code so that any function/method that needs to
-  # happen at load time will trigger, eg registration of optimizers in the
-  # SavedModel registry.
-  # See b/196254385 for more details.
-  try:
-    importlib.import_module("keras.optimizers")
-  except (ImportError, AttributeError):
-    pass
-  try:
+
+# Do an eager load for Keras' code so that any function/method that needs to
+# happen at load time will trigger, eg registration of optimizers in the
+# SavedModel registry.
+# See b/196254385 for more details.
+try:
+  if _tf_uses_legacy_keras:
+    importlib.import_module("tf_keras.src.optimizers")
+  else:
     importlib.import_module("keras.src.optimizers")
-  except (ImportError, AttributeError):
-    pass
+except (ImportError, AttributeError):
+  pass
+
 del importlib
-
-# Explicitly import lazy-loaded modules to support autocompletion.
-# pylint: disable=g-import-not-at-top
-if _typing.TYPE_CHECKING:
-  from tensorflow_estimator.python.estimator.api._v2 import estimator as estimator
-  from keras.api._v2 import keras
-  from keras.api._v2.keras import losses
-  from keras.api._v2.keras import metrics
-  from keras.api._v2.keras import optimizers
-  from keras.api._v2.keras import initializers
-# pylint: enable=g-import-not-at-top
-
-# pylint: enable=undefined-variable
 
 # Delete modules that should be hidden from dir().
 # Don't fail if these modules are not available.
 # For e.g. this file will be originally placed under tensorflow/_api/v1 which
 # does not have "python", "core" directories. Then, it will be copied
 # to tensorflow/ which does have these two directories.
-# pylint: disable=undefined-variable
 try:
   del python
 except NameError:

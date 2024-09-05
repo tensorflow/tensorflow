@@ -19,16 +19,26 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/types/optional.h"
-#include "llvm/Support/FormatVariadic.h"
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/collectives.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/shape_utils.h"
-#include "tensorflow/dtensor/mlir/spmd_expander_common.h"
 #include "tensorflow/dtensor/mlir/value_utils.h"
 
 namespace tensorflow {
@@ -209,26 +219,28 @@ StatusOr<Layout> GatherNdGetOutputLayoutFromInput(
   // replace them with replicated.
   // If sharding dimension is used by both params and indices, the params
   // layout will be respected as generally params is larger than indices.
-  std::vector<ShardingSpec> output_specs(params_rank - index_dimensions +
-                                         indices_rank - 1);
+  std::vector<std::string> output_specs(params_rank - index_dimensions +
+                                        indices_rank - 1);
   absl::flat_hash_set<std::string> used_dimensions;
   const int params_offset = -index_dimensions + indices_rank - 1;
 
   for (int i = index_dimensions; i < params_rank; ++i) {
-    if (params_layout && Layout::IsShardedSpec(params_layout->dim(i))) {
-      const ShardingSpec& params_spec = params_layout->dim(i);
+    if (params_layout &&
+        Layout::IsShardedDimension(params_layout->sharding_spec(i))) {
+      const auto& params_spec = params_layout->sharding_spec(i);
       output_specs[i + params_offset] = params_spec;
-      used_dimensions.emplace(params_spec.sharding_spec());
+      used_dimensions.emplace(params_spec);
     } else {
-      output_specs[i + params_offset].set_sharding_spec(Layout::kUnshardedDim);
+      output_specs[i + params_offset] = Layout::kUnshardedDim;
     }
   }
   for (int i = 0; i < indices_rank - 1; ++i) {
-    if (indices_layout && Layout::IsShardedSpec(indices_layout->dim(i)) &&
+    if (indices_layout &&
+        Layout::IsShardedDimension(indices_layout->sharding_spec(i)) &&
         !used_dimensions.contains(indices_layout->sharding_spec(i)))
-      output_specs[i] = indices_layout->dim(i);
+      output_specs[i] = indices_layout->sharding_spec(i);
     else
-      output_specs[i].set_sharding_spec(Layout::kUnshardedDim);
+      output_specs[i] = Layout::kUnshardedDim;
   }
   return Layout::GetLayout(output_specs, mesh);
 }
@@ -242,25 +254,25 @@ Status GatherNdGetInputLayoutFromOutput(const Layout& output_layout,
   // indices_layout (with the last dimensions replicated) and the remaining
   // dimensions to params_layout (with the first index_dimensions dimensions
   // replicated).
-  std::vector<ShardingSpec> params_specs(params_rank);
-  std::vector<ShardingSpec> indices_specs(indices_rank);
+  std::vector<std::string> params_specs(params_rank);
+  std::vector<std::string> indices_specs(indices_rank);
 
   for (int i = 0; i < index_dimensions; ++i)
-    params_specs[i].set_sharding_spec(Layout::kUnshardedDim);
+    params_specs[i] = Layout::kUnshardedDim;
 
   const int params_offset = -index_dimensions + indices_rank - 1;
   for (int i = index_dimensions; i < params_rank; ++i)
-    params_specs[i] = output_layout.dim(i + params_offset);
+    params_specs[i] = output_layout.sharding_spec(i + params_offset);
 
   for (int i = 0; i < indices_rank - 1; ++i)
-    indices_specs[i] = output_layout.dim(i);
+    indices_specs[i] = output_layout.sharding_spec(i);
 
-  indices_specs[indices_rank - 1].set_sharding_spec(Layout::kUnshardedDim);
+  indices_specs[indices_rank - 1] = Layout::kUnshardedDim;
 
   TF_ASSIGN_OR_RETURN(*params_layout, Layout::GetLayout(params_specs, mesh));
   TF_ASSIGN_OR_RETURN(*indices_layout, Layout::GetLayout(indices_specs, mesh));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -309,21 +321,20 @@ StatusOr<mlir::Operation*> GatherNdSPMDExpander::ExpandOp(mlir::Operation* op) {
 
   // Step 2)
   llvm::DenseSet<llvm::StringRef> used_dimensions;
-  for (const ShardingSpec& spec : pre_output_layout.sharding_specs())
-    if (Layout::IsShardedSpec(spec))
-      used_dimensions.insert(spec.sharding_spec());
+  for (const auto& spec : pre_output_layout.sharding_spec_strs())
+    if (Layout::IsShardedDimension(spec)) used_dimensions.insert(spec);
 
-  std::vector<ShardingSpec> sharding_specs(output_layout.rank());
+  std::vector<std::string> sharding_specs(output_layout.rank());
   for (int i = 0; i < sharding_specs.size(); ++i) {
-    if (Layout::IsShardedSpec(pre_output_layout.dim(i)))
-      sharding_specs[i] = pre_output_layout.dim(i);
+    if (Layout::IsShardedDimension(pre_output_layout.sharding_spec(i)))
+      sharding_specs[i] = pre_output_layout.sharding_spec(i);
     // Merge in sharded dimensions from the output which aren't already used
     // by the pre_output_layout.
-    else if (Layout::IsShardedSpec(output_layout.dim(i)) &&
+    else if (Layout::IsShardedDimension(output_layout.sharding_spec(i)) &&
              !used_dimensions.contains(output_layout.sharding_spec(i)))
-      sharding_specs[i] = output_layout.dim(i);
+      sharding_specs[i] = output_layout.sharding_spec(i);
     else
-      sharding_specs[i].set_sharding_spec(Layout::kUnshardedDim);
+      sharding_specs[i] = Layout::kUnshardedDim;
   }
 
   // Step 3)

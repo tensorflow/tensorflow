@@ -56,8 +56,7 @@ struct AlignType<0, size> {
 #if defined(_MSC_VER)
 #define TF_LIB_GTL_ALIGN_ATTRIBUTE(X) __declspec(align(X))
 #define TF_LIB_GTL_ALIGN_OF(T) __alignof(T)
-#elif defined(COMPILER_GCC3) || __GNUC__ >= 3 || defined(__APPLE__) || \
-    defined(COMPILER_ICC) || defined(OS_NACL) || defined(__clang__)
+#else
 #define TF_LIB_GTL_ALIGN_ATTRIBUTE(X) __attribute__((aligned(X)))
 #define TF_LIB_GTL_ALIGN_OF(T) __alignof__(T)
 #endif

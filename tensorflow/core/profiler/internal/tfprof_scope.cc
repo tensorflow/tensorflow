@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <stdio.h>
 
+#include <memory>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_format.h"
 #include "tensorflow/core/platform/regexp.h"
@@ -30,20 +32,19 @@ ScopeNode* TFScope::CreateParentNode(const string& name) {
   if (nodes_map_.find(name) != nodes_map_.end()) {
     return nodes_map_[name].get();
   }
-  node_defs_.push_back(std::unique_ptr<NodeDef>(new NodeDef()));
+  node_defs_.push_back(std::make_unique<NodeDef>());
   node_defs_.back()->set_name(name);
   node_defs_.back()->set_op(kTFScopeParent);
-  parent_nodes_[name] = std::unique_ptr<TFGraphNode>(
-      new TFGraphNode(node_defs_.back().get(), -1, nullptr));
-  nodes_map_[name] =
-      std::unique_ptr<ScopeNode>(new ScopeNode(parent_nodes_[name].get()));
+  parent_nodes_[name] =
+      std::make_unique<TFGraphNode>(node_defs_.back().get(), -1, nullptr);
+  nodes_map_[name] = std::make_unique<ScopeNode>(parent_nodes_[name].get());
   return nodes_map_[name].get();
 }
 
 void TFScope::AddNode(TFGraphNode* node) {
   string name = node->name();
   if (nodes_map_.find(node->name()) == nodes_map_.end()) {
-    nodes_map_[name] = std::unique_ptr<ScopeNode>(new ScopeNode(node));
+    nodes_map_[name] = std::make_unique<ScopeNode>(node);
   }
 
   auto last_slash = name.find_last_of('/');

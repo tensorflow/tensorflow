@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function.h"
 
 #include <cassert>
+#include <iostream>
+#include <vector>
 
-#include "tensorflow/compiler/xla/cpu_function_runtime.h"
+#include "xla/cpu_function_runtime.h"
 
 namespace tensorflow {
 
@@ -27,9 +29,14 @@ XlaCompiledCpuFunction::XlaCompiledCpuFunction(const StaticData& static_data,
       result_index_(static_data.result_index_),
       buffer_table_(new void*[static_data.num_buffers_]),
       buffer_infos_(static_data.buffer_infos_),
+      num_buffers_(static_data.num_buffers_),
+      num_results_(static_data.num_results_),
+      result_index_table_(static_data.result_index_table_),
       arg_index_table_(static_data.arg_index_table_),
       num_args_(static_data.num_args_),
       num_variables_(static_data.num_variables_),
+      arg_shape_infos_(static_data.arg_shape_infos_),
+      result_shape_infos_(static_data.result_shape_infos_),
       arg_names_(static_data.arg_names_),
       variable_names_(static_data.variable_names_),
       result_names_(static_data.result_names_),
@@ -105,6 +112,36 @@ int XlaCompiledCpuFunction::LookupVariableIndex(const string& name) const {
 
 int XlaCompiledCpuFunction::LookupResultIndex(const string& name) const {
   return LookupNameIndex(name, result_names_);
+}
+
+const char* XlaCompiledCpuFunction::GetArgName(const int index) const {
+  assert(arg_names_ != nullptr);
+  if (index < 0 || index >= num_args_) {
+    std::cerr << "XlaCompiledCpuFunction::GetArgName: index '" << index
+              << "' out of range [0, " << num_args_ << "].\n";
+    return nullptr;
+  }
+  return arg_names_[index];
+}
+
+const char* XlaCompiledCpuFunction::GetVariableName(int index) const {
+  assert(variable_names_ != nullptr);
+  if (index < 0 || index >= num_variables_) {
+    std::cerr << "XlaCompiledCpuFunction::GetVariableName: index '" << index
+              << "' out of range [0, " << num_variables_ << ").\n";
+    return nullptr;
+  }
+  return variable_names_[index];
+}
+
+const char* XlaCompiledCpuFunction::GetResultName(int index) const {
+  assert(result_names_ != nullptr);
+  if (index < 0 || index >= num_results_) {
+    std::cerr << "XlaCompiledCpuFunction::GetResultName: index '" << index
+              << "' out of range [0, " << num_results_ << ").\n";
+    return nullptr;
+  }
+  return result_names_[index];
 }
 
 }  // namespace tensorflow

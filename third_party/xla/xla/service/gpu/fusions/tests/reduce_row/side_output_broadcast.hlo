@@ -1,0 +1,15 @@
+// RUN: test_correctness %s
+
+%add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+fusion {
+  %p0 = f32[6,6] parameter(0)
+  %c0 = f32[] constant(0)
+  %reduce = f32[] reduce(%p0, %c0), dimensions={0,1}, to_apply=%add
+  %broadcast = f32[6,6] broadcast(%reduce), dimensions={}
+  ROOT %tuple = (f32[6,6], f32[]) tuple(%broadcast, %reduce)
+}

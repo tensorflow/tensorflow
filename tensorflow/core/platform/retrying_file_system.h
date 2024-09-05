@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/retrying_utils.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/tsl/platform/retrying_file_system.h"
+#include "tsl/platform/retrying_file_system.h"
 
 namespace tensorflow {
 

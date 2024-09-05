@@ -74,14 +74,14 @@ struct ResourceOpLiftingPass
 };
 
 bool IsResource(Value value) {
-  return getElementTypeOrSelf(value.getType()).isa<TF::ResourceType>();
+  return mlir::isa<TF::ResourceType>(getElementTypeOrSelf(value.getType()));
 }
 
 // Get the type of the data contained in a resource. Returns null if there is
 // no single type in the resource.
 Type GetResourceSubtype(Value value) {
   auto resource_type =
-      getElementTypeOrSelf(value.getType()).dyn_cast<TF::ResourceType>();
+      mlir::dyn_cast<TF::ResourceType>(getElementTypeOrSelf(value.getType()));
   auto subtypes = resource_type.getSubtypes();
   if (subtypes.size() == 1) return subtypes[0];
   return nullptr;
@@ -308,7 +308,7 @@ LogicalResult RegionResourceHoister::Analyze() {
       // Since all the sub-regions within this region (i.e., regions attached to
       // op's in this region) have themselves gone through lifting, all resource
       // users are expected to be operations in this region and not embedded
-      // within other sub-regions attached to op's in this region. So the check
+      // within other sub-regions attached to ops in this region. So the check
       // for whether a user is in one of the regions attached to this op is
       // straightforward.
       if (user->getParentRegion()->getParentOp() != op_) continue;
@@ -464,7 +464,8 @@ void RegionResourceHoister::ReplaceOpWithNewOp() {
   // Clone this old operation but with new result types.
   Operation* new_op = Operation::create(
       op_->getLoc(), op_->getName(), new_result_types, op_->getOperands(),
-      op_->getAttrs(), op_->getSuccessors(), op_->getNumRegions());
+      op_->getAttrs(), op_->getPropertiesStorage(), op_->getSuccessors(),
+      op_->getNumRegions());
   builder.insert(new_op);
 
   // Move regions to the new op.
@@ -690,7 +691,7 @@ void RemoveUnusedResourceArgumentsAndForwardedRetvals(
   int64_t skipped_retvals = 0;
   for (auto entry : llvm::enumerate(old_return_vals)) {
     auto return_val = entry.value();
-    if (auto arg = return_val.dyn_cast<BlockArgument>()) {
+    if (auto arg = mlir::dyn_cast<BlockArgument>(return_val)) {
       auto it = infos.find(arg.getArgNumber());
       if (it != infos.end() && !it->getSecond().used) {
         return_op->eraseOperand(entry.index() - skipped_retvals++);
@@ -746,7 +747,7 @@ LogicalResult LiftArgRetResourcesForFunction(
   // with type replaced.
   llvm::SmallVector<Value, 4> skipped_args;
   for (auto& it : hoister.GetResources()) {
-    BlockArgument arg = it.first.dyn_cast<BlockArgument>();
+    BlockArgument arg = mlir::dyn_cast<BlockArgument>(it.first);
     assert(arg && "Expect resources for FuncOp to be its arguments");
     auto type_iter = resource_data_types.find(arg.getArgNumber());
     if (type_iter == resource_data_types.end()) {
@@ -771,7 +772,7 @@ LogicalResult LiftArgRetResourcesForFunction(
     Value resource = assign_variable_op.getResource();
     if (!hoister.Contains(resource)) continue;
 
-    auto arg = resource.dyn_cast<BlockArgument>();
+    auto arg = mlir::dyn_cast<BlockArgument>(resource);
     handle_updated_arg_value(arg.getArgNumber(), assign_variable_op.getValue());
     assign_variable_op.erase();
   }
@@ -1017,11 +1018,11 @@ LogicalResult HandlePartitionedCallOpCallee(
   for (auto entry :
        llvm::enumerate(callee.front().getTerminator()->getOperands())) {
     auto retval = entry.value();
-    if (!getElementTypeOrSelf(retval.getType()).isa<TF::ResourceType>()) {
+    if (!mlir::isa<TF::ResourceType>(getElementTypeOrSelf(retval.getType()))) {
       result->old_to_new_output_indices.push_back(non_resource_results++);
       continue;
     }
-    auto aliasing_arg = retval.dyn_cast<BlockArgument>();
+    auto aliasing_arg = mlir::dyn_cast<BlockArgument>(retval);
     if (!aliasing_arg) {
       return callee.emitOpError("unsupported function call: ")
              << "resource return value does not alias an input.";
@@ -1062,7 +1063,7 @@ LogicalResult HandlePartitionedCallOpCallee(
   llvm::SmallVector<int64_t, 4> retval_indices_to_preserve;
   for (auto& val : callee.front().getTerminator()->getOpOperands()) {
     // Store indices of results that are not resources.
-    if (!getElementTypeOrSelf(val.get().getType()).isa<TF::ResourceType>())
+    if (!mlir::isa<TF::ResourceType>(getElementTypeOrSelf(val.get().getType())))
       retval_indices_to_preserve.push_back(val.getOperandNumber());
   }
   int64_t num_retvals = retval_indices_to_preserve.size();
@@ -1259,6 +1260,11 @@ void ResourceOpLiftingPass::runOnOperation() {
   });
 
   if (walk_result.wasInterrupted()) return signalPassFailure();
+
+  // Clean up and canonicalize to remove dead local variables as some local
+  // variables might be dead after hoisting resource loads/stores.
+  if (failed(TF::CleanupAndCanonicalizeForResourceOpLifting(module)))
+    return signalPassFailure();
 }
 
 #define GEN_PASS_DEF_RESOURCEOPLIFTINGFORMAINFUNCTIONPASS

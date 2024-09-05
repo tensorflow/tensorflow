@@ -28,7 +28,8 @@ namespace tensorflow {
 
 TEST(GrpcWorkerCacheTest, NewGrpcWorkerCache) {
   GrpcChannelSpec spec;
-  TF_ASSERT_OK(spec.AddHostPortsJob("worker", {"a:0", "b:1", "c:2"}));
+  TF_ASSERT_OK(
+      spec.AddHostPortsJob("worker", {{0, "a:0"}, {1, "b:1"}, {2, "c:2"}}));
   ChannelCreationFunction channel_func =
       ConvertToChannelCreationFunction(NewHostPortGrpcChannel);
   auto channel_cache = std::shared_ptr<GrpcChannelCache>(
@@ -63,7 +64,8 @@ TEST(GrpcWorkerCacheTest, NewGrpcWorkerCache) {
 
 TEST(GrpcWorkerCacheTest, DestructWorkerCacheInThreadPool) {
   GrpcChannelSpec spec;
-  TF_ASSERT_OK(spec.AddHostPortsJob("worker", {"a:1", "b:2", "c:3"}));
+  TF_ASSERT_OK(
+      spec.AddHostPortsJob("worker", {{0, "a:0"}, {1, "b:1"}, {2, "c:2"}}));
   ChannelCreationFunction channel_func =
       ConvertToChannelCreationFunction(NewHostPortGrpcChannel);
   auto channel_cache = std::shared_ptr<GrpcChannelCache>(

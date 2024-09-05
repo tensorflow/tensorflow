@@ -23,7 +23,7 @@ from tensorflow.compiler.tests import xla_test
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import googletest
-
+from tensorflow.python.platform import sysconfig
 
 class MatrixSolveOpTest(xla_test.XLATestCase, parameterized.TestCase):
 
@@ -73,6 +73,9 @@ class MatrixSolveOpTest(xla_test.XLATestCase, parameterized.TestCase):
 
 
 if __name__ == "__main__":
-  os.environ["XLA_FLAGS"] = ("--xla_gpu_enable_cublaslt=true " +
-                             os.environ.get("XLA_FLAGS", ""))
+  sys_details = sysconfig.get_build_info()
+  if sys_details["is_cuda_build"]:
+    os.environ["XLA_FLAGS"] = (
+        "--xla_gpu_enable_cublaslt=true " + os.environ.get("XLA_FLAGS", "")
+    )
   googletest.main()

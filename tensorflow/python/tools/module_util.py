@@ -26,13 +26,12 @@ def get_parent_dir_for_name(module_name):
   """Get parent directory for module with the given name.
 
   Args:
-    module_name: Module name for e.g.
-      tensorflow_estimator.python.estimator.api._v1.estimator.
+    module_name: Module name, e.g. tf_keras.api._v2.keras.
 
   Returns:
     Path to the parent directory if module is found and None otherwise.
     Given example above, it should return:
-      /pathtoestimator/tensorflow_estimator/python/estimator/api/_v1.
+      /root_path/tf_keras/api/_v2.
   """
   name_split = module_name.split(".")
   if not name_split:

@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_factory.h"
 
-#include "tensorflow/core/framework/resource_mgr.h"
-#include "tensorflow/core/platform/types.h"
+#include <cstdint>
+#include <functional>
+
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_external.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
-#include "tensorflow/core/tpu/kernels/tpu_op_consts.h"
 
 namespace tensorflow {
 namespace tpu {

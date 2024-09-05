@@ -85,10 +85,10 @@ to understand your target environment) In that case, you need to modify
 The toolchain script defines the following two variables for the
 `build_pip_package_with_cmake.sh` script.
 
-Variable     | Purpose                  | example
------------- | ------------------------ | -------------------------------
-ARMCC_PREFIX | defines toolchain prefix | arm-linux-gnueabihf-
-ARMCC_FLAGS  | compilation flags        | -march=armv7-a -mfpu=neon-vfpv4
+Variable       | Purpose                  | example
+-------------- | ------------------------ | -------------------------------
+`ARMCC_PREFIX` | defines toolchain prefix | arm-linux-gnueabihf-
+`ARMCC_FLAGS`  | compilation flags        | -march=armv7-a -mfpu=neon-vfpv4
 
-**Note:** ARMCC_FLAGS might need to contain Python library include path. See the
-`download_toolchains.sh` for the reference.
+**Note:** `ARMCC_FLAGS` might need to contain Python library include path. See
+the `download_toolchains.sh` for the reference.

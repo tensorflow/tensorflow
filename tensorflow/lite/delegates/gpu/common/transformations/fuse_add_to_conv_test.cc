@@ -23,6 +23,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/types/any.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
@@ -223,7 +224,7 @@ TEST(MergeAddWithConvolutionTest, Smoke) {
             graph.nodes()[0]->operation.type);
 
   Convolution2DAttributes* conv_attr_new =
-      absl::any_cast<Convolution2DAttributes>(
+      std::any_cast<Convolution2DAttributes>(
           &graph.nodes()[0]->operation.attributes);
 
   EXPECT_THAT(conv_attr_new->bias.data,

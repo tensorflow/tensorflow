@@ -18,13 +18,13 @@ from typing import Optional, Sequence, Union
 
 import tensorflow.distribute.experimental.rpc.kernels.gen_rpc_ops as gen_rpc_ops
 from tensorflow.distribute.experimental.rpc.proto import tf_rpc_service_pb2 as rpc_pb2
-from tensorflow.python.data.util import structure
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as tf_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import none_tensor
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -287,7 +287,7 @@ class GrpcServer(Server):
     """Method for registering functions."""
 
     if isinstance(func, def_function.Function):
-      if func._function_spec.arg_names:  # pylint: disable=protected-access
+      if func.function_spec.arg_names:
         if func.input_signature is None:
           raise ValueError("Input signature not specified for the function.")
       concrete_fn = func.get_concrete_function()
@@ -443,7 +443,8 @@ class StatusOrResult(object):
     self._status_or = status_or
     self._output_specs = output_specs
     self._deleter = deleter
-    self._error_code, self._error_message = None, None
+    self._error_code: dtypes.int64 = None
+    self._error_message: dtypes.string = None
 
   def _check_status(self):
     if self._error_code is None:
@@ -490,7 +491,7 @@ class StatusOrResult(object):
 
     self._check_status()
     if self._output_specs is None or isinstance(self._output_specs,
-                                                structure.NoneTensorSpec):
+                                                none_tensor.NoneTensorSpec):
       flat_output_dtypes = []
       return_none = True
     else:

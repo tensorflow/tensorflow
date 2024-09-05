@@ -17,26 +17,22 @@
 # Script to produce binary release of libtensorflow (C API, Java jars etc.).
 
 set -ex
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Setup environment for bazel builds
-source "${SCRIPT_DIR}/bazel/common_env.sh"
-source "${SCRIPT_DIR}/bazel/bazel_test_lib.sh"
-
-# Sanity check that this is being run from the root of the git repository.
-cd ${SCRIPT_DIR}/../../../..
 if [ ! -e "WORKSPACE" ]; then
   echo "Must run this from the root of the bazel workspace"
-  echo "Currently at ${PWD}, script is at ${SCRIPT_DIR}"
+  echo "Currently at ${PWD}"
   exit 1
 fi
-
-run_configure_for_cpu_build
 
 # build_libtensorflow_tarball in ../builds/libtensorflow.sh
 # cannot be used on Windows since it relies on pkg_tar rules.
 # So we do something special here
-bazel --output_user_root=${TMPDIR} build -c opt --copt=/arch:AVX --announce_rc --config=short_logs \
+bazel --output_user_root=${TMPDIR} build \
+  -c opt \
+  --copt=/arch:AVX \
+  --announce_rc \
+  --config=short_logs \
+  --config=win_clang \
   :LICENSE \
   tensorflow:tensorflow.dll \
   tensorflow:tensorflow_dll_import_lib \
@@ -60,14 +56,18 @@ rm -f ${DIR}/tensorflow_jni.dll
 mkdir -p ${DIR}/include/tensorflow/c
 mkdir -p ${DIR}/include/tensorflow/c/eager
 mkdir -p ${DIR}/include/tensorflow/core/platform
+mkdir -p ${DIR}/include/xla/tsl/c
+mkdir -p ${DIR}/include/tsl/platform
 mkdir -p ${DIR}/lib
 cp bazel-bin/tensorflow/tensorflow.dll ${DIR}/lib/tensorflow.dll
 cp bazel-bin/tensorflow/tensorflow.lib ${DIR}/lib/tensorflow.lib
 cp tensorflow/c/c_api.h \
   tensorflow/c/tf_attrtype.h \
+  tensorflow/c/tf_buffer.h  \
   tensorflow/c/tf_datatype.h \
   tensorflow/c/tf_status.h \
   tensorflow/c/tf_tensor.h \
+  tensorflow/c/tf_tensor_helper.h \
   tensorflow/c/tf_tstring.h \
   tensorflow/c/tf_file_statistics.h \
   tensorflow/c/tensor_interface.h \
@@ -81,6 +81,10 @@ cp tensorflow/c/eager/c_api.h \
 cp tensorflow/core/platform/ctstring.h \
   tensorflow/core/platform/ctstring_internal.h \
   ${DIR}/include/tensorflow/core/platform
+cp third_party/xla/xla/tsl/c/tsl_status.h ${DIR}/include/xla/tsl/c
+cp third_party/xla/third_party/tsl/tsl/platform/ctstring.h \
+   third_party/xla/third_party/tsl/tsl/platform/ctstring_internal.h \
+   ${DIR}/include/tsl/platform
 cp LICENSE ${DIR}/LICENSE
 cp bazel-bin/tensorflow/tools/lib_package/THIRD_PARTY_TF_C_LICENSES ${DIR}/
 cd ${DIR}
@@ -92,9 +96,11 @@ zip libtensorflow-cpu-windows-$(uname -m).zip \
   include/tensorflow/c/eager/dlpack.h \
   include/tensorflow/c/c_api.h \
   include/tensorflow/c/tf_attrtype.h \
+  include/tensorflow/c/tf_buffer.h  \
   include/tensorflow/c/tf_datatype.h \
   include/tensorflow/c/tf_status.h \
   include/tensorflow/c/tf_tensor.h \
+  include/tensorflow/c/tf_tensor_helper.h \
   include/tensorflow/c/tf_tstring.h \
   include/tensorflow/c/tf_file_statistics.h \
   include/tensorflow/c/tensor_interface.h \
@@ -102,6 +108,9 @@ zip libtensorflow-cpu-windows-$(uname -m).zip \
   include/tensorflow/c/c_api_experimental.h \
   include/tensorflow/core/platform/ctstring.h \
   include/tensorflow/core/platform/ctstring_internal.h \
+  include/xla/tsl/c/tsl_status.h \
+  include/tsl/platform/ctstring.h \
+  include/tsl/platform/ctstring_internal.h \
   LICENSE \
   THIRD_PARTY_TF_C_LICENSES
 rm -rf lib include

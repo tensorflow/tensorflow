@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/core/graph/mkl_graph_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/mkl_util.h"
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
 #include "tensorflow/core/platform/mutex.h"
 #endif
 
@@ -56,12 +56,22 @@ enum {
 }  // namespace
 
 namespace tensorflow {
+
+#ifndef ENABLE_ONEDNN_V3
+#define SET_MKL_LAYOUT(md) SetMklLayout(&md)
+#else
+#define SET_MKL_LAYOUT(md) SetMklLayout(md)
+#endif  // !ENABLE_ONEDNN_V3
+
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
 struct MklReorderWithScaleFwdParams {
   memory::dims src_dims;
   memory::desc src_md;
   memory::desc dst_md;
+#ifdef ENABLE_ONEDNN_V3
+  memory::desc scale_md;
+#endif  // ENABLE_ONEDNN_V3
   string dtypes = string("");
   struct PostOpParam {
     string name;
@@ -69,9 +79,18 @@ struct MklReorderWithScaleFwdParams {
   };
   PostOpParam post_op_params;
 
+#ifndef ENABLE_ONEDNN_V3
   MklReorderWithScaleFwdParams(memory::dims src_dims, memory::desc src_md,
                                memory::desc dst_md)
       : src_dims(src_dims), src_md(src_md), dst_md(dst_md) {}
+#else
+  MklReorderWithScaleFwdParams(memory::dims src_dims, memory::desc src_md,
+                               memory::desc dst_md, memory::desc scale_md)
+      : src_dims(src_dims),
+        src_md(src_md),
+        dst_md(dst_md),
+        scale_md(scale_md) {}
+#endif  // ENABLE_ONEDNN_V3
 };
 
 class MklReorderWithScalePrimitive : public MklPrimitive {
@@ -88,21 +107,30 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
   std::shared_ptr<primitive> GetPrimitive() { return context_.reorder_prim; }
 
   void Execute(void* src_data, void* dst_data,
+#ifdef ENABLE_ONEDNN_V3
+               void* scale_data,
+#endif  // ENABLE_ONEDNN_V3
                std::shared_ptr<stream> reorder_stream) {
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
     mutex_lock lock(primitive_execution_mu_);
 #endif
-#ifndef ENABLE_ONEDNN_OPENMP
+#if !defined(ENABLE_ONEDNN_OPENMP) && !defined(ENABLE_ONEDNN_V3)
     context_.src_mem->set_data_handle(src_data, *reorder_stream);
     context_.dst_mem->set_data_handle(dst_data, *reorder_stream);
 #else
     context_.src_mem->set_data_handle(src_data);
     context_.dst_mem->set_data_handle(dst_data);
-#endif  // !ENABLE_ONEDNN_OPENMP
+#endif  // !ENABLE_ONEDNN_OPENMP && !ENABLE_ONEDNN_V3
+#ifdef ENABLE_ONEDNN_V3
+    context_.scale_mem->set_data_handle(scale_data);
+#endif  // ENABLE_ONEDNN_V3
     context_.reorder_prim->execute(*reorder_stream, context_.prim_args);
     // After execution, set data handle back.
     context_.src_mem->set_data_handle(DummyData);
     context_.dst_mem->set_data_handle(DummyData);
+#ifdef ENABLE_ONEDNN_V3
+    context_.scale_mem->set_data_handle(DummyData);
+#endif  // ENABLE_ONEDNN_V3
   }
 
  private:
@@ -111,6 +139,9 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
     // MKL-DNN memory
     std::shared_ptr<dnnl::memory> src_mem;
     std::shared_ptr<dnnl::memory> dst_mem;
+#ifdef ENABLE_ONEDNN_V3
+    std::shared_ptr<dnnl::memory> scale_mem;
+#endif  // ENABLE_ONEDNN_V3
 
     // Reorder primitive descriptor and primitive
     std::shared_ptr<reorder::primitive_desc> reorder_pd;
@@ -124,8 +155,12 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
     ReorderContext()
         : src_mem(nullptr),
           dst_mem(nullptr),
+#ifdef ENABLE_ONEDNN_V3
+          scale_mem(nullptr),
+#endif  // ENABLE_ONEDNN_V3
           reorder_pd(nullptr),
-          reorder_prim(nullptr) {}
+          reorder_prim(nullptr) {
+    }
   } context_;
 
   // Reorder primitive setup
@@ -135,16 +170,23 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
         new memory(fwdParams.src_md, cpu_engine_, DummyData));
     context_.dst_mem.reset(
         new memory(fwdParams.dst_md, cpu_engine_, DummyData));
+#ifdef ENABLE_ONEDNN_V3
+    context_.scale_mem.reset(
+        new memory(fwdParams.scale_md, cpu_engine_, DummyData));
+#endif  // ENABLE_ONEDNN_V3
 
     // Check if there is any fusion as post-ops
-    auto const& post_op_params = fwdParams.post_op_params;
     dnnl::primitive_attr post_ops_attr;
-
+#ifndef ENABLE_ONEDNN_V3
+    auto const& post_op_params = fwdParams.post_op_params;
     DCHECK(post_op_params.name == "scale");
     DCHECK_EQ(post_op_params.param.size(), 1);
     std::vector<float> scales;
     scales.push_back(post_op_params.param[0]);
     post_ops_attr.set_output_scales(0, scales);
+#else
+    post_ops_attr.set_scales_mask(DNNL_ARG_SRC, 0 /* mask */);
+#endif  // !ENABLE_ONEDNN_V3
 
     context_.reorder_pd.reset(
         new ReorderPd(cpu_engine_, context_.src_mem->get_desc(), cpu_engine_,
@@ -154,9 +196,13 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
     context_.reorder_prim.reset(new reorder(*context_.reorder_pd));
     context_.prim_args.insert({DNNL_ARG_FROM, *context_.src_mem});
     context_.prim_args.insert({DNNL_ARG_TO, *context_.dst_mem});
+#ifdef ENABLE_ONEDNN_V3
+    context_.prim_args.insert(
+        {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, *context_.scale_mem});
+#endif  // ENABLE_ONEDNN_V3
   }
 
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
   mutex primitive_execution_mu_;
 #endif
 };
@@ -217,9 +263,9 @@ class MklReorderWithScalePrimitiveFactory : public MklPrimitiveFactory<T> {
   }
 };
 
-// Quantizes a tensor from float to T, with user-specified min_range and
-// max_range.
-template <typename Device, typename T, bool native_format = false>
+// Quantizes a tensor from S(input) to T(output), with user-specified min_range
+// and max_range.
+template <typename Device, typename T, typename S, bool native_format = false>
 class MklQuantizeV2Op : public OpKernel {
  public:
   explicit MklQuantizeV2Op(OpKernelConstruction* ctx) : OpKernel(ctx) {
@@ -228,9 +274,10 @@ class MklQuantizeV2Op : public OpKernel {
     OP_REQUIRES(ctx,
                 (mode_string == "MIN_COMBINED" || mode_string == "MIN_FIRST" ||
                  mode_string == "SCALED"),
-                errors::InvalidArgument("Mode string must be 'MIN_COMBINED',"
-                                        " 'MIN_FIRST', or 'SCALED', is '" +
-                                        mode_string + "'"));
+                absl::InvalidArgumentError(
+                    absl::StrCat("Mode string must be 'MIN_COMBINED',"
+                                 " 'MIN_FIRST', or 'SCALED', is '" +
+                                 mode_string + "'")));
     if (mode_string == "MIN_COMBINED") {
       mode_ = QUANTIZE_MODE_MIN_COMBINED;
     } else if (mode_string == "MIN_FIRST") {
@@ -241,21 +288,23 @@ class MklQuantizeV2Op : public OpKernel {
 
     string round_mode_string;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("round_mode", &round_mode_string));
-    OP_REQUIRES(ctx,
-                (round_mode_string == "HALF_AWAY_FROM_ZERO" ||
-                 round_mode_string == "HALF_TO_EVEN"),
-                errors::InvalidArgument("Round mode string must be "
-                                        "'HALF_AWAY_FROM_ZERO' or "
-                                        "'HALF_TO_EVEN', is '" +
-                                        round_mode_string + "'"));
+    OP_REQUIRES(
+        ctx,
+        (round_mode_string == "HALF_AWAY_FROM_ZERO" ||
+         round_mode_string == "HALF_TO_EVEN"),
+        absl::InvalidArgumentError(absl::StrCat("Round mode string must be "
+                                                "'HALF_AWAY_FROM_ZERO' or "
+                                                "'HALF_TO_EVEN', is '" +
+                                                round_mode_string + "'")));
     if (round_mode_string == "HALF_AWAY_FROM_ZERO") {
       round_mode_ = ROUND_HALF_AWAY_FROM_ZERO;
     } else if (round_mode_string == "HALF_TO_EVEN") {
       OP_REQUIRES(ctx, mode_string == "SCALED",
-                  errors::InvalidArgument("Round mode 'HALF_TO_EVEN' "
-                                          "only supported for mode 'SCALED', "
-                                          "but mode is '" +
-                                          mode_string + "'."));
+                  absl::InvalidArgumentError(
+                      absl::StrCat("Round mode 'HALF_TO_EVEN' "
+                                   "only supported for mode 'SCALED', "
+                                   "but mode is '" +
+                                   mode_string + "'.")));
       round_mode_ = ROUND_HALF_TO_EVEN;
     }
     OP_REQUIRES_OK(ctx, ctx->GetAttr("narrow_range", &narrow_range_));
@@ -267,7 +316,7 @@ class MklQuantizeV2Op : public OpKernel {
   void ComputeScalar(OpKernelContext* ctx, float min_range, float max_range) {
     // TODO(intel-tf): Scalar support has to be added for SCALE mode
     OP_REQUIRES(ctx, (mode_ == QUANTIZE_MODE_MIN_FIRST),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Scalar calculation in MKL is supported only for"
                     "MIN_FIRST mode for now."));
 
@@ -276,12 +325,12 @@ class MklQuantizeV2Op : public OpKernel {
     const Tensor& max_tensor = ctx->input(2);
     OP_REQUIRES(
         ctx, TensorShapeUtils::IsScalar(min_tensor.shape()),
-        errors::InvalidArgument("`min_input` must be rank 0 but is rank ",
-                                min_tensor.dims()));
+        absl::InvalidArgumentError(absl::StrCat(
+            "`min_input` must be rank 0 but is rank ", min_tensor.dims())));
     OP_REQUIRES(
         ctx, TensorShapeUtils::IsScalar(max_tensor.shape()),
-        errors::InvalidArgument("`max_input` must be rank 0 but is rank ",
-                                max_tensor.dims()));
+        absl::InvalidArgumentError(absl::StrCat(
+            "`max_input` must be rank 0 but is rank ", max_tensor.dims())));
 
     auto cpu_engine = engine(engine::kind::cpu, 0);
     const unsigned int src_idx = 0;
@@ -324,13 +373,12 @@ class MklQuantizeV2Op : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     const unsigned int src_idx = 0;
-    const Tensor& input = ctx->input(src_idx);
     const float input_min_range = ctx->input(1).scalar<float>()();
     const float input_max_range = ctx->input(2).scalar<float>()();
     float min_range = std::min(0.0f, input_min_range);
     float max_range;
     OP_REQUIRES(ctx, (input_max_range >= input_min_range),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "input_max_range must be larger than input_min_range."));
 
     // When the minimum and maximum ranges are too close together, nudge them
@@ -381,44 +429,23 @@ class MklQuantizeV2Op : public OpKernel {
         break;
       default:
         OP_REQUIRES_OK(ctx,
-                       errors::Aborted("Input dims must be <= 5 and >= 1"));
+                       absl::AbortedError("Input dims must be <= 5 and >= 1"));
         return;
     }
     // Create reorder memory for src, dst: both are defined in mkl_util.h,
     // they are wrapper
-    MklDnnData<float> src(&cpu_engine);
+    MklDnnData<S> src(&cpu_engine);
     MklDnnData<T> dst(&cpu_engine);
+#ifdef ENABLE_ONEDNN_V3
+    MklDnnData<float> scale(&cpu_engine);
+#endif  // ENABLE_ONEDNN_V3
+
     auto src_md =
         src_mkl_shape.IsMklTensor()
             ? src_mkl_shape.GetMklLayout()
-            : memory::desc(src_dims, MklDnnType<float>(), dst_layout_type);
+            : memory::desc(src_dims, MklDnnType<S>(), dst_layout_type);
 
-    // If the mode is min_first, input data has to be subtracted from
-    // min_range, before being scaled
-    auto flat_input = input.flat<float>().data();
-    Tensor min_shifted_input_tensor;
-    OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, input.shape(),
-                                           &min_shifted_input_tensor));
-    if (mode_ == QUANTIZE_MODE_MIN_FIRST) {
-      auto minfirst_input = min_shifted_input_tensor.flat<float>().data();
-      const Eigen::TensorOpCost cost(
-          sizeof(float), /*load bytes*/
-          sizeof(float), /*saved bytes*/
-          Eigen::TensorOpCost::AddCost<float>() /*sub cost*/);
-
-      const CPUDevice& d = ctx->eigen_device<CPUDevice>();
-      auto ParallelSub = [&](int64 start, int64 end) {
-        for (int i = start; i < end; ++i) {
-          minfirst_input[i] = flat_input[i] - min_range;
-        }
-      };
-      d.parallelFor(input.NumElements(), cost, ParallelSub);
-
-      src.SetUsrMem(src_md, &min_shifted_input_tensor);
-    } else {
-      src.SetUsrMem(src_md, &src_tensor);
-    }
-
+    src.SetUsrMem(src_md, &src_tensor);
     memory::desc dst_md =
         memory::desc(src_dims, MklDnnType<T>(), dst_layout_type);
 
@@ -427,7 +454,7 @@ class MklQuantizeV2Op : public OpKernel {
     TensorShape output_tf_shape;
     if (src_mkl_shape.IsMklTensor()) {
       output_mkl_shape.SetMklTensor(true);
-      output_mkl_shape.SetMklLayout(&dst_md);
+      output_mkl_shape.SET_MKL_LAYOUT(dst_md);
       output_mkl_shape.SetElemType(MklDnnType<T>());
       output_mkl_shape.SetTfLayout(src_mkl_shape.GetDimension(),
                                    src_mkl_shape.GetSizesAsMklDnnDims(),
@@ -456,12 +483,21 @@ class MklQuantizeV2Op : public OpKernel {
     AllocateOutputSetMklShape(ctx, 2, &output_max_tensor, max_tf_shape,
                               max_mkl_shape, native_format);
 
+    // Create the oneDNN wrapper over Eigen threadpool and set max threads
+    // in oneDNN.
+    Eigen::ThreadPoolInterface* eigen_interface =
+        EigenThreadPoolFromTfContext(ctx);
+    tsl::OneDnnThreadPool eigen_tp(eigen_interface,
+                                   ThreadPoolUseCallerThread());
+
     float scale_factor = 0;
     if (mode_ == QUANTIZE_MODE_SCALED) {
       // Estimating scales for quantization.
       const int num_bits = sizeof(T) * 8;
       const float max_abs = std::max(std::abs(min_range), std::abs(max_range));
-      const bool is_signed = std::is_signed<T>::value;
+      const bool is_signed = std::is_same<T, qint8>() ||
+                             std::is_same<T, qint16>() ||
+                             std::is_same<T, qint32>();
       float target_range;
       if (is_signed) {
         max_range = max_abs;
@@ -479,26 +515,86 @@ class MklQuantizeV2Op : public OpKernel {
         target_range = static_cast<float>((uint64_t{1} << num_bits) - 1);
       }
       scale_factor = target_range / max_abs;
+
+#ifdef ENABLE_ONEDNN_V3
+      auto scale_md =
+          memory::desc({1}, MklDnnType<float>(), memory::format_tag::x);
+      MklReorderWithScaleFwdParams fwdParams(src_dims, src_md, dst_md,
+                                             scale_md);
+      Tensor scale_tensor;
+      OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, {1}, &scale_tensor));
+      scale_tensor.flat<float>()(0) = scale_factor;
+      scale.SetUsrMem(scale_md, &scale_tensor);
+#else
+      MklReorderWithScaleFwdParams fwdParams(src_dims, src_md, dst_md);
+#endif  // ENABLE_ONEDNN_V3
+      fwdParams.dtypes.append(typeid(S).name());
+      fwdParams.dtypes.append(typeid(T).name());
+      fwdParams.post_op_params.name = "scale";
+      fwdParams.post_op_params.param.push_back(scale_factor);
+
+      MklReorderWithScalePrimitive* reorder_prim =
+          MklReorderWithScalePrimitiveFactory<T>::Get(
+              src.GetUsrMem(), dst.GetUsrMem(), fwdParams);
+
+      std::shared_ptr<stream> cpu_stream;
+      cpu_stream.reset(CreateStream(&eigen_tp, reorder_prim->GetEngine()));
+      reorder_prim->Execute(src.GetUsrMemDataHandle(),
+                            dst.GetUsrMemDataHandle(),
+#ifdef ENABLE_ONEDNN_V3
+                            scale.GetUsrMemDataHandle(),
+#endif  // ENABLE_ONEDNN_V3
+                            cpu_stream);
     } else if (mode_ == QUANTIZE_MODE_MIN_FIRST) {
-      // Estimate scale for qunatization
-      const int number_of_bits = sizeof(T) * 8;
-      const int64 number_of_steps = static_cast<int64_t>(1) << number_of_bits;
-      scale_factor = (number_of_steps - 1.0) / (max_range - min_range);
+      using namespace dnnl;
+      std::shared_ptr<stream> cpu_stream;
+      cpu_stream.reset(CreateStream(&eigen_tp, cpu_engine));
+
+      auto shift = static_cast<S>(-min_range);
+      memory::dims shift_dims(src_tf_shape.dims(), 1);
+      auto shift_md =
+          memory::desc(shift_dims, MklDnnType<S>(), dst_layout_type);
+      memory shift_mem(shift_md, cpu_engine, (void*)(&shift));
+
+      primitive_attr attr;
+      std::vector<float> src_0_scale{255.0f / (max_range - min_range)};
+      std::vector<float> src_1_scale{255.0f / (max_range - min_range)};
+#ifdef ENABLE_ONEDNN_V3
+      attr.set_scales_mask(DNNL_ARG_SRC_0, 0);
+      attr.set_scales_mask(DNNL_ARG_SRC_1, 0);
+      auto binary_pd = binary::primitive_desc(cpu_engine, algorithm::binary_add,
+                                              src_md, shift_md, dst_md, attr);
+#else
+      attr.set_scales(DNNL_ARG_SRC_0, 0, src_0_scale);
+      attr.set_scales(DNNL_ARG_SRC_1, 0, src_1_scale);
+      auto binary_d =
+          binary::desc(algorithm::binary_add, src_md, shift_md, dst_md);
+      auto binary_pd = binary::primitive_desc(binary_d, attr, cpu_engine);
+#endif  // ENABLE_ONEDNN_V3
+
+      auto binary_prim = binary(binary_pd);
+      auto src_0_scale_mem =
+          memory({{1}, MklDnnType<float>(), memory::format_tag::x}, cpu_engine,
+                 src_0_scale.data());
+      auto src_1_scale_mem =
+          memory({{1}, MklDnnType<float>(), memory::format_tag::x}, cpu_engine,
+                 src_1_scale.data());
+      std::unordered_map<int, memory> net_args{
+          {DNNL_ARG_SRC_0, *src.GetUsrMem()},
+          {DNNL_ARG_SRC_1, shift_mem},
+          {DNNL_ARG_DST, *dst.GetUsrMem()},
+#ifdef ENABLE_ONEDNN_V3
+          {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC_0, src_0_scale_mem},
+          { DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC_1,
+            src_1_scale_mem }
+#endif
+      };
+      binary_prim.execute(*cpu_stream, net_args);
+    } else {
+      OP_REQUIRES(ctx, false,
+                  absl::UnimplementedError(
+                      "Supported modes are MIN_FIRST and SCALED only."));
     }
-
-    MklReorderWithScaleFwdParams fwdParams(src_dims, src_md, dst_md);
-    fwdParams.dtypes.append(typeid(T).name());
-    fwdParams.post_op_params.name = "scale";
-    fwdParams.post_op_params.param.push_back(scale_factor);
-
-    MklReorderWithScalePrimitive* reorder_prim =
-        MklReorderWithScalePrimitiveFactory<T>::Get(src.GetUsrMem(),
-                                                    dst.GetUsrMem(), fwdParams);
-    std::shared_ptr<stream> cpu_stream;
-    MklDnnThreadPool eigen_tp(ctx);
-    cpu_stream.reset(CreateStream(&eigen_tp, reorder_prim->GetEngine()));
-    reorder_prim->Execute(src.GetUsrMemDataHandle(), dst.GetUsrMemDataHandle(),
-                          cpu_stream);
 
     output_min_tensor->scalar<float>()() = min_range;
     output_max_tensor->scalar<float>()() = max_range;
@@ -512,16 +608,19 @@ class MklQuantizeV2Op : public OpKernel {
   bool narrow_range_;
 };
 
-REGISTER_KERNEL_BUILDER(Name("_MklQuantizeV2")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<quint8>("T")
-                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
-                        MklQuantizeV2Op<CPUDevice, quint8, true>);
-REGISTER_KERNEL_BUILDER(Name("_MklQuantizeV2")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<qint8>("T")
-                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
-                        MklQuantizeV2Op<CPUDevice, qint8, true>);
+#define REGISTER_QUANTIZE(src_type, dst_type)            \
+  REGISTER_KERNEL_BUILDER(                               \
+      Name("_MklQuantizeV2")                             \
+          .Device(DEVICE_CPU)                            \
+          .TypeConstraint<dst_type>("T")                 \
+          .Label(mkl_op_registry::kMklQuantizedOpLabel), \
+      MklQuantizeV2Op<CPUDevice, dst_type, src_type, true>)
+
+REGISTER_QUANTIZE(float, qint8);
+REGISTER_QUANTIZE(float, quint8);
+
+#undef SET_MKL_LAYOUT
+
 }  // namespace tensorflow
 
 #endif  // INTEL_MKL

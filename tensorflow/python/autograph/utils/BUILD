@@ -19,9 +19,9 @@ py_strict_library(
     srcs = ["tensor_list.py"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "//tensorflow/python:list_ops",
-        "//tensorflow/python:tensor_array_ops",
-        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
+        "//tensorflow/python/ops:list_ops",
+        "//tensorflow/python/ops:tensor_array_ops",
     ],
 )
 
@@ -30,7 +30,7 @@ py_strict_library(
     srcs = ["ag_logging.py"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "//tensorflow/python:platform",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -40,8 +40,8 @@ py_strict_library(
     srcs = ["context_managers.py"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:tensor_array_ops",
     ],
 )
 
@@ -50,10 +50,11 @@ py_strict_library(
     srcs = ["misc.py"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:math_ops_gen",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:math_ops_gen",
     ],
 )
 
@@ -62,10 +63,10 @@ py_strict_library(
     srcs = ["testing.py"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "//tensorflow/python:variables",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:op_callbacks",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
     ],
 )
@@ -86,10 +87,10 @@ py_strict_library(
     srcs = ["tensors.py"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:tensor_array_ops",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:tensor_util",
+        "//tensorflow/python/ops:tensor_array_ops",
     ],
 )
 
@@ -100,10 +101,11 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":context_managers",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:tensor_array_ops",
+        #internal proto upb dep
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/ops:tensor_array_ops",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -114,11 +116,12 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":misc",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:variables",
+        #internal proto upb dep
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -129,14 +132,15 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":tensor_list",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:list_ops",
-        "//tensorflow/python:tensor_array_ops",
+        #internal proto upb dep
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:list_ops",
+        "//tensorflow/python/ops:tensor_array_ops",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -147,11 +151,12 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":tensors",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:list_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:tensor_array_ops",
+        #internal proto upb dep
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/ops:list_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:tensor_array_ops",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )

@@ -31,6 +31,7 @@ from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import function
 from tensorflow.python.framework import graph_io
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
@@ -563,7 +564,7 @@ class TensorTracer:
     """
     self._replica_id = None
     self._tt_config = tensor_tracer_report.TensorTracerConfig()
-    self._parameters = None
+    self._parameters = tensor_tracer_flags.TTParameters()
     self._host_call_fn = {}
     # _cache_variables is a dict (key = graph, value = dicts
     # (key = name, value = tensors))
@@ -1300,7 +1301,7 @@ class TensorTracer:
     for fetch in fetches:
       if isinstance(fetch, ops.Operation):
         op_fetches.append(fetch)
-      elif isinstance(fetch, ops.Tensor):
+      elif isinstance(fetch, tensor_lib.Tensor):
         op_fetches.append(fetch.op)
       else:
         raise RuntimeError('Given fetch:%s is neither a tensor nor an op.'
@@ -1741,7 +1742,7 @@ class TensorTracer:
                          'empty list.')
     fetches = []
     for fetch in tensor_fetches:
-      if isinstance(fetch, ops.Tensor):
+      if isinstance(fetch, tensor_lib.Tensor):
         fetches.append(fetch)
       else:
         raise RuntimeError('Given tensor_fetch:%s is not a tensor.' % fetch)
@@ -1759,7 +1760,7 @@ class TensorTracer:
     for fetch in op_fetches:
       if isinstance(fetch, ops.Operation):
         fetches.append(fetch)
-      elif isinstance(fetch, ops.Tensor):
+      elif isinstance(fetch, tensor_lib.Tensor):
         fetches.append(fetch.op)
       else:
         logging.warning('Ignoring the given op_fetch:%s, which is not an op.' %
@@ -1768,7 +1769,7 @@ class TensorTracer:
 
   def _convert_fetches_to_input_format(self, input_fetches, current_fetches):
     """Changes current_fetches' format, so that it matches input_fetches."""
-    if isinstance(input_fetches, ops.Tensor):
+    if isinstance(input_fetches, tensor_lib.Tensor):
       if len(current_fetches) != 1:
         raise RuntimeError('Tensor tracer input/output fetches do not match.')
       return current_fetches[0]

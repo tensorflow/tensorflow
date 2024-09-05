@@ -15,26 +15,18 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_SNAPSHOT_UTILS_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_SNAPSHOT_UTILS_H_
 
-#include <cstdint>
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/data/service/byte_size.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/tsl/platform/status.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace data {
 
-int64_t EstimatedSizeBytes(const std::vector<Tensor>& tensors);
-
-// Returns a `Status` that indicates the snapshot stream assignment has changed
-// and the worker should retry unless it's cancelled.
-Status StreamAssignmentChanged(absl::string_view worker_address,
-                               int64_t stream_index);
-
-// Returns true if `status` indicates the snapshot stream assignment has changed
-// returned by `StreamAssignmentChanged`.
-bool IsStreamAssignmentChanged(const Status& status);
+// Estimates the size of the Tensors when serialized as TensorProtos.
+ByteSize EstimatedSize(const std::vector<Tensor>& tensors);
 
 }  // namespace data
 }  // namespace tensorflow

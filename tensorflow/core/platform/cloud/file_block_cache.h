@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/cloud/file_block_cache.h"
+#include "tsl/platform/cloud/file_block_cache.h"
 
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)

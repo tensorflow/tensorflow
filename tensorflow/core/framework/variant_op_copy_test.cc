@@ -260,8 +260,8 @@ TEST(VariantOpCopyTest, CreateConstOnGPUFailsGracefully) {
   ClientSession session(root);
   std::vector<Tensor> outputs;
   Status s = session.Run({create_const}, &outputs);
-  EXPECT_TRUE(absl::StrContains(s.error_message(),
-                                "GPU copy from non-DMA string tensor"))
+  EXPECT_TRUE(
+      absl::StrContains(s.message(), "GPU copy from non-DMA string tensor"))
       << s.ToString();
 }
 
@@ -367,10 +367,10 @@ TEST(VariantOpCopyTest, CreateCopyCPUToGPUStringFailsSafely) {
   Status err = session.Run({create_op, identity}, &outputs);
   EXPECT_TRUE(errors::IsInvalidArgument(err));
   EXPECT_TRUE(
-      absl::StrContains(err.error_message(),
+      absl::StrContains(err.message(),
                         "During Variant Host->Device Copy: non-DMA-copy "
                         "attempted of tensor type: string"))
-      << err.error_message();
+      << err.message();
 }
 
 // TODO(ebrevdo): Identify a way to create two virtual GPUs within a

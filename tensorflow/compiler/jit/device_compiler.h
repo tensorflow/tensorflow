@@ -37,7 +37,8 @@ limitations under the License.
 #include "tensorflow/compiler/jit/tf_graph_to_hlo_compiler.h"
 #include "tensorflow/compiler/jit/xla_compile_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
-#include "tensorflow/compiler/xla/client/local_client.h"
+#include "xla/client/local_client.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -173,7 +174,8 @@ class DeviceCompiler : public ResourceBase {
                       DeviceCompilationClusterSignature::Hash>
       cluster_mutexes_ TF_GUARDED_BY(cluster_mutexes_mu_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DeviceCompiler);
+  DeviceCompiler(const DeviceCompiler&) = delete;
+  void operator=(const DeviceCompiler&) = delete;
 };
 
 namespace device_compiler_internal {
@@ -199,7 +201,7 @@ inline Status EligibleToPersist(DeviceCompileState compile_state,
     return errors::FailedPrecondition(
         "LocalExecutable not found for cache entry to serialize.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace device_compiler_internal
 
@@ -316,6 +318,7 @@ DeviceCompiler<ExecutableType, ClientType>::CompileStrict(
     cache_value.compilation_status = loaded_executable->status();
     if (loaded_executable->ok()) {
       out_executable = *std::move(*loaded_executable);
+      metrics::UpdatePersistentCacheLoadCount();
     }
   } else {
     auto built_executable =
@@ -388,7 +391,7 @@ Status DeviceCompiler<ExecutableType, ClientType>::CompileAsynchronous(
                     std::nullopt);
     }
   });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename ExecutableType, typename ClientType>
@@ -466,14 +469,14 @@ Status DeviceCompiler<ExecutableType, ClientType>::CompileImpl(
     if (!profiler->ShouldCompileCluster(function, compile_mode,
                                         current_request_count)) {
       VLOG(2) << "Not compiling for signature: " << human_signature;
-      return OkStatus();
+      return absl::OkStatus();
     } else if (compile_mode == DeviceCompileMode::kAsync) {
       VLOG(2) << "Queueing asynchronous compilation for signature: "
               << human_signature;
       TF_RETURN_IF_ERROR(CompileAsynchronous(signature, compile_options,
                                              options, args, function, scope,
                                              ctx, profiler));
-      return OkStatus();
+      return absl::OkStatus();
     } else {
       VLOG(2) << "Instantly compiling for signature: " << human_signature;
       TF_ASSIGN_OR_RETURN(
@@ -484,7 +487,7 @@ Status DeviceCompiler<ExecutableType, ClientType>::CompileImpl(
   } else if (state == DeviceCompileState::kCompiling) {
     VLOG(2) << "Ongoing asynchronous compilation for signature: "
             << human_signature;
-    return OkStatus();
+    return absl::OkStatus();
   } else if (state == DeviceCompileState::kCompiled) {
     VLOG(2) << "Already Compiled for signature: " << human_signature;
   }
@@ -492,7 +495,7 @@ Status DeviceCompiler<ExecutableType, ClientType>::CompileImpl(
   TF_RETURN_IF_ERROR(cache_value.compilation_status);
   *out_compilation_result = cache_value.compilation_result;
   *out_executable = cache_value.executable;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

@@ -28,7 +28,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import tensor_array_ops
-from tensorflow.python.ops import variables
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.platform import googletest
 
 
@@ -214,8 +214,8 @@ class SubscribeTest(test_util.TensorFlowTestCase):
   @test_util.run_v1_only('b/120545219')
   def testSubscribeVariable(self):
     """Confirm that variables can be subscribed."""
-    v1 = variables.VariableV1(0.0)
-    v2 = variables.VariableV1(4.0)
+    v1 = variable_v1.VariableV1(0.0)
+    v2 = variable_v1.VariableV1(4.0)
     add = math_ops.add(v1, v2)
     assign_v1 = v1.assign(3.0)
 

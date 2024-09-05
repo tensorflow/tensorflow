@@ -162,3 +162,28 @@ def AddFunctionsForExportedNamesPass : Pass<"tf-saved-model-add-functions-for-ex
   }];
   let constructor = "::mlir::tf_saved_model::CreateAddFunctionsForExportedNamesPass()";
 }
+
+def AssetSinkingPass : Pass<"tf-saved-model-asset-sinking", "mlir::ModuleOp"> {
+  let summary = "Sinks SavedModel asset filenames to constants";
+
+  let description = [{
+    This pass sinks arguments of SavedModel methods that are bounded to
+    `tf_saved_model.asset` into constants in the methods. After the pass, unused
+    asset ops are removed from the module.
+
+    This is to convert initialization methods with bound inputs into the same
+    methods without any arguments, so that program invocation doesn't need to
+    track and explicitly pass asset filenames.
+
+    This pass accepts an option `saved-model-dir`, which specifies the directory
+    where SavedModel is stored. This is a required option because all asset
+    filenames are relative to this directory.
+  }];
+
+  let constructor = "::mlir::tf_saved_model::CreateAssetSinkingPass(\"\")";
+
+  let options = [
+    Option<"saved_model_dir_", "saved-model-dir", "std::string", "",
+           "SavedModel directory, which is prepended to asset file names.">,
+  ];
+}

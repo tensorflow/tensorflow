@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/core/shims/c/c_api.h"
-#include "tensorflow/lite/core/shims/c/experimental/acceleration/configuration/xnnpack_plugin.h"
+#include "tensorflow/lite/acceleration/configuration/c/xnnpack_plugin.h"
+#include "tensorflow/lite/c/c_api.h"
 #include "tensorflow/lite/delegates/utils/experimental/stable_delegate/stable_delegate_interface.h"
 
 #ifdef __cplusplus

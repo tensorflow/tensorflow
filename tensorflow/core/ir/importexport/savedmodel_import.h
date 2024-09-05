@@ -19,8 +19,8 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
 
 namespace mlir {
@@ -30,7 +30,7 @@ namespace tfg {
 // Only the root graph and function library of the saved model gets imported
 // into MLIR TFG dialect.
 // TODO(b/218882780): Consider importing SignatureDefs from the SavedModel.
-tensorflow::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportSavedModelToMlir(
+absl::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportSavedModelToMlir(
     mlir::MLIRContext* context, const tensorflow::GraphDebugInfo& debug_info,
     const tensorflow::SavedModel& saved_model);
 

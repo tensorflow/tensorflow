@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/clusters/single_machine.h"
 
+#include <memory>
+
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/resource_variable_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
@@ -48,8 +50,8 @@ class SingleMachineTest : public ::testing::Test {
 #ifdef THREAD_SANITIZER
     timeout_s *= 5;
 #endif
-    cluster_.reset(
-        new SingleMachine(timeout_s, 3 /* num_cpu_cores */, 0 /* num_gpus */));
+    cluster_ = std::make_unique<SingleMachine>(timeout_s, 3 /* num_cpu_cores */,
+                                               0 /* num_gpus */);
     TF_CHECK_OK(cluster_->EnablePeakMemoryStats());
     TF_CHECK_OK(cluster_->Provision());
   }

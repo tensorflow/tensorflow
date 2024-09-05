@@ -23,7 +23,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_GTL_SUBTLE_MAP_TRAITS_H_
 #define TENSORFLOW_CORE_LIB_GTL_SUBTLE_MAP_TRAITS_H_
 
-#include "tensorflow/tsl/lib/gtl/subtle/map_traits.h"
+#include "tsl/lib/gtl/subtle/map_traits.h"
 
 namespace tensorflow {
 namespace gtl {

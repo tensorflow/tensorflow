@@ -91,7 +91,7 @@ Status AnonymousSeedGeneratorHandleOp::CreateResource(
     *manager = new SeedGeneratorManager(new FixedSeedGenerator(*seeds_));
   }
   seeds_ = nullptr;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void DeleteSeedGeneratorOp::Compute(OpKernelContext* ctx) {

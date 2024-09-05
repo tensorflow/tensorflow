@@ -21,7 +21,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-namespace {
 xla::CompileOptions GetPjRtCompileOptions(
     const XlaCompiler::Options& options,
     const XlaCompiler::CompilationResult& result) {
@@ -29,13 +28,18 @@ xla::CompileOptions GetPjRtCompileOptions(
   pjrt_compile_options.argument_layouts = result.xla_input_shapes;
   pjrt_compile_options.executable_build_options =
       GetExecutableBuildOptions(options, result, /*default_device_ordinal=*/-1);
-  // Compile portable executable for single device compilation.
-  pjrt_compile_options.compile_portable_executable = true;
+  if (pjrt_compile_options.executable_build_options.num_replicas() > 1 ||
+      pjrt_compile_options.executable_build_options.num_partitions() > 1) {
+    // Compile executable for sharded program
+    pjrt_compile_options.compile_portable_executable = false;
+  } else {
+    // Compile portable executable for single device compilation.
+    pjrt_compile_options.compile_portable_executable = true;
+  }
   return pjrt_compile_options;
 }
-}  // namespace
 
-StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>>
+absl::StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>>
 PjRtDeviceCompilerClient::BuildExecutable(
     const XlaCompiler::Options& options,
     const XlaCompiler::CompilationResult& result) {
@@ -52,13 +56,13 @@ PjRtDeviceCompilerClient::BuildExecutable(
   return std::move(executable);
 }
 
-StatusOr<std::string> PjRtDeviceCompilerClient::SerializeExecutable(
+absl::StatusOr<std::string> PjRtDeviceCompilerClient::SerializeExecutable(
     const xla::PjRtLoadedExecutable& executable) {
   VLOG(1) << "Serializing xla::PjRtLoadedExecutable to string.";
   return executable.SerializeExecutable();
 }
 
-StatusOr<std::string> PjRtDeviceCompilerClient::BuildSerializedExecutable(
+absl::StatusOr<std::string> PjRtDeviceCompilerClient::BuildSerializedExecutable(
     const XlaCompiler::Options& options,
     const XlaCompiler::CompilationResult& result) {
   VLOG(1) << "PJRT currently doesn't support AOT compilation. Compiling to "
@@ -67,7 +71,7 @@ StatusOr<std::string> PjRtDeviceCompilerClient::BuildSerializedExecutable(
   return executable->SerializeExecutable();
 }
 
-StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>>
+absl::StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>>
 PjRtDeviceCompilerClient::LoadExecutable(
     const XlaCompiler::Options& options,
     const XlaCompiler::CompilationResult& result,

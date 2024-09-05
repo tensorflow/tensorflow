@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/internal/tfprof_tensor.h"
 
+#include <vector>
+
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 

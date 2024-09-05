@@ -7,7 +7,7 @@
 // CHECK-LABEL: func @transposeConv2D
 func.func @transposeConv2D(%input: tensor<1x3x32x32xf32>, %filter: tensor<1x1x3x8xf32>) -> tensor<1x8x7x6xf32> {
 
-  // CHECK: %[[ARG_PERM:.*]] = "tf.Const"() {value = dense<[0, 2, 3, 1]> : tensor<4xi64>}
+  // CHECK: %[[ARG_PERM:.*]] = "tf.Const"() <{value = dense<[0, 2, 3, 1]> : tensor<4xi64>}>
   // CHECK: %[[ARG_TRANSPOSE:[0-9]*]] = "tf.Transpose"(%arg0, %[[ARG_PERM]])
 
   // CHECK: %[[CONV2D:[0-9]*]] = "tf.Conv2D"(%[[ARG_TRANSPOSE]], %arg1)
@@ -18,7 +18,7 @@ func.func @transposeConv2D(%input: tensor<1x3x32x32xf32>, %filter: tensor<1x1x3x
   // CHECK-SAME: strides = [5, 7, 8, 6]
   // CHECK-SAME: (tensor<1x32x32x3xf32>, tensor<1x1x3x8xf32>) -> tensor<1x7x6x8xf32>
 
-  // CHECK: %[[RES_PERM:.*]] = "tf.Const"() {value = dense<[0, 3, 1, 2]> : tensor<4xi64>}
+  // CHECK: %[[RES_PERM:.*]] = "tf.Const"() <{value = dense<[0, 3, 1, 2]> : tensor<4xi64>}>
   // CHECK: %[[RES_TRANSPOSE:[0-9]*]] = "tf.Transpose"(%[[CONV2D]], %[[RES_PERM]])
   // CHECK: return %[[RES_TRANSPOSE]]
 
@@ -41,7 +41,7 @@ func.func @transposeFusedBatchNormV3(
 ) -> tensor<1x64x28x28xf32> {
 
   // CHECK: %[[ARG_PERM:.*]] = "tf.Const"()
-  // CHECK-SAME: {value = dense<[0, 2, 3, 1]> : tensor<4xi64>}
+  // CHECK-SAME: <{value = dense<[0, 2, 3, 1]> : tensor<4xi64>}>
   // CHECK: %[[ARG_TRANSPOSE:[0-9]*]] = "tf.Transpose"(%arg0, %[[ARG_PERM]])
 
   // CHECK: "tf.FusedBatchNormV3"
@@ -51,7 +51,7 @@ func.func @transposeFusedBatchNormV3(
   // CHECK-SAME: -> (tensor<1x28x28x64xf32>, tensor<64xf32>,
 
   // CHECK: %[[RES_PERM:.*]] = "tf.Const"()
-  // CHECK-SAME: {value = dense<[0, 3, 1, 2]> : tensor<4xi64>}
+  // CHECK-SAME: <{value = dense<[0, 3, 1, 2]> : tensor<4xi64>}>
   // CHECK: %[[RES_TRANSPOSE:[0-9]*]] = "tf.Transpose"(%y, %[[RES_PERM]])
   // CHECK: return %[[RES_TRANSPOSE]]
 
@@ -74,10 +74,10 @@ func.func @transposeFusedBatchNormV3(
 // CHECK-LABEL: bias_add_nchw
 func.func @bias_add_nchw(%arg0: tensor<1x256x150x150xf32>, %arg1: tensor<256xf32>) -> tensor<1x256x150x150xf32> {
   // CHECK: (%[[ARG0:.*]]: tensor<1x256x150x150xf32>, %[[ARG1:.*]]: tensor<256xf32>)
-  // CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<[0, 2, 3, 1]> : tensor<4xi64>}
+  // CHECK: %[[CST:.*]] = "tf.Const"() <{value = dense<[0, 2, 3, 1]> : tensor<4xi64>}>
   // CHECK: %[[R0:.*]] = "tf.Transpose"(%[[ARG0]], %[[CST]])
-  // CHECK: %[[R1:.*]] = "tf.BiasAdd"(%[[R0]], %[[ARG1]]) {data_format = "NHWC", device = ""}
-  // CHECK: %[[CST_0:.*]] = "tf.Const"() {value = dense<[0, 3, 1, 2]> : tensor<4xi64>}
+  // CHECK: %[[R1:.*]] = "tf.BiasAdd"(%[[R0]], %[[ARG1]]) <{data_format = "NHWC"}> {device = ""}
+  // CHECK: %[[CST_0:.*]] = "tf.Const"() <{value = dense<[0, 3, 1, 2]> : tensor<4xi64>}>
   // CHECK: "tf.Transpose"(%[[R1]], %[[CST_0]])
   %0 = "tf.BiasAdd"(%arg0, %arg1) {data_format = "NCHW", device = ""} : (tensor<1x256x150x150xf32>, tensor<256xf32>) -> tensor<1x256x150x150xf32>
   func.return %0 : tensor<1x256x150x150xf32>
@@ -85,10 +85,10 @@ func.func @bias_add_nchw(%arg0: tensor<1x256x150x150xf32>, %arg1: tensor<256xf32
 
 // CHECK-LABEL: maxpool_nchw
 func.func @maxpool_nchw(%arg0: tensor<1x64x112x112xf32>) -> tensor<1x64x56x56xf32> {
-  // CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<[0, 2, 3, 1]> : tensor<4xi64>}
+  // CHECK: %[[CST:.*]] = "tf.Const"() <{value = dense<[0, 2, 3, 1]> : tensor<4xi64>}>
   // CHECK: %[[R0:.*]] = "tf.Transpose"(%arg0, %[[CST]])
-  // CHECK: %[[R1:.*]] = "tf.MaxPool"(%[[R0]]) {data_format = "NHWC", explicit_paddings = [], ksize = [1, 3, 3, 1], padding = "SAME", strides = [1, 2, 2, 1]}
-  // CHECK: %[[CST_0:.*]] = "tf.Const"() {value = dense<[0, 3, 1, 2]> : tensor<4xi64>}
+  // CHECK: %[[R1:.*]] = "tf.MaxPool"(%[[R0]]) <{data_format = "NHWC", explicit_paddings = [], ksize = [1, 3, 3, 1], padding = "SAME", strides = [1, 2, 2, 1]}>
+  // CHECK: %[[CST_0:.*]] = "tf.Const"() <{value = dense<[0, 3, 1, 2]> : tensor<4xi64>}>
   // CHECK: "tf.Transpose"(%[[R1]], %[[CST_0]])
   %0 = "tf.MaxPool"(%arg0)
        {

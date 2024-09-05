@@ -31,6 +31,13 @@ TfLiteStatus TfLiteExecutionTaskSetBuffer(TfLiteExecutionTask* task,
   return task->task->SetBufferHandle(io_type, tensor_signature_name, handle);
 }
 
+TfLiteStatus TfLiteExecutionTaskSetBufferByIndex(TfLiteExecutionTask* task,
+                                                 int tensor_index,
+                                                 TfLiteBufferHandle handle) {
+  if (task == nullptr || task->task == nullptr) return kTfLiteError;
+  return task->task->SetBufferHandle(tensor_index, handle);
+}
+
 TfLiteStatus TfLiteExecutionTaskSetSync(TfLiteExecutionTask* task,
                                         TfLiteIoType io_type,
                                         const char* tensor_signature_name,
@@ -39,6 +46,13 @@ TfLiteStatus TfLiteExecutionTaskSetSync(TfLiteExecutionTask* task,
       tensor_signature_name == nullptr)
     return kTfLiteError;
   return task->task->SetSynchronization(io_type, tensor_signature_name, sync);
+}
+
+TfLiteStatus TfLiteExecutionTaskSetSyncByIndex(TfLiteExecutionTask* task,
+                                               int tensor_index,
+                                               TfLiteSynchronization* sync) {
+  if (task == nullptr || task->task == nullptr) return kTfLiteError;
+  return task->task->SetSynchronization(tensor_index, sync);
 }
 
 TfLiteBufferHandle TfLiteExecutionTaskGetBufferByName(

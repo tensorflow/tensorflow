@@ -158,6 +158,7 @@ struct CollectiveParams : public core::RefCounted {
   OpKernel* final_op = nullptr;  // reduction only
   string ToString() const;
   bool run_group_initialization = true;
+  bool is_stateless = false;
 };
 
 class CollectiveExecutor;
@@ -263,6 +264,9 @@ class CollectiveExecutorMgrInterface : public StepSequenceInterface {
   // If there is a CollectiveExecutor for step_id, remove it from the
   // table.
   virtual void Cleanup(int64_t step_id) = 0;
+
+  // Cleanup the entire table, removing all entries for step_ids.
+  virtual void CleanupAll() = 0;
 
   virtual ParamResolverInterface* GetParamResolver() const = 0;
 
@@ -388,7 +392,8 @@ class CollectiveExecutor : public core::RefCounted {
   static OpKernelContext::Params* CtxParams(OpKernelContext* ctx);
   CollectiveExecutorMgrInterface* cem_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CollectiveExecutor);
+  CollectiveExecutor(const CollectiveExecutor&) = delete;
+  void operator=(const CollectiveExecutor&) = delete;
 };
 
 struct CollectiveContext {

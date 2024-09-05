@@ -161,6 +161,16 @@ class TfDoctestOutputCheckerTest(parameterized.TestCase):
         output_checker.check_output(
             want=want, got=got, optionflags=doctest.ELLIPSIS))
 
+  @parameterized.parameters(['Hello. 2.0', 'Hello. 2.0000001'],
+                            ['Hello... 2.0', 'Hello   2.0000001'])
+  def test_extra_dots(self, want, got):
+    output_checker = tf_doctest_lib.TfDoctestOutputChecker()
+    self.assertTrue(
+        output_checker.check_output(
+            want=want, got=got, optionflags=doctest.ELLIPSIS
+        )
+    )
+
   @parameterized.parameters(['1.0, ..., 1.0', '1.0, 1.0, 1.0'],
                             ['1.0, 1.0..., 1.0', '1.0, 1.002, 1.0'])
   def test_wrong_float_counts(self, want, got):

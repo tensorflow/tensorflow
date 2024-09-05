@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
+#include "tensorflow/dtensor/mlir/op_utils.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -36,35 +37,7 @@ namespace {
 struct DTensorUndoMergeConstAcrossMesh
     : public impl::DTensorUndoMergeConstAcrossMeshBase<
           DTensorUndoMergeConstAcrossMesh> {
-  void runOnOperation() override {
-    mlir::MLIRContext& context = getContext();
-    mlir::OpBuilder builder(&context);
-    getOperation().walk([&builder](mlir::TF::ConstOp const_op) {
-      llvm::SmallVector<Mesh> known_meshes;
-      llvm::SmallVector<mlir::TF::DTensorLayout> unique_layout_ops;
-      for (mlir::Operation* consumer : const_op->getUsers()) {
-        mlir::TF::DTensorLayout layout_op =
-            mlir::dyn_cast<mlir::TF::DTensorLayout>(consumer);
-        if (!layout_op) continue;
-
-        const Layout layout = layout_op.getLayout();  // keep-alive for mesh.
-        const Mesh& mesh = layout.mesh();
-        if (std::find(known_meshes.begin(), known_meshes.end(), mesh) ==
-            known_meshes.end()) {
-          if (!known_meshes.empty()) {
-            // We skip the first layout_op to preserve its original ConstOp.
-            unique_layout_ops.push_back(layout_op);
-          }
-          known_meshes.emplace_back(mesh);
-        }
-      }
-      for (auto& layout_op : unique_layout_ops) {
-        builder.setInsertionPoint(layout_op);
-        layout_op->replaceUsesOfWith(const_op,
-                                     builder.cloneWithoutRegions(const_op));
-      }
-    });
-  }
+  void runOnOperation() override { DuplicateConstants(getOperation()); }
 };
 
 struct DTensorElideIdentityBeforeCopyToMesh

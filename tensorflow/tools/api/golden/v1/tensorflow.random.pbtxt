@@ -2,7 +2,7 @@ path: "tensorflow.random"
 tf_module {
   member {
     name: "Algorithm"
-    mtype: "<class \'enum.EnumMeta\'>"
+    mtype: "<class \'enum.EnumType\'>"
   }
   member {
     name: "Generator"

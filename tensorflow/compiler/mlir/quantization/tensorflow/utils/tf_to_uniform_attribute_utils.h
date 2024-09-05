@@ -21,42 +21,49 @@ limitations under the License.
 #include "llvm/ADT/StringMap.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 
 namespace mlir::quant {
 
 LogicalResult FillAttributesForUniformQuantizedDotOp(
     PatternRewriter& rewriter, Operation* op,
     llvm::StringMap<Attribute>& identifier_to_attr,
-    tensorflow::quantization::QuantizationMethod::ExperimentalMethod
+    tensorflow::quantization::QuantizationMethod::PresetMethod
         quantization_method,
     bool enable_per_channel_quantization);
 
 LogicalResult FillAttributesForUniformQuantizedConvolutionOp(
     PatternRewriter& rewriter, Operation* op,
     llvm::StringMap<Attribute>& identifier_to_attr,
-    tensorflow::quantization::QuantizationMethod::ExperimentalMethod
+    tensorflow::quantization::QuantizationMethod::PresetMethod
         quantization_method,
     bool enable_per_channel_quantization);
 
 LogicalResult FillAttributesForUniformQuantizedAddOp(
     PatternRewriter& rewriter, Operation* op,
     llvm::StringMap<Attribute>& identifier_to_attr,
-    tensorflow::quantization::QuantizationMethod::ExperimentalMethod
+    tensorflow::quantization::QuantizationMethod::PresetMethod
         quantization_method,
     bool enable_per_channel_quantization);
 
 LogicalResult FillAttributesForUniformQuantizedClipByValueOp(
     PatternRewriter& rewriter, Operation* op,
     llvm::StringMap<Attribute>& identifier_to_attr,
-    tensorflow::quantization::QuantizationMethod::ExperimentalMethod
+    tensorflow::quantization::QuantizationMethod::PresetMethod
         quantization_method,
     bool enable_per_channel_quantization);
 
 LogicalResult FillAttributesForUniformRequantizeOp(
     PatternRewriter& rewriter, Operation* op,
     llvm::StringMap<Attribute>& identifier_to_attr,
-    tensorflow::quantization::QuantizationMethod::ExperimentalMethod
+    tensorflow::quantization::QuantizationMethod::PresetMethod
+        quantization_method,
+    bool enable_per_channel_quantization);
+
+LogicalResult FillAttributesForUniformQuantizeOp(
+    PatternRewriter& rewriter, Operation* op,
+    llvm::StringMap<Attribute>& identifier_to_attr,
+    tensorflow::quantization::QuantizationMethod::PresetMethod
         quantization_method,
     bool enable_per_channel_quantization);
 

@@ -19,7 +19,7 @@
 For more examples see the base class `tf.compat.v1.keras.optimizers.Optimizer`.
 """
 
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.eager import backprop
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
@@ -806,7 +806,7 @@ class TFOptimizer(Optimizer, trackable.Trackable):
     return self.optimizer.compute_gradients(loss, params)
 
   def get_updates(self, loss, params):
-    if distribution_strategy_context.has_strategy():
+    if distribute_lib.has_strategy():
       self.updates = []
 
       if not params:

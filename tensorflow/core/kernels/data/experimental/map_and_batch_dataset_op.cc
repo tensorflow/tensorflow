@@ -38,7 +38,6 @@ limitations under the License.
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringprintf.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 
@@ -138,7 +137,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -182,7 +181,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
          std::make_pair(kPreserveCardinality,
                         preserve_cardinality_attr)},  // Attrs
         output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -239,7 +238,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       if (ctx->warm_start() && !ctx->is_restoring()) {
         EnsureThreadsStarted(ctx);
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -264,9 +263,9 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
         batch_results_.pop_front();
         cond_var_->notify_all();
       }
-      profiler::TraceMe traceme([&] {
-        return profiler::TraceMeEncode("MapAndBatchConsume",
-                                       {{"element_id", result->uid}});
+      tsl::profiler::TraceMe traceme([&] {
+        return tsl::profiler::TraceMeEncode("MapAndBatchConsume",
+                                            {{"element_id", result->uid}});
       });
       // Deallocate tensors allocated for the output.
       auto cleanup = gtl::MakeCleanup([result] { result->output.clear(); });
@@ -279,7 +278,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
           ProcessBatch(dataset()->batch_size_, result->num_elements,
                        dataset()->drop_remainder_, result->status, ctx,
                        out_tensors, end_of_sequence, &result->output));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    protected:
@@ -296,10 +295,9 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
           dataset()->captured_func_->CheckExternalState()));
       if (ctx->symbolic_checkpoint()) {
-        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCallCounter), 0));
-        TF_RETURN_IF_ERROR(
-            writer->WriteScalar(full_name(kBatchResultsSize), 0));
-        return OkStatus();
+        TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kCallCounter, 0));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kBatchResultsSize, 0));
+        return absl::OkStatus();
       }
       mutex_lock l(*mu_);
       // Wait for all in-flight calls to complete.
@@ -309,13 +307,13 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       DCHECK_EQ(num_calls_, 0);
       TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       TF_RETURN_IF_ERROR(
-          writer->WriteScalar(full_name(kCallCounter), call_counter_));
-      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kBatchResultsSize),
+          writer->WriteScalar(prefix(), kCallCounter, call_counter_));
+      TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kBatchResultsSize,
                                              batch_results_.size()));
       for (size_t i = 0; i < batch_results_.size(); ++i) {
         TF_RETURN_IF_ERROR(WriteBatchResult(writer, i));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -324,10 +322,10 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       DCHECK(!runner_thread_);
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       TF_RETURN_IF_ERROR(
-          reader->ReadScalar(full_name(kCallCounter), &call_counter_));
+          reader->ReadScalar(prefix(), kCallCounter, &call_counter_));
       int64_t batch_results_size;
-      TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kBatchResultsSize),
-                                            &batch_results_size));
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(prefix(), kBatchResultsSize, &batch_results_size));
       DCHECK(batch_results_.empty());
       for (int i = 0; i < batch_results_size; ++i) {
         TF_RETURN_IF_ERROR(ReadBatchResult(ctx, reader, i));
@@ -335,7 +333,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       if (ctx->warm_start()) {
         EnsureThreadsStarted(ctx);
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     TraceMeMetadata GetTraceMeMetadata() const override {
@@ -371,7 +369,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
           : end_of_input(false),
             num_elements(0),
             output_allocated(false),
-            status(OkStatus()),
+            status(absl::OkStatus()),
             status_offset(-1),
             num_calls(batch_size),
             checkpoint(MemoryCheckpoint{ctx->id_registry()}),
@@ -426,9 +424,9 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     void CallFunction(std::shared_ptr<IteratorContext> ctx,
                       const std::shared_ptr<BatchResult>& result,
                       int64_t offset) TF_LOCKS_EXCLUDED(*mu_) {
-      profiler::TraceMe traceme([&] {
-        return profiler::TraceMeEncode("MapAndBatchProduce",
-                                       {{"element_id", result->uid}});
+      tsl::profiler::TraceMe traceme([&] {
+        return tsl::profiler::TraceMeEncode("MapAndBatchProduce",
+                                            {{"element_id", result->uid}});
       });
       // Get the next input element.
       std::vector<Tensor> input_element;
@@ -457,7 +455,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
           // former may be interpreted by a caller as the end of sequence.
           status = errors::InvalidArgument(
               "Function invocation produced OutOfRangeError: ",
-              status.error_message());
+              status.message());
         }
         result->UpdateStatus(status, offset);
         if (status.ok()) {
@@ -535,7 +533,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
         const std::shared_ptr<std::vector<Tensor>>& return_values) {
       mutex_lock l(result->mu);
       if (result->output_allocated) {
-        return OkStatus();
+        return absl::OkStatus();
       }
       const size_t num_components = return_values->size();
       result->output.reserve(num_components);
@@ -554,7 +552,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       }
       RecordBufferEnqueue(ctx.get(), result->output);
       result->output_allocated = true;
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     void RunnerThread(const std::shared_ptr<IteratorContext>& ctx)
@@ -630,15 +628,15 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       string batch_prefix = strings::StrCat(kBatchResults, "_", index);
       mutex_lock l(result->mu);
       result->end_of_input = reader->Contains(
-          full_name(strings::StrCat(batch_prefix, "_", kEndOfInput)));
+          prefix(), strings::StrCat(batch_prefix, "_", kEndOfInput));
       TF_RETURN_IF_ERROR(reader->ReadScalar(
-          full_name(strings::StrCat(batch_prefix, "_", kNumCalls)),
+          prefix(), strings::StrCat(batch_prefix, "_", kNumCalls),
           &result->num_calls));
       TF_RETURN_IF_ERROR(reader->ReadScalar(
-          full_name(strings::StrCat(batch_prefix, "_", kNumElements)),
+          prefix(), strings::StrCat(batch_prefix, "_", kNumElements),
           &result->num_elements));
       result->output_allocated = reader->Contains(
-          full_name(strings::StrCat(batch_prefix, "_", kOutputAllocated)));
+          prefix(), strings::StrCat(batch_prefix, "_", kOutputAllocated));
 
       TF_RETURN_IF_ERROR(ReadBatch(ctx, reader, dataset()->batch_size_,
                                    prefix(), batch_prefix, &result->output));
@@ -648,7 +646,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       if (result->output_allocated) {
         RecordBufferEnqueue(ctx, result->output);
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status WriteBatchResult(IteratorStateWriter* writer, size_t index)
@@ -658,17 +656,17 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(result->mu);
       if (result->end_of_input) {
         TF_RETURN_IF_ERROR(writer->WriteScalar(
-            full_name(strings::StrCat(batch_prefix, "_", kEndOfInput)), ""));
+            prefix(), strings::StrCat(batch_prefix, "_", kEndOfInput), ""));
       }
       TF_RETURN_IF_ERROR(writer->WriteScalar(
-          full_name(strings::StrCat(batch_prefix, "_", kNumCalls)),
+          prefix(), strings::StrCat(batch_prefix, "_", kNumCalls),
           result->num_calls));
       TF_RETURN_IF_ERROR(writer->WriteScalar(
-          full_name(strings::StrCat(batch_prefix, "_", kNumElements)),
+          prefix(), strings::StrCat(batch_prefix, "_", kNumElements),
           result->num_elements));
       if (result->output_allocated) {
         TF_RETURN_IF_ERROR(writer->WriteScalar(
-            full_name(strings::StrCat(batch_prefix, "_", kOutputAllocated)),
+            prefix(), strings::StrCat(batch_prefix, "_", kOutputAllocated),
             ""));
       }
 
@@ -678,7 +676,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(
           WriteStatus(prefix(), strings::StrCat(batch_prefix, "_", kStatus),
                       result->status, writer));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     // Used for coordination between the main thread, the runner thread, and

@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_RUN_HANDLER_THREAD_POOL_RUN_HANDLER_CONCURRENT_WORK_QUEUE_H_
 #define TENSORFLOW_CORE_TFRT_RUN_HANDLER_THREAD_POOL_RUN_HANDLER_CONCURRENT_WORK_QUEUE_H_
 
+#include <atomic>
 #include <memory>
 #include <optional>
 #include <ostream>
@@ -90,8 +91,7 @@ class RunHandlerThreadWorkQueue
         " complementary threads)");
   }
 
-  tensorflow::StatusOr<
-      std::unique_ptr<tensorflow::tfrt_stub::WorkQueueInterface>>
+  absl::StatusOr<std::unique_ptr<tensorflow::tfrt_stub::WorkQueueInterface>>
   InitializeRequest(int64_t request_id) const override;
 
   int GetParallelismLevel() const override {

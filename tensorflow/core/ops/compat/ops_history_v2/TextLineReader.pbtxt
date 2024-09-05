@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "TextLineReader"
   output_arg {
     name: "reader_handle"

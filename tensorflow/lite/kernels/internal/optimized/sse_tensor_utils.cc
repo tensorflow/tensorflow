@@ -23,6 +23,8 @@ limitations under the License.
 #endif
 #ifdef __AVX2__
 #include <immintrin.h>
+
+#include "absl/base/prefetch.h"
 #endif
 
 #include <cstdint>
@@ -217,8 +219,11 @@ void Avx2MatrixBatchVectorMultiplyAccumulateImpl(
       // Initialize the dot product sum for the row to 0.
       __m256i dotprod_32x8 = _mm256_setzero_si256();
       std::intptr_t col = 0;
+      constexpr int prefetch_distance = 704;
       // For every block of 32x 8-bit inputs.
       while (col < (m_cols & ~31)) {
+        absl::PrefetchToLocalCache(vectors + col + prefetch_distance);
+        absl::PrefetchToLocalCache(row_ptr + col + prefetch_distance);
         const __m256i vec_16x16 =
             _mm256_loadu_si256(reinterpret_cast<const __m256i*>(vectors + col));
         const __m256i row_16x16 =
@@ -493,7 +498,8 @@ namespace {
 inline void SseSparseMatrixVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const uint8_t* __restrict__ ledger,
     const int m_rows, const int m_cols, const int8_t* __restrict__ vector,
-    const float scaling_factor, float* __restrict__ result) {
+    const float batch_scaling_factor, float* __restrict__ result,
+    const float* per_channel_scale) {
   static const std::intptr_t kBlockSize = 16;
   TFLITE_DCHECK_EQ(m_cols % kBlockSize, 0);
   const uint8_t* __restrict__ ledger_ptr = ledger;
@@ -515,8 +521,10 @@ inline void SseSparseMatrixVectorMultiplyAccumulate(
     // Horizontally add the 4 intermediate sum values to get the final
     // dot-prod value for this row.
     int32_t dotprod = ReduceInt32x4(dotprod_32x4);
-
-    result[row] += dotprod * scaling_factor;
+    const float total_scaling_factor =
+        per_channel_scale ? per_channel_scale[row] * batch_scaling_factor
+                          : batch_scaling_factor;
+    result[row] += dotprod * total_scaling_factor;
   }  // for row
 }
 
@@ -526,8 +534,9 @@ inline void SseSparseMatrixVectorMultiplyAccumulate(
 inline void SseSparseMatrix4VectorsMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const uint8_t* __restrict__ ledger,
     const int m_rows, const int m_cols,
-    const int8_t* __restrict__ const vectors, const __m128 scaling_factors_fx4,
-    float* __restrict__ const results) {
+    const int8_t* __restrict__ const vectors,
+    const __m128 batch_scaling_factors_fx4, float* __restrict__ const results,
+    const float* per_channel_scale) {
   static const std::intptr_t kBlockSize = 16;
   TFLITE_DCHECK_EQ(m_cols % kBlockSize, 0);
 
@@ -578,9 +587,14 @@ inline void SseSparseMatrix4VectorsMultiplyAccumulate(
     // Load the results (This is an Accumulate function..)
     __m128 result_fx4 =
         _mm_set_ps(result3[row], result2[row], result1[row], result0[row]);
+
+    const __m128 total_scaling_factors_fx4 =
+        per_channel_scale ? _mm_mul_ps(batch_scaling_factors_fx4,
+                                       _mm_set1_ps(per_channel_scale[row]))
+                          : batch_scaling_factors_fx4;
     // result += dp .* scaling
     result_fx4 =
-        _mm_add_ps(result_fx4, _mm_mul_ps(dp_fx4, scaling_factors_fx4));
+        _mm_add_ps(result_fx4, _mm_mul_ps(dp_fx4, total_scaling_factors_fx4));
     // Save the results
     result0[row] = GetFloatVectorElement<0>(result_fx4);
     result1[row] = GetFloatVectorElement<1>(result_fx4);
@@ -595,14 +609,15 @@ void SseSparseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const uint8_t* __restrict__ ledger,
     const int m_rows, const int m_cols, const int8_t* __restrict__ vectors,
     const float* __restrict__ scaling_factors, int n_batch,
-    float* __restrict__ results) {
+    float* __restrict__ results, const float* per_channel_scale) {
   int batch = 0;
   const int kBatchSize4 = 4;
   const int n_batch_rounddown_to_batchsize_4 = n_batch & ~(kBatchSize4 - 1);
   while (batch < n_batch_rounddown_to_batchsize_4) {
     const __m128 scaling_factors_fx4 = _mm_loadu_ps(scaling_factors + batch);
-    SseSparseMatrix4VectorsMultiplyAccumulate(
-        matrix, ledger, m_rows, m_cols, vectors, scaling_factors_fx4, results);
+    SseSparseMatrix4VectorsMultiplyAccumulate(matrix, ledger, m_rows, m_cols,
+                                              vectors, scaling_factors_fx4,
+                                              results, per_channel_scale);
     batch += kBatchSize4;
     vectors += kBatchSize4 * m_cols;
     results += kBatchSize4 * m_rows;
@@ -610,7 +625,7 @@ void SseSparseMatrixBatchVectorMultiplyAccumulate(
   while (batch < n_batch) {
     SseSparseMatrixVectorMultiplyAccumulate(matrix, ledger, m_rows, m_cols,
                                             vectors, scaling_factors[batch],
-                                            results);
+                                            results, per_channel_scale);
     ++batch;
     vectors += m_cols;
     results += m_rows;

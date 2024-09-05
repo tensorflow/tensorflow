@@ -52,6 +52,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import standard_ops
+from tensorflow.python.ops import tensor_getitem_override
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.ragged import ragged_getitem
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -62,11 +63,9 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import get_canonical_name_for_symbol
 from tensorflow.python.util.tf_export import get_symbol_from_name
-from tensorflow.python.util.tf_export import keras_export
 
 
 # pylint: disable=g-classes-have-attributes
-@keras_export('keras.layers.Masking')
 class Masking(Layer):
   """Masks a sequence by using a mask value to skip timesteps.
 
@@ -133,7 +132,6 @@ class Masking(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@keras_export('keras.layers.Dropout')
 class Dropout(Layer):
   """Applies Dropout to the input.
 
@@ -236,7 +234,6 @@ class Dropout(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@keras_export('keras.layers.SpatialDropout1D')
 class SpatialDropout1D(Dropout):
   """Spatial 1D version of Dropout.
 
@@ -278,7 +275,6 @@ class SpatialDropout1D(Dropout):
     return noise_shape
 
 
-@keras_export('keras.layers.SpatialDropout2D')
 class SpatialDropout2D(Dropout):
   """Spatial 2D version of Dropout.
 
@@ -337,7 +333,6 @@ class SpatialDropout2D(Dropout):
       return (input_shape[0], 1, 1, input_shape[3])
 
 
-@keras_export('keras.layers.SpatialDropout3D')
 class SpatialDropout3D(Dropout):
   """Spatial 3D version of Dropout.
 
@@ -395,7 +390,6 @@ class SpatialDropout3D(Dropout):
       return (input_shape[0], 1, 1, 1, input_shape[4])
 
 
-@keras_export('keras.layers.Activation')
 class Activation(Layer):
   """Applies an activation function to an output.
 
@@ -440,7 +434,6 @@ class Activation(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@keras_export('keras.layers.Reshape')
 class Reshape(Layer):
   """Layer that reshapes inputs into the given shape.
 
@@ -555,7 +548,6 @@ class Reshape(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@keras_export('keras.layers.Permute')
 class Permute(Layer):
   """Permutes the dimensions of the input according to a given pattern.
 
@@ -613,7 +605,6 @@ class Permute(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@keras_export('keras.layers.Flatten')
 class Flatten(Layer):
   """Flattens the input. Does not affect the batch size.
 
@@ -701,7 +692,6 @@ class Flatten(Layer):
     return config
 
 
-@keras_export('keras.layers.RepeatVector')
 class RepeatVector(Layer):
   """Repeats the input n times.
 
@@ -747,7 +737,6 @@ class RepeatVector(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@keras_export('keras.layers.Lambda')
 class Lambda(Layer):
   """Wraps arbitrary expressions as a `Layer` object.
 
@@ -1073,7 +1062,6 @@ class Lambda(Layer):
     return function
 
 
-@keras_export('keras.layers.Dense')
 class Dense(Layer):
   """Just your regular densely-connected NN layer.
 
@@ -1280,7 +1268,6 @@ class Dense(Layer):
     return config
 
 
-@keras_export('keras.layers.ActivityRegularization')
 class ActivityRegularization(Layer):
   """Layer that applies an update to the cost function based input activity.
 
@@ -1573,7 +1560,7 @@ class TFSlicingOpDispatcher(dispatch.OpDispatcher):
       return self.NOT_SUPPORTED
 
 for slicing_op in [
-    array_ops._slice_helper,  # pylint: disable=protected-access
+    tensor_getitem_override._slice_helper,  # pylint: disable=protected-access
     array_ops.boolean_mask,
     array_ops.boolean_mask_v2,
     ragged_getitem.ragged_tensor_getitem

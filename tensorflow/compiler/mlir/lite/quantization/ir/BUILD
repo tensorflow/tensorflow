@@ -1,6 +1,6 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -14,7 +14,7 @@ td_library(
         "QuantOps.td",
         "QuantOpsBase.td",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
@@ -25,7 +25,7 @@ td_library(
 
 gentbl_cc_library(
     name = "QuantOpsIncGen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             ["-gen-op-decls"],
@@ -57,7 +57,7 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "QuantPassIncGen",
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     tbl_outs = [
         (
             [
@@ -77,30 +77,29 @@ cc_library(
     srcs = [
         "ConvertConst.cc",
         "ConvertSimQuant.cc",
-        "FakeQuantSupport.cc",
         "QuantOps.cc",
         "QuantizeUtils.cc",
-        "UniformSupport.cc",
     ],
     hdrs = [
-        "FakeQuantSupport.h",
         "Passes.h",
         "QuantOps.h",
         "QuantizeUtils.h",
-        "UniformSupport.h",
     ],
-    compatible_with = get_compatible_with_cloud(),
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":QuantOpsIncGen",
         ":QuantPassIncGen",
+        "//tensorflow/compiler/mlir/quantization/common/ir:QuantOps",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:BytecodeOpInterface",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:SideEffectInterfaces",
+        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
     ],
 )

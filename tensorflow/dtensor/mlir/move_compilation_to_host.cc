@@ -18,19 +18,28 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_remaining_ops.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/device_utils.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
@@ -141,9 +150,9 @@ mlir::LogicalResult CreateSendRecvOpsToTransferProgramKey(
     mlir::OpBuilder fn_builder = mlir::OpBuilder::atBlockEnd(fn_block);
     auto recv = fn_builder.create<mlir::TF::_HostRecvOp>(
         compile_op->getLoc(),
-        compilation_key.getType().cast<mlir::TensorType>(), device_key_map[i],
-        compile_op_launch.getDevice(), /*send_device_incarnation=*/0,
-        local_devices[i]);
+        mlir::cast<mlir::TensorType>(compilation_key.getType()),
+        device_key_map[i], compile_op_launch.getDevice(),
+        /*send_device_incarnation=*/0, local_devices[i]);
     recv->setAttr("device", builder.getStringAttr(local_devices[i]));
 
     fn_builder.create<mlir::func::ReturnOp>(recv_select_fn.getLoc(),
@@ -208,7 +217,7 @@ mlir::LogicalResult SendRecvCompilationKey(
 
 mlir::LogicalResult HandleCompilationOps(
     const llvm::SmallVectorImpl<
-        mlir::TF::_TPUCompileMlirPlaceholderProgramKeyOp>& compilation_key_ops,
+        mlir::TF::_XlaCompileMlirPlaceholderProgramKeyOp>& compilation_key_ops,
     std::map<Mesh, mlir::TF::StatefulPartitionedCallOp>& computation_map,
     mlir::ModuleOp module, int* num_send_recv) {
   // Identity XLA function and corresponding CPU functions to move compilation.
@@ -277,7 +286,7 @@ mlir::LogicalResult HandleCompilationOps(
     if (!device_ordinal_host.ok())
       return compile_op.emitOpError(
           llvm::formatv("error while creating TPU compilation logic. {0}",
-                        device_ordinal_host.status().error_message()));
+                        device_ordinal_host.status().message()));
 
     mlir::Value predicate_host = builder.create<mlir::TF::EqualOp>(
         compile_op.getLoc(), *device_ordinal_host,
@@ -368,9 +377,9 @@ struct DTensorMoveCompilationToHost
     mlir::OpBuilder builder(&context);
     auto module = getOperation();
 
-    llvm::SmallVector<mlir::TF::_TPUCompileMlirPlaceholderProgramKeyOp, 4>
+    llvm::SmallVector<mlir::TF::_XlaCompileMlirPlaceholderProgramKeyOp, 4>
         compilation_key_ops;
-    module.walk([&](mlir::TF::_TPUCompileMlirPlaceholderProgramKeyOp op) {
+    module.walk([&](mlir::TF::_XlaCompileMlirPlaceholderProgramKeyOp op) {
       compilation_key_ops.emplace_back(op);
     });
 

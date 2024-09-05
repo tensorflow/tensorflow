@@ -56,6 +56,22 @@ class LightOutsideCompilationTest(test_util.TensorFlowTestCase):
 
       self.assertAllClose(compiled_f(z), z)
 
+  def test_run_op_multiple_times(self):
+    """Call the op multiple times with different output buffers."""
+
+    @def_function.function(jit_compile=True)
+    def compiled_f():
+      x = random_ops.random_normal([2, 2])
+      y = test_ops_for_light_outside_compilation.test_static_tf(x)
+      return (x, y)
+
+    with context.device('/gpu:0'):
+      x, y = compiled_f()
+      self.assertAllClose(x, y)
+
+      x1, y1 = compiled_f()
+      self.assertAllClose(x1, y1)
+
   def test_unranked_output_error(self):
     """Test that we error out for unranked dynamic shape."""
 

@@ -150,7 +150,7 @@ void TestRemoteExecuteChangeServerDef(bool async) {
   updated_server_def.set_task_index(1);
   tensorflow::Status s = tensorflow::GrpcServer::Create(
       updated_server_def, tensorflow::Env::Default(), &worker_server);
-  ASSERT_TRUE(s.ok()) << s.error_message();
+  ASSERT_TRUE(s.ok()) << s.message();
   ASSERT_TRUE(worker_server->Start().ok());
 
   TFE_ContextSetServerDef(ctx, 0, serialized.data(), serialized.size(), status);

@@ -15,20 +15,26 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
 #include "absl/types/variant.h"
+#include "xla/tsl/util/env_var.h"
 #include "tensorflow/core/common_runtime/build_graph_options.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/function_optimization_registry.h"
+#include "tensorflow/core/common_runtime/int32_fulltype.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/optimize_function_graph_utils.h"
 #include "tensorflow/core/common_runtime/partitioning_utils.h"
@@ -37,10 +43,12 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/replicate_per_replica_nodes.h"
 #include "tensorflow/core/common_runtime/single_threaded_executor.h"
 #include "tensorflow/core/common_runtime/stats_publisher_interface.h"
+#include "tensorflow/core/config/flag_defs.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/metrics.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
@@ -53,16 +61,32 @@ limitations under the License.
 #include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/notification.h"
+#include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/core/util/reffed_status_callback.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
 #endif  // IS_MOBILE_PLATFORM
 
 namespace tensorflow {
+
+namespace {
+
+int64_t GetParallelSubgraphThreshold() {
+  static int64_t parallel_subgraph_threshold = []() {
+    int64_t result;
+    TF_CHECK_OK(tsl::ReadInt64FromEnvVar(
+        "TF_PFLR_PARALLEL_INSTANTIATE_THRESHOLD", 8, &result));
+    return result;
+  }();
+  return parallel_subgraph_threshold;
+}
+
+}  // namespace
 
 const char ProcessFunctionLibraryRuntime::kDefaultFLRDevice[] = "null";
 
@@ -103,8 +127,9 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
       device_mgr_(device_mgr),
       lib_def_(lib_def),
       default_thread_pool_(default_thread_pool),
-      flr_map_(new std::unordered_map<Device*,
-                                      std::unique_ptr<FunctionLibraryRuntime>>),
+      flr_map_(
+          new std::unordered_map<Device*,
+                                 core::RefCountPtr<FunctionLibraryRuntime>>),
       next_handle_(0),
       session_metadata_(session_metadata),
       rendezvous_factory_(std::move(rendezvous_factory)),
@@ -125,7 +150,7 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
 Status ProcessFunctionLibraryRuntime::SendTensors(
     const string& source_device, const string& target_device,
     const string& key_prefix, int64_t src_incarnation,
-    gtl::ArraySlice<Tensor> tensors_to_send, DeviceContext* device_context,
+    absl::Span<const Tensor> tensors_to_send, DeviceContext* device_context,
     const std::vector<AllocatorAttributes>& alloc_attrs,
     RendezvousInterface* rendezvous) {
   std::vector<string> keys;
@@ -137,7 +162,7 @@ Status ProcessFunctionLibraryRuntime::SendTensors(
   }
   TF_RETURN_IF_ERROR(SendTensorsToRendezvous(
       rendezvous, device_context, alloc_attrs, keys, tensors_to_send));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 /* static */
@@ -167,7 +192,7 @@ Status ProcessFunctionLibraryRuntime::GetRetTypes(
     auto miter = mdevice_data_.find(h);
     if (miter != mdevice_data_.end()) {
       *ret_types = miter->second->ret_types_;
-      return OkStatus();
+      return absl::OkStatus();
     }
     auto fiter = function_data_.find(h);
     if (fiter != function_data_.end()) {
@@ -187,7 +212,7 @@ Status ProcessFunctionLibraryRuntime::GetDeviceIncarnation(
     return errors::InvalidArgument("Device name: ", device_name, " not found.");
   }
   *incarnation = flr->device()->attributes().incarnation();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ProcessFunctionLibraryRuntime::GetDeviceContext(
@@ -201,14 +226,14 @@ Status ProcessFunctionLibraryRuntime::GetDeviceContext(
   string device_type = device->parsed_name().type;
   if (device_type == "CPU" || device_type == "TPU_SYSTEM") {
     // "TPU_SYSTEM" indicates that `device` is a CPU.
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (device->IsRemoteCallAllowed()) {
     auto* dev_info = flr->device()->tensorflow_accelerator_device_info();
     if (dev_info) {
       *device_context = dev_info->default_context;
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
 
@@ -229,7 +254,7 @@ void ProcessFunctionLibraryRuntime::InitializeDeviceAndFlr() {
   if (parent_ != nullptr && parent_->remote_device_mgr() != nullptr) {
     for (auto d : parent_->remote_device_mgr()->ListDevices()) {
       Device* device = nullptr;
-      if (device_mgr_->LookupDevice(d->name(), &device) == OkStatus()) {
+      if (device_mgr_->LookupDevice(d->name(), &device) == absl::OkStatus()) {
         // If this device exists in device_mgr, i.e., a local device,
         // add this device from the instance included in device_mgr_
         device_set_->AddDevice(device);
@@ -373,7 +398,7 @@ ProcessFunctionLibraryRuntime::IsMultiDevice(
 
 namespace {
 // Returns the local tensors referred by `args`.
-std::vector<Tensor> GetLocalArgs(gtl::ArraySlice<FunctionArg> args) {
+std::vector<Tensor> GetLocalArgs(absl::Span<const FunctionArg> args) {
   std::vector<Tensor> tensors;
   for (const auto& arg : args) {
     if (arg.index() == 0) {
@@ -410,7 +435,7 @@ Status FunctionRetsToTensors(const std::vector<FunctionRet>* function_rets,
     // NOLINTNEXTLINE
     tensors->push_back(absl::get<Tensor>(ret));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -459,44 +484,13 @@ ProcessFunctionLibraryRuntime::AsyncAttributes::Summarize(const Graph* graph) {
 
 void ProcessFunctionLibraryRuntime::PublishSubgraphs(
     const std::string& function_name,
-    std::unique_ptr<std::unordered_map<std::string, std::unique_ptr<Graph>>>
-        subgraphs) {
-  // Use shared_ptr since std::function cannot capture move-only objects
-  auto subgraphs_new =
-      std::shared_ptr<std::unordered_map<std::string, std::unique_ptr<Graph>>>(
-          subgraphs.release());
-  auto completed = std::make_unique<tsl::Notification>();
-  // Converting graphs to GraphDefs involves expensive copies. Delegate the work
-  // to a separate thread to unblock the caller.
-  std::function<void()> thread_fn = [this, function_name, n = completed.get(),
-                                     subgraphs = subgraphs_new]() {
-    std::unique_ptr<StatsPublisherInterface> stats_publisher =
-        stats_publisher_factory_(function_name, BuildGraphOptions(),
-                                 SessionOptions());
-    std::vector<GraphDef> published_graph_defs;
-    published_graph_defs.reserve(subgraphs->size());
-    for (const auto& pair : *subgraphs) {
-      Graph* subgraph = pair.second.get();
-      GraphDef gd;
-      subgraph->ToGraphDef(&gd);
-      published_graph_defs.push_back(std::move(gd));
-    }
-    stats_publisher->PublishGraphProto(std::move(published_graph_defs));
-    {
-      mutex_lock l(mu_);
-      stats_publishers_.push_back(std::move(stats_publisher));
-    }
-    n->Notify();
-  };
-  {
-    mutex_lock l(mu_);
-    stats_publisher_completed_.push_back(std::move(completed));
-  }
-  if (default_thread_pool_ != nullptr) {
-    default_thread_pool_->Schedule(std::move(thread_fn));
-  } else {
-    env_->SchedClosure(std::move(thread_fn));
-  }
+    std::vector<core::RefCountPtr<FunctionRecord>>&& function_records) {
+  std::unique_ptr<StatsPublisherInterface> stats_publisher =
+      stats_publisher_factory_(function_name, BuildGraphOptions(),
+                               SessionOptions());
+  stats_publisher->PublishGraphProto(std::move(function_records));
+  mutex_lock l(mu_);
+  stats_publishers_.push_back(std::move(stats_publisher));
 }
 
 Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
@@ -512,7 +506,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     if (it != table_.end()) {
       *handle = it->second;
       ++mdevice_data_[*handle]->instantiation_counter_;
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
 
@@ -559,26 +553,44 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   const uint64 optimization_start_time_usecs = Env::Default()->NowMicros();
   // Look up for optimized function graph in library. If found, skip
   // `OptimizeFunctionGraph` step.
-  OptimizedFunctionGraph* optimized_graph_proto =
+  std::optional<absl::StatusOr<OptimizedFunctionGraph>> optimized_graph_proto =
       options.lib_def != nullptr
           ? options.lib_def->FindOptimizedFunctionGraph(function_name)
           : lib_def_->FindOptimizedFunctionGraph(function_name);
-  StatusOr<OptimizedFunctionGraphInfo> optimized_graph_info =
-      optimized_graph_proto == nullptr
-          ? OptimizeFunctionGraph(function_name, attrs, options, *dev_set,
-                                  lib_def_, composite_devices, cpu_device,
-                                  default_device, env_)
-          : OptimizedFunctionGraphInfo::FromProto(*optimized_graph_proto);
+
+  if (optimized_graph_proto.has_value()) {
+    if (optimized_graph_proto->ok()) {
+      LOG(INFO) << "Found AOT'd graph for function: " << function_name;
+      metrics::UpdateFunctionGraphOptimizationSavingTime(
+          optimized_graph_proto->value().optimization_time_usecs(),
+          metrics::GraphOptimizationSource::kAot);
+      metrics::IncrementFunctionGraphOptimizationCacheHitCount(
+          1, metrics::GraphOptimizationSource::kAot);
+    } else {
+      LOG(WARNING) << "Failed to create AOT'd graph for function: "
+                   << function_name
+                   << " with status: " << optimized_graph_proto->status();
+    }
+  }
+
+  absl::StatusOr<OptimizedFunctionGraphInfo> optimized_graph_info =
+      (!optimized_graph_proto.has_value() ||
+       !optimized_graph_proto.value().ok())
+          ? OptimizeFunctionGraphOrReadFromFileCache(
+                function_name, attrs, options, *dev_set, lib_def_,
+                composite_devices, cpu_device, default_device, env_)
+          : OptimizedFunctionGraphInfo::FromProto(
+                std::move(optimized_graph_proto.value().value()));
   if (!optimized_graph_info.ok()) return optimized_graph_info.status();
 
   // Resets the library registration correctly.
   optimized_graph_info->function_graph->mutable_flib_def()
       ->set_default_registry(&(optimized_graph_info->lib_def));
 
-  TF_ASSIGN_OR_RETURN(
-      auto subgraphs,
-      PreprocessAndPartitionGraph(*optimized_graph_info, options, *dev_set,
-                                  lib_def_, composite_devices, env_));
+  TF_ASSIGN_OR_RETURN(auto subgraphs, PreprocessAndPartitionGraph(
+                                          function_name, *optimized_graph_info,
+                                          options, *dev_set, lib_def_,
+                                          composite_devices, cpu_device, env_));
   const uint64 optimization_end_time_usecs = Env::Default()->NowMicros();
   const uint64 graph_optimization_duration =
       optimization_end_time_usecs - optimization_start_time_usecs;
@@ -603,7 +615,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   // We must preserve control returns in each of the function components,
   // otherwise after function inlining we might prune side-effectful nodes.
   const auto control_ret =
-      [&node_name_to_control_ret](const Node* n) -> absl::optional<string> {
+      [&node_name_to_control_ret](const Node* n) -> std::optional<string> {
     const auto it = node_name_to_control_ret.find(n->name());
     return it != node_name_to_control_ret.end()
                // NOLINTNEXTLINE
@@ -614,28 +626,18 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
 
   auto data = std::make_unique<MultiDeviceFunctionData>(
       function_name, function_key, optimized_graph_info->num_return_nodes,
-      std::move(optimized_graph_info->lib_def),
       std::move(optimized_graph_info->ret_types));
 
   int i = 0;
+  FunctionLibraryDefinition data_lib_def =
+      std::move(optimized_graph_info->lib_def);
   // Generate a random function_name to avoid one function reuse the partition
   // function instantiated by another function.
-  FunctionLibraryDefinition* data_lib_def = &data->lib_def_;
   FunctionNameGenerator name_generator(
-      data_lib_def, absl::StrCat(function_name, "_", random::New64()));
+      &data_lib_def,
+      absl::StrCat(function_name, "_partitioned_", random::New64()));
   const int num_subgraphs = subgraphs->size();
   gtl::InlinedVector<Status, 4> instantiate_status(num_subgraphs);
-  BlockingCounter counter(static_cast<int>(num_subgraphs));
-  auto runner = [this, num_subgraphs](std::function<void()> fn) {
-    // NOTE: Only use thread pool to instantiate sub-function when there are
-    // more than 8 sub-functions. We want to avoid cost of switching thread when
-    // there are only a few sub-functions.
-    if (default_thread_pool_ != nullptr && num_subgraphs > 8) {
-      default_thread_pool_->Schedule(fn);
-    } else {
-      fn();
-    }
-  };
 
   // Before instantiating component functions, determine synchronous execution.
   data->enable_sync_execution = false;
@@ -653,106 +655,172 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     }
   }
 
-  // Instantiate each component function (subgraph).
-  for (const auto& pair : *subgraphs) {
-    Status* status = &instantiate_status[i];
-    string unique_name = name_generator.GetName();
-    ComponentFunctionData* comp_data = &data->glue_[pair.first];
-    runner([this, &pair, dev_set, comp_data, unique_name, data_lib_def,
-            &control_ret, &options, status, &counter, &data] {
-      const string& target = pair.first;
+  auto instantiate_component = [this, dev_set, &data_lib_def, &control_ret,
+                                &options,
+                                &data](const string& target,
+                                       std::unique_ptr<Graph> subgraph,
+                                       ComponentFunctionData* comp_data,
+                                       std::function<void(Status)> done) {
+    const string& device_type =
+        dev_set->FindDeviceByName(target)->device_type();
 
-      const string& device_type =
-          dev_set->FindDeviceByName(target)->device_type();
-      Graph* subgraph = pair.second.get();
+    bool ints_on_device =
+        (device_type == "TPU" || device_type == "XLA_CPU" ||
+         device_type == "XLA_GPU" || options.int_args_and_retvals_on_device);
+    Int32FulltypePass int32_fulltype(
+        "ProcessFunctionLibraryRuntime::InstantiateMultiDevice");
+    Status s = int32_fulltype.ProcessGraph(subgraph.get(), ints_on_device);
+    if (!s.ok()) {
+      done(s);
+      return;
+    }
 
-      bool ints_on_device =
-          (device_type == "TPU" || device_type == "XLA_CPU" ||
-           device_type == "XLA_GPU" || options.int_args_and_retvals_on_device);
-      status->Update(UpdateArgAndRetvalMetadata(
-          subgraph, &comp_data->arg_indices, &comp_data->ret_indices,
-          &comp_data->arg_alloc_attrs, &comp_data->ret_alloc_attrs,
-          ints_on_device));
-      if (!status->ok()) {
-        counter.DecrementCount();
-        return;
-      }
-      FunctionDef shard;
-      status->Update(
-          GraphToFunctionDef(*subgraph, unique_name, control_ret, &shard));
-      if (!status->ok()) {
-        counter.DecrementCount();
-        return;
-      }
-      status->Update(data_lib_def->AddFunctionDef(shard));
-      if (!status->ok()) {
-        counter.DecrementCount();
-        return;
-      }
-      FunctionLibraryRuntime::InstantiateOptions opts;
-      opts.executor_type = options.executor_type;
-      opts.target = target;
-      opts.lib_def = data_lib_def;
-      opts.create_kernels_eagerly = options.create_kernels_eagerly;
-      opts.state_handle = options.state_handle;
-      opts.allow_small_function_optimizations = data->enable_sync_execution;
-      opts.allow_control_flow_sync_execution =
-          options.allow_control_flow_sync_execution;
-      AttrValue ints_on_device_attr;
-      ints_on_device_attr.set_b(options.int_args_and_retvals_on_device);
-      shard.mutable_attr()->insert(
-          {FunctionLibraryDefinition::kIntsOnDeviceAttr, ints_on_device_attr});
-      auto attrs = AttrSlice(&shard.attr());
-      VLOG(1) << "Start instantiating component function " << unique_name
-              << " on device " << target;
-      VLOG(4) << DebugString(shard);
+    s = UpdateArgAndRetvalMetadata(subgraph.get(), &comp_data->arg_indices,
+                                   &comp_data->ret_indices,
+                                   &comp_data->arg_alloc_attrs,
+                                   &comp_data->ret_alloc_attrs, ints_on_device);
+    if (!s.ok()) {
+      done(s);
+      return;
+    }
 
-      auto* component_handle = new FunctionLibraryRuntime::Handle;
-      auto done = [this, status, unique_name, comp_data, component_handle,
-                   &data, &counter](const Status& s) {
-        status->Update(s);
+    FunctionDef shard;
+    s = GraphToFunctionDef(std::move(subgraph), comp_data->name, control_ret,
+                           &shard);
+    if (!s.ok()) {
+      done(s);
+      return;
+    }
 
-        VLOG(1) << "Finished instantiating component function " << unique_name
-                << " with handle " << *component_handle << " status: " << s;
-        if (status->ok()) {
-          {
-            mutex_lock l(mu_);
-            if (function_data_[*component_handle]->is_cross_process()) {
-              data->is_cross_process_ = true;
-            }
+    // TODO(b/327983931): `GraphToFunctionDef()` should take a `Graph&&`,
+    // so that the `NodeDef`s can be reused as much as possible.
+    subgraph.reset();
+
+    // NOTE(mrry): Currently, `shard.attr()` is never set by
+    // `GraphToFunctionDef()` but we previously used it directly in the
+    // call to `Instantiate()`. To avoid subtle bugs, we retain a copy here
+    // before the move in case `GraphToFunctionDef()` changes in future.
+    AttrValueMap attrs(shard.attr());
+
+    s = data_lib_def.AddFunctionDef(std::move(shard));
+    if (!s.ok()) {
+      done(s);
+      return;
+    }
+
+    FunctionLibraryRuntime::InstantiateOptions opts;
+    opts.executor_type = options.executor_type;
+    opts.target = target;
+    opts.lib_def = &data_lib_def;
+    opts.create_kernels_eagerly = options.create_kernels_eagerly;
+    opts.state_handle = options.state_handle;
+    opts.allow_small_function_optimizations = data->enable_sync_execution;
+    opts.allow_control_flow_sync_execution =
+        options.allow_control_flow_sync_execution;
+    AttrValue ints_on_device_attr;
+    ints_on_device_attr.set_b(options.int_args_and_retvals_on_device);
+    attrs.insert(
+        {FunctionLibraryDefinition::kIntsOnDeviceAttr, ints_on_device_attr});
+    VLOG(1) << "Start instantiating component function " << comp_data->name
+            << " on device " << target;
+
+    auto* component_handle = new FunctionLibraryRuntime::Handle;
+    auto wrapped_done = [this, comp_data, component_handle, &data,
+                         done = std::move(done)](const Status& s) {
+      VLOG(1) << "Finished instantiating component function " << comp_data->name
+              << " with handle " << *component_handle << " status: " << s;
+      if (s.ok()) {
+        {
+          mutex_lock l(mu_);
+          if (function_data_[*component_handle]->is_cross_process()) {
+            data->is_cross_process_ = true;
           }
-          comp_data->handle = *component_handle;
         }
-        delete component_handle;
-        counter.DecrementCount();
-      };
-
-      FunctionLibraryRuntime* flr = GetFLR(opts.target);
-      if (flr != nullptr) {
-        // Initialize local function synchronously.
-        Status s = flr->Instantiate(unique_name, attrs, opts, component_handle);
-        done(s);
-      } else {
-        opts.ret_indices = comp_data->ret_indices;
-        // Initialize remote function asynchronously.
-        InstantiateRemote(unique_name, attrs, opts, component_handle, done);
+        comp_data->handle = *component_handle;
       }
-    });
-    i += 1;
+      delete component_handle;
+      done(s);
+    };
+
+    FunctionLibraryRuntime* flr = GetFLR(opts.target);
+    if (flr != nullptr) {
+      // Initialize local function synchronously.
+      Status s = flr->Instantiate(comp_data->name, AttrSlice(&attrs), opts,
+                                  component_handle);
+      wrapped_done(s);
+    } else {
+      opts.ret_indices = comp_data->ret_indices;
+      // Initialize remote function asynchronously.
+      InstantiateRemote(comp_data->name, AttrSlice(&attrs), opts,
+                        component_handle, std::move(wrapped_done));
+    }
+  };
+
+  // Instantiate each component function (subgraph).
+  //
+  // NOTE: Only use thread pool to instantiate sub-function when there are
+  // more than a threshold (default 8) of sub-functions. We want to avoid cost
+  // of switching thread when there are only a few sub-functions. However, for
+  // very large graphs, it may be necessary to increase this threshold to avoid
+  // running out of memory.
+  if (default_thread_pool_ != nullptr &&
+      num_subgraphs > GetParallelSubgraphThreshold()) {
+    BlockingCounter counter(static_cast<int>(num_subgraphs));
+    for (auto& pair : *subgraphs) {
+      Status* status = &instantiate_status[i];
+      ComponentFunctionData* comp_data = &data->glue_[pair.first];
+      comp_data->name = name_generator.GetName();
+      default_thread_pool_->Schedule(
+          [&instantiate_component, &pair, comp_data, &counter, status]() {
+            instantiate_component(pair.first, std::move(pair.second), comp_data,
+                                  [&counter, status](Status s) {
+                                    status->Update(s);
+                                    counter.DecrementCount();
+                                  });
+          });
+      i += 1;
+    }
+    counter.Wait();
+  } else {
+    for (auto& pair : *subgraphs) {
+      Notification n;
+      Status* status = &instantiate_status[i];
+      ComponentFunctionData* comp_data = &data->glue_[pair.first];
+      comp_data->name = name_generator.GetName();
+      instantiate_component(pair.first, std::move(pair.second), comp_data,
+                            [&n, status](Status s) {
+                              status->Update(s);
+                              n.Notify();
+                            });
+      n.WaitForNotification();
+      i += 1;
+    }
   }
-  counter.Wait();
+
   StatusGroup group;
   for (auto& status : instantiate_status) {
     group.Update(status);
   }
   TF_RETURN_IF_ERROR(group.as_summary_status());
 
+  std::vector<core::RefCountPtr<FunctionRecord>> function_records;
+  const bool should_publish_function_graphs =
+      flags::Global().publish_function_graphs.value();
+  if (should_publish_function_graphs) {
+    for (const auto& pair : *subgraphs) {
+      ComponentFunctionData* comp_data = &data->glue_[pair.first];
+      function_records.push_back(data_lib_def.FindRecord(comp_data->name));
+    }
+  }
+
   *handle = AddMultiDeviceHandle(std::move(data), function_key);
   VLOG(1) << "Instantiated MultiDevice function \"" << function_name
           << "\" with handle " << *handle;
 
-  PublishSubgraphs(function_name, std::move(subgraphs));
-  return OkStatus();
+  if (should_publish_function_graphs) {
+    PublishSubgraphs(function_name, std::move(function_records));
+  }
+  return absl::OkStatus();
 }
 
 Status ProcessFunctionLibraryRuntime::GetOutputDevices(
@@ -799,7 +867,7 @@ Status ProcessFunctionLibraryRuntime::GetOutputDevices(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ProcessFunctionLibraryRuntime::PrepareRunMultiDevice(
@@ -831,7 +899,7 @@ Status ProcessFunctionLibraryRuntime::PrepareRunMultiDevice(
         " without an appropriate cross process Rendezvous.");
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::vector<string> ProcessFunctionLibraryRuntime::GetOrderedSubgraphs(
@@ -921,7 +989,7 @@ Status ProcessFunctionLibraryRuntime::RunMultiDeviceSync(
         VLOG(2) << "Component function execution failed: " << run_status;
         const string function_and_msg = strings::StrCat(
             errors::FormatFunctionForError(data->function_name_), " ",
-            run_status.error_message());
+            run_status.message());
         if (opts.rendezvous != nullptr) opts.rendezvous->StartAbort(run_status);
         return errors::CreateWithUpdatedMessage(run_status, function_and_msg);
       } else {
@@ -948,7 +1016,7 @@ Status ProcessFunctionLibraryRuntime::RunMultiDeviceSync(
       return s;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void ProcessFunctionLibraryRuntime::RunMultiDeviceAsync(
@@ -1011,7 +1079,7 @@ void ProcessFunctionLibraryRuntime::RunMultiDeviceAsync(
                 << comp_handle << " failed: " << status;
         const string function_and_msg = strings::StrCat(
             errors::FormatFunctionForError(data->function_name_), " ",
-            status.error_message());
+            status.message());
         refcounted_done->UpdateStatus(
             errors::CreateWithUpdatedMessage(status, function_and_msg));
         // Cancel the execution of other component functions.
@@ -1092,12 +1160,12 @@ Status ProcessFunctionLibraryRuntime::IsCrossProcess(
   const auto& mdevice_it = mdevice_data_.find(handle);
   if (mdevice_it != mdevice_data_.end()) {
     *is_cross_process = mdevice_it->second->is_cross_process_;
-    return OkStatus();
+    return absl::OkStatus();
   }
   const auto& it = function_data_.find(handle);
   if (it != function_data_.end()) {
     *is_cross_process = it->second->is_cross_process();
-    return OkStatus();
+    return absl::OkStatus();
   }
   return errors::InvalidArgument("Handle ", handle, " not found.");
 }
@@ -1143,7 +1211,7 @@ Status ProcessFunctionLibraryRuntime::RemoveHandle(
   mutex_lock l(mu_);
   table_.erase(function_data_[handle]->function_key());
   function_data_.erase(handle);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ProcessFunctionLibraryRuntime::ReleaseMultiDeviceHandle(
@@ -1154,7 +1222,7 @@ Status ProcessFunctionLibraryRuntime::ReleaseMultiDeviceHandle(
     auto it = mdevice_data_.find(handle);
     --it->second->instantiation_counter_;
     if (it->second->instantiation_counter_ != 0) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     mdata = std::move(it->second);
     table_.erase(mdata->function_key_);
@@ -1192,7 +1260,7 @@ Status ProcessFunctionLibraryRuntime::ReleaseMultiDeviceHandle(
 Status ProcessFunctionLibraryRuntime::ReleaseHandle(
     FunctionLibraryRuntime::Handle handle) {
   // Return directly if all function handles has already been released.
-  if (flr_map_ == nullptr) return OkStatus();
+  if (flr_map_ == nullptr) return absl::OkStatus();
 
   if (IsMultiDevice(handle)) {
     return ReleaseMultiDeviceHandle(handle);
@@ -1212,26 +1280,18 @@ Status ProcessFunctionLibraryRuntime::ReleaseHandle(
   return errors::InvalidArgument("Handle not found: ", handle);
 }
 
-void ProcessFunctionLibraryRuntime::CleanupCreatedRendezvous(
-    const Rendezvous* created_rendezvous, const int64_t step_id) const {
-  if (created_rendezvous) {
-    DCHECK(rendezvous_factory_);
-    created_rendezvous->Unref();
-    Status s = rendezvous_factory_.CleanUp(step_id);
-    if (!s.ok()) {
-      LOG(ERROR) << s;
-    }
-  }
-}
-
 FunctionLibraryRuntime::DoneCallback
 ProcessFunctionLibraryRuntime::ApplyCleanUpToDoneCallback(
     std::vector<std::unique_ptr<CleanUpItem>>* items,
-    FunctionLibraryRuntime::DoneCallback done, const int64_t step_id,
-    const Rendezvous* created_rendezvous) const {
-  return [this, items, done = std::move(done), step_id,
-          created_rendezvous](const Status& status) {
-    this->CleanupCreatedRendezvous(created_rendezvous, step_id);
+    FunctionLibraryRuntime::DoneCallback done,
+    const FunctionLibraryRuntime::Options& opts,
+    tsl::core::RefCountPtr<Rendezvous> created_rendezvous) const {
+  return [this, items, done = std::move(done), step_id = opts.step_id,
+          created_rendezvous =
+              created_rendezvous.release()](const Status& status) {
+    if (created_rendezvous != nullptr) {
+      created_rendezvous->Unref();
+    }
     auto* local_status = new Status(status);
     CleanUp(items, [local_status, done](const Status& cleanup_status) {
       local_status->Update(cleanup_status);
@@ -1244,7 +1304,7 @@ ProcessFunctionLibraryRuntime::ApplyCleanUpToDoneCallback(
 
 Status ProcessFunctionLibraryRuntime::CreateRendezvous(
     FunctionLibraryRuntime::Options& opts,
-    Rendezvous** created_rendezvous) const {
+    tsl::core::RefCountPtr<Rendezvous>* created_rendezvous) const {
   DCHECK(opts.rendezvous == nullptr);
   if (!rendezvous_factory_) {
     return errors::FailedPrecondition(
@@ -1254,14 +1314,14 @@ Status ProcessFunctionLibraryRuntime::CreateRendezvous(
   }
   Status s = rendezvous_factory_(opts.step_id, device_mgr_, created_rendezvous);
   if (s.ok()) {
-    opts.rendezvous = *created_rendezvous;
+    opts.rendezvous = created_rendezvous->get();
     opts.create_rendezvous = false;
   }
   return s;
 }
 
 Status ProcessFunctionLibraryRuntime::GetComponentArgs(
-    const gtl::ArraySlice<Tensor> args,
+    const absl::Span<const Tensor> args,
     const ProcessFunctionLibraryRuntime::ComponentFunctionData& comp_data,
     ProcessFunctionLibraryRuntime::InternalArgs* comp_args) {
   // "Index"s of _Arg nodes are unique when all arguments are local Tensors.
@@ -1288,7 +1348,7 @@ Status ProcessFunctionLibraryRuntime::GetComponentArgs(
       comp_args->args.push_back(args[it.index]);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 #if !defined(IS_MOBILE_PLATFORM)
@@ -1310,17 +1370,17 @@ Status ProcessFunctionLibraryRuntime::GetComponentArgs(
       comp_args->args.push_back(comp_args->remote_args.back().get());
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 #endif  // IS_MOBILE_PLATFORM
 
 void ProcessFunctionLibraryRuntime::Run(
     const FunctionLibraryRuntime::Options& opts,
-    FunctionLibraryRuntime::Handle handle, gtl::ArraySlice<Tensor> args,
+    FunctionLibraryRuntime::Handle handle, absl::Span<const Tensor> args,
     std::vector<Tensor>* rets,
     FunctionLibraryRuntime::DoneCallback done) const {
   FunctionLibraryRuntime::Options new_opts = opts;
-  Rendezvous* created_rendezvous = nullptr;
+  tsl::core::RefCountPtr<Rendezvous> created_rendezvous = nullptr;
   if (!opts.rendezvous) {
     Status s = CreateRendezvous(new_opts, &created_rendezvous);
     if (!s.ok()) {
@@ -1330,8 +1390,8 @@ void ProcessFunctionLibraryRuntime::Run(
   }
 
   auto* cleanup_items = new std::vector<std::unique_ptr<CleanUpItem>>;
-  done = ApplyCleanUpToDoneCallback(cleanup_items, std::move(done),
-                                    new_opts.step_id, created_rendezvous);
+  done = ApplyCleanUpToDoneCallback(cleanup_items, std::move(done), new_opts,
+                                    std::move(created_rendezvous));
   std::vector<FunctionRet>* function_rets = new std::vector<FunctionRet>;
   done = [rets, function_rets, done = std::move(done)](const Status& s) {
     Status status = s;
@@ -1361,7 +1421,7 @@ void ProcessFunctionLibraryRuntime::Run(
 // This method handles the simple remote call case (not multi-device).
 void ProcessFunctionLibraryRuntime::RunInternal(
     const FunctionLibraryRuntime::Options& opts,
-    FunctionLibraryRuntime::Handle handle, gtl::ArraySlice<FunctionArg> args,
+    FunctionLibraryRuntime::Handle handle, absl::Span<const FunctionArg> args,
     std::vector<FunctionRet>* rets,
     std::vector<std::unique_ptr<CleanUpItem>>* cleanup_items,
     FunctionLibraryRuntime::DoneCallback done) const {
@@ -1495,19 +1555,19 @@ void ProcessFunctionLibraryRuntime::Run(
             return;
           }
         }
-        done(OkStatus());
+        done(absl::OkStatus());
       });
 }
 
 Status ProcessFunctionLibraryRuntime::RunSync(
     const FunctionLibraryRuntime::Options& orig_opts,
-    FunctionLibraryRuntime::Handle handle, gtl::ArraySlice<Tensor> args,
+    FunctionLibraryRuntime::Handle handle, absl::Span<const Tensor> args,
     std::vector<Tensor>* rets) const {
   MultiDeviceFunctionData* multi_device_data = IsMultiDevice(handle);
   if (multi_device_data && multi_device_data->enable_sync_execution) {
     metrics::IncrementTestCounter("pflr_runsync", "sync");
     FunctionLibraryRuntime::Options new_opts = orig_opts;
-    Rendezvous* created_rendezvous = nullptr;
+    tsl::core::RefCountPtr<Rendezvous> created_rendezvous = nullptr;
     if (!new_opts.rendezvous) {
       TF_RETURN_IF_ERROR(CreateRendezvous(new_opts, &created_rendezvous));
     }
@@ -1520,7 +1580,6 @@ Status ProcessFunctionLibraryRuntime::RunSync(
 
     Status status = RunMultiDeviceSync(new_opts, handle, &function_rets,
                                        std::move(get_component_args));
-    CleanupCreatedRendezvous(created_rendezvous, new_opts.step_id);
     status.Update(FunctionRetsToTensors(&function_rets, rets));
     return status;
   } else {
@@ -1570,7 +1629,7 @@ void ProcessFunctionLibraryRuntime::Run(
   }
 
   FunctionLibraryRuntime::Options new_opts = opts;
-  Rendezvous* created_rendezvous = nullptr;
+  tsl::core::RefCountPtr<Rendezvous> created_rendezvous = nullptr;
   if (!opts.rendezvous) {
     Status s = CreateRendezvous(new_opts, &created_rendezvous);
     if (!s.ok()) {
@@ -1585,8 +1644,8 @@ void ProcessFunctionLibraryRuntime::Run(
   return;
 #else   // !IS_MOBILE_PLATFORM
   auto* cleanup_items = new std::vector<std::unique_ptr<CleanUpItem>>;
-  done = ApplyCleanUpToDoneCallback(cleanup_items, done, opts.step_id,
-                                    created_rendezvous);
+  done = ApplyCleanUpToDoneCallback(cleanup_items, done, opts,
+                                    std::move(created_rendezvous));
 
   auto get_component_args = [&args](const ComponentFunctionData& comp_data,
                                     InternalArgs* comp_args) -> Status {
@@ -1634,7 +1693,7 @@ Status ProcessFunctionLibraryRuntime::Clone(
     bool skip_flib_def) const {
   if (skip_flib_def) {
     *out_lib_def = std::make_unique<FunctionLibraryDefinition>(
-        lib_def_->default_registry(), FunctionDefLibrary{});
+        lib_def_->default_registry(), FunctionDefLibrary());
   } else {
     *out_lib_def = std::make_unique<FunctionLibraryDefinition>(*lib_def_);
   }
@@ -1646,7 +1705,7 @@ Status ProcessFunctionLibraryRuntime::Clone(
     tf_shared_lock l(mu_);
     for (auto* d : composite_devices_) (*out_pflr)->AddCompositeDevice(d);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

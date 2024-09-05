@@ -1,6 +1,6 @@
-load("//tensorflow/core/platform:build_config.bzl", "tf_platform_alias")
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("//tensorflow:tensorflow.bzl", "workspace_root")
+load("//tensorflow/core/platform:build_config.bzl", "tf_platform_alias")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -44,6 +44,7 @@ cc_library(
     deps = [
         ":data_type",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -238,24 +239,24 @@ cc_library(
         ":shape",
         ":status",
         ":tensor",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:util",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/delegates:utils",
+        "//tensorflow/lite/delegates/gpu/common/transformations:model_transformations",
+        "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels/internal:reference_base",
+        "//tensorflow/lite/kernels/internal:tensor",
+        "//tensorflow/lite/tools/versioning:gpu_compatibility",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite:kernel_api",
-        "//tensorflow/lite:util",
-        "//tensorflow/lite/core:framework",
-        "//tensorflow/lite/core/c:c_api_types",
-        "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/core/api",
-        "//tensorflow/lite/delegates:utils",
-        "//tensorflow/lite/tools/versioning:gpu_compatibility",
-        "//tensorflow/lite/delegates/gpu/common/transformations:model_transformations",
-        "//tensorflow/lite/kernels:kernel_util",
-        "//tensorflow/lite/kernels/internal:reference_base",
-        "//tensorflow/lite/kernels/internal:tensor",
     ] + tf_platform_alias("custom_parsers", "//tensorflow/lite/delegates/gpu/common/"),
 )
 
@@ -296,6 +297,16 @@ cc_library(
         "//tensorflow/lite/kernels/internal:types",
         "@FP16",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_test(
+    name = "model_builder_helper_test",
+    srcs = ["model_builder_helper_test.cc"],
+    deps = [
+        ":model_builder_helper",
+        "//tensorflow/lite/core/c:private_common",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -379,7 +390,7 @@ cc_test(
     srcs = ["quantization_util_test.cc"],
     deps = [
         ":quantization_util",
-        "//tensorflow/lite:util",
+        "//tensorflow/lite:array",
         "//tensorflow/lite/core/c:common",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",

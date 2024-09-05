@@ -15,9 +15,29 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/op_utils.h"
 
+#include <optional>
 #include <string>
 
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/Hashing.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/dtensor/cc/constants.h"
+#include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -39,17 +59,17 @@ uint64_t OpHash(mlir::Operation* op) {
 }
 
 // Returns FuncOp if `op` is a callable.
-absl::optional<mlir::func::FuncOp> MaybeFindFunction(mlir::Operation* op) {
+std::optional<mlir::func::FuncOp> MaybeFindFunction(mlir::Operation* op) {
   auto call_op = llvm::dyn_cast<mlir::CallOpInterface>(op);
-  if (!call_op) return absl::nullopt;
+  if (!call_op) return std::nullopt;
 
   mlir::CallInterfaceCallable callable = call_op.getCallableForCallee();
   mlir::SymbolRefAttr sym = callable.dyn_cast<mlir::SymbolRefAttr>();
-  if (!sym) return absl::nullopt;
+  if (!sym) return std::nullopt;
 
   mlir::func::FuncOp func = llvm::dyn_cast<mlir::func::FuncOp>(
       mlir::SymbolTable::lookupNearestSymbolFrom(op, sym));
-  if (!func) return absl::nullopt;
+  if (!func) return std::nullopt;
 
   return func;
 }
@@ -106,6 +126,40 @@ mlir::LogicalResult ReplaceAuxiliaryDTensorLayoutOpsWithIdentity(
   }
 
   return mlir::success();
+}
+
+// For all constants with multiple usages, clone the constants so that each
+// constant operation has at most 1 usage.
+void DuplicateConstants(mlir::Operation* op) {
+  llvm::SmallVector<mlir::TF::ConstOp, 4> const_ops;
+  op->walk(
+      [&](mlir::TF::ConstOp const_op) { const_ops.emplace_back(const_op); });
+
+  for (mlir::TF::ConstOp const_op : const_ops) {
+    mlir::OpBuilder builder(const_op);
+    auto uses = const_op->getUses();
+    if (uses.empty()) return;
+
+    llvm::SmallDenseMap<mlir::Operation*, mlir::OpOperand*> const_use_map;
+    mlir::OpOperand& first_use = *uses.begin();
+    for (mlir::OpOperand& use : uses) {
+      if (&use == &first_use) continue;
+
+      mlir::Operation* new_const = builder.clone(*const_op);
+      const_use_map.try_emplace(new_const, &use);
+    }
+
+    for (const auto& it : const_use_map) it.second->set(it.first->getResult(0));
+  }
+}
+
+std::string GetOperationName(mlir::ModuleOp module) {
+  auto operation_name_attr =
+      module->getAttrOfType<mlir::StringAttr>(kEagerOperationName);
+  const std::string operation_name =
+      operation_name_attr ? operation_name_attr.getValue().str() : "unknown";
+
+  return operation_name;
 }
 }  // namespace dtensor
 }  // namespace tensorflow

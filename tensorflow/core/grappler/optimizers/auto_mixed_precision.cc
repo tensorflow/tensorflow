@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/util/env_var.h"
+#include "tensorflow/core/util/util.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -298,7 +299,7 @@ class NodeTypeAttrMap {
     for (const NodeDef& node : graph.node()) {
       TF_RETURN_IF_ERROR(AddNode(node));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   bool is_initialized() const { return graph_ != nullptr; }
@@ -412,7 +413,7 @@ class NodeTypeAttrMap {
         }
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // WARN: `graph_` must outlive this object (node pointers must remain valid).
@@ -628,7 +629,7 @@ Status GraphTypeTopologyView::InitializeFromGraph(
     SortAndRemoveDuplicates(&fanouts_[node_type_idx]);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status GraphTypeTopologyView::AddEphemeralEdges(
@@ -678,7 +679,7 @@ Status GraphTypeTopologyView::AddEphemeralEdges(
     SortAndRemoveDuplicates(&fanouts_[node_type_idx]);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool GraphTypeTopologyView::HasNode(absl::string_view node_name,
@@ -931,7 +932,7 @@ Status ValidateLists(const gtl::FlatSet<string>& allow_list,
   if (duplicates) {
     return errors::InvalidArgument("Op lists have conflicting entries");
   } else {
-    return OkStatus();
+    return absl::OkStatus();
   }
 }
 
@@ -1051,7 +1052,8 @@ class AutoMixedPrecisionImpl {
         num_nonvar_casts_to_f16_(0),
         mode_(mode),
         target_dtype_((mode_ == AutoMixedPrecisionMode::CUDA ||
-                       mode_ == AutoMixedPrecisionMode::CPU)
+                       mode_ == AutoMixedPrecisionMode::CPU ||
+                       mode_ == AutoMixedPrecisionMode::FP16_CPU)
                           ? DT_HALF
                           : DT_BFLOAT16) {}
 
@@ -1063,16 +1065,18 @@ class AutoMixedPrecisionImpl {
   std::unique_ptr<AutoMixedPrecisionLists> get_mixed_precision_lists() const {
     switch (mode_) {
       case AutoMixedPrecisionMode::CUDA:
-        return std::make_unique<AutoMixedPrecisionListsCuda>(cuda_version_,
-                                                             cudnn_version_);
+        return std::make_unique<AutoMixedPrecisionListsFp16>(
+            cuda_version_, cudnn_version_, AutoMixedPrecisionMode::CUDA);
       case AutoMixedPrecisionMode::BF16:
         return std::make_unique<AutoMixedPrecisionListsMkl>();
       case AutoMixedPrecisionMode::CPU:
-        // Note: this is not a typo here. AutoMixedPrecisionListsCuda is used
-        // intentionally to make CPU and GPU have the same fp16 ops.
-        return std::make_unique<AutoMixedPrecisionListsCuda>(
-            /*cuda_version=*/10000,   // Hardcode cuda and cudnn version so
-            /*cudnn_version=*/8000);  // CPU emulates the same ops on GPU.
+        return std::make_unique<AutoMixedPrecisionListsFp16>(
+            /*cuda_version=*/10000,  // Hardcode cuda and cudnn version so
+            /*cudnn_version=*/8000,  // CPU emulates the same ops on GPU.
+            AutoMixedPrecisionMode::CPU);
+      case AutoMixedPrecisionMode::FP16_CPU:
+        return std::make_unique<AutoMixedPrecisionListsFp16>(
+            0, 0, AutoMixedPrecisionMode::FP16_CPU);
     }
   }
   Status PrintDebugLogs(bool preop, size_t timestamp);
@@ -1116,11 +1120,11 @@ class AutoMixedPrecisionImpl {
       absl::flat_hash_set<int>* allow_set) const;
   NodeDef BuildCastNode(const MutableGraphView::OutputPort& src, bool to_f16,
                         const string& device) const;
-  StatusOr<NodeDef*> InsertCastNodeAtFanout(
+  absl::StatusOr<NodeDef*> InsertCastNodeAtFanout(
       const absl::flat_hash_set<int>& allow_set, const bool src_is_allow,
       const CastType& cast_type, MutableGraphView::OutputPort& src);
 
-  StatusOr<DataType> GetCastToType(const NodeDef* node) const;
+  absl::StatusOr<DataType> GetCastToType(const NodeDef* node) const;
   void CollectOutputPorts(
       const TypeAttrId& type_attr, NodeDef* node,
       std::vector<MutableGraphView::OutputPort>& output_ports) const;
@@ -1195,7 +1199,7 @@ Status AutoMixedPrecisionImpl::PrintDebugLogs(bool preop, size_t timestamp) {
   string prepend_path;
   TF_RETURN_IF_ERROR(ReadStringFromEnvVar(
       "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_LOG_PATH", "", &prepend_path));
-  if (prepend_path.empty()) return OkStatus();
+  if (prepend_path.empty()) return absl::OkStatus();
 
   string suffix =
       strings::StrCat("_", preop ? "preop" : kSuffix, "_", id_, "_", timestamp);
@@ -1242,7 +1246,7 @@ Status AutoMixedPrecisionImpl::PrintDebugLogs(bool preop, size_t timestamp) {
     f.close();
     LOG(INFO) << "Saved paint bucket info to " << fname;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void AutoMixedPrecisionImpl::LogSkippedNode(const NodeDef& node,
@@ -1384,9 +1388,10 @@ Status AutoMixedPrecisionImpl::Optimize() {
       "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_LEVEL", "", &optimization_level));
   optimization_level = absl::AsciiStrToUpper(optimization_level);
   force_all_fp16_ = optimization_level == "UNSAFE_FORCE_ALL";
-  if (force_all_fp16_ && mode_ == AutoMixedPrecisionMode::BF16) {
-    // Many ops do not support bfloat16 on the CPU so we disallowing forcing to
-    // bfloat16.
+  if (force_all_fp16_ && (mode_ == AutoMixedPrecisionMode::BF16 ||
+                          mode_ == AutoMixedPrecisionMode::FP16_CPU)) {
+    // Many ops do not support bfloat16/fp16 on the CPU. So, disallowing
+    // forcing to bfloat16/fp16.
     return errors::InvalidArgument(
         "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_LEVEL cannot be set to "
         "UNSAFE_FORCE_ALL when oneDNN is used");
@@ -1428,6 +1433,7 @@ Status AutoMixedPrecisionImpl::Optimize() {
         break;
       case AutoMixedPrecisionMode::BF16:
       case AutoMixedPrecisionMode::CPU:
+      case AutoMixedPrecisionMode::FP16_CPU:
         device_type = DEVICE_CPU;
         should_process = !MustPreserve(node) && IsOnDevice(node, device_type);
         break;
@@ -1500,7 +1506,7 @@ Status AutoMixedPrecisionImpl::Optimize() {
 
   if (allow_set.empty()) {
     LOG(INFO) << "No allowlist ops found, nothing to do";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   VLOG(2) << "Beginning pass 2 to propagate deny forwards from denylist ops "
@@ -1552,7 +1558,7 @@ Status AutoMixedPrecisionImpl::Optimize() {
 
   TF_RETURN_IF_ERROR(PrintDebugLogs(/* preop = */ false, timestamp));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // If node is a Tensor List op with a float32 data type attribute then this
@@ -1968,7 +1974,7 @@ Status AutoMixedPrecisionImpl::ForceColorMatchOnRecurrentEdges(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Forces all of the given Tensor List nodes into the same color set.
@@ -2078,7 +2084,7 @@ void AutoMixedPrecisionImpl::MakeCastsAllowIfAllOutputsAllow(
 //   FP16: cast to float16
 //   FP32: cast to float32
 //   AUTO: cast to a data type that matches the fanout data type
-StatusOr<NodeDef*> AutoMixedPrecisionImpl::InsertCastNodeAtFanout(
+absl::StatusOr<NodeDef*> AutoMixedPrecisionImpl::InsertCastNodeAtFanout(
     const absl::flat_hash_set<int>& allow_set, const bool src_is_allow,
     const CastType& cast_type, MutableGraphView::OutputPort& src) {
   NodeDef* added_cast_node = nullptr;
@@ -2139,7 +2145,7 @@ StatusOr<NodeDef*> AutoMixedPrecisionImpl::InsertCastNodeAtFanout(
 
 // Get the destination data type of a cast op. Return error if the node is not
 // a Cast op.
-StatusOr<DataType> AutoMixedPrecisionImpl::GetCastToType(
+absl::StatusOr<DataType> AutoMixedPrecisionImpl::GetCastToType(
     const NodeDef* node) const {
   CHECK_EQ(node->op(), "Cast")  // Crash OK
       << "Node " << node->name() << " is not a Cast op";
@@ -2255,7 +2261,7 @@ Status AutoMixedPrecisionImpl::ChangeTypeAttrsAndAddCasts(
             << " nodes to " << type_str << " precision using "
             << num_nonvar_casts_to_f16_ << " cast(s) to " << type_str
             << " (excluding Const and Variable casts)";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int GetNumGPUs(const Cluster& cluster) {
@@ -2299,10 +2305,16 @@ Status AutoMixedPrecision::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   int num_gpus = GetNumGPUs(*cluster);
   if (num_gpus < 1 && mode_ == AutoMixedPrecisionMode::CUDA) {
-    // AutoMixedPrecision is currently only tuned for GPU.
-    LOG(WARNING) << "No (suitable) GPUs detected, skipping " << name()
-                 << " graph optimizer";
-    return OkStatus();
+    // No GPUs to run AutoMixedPrecision in FP16.
+    VLOG(1) << "No (suitable) GPUs detected, skipping " << name()
+            << " graph optimizer";
+    return absl::OkStatus();
+  }
+  // Check if CPU supports FP16
+  if (mode_ == AutoMixedPrecisionMode::FP16_CPU &&
+      !IsAMXDataTypeSupportedByOneDNNOnThisCPU(DT_HALF)) {
+    VLOG(1) << "No support for " << name() << " graph optimizer on CPU";
+    return absl::OkStatus();
   }
 
   if (num_gpus >= 1 && mode_ == AutoMixedPrecisionMode::BF16) {

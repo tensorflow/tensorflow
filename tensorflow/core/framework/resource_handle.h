@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_RESOURCE_HANDLE_H_
 #define TENSORFLOW_CORE_FRAMEWORK_RESOURCE_HANDLE_H_
 
+#include <optional>
 #include <string>
 
 #include "tensorflow/core/framework/resource_base.h"
@@ -180,7 +181,7 @@ class ResourceHandle {
   uint64 hash_code_ = 0;
   std::string maybe_type_name_;
   std::vector<DtypeAndPartialTensorShape> dtypes_and_shapes_;
-  absl::optional<ManagedStackTrace> definition_stack_trace_;
+  std::optional<ManagedStackTrace> definition_stack_trace_;
   // A smart pointer to the actual resource. When this field is not empty, the
   // handle is in a "ref-counting" mode, owning the resource; otherwise it's in
   // a "weak-ref" mode, only containing the name of the resource (conceptually a

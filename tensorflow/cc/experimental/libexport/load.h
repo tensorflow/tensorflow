@@ -92,7 +92,7 @@ class TFPackage {
   bool HasCheckpoint() { return has_checkpoint_; }
 
   // Returns the path to the variables file.
-  const std::string GetVariablesFilepath() { return variables_filepath_; }
+  const std::string GetVariablesFilepath() const { return variables_filepath_; }
 
  private:
   SavedModel saved_model_proto_;

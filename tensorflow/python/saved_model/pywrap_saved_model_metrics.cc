@@ -13,9 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/python/saved_model/pywrap_saved_model_metrics.h"
+
+#include <cstdint>
+#include <exception>
+#include <string>
+#include <utility>
+
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "pybind11/attr.h"  // from @pybind11
+#include "pybind11/cast.h"  // from @pybind11
 #include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
 #include "tensorflow/cc/saved_model/metrics.h"
+#include "tensorflow/core/protobuf/fingerprint.pb.h"
 
 namespace tensorflow {
 namespace saved_model {
@@ -23,10 +36,30 @@ namespace python {
 
 namespace py = pybind11;
 
+class MetricException : public std::exception {
+ public:
+  explicit MetricException(const char* m) : message_{m} {}
+  const char* what() const noexcept override { return message_.c_str(); }
+
+ private:
+  std::string message_ = "";
+};
+
 void DefineMetricsModule(py::module main_module) {
   auto m = main_module.def_submodule("metrics");
 
   m.doc() = "Python bindings for TensorFlow SavedModel and Checkpoint Metrics.";
+
+  static py::exception<MetricException> fp_ex(m, "MetricException");
+  py::register_exception_translator([](std::exception_ptr p) {
+    try {
+      if (p) {
+        std::rethrow_exception(p);
+      }
+    } catch (const MetricException& e) {
+      fp_ex(e.what());
+    }
+  });
 
   m.def(
       "IncrementWrite",
@@ -99,12 +132,15 @@ void DefineMetricsModule(py::module main_module) {
 
   m.def(
       "SetReadFingerprint",
-      [](const char* saved_model_checksum) {
-        metrics::SavedModelReadFingerprint().Set(saved_model_checksum);
+      [](const py::bytes fingerprint) {
+        FingerprintDef fingerprint_def;
+        fingerprint_def.ParseFromString(std::string(fingerprint));
+        metrics::SavedModelReadFingerprint().Set(
+            metrics::MakeFingerprintJson(fingerprint_def).c_str());
       },
-      py::kw_only(), py::arg("saved_model_checksum"),
+      py::kw_only(), py::arg("fingerprint"),
       py::doc("Set the '/tensorflow/core/saved_model/read/fingerprint' gauge "
-              "with `saved_model_checksum`."));
+              "with `fingerprint`."));
 
   m.def(
       "GetReadFingerprint",
@@ -114,12 +150,15 @@ void DefineMetricsModule(py::module main_module) {
 
   m.def(
       "SetWriteFingerprint",
-      [](const char* saved_model_checksum) {
-        metrics::SavedModelWriteFingerprint().Set(saved_model_checksum);
+      [](const py::bytes fingerprint) {
+        FingerprintDef fingerprint_def;
+        fingerprint_def.ParseFromString(std::string(fingerprint));
+        metrics::SavedModelWriteFingerprint().Set(
+            metrics::MakeFingerprintJson(fingerprint_def).c_str());
       },
-      py::kw_only(), py::arg("saved_model_checksum"),
+      py::kw_only(), py::arg("fingerprint"),
       py::doc("Set the '/tensorflow/core/saved_model/write/fingerprint' gauge "
-              "with `saved_model_checksum`."));
+              "with `fingerprint`."));
 
   m.def(
       "GetWriteFingerprint",
@@ -152,6 +191,104 @@ void DefineMetricsModule(py::module main_module) {
   m.def(
       "GetWritePath", []() { return metrics::SavedModelWritePath().value(); },
       py::doc("Get value of '/tensorflow/core/saved_model/write/path' gauge."));
+
+  m.def(
+      "SetReadPathAndSingleprint",
+      [](const char* path, const char* singleprint) {
+        auto path_and_singleprint =
+            metrics::MakeSavedModelPathAndSingleprint(path, singleprint);
+        if (!path_and_singleprint.ok()) {
+          throw MetricException(path_and_singleprint.status().message().data());
+        }
+        metrics::SavedModelReadPathAndSingleprint().Set(
+            path_and_singleprint.value());
+      },
+      py::kw_only(), py::arg("path"), py::arg("singleprint"),
+      py::doc(
+          "Set the '/tensorflow/core/saved_model/read/path_and_singleprint' "
+          "gauge with `path` and `singleprint`."));
+
+  m.def(
+      "GetReadPathAndSingleprint",
+      []() {
+        std::string path_and_singleprint =
+            metrics::SavedModelReadPathAndSingleprint().value();
+        if (path_and_singleprint.empty())
+          return std::pair<std::string, std::string>();
+        auto parsed_path_and_singleprint =
+            metrics::ParseSavedModelPathAndSingleprint(path_and_singleprint);
+        if (!parsed_path_and_singleprint.ok()) {
+          throw MetricException(
+              parsed_path_and_singleprint.status().message().data());
+        }
+        return parsed_path_and_singleprint.value();
+      },
+      py::doc(
+          "Get tuple of `path` and `singleprint` values of "
+          "'/tensorflow/core/saved_model/read/path_and_singleprint' gauge."));
+
+  m.def(
+      "SetWritePathAndSingleprint",
+      [](const char* path, const char* singleprint) {
+        auto path_and_singleprint =
+            metrics::MakeSavedModelPathAndSingleprint(path, singleprint);
+        if (!path_and_singleprint.ok()) {
+          throw MetricException(path_and_singleprint.status().message().data());
+        }
+        metrics::SavedModelWritePathAndSingleprint().Set(
+            path_and_singleprint.value());
+      },
+      py::kw_only(), py::arg("path"), py::arg("singleprint"),
+      py::doc("Set the "
+              "'/tensorflow/core/saved_model/write/path_and_singleprint' gauge "
+              "with `path` and `singleprint`."));
+
+  m.def(
+      "GetWritePathAndSingleprint",
+      []() {
+        std::string path_and_singleprint =
+            metrics::SavedModelWritePathAndSingleprint().value();
+        if (path_and_singleprint.empty())
+          return std::pair<std::string, std::string>();
+        auto parsed_path_and_singleprint =
+            metrics::ParseSavedModelPathAndSingleprint(path_and_singleprint);
+        if (!parsed_path_and_singleprint.ok()) {
+          throw MetricException(
+              parsed_path_and_singleprint.status().message().data());
+        }
+        return parsed_path_and_singleprint.value();
+      },
+      py::doc(
+          "Get tuple of `path` and `singleprint` values of "
+          "'/tensorflow/core/saved_model/write/path_and_singleprint' gauge."));
+
+  m.attr("kFingerprintFound") = metrics::kFingerprintFound;
+  m.attr("kFingerprintNotFound") = metrics::kFingerprintNotFound;
+  m.attr("kFingerprintError") = metrics::kFingerprintError;
+
+  m.def(
+      "GetFoundFingerprintOnLoad",
+      []() { return metrics::SavedModelFoundFingerprintOnLoad().value(); },
+      py::doc(
+          "Get value of "
+          "'/tensorflow/core/saved_model/found_fingerprint_on_load' gauge."));
+
+  m.def(
+      "SetFoundFingerprintOnLoad",
+      [](std::string found_status) {
+        if (found_status == metrics::kFingerprintFound ||
+            found_status == metrics::kFingerprintNotFound ||
+            found_status == metrics::kFingerprintError) {
+          metrics::SavedModelFoundFingerprintOnLoad().Set(found_status);
+        } else {
+          metrics::SavedModelFoundFingerprintOnLoad().Set("");
+        }
+      },
+      py::kw_only(), py::arg("found_status"),
+      py::doc("Set value of "
+              "'/tensorflow/core/saved_model/found_fingerprint_on_load' gauge "
+              "with 'found_status' if status is one of { \"FOUND\", "
+              "\"NOT_FOUND\", \"ERROR\" }."));
 
   m.def(
       "AddCheckpointReadDuration",
@@ -276,6 +413,53 @@ void DefineMetricsModule(py::module main_module) {
       py::kw_only(), py::arg("api_label"), py::arg("filesize"),
       py::doc("Get cell (api_label, filesize) for "
               "'/tensorflow/core/checkpoint/write/checkpoint_size'."));
+
+  m.def(
+      "GetShardingCallbackDuration",
+      []() { return metrics::ShardingCallbackDuration().value(); },
+      py::doc("Get value of "
+              "'/tensorflow/core/checkpoint/sharding/callback_duration'."));
+
+  m.def(
+      "AddShardingCallbackDuration",
+      [](int64_t callback_duration) {
+        metrics::ShardingCallbackDuration().IncrementBy(callback_duration);
+      },
+      py::kw_only(), py::arg("callback_duration"),
+      py::doc("Set value of "
+              "'/tensorflow/core/checkpoint/sharding/callback_duration'."));
+
+  m.def(
+      "GetNumCheckpointShardsWritten",
+      []() { return metrics::NumCheckpointShardsWritten().value(); },
+      py::doc("Get value of "
+              "'/tensorflow/core/checkpoint/sharding/"
+              "num_checkpoint_shards_written'."));
+
+  m.def(
+      "AddNumCheckpointShardsWritten",
+      [](int64_t num_shards) {
+        metrics::NumCheckpointShardsWritten().IncrementBy(num_shards);
+      },
+      py::kw_only(), py::arg("num_shards"),
+      py::doc("Set value of "
+              "'/tensorflow/core/checkpoint/sharding/"
+              "num_checkpoint_shards_written'."));
+
+  m.def(
+      "GetShardingCallbackDescription",
+      []() { return metrics::ShardingCallbackDescription().value(); },
+      py::doc("Get value of "
+              "'/tensorflow/core/checkpoint/sharding/callback_description'."));
+
+  m.def(
+      "SetShardingCallbackDescription",
+      [](std::string description) {
+        metrics::ShardingCallbackDescription().Set(description);
+      },
+      py::kw_only(), py::arg("description"),
+      py::doc("Set value of "
+              "'/tensorflow/core/checkpoint/sharding/callback_description'."));
 }
 
 }  // namespace python

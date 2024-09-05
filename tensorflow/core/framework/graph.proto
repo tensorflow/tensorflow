@@ -3,6 +3,7 @@ syntax = "proto3";
 package tensorflow;
 
 import "tensorflow/core/framework/function.proto";
+import "tensorflow/core/framework/graph_debug_info.proto";
 import "tensorflow/core/framework/node_def.proto";
 import "tensorflow/core/framework/versions.proto";
 
@@ -53,4 +54,7 @@ message GraphDef {
   //     consumer does not start until all return values of the callee
   //     function are ready.
   FunctionDefLibrary library = 2;
+
+  // Stack traces for the nodes in this graph.
+  GraphDebugInfo debug_info = 5;
 }

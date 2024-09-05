@@ -23,7 +23,7 @@ import tensorflow as tf
 
 from tensorflow.python.client import device_lib
 from tensorflow.python.eager import context
-from tensorflow.python.eager import tape
+from tensorflow.python.eager import record
 from tensorflow.python.eager.benchmarks.resnet50 import resnet50
 from tensorflow.python.eager.benchmarks.resnet50 import resnet50_test_util
 from tensorflow.python.framework import test_util
@@ -41,7 +41,7 @@ def compute_gradients(model, images, labels, num_replicas=1):
   # TODO(b/110991947): We can mistakenly trace the gradient call in
   # multi-threaded environment. Explicitly disable recording until
   # this is fixed.
-  with tape.stop_recording():
+  with record.stop_recording():
     grads = grad_tape.gradient(loss, model.variables)
   return grads
 

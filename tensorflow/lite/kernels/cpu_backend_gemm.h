@@ -176,7 +176,7 @@ template <QuantizationFlavor quantization_flavor>
 void Gemm(const MatrixParams<int8_t>& lhs_params, const int8_t* lhs_data,
           const MatrixParams<int16_t>& rhs_params, const int16_t* rhs_data,
           const MatrixParams<int16_t>& dst_params, int16_t* dst_data,
-          const GemmParams<int32_t, int16, quantization_flavor>& params,
+          const GemmParams<int32_t, int16_t, quantization_flavor>& params,
           CpuBackendContext* context) {
   ruy::profiler::ScopeLabel label("cpu_backend_gemm::Gemm");
   ValidateParams(lhs_params, rhs_params, dst_params, params);
@@ -187,7 +187,7 @@ void Gemm(const MatrixParams<int8_t>& lhs_params, const int8_t* lhs_data,
 
   // Currently, only Ruy backend supports 16x8 quant gemm so we use ruy
   // only.
-  detail::GemmImplUsingRuy<int8_t, int16_t, int32_t, int16,
+  detail::GemmImplUsingRuy<int8_t, int16_t, int32_t, int16_t,
                            quantization_flavor>::Run(lhs_params, lhs_data,
                                                      rhs_params, rhs_data,
                                                      dst_params, dst_data,

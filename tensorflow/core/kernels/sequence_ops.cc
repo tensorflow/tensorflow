@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/sequence_ops.h"
 
 #include <cmath>
+#include <type_traits>
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -91,7 +92,7 @@ class RangeOp : public OpKernel {
               "Requires start >= limit when delta < 0: ", start, "/", limit));
     }
     int64_t size;
-    if (std::is_integral<T>::value) {
+    if constexpr (std::is_integral<T>::value) {
       size = Eigen::divup(Eigen::numext::abs(limit - start),
                           Eigen::numext::abs(delta));
     } else {
@@ -126,6 +127,8 @@ class RangeOp : public OpKernel {
 #define REGISTER_CPU_KERNEL(T) REGISTER_KERNEL(DEVICE_CPU, CPUDevice, T)
 #define REGISTER_GPU_KERNEL(T) REGISTER_KERNEL(DEVICE_GPU, GPUDevice, T)
 
+TF_CALL_half(REGISTER_CPU_KERNEL);
+TF_CALL_bfloat16(REGISTER_CPU_KERNEL);
 TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
 TF_CALL_int32(REGISTER_CPU_KERNEL);
@@ -133,6 +136,8 @@ TF_CALL_int64(REGISTER_CPU_KERNEL);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+TF_CALL_half(REGISTER_GPU_KERNEL);
+TF_CALL_bfloat16(REGISTER_GPU_KERNEL);
 TF_CALL_float(REGISTER_GPU_KERNEL);
 TF_CALL_double(REGISTER_GPU_KERNEL);
 TF_CALL_int64(REGISTER_GPU_KERNEL);

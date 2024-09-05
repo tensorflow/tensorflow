@@ -36,9 +36,9 @@ cc_binary(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":gen_proto_text_functions_lib",
-        "@com_google_protobuf//:protobuf",
-        "//tensorflow/tsl/platform:protobuf_compiler",
         "//tensorflow/core:lib_proto_parsing",
+        "@com_google_protobuf//:protobuf",
+        "@local_tsl//tsl/platform:protobuf_compiler",
     ] + if_ios(["//tensorflow/core/platform:logging"]),
 )
 
@@ -71,7 +71,6 @@ cc_library(
 tf_proto_library(
     name = "test_proto",
     srcs = ["test.proto"],
-    cc_api_version = 2,
 )
 
 tf_generate_proto_text_sources(

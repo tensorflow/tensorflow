@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -28,13 +30,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 
 namespace mlir {
 namespace TFDevice {
 
 namespace {
 
-constexpr char kDeviceAttr[] = "device";
 constexpr char kFuncAttr[] = "func";
 
 #define GEN_PASS_DEF_CLUSTEROUTLININGPASS
@@ -71,15 +73,17 @@ func::FuncOp BuildFunction(llvm::ArrayRef<Value> live_ins, ClusterOrLaunchOp op,
 
   auto func_type = builder->getFunctionType(operand_types, op.getResultTypes());
 
-  // While processing XLA launch ops, signatures are created for each function
-  // to decide if a function has been compiled. Function signatures are decided
-  // by function name and input types. By giving each function a unique name, we
-  // make sure the same signature is not incorrectly given to functions of
-  // different graphs with same name and input type.
-  func::FuncOp outlined_func = func::FuncOp::create(
-      op.getLoc(),
-      absl::StrCat("_func_", size_t(OperationEquivalence::computeHash(op))),
-      func_type);
+  std::string func_name;
+  if (auto outlined_func_name = op->template getAttrOfType<StringAttr>(
+          TF::kClusterOutlinedFunctionNameAttr)) {
+    op->removeAttr(TF::kClusterOutlinedFunctionNameAttr);
+    func_name = outlined_func_name.str();
+  } else {
+    func_name = "_func";
+  }
+
+  func::FuncOp outlined_func =
+      func::FuncOp::create(op.getLoc(), func_name, func_type);
 
   // This function is not externally visible and marking it private would allow
   // symbol-dce pass to remove it when it is not referenced anymore.
@@ -130,10 +134,6 @@ void OutlineCluster(tf_device::ClusterOp cluster_op, SymbolTable* symbol_table,
   auto cluster_func_op = builder->create<tf_device::ClusterFuncOp>(
       cluster_op.getLoc(), outlined_func.getFunctionType().getResults(),
       live_ins.getArrayRef(), cluster_op->getAttrs());
-  auto device_attr = cluster_op->getAttrOfType<StringAttr>(kDeviceAttr);
-  if (device_attr && !device_attr.getValue().empty()) {
-    cluster_func_op->setAttr(kDeviceAttr, device_attr);
-  }
   cluster_op.replaceAllUsesWith(cluster_func_op);
   cluster_op.erase();
 }

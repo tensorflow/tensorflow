@@ -20,7 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
+#include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/fb_storage.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator.h"
@@ -65,8 +65,7 @@ int ValidatorRunner::TriggerMissingValidation(
   storage_.Read();
 
   // Filter out settings that have already been tried.
-  auto to_be_run =
-      std::make_unique<std::vector<flatbuffers::FlatBufferBuilder>>();
+  std::vector<flatbuffers::FlatBufferBuilder> to_be_run;
   for (auto settings : for_settings) {
     TFLiteSettingsT tflite_settings;
     settings->UnPackTo(&tflite_settings);
@@ -99,9 +98,9 @@ int ValidatorRunner::TriggerMissingValidation(
     }
     flatbuffers::FlatBufferBuilder copy;
     copy.Finish(CreateTFLiteSettings(copy, &tflite_settings));
-    to_be_run->emplace_back(std::move(copy));
+    to_be_run.emplace_back(std::move(copy));
   }
-  int to_be_run_count = to_be_run->size();
+  int to_be_run_count = to_be_run.size();
   validator_runner_impl_->TriggerValidationAsync(std::move(to_be_run),
                                                  storage_path_);
   return to_be_run_count;

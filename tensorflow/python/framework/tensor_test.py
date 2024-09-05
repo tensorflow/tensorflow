@@ -337,21 +337,65 @@ class TensorSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testCastPythinPrimitives(self):
     spec = tensor.TensorSpec([], dtypes.float32)
     ctx = trace_type.InternalCastContext()
-    value = spec._cast(1, ctx)
+    value = spec.cast(1, ctx)
     self.assertEqual(value.dtype, spec.dtype)
 
   def testCastTensor(self):
     spec = tensor.TensorSpec([], dtypes.float32)
     ctx = trace_type.InternalCastContext()
-    # _cast does not support cast int tensor to float tensor
-    with self.assertRaises(ValueError):
-      _ = spec._cast(constant_op.constant(1, dtype=dtypes.int32), ctx)
+    # cast does not support cast int tensor to float tensor
+    with self.assertRaises(TypeError):
+      _ = spec.cast(constant_op.constant(1, dtype=dtypes.int32), ctx)
 
   def testCastAssert(self):
     spec = tensor.TensorSpec([], dtypes.float32)
     ctx = trace_type.InternalCastContext()
-    with self.assertRaises(AssertionError):
-      _ = spec._cast([1, 2, 3], ctx)
+    with self.assertRaises(TypeError):
+      _ = spec.cast([1, 2, 3], ctx)
+
+  @parameterized.named_parameters(
+      (
+          "list",
+          [[
+              [tensor.TensorSpec(None, name="a")],
+              [
+                  tensor.TensorSpec(None, name="b"),
+                  tensor.TensorSpec(None, name="c"),
+              ],
+          ]],
+      ),
+      (
+          "tuple",
+          ((
+              (tensor.TensorSpec(None, name="a"),),
+              (
+                  tensor.TensorSpec(None, name="b"),
+                  tensor.TensorSpec(None, name="c"),
+              ),
+          )),
+      ),
+      (
+          "dict",
+          {
+              "a": {"key": tensor.TensorSpec(None, name="a")},
+              "b": [tensor.TensorSpec(None, name="b")],
+              "c": (tensor.TensorSpec(None, name="c"),),
+          },
+      ),
+  )
+  def testFlatten(self, structure):
+    generated_type = trace_type.from_value(
+        structure, trace_type.InternalTracingContext(is_legacy_signature=True)
+    )
+    flattened = generated_type.flatten()
+    self.assertEqual(
+        flattened,
+        [
+            tensor.TensorSpec(None, name="a"),
+            tensor.TensorSpec(None, name="b"),
+            tensor.TensorSpec(None, name="c"),
+        ],
+    )
 
 
 class BoundedTensorSpecTest(test_util.TensorFlowTestCase):

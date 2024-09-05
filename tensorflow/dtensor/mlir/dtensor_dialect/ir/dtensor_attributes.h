@@ -19,6 +19,8 @@ limitations under the License.
 #define TENSORFLOW_DTENSOR_MLIR_DTENSOR_DIALECT_IR_DTENSOR_ATTRIBUTES_H_
 
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/proto/layout.pb.h"
 
@@ -37,6 +39,8 @@ class MeshAttr
   using Base::Base;
   using Mesh = tensorflow::dtensor::Mesh;
 
+  static constexpr StringLiteral name = "dtensor.mesh";
+
   // Constructor of attribute
   static MeshAttr get(MLIRContext* context, const Mesh& mesh);
 
@@ -51,6 +55,8 @@ class LayoutAttr : public Attribute::AttrBase<LayoutAttr, Attribute,
   using Base::Base;
   using Layout = tensorflow::dtensor::Layout;
   using Mesh = tensorflow::dtensor::Mesh;
+
+  static constexpr StringLiteral name = "dtensor.layout";
 
   // Create a layout attribute.
   static LayoutAttr get(MLIRContext* context, Layout layout);

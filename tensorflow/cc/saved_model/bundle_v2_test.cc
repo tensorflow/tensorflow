@@ -15,21 +15,29 @@ limitations under the License.
 
 #include "tensorflow/cc/saved_model/bundle_v2.h"
 
+#include <algorithm>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "json/json.h"
+#include "json/reader.h"
+#include "json/value.h"
 #include "tensorflow/cc/saved_model/metrics.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/trackable_object_graph.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
 
 constexpr char kTestData[] = "cc/saved_model/testdata";
-// This is the value in testdata/VarsAndArithmeticObjectGraph/fingerprint.pb
-constexpr char kV2ModuleSavedModelChecksum[] = "15788619162413586750";
 
 class BundleV2Test : public ::testing::Test {
  protected:
@@ -43,14 +51,14 @@ class BundleV2Test : public ::testing::Test {
     TF_ASSERT_OK(bundle->VisitObjectsToRestore(
         [&](int saved_node_id,
             const TrackableObjectGraph::TrackableObject& trackable_object)
-            -> Status {
+            -> absl::Status {
           for (const auto& attr : trackable_object.attributes()) {
             if (attr.name() == "VARIABLE_VALUE") {
               restored_vars.emplace_back(saved_node_id, attr.full_name(),
                                          attr.checkpoint_key());
             }
           }
-          return OkStatus();
+          return absl::OkStatus();
         }));
 
     // Should be one of each var name restored.
@@ -77,7 +85,7 @@ class BundleV2Test : public ::testing::Test {
 };
 
 TEST_F(BundleV2Test, LoadsVarsAndArithmeticObjectGraph) {
-  const string export_dir = io::JoinPath(
+  const std::string export_dir = io::JoinPath(
       testing::TensorFlowSrcRoot(), kTestData, "VarsAndArithmeticObjectGraph");
 
   SavedModelV2Bundle bundle;
@@ -90,7 +98,7 @@ TEST_F(BundleV2Test, LoadsVarsAndArithmeticObjectGraph) {
 }
 
 TEST_F(BundleV2Test, LoadsCyclicModule) {
-  const string export_dir =
+  const std::string export_dir =
       io::JoinPath(testing::TensorFlowSrcRoot(), kTestData, "CyclicModule");
 
   SavedModelV2Bundle bundle;
@@ -103,11 +111,11 @@ TEST_F(BundleV2Test, LoadsCyclicModule) {
 }
 
 TEST_F(BundleV2Test, UpdatesMetrics) {
-  const string kCCLoadBundleV2Label = "cc_load_bundle_v2";
+  const std::string kCCLoadBundleV2Label = "cc_load_bundle_v2";
   const int read_count = metrics::SavedModelReadCount("2").value();
   const int api_count =
       metrics::SavedModelReadApi(kCCLoadBundleV2Label).value();
-  const string export_dir = io::JoinPath(
+  const std::string export_dir = io::JoinPath(
       testing::TensorFlowSrcRoot(), kTestData, "VarsAndArithmeticObjectGraph");
 
   SavedModelV2Bundle bundle;
@@ -116,10 +124,34 @@ TEST_F(BundleV2Test, UpdatesMetrics) {
   EXPECT_EQ(metrics::SavedModelReadCount("2").value(), read_count + 1);
   EXPECT_EQ(metrics::SavedModelReadApi(kCCLoadBundleV2Label).value(),
             api_count + 1);
-  // Check that the gauge contains the fingerprint.
-  EXPECT_EQ(metrics::SavedModelReadFingerprint().value(),
-            kV2ModuleSavedModelChecksum);
+  // Check that the gauge contains the path and fingerprint.
   EXPECT_EQ(metrics::SavedModelReadPath().value(), export_dir);
+
+  Json::Value fingerprint = Json::objectValue;
+  Json::Reader reader = Json::Reader();
+  reader.parse(metrics::SavedModelReadFingerprint().value(), fingerprint);
+  EXPECT_EQ(fingerprint["saved_model_checksum"].asUInt64(),
+            15788619162413586750ULL);
+  EXPECT_EQ(fingerprint["graph_def_program_hash"].asUInt64(),
+            706963557435316516ULL);
+  EXPECT_EQ(fingerprint["signature_def_hash"].asUInt64(),
+            5693392539583495303ULL);
+  EXPECT_EQ(fingerprint["saved_object_graph_hash"].asUInt64(),
+            12074714563970609759ULL);
+  EXPECT_EQ(fingerprint["checkpoint_hash"].asUInt64(), 10788359570789890102ULL);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto path_and_singleprint,
+      metrics::ParseSavedModelPathAndSingleprint(
+          metrics::SavedModelReadPathAndSingleprint().value()));
+  auto [path, singleprint] = path_and_singleprint;
+  EXPECT_TRUE(absl::StrContains(
+      path, absl::StrCat(kTestData, "/VarsAndArithmeticObjectGraph")));
+  EXPECT_EQ(singleprint,
+            "706963557435316516/"     // graph_def_program_hash
+            "5693392539583495303/"    // signature_def_hash
+            "12074714563970609759/"   // saved_object_graph_hash
+            "10788359570789890102");  // checkpoint_hash
 }
 
 }  // namespace

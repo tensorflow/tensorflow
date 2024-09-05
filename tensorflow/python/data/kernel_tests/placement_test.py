@@ -198,7 +198,7 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
     create_iter()
 
   @combinations.generate(test_base.graph_only_combinations())
-  @test_util.run_gpu_only()
+  @test_util.run_gpu_only
   def testIteratorOnDeviceGraphModeOneShotIterator(self):
     self.skipTest("TODO(b/169429285): tf.data.Dataset.make_one_shot_iterator "
                   "does not support GPU placement.")
@@ -230,7 +230,7 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertIn(b"GPU:0", self.evaluate(has_value_device))
 
   @combinations.generate(test_base.graph_only_combinations())
-  @test_util.run_gpu_only()
+  @test_util.run_gpu_only
   def testIteratorOnDeviceGraphModeInitializableIterator(self):
     dataset = dataset_ops.Dataset.range(10)
     dataset = dataset.apply(prefetching_ops.prefetch_to_device("/gpu:0"))
@@ -259,7 +259,7 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertIn(b"GPU:0", self.evaluate(has_value_device))
 
   @combinations.generate(test_base.eager_only_combinations())
-  @test_util.run_gpu_only()
+  @test_util.run_gpu_only
   def testIterDatasetEagerModeWithExplicitDevice(self):
 
     @def_function.function
@@ -274,7 +274,7 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual(result.numpy(), 45)
 
   @combinations.generate(test_base.eager_only_combinations())
-  @test_util.run_gpu_only()
+  @test_util.run_gpu_only
   def testFunctionInliningColocation(self):
 
     @def_function.function

@@ -18,7 +18,6 @@ All functions that are commonly used to work with FlatBuffers.
 
 Refer to the tensorflow lite flatbuffer schema here:
 tensorflow/lite/schema/schema.fbs
-
 """
 
 import copy
@@ -28,6 +27,7 @@ import struct
 import sys
 
 import flatbuffers
+
 from tensorflow.lite.python import schema_py_generated as schema_fb
 from tensorflow.lite.python import schema_util
 from tensorflow.python.platform import gfile
@@ -58,9 +58,38 @@ def read_model(input_tflite_file):
     raise RuntimeError('Input file not found at %r\n' % input_tflite_file)
   with gfile.GFile(input_tflite_file, 'rb') as input_file_handle:
     model_bytearray = bytearray(input_file_handle.read())
+  return read_model_from_bytearray(model_bytearray)
+
+
+def read_model_from_bytearray(model_bytearray):
+  """Reads a tflite model as a python object.
+
+  Args:
+    model_bytearray: TFLite model in bytearray format.
+
+  Returns:
+    A python object corresponding to the input tflite file.
+  """
   model = convert_bytearray_to_object(model_bytearray)
   if sys.byteorder == 'big':
     byte_swap_tflite_model_obj(model, 'little', 'big')
+
+  # Offset handling for models > 2GB
+  for buffer in model.buffers:
+    if buffer.offset:
+      buffer.data = model_bytearray[buffer.offset : buffer.offset + buffer.size]
+      buffer.offset = 0
+      buffer.size = 0
+  for subgraph in model.subgraphs:
+    for op in subgraph.operators:
+      if op.largeCustomOptionsOffset:
+        op.customOptions = model_bytearray[
+            op.largeCustomOptionsOffset : op.largeCustomOptionsOffset
+            + op.largeCustomOptionsSize
+        ]
+        op.largeCustomOptionsOffset = 0
+        op.largeCustomOptionsSize = 0
+
   return model
 
 
@@ -69,6 +98,9 @@ def read_model_with_mutable_tensors(input_tflite_file):
 
   Similar to read_model() with the addition that the returned object has
   mutable tensors (read_model() returns an object with immutable tensors).
+
+  NOTE: This API only works for TFLite generated with
+  _experimental_use_buffer_offset=false
 
   Args:
     input_tflite_file: Full path name to the input tflite file
@@ -83,18 +115,22 @@ def read_model_with_mutable_tensors(input_tflite_file):
   return copy.deepcopy(read_model(input_tflite_file))
 
 
-def convert_object_to_bytearray(model_object):
+def convert_object_to_bytearray(model_object, extra_buffer=b''):
   """Converts a tflite model from an object to a immutable bytearray."""
   # Initial size of the buffer, which will grow automatically if needed
   builder = flatbuffers.Builder(1024)
   model_offset = model_object.Pack(builder)
   builder.Finish(model_offset, file_identifier=_TFLITE_FILE_IDENTIFIER)
   model_bytearray = bytes(builder.Output())
+  model_bytearray = model_bytearray + extra_buffer
   return model_bytearray
 
 
 def write_model(model_object, output_tflite_file):
   """Writes the tflite model, a python object, into the output file.
+
+  NOTE: This API only works for TFLite generated with
+  _experimental_use_buffer_offset=false
 
   Args:
     model_object: A tflite model as a python object
@@ -149,7 +185,7 @@ def randomize_weights(model, random_seed=0, buffers_to_skip=None):
     model: The model in which to randomize weights.
     random_seed: The input to the random number generator (default value is 0).
     buffers_to_skip: The list of buffer indices to skip. The weights in these
-                     buffers are left unmodified.
+      buffers are left unmodified.
   """
 
   # The input to the random seed generator. The default value is 0.
@@ -287,14 +323,29 @@ def byte_swap_buffer_content(buffer, chunksize, from_endiness, to_endiness):
       buffer.data[i : i + chunksize]
       for i in range(0, len(buffer.data), chunksize)
   ]
-  buffer.data = b''.join(
-      [
-          int.from_bytes(byteswap, from_endiness).to_bytes(
-              chunksize, to_endiness
-          )
-          for byteswap in to_swap
-      ]
-  )
+  buffer.data = b''.join([
+      int.from_bytes(byteswap, from_endiness).to_bytes(chunksize, to_endiness)
+      for byteswap in to_swap
+  ])
+
+
+def byte_swap_string_content(buffer, from_endiness, to_endiness):
+  """Helper function for byte-swapping the string buffer.
+
+  Args:
+    buffer: TFLite string buffer of from_endiness format.
+    from_endiness: The original endianness format of the string buffer.
+    to_endiness: The destined endianness format of the string buffer.
+  """
+  num_of_strings = int.from_bytes(buffer.data[0:4], from_endiness)
+  string_content = bytearray(buffer.data[4 * (num_of_strings + 2) :])
+  prefix_data = b''.join([
+      int.from_bytes(buffer.data[i : i + 4], from_endiness).to_bytes(
+          4, to_endiness
+      )
+      for i in range(0, (num_of_strings + 1) * 4 + 1, 4)
+  ])
+  buffer.data = prefix_data + string_content
 
 
 def byte_swap_tflite_model_obj(model, from_endiness, to_endiness):
@@ -334,7 +385,11 @@ def byte_swap_tflite_model_obj(model, from_endiness, to_endiness):
           and tensor.buffer not in buffer_swapped
           and model.buffers[tensor.buffer].data is not None
       ):
-        if tensor.type in types_of_16_bits:
+        if tensor.type == schema_fb.TensorType.STRING:
+          byte_swap_string_content(
+              model.buffers[tensor.buffer], from_endiness, to_endiness
+          )
+        elif tensor.type in types_of_16_bits:
           byte_swap_buffer_content(
               model.buffers[tensor.buffer], 2, from_endiness, to_endiness
           )
@@ -393,7 +448,8 @@ def count_resource_variables(model):
       continue
     for op in subgraph.operators:
       builtin_code = schema_util.get_builtin_code_from_operator_code(
-          model.operatorCodes[op.opcodeIndex])
+          model.operatorCodes[op.opcodeIndex]
+      )
       if builtin_code == schema_fb.BuiltinOperator.VAR_HANDLE:
         unique_shared_names.add(op.builtinOptions.sharedName)
   return len(unique_shared_names)

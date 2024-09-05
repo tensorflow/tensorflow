@@ -1,3 +1,5 @@
+load("//tensorflow/lite/delegates/gpu:build_defs.bzl", "gtest_main_no_heapcheck_deps")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
@@ -15,6 +17,28 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/selectors:subgraph",
         "@com_google_absl//absl/strings",
     ],
+)
+
+cc_test(
+    name = "conv_pointwise_test",
+    srcs = ["conv_pointwise_test.cc"],
+    tags = [
+        "noasan",
+        "nomsan",
+        "notsan",
+        "requires-gpu-nvidia",
+    ],
+    # TODO(b/279977471) Once b/279347631 is resolved, check for heap again
+    deps = [
+        ":conv_pointwise",
+        "//tensorflow/lite/delegates/gpu/cl/kernels:cl_test",
+        "//tensorflow/lite/delegates/gpu/common:precision",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+    ] + gtest_main_no_heapcheck_deps(),
 )
 
 cc_library(

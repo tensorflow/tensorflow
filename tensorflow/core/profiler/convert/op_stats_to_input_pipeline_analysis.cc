@@ -18,6 +18,8 @@ limitations under the License.
 #include <math.h>
 
 #include <algorithm>
+#include <optional>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -26,6 +28,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/util/stats_calculator.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -38,18 +41,19 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/utils/diagnostics.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
-#include "tensorflow/core/profiler/utils/format_utils.h"
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/html_utils.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
-#include "tensorflow/core/profiler/utils/tf_op_utils.h"
-#include "tensorflow/tsl/util/stats_calculator.h"
+#include "tsl/profiler/utils/format_utils.h"
+#include "tsl/profiler/utils/tf_op_utils.h"
 
 namespace tensorflow {
 namespace profiler {
 
 namespace {
+
+using tsl::profiler::OneDigit;
 
 const double kNumPsPerMs = 1000000000.0;
 
@@ -218,7 +222,8 @@ InputPipelineAnalysisResult ComputeGenericInputPipelineAnalysisResult(
     } else {
       details.set_step_name(step_info.step_name());
     }
-    details.set_step_time_ms(PicoToMilli(step_info.duration_ps()));
+    details.set_step_time_ms(
+        tsl::profiler::PicoToMilli(step_info.duration_ps()));
     GenericStepBreakdown generic;
     bool success = step_info.step_breakdown().UnpackTo(&generic);
     if (!success && !step_info.step_breakdown().type_url().empty()) {
@@ -243,9 +248,9 @@ InputPipelineAnalysisResult ComputeGenericInputPipelineAnalysisResult(
     result.add_step_details()->PackFrom(details);
 
     const double input_percent_of_step_time =
-        100.0 *
-        SafeDivide(details.host_wait_input_ms() + details.host_to_device_ms(),
-                   details.step_time_ms());
+        100.0 * tsl::profiler::SafeDivide(
+                    details.host_wait_input_ms() + details.host_to_device_ms(),
+                    details.step_time_ms());
     input_summary_stats_in_percent.UpdateStat(input_percent_of_step_time);
   }
 
@@ -286,19 +291,21 @@ std::string InputOpCategoryString(InputOpCategory category) {
 inline bool IsInputOp(absl::string_view category) {
   // Do not include "IteratorGetNext*" here, because IteratorGetNext is an Op
   // that experiences the install stall, not an Op that causes the input stall.
-  return IsInfeedEnqueueOp(category) || IsDatasetOp(category) ||
-         IsMemcpyHToDOp(category);
+  return tsl::profiler::IsInfeedEnqueueOp(category) ||
+         tsl::profiler::IsDatasetOp(category) ||
+         tsl::profiler::IsMemcpyHToDOp(category);
 }
 
 // TODO(ckluk):
 //   Confirm with the tf.data team if the classification below is correct.
 InputOpCategory CategorizeInputOp(absl::string_view name,
                                   absl::string_view category) {
-  if (IsInfeedEnqueueOp(category) || IsMemcpyHToDOp(category)) {
+  if (tsl::profiler::IsInfeedEnqueueOp(category) ||
+      tsl::profiler::IsMemcpyHToDOp(category)) {
     // Ops for sending input from host to device.
     return InputOpCategory::kEnqueue;
   }
-  DCHECK(IsDatasetOp(category));
+  DCHECK(tsl::profiler::IsDatasetOp(category));
   if (absl::EndsWith(name, "::TFRecord") ||
       absl::EndsWith(name, "::TextLine") ||
       absl::EndsWith(name, "::FixedLengthRecord") ||
@@ -344,12 +351,15 @@ InputOpDetails ConvertOpMetricsToInputOpDetails(const OpMetrics& op_metrics,
   InputOpDetails details;
   details.set_op_name(op_metrics.name());
   details.set_count(op_metrics.occurrences());
-  details.set_time_in_ms(PicoToMilli(op_metrics.time_ps()));
-  details.set_self_time_in_ms(PicoToMilli(op_metrics.self_time_ps()));
+  details.set_time_in_ms(tsl::profiler::PicoToMilli(op_metrics.time_ps()));
+  details.set_self_time_in_ms(
+      tsl::profiler::PicoToMilli(op_metrics.self_time_ps()));
   details.set_time_in_percent(
-      100.0 * SafeDivide(op_metrics.time_ps(), input_op_time_ps));
+      100.0 *
+      tsl::profiler::SafeDivide(op_metrics.time_ps(), input_op_time_ps));
   details.set_self_time_in_percent(
-      100.0 * SafeDivide(op_metrics.self_time_ps(), input_op_time_ps));
+      100.0 *
+      tsl::profiler::SafeDivide(op_metrics.self_time_ps(), input_op_time_ps));
   details.set_category(InputOpCategoryString(category));
   return details;
 }
@@ -359,7 +369,7 @@ double RatioOfHostToDeviceTimeToStepTime(
     const OpMetricsDb& host_tf_metrics_db,
     const InputPipelineAnalysisResult& input_pipeline_analysis) {
   // For TPU execution that uses infeed.
-  absl::optional<double> host_infeed_enqueue_ratio =
+  std::optional<double> host_infeed_enqueue_ratio =
       HostInfeedEnqueueRatio(host_tf_metrics_db);
   if (host_infeed_enqueue_ratio.has_value()) {
     return host_infeed_enqueue_ratio.value();
@@ -374,7 +384,8 @@ double RatioOfHostToDeviceTimeToStepTime(
             &generic_breakdown)) {
       double avg_host_to_device_time_ms =
           generic_breakdown.host_to_device_ms_summary().average();
-      return SafeDivide(avg_host_to_device_time_ms, avg_step_time_ms);
+      return tsl::profiler::SafeDivide(avg_host_to_device_time_ms,
+                                       avg_step_time_ms);
     }
   }
   return 0.0;
@@ -487,7 +498,7 @@ void GenerateHostResult(const OpMetricsDb& host_tf_metrics_db,
     *result->add_input_op_details() = ConvertOpMetricsToInputOpDetails(
         *op_metrics, input_op_metrics.input_op_time_ps, category);
     aggregated_input_op_times_us[category] +=
-        PicoToMicro(op_metrics->self_time_ps());
+        tsl::profiler::PicoToMicro(op_metrics->self_time_ps());
   }
 
   double enqueue_time_us =
@@ -505,15 +516,15 @@ void GenerateHostResult(const OpMetricsDb& host_tf_metrics_db,
                                    : total_input_op_time_us;
 
   // Scales the various input-time components wrt to non_enqueue_time_us.
-  double scaled_demanded_fileread_time_us = SafeDivide(
+  double scaled_demanded_fileread_time_us = tsl::profiler::SafeDivide(
       non_enqueue_time_us *
           aggregated_input_op_times_us[InputOpCategory::kDemandedFileRead],
       total_input_op_time_us);
-  double scaled_advanced_fileread_time_us = SafeDivide(
+  double scaled_advanced_fileread_time_us = tsl::profiler::SafeDivide(
       non_enqueue_time_us *
           aggregated_input_op_times_us[InputOpCategory::kAdvancedFileRead],
       total_input_op_time_us);
-  double scaled_preprocessing_time_us = SafeDivide(
+  double scaled_preprocessing_time_us = tsl::profiler::SafeDivide(
       non_enqueue_time_us *
           aggregated_input_op_times_us[InputOpCategory::kPreprocessing],
       total_input_op_time_us);
@@ -653,7 +664,7 @@ bool InputAnalysis(double input_percent, double all_other_percent,
         "could be due to I/O or Python execution or both).");
     return true;
   } else {
-    // Defintely not input-bound.
+    // Definitely not input-bound.
     *input_classification = "device";
     *input_statement =
         absl::StrCat("Your program is NOT input-bound because only ",
@@ -827,7 +838,8 @@ double HostToDeviceTransferAsPercentOfInputTime(
       breakdown.demanded_file_read_us() + breakdown.advanced_file_read_us() +
       breakdown.preprocessing_us() + breakdown.enqueue_us() +
       breakdown.unclassified_non_enqueue_us();
-  return 100.0 * SafeDivide(breakdown.enqueue_us(), total_input_time_us);
+  return 100.0 *
+         tsl::profiler::SafeDivide(breakdown.enqueue_us(), total_input_time_us);
 }
 
 }  // namespace profiler

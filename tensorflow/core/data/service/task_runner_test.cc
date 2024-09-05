@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -63,13 +64,13 @@ class RangeIterator : public TaskIterator {
   Status GetNext(std::vector<Tensor>& element, bool& end_of_sequence) override {
     end_of_sequence = (next_ >= range_);
     if (end_of_sequence) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     element = {Tensor{next_++}};
     if (repeat_) {
       next_ = next_ % range_;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   int64_t Cardinality() const override {
@@ -88,7 +89,7 @@ class InfiniteRangeIterator : public TaskIterator {
 
   Status GetNext(std::vector<Tensor>& element, bool& end_of_sequence) override {
     element = {Tensor{next_++}};
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   int64_t Cardinality() const override { return kInfiniteCardinality; }
@@ -106,12 +107,12 @@ class ElementOrErrorIterator : public TaskIterator {
   Status GetNext(std::vector<Tensor>& element, bool& end_of_sequence) override {
     end_of_sequence = (next_ >= elements_.size());
     if (end_of_sequence) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     const StatusOr<T>& next_element = elements_[next_++];
     TF_RETURN_IF_ERROR(next_element.status());
     element = {Tensor{*next_element}};
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   int64_t Cardinality() const override { return elements_.size(); }
@@ -192,7 +193,7 @@ Status RunConsumer(int64_t consumer_index, int64_t start_index,
       }
     } while (result.skip);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -288,7 +289,7 @@ TEST(FirstComeFirstServedTaskRunnerTest, GetNextAndCancel) {
 TEST(FirstComeFirstServedTaskRunnerTest, Error) {
   FirstComeFirstServedTaskRunner runner(
       std::make_unique<ElementOrErrorIterator<tstring>>(
-          std::vector<StatusOr<tstring>>{
+          std::vector<absl::StatusOr<tstring>>{
               tstring("First element"),
               errors::InvalidArgument("Invalid argument"),
               tstring("Second element"), errors::Aborted("Aborted")}));
@@ -444,7 +445,7 @@ TEST(CachingTaskRunnerTest, Errors) {
   size_t num_readers = 10;
   CachingTaskRunner runner(
       std::make_unique<ElementOrErrorIterator<tstring>>(
-          std::vector<StatusOr<tstring>>{
+          std::vector<absl::StatusOr<tstring>>{
               tstring("First element"),
               errors::Cancelled("Cancelled"),
               tstring("Second element"),
@@ -466,7 +467,7 @@ TEST(CachingTaskRunnerTest, Errors) {
           GetElementRequest request;
           request.set_trainer_id(absl::StrCat("Trainer_", i));
           while (true) {
-            StatusOr<tstring> element =
+            absl::StatusOr<tstring> element =
                 GetNextFromTaskRunner<tstring>(runner, request);
             if (element.ok()) {
               result.push_back(*element);

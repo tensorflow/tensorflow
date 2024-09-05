@@ -14,7 +14,7 @@
 # ==============================================================================
 """A typed list in Python."""
 
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import tensor_array_ops
 
@@ -28,7 +28,7 @@ def dynamic_list_append(target, element):
   # It may be possible to use TensorList alone if the loop body will not
   # require wrapping it, although we'd have to think about an autoboxing
   # mechanism for lists received as parameter.
-  if isinstance(target, ops.Tensor):
+  if isinstance(target, tensor.Tensor):
     return list_ops.tensor_list_push_back(target, element)
 
   # Python targets (including TensorList): fallback to their original append.

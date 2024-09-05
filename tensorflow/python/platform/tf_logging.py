@@ -37,6 +37,11 @@ _logger = None
 _logger_lock = threading.Lock()
 
 
+def error_log(error_msg, level=ERROR):
+  """Empty helper method."""
+  del error_msg, level
+
+
 def _get_caller(offset=3):
   """Returns a code and frame object for the lowest non-logging stack frame."""
   # Use sys._getframe().  This avoids creating a traceback object.
@@ -148,7 +153,8 @@ def get_logger():
       _interactive = False
       try:
         # This is only defined in interactive shells.
-        if _sys.ps1: _interactive = True
+        if _sys.ps1:
+          _interactive = True
       except AttributeError:
         # Even now, we may be in an interactive shell with `python -i`.
         _interactive = _sys.flags.interactive

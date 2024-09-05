@@ -914,7 +914,7 @@ Status ConvertGraph(const TRTOptimizationPass::ConversionParams& params,
     } else {
       // Graph is not modified.
       LOG_WARNING_WITH_PREFIX << "Cannot replace " << msg
-                              << " reason: " << status.error_message()
+                              << " reason: " << status.message()
                               << " (keeping original segment).";
     }
     if (VLOG_IS_ON(1)) {

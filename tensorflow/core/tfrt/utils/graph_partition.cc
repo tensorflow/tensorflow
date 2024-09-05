@@ -16,10 +16,13 @@ limitations under the License.
 
 #include <algorithm>
 #include <functional>
+#include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -61,7 +64,7 @@ struct CallNodeInputInfo {
 
 struct OutputNodeInfo {
   absl::flat_hash_map<std::string, NodeInfo> output_nodes;
-  absl::optional<std::pair<std::string, NodeInfo>> auxiliary_output_node;
+  std::optional<std::pair<std::string, NodeInfo>> auxiliary_output_node;
 };
 
 // Prepares the `subgraph` for the conversion to a function by adding
@@ -75,7 +78,7 @@ Status PrepareSubgraphForFunctionConversion(
     const std::string& func_name,
     absl::flat_hash_map<std::string, NodeInfo>& input_nodes,
     absl::flat_hash_map<std::string, NodeInfo>& output_nodes,
-    absl::optional<std::pair<std::string, NodeInfo>>& auxiliary_output_node,
+    std::optional<std::pair<std::string, NodeInfo>>& auxiliary_output_node,
     Graph* subgraph, Graph* graph) {
   std::unordered_map<std::string, Node*> name_to_node_map =
       subgraph->BuildNodeNameIndex();
@@ -205,12 +208,12 @@ Status PrepareSubgraphForFunctionConversion(
 
     subgraph->AddEdge(const_node, 0, ret_node, 0);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Converts the subgraph to a function, and builds a PartitionedCallOp
 // to invoke the function.
-StatusOr<Node*> BuildPartitionedCallOp(
+absl::StatusOr<Node*> BuildPartitionedCallOp(
     const std::string& func_name, const Device* host_device,
     const std::string& device,
     const absl::flat_hash_map<std::string, NodeInfo>& input_nodes,
@@ -272,7 +275,7 @@ StatusOr<Node*> BuildPartitionedCallOp(
     if (control_ret_names.contains(node->name())) {
       return node->name();
     }
-    return absl::nullopt;
+    return std::nullopt;
   };
 
   FunctionDef new_fdef;
@@ -290,7 +293,7 @@ StatusOr<Node*> BuildPartitionedCallOp(
 
 // Builds a StatefulPartitionedCallOp, and connects all PartitionedCallOps to
 // it. This StatefulPartitionedCallOp behaves as a stateful IdentityN.
-StatusOr<Node*> BuildStatefulPartitionedCallOp(
+absl::StatusOr<Node*> BuildStatefulPartitionedCallOp(
     absl::flat_hash_map<std::string, CallNodeInputInfo>& call_node_input_info,
     const absl::flat_hash_map<std::string, Node*>& all_partitioned_call_ops,
     const std::string& stateful_call_func_name, const Device* host_device,
@@ -381,7 +384,7 @@ StatusOr<Node*> BuildStatefulPartitionedCallOp(
 // Returns true if nodes in the `graph` are assigned to multiple devices.
 bool HasMultipleDevices(const Graph* graph) {
   bool has_multiple_devices = false;
-  absl::optional<std::string> location;
+  std::optional<std::string> location;
   for (const Node* node : graph->op_nodes()) {
     if (location) {
       if (*location != node->assigned_device_name()) {
@@ -416,7 +419,7 @@ std::string GetNameFromDevice(const std::string& device) {
 //    passes.
 // 4. Create output nodes and control output nodes to match the original graph's
 //    nodes.
-StatusOr<std::unique_ptr<Graph>> InsertTransferOps(
+absl::StatusOr<std::unique_ptr<Graph>> InsertTransferOps(
     const std::string& graph_func_name, const DeviceSet& device_set,
     const Device* host_device, const std::vector<std::string>& inputs,
     const std::vector<std::string>& outputs,
@@ -460,7 +463,7 @@ StatusOr<std::unique_ptr<Graph>> InsertTransferOps(
     OutputNodeInfo& output_node_info = device_to_output_info_map[device];
     absl::flat_hash_map<std::string, NodeInfo>& output_nodes =
         output_node_info.output_nodes;
-    absl::optional<std::pair<std::string, NodeInfo>>& auxiliary_output_node =
+    std::optional<std::pair<std::string, NodeInfo>>& auxiliary_output_node =
         output_node_info.auxiliary_output_node;
 
     // Add _Arg and _Retval nodes to the subgraph to prepare for converting it

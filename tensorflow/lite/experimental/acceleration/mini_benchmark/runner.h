@@ -110,10 +110,10 @@ class ProcessRunner {
   ProcessRunner& operator=(const ProcessRunner&) = delete;
 
  private:
-#ifndef __ANDROID__
+#ifdef TFLITE_ACCELERATION_BENCHMARK_IN_PROCESS
   int RunInprocess(const Allocation* model_allocation,
                    const std::vector<std::string>& args);
-#endif  // !__ANDROID__
+#endif  // TFLITE_ACCELERATION_BENCHMARK_IN_PROCESS
 
 #ifndef _WIN32
   // This function first reads the subprocess id from fstream, and then block

@@ -195,10 +195,14 @@ Status LaunchAutotunedConv(const AutotuneEntry<se::dnn::ConvOp>& autotune_entry,
                   std::get<se::DeviceMemoryBase>(runner_and_scratch), in_ptr,
                   filter_ptr, out_ptr);
   } else {
-    return stream->ConvolveWithAlgorithm(
-        kind, input_desc, in_ptr, filter_desc, filter_ptr, output_desc, out_ptr,
-        conv_desc, scratch_allocator, autotune_entry.GetAlgorithmConfig(),
-        nullptr);
+    auto dnn = stream->parent()->AsDnn();
+    if (dnn == nullptr) {
+      return absl::InternalError("No DNN for stream.");
+    }
+    return dnn->ConvolveWithAlgorithm(
+        stream, kind, input_desc, in_ptr, filter_desc, filter_ptr, output_desc,
+        out_ptr, conv_desc, scratch_allocator,
+        autotune_entry.GetAlgorithmConfig(), nullptr);
   }
 }
 

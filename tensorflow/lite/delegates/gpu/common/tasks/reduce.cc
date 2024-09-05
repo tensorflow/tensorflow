@@ -44,6 +44,13 @@ int GetMaximumWGTotalSize(const GpuInfo& gpu_info) {
       total_wg_size = 64;
     }
   }
+  if (gpu_info.IsPowerVR()) {
+    if (gpu_info.IsCL30OrHigher()) {
+      total_wg_size = gpu_info.opencl_info.preferred_work_group_size_multiple;
+    } else {
+      total_wg_size = 32;
+    }
+  }
   return total_wg_size;
 }
 

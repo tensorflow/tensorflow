@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_PLUGGABLE_DEVICE_PLUGGABLE_DEVICE_CONTEXT_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_PLUGGABLE_DEVICE_PLUGGABLE_DEVICE_CONTEXT_H_
 
+#include <functional>
+
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -39,7 +41,7 @@ class PluggableDeviceContext : public DeviceContext {
         device_to_host_stream_(device_to_host_stream),
         device_to_device_stream_(device_to_device_stream) {}
 
-  ~PluggableDeviceContext() override {}
+  ~PluggableDeviceContext() override = default;
 
   se::Stream* stream() const override { return stream_; }
   se::Stream* host_to_device_stream() const { return host_to_device_stream_; }

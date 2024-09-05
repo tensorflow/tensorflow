@@ -466,7 +466,7 @@ class Converter {
   const bool use_calibration_;
 
   // If this is false, all dimensions including the batch dimension are
-  // set explicitely.
+  // set explicitly.
   const bool use_implicit_batch_;
 
   // Batch size of inputs to trt_network_ added by AddInputTensor(). During
@@ -574,7 +574,7 @@ std::string input_shapes_error_msg(const nvinfer1::Dims& shape1,
                                    const nvinfer1::Dims& shape2,
                                    const NodeDef& node,
                                    bool then_vs_else = false);
-std::string batch_size_error(const string& name, const string& comment);
+std::string batch_size_error(absl::string_view name, absl::string_view comment);
 
 inline bool find_name(const string& name, const std::vector<string> names) {
   return std::find(names.begin(), names.end(), name) != names.end();

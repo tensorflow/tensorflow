@@ -7,6 +7,10 @@
 """
 
 load("@bazel_skylib//lib:paths.bzl", "paths")
+load(
+    "@local_xla//xla:lit.bzl",
+    "lit_script_with_xla_gpu_cuda_data_dir",
+)
 
 # Default values used by the test runner.
 _default_test_file_exts = ["mlir", ".pbtxt", ".td"]
@@ -58,12 +62,14 @@ def _run_lit_test(name, data, size, tags, driver, features, exec_properties):
             "@llvm-project//llvm:count",
             "@llvm-project//llvm:not",
         ],
+        deps = ["@pypi_lit//:pkg"],
         size = size,
         main = "lit.py",
         exec_properties = exec_properties,
     )
 
 def glob_lit_tests(
+        name = None,
         exclude = [],
         test_file_exts = _default_test_file_exts,
         default_size = _default_size,
@@ -74,10 +80,12 @@ def glob_lit_tests(
         tags_override = {},
         driver = _default_driver,
         features = [],
-        exec_properties = {}):
+        exec_properties = {},
+        hermetic_cuda_data_dir = None):
     """Creates all plausible Lit tests (and their inputs) under this directory.
 
     Args:
+      name: str, name of the test_suite rule to generate for running all tests.
       exclude: [str], paths to exclude (for tests and inputs).
       test_file_exts: [str], extensions for files that are tests.
       default_size: str, the test size for targets not in "size_override".
@@ -91,6 +99,8 @@ def glob_lit_tests(
               and specifying a default driver will abort the tests.
       features: [str], list of extra features to enable.
       exec_properties: a dictionary of properties to pass on.
+      hermetic_cuda_data_dir: string. If set, the tests will be run with a
+        `--xla_gpu_cuda_data_dir` flag set to the hermetic CUDA data directory.
     """
 
     # Ignore some patterns by default for tests and input data.
@@ -103,14 +113,37 @@ def glob_lit_tests(
 
     # Run tests individually such that errors can be attributed to a specific
     # failure.
+    all_tests = []
     for curr_test in tests:
+        final_test_name = curr_test
+        if hermetic_cuda_data_dir:
+            output_file = "with_xla_gpu_cuda_data_dir_{}".format(curr_test)
+            rule_name = "script_{}".format(output_file)
+            lit_script_with_xla_gpu_cuda_data_dir(
+                rule_name,
+                curr_test,
+                output_file,
+                hermetic_cuda_data_dir,
+            )
+            final_test_name = output_file
+        all_tests.append(final_test_name + ".test")
+
         # Instantiate this test with updated parameters.
         _run_lit_test(
-            name = curr_test + ".test",
-            data = data + [curr_test] + per_test_extra_data.get(curr_test, []),
+            name = final_test_name + ".test",
+            data = data + [final_test_name] +
+                   per_test_extra_data.get(curr_test, []),
             size = size_override.get(curr_test, default_size),
             tags = default_tags + tags_override.get(curr_test, []),
             driver = driver,
             features = features,
             exec_properties = exec_properties,
+        )
+
+    # TODO: remove this check after making it a required param.
+    if name:
+        native.test_suite(
+            name = name,
+            tests = all_tests,
+            tags = ["manual"],
         )

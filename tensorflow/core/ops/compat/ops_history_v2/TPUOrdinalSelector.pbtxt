@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "TPUOrdinalSelector"
   output_arg {
     name: "device_ordinals"

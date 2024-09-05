@@ -63,7 +63,7 @@ class ReduceDatasetParams : public DatasetParams {
     for (int i = 0; i < other_arguments_.size(); ++i) {
       input_names->emplace_back(strings::StrCat("other_arguments_", i));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -75,7 +75,7 @@ class ReduceDatasetParams : public DatasetParams {
                     {"output_shapes", output_shapes_},
                     {"use_inter_op_parallelism", use_inter_op_parallelism_},
                     {"metadata", ""}};
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   string dataset_type() const override { return "Reduce"; }

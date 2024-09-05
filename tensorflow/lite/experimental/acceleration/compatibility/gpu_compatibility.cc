@@ -18,6 +18,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/strings/string_view.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
@@ -25,6 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/compatibility/database_generated.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/devicedb.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/gpu_compatibility_binary.h"
+#include "tensorflow/lite/experimental/acceleration/compatibility/variables.h"
 
 namespace tflite {
 namespace acceleration {
@@ -32,7 +34,7 @@ namespace {
 
 void CanonicalizeValues(std::map<std::string, std::string>* variable_values) {
   for (auto& i : *variable_values) {
-    i.second = CanonicalizeValue(i.second);
+    i.second = CanonicalizeValueWithKey(i.first, i.second);
   }
 }
 
@@ -43,6 +45,12 @@ GPUCompatibilityList::GPUCompatibilityList(
   if (!compatibility_list_flatbuffer) return;
   database_ =
       flatbuffers::GetRoot<DeviceDatabase>(compatibility_list_flatbuffer);
+}
+
+GPUCompatibilityList::GPUCompatibilityList(
+    std::string compatibility_list_flatbuffer)
+    : fbcontent_(std::move(compatibility_list_flatbuffer)) {
+  database_ = flatbuffers::GetRoot<DeviceDatabase>(fbcontent_.data());
 }
 
 std::unique_ptr<GPUCompatibilityList> GPUCompatibilityList::Create() {
@@ -58,6 +66,17 @@ std::unique_ptr<GPUCompatibilityList> GPUCompatibilityList::Create(
   }
   return std::unique_ptr<GPUCompatibilityList>(
       new GPUCompatibilityList(compatibility_list_flatbuffer));
+}
+
+std::unique_ptr<GPUCompatibilityList> GPUCompatibilityList::Create(
+    std::string compatibility_list_flatbuffer) {
+  if (!IsValidFlatbuffer(reinterpret_cast<const unsigned char*>(
+                             compatibility_list_flatbuffer.data()),
+                         compatibility_list_flatbuffer.size())) {
+    return nullptr;
+  }
+  return std::unique_ptr<GPUCompatibilityList>(
+      new GPUCompatibilityList(std::move(compatibility_list_flatbuffer)));
 }
 
 std::map<std::string, std::string> GPUCompatibilityList::CalculateVariables(
@@ -93,14 +112,7 @@ gpu::CompatibilityStatus GPUCompatibilityList::GetStatus(
   CanonicalizeValues(&variables);
   if (!database_) return gpu::CompatibilityStatus::kUnknown;
   UpdateVariablesFromDatabase(&variables, *database_);
-  const std::string& status = variables[gpu::kStatus];
-  if (status == gpu::kStatusSupported) {
-    return gpu::CompatibilityStatus::kSupported;
-  } else if (status == gpu::kStatusUnsupported) {
-    return gpu::CompatibilityStatus::kUnsupported;
-  } else {
-    return gpu::CompatibilityStatus::kUnknown;
-  }
+  return StringToCompatibilityStatus(variables[gpu::kStatus]);
 }
 
 TfLiteGpuDelegateOptionsV2 GPUCompatibilityList::GetBestOptionsFor(
@@ -136,6 +148,30 @@ std::map<std::string, std::string> GPUCompatibilityList::InfosToMap(
   buffer[len] = '\0';
   variables[kOpenGLESVersion] = std::string(buffer);
   return variables;
+}
+
+// static
+std::string GPUCompatibilityList::CompatibilityStatusToString(
+    gpu::CompatibilityStatus status) {
+  switch (status) {
+    case gpu::CompatibilityStatus::kSupported:
+      return gpu::kStatusSupported;
+    case gpu::CompatibilityStatus::kUnsupported:
+      return gpu::kStatusUnsupported;
+    case gpu::CompatibilityStatus::kUnknown:
+      return gpu::kStatusUnknown;
+  }
+}
+
+// static
+gpu::CompatibilityStatus GPUCompatibilityList::StringToCompatibilityStatus(
+    absl::string_view status) {
+  if (status == gpu::kStatusSupported) {
+    return gpu::CompatibilityStatus::kSupported;
+  } else if (status == gpu::kStatusUnsupported) {
+    return gpu::CompatibilityStatus::kUnsupported;
+  }
+  return gpu::CompatibilityStatus::kUnknown;
 }
 
 }  // namespace acceleration

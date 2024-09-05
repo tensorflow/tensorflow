@@ -21,10 +21,22 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
+#include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/device_name_utils.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace {
@@ -59,7 +71,7 @@ Status UpdateTPUEmbeddingEnqueueOrdinalPass::Run(
   options.device_set->FindMatchingDevices(tpu_device_spec, &tpu_devices);
   if (tpu_devices.empty()) {
     // If there are no TPUs don't run this pass.
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   TF_RET_CHECK(options.graph != nullptr);
@@ -74,7 +86,7 @@ Status UpdateTPUEmbeddingEnqueueOrdinalPass::Run(
 
   // Only run if there are embedding nodes.
   if (embedding_nodes.empty()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   DeviceNameUtils::ParsedName single_tpu_device_spec =
@@ -105,7 +117,7 @@ Status UpdateTPUEmbeddingEnqueueOrdinalPass::Run(
   }
 
   VLOG(1) << "UpdateTPUEmbeddingEnqueueOrdinalPass::Run() finished";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename A, typename N>
@@ -142,7 +154,7 @@ Status UpdateMapsForModeOverride(
       (*enqueue_op)[layer_call_index] = node_identifier;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename M, typename N>
@@ -160,13 +172,13 @@ Status ComputeEnqueueTrainingStatus(
     bool send_exists =
         (found_grad_send_op.find(node.first) != found_grad_send_op.end());
     VLOG(1) << "Found call " << node.first
-        << (send_exists ? " with " : " without ") << " send op(s).";
+            << (send_exists ? " with " : " without ") << " send op(s).";
     // If we have found a send gradient op for that is in the same cluster as
     // the enqueue op, then this is a training call so set the output to true
     // for this
     (*enqueue)[node.second] = send_exists;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Get the enqueue ops and their status (training or eval) from a graph.
@@ -195,8 +207,8 @@ Status UpdateTPUEmbeddingModePass::GetEnqueueOpsFromGraph(
 
 // Update the graph for a specific enqueue op.
 Status UpdateTPUEmbeddingModePass::UpdateGraphEnqueueOp(bool training,
-                                                     Graph* graph,
-                                                     Node* enqueue) {
+                                                        Graph* graph,
+                                                        Node* enqueue) {
   // When using the layer, the mode override input is a SelectV2 op (unless this
   // pass has already run), which takes a training and eval op as input. We will
   // simply short circut the SelectV2 and take input from the correct op.
@@ -211,7 +223,7 @@ Status UpdateTPUEmbeddingModePass::UpdateGraphEnqueueOp(bool training,
     graph->RemoveEdge(select_edge);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Get the enqueue ops and their status (training or eval) from a function def.
@@ -273,7 +285,7 @@ Status UpdateTPUEmbeddingModePass::UpdateFunctionDefEnqueueOp(
     *updated = true;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status UpdateTPUEmbeddingModePass::Run(
@@ -323,7 +335,7 @@ Status UpdateTPUEmbeddingModePass::Run(
   }
 
   VLOG(1) << "UpdateTPUEmbeddingModePass::Run() finished";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

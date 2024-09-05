@@ -19,6 +19,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
@@ -158,7 +159,7 @@ def _ExitGrad(op, grad):
   if op_ctxt.grad_state:
     raise TypeError("Second-order gradient for while loops not supported.")
 
-  if isinstance(grad, ops.Tensor):
+  if isinstance(grad, tensor.Tensor):
     grad_ctxt.AddName(grad.name)
   else:
     if not isinstance(
@@ -220,7 +221,7 @@ def _EnterGrad(op, grad):
     return grad
   if op.get_attr("is_constant"):
     # Add a gradient accumulator for each loop invariant.
-    if isinstance(grad, ops.Tensor):
+    if isinstance(grad, tensor.Tensor):
       result = grad_ctxt.AddBackpropAccumulator(op, grad)
     elif isinstance(grad, indexed_slices.IndexedSlices):
       result = grad_ctxt.AddBackpropIndexedSlicesAccumulator(op, grad)

@@ -33,41 +33,6 @@ namespace grappler {
 class GraphProperties;
 }
 
-// This class stores extra inference information in addition to
-// InferenceContext, such as node input and output types.
-class ExtendedInferenceContext {
- public:
-  ExtendedInferenceContext(
-      std::unique_ptr<shape_inference::InferenceContext> ic, const Node* node)
-      : inference_context_(std::move(ic)), op_(node->name()) {
-    input_types_.reserve(node->num_inputs());
-    for (int i = 0; i < node->num_inputs(); i++) {
-      input_types_.push_back(node->input_type(i));
-    }
-    output_types_.reserve(node->num_outputs());
-    for (int i = 0; i < node->num_outputs(); i++) {
-      output_types_.push_back(node->output_type(i));
-    }
-  }
-
-  DataType input_type(int64_t idx) const { return input_types_[idx]; }
-  DataType output_type(int64_t idx) const { return output_types_[idx]; }
-
-  shape_inference::InferenceContext* get_context() {
-    return inference_context_.get();
-  }
-
-  std::string op() const { return op_; }
-
- private:
-  std::unique_ptr<shape_inference::InferenceContext> inference_context_;
-  std::string op_;
-  std::vector<DataType> input_types_;
-  std::vector<DataType> output_types_;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(ExtendedInferenceContext);
-};
-
 // ShapeRefiner performs shape inference for TensorFlow Graphs.  It is
 // responsible for instantiating InferenceContext objects for each
 // Node in the Graph, and providing/storing the 'input_tensor' Tensors
@@ -114,15 +79,6 @@ class ShapeRefiner {
 
   // Returns the InferenceContext for 'node', if present.
   shape_inference::InferenceContext* GetContext(const Node* node) const {
-    auto it = node_to_context_.find(node);
-    if (it == node_to_context_.end()) {
-      return nullptr;
-    }
-    return it->second->get_context();
-  }
-
-  // Returns the ExtendedInferenceContext for 'node', if present.
-  ExtendedInferenceContext* GetExtendedContext(const Node* node) const {
     auto it = node_to_context_.find(node);
     if (it == node_to_context_.end()) {
       return nullptr;
@@ -290,7 +246,7 @@ class ShapeRefiner {
   // by requesting the constant of value of the incoming tensor from the
   // 'outer_context'.
   Status RunShapeFn(const Node* node, const OpRegistrationData* op_reg_data,
-                    ExtendedInferenceContext* ec,
+                    shape_inference::InferenceContext* context,
                     shape_inference::InferenceContext* outer_context = nullptr);
 
   int32 graph_def_version_;
@@ -300,20 +256,21 @@ class ShapeRefiner {
   // deleted after the tensors.
   GraphRunner graph_runner_;
 
-  // Stores a map from a node to its ExtendedInferenceContext.
-  absl::flat_hash_map<const Node*, std::unique_ptr<ExtendedInferenceContext>,
+  // Stores a map from a node to its InferenceContext.
+  absl::flat_hash_map<const Node*,
+                      std::unique_ptr<shape_inference::InferenceContext>,
                       hash<const Node*>>
       node_to_context_;
 
-  // Holds a cache from tensor name (node name:node output) to the tensor that
-  // is evaluatable as a constant expression. This reduces repeated execution
+  // Holds a cache from tensor id (node id:node output) to the tensor that
+  // is evaluable as a constant expression. This reduces repeated execution
   // of the entire constant subgraph as a graph is being built up. This could
   // be changed to some kind of size-based LRU cache to avoid consuming too much
   // memory, if that eventually becomes a concern.
   //
   // Only tensors less than 1KiB are currently stored in the cache.
   static constexpr int64_t kMaxTensorSize = 1024;
-  absl::flat_hash_map<std::pair<std::string, int>, Tensor> const_tensor_map_;
+  absl::flat_hash_map<std::pair<int, int>, Tensor> const_tensor_map_;
 
   bool require_shape_inference_fns_ = true;
   bool disable_constant_propagation_ = false;
@@ -326,7 +283,8 @@ class ShapeRefiner {
   // are refined.
   absl::flat_hash_map<std::string, std::unique_ptr<const Graph>> functions_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ShapeRefiner);
+  ShapeRefiner(const ShapeRefiner&) = delete;
+  void operator=(const ShapeRefiner&) = delete;
 };
 
 }  // namespace tensorflow

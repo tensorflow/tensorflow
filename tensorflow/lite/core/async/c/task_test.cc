@@ -104,6 +104,9 @@ TEST_F(TfLiteExecutionTaskTest, NullTest) {
   EXPECT_EQ(nullptr, TfLiteExecutionTaskGetSyncByIndex(nullptr, 3));
   EXPECT_EQ(kTfLiteError, TfLiteExecutionTaskGetStatus(nullptr));
   TfLiteExecutionTaskSetStatus(nullptr, kTfLiteOk);
+  EXPECT_EQ(kTfLiteError, TfLiteExecutionTaskSetBufferByIndex(nullptr, 0, 0));
+  EXPECT_EQ(kTfLiteError,
+            TfLiteExecutionTaskSetSyncByIndex(nullptr, 0, nullptr));
 }
 
 TEST_F(TfLiteExecutionTaskTest, StatusTest) {

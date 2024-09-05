@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_GRAPH_REWRITE_DISTRIBUTED_TPU_REWRITE_PASS_INTERNAL_H_
 #define TENSORFLOW_CORE_TPU_GRAPH_REWRITE_DISTRIBUTED_TPU_REWRITE_PASS_INTERNAL_H_
 
-#include "tensorflow/core/framework/types.h"
+#include <cstdint>
 
 namespace tensorflow {
 
@@ -30,7 +30,7 @@ void OverrideNodeIdForTesting(int64_t node_id);
 
 // Retrieves the node id, used to make some node names unique in the rewrite
 // pass.
-uint64 GetNodeId();
+uint64_t GetNodeId();
 
 }  // namespace internal
 }  // namespace tensorflow

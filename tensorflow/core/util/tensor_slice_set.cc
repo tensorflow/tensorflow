@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/util/tensor_slice_set.h"
 
+#include <unordered_map>
+#include <utility>
 #include <vector>
+
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -28,7 +31,7 @@ namespace checkpoint {
 TensorSliceSet::TensorSliceSet(const TensorShape& shape, DataType type)
     : shape_(shape), type_(type) {}
 
-TensorSliceSet::~TensorSliceSet() {}
+TensorSliceSet::~TensorSliceSet() = default;
 
 Status TensorSliceSet::Register(const TensorSlice& slice, const string& tag) {
   TensorShape result_shape;
@@ -54,7 +57,7 @@ Status TensorSliceSet::Register(const TensorSlice& slice, const string& tag) {
 
   TensorSliceSet::SliceInfo info = {slice, tag, result_shape.num_elements()};
   slices_.insert(std::make_pair(str, info));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool TensorSliceSet::QueryMeta(

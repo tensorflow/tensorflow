@@ -1,5 +1,0 @@
-send_cls_to('tflite-converter-reviews');
-
-define Main {
-  reassign_to_list(['ycling', 'haoliang', 'pulkitb', 'aarfaian', 'vamsimanchala', 'lukeboyer', 'zichuanwei']);
-}

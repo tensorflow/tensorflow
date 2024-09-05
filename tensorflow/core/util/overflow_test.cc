@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/core/util/overflow.h"
 
 #include <cmath>
+#include <limits>
+#include <vector>
 
 #ifdef PLATFORM_WINDOWS
 #include <Windows.h>

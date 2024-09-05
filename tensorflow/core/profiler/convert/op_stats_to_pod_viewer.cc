@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/op_stats_to_pod_viewer.h"
 
+#include <utility>
+
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_pod_stats.h"
 #include "tensorflow/core/profiler/protobuf/pod_stats.pb.h"

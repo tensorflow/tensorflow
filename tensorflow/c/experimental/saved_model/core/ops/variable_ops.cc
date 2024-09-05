@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/c/experimental/saved_model/core/ops/variable_ops.h"
 
 #include "absl/types/span.h"
-#include "tensorflow/c/eager/abstract_operation.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/eager/immediate_execution_operation.h"
@@ -28,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace internal {
@@ -44,7 +43,7 @@ Status CreateUninitializedResourceVariable(ImmediateExecutionContext* ctx,
 
   // Note that if shape is unknown rank, shape.dim_sizes() will be empty, and
   // shape.dims() will be -1.
-  gtl::InlinedVector<int64_t, 4> dim_sizes = shape.dim_sizes();
+  absl::InlinedVector<int64_t, 4UL> dim_sizes = shape.dim_sizes();
   TF_RETURN_IF_ERROR(varhandle_op->SetAttrShape(
       "shape", reinterpret_cast<const int64_t*>(dim_sizes.data()),
       shape.dims()));

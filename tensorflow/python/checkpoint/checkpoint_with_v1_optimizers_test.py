@@ -16,6 +16,7 @@
 import os
 
 from tensorflow.python.checkpoint import checkpoint as trackable_utils
+from tensorflow.python.checkpoint import checkpoint_options as options
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
@@ -28,6 +29,7 @@ from tensorflow.python.ops import template
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.trackable import autotrackable
 from tensorflow.python.training import adam
+from tensorflow.python.training import checkpoint_utils
 
 
 class CheckpointingTests(test.TestCase):
@@ -93,6 +95,60 @@ class CheckpointingTests(test.TestCase):
           new_root.optimizer.get_slot(name="m", var=new_root.var)))
       self.evaluate(train_op)
     slot_status.assert_consumed()
+
+  def testSkipSlotVarRestore(self):
+    def create_trackable():
+      root = trackable_utils.Checkpoint()
+      root.var = trackable_utils.add_variable(root, name="var", initializer=0.0)
+      root.optimizer = adam.AdamOptimizer(0.1)
+      root.optimizer._create_slots([root.var])
+      return root
+    root = create_trackable()
+    checkpoint_directory = self.get_temp_dir()
+    self.evaluate(state_ops.assign(root.var, 12.0))
+    self.evaluate(
+        state_ops.assign(root.optimizer.get_slot(name="m", var=root.var), 14.0)
+    )
+    chkpt_path = root.save(os.path.join(checkpoint_directory, "chkpt"))
+    new_root = create_trackable()
+    chkpt_keys = [x[0] for x in checkpoint_utils.list_variables(chkpt_path)]
+    self.assertEqual(
+        chkpt_keys,
+        [
+            "_CHECKPOINTABLE_OBJECT_GRAPH",
+            "optimizer/beta1_power/.ATTRIBUTES/VARIABLE_VALUE",
+            "optimizer/beta2_power/.ATTRIBUTES/VARIABLE_VALUE",
+            "save_counter/.ATTRIBUTES/VARIABLE_VALUE",
+            "var/.ATTRIBUTES/VARIABLE_VALUE",
+            "var/.OPTIMIZER_SLOT/optimizer/m/.ATTRIBUTES/VARIABLE_VALUE",
+            "var/.OPTIMIZER_SLOT/optimizer/v/.ATTRIBUTES/VARIABLE_VALUE",
+        ],
+    )
+    # Restore without slot variables
+    slot_restore = new_root.restore(
+        chkpt_path,
+        options.CheckpointOptions(experimental_skip_slot_variables=True),
+    )
+    slot_restore.assert_consumed().run_restore_ops()
+    # regular variable is restored
+    self.assertEqual(self.evaluate(new_root.var), 12.0)
+    # Slot variable is not restored
+    self.assertEqual(
+        self.evaluate(new_root.optimizer.get_slot(name="m", var=new_root.var)),
+        0.0,
+    )
+    # Restore everything
+    slot_restore = new_root.restore(
+        chkpt_path,
+        options.CheckpointOptions(experimental_skip_slot_variables=False),
+    )
+    slot_restore.assert_consumed().run_restore_ops()
+    self.assertEqual(self.evaluate(new_root.var), 12.0)
+    # Slot variable also restored
+    self.assertEqual(
+        self.evaluate(new_root.optimizer.get_slot(name="m", var=new_root.var)),
+        14.0,
+    )
 
   def testManySavesGraph(self):
     """Saves after the first should not modify the graph."""

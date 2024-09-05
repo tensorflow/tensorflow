@@ -216,12 +216,13 @@ EOF
   bazel cquery \
     --experimental_cc_shared_library \
     --@local_config_cuda//:enable_cuda \
+    --repo_env=HERMETIC_CUDA_VERSION="12.3.2" \
+    --repo_env=HERMETIC_CUDNN_VERSION="8.9.7.29" \
     "somepath(//tensorflow/tools/pip_package:build_pip_package, " \
     "@local_config_cuda//cuda:cudart + "\
     "@local_config_cuda//cuda:cudart + "\
     "@local_config_cuda//cuda:cuda_driver + "\
     "@local_config_cuda//cuda:cudnn + "\
-    "@local_config_cuda//cuda:curand + "\
     "@local_config_cuda//cuda:cusolver + "\
     "@local_config_tensorrt//:tensorrt)" --keep_going > $BATS_TEST_TMPDIR/out
 
@@ -237,13 +238,14 @@ EOF
   bazel cquery \
     --experimental_cc_shared_library \
     --@local_config_cuda//:enable_cuda \
+    --repo_env=HERMETIC_CUDA_VERSION="12.3.2" \
+    --repo_env=HERMETIC_CUDNN_VERSION="8.9.7.29" \
     --define framework_shared_object=false \
     "somepath(//tensorflow/tools/pip_package:build_pip_package, " \
     "@local_config_cuda//cuda:cudart + "\
     "@local_config_cuda//cuda:cudart + "\
     "@local_config_cuda//cuda:cuda_driver + "\
     "@local_config_cuda//cuda:cudnn + "\
-    "@local_config_cuda//cuda:curand + "\
     "@local_config_cuda//cuda:cusolver + "\
     "@local_config_tensorrt//:tensorrt)" --keep_going > $BATS_TEST_TMPDIR/out
 

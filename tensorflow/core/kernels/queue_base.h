@@ -135,7 +135,7 @@ class QueueBase : public QueueInterface {
   ~QueueBase() override;
 
   // Helpers for implementing MatchesNodeDef().
-  static string ShapeListString(const gtl::ArraySlice<TensorShape>& shapes);
+  static string ShapeListString(const absl::Span<const TensorShape>& shapes);
   Status MatchesNodeDefOp(const NodeDef& node_def, const string& op) const;
   Status MatchesNodeDefCapacity(const NodeDef& node_def,
                                 int32_t capacity) const;
@@ -178,7 +178,8 @@ class QueueBase : public QueueInterface {
   std::deque<Attempt> enqueue_attempts_ TF_GUARDED_BY(mu_);
   std::deque<Attempt> dequeue_attempts_ TF_GUARDED_BY(mu_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(QueueBase);
+  QueueBase(const QueueBase&) = delete;
+  void operator=(const QueueBase&) = delete;
 };
 
 }  // namespace tensorflow

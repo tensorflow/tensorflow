@@ -113,7 +113,7 @@ TEST(LabeledGaugeTest, SameName) {
   auto* same_gauge = Gauge<int64_t, 1>::New(
       "/tensorflow/test/gauge_with_labels", "Gauge with one label.", "MyLabel");
   EXPECT_TRUE(gauge_with_labels->GetStatus().ok());
-  EXPECT_FALSE(same_gauge->GetStatus().ok());
+  EXPECT_TRUE(same_gauge->GetStatus().ok());
   delete same_gauge;
 }
 

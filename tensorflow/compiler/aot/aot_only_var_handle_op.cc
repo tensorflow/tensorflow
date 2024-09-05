@@ -60,6 +60,7 @@ Internal VarHandleOp registration used for XLA AOT compilation.
 )doc")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
+    .Attr("debug_name: string = ''")
     .Attr("dtype: type")
     .Attr("shape: shape")
     .Output("resource: resource")
@@ -75,7 +76,7 @@ Internal VarHandleOp registration used for XLA AOT compilation.
       c->set_output_handle_shapes_and_types(
           0, std::vector<shape_inference::ShapeAndType>{{s, t}});
 
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_XLA_OP(Name(tfcompile::kXlaAotOnlyVarHandleOp).CompilationOnly(),

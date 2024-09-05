@@ -15,13 +15,32 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/context.h"
 
+#include <memory>
+#include <string>
+#include <vector>
+
+#include <gmock/gmock.h>
+#include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "tensorflow/c/eager/abstract_tensor_handle.h"
+#include "tensorflow/c/eager/immediate_execution_context.h"
+#include "tensorflow/c/eager/immediate_execution_operation.h"
+#include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "tensorflow/core/common_runtime/composite_device.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/context_distributed_manager.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/public/session_options.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace {
@@ -35,7 +54,7 @@ static Device* CreateDevice(const string& type, int n) {
   class FakeDevice : public Device {
    public:
     explicit FakeDevice(const DeviceAttributes& attr) : Device(nullptr, attr) {}
-    Status Sync() override { return OkStatus(); }
+    Status Sync() override { return absl::OkStatus(); }
     Allocator* GetAllocator(AllocatorAttributes) override { return nullptr; }
   };
   DeviceAttributes attr;
@@ -109,7 +128,7 @@ TEST_F(EagerContextTest, CompositeDevice) {
       "/job:localhost/replica:0/task:0/device:COMPOSITE:1", &device));
   EXPECT_EQ(device, composite_device_2);
 
-  EXPECT_TRUE(errors::IsNotFound(context()->FindCompositeDeviceFromName(
+  EXPECT_TRUE(absl::IsNotFound(context()->FindCompositeDeviceFromName(
       "/job:localhost/replica:0/task:0/device:COMPOSITE:2", &device)));
 }
 
@@ -241,7 +260,6 @@ TEST_F(EagerContextTest, AddFunctionDefRepeatDifferent) {
 
 TEST_F(EagerContextTest, FunctionErrorRecovery) {
   InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT, /*async=*/true);
-  context()->SetReuseRendezvousForFunctions(true);
   const FunctionDef assert_and_identity = FDH::Define(
       // Name
       "AssertAndIdentity",
@@ -283,7 +301,7 @@ TEST_F(EagerContextTest, FunctionErrorRecovery) {
   op_and_sync_status.Update(
       fail_op->Execute(absl::MakeSpan(retvals), &num_retvals));
   op_and_sync_status.Update(context()->SyncExecutors());
-  ASSERT_THAT(op_and_sync_status.as_summary_status().error_message(),
+  ASSERT_THAT(op_and_sync_status.as_summary_status().message(),
               HasSubstr("assertion failed"));
   if (retvals[0] != nullptr) {
     retvals[0]->Unref();
@@ -346,49 +364,42 @@ TEST_F(EagerContextTest, LocalRendezvousCreation) {
   // Create a new rendezvous instance.
   // Initially its ref-count is 2:
   // one added upon rendezvous creation, the other one added by EagerContext.
-  Rendezvous* rendezvous_1;
+  tsl::core::RefCountPtr<Rendezvous> rendezvous_1;
   TF_ASSERT_OK(rendezvous_creator(1, nullptr, &rendezvous_1));
-  EXPECT_EQ(rendezvous_1->RefCount(), 2);
+  EXPECT_EQ(rendezvous_1->RefCount(), 1);
 
   // Create another rendezvous instance with the same step-id.
   // This would add one more ref-count to the existing rendezvous insteance
   // insted of creating a new instance.
-  Rendezvous* rendezvous_2;
+  tsl::core::RefCountPtr<Rendezvous> rendezvous_2;
   TF_ASSERT_OK(rendezvous_creator(1, nullptr, &rendezvous_2));
-  EXPECT_EQ(rendezvous_2->RefCount(), 3);
+  EXPECT_EQ(rendezvous_2->RefCount(), 2);
 
   // Caller releases rendezvous-1.
-  rendezvous_1->Unref();
-  EXPECT_EQ(rendezvous_1->RefCount(), 2);
+  rendezvous_1.reset();
+  EXPECT_EQ(rendezvous_2->RefCount(), 1);
 
   // Caller releases rendezvous-2.
-  rendezvous_2->Unref();
-  EXPECT_EQ(rendezvous_2->RefCount(), 1);
+  tsl::core::WeakPtr<Rendezvous> weak2{rendezvous_2.get()};
+  rendezvous_2.reset();
+  EXPECT_EQ(weak2.GetNewRef(), nullptr);
 }
 
 void TestGlobalRendezvous(EagerContext* context, bool reuse_global_rendezvous) {
-  context->SetReuseRendezvousForFunctions(reuse_global_rendezvous);
-  EXPECT_EQ(context->GetReuseRendezvousForFunctions(), reuse_global_rendezvous);
-
-  auto rendezvous_creator = context->RendezvousFactory();
-  Rendezvous* rendezvous_1;
+  auto rendezvous_creator = context->RendezvousFactory(reuse_global_rendezvous);
+  tsl::core::RefCountPtr<Rendezvous> rendezvous_1;
   TF_ASSERT_OK(rendezvous_creator(-1, nullptr, &rendezvous_1));
   EXPECT_EQ(rendezvous_1->RefCount(), 2);
-  Rendezvous* rendezvous_2;
+  tsl::core::RefCountPtr<Rendezvous> rendezvous_2;
   TF_ASSERT_OK(rendezvous_creator(-1, nullptr, &rendezvous_2));
   EXPECT_EQ(rendezvous_2->RefCount(), 3);
 
   // Global rendezvous's ref-count should be back to 1 after resetting.
   context->ResetGlobalRendezvousForFunction();
 
-  Rendezvous* rendezvous_3;
+  tsl::core::RefCountPtr<Rendezvous> rendezvous_3;
   TF_ASSERT_OK(rendezvous_creator(-1, nullptr, &rendezvous_3));
   EXPECT_EQ(rendezvous_3->RefCount(), 2);
-
-  // Callers release rendezvous.
-  rendezvous_1->Unref();
-  rendezvous_2->Unref();
-  rendezvous_3->Unref();
 }
 
 TEST_F(EagerContextTest, GlobalRendezvousCreation) {
@@ -399,7 +410,6 @@ TEST_F(EagerContextTest, GlobalRendezvousCreation) {
 
 TEST_F(EagerContextTest, ReuseGlobalRendezvous) {
   InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT);
-  EXPECT_FALSE(context()->GetReuseRendezvousForFunctions());
 
   TestGlobalRendezvous(context(), true);
 }

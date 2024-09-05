@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/core/platform/logging.h"
@@ -361,15 +362,14 @@ IslandOp CreateNewIsland(const MergedIsland& merged_island,
 
 // Creates respective YieldOp for the new merged island.
 YieldOp CreateNewIslandYieldOp(IslandOp new_island,
-                               llvm::ArrayRef<IslandResult> results) {
+                               llvm::MutableArrayRef<IslandResult> results) {
   llvm::SmallVector<Value, 8> yield_operands;
   yield_operands.reserve(results.size());
 
-  for (auto ret_vals : llvm::zip(results, new_island.getOutputs())) {
-    const auto& old_result = std::get<0>(ret_vals);
-
+  for (auto [old_result, new_island] :
+       llvm::zip(results, new_island.getOutputs())) {
     // Replace original island result with new island result.
-    old_result.island_result.replaceAllUsesWith(std::get<1>(ret_vals));
+    old_result.island_result.replaceAllUsesWith(new_island);
 
     // Add associated inner op result to operands of the YieldOp.
     yield_operands.push_back(old_result.inner_op_result);
@@ -444,7 +444,7 @@ void InsertDummyIslandForFetch(FetchOp fetch) {
   control_fetches.reserve(data_fetches.capacity());
 
   for (auto value : fetch.getFetches()) {
-    if (value.getType().isa<ControlType>()) {
+    if (mlir::isa<ControlType>(value.getType())) {
       control_fetches.push_back(value);
     } else {
       data_fetches.push_back(value);

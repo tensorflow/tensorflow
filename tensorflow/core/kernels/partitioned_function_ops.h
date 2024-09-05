@@ -40,7 +40,7 @@ class PartitionedCallOp : public AsyncOpKernel {
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override;
 
- private:
+ protected:
   Status FillOutputDevices(const FunctionLibraryRuntime& lib,
                            const Device& cpu_device, AttrSlice attrs,
                            FunctionLibraryRuntime::InstantiateOptions* opts);

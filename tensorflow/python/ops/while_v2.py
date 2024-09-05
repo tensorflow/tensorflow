@@ -22,7 +22,6 @@ performance parity.
 import collections
 
 from tensorflow.core.framework import attr_value_pb2
-from tensorflow.core.function.capture import capture_container
 from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.framework import auto_control_deps_utils as acd
@@ -31,6 +30,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
@@ -142,8 +142,6 @@ def while_loop(cond,
         return math_ops.logical_and(
             loop_counter < maximum_iterations_arg, pred)
 
-    # NOTE(skyewm): we set collections to the outer graph's collections for
-    # compatibility with TPUEstimator.
     cond_graph = func_graph_module.func_graph_from_py_func(
         cond_name,
         wrapped_cond,
@@ -279,8 +277,8 @@ def while_loop(cond,
     _check_inputs_outputs_types_match(body_graph, flattened_loop_vars)
 
     with ops.control_dependencies(
-        list(cond_graph._function_captures.control) + list(  # pylint: disable=protected-access
-            body_graph._function_captures.control)):  # pylint: disable=protected-access
+        list(cond_graph.function_captures.control) + list(
+            body_graph.function_captures.control)):
       output_shapes = [t.shape for t in body_graph.outputs]
       orig_loop_vars_range = slice(first_loop_var_index,
                                    first_loop_var_index + num_flattened_outputs)
@@ -323,7 +321,7 @@ def while_loop(cond,
 
 @ops.RegisterGradient("StatelessWhile")
 @ops.RegisterGradient("While")
-def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
+def _WhileGrad(op: ops.Operation, *grads):  # pylint: disable=invalid-name
   """The gradient of a While op produced by while_loop."""
   # Note that op is not always the same as while_op because the gradient tape,
   # for eager mode compatibility, forgets information about the proper op. Since
@@ -353,7 +351,7 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
   ] + [None] * num_intermediates
 
   # Skip gradients with respect to the captures whenever possible.
-  if "skip_input_indices" in op.__dict__ and op.skip_input_indices is not None:
+  if getattr(op, "skip_input_indices", None) is not None:
     captures_start_index = (
         len(body_graph.inputs) - len(body_graph.internal_captures))
     for i in op.skip_input_indices:
@@ -806,7 +804,7 @@ def _get_structured_grad_output(outputs, grads, body_grad_graph):
           dense_shape=outputs[outputs_idx + 2]))
       outputs_idx += 3
     else:
-      assert isinstance(output, ops.Tensor)
+      assert isinstance(output, tensor_lib.Tensor)
       result.append(outputs[outputs_idx])
       outputs_idx += 1
 
@@ -1104,7 +1102,7 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
       return captured_tensor
 
     if tensor.graph is not self._forward_graph:
-      already_captured = id(tensor) in self._function_captures.by_val_captures  # pylint: disable=protected-access
+      already_captured = id(tensor) in self.function_captures.by_val_internal
       captured_tensor = super(_WhileBodyGradFuncGraph, self)._capture_helper(
           tensor, name)
       if not already_captured:
@@ -1320,18 +1318,19 @@ def _duplicate_body_captures_in_cond(cond_graph, body_graph_captures):
   ]
 
   tensors = []
-  for op, ph, dtype in zip(placeholder_ops, placeholders, types):
-    tensor = ops.Tensor._create_with_tf_output(op, 0, dtype, ph)
-    op._outputs = [tensor]
-    tensors.append(tensor)
+  for op in placeholder_ops:
+    tensors.append(op.outputs[0])
 
   # Update `cond_graph._captures` and `cond_graph.inputs` to contain the
   # newly created placeholders.
   tuples = zip(body_graph_captures, tensors)
   keys = [id(t) for t in body_graph_captures]
   for k, v in zip(keys, tuples):
-    capture = capture_container.CaptureContainer(v[0], v[1], k, False)
-    cond_graph._function_captures._by_val[k] = capture  # pylint: disable=protected-access
+    cond_graph._function_captures.add_or_replace(
+        key=k,
+        external=v[0],
+        internal=v[1],
+        is_by_ref=False)
   cond_graph.inputs.extend(tensors)
 
 
@@ -1386,7 +1385,7 @@ def _is_loop_invariant(tensor, inputs, outputs):
           any(tensor is t for t in outputs))
 
 
-def _set_read_only_resource_inputs_attr(op, branch_graphs):
+def _set_read_only_resource_inputs_attr(op: ops.Operation, branch_graphs):
   """Sets the list of resource inputs which are read-only.
 
   This is used by AutomaticControlDependencies.

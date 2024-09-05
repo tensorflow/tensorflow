@@ -275,7 +275,7 @@ class SparseMergeHighDimTest(test_util.TensorFlowTestCase):
       self._AssertResultsSorted(output, vocab_size)
 
   def testInt64AndFloat64Shape(self):
-    vocab_size = [50, 30]
+    vocab_size = [50, 31]
     with test_util.force_cpu():
       indices, values = self._SparseTensor_3x50(np.int64, np.float64)
       sp_output = sparse_ops.sparse_merge(indices, values, vocab_size)
@@ -600,6 +600,28 @@ class SparseFillEmptyRowsTest(test_util.TensorFlowTestCase):
           sparse_ops.sparse_fill_empty_rows_grad(
               reverse_index_map=[], grad_values=[]))
       self.assertAllEqual(grad, [])
+
+  def testSparseFillEmptyRowsGradInvalidReverseIndexMap(self):
+    # On CPU, invalid indices raise assertion.  On GPU, invalid indices
+    # are simply ignored, for performance reasons.
+    with test_util.use_gpu():
+      if test_util.is_gpu_available():
+        grad, _ = self.evaluate(
+            sparse_ops.sparse_fill_empty_rows_grad(
+                reverse_index_map=[-1, 3], grad_values=[]
+            )
+        )
+        self.assertAllEqual(grad, [0., 0.])
+      else:
+        with self.assertRaisesRegex(
+            (ValueError, errors.InvalidArgumentError),
+            "Elements in reverse index must be in .*",
+        ):
+          self.evaluate(
+              sparse_ops.sparse_fill_empty_rows_grad(
+                  reverse_index_map=[-1, 3], grad_values=[]
+              )
+          )
 
   @test_util.run_deprecated_v1
   def testFillFloat(self):

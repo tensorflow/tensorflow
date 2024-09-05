@@ -48,6 +48,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/verification_utils.h"
 #include "tensorflow/core/util/matmul_bcast.h"
@@ -82,11 +83,32 @@ arith::ConstantOp createI64ConstantOp(llvm::ArrayRef<int64_t> values,
   return rewriter->create<arith::ConstantOp>(loc, values_type, constant_attr);
 }
 
+// Function to create a tf.SumOp to sum the element in 'value' reduced along the
+// 'redux_axes'.
+TF::SumOp createSumOp(Value value, Location loc,
+                      llvm::ArrayRef<int32_t> redux_axes,
+                      PatternRewriter* rewriter) {
+  Value redux_op = createI32ConstantOp(redux_axes, loc, rewriter);
+
+  auto value_type = mlir::cast<RankedTensorType>(value.getType());
+  auto shape = value_type.getShape();
+  llvm::SmallVector<int64_t> sum_shape;
+  for (int i = 0; i < shape.size(); ++i) {
+    if (std::find(redux_axes.begin(), redux_axes.end(), i) ==
+        redux_axes.end()) {
+      sum_shape.push_back(shape[i]);
+    }
+  }
+  return rewriter->create<TF::SumOp>(
+      loc, RankedTensorType::get(sum_shape, value_type.getElementType()), value,
+      redux_op);
+}
+
 TF::TransposeOp createTransposeOp(Value value, Location loc,
                                   llvm::ArrayRef<int32_t> permutation,
                                   PatternRewriter* rewriter) {
   auto perm_op = createI32ConstantOp(permutation, loc, rewriter);
-  auto value_type = value.getType().cast<RankedTensorType>();
+  auto value_type = mlir::cast<RankedTensorType>(value.getType());
   auto shape = value_type.getShape();
   SmallVector<int64_t, 4> transposed_shape(shape.begin(), shape.end());
   for (int i = 0, end = shape.size(); i < end; ++i) {
@@ -344,6 +366,61 @@ std::tuple<std::string, std::string, std::string> FlattenEllipsis(
   return std::make_tuple(new_lhs, new_rhs, new_output);
 }
 
+// vectors/maps to map the dimensions of lhs with output in unary einsum op
+std::optional<EinsumDimensionNumbers> GetEinsumDimensionNumbersUnary(
+    llvm::StringRef equation, RankedTensorType lhs_ty) {
+  llvm::StringRef lhs;
+  llvm::StringRef out;
+  std::tie(lhs, out) = equation.split("->");
+  if (lhs.empty() || out.empty()) return std::nullopt;
+
+  // Try to flatten the "..." if possible.
+  int lhs_named_label, rhs_named_label;
+
+  // following rhs and rhs_ty variables are non-functional here only created to
+  // comply with the existing API
+  llvm::StringRef rhs;
+  RankedTensorType rhs_ty;
+
+  auto available_labels =
+      GetAvailableLabels(lhs, rhs, &lhs_named_label, &rhs_named_label);
+  if (!available_labels.has_value()) return std::nullopt;
+
+  auto flattended_labels =
+      FlattenEllipsis(lhs, lhs_named_label, rhs, rhs_named_label, out, lhs_ty,
+                      rhs_ty, available_labels.value());
+
+  lhs = std::get<0>(flattended_labels);
+  out = std::get<2>(flattended_labels);
+
+  auto lhs_map_or = EquationToMap(lhs);
+  if (!lhs_map_or.has_value()) return std::nullopt;
+  auto lhs_map = lhs_map_or.value();
+
+  auto out_map_or = EquationToMap(out);
+  if (!out_map_or.has_value()) return std::nullopt;
+  auto out_map = out_map_or.value();
+
+  EinsumDimensionNumbers dnums;
+  for (int64_t i = 0; i < lhs.size(); ++i) {
+    auto out_index = out_map.find(lhs[i]);
+    if (out_index == out_map.end()) {
+      dnums.lhs.emplace_back(i);
+    } else {
+      dnums.lhs_out.emplace_back(i, out_index->second);
+    }
+  }
+
+  for (int64_t i = 0; i < out.size(); ++i) {
+    auto lhs_index = lhs_map.find(out[i]);
+    if (lhs_index == lhs_map.end()) {
+      // out only isn't supported
+      return std::nullopt;
+    }
+  }
+  return dnums;
+}
+
 std::optional<EinsumDimensionNumbers> GetEinsumDimensionNumbers(
     llvm::StringRef equation, RankedTensorType lhs_ty,
     RankedTensorType rhs_ty) {
@@ -417,6 +494,62 @@ std::optional<EinsumDimensionNumbers> GetEinsumDimensionNumbers(
     }
   }
   return dnums;
+}
+
+// Function to replace a unary einsum op, that can undergo simple transpose, to
+// an explicit transpose op.
+LogicalResult rewriteToReduceSumAndTranspose(TF::EinsumOp op,
+                                             EinsumDimensionNumbers dnums,
+                                             PatternRewriter& rewriter) {
+  auto inputs = op.getInputs();
+  Value lhs = inputs.front();
+
+  // Having indices in dnums.lhs list indicates that the ranks of the input and
+  // output to the unary einsum are not equal making it non-candidate for simple
+  // transpose.
+  bool needs_reduce_sum = false;
+  if (!dnums.lhs.empty()) {
+    needs_reduce_sum = true;
+    llvm::SmallVector<int32_t> reduce_idcs(dnums.lhs.size());
+    for (int64_t i = 0; i < dnums.lhs.size(); ++i) {
+      reduce_idcs[i] = dnums.lhs[i];
+    }
+
+    lhs = createSumOp(lhs, lhs.getLoc(), reduce_idcs, &rewriter);
+  }
+
+  llvm::SmallVector<int32_t> lhs_transpose;
+  lhs_transpose.reserve(dnums.lhs_out.size());
+
+  llvm::SmallDenseMap<int64_t, int64_t> out_lhs_map(dnums.lhs_out.size());
+  for (int64_t i = 0; i < dnums.lhs_out.size(); ++i) {
+    out_lhs_map[std::get<1>(dnums.lhs_out[i])] = std::get<0>(dnums.lhs_out[i]);
+  }
+
+  bool needs_transpose = false;
+  for (int64_t i = 0; i < dnums.lhs_out.size(); ++i) {
+    if (std::get<0>(dnums.lhs_out[i]) >
+        mlir::cast<RankedTensorType>(lhs.getType()).getRank() - 1) {
+      continue;
+    }
+
+    if (std::get<0>(dnums.lhs_out[i]) != std::get<1>(dnums.lhs_out[i])) {
+      needs_transpose = true;
+    }
+    lhs_transpose.push_back(out_lhs_map[i]);
+  }
+
+  if (!needs_reduce_sum && !needs_transpose) {
+    return rewriter.notifyMatchFailure(
+        op, "unary einsum equation does not require transpose");
+  } else if (needs_reduce_sum && !needs_transpose) {
+    rewriter.replaceOp(op, lhs);
+    return success();
+  }
+
+  lhs = createTransposeOp(lhs, lhs.getLoc(), lhs_transpose, &rewriter);
+  rewriter.replaceOp(op, lhs);
+  return success();
 }
 
 std::vector<int64_t> inverseTransposeVector(
@@ -504,8 +637,8 @@ LogicalResult reshapeForBatchMatmul(const Location& loc,
                                     Value* rhs,
                                     SmallVectorImpl<int64_t>* out_shape,
                                     PatternRewriter* rewriter) {
-  RankedTensorType lhs_type = lhs->getType().cast<RankedTensorType>();
-  RankedTensorType rhs_type = rhs->getType().cast<RankedTensorType>();
+  RankedTensorType lhs_type = mlir::cast<RankedTensorType>(lhs->getType());
+  RankedTensorType rhs_type = mlir::cast<RankedTensorType>(rhs->getType());
 
   int32_t num_lhs_reshape_segids = 0;
   int32_t num_rhs_reshape_segids = 0;
@@ -643,7 +776,7 @@ LogicalResult rewriteToBatchMatmul(TF::EinsumOp op,
   EinsumDimensionNumbers original_dnums = dnums;
 
   RankedTensorType original_type =
-      op.getResult().getType().dyn_cast_or_null<RankedTensorType>();
+      mlir::dyn_cast_or_null<RankedTensorType>(op.getResult().getType());
   if (!original_type) return failure();
 
   std::vector<int32_t> out_transpose;
@@ -682,6 +815,27 @@ LogicalResult rewriteToBatchMatmul(TF::EinsumOp op,
   return success();
 }
 
+LogicalResult matchAndRewriteUnaryEinsumOp(TF::EinsumOp op,
+                                           PatternRewriter& rewriter) {
+  if (op->getNumOperands() != 1) {
+    return rewriter.notifyMatchFailure(
+        op, "Function only supports unary einsum op");
+  }
+  RankedTensorType lhs =
+      mlir::dyn_cast_or_null<RankedTensorType>(op.getOperand(0).getType());
+  if (!lhs) {
+    return failure();
+  }
+  // unary einsum op is only supported to the case where the operation can be
+  // replaced using reduce_sum and/or transpose
+  if (const auto dnums_or =
+          GetEinsumDimensionNumbersUnary(op.getEquation(), lhs)) {
+    return rewriteToReduceSumAndTranspose(op, dnums_or.value(), rewriter);
+  }
+
+  return rewriter.notifyMatchFailure(op, "unsupported einsum lowering");
+}
+
 #define GEN_PASS_DEF_TRANSFORMEINSUMPASS
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
 
@@ -703,18 +857,22 @@ void TransformEinsumPass::runOnOperation() {
 
 LogicalResult ConvertTFEinsumOp::matchAndRewrite(
     TF::EinsumOp op, PatternRewriter& rewriter) const {
+  if (op->getNumOperands() == 1) {
+    return matchAndRewriteUnaryEinsumOp(op, rewriter);
+  }
+
   RankedTensorType lhs =
-      op.getOperand(0).getType().dyn_cast_or_null<RankedTensorType>();
+      mlir::dyn_cast_or_null<RankedTensorType>(op.getOperand(0).getType());
   RankedTensorType rhs =
-      op.getOperand(1).getType().dyn_cast_or_null<RankedTensorType>();
+      mlir::dyn_cast_or_null<RankedTensorType>(op.getOperand(1).getType());
   if (!lhs || !rhs) {
     return failure();
   }
 
-  // TODO(b/162328998) Better support Einsum with dynamic input. Currently, one
-  // dynamic dimension is always supported. If there are two or more dynamic
-  // dimensions, it is supported if they only exist in a single component
-  // among: L0,...,Ln R0,...,Rn or C0,...,Cn.
+  // TODO(b/162328998) Better support Einsum with dynamic input. Currently,
+  // one dynamic dimension is always supported. If there are two or more
+  // dynamic dimensions, it is supported if they only exist in a single
+  // component among: L0,...,Ln R0,...,Rn or C0,...,Cn.
   if (const auto dnums_or =
           GetEinsumDimensionNumbers(op.getEquation(), lhs, rhs))
     return rewriteToBatchMatmul(op, dnums_or.value(), rewriter);

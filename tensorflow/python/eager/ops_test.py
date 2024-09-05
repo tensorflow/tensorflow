@@ -14,7 +14,6 @@
 # ==============================================================================
 """Tests for operations in eager execution."""
 import gc
-import sys
 import threading
 import weakref
 
@@ -29,9 +28,9 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
-from tensorflow.python.layers import core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import control_flow_ops
@@ -191,8 +190,8 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertAllEqual((a >= b), np.greater_equal(v1, v2))
 
       # TODO(b/120678848): Remove the else branch once we enable
-      # ops.Tensor._USE_EQUALITY by default.
-      if ops.Tensor._USE_EQUALITY:
+      # tensor.Tensor._USE_EQUALITY by default.
+      if tensor.Tensor._USE_EQUALITY:
         self.assertAllEqual((a == b), np.equal(v1, v2))
         self.assertAllEqual((a != b), np.not_equal(v1, v2))
       else:
@@ -364,12 +363,6 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual(t, dtypes.string)
     self.assertEqual(r[0].dtype, dtypes.string)
 
-  def testFlattenLayer(self):
-    flatten_layer = core.Flatten()
-    x = constant_op.constant([[[-10, -20], [-30, -40]], [[10, 20], [30, 40]]])
-    y = flatten_layer(x)
-    self.assertAllEqual([[-10, -20, -30, -40], [10, 20, 30, 40]], y)
-
   def testIdentity(self):
     self.assertAllEqual(2, array_ops.identity(2))
 
@@ -436,9 +429,6 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     t1.join()
 
   def testWeakrefEagerTensor(self):
-    if sys.version_info.major == 3 and sys.version_info.minor == 11:
-      # TODO(b/264947738)
-      self.skipTest('Not working in Python 3.11')
     x = constant_op.constant([[1.]])
     x.at1 = constant_op.constant([[2.]])
     x.at2 = 3.
@@ -478,6 +468,10 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     weak_y = weakref.ref(y)
     del x
     del y
+    # Run a gc a few times to ensure cycles are resolved.
+    gc.collect()
+    gc.collect()
+    gc.collect()
     gc.collect()
     self.assertIs(weak_x(), None)
     self.assertIs(weak_y(), None)

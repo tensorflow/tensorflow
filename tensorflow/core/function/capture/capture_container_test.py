@@ -13,51 +13,21 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tf.function capture containers."""
+import copy
 
 from absl.testing import parameterized
-import numpy as np
 
+from tensorflow.core.function import trace_type
 from tensorflow.core.function.capture import capture_container
-from tensorflow.python.compat import v2_compat
-from tensorflow.python.framework import combinations
-from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import func_graph
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.platform import test
 
 
-class CachedCaptureDict(test.TestCase, parameterized.TestCase):
+class MutationAwareDictTest(test.TestCase, parameterized.TestCase):
 
   def _prepare_dict(self):
-    container_1 = capture_container.CaptureContainer(
-        1, constant_op.constant(1), "1")
-    container_2 = capture_container.CaptureContainer(
-        2, constant_op.constant(2), "2")
-    container_3 = capture_container.CaptureContainer(
-        3, constant_op.constant(3), "3")
-
-    d = dict({
-        "a": container_1,
-        "b": container_2,
-        "c": container_3})
-
-    capture_d = capture_container.CachedCaptureDict({
-        "a": container_1,
-        "b": container_2,
-        "c": container_3})
-
-    return d, capture_d
-
-  def _compare_capture_container(self, x, y):
-    if isinstance(
-        x, capture_container.CaptureContainer) and isinstance(
-            y, capture_container.CaptureContainer):
-      for attr in ["external", "internal", "idf", "is_by_ref"]:
-        if getattr(x, attr) != getattr(y, attr):
-          return False
-      return True
-    else:
-      return x == y
+    d = {"a": 1, "b": 2, "c": 3}
+    mutation_d = capture_container.MutationAwareDict(copy.copy(d))
+    return d, mutation_d
 
   @parameterized.parameters(
       ("__contains__", "a"),
@@ -65,142 +35,135 @@ class CachedCaptureDict(test.TestCase, parameterized.TestCase):
       ("__len__", None),
       ("__getitem__", "a"))
   def test_same_behavior_with_normal_dict(self, method, arg):
-    d, capture_d = self._prepare_dict()
+    d, mutation_d = self._prepare_dict()
     d_method = getattr(d, method)
-    capture_d_method = getattr(capture_d, method)
+    mutation_d_method = getattr(mutation_d, method)
     if arg is None:
-      result = self._compare_capture_container(
-          d_method(),
-          capture_d_method())
+      self.assertEqual(d_method(), mutation_d_method())
     else:
-      result = self._compare_capture_container(
-          d_method(arg),
-          capture_d_method(arg))
-    self.assertTrue(result)
-
-  def _extract_tuple_cache_external(self, tpl):
-    return [i[0] for i in tpl]
+      self.assertEqual(d_method(arg), mutation_d_method(arg))
 
   @parameterized.parameters(
       ("pop",),
       ("__delitem__",))
   def test_pop_and_del(self, method):
-    _, capture_d = self._prepare_dict()
-    fn = getattr(capture_d, method)
-    fn("b")
-    cache = capture_d.tuple_cache
-    self.assertLen(cache, 2)
-    externals = self._extract_tuple_cache_external(cache)
-    self.assertSequenceEqual(externals, [1, 3])
+    d, mutation_d = self._prepare_dict()
+    d_method = getattr(d, method)
+    mutation_d_method = getattr(mutation_d, method)
+    d_method("b")
+    mutation_d_method("b")
+    self.assertListEqual(list(d.keys()), list(mutation_d.keys()))
+    self.assertListEqual(list(d.values()), list(mutation_d.values()))
 
-  def test_set_item(self):
-    _, capture_d = self._prepare_dict()
-    container_4 = capture_container.CaptureContainer(
-        4, constant_op.constant(4), "4")
-    capture_d["d"] = container_4
-    cache = capture_d.tuple_cache
-    self.assertLen(cache, 4)
-    externals = self._extract_tuple_cache_external(cache)
-    self.assertSequenceEqual(externals, [1, 2, 3, 4])
+  def test_mutatation_ops(self):
+    _, d = self._prepare_dict()
+    with self.subTest("set"):
+      d["d"] = 4
+      self.assertTrue(d.mutated)
+    with self.subTest("pop"):
+      d.pop("d")
+      self.assertTrue(d.mutated)
+    with self.subTest("del"):
+      del d["c"]
+      self.assertTrue(d.mutated)
+    with self.subTest("clear"):
+      d.clear()
+      self.assertTrue(d.mutated)
 
-  def test_tuple_cache(self):
-    _, capture_d = self._prepare_dict()
-    cache = capture_d.tuple_cache
-    for ele in cache:
-      self.assertLen(ele, 2)
-    externals = self._extract_tuple_cache_external(cache)
-    self.assertSequenceEqual(externals, [1, 2, 3])
+  def test_mutated_property(self):
+    _, d = self._prepare_dict()
+    with self.subTest("initial_state"):
+      self.assertTrue(d.mutated)
+    with self.subTest("setter"):
+      d.mutated = False
+      self.assertFalse(d.mutated)
 
 
-class CaptureContainerTest(test.TestCase, parameterized.TestCase):
+class FunctionCapturesTest(test.TestCase, parameterized.TestCase):
 
-  def _prepare_function_captures(self):
-    container = capture_container.FunctionCaptures()
-    container.capture_by_ref(lambda: 1, "1")
-    container.capture_by_ref(lambda: 2, "2")
-    return container
+  def test_add_or_replace(self):
+    fn_captures = capture_container.FunctionCaptures()
+    fn_captures.add_or_replace("a", 1, -1, is_by_ref=False)
+    fn_captures.add_or_replace("aa", 1, -1, 0, is_by_ref=True)
 
-  @combinations.generate(combinations.combine(mode=["graph"]))
-  def test_capture_by_ref_dict_sz(self):
-    container = self._prepare_function_captures()
-    self.assertLen(container.by_ref_captures, 2)
+    with self.subTest("add_by_val"):
+      self.assertLen(fn_captures.by_val_internal, 1)
+      self.assertLen(fn_captures.by_val_external, 1)
 
-  @combinations.generate(combinations.combine(mode=["graph"]))
-  def test_capture_by_ref_default_idf(self):
-    container = self._prepare_function_captures()
-    idf = len(container.by_ref_captures)
-    container.capture_by_ref(lambda: 12345)
-    capture = container.by_ref_captures[idf]
-    lam = capture.external
-    self.assertEqual(lam(), 12345)
+    with self.subTest("add_by_ref"):
+      self.assertLen(fn_captures.by_ref_internal, 1)
+      self.assertLen(fn_captures.by_ref_external, 1)
+      self.assertLen(fn_captures.by_ref_tracetype, 1)
 
-  @combinations.generate(combinations.combine(mode=["graph"]))
-  def test_capture_by_ref_is_by_ref(self):
-    container = self._prepare_function_captures()
-    capture = container.by_ref_captures["1"]
-    self.assertTrue(capture.is_by_ref)
+    fn_captures.add_or_replace("a", 2, -2, is_by_ref=False)
+    with self.subTest("replace_by_val"):
+      self.assertLen(fn_captures.by_val_internal, 1)
+      self.assertLen(fn_captures.by_val_external, 1)
+      self.assertEqual(fn_captures.by_val_external["a"], 2)
+      self.assertEqual(fn_captures.by_val_internal["a"], -2)
 
-  @combinations.generate(combinations.combine(mode=["graph"]))
-  def test_capture_by_ref_with_duplicate_idf(self):
-    container = self._prepare_function_captures()
-    container.capture_by_ref(lambda: 3, "1")
-    self.assertLen(container.by_ref_captures, 2)
+  def test_by_val_capture_tuples(self):
+    fn_captures = capture_container.FunctionCaptures()
 
-  @combinations.generate(combinations.combine(mode=["graph"]))
-  def test_get_by_ref_snapshot(self):
-    container = self._prepare_function_captures()
-    snaptshot = container.get_by_ref_snapshot()
-    self.assertDictEqual(snaptshot, {"1": 1, "2": 2})
+    with self.subTest("initial_state"):
+      self.assertEmpty(fn_captures.by_val_capture_tuples)
 
-  @combinations.generate(combinations.combine(mode=["eager",]))
-  def test_create_capture_placeholder_eager(self):
-    container = self._prepare_function_captures()
-    lam = lambda: 12345
-    res = container._create_capture_placeholder(lam)
-    self.assertEqual(res, 12345)
+    with self.subTest("add"):
+      fn_captures.add_or_replace("a", 1, -1, is_by_ref=False)
+      self.assertLen(fn_captures.by_val_capture_tuples, 1)
+      self.assertSequenceEqual(
+          fn_captures.by_val_capture_tuples,
+          ((1, -1),))
 
-  @combinations.generate(combinations.combine(mode=["graph",]))
-  def test_create_capture_placeholder_graph_tensor(self):
-    container = self._prepare_function_captures()
-    lam = lambda: constant_op.constant(123)
-    spec = tensor_spec.TensorSpec([], np.int32, name="Placeholder:0")
-    graph = func_graph.FuncGraph("graph")
-    with graph.as_default():
-      placeholder = container._create_capture_placeholder(lam)
-      self.assertEqual(placeholder.shape, spec.shape)
-      self.assertEqual(placeholder.dtype, spec.dtype)
-      self.assertEqual(placeholder.name, spec.name)
+      fn_captures.add_or_replace("b", 2, -2, is_by_ref=False)
+      self.assertLen(fn_captures.by_val_capture_tuples, 2)
+      self.assertSequenceEqual(
+          fn_captures.by_val_capture_tuples,
+          ((1, -1), (2, -2)))
 
-  @combinations.generate(combinations.combine(mode=["graph",]))
-  def test_create_capture_placeholder_graph_nested_tensor(self):
-    container = self._prepare_function_captures()
-    a = constant_op.constant(1)
-    b = constant_op.constant(2.0)
-    c = constant_op.constant([1, 2, 3])
-    spec_a = tensor_spec.TensorSpec([], np.int32)
-    spec_b = tensor_spec.TensorSpec([], np.float32)
-    spec_c = tensor_spec.TensorSpec([3,], np.int32)
+    with self.subTest("replace"):
+      fn_captures.add_or_replace("a", 1, -3, is_by_ref=False)
+      self.assertLen(fn_captures.by_val_capture_tuples, 2)
+      self.assertSequenceEqual(
+          fn_captures.by_val_capture_tuples,
+          ((1, -3), (2, -2)))
 
-    value = [{"a": a}, [b, c]]
-    lam = lambda: value
-    graph = func_graph.FuncGraph("graph")
-    with graph.as_default():
-      placeholder = container._create_capture_placeholder(lam)
-    self.assertLen(placeholder, 2)
-    self.assertIn("a", placeholder[0])
-    self.assertLen(placeholder[1], 2)
+    with self.subTest("pop"):
+      fn_captures.pop("b", is_by_ref=False)
+      self.assertSequenceEqual(
+          fn_captures.by_val_capture_tuples,
+          ((1, -3),))
 
-    placeholder_a = placeholder[0]["a"]
-    placeholder_b = placeholder[1][0]
-    placeholder_c = placeholder[1][1]
-    self.assertEqual(placeholder_a.shape, spec_a.shape)
-    self.assertEqual(placeholder_a.dtype, spec_a.dtype)
-    self.assertEqual(placeholder_b.shape, spec_b.shape)
-    self.assertEqual(placeholder_b.dtype, spec_b.dtype)
-    self.assertEqual(placeholder_c.shape, spec_c.shape)
-    self.assertEqual(placeholder_c.dtype, spec_c.dtype)
+    with self.subTest("reset"):
+      fn_captures.reset_captures([10, 20], [-10, -20])
+      self.assertSequenceEqual(
+          fn_captures.by_val_capture_tuples,
+          ((10, -10), (20, -20)))
+
+    with self.subTest("clear"):
+      fn_captures.clear()
+      self.assertEmpty(fn_captures.by_val_capture_tuples)
+
+  def test_capture_types(self):
+    class FakePlaceholder():
+      pass
+
+    fn_captures = capture_container.FunctionCaptures()
+    fn_captures.add_or_replace("v1", 1, FakePlaceholder(), is_by_ref=False)
+    fn_captures.add_or_replace("v2", 2, FakePlaceholder(), is_by_ref=False)
+    fn_captures.add_or_replace("v3", 3, FakePlaceholder(), is_by_ref=False)
+    fn_captures.add_or_replace(
+        "r1", 1, FakePlaceholder(), trace_type.from_value(4), is_by_ref=True)
+    fn_captures.add_or_replace(
+        "r2", 2, FakePlaceholder(), trace_type.from_value(5), is_by_ref=True)
+
+    self.assertLen(fn_captures.capture_types, 5)
+    self.assertEqual(fn_captures.capture_types["v1"], trace_type.from_value(1))
+    self.assertEqual(fn_captures.capture_types["v2"], trace_type.from_value(2))
+    self.assertEqual(fn_captures.capture_types["v3"], trace_type.from_value(3))
+    self.assertEqual(fn_captures.capture_types["r1"], trace_type.from_value(4))
+    self.assertEqual(fn_captures.capture_types["r2"], trace_type.from_value(5))
 
 
 if __name__ == "__main__":
-  v2_compat.enable_v2_behavior()
   test.main()

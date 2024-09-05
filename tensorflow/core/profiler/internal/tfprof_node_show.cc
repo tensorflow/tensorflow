@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/internal/tfprof_node_show.h"
 
+#include <vector>
+
 namespace tensorflow {
 namespace tfprof {
 namespace {}

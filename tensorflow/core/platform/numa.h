@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/numa.h"
+#include "tsl/platform/numa.h"
 
 namespace tensorflow {
 namespace port {

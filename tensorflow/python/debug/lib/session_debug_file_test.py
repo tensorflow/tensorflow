@@ -26,7 +26,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import variables
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.platform import googletest
 
 
@@ -56,9 +56,9 @@ class SessionDebugFileTest(session_debug_testlib.SessionDebugTestBase):
       v_name = "diff_Watch/v"
 
       u_init = constant_op.constant(u_init_val, shape=[2, 2])
-      u = variables.VariableV1(u_init, name=u_name)
+      u = variable_v1.VariableV1(u_init, name=u_name)
       v_init = constant_op.constant(v_init_val, shape=[2, 1])
-      v = variables.VariableV1(v_init, name=v_name)
+      v = variable_v1.VariableV1(v_init, name=v_name)
 
       w = math_ops.matmul(u, v, name="diff_Watch/matmul")
 

@@ -4,12 +4,13 @@ load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
-        "//visibility:public",
+        "//visibility:private",
     ],
     licenses = ["notice"],
 )
 
 glob_lit_tests(
+    name = "all_tests",
     data = [":test_utilities"],
     driver = "//tensorflow/compiler/mlir/lite/stablehlo:run_lit.sh",
     size_override = {

@@ -16,7 +16,6 @@ limitations under the License.
 
 #include <iostream>
 #include <memory>
-#include <optional>
 #include <ostream>
 #include <string>
 #include <thread>  // NOLINT: code only used on Android, where std::thread is allowed
@@ -28,9 +27,9 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
+#include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/benchmark_result_evaluator.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/fb_storage.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/file_lock.h"
@@ -159,7 +158,8 @@ MinibenchmarkStatus ValidatorRunnerImpl::Init() {
     model_allocation_ = std::make_unique<MemoryAllocation>(
         model_with_custom_input_.GetBufferPointer(),
         model_with_custom_input_.GetSize(), error_reporter_);
-  } else if (dynamic_cast<tools::BufferModelLoader*>(model_loader.get())) {
+  } else if (model_loader->type() ==
+             tools::ModelLoader::Type::kBufferModelLoader) {
     // If model is already loaded, it needs to be copied to the detached thread.
     const Allocation* alloc = model_loader->GetModel()->allocation();
     if (!alloc || !alloc->valid() || !alloc->base() || alloc->bytes() <= 0) {
@@ -206,9 +206,9 @@ MinibenchmarkStatus ValidatorRunnerImpl::Init() {
 }
 
 void ValidatorRunnerImpl::TriggerValidationAsync(
-    std::unique_ptr<std::vector<FlatBufferBuilder>> tflite_settings,
+    std::vector<FlatBufferBuilder> tflite_settings,
     absl::string_view storage_path) {
-  if (!tflite_settings || tflite_settings->empty()) {
+  if (tflite_settings.empty()) {
     return;
   }
 
@@ -240,7 +240,7 @@ void ValidatorRunnerImpl::TriggerValidationAsync(
         std::string model_path = original_model_path;
         std::unique_ptr<FdHolder> fd_holder =
             UpdateModelPathIfUsingFd(model_path);
-        for (auto& one_setting : *tflite_settings) {
+        for (auto& one_setting : tflite_settings) {
           FlatbufferStorage<BenchmarkEvent> storage(storage_path);
           TFLiteSettingsT tflite_settings_obj;
           flatbuffers::GetRoot<TFLiteSettings>(one_setting.GetBufferPointer())

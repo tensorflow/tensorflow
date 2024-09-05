@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "tensorflow/core/platform/env.h"
 
@@ -117,7 +118,8 @@ class MemmappedFileSystem : public FileSystem {
   std::unique_ptr<ReadOnlyMemoryRegion> mapped_memory_;
   DirectoryType directory_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(MemmappedFileSystem);
+  MemmappedFileSystem(const MemmappedFileSystem&) = delete;
+  void operator=(const MemmappedFileSystem&) = delete;
 };
 
 class MemmappedEnv : public EnvWrapper {

@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/ir/tf_op_wrapper.h"
 
 namespace Eigen {
@@ -49,10 +50,13 @@ class SimpleDevice : public tensorflow::DeviceBase {
   tensorflow::Allocator* GetAllocator(
       tensorflow::AllocatorAttributes attr) override;
 
+  const std::string& device_type() const override { return device_type_; }
+
  private:
   std::unique_ptr<tensorflow::thread::ThreadPool> eigen_worker_;
   tensorflow::DeviceBase::CpuWorkerThreads eigen_worker_threads_;
   std::unique_ptr<Eigen::ThreadPoolDevice> eigen_device_;
+  const std::string device_type_ = tensorflow::DEVICE_CPU;
 };
 
 // Attempts to evaluates an MLIR Operation with the op registered kernel. The op

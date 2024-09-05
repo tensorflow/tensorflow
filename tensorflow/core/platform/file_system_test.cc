@@ -38,9 +38,9 @@ class InterPlanetaryFileSystem : public NullFileSystem {
     string parsed_path;
     ParsePath(fname, &parsed_path);
     if (BodyExists(parsed_path)) {
-      return OkStatus();
+      return absl::OkStatus();
     }
-    return Status(tensorflow::error::NOT_FOUND, "File does not exist");
+    return Status(absl::StatusCode::kNotFound, "File does not exist");
   }
 
   // Adds the dir to the parent's children list and creates an entry for itself.
@@ -49,7 +49,7 @@ class InterPlanetaryFileSystem : public NullFileSystem {
     ParsePath(dirname, &parsed_path);
     // If the directory already exists, throw an error.
     if (celestial_bodies_.find(parsed_path) != celestial_bodies_.end()) {
-      return Status(tensorflow::error::ALREADY_EXISTS,
+      return Status(absl::StatusCode::kAlreadyExists,
                     "dirname already exists.");
     }
     std::vector<string> split_path = str_util::Split(parsed_path, '/');
@@ -58,36 +58,36 @@ class InterPlanetaryFileSystem : public NullFileSystem {
       return Status(absl::StatusCode::kInvalidArgument, "Bad dirname");
     }
     if (split_path.empty()) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     if (split_path.size() == 1) {
       celestial_bodies_[""].insert(parsed_path);
       celestial_bodies_.insert(
           std::pair<string, std::set<string>>(parsed_path, {}));
-      return OkStatus();
+      return absl::OkStatus();
     }
     if (split_path.size() == 2) {
       if (!BodyExists(split_path[0])) {
-        return Status(tensorflow::error::FAILED_PRECONDITION,
+        return Status(absl::StatusCode::kFailedPrecondition,
                       "Base dir not created");
       }
       celestial_bodies_[split_path[0]].insert(split_path[1]);
       celestial_bodies_.insert(
           std::pair<string, std::set<string>>(parsed_path, {}));
-      return OkStatus();
+      return absl::OkStatus();
     }
     if (split_path.size() == 3) {
       const string& parent_path = this->JoinPath(split_path[0], split_path[1]);
       if (!BodyExists(parent_path)) {
-        return Status(tensorflow::error::FAILED_PRECONDITION,
+        return Status(absl::StatusCode::kFailedPrecondition,
                       "Base dir not created");
       }
       celestial_bodies_[parent_path].insert(split_path[2]);
       celestial_bodies_.insert(
           std::pair<string, std::set<string>>(parsed_path, {}));
-      return OkStatus();
+      return absl::OkStatus();
     }
-    return Status(tensorflow::error::FAILED_PRECONDITION, "Failed to create");
+    return Status(absl::StatusCode::kFailedPrecondition, "Failed to create");
   }
 
   Status IsDirectory(const string& dirname, TransactionToken* token) override {
@@ -99,12 +99,12 @@ class InterPlanetaryFileSystem : public NullFileSystem {
     }
     std::vector<string> split_path = str_util::Split(parsed_path, '/');
     if (split_path.size() > 2) {
-      return Status(tensorflow::error::FAILED_PRECONDITION, "Not a dir");
+      return Status(absl::StatusCode::kFailedPrecondition, "Not a dir");
     }
     if (celestial_bodies_.find(parsed_path) != celestial_bodies_.end()) {
-      return OkStatus();
+      return absl::OkStatus();
     }
-    return Status(tensorflow::error::FAILED_PRECONDITION, "Not a dir");
+    return Status(absl::StatusCode::kFailedPrecondition, "Not a dir");
   }
 
   Status GetChildren(const string& dir, TransactionToken* token,
@@ -114,7 +114,7 @@ class InterPlanetaryFileSystem : public NullFileSystem {
     ParsePath(dir, &parsed_path);
     result->insert(result->begin(), celestial_bodies_[parsed_path].begin(),
                    celestial_bodies_[parsed_path].end());
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -273,15 +273,23 @@ TEST(InterPlanetaryFileSystemTest, HasAtomicMove) {
   EXPECT_EQ(has_atomic_move, true);
 }
 
+TEST(InterPlanetaryFileSystemTest, CanCreateTempFile) {
+  InterPlanetaryFileSystem ipfs;
+  const string dirname = io::JoinPath(kPrefix, "match-00/abc/00");
+  bool can_create_temp_file;
+  TF_EXPECT_OK(ipfs.CanCreateTempFile(dirname, &can_create_temp_file));
+  EXPECT_EQ(can_create_temp_file, true);
+}
+
 // A simple file system with a root directory and a single file underneath it.
 class TestFileSystem : public NullFileSystem {
  public:
   // Only allow for a single root directory.
   Status IsDirectory(const string& dirname, TransactionToken* token) override {
     if (dirname == "." || dirname.empty()) {
-      return OkStatus();
+      return absl::OkStatus();
     }
-    return Status(tensorflow::error::FAILED_PRECONDITION, "Not a dir");
+    return Status(absl::StatusCode::kFailedPrecondition, "Not a dir");
   }
 
   // Simulating a FS with a root dir and a single file underneath it.
@@ -290,7 +298,7 @@ class TestFileSystem : public NullFileSystem {
     if (dir == "." || dir.empty()) {
       result->push_back("test");
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

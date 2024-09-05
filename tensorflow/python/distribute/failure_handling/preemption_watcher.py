@@ -24,6 +24,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework.errors import AbortedError
 from tensorflow.python.framework.errors import CancelledError
+from tensorflow.python.framework.errors import InternalError
 from tensorflow.python.framework.errors import UnavailableError
 from tensorflow.python.util.tf_export import tf_export
 
@@ -127,5 +128,10 @@ class PreemptionWatcher:
       return
     try:
       context.context().get_config_key_value("BLOCK_TILL_EXIT")
+    except InternalError as e:
+      # Ensure that internal error is related to coordination service.
+      if "Coordination service is not enabled." not in e.message:
+        raise
+      logging.info("Workers exited.")
     except (AbortedError, CancelledError, UnavailableError):
       logging.info("Workers exited.")

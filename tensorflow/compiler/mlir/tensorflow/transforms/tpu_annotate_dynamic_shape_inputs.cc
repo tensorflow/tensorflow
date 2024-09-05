@@ -19,13 +19,20 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 #define DEBUG_TYPE "tf-tpu-annotate-dynamic-shape-inputs"
 
@@ -46,7 +53,7 @@ class TPUAnnotateDynamicShapeInputsPass
 // Finds op that created a given value. If the value is a BlockArgument, this
 // returns the owner of the Block.
 Operation* GetOpOfValue(Value value) {
-  if (auto block_arg = value.dyn_cast<BlockArgument>())
+  if (auto block_arg = mlir::dyn_cast<BlockArgument>(value))
     return block_arg.getOwner()->getParentOp();
 
   return value.getDefiningOp();
@@ -54,6 +61,7 @@ Operation* GetOpOfValue(Value value) {
 
 void TPUAnnotateDynamicShapeInputsPass::runOnOperation() {
   getOperation().walk([&](tf_device::ClusterFuncOp cluster_func_op) {
+    Builder builder(cluster_func_op->getContext());
     // Skip non-tpu device cluster_func.
     auto cluster_id =
         cluster_func_op->getAttrOfType<StringAttr>(TF::kReplicationInfoAttr);
@@ -62,7 +70,7 @@ void TPUAnnotateDynamicShapeInputsPass::runOnOperation() {
     llvm::SmallVector<int, 4> dynamic_shape_arg_index;
 
     // Traverse the operands of the cluster func op and find which operand
-    // is returned by TPUCopyWithDynamicShapeOp.
+    // is returned by TPUAnnotateTensorsWithDynamicShapeOp.
     for (const auto& cluster_func_operand :
          llvm::enumerate(cluster_func_op.getOperands())) {
       auto device_launch_op = llvm::dyn_cast<tf_device::LaunchOp>(
@@ -72,12 +80,15 @@ void TPUAnnotateDynamicShapeInputsPass::runOnOperation() {
                device_launch_op.getResults(),
                device_launch_op.GetBody().getTerminator()->getOperands())) {
         if (std::get<0>(result) == cluster_func_operand.value() &&
-            llvm::isa<TF::TPUCopyWithDynamicShapeOp>(
+            llvm::isa<TF::TPUAnnotateTensorsWithDynamicShapeOp>(
                 std::get<1>(result).getDefiningOp())) {
           dynamic_shape_arg_index.push_back(cluster_func_operand.index());
         }
       }
     }
+
+    cluster_func_op->setAttr(TF::kDynamicArgIndexAttr,
+                             builder.getI32ArrayAttr(dynamic_shape_arg_index));
 
     FlatSymbolRefAttr func_attr = cluster_func_op.getFuncAttr();
     func::FuncOp func =
@@ -87,7 +98,7 @@ void TPUAnnotateDynamicShapeInputsPass::runOnOperation() {
     // Update the marked argument with dynamic shapes.
     for (int index : dynamic_shape_arg_index) {
       BlockArgument arg = func.getArgument(index);
-      auto inputType = arg.getType().dyn_cast<RankedTensorType>();
+      auto inputType = mlir::dyn_cast<RankedTensorType>(arg.getType());
       // Only rank 1 tensor is supported for now.
       if (!inputType || inputType.getRank() != 1) continue;
       auto shape = llvm::to_vector<4>(inputType.getShape());
@@ -107,11 +118,40 @@ void TPUAnnotateDynamicShapeInputsPass::runOnOperation() {
                           func.front().getTerminator()->getOperandTypes()));
     return WalkResult::advance();
   });
+
+  // Remove the annotated op after since it is just a placeholder.
+  DenseSet<tf_device::LaunchOp> launch_ops;
+  getOperation().walk([&](Operation* op) {
+    if (llvm::isa<TF::TPUAnnotateTensorsWithDynamicShapeOp>(op)) {
+      for (auto result : llvm::zip(op->getOperands(), op->getResults())) {
+        std::get<1>(result).replaceAllUsesWith(std::get<0>(result));
+      }
+      launch_ops.insert(op->getParentOfType<tf_device::LaunchOp>());
+      op->erase();
+    }
+    return WalkResult::advance();
+  });
+
+  for (auto launch_op : launch_ops) {
+    Block& block = launch_op.GetBody();
+    if (&block.front() == &block.back()) {
+      // The tf_device.launch is empty (except for the return).
+      // Remove the whole tf_device.launch, since later passes will make it send
+      // the arguments back and forth between the devices.
+      Operation* return_op = &block.back();
+      assert(llvm::isa<tf_device::ReturnOp>(return_op));
+      for (auto [inner, outer] :
+           llvm::zip(return_op->getOperands(), launch_op->getResults())) {
+        outer.replaceAllUsesWith(inner);
+      }
+      launch_op->erase();
+    }
+  }
 }
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>>
+std::unique_ptr<OperationPass<ModuleOp>>
 CreateTPUAnnotateDynamicShapeInputsPass() {
   return std::make_unique<TPUAnnotateDynamicShapeInputsPass>();
 }

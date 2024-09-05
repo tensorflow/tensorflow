@@ -16,6 +16,11 @@ FetchContent_MakeAvailable(googletest)
 enable_testing()
 add_definitions(-DTF_PIP_INTEGRATION_TEST)
 
+set(TENSORFLOW_PACKAGE_PATH "/usr/local/lib/python3.9/dist-packages/tensorflow"
+    CACHE STRING "Full path of tensorflow python package")
+
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+
 add_executable(aot_compiled_test
         aot_compiled_test.cc
         aot_compiled_vars_and_arithmetic.o
@@ -29,10 +34,10 @@ add_executable(aot_compiled_test
 # The paths assume the setup performed by run_integration_test.sh.
 target_include_directories(aot_compiled_test PUBLIC
         "/tmp/generated_models"
-        "/usr/local/lib/python3.9/dist-packages/tensorflow/include"
+        "${TENSORFLOW_PACKAGE_PATH}/include"
         "/tmp/tf_third_party")
 
-add_subdirectory("/usr/local/lib/python3.9/dist-packages/tensorflow/xla_aot_runtime_src"
+add_subdirectory("${TENSORFLOW_PACKAGE_PATH}/xla_aot_runtime_src"
         ${CMAKE_ARCHIVE_OUTPUT_DIRECTORY}/tf_runtime)
 
 target_link_libraries(aot_compiled_test GTest::gtest_main tf_xla_runtime)

@@ -22,7 +22,9 @@ limitations under the License.
 #include <cfloat>
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
@@ -104,12 +106,12 @@ void ParseSizes(OpKernelContext* context, const std::vector<int32>& strides,
   const int filter_cols_eff =
       filter_cols + (filter_cols - 1) * (*rate_cols - 1);
 
-  OP_REQUIRES_OK(
-      context, GetWindowedOutputSize(input_rows, filter_rows_eff, *stride_rows,
-                                     padding, out_rows, pad_top));
-  OP_REQUIRES_OK(
-      context, GetWindowedOutputSize(input_cols, filter_cols_eff, *stride_cols,
-                                     padding, out_cols, pad_left));
+  OP_REQUIRES_OK(context, GetWindowedOutputSize(
+                              input_rows, filter_rows_eff, /*dilation_rate=*/1,
+                              *stride_rows, padding, out_rows, pad_top));
+  OP_REQUIRES_OK(context, GetWindowedOutputSize(
+                              input_cols, filter_cols_eff, /*dilation_rate=*/1,
+                              *stride_cols, padding, out_cols, pad_left));
 }
 
 template <typename Device, typename T>
@@ -238,6 +240,11 @@ class DilationBackpropInputOp : public OpKernel {
                &out_cols);
     if (!context->status().ok()) return;
 
+    OP_REQUIRES(context, out_backprop.dims() == 4,
+                absl::InvalidArgumentError(
+                    absl::StrCat("out_backprop must be 4-dimensional",
+                                 out_backprop.shape().DebugString())));
+
     // Verify that the incoming gradient tensor has the expected size
     // [ batch, out_rows, out_cols, depth ]
     const int batch = input.dim_size(0);
@@ -365,6 +372,11 @@ class DilationBackpropFilterOp : public OpKernel {
                &rate_rows, &rate_cols, &pad_top, &pad_left, &out_rows,
                &out_cols);
     if (!context->status().ok()) return;
+
+    OP_REQUIRES(context, out_backprop.dims() == 4,
+                absl::InvalidArgumentError(
+                    absl::StrCat("out_backprop must be 4-dimensional",
+                                 out_backprop.shape().DebugString())));
 
     // Verify that the incoming gradient tensor has the expected size
     // [ batch, out_rows, out_cols, depth ]

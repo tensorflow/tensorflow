@@ -77,6 +77,9 @@ std::unique_ptr<Interpreter> interpreter;
 if (interpreter_builder(&interpreter) != kTfLiteOk) return;
 
 ////////
+// IMPORTANT: AllocateTensors can be called only AFTER ModifyGraphWithDelegate
+
+////////
 // Run inference.
 WriteToInputTensor(interpreter->typed_input_tensor<float>(0));
 if (interpreter->Invoke() != kTfLiteOk) return;

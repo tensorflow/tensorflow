@@ -20,13 +20,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_AOT_EMBEDDED_PROTOCOL_BUFFERS_H_
 #define TENSORFLOW_COMPILER_AOT_EMBEDDED_PROTOCOL_BUFFERS_H_
 
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
 namespace tfcompile {
-using xla::StatusOr;
+using absl::StatusOr;
 
 // Represents a set of protocol buffers embedded into an object file and
 // describes how to access them at runtime.
@@ -82,7 +82,7 @@ struct ProtobufToEmbed {
 // of all the protocol buffers are embedded into a single .o file whose content
 // is stored in the object_file_data field in the returned
 // EmbeddedProtocolBuffers instance.
-StatusOr<EmbeddedProtocolBuffers> CreateEmbeddedProtocolBuffers(
+absl::StatusOr<EmbeddedProtocolBuffers> CreateEmbeddedProtocolBuffers(
     absl::string_view target_triple,
     absl::Span<const ProtobufToEmbed> protobufs_to_embed);
 

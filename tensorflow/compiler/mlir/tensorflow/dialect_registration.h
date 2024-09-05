@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"  // from @llvm-project
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MLProgram/IR/MLProgram.h"  // from @llvm-project
 #include "mlir/Dialect/MLProgram/IR/MLProgramAttributes.h"  // from @llvm-project
@@ -31,7 +32,12 @@ limitations under the License.
 namespace mlir {
 // Inserts all the TensorFlow dialects in the provided registry. This is
 // intended for tools that need to register dialects before parsing .mlir files.
-inline void RegisterAllTensorFlowDialects(DialectRegistry &registry) {
+// If include_extensions is set (default), also registers extensions. Otherwise
+// it is the responsibility of the caller, typically required when the registry
+// is appended to the context in a parallel context, which does not allow for
+// extensions to be added.
+inline void RegisterAllTensorFlowDialectsImpl(DialectRegistry &registry,
+                                              bool include_extensions = true) {
   registry
       .insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
               mlir::ml_program::MLProgramDialect, mlir::TF::TensorFlowDialect,
@@ -40,6 +46,15 @@ inline void RegisterAllTensorFlowDialects(DialectRegistry &registry) {
               mlir::tf_executor::TensorFlowExecutorDialect,
               mlir::tf_saved_model::TensorFlowSavedModelDialect,
               mlir::tfg::TFGraphDialect>();
+  if (include_extensions) {
+    mlir::func::registerAllExtensions(registry);
+  }
+}
+
+// Inserts all the TensorFlow dialects in the provided registry. This is
+// intended for tools that need to register dialects before parsing .mlir files.
+inline void RegisterAllTensorFlowDialects(DialectRegistry &registry) {
+  RegisterAllTensorFlowDialectsImpl(registry, true);
 }
 }  // namespace mlir
 

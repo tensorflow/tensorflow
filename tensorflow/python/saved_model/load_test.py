@@ -23,6 +23,7 @@ import os
 import pathlib
 import sys
 import tempfile
+import unittest
 import weakref
 
 from absl.testing import parameterized
@@ -75,6 +76,7 @@ from tensorflow.python.trackable import asset
 from tensorflow.python.trackable import autotrackable
 from tensorflow.python.trackable import resource
 from tensorflow.python.training import monitored_session
+from tensorflow.python.types import core as types_core
 from tensorflow.python.util import tf_inspect
 
 
@@ -524,6 +526,64 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(4, imported.f(constant_op.constant(2), True).numpy())
     self.assertEqual(7, imported.f(constant_op.constant(2)).numpy())
 
+  def test_function_with_defaults_input_tensor(self, cycles, use_cpp_bindings):
+    # TODO(b/264869228) Fix LoadTest
+    if use_cpp_bindings:
+      self.skipTest("Not implemented for cpp.")
+
+    @def_function.function(input_signature=[tensor_spec.TensorSpec([])])
+    def func(x=constant_op.constant(5.0)):
+      return x
+
+    root = autotrackable.AutoTrackable()
+    root.f = func
+
+    self.assertAllEqual(5.0, root.f())
+    self.assertAllEqual(7.0, root.f(7.0))
+
+    imported = cycle(root, cycles, use_cpp_bindings=use_cpp_bindings)
+
+    self.assertEqual(5.0, imported.f().numpy())
+    self.assertEqual(7.0, imported.f(constant_op.constant(7.0)).numpy())
+
+    # imported.signatures with defaults are not supported.
+    # TODO(b/277814477) support defaults in loaded.signatures
+    # self.assertEqual(
+    #     {"output_0": 5.0},
+    #     self.evaluate(
+    #         imported.signatures["serving_default"]()
+    #     ),
+    # )
+
+  def test_function_with_defaults_input_numpy(self, cycles, use_cpp_bindings):
+    # TODO(b/264869228) Fix LoadTest
+    if use_cpp_bindings:
+      self.skipTest("Not implemented for cpp.")
+
+    @def_function.function(input_signature=[tensor_spec.TensorSpec([])])
+    def func(x=np.array(5.0)):
+      return x
+
+    root = autotrackable.AutoTrackable()
+    root.f = func
+
+    self.assertAllEqual(5.0, root.f())
+    self.assertAllEqual(7.0, root.f(np.array(7.0)))
+
+    imported = cycle(root, cycles, use_cpp_bindings=use_cpp_bindings)
+
+    self.assertEqual(5.0, imported.f().numpy())
+    self.assertEqual(7.0, imported.f(np.array(7.0)).numpy())
+
+    # imported.signatures with defaults are not supported.
+    # TODO(b/277814477) support defaults in loaded.signatures
+    # self.assertEqual(
+    #     {"output_0": 5.0},
+    #     self.evaluate(
+    #         imported.signatures["serving_default"]()
+    #     ),
+    # )
+
   def test_function_with_default_none_input(self, cycles, use_cpp_bindings):
     # TODO(b/264869228) Fix LoadTest
     if use_cpp_bindings:
@@ -558,6 +618,9 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertLen(concrete_functions, 4)
 
     imported = cycle(root, cycles, use_cpp_bindings=use_cpp_bindings)
+
+    restored_concrete_functions = imported.f._list_all_concrete_functions()  # pylint: disable=protected-access
+    self.assertLen(restored_concrete_functions, 4)
 
     self.assertAllEqual(
         [0.0, 0.0, 0.0],
@@ -598,6 +661,9 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertLen(concrete_functions, 3)
 
     imported = cycle(root, cycles, use_cpp_bindings=use_cpp_bindings)
+
+    restored_concrete_functions = imported.f._list_all_concrete_functions()  # pylint: disable=protected-access
+    self.assertLen(restored_concrete_functions, 3)
 
     self.assertAllEqual(b"ab", imported.f("a", "b"))
     self.assertAllEqual(b"ab", imported.f("a", constant_op.constant("b")))
@@ -733,6 +799,54 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(5, result[1].numpy())
     self.assertEqual(0.5, result[2]["x"].numpy())
 
+  def testConcreteFunctionType(self, cycles, use_cpp_bindings):
+    if use_cpp_bindings:
+      self.skipTest("Not implemented for cpp.")
+
+    y = constant_op.constant(1)
+
+    @def_function.function
+    def foo(x):
+      return {"input": x, "capture": y}
+
+    root = autotrackable.AutoTrackable()
+    root.f = foo.get_concrete_function(tensor_spec.TensorSpec([], dtypes.int32))
+
+    imported = cycle(root, cycles, use_cpp_bindings=use_cpp_bindings)
+
+    x = constant_op.constant(2)
+    output = imported.f(x)
+    self.assertEqual(set(output.keys()), {"input", "capture"})
+    self.assertEqual(output["input"].numpy(), 2)
+    self.assertEqual(output["capture"].numpy(), 1)
+
+    parameters = list(imported.f.function_type.parameters.values())
+    self.assertLen(parameters, 1)
+    self.assertEqual(parameters[0].name, "x")
+    self.assertEqual(
+        parameters[0].type_constraint,
+        tensor_spec.TensorSpec([], dtypes.int32, name="x"),
+    )
+
+    captures = imported.f.function_type.captures
+    self.assertLen(captures, 1)
+    self.assertEqual(
+        list(captures.values())[0], tensor_spec.TensorSpec([], dtypes.int32)
+    )
+
+    output = imported.f.function_type.output
+    self.assertEqual(
+        output.mapping,
+        {
+            "input": tensor_spec.TensorSpec(
+                shape=(), dtype=dtypes.int32, name="input"
+            ),
+            "capture": tensor_spec.TensorSpec(
+                shape=(), dtype=dtypes.int32, name="capture"
+            ),
+        },
+    )
+
   def test_pretty_print_signature(self, cycles, use_cpp_bindings):
     # TODO(b/264869228) Fix LoadTest
     if use_cpp_bindings:
@@ -751,16 +865,19 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     imported = cycle(root, cycles, use_cpp_bindings=use_cpp_bindings)
     self.assertEqual(
         imported.f.pretty_printed_signature(),
-        """func(input1, input2)
-  Args:
-    input1: int32 Tensor, shape=()
-    input2: int32 Tensor, shape=()
-  Returns:
-    [NamedTupleHello(b=<1>, a=<2>), <3>, {'x': <4>}]
-      <1>: int32 Tensor, shape=()
-      <2>: int32 Tensor, shape=()
-      <3>: int32 Tensor, shape=()
-      <4>: float32 Tensor, shape=()""",
+        "Input Parameters:\n"
+        + "  input1 (POSITIONAL_OR_KEYWORD): TensorSpec(shape=(),"
+        " dtype=tf.int32, name='input1')\n"
+        + "  input2 (POSITIONAL_OR_KEYWORD): TensorSpec(shape=(),"
+        " dtype=tf.int32, name='input2')\n"
+        + "Output Type:\n"
+        + "  List[NamedTupleHello[['b', TensorSpec(shape=(), dtype=tf.int32,"
+        " name='tensor_0_b')], ['a', TensorSpec(shape=(), dtype=tf.int32,"
+        " name='tensor_0_a')]], TensorSpec(shape=(), dtype=tf.int32,"
+        " name='tensor_1'), Dict[['x', TensorSpec(shape=(), dtype=tf.float32,"
+        " name='tensor_2_x')]]]\n"
+        + "Captures:\n"
+        + "  None",
     )
 
   def test_positional_arguments(self, cycles, use_cpp_bindings):
@@ -1215,8 +1332,11 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     imported = cycle(root, cycles, use_cpp_bindings=use_cpp_bindings)
 
+    restored_concrete_functions = imported.f._list_all_concrete_functions()  # pylint: disable=protected-access
+    self.assertLen(restored_concrete_functions, 1)
+
     with self.assertRaisesRegex(
-        TypeError, "Binding inputs to tf.function `f` failed"
+        TypeError, "Binding inputs to tf.function failed"
     ):
       # We cannot call the function with a constant of shape ().
       imported.f(constant_op.constant(2)).numpy()
@@ -1738,11 +1858,11 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     exported = ObjWithFunction()
 
-    with self.assertLogs(level="WARNING") as logs:
+    with self.assertLogs(level="INFO") as logs:
       imported = cycle(exported, cycles, use_cpp_bindings=use_cpp_bindings)
 
     expected_message = (
-        "WARNING:absl:Function `foo` contains input name(s) A-b, A/D with "
+        "INFO:absl:Function `foo` contains input name(s) A-b, A/D with "
         "unsupported characters which will be renamed to a_b, a_d in the "
         "SavedModel."
     )
@@ -2622,6 +2742,86 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllClose(grads, expected_grads)
 
+  def test_custom_gradients_with_none_grad_and_partial_shape(
+      self, cycles, use_cpp_bindings
+  ):
+    # TODO(b/264869228) Fix LoadTest
+    if use_cpp_bindings:
+      self.skipTest("Not implemented for cpp.")
+    # https://github.com/google/jax/issues/7123
+
+    @custom_gradient.custom_gradient
+    def f(params, state):
+      def grad_fn(*args):
+        return args
+
+      return (params, state), grad_fn
+
+    @def_function.function(
+        input_signature=[
+            tensor_spec.TensorSpec(None, dtypes.float32),
+            tensor_spec.TensorSpec(None, dtypes.int32),
+        ]
+    )
+    def predict(params, state):
+      return f(params, state)
+
+    params = variables.Variable(1.0)
+    # None grads only appear when state is an int.
+    state = constant_op.constant(3, dtype=dtypes.int32)
+    with backprop.GradientTape() as tape:
+      tape.watch(params)
+      y = predict(params, state)
+      expected_grads = tape.gradient(y, params)
+
+    root = autotrackable.AutoTrackable()
+    root.fn = predict
+    loaded = cycle(
+        root,
+        cycles,
+        save_option=save_options.SaveOptions(
+            experimental_custom_gradients=True
+        ),
+        use_cpp_bindings=use_cpp_bindings,
+    )
+
+    with backprop.GradientTape() as tape:
+      tape.watch(params)
+      y = loaded.fn(params, state)
+      grads = tape.gradient(y, params)
+
+    self.assertAllClose(grads, expected_grads)
+
+  def test_signature_propagates_experimental_attr(
+      self, cycles, use_cpp_bindings
+  ):
+    # TODO(b/264869228) Fix LoadTest
+    if use_cpp_bindings:
+      self.skipTest("Not implemented for cpp.")
+    root = autotrackable.AutoTrackable()
+    experimental_attributes = {"disable_summaries_at_runtime": ["x", True]}
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)],
+        experimental_attributes=experimental_attributes,
+    )
+    def f(x):
+      return x * 2.0
+    root.f = f
+    self.assertEqual(root.f(constant_op.constant(1.0)).numpy(), 2.0)
+    loaded = cycle(root, cycles, use_cpp_bindings=use_cpp_bindings)
+    self.assertEqual(loaded.f(constant_op.constant(1.0)).numpy(), 2.0)
+    self.assertProtoEquals(
+        r"""
+        list {
+            s: 'x',
+            b: True
+        }
+        """,
+        loaded.signatures["serving_default"].function_def.attr[
+            "disable_summaries_at_runtime"
+        ],
+    )
+
 
 @parameterized.named_parameters(*_test_params())
 class SingleCycleTests(test.TestCase, parameterized.TestCase):
@@ -2735,6 +2935,7 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
       @def_function.function
       def increment_v(x):
         obj.v.assign_add(x)
+        return x
 
       session.run(increment_v(constant_op.constant(3.0)))  # generate signatures
       self.assertAllClose(8, total())
@@ -2769,16 +2970,13 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
   # TODO(allenl, kkb): Use the new memory checker here once it's fast enough (3
   # iterations took hundreds of seconds). It would be really nice to check
   # allocations at a lower level.
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
   def test_functions_cleaned(self, use_cpp_bindings):
     # TODO(b/264869753) Fix SingleCycleTest
     if use_cpp_bindings:
       self.skipTest("Not implemented for cpp.")
     if sys.version_info.major < 3:
       self.skipTest("Not working in Python 2")
-    if sys.version_info.major == 3 and sys.version_info.minor == 11:
-      # TODO(b/264948173)
-      self.skipTest("Not working in Python 3.11")
     root = module.Module()
     root.v = variables.Variable(1.0)
     root.f = def_function.function(
@@ -2858,11 +3056,11 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
         return a
 
     root = ObjWithFunction()
-    with self.assertLogs(level="WARNING") as logs:
+    with self.assertLogs(level="INFO") as logs:
       loaded = cycle(root, 1, use_cpp_bindings=use_cpp_bindings)
 
     expected_save_message = (
-        "WARNING:absl:Found untraced functions such as foo while saving "
+        "INFO:absl:Found untraced functions such as foo while saving "
         "(showing 1 of 1). These functions will not be directly callable after "
         "loading."
     )
@@ -3003,6 +3201,176 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
         18,  # 3 * (1 + 2 + 3)
         loaded(constant_op.constant(3, dtype=dtypes.int32)).numpy(),
     )
+
+  def test_function_aliases(self, use_cpp_bindings):
+    if use_cpp_bindings:
+      self.skipTest("Not implemented for cpp.")
+
+    root = autotrackable.AutoTrackable()
+    root.f = def_function.function(
+        lambda x: 2 * x,
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)],
+    )
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    options = save_options.SaveOptions(function_aliases={
+        "my_func": root.f,
+    })
+    save.save(root, save_dir, root.f, options=options)
+    loaded = test_load(
+        save_dir,
+        use_cpp_bindings=use_cpp_bindings,
+        options=load_options.LoadOptions(
+            experimental_load_function_aliases=True
+        ),
+    )
+    self.assertLen(loaded.function_aliases, 1)
+    self.assertIn("my_func", loaded.function_aliases)
+    self.assertEqual(loaded.function_aliases["my_func"](1.0).numpy(), 2.0)
+
+  def test_function_aliases_with_non_saved_function(self, use_cpp_bindings):
+    if use_cpp_bindings:
+      self.skipTest("Not implemented for cpp.")
+
+    # `f` below will be aliased but not saved because is not tracked
+    f = def_function.function(lambda x: 2 * x)
+    root = autotrackable.AutoTrackable()
+    root.g = def_function.function(lambda x: 2 * f(x))
+    # Create two traces
+    root.g(constant_op.constant(1))
+    root.g(constant_op.constant(1.0, dtype=dtypes.float32))
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    options = save_options.SaveOptions(
+        function_aliases={
+            "my_func": f,
+        }
+    )
+    save.save(root, save_dir, options=options)
+    loaded = test_load(
+        save_dir,
+        use_cpp_bindings=use_cpp_bindings,
+        options=load_options.LoadOptions(
+            experimental_load_function_aliases=True
+        ),
+    )
+    self.assertLen(loaded.function_aliases, 1)
+    self.assertIn("my_func", loaded.function_aliases)
+    self.assertLen(loaded.function_aliases["my_func"], 2)
+    self.assertIsInstance(
+        loaded.function_aliases["my_func"][0], types_core.ConcreteFunction
+    )
+    self.assertIsInstance(
+        loaded.function_aliases["my_func"][1], types_core.ConcreteFunction
+    )
+
+  @unittest.skip("skip until unexpected retracing is fixed/handled b/280121368")
+  def test_function_aliases_with_concrete_function(self, use_cpp_bindings):
+    if use_cpp_bindings:
+      self.skipTest("Not implemented for cpp.")
+
+    # `f` below will be aliased but not saved because is not tracked
+    f = def_function.function(lambda x: 2 * x)
+    root = autotrackable.AutoTrackable()
+    root.g = def_function.function(lambda x: 2 * f(x))
+    # Create two traces
+    root.g(constant_op.constant(1))
+    root.g(constant_op.constant(1.0, dtype=dtypes.float32))
+    self.assertLen(f._list_all_concrete_functions(), 2)
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    options = save_options.SaveOptions(
+        function_aliases={
+            "my_func": f.get_concrete_function(
+                tensor_spec.TensorSpec([], dtypes.float32)
+            ),
+        }
+    )
+    self.assertLen(f._list_all_concrete_functions(), 2)
+    save.save(root, save_dir, options=options)
+    loaded = test_load(
+        save_dir,
+        use_cpp_bindings=use_cpp_bindings,
+        options=load_options.LoadOptions(
+            experimental_load_function_aliases=True
+        ),
+    )
+    self.assertLen(loaded.function_aliases, 1)
+    self.assertIn("my_func", loaded.function_aliases)
+    self.assertLen(loaded.function_aliases["my_func"], 1)
+    self.assertIsInstance(
+        loaded.function_aliases["my_func"][0], types_core.ConcreteFunction
+    )
+
+  @unittest.skip("skip until unexpected retracing is fixed/handled b/280121368")
+  def test_function_aliases_with_concrete_functions(self, use_cpp_bindings):
+    if use_cpp_bindings:
+      self.skipTest("Not implemented for cpp.")
+
+    # `f` below will be aliased but not saved because is not tracked
+    f = def_function.function(lambda x: 2 * x)
+    root = autotrackable.AutoTrackable()
+    root.g = def_function.function(lambda x: 2 * f(x))
+    # Create 3 traces for g, which will in turn create 3 traces for f.
+    root.g(x=constant_op.constant(1))
+    root.g(x=constant_op.constant(1.0, dtype=dtypes.float32))
+    root.g(x=constant_op.constant(1.0, dtype=dtypes.float16))
+    self.assertLen(f._list_all_concrete_functions(), 3)
+
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    options = save_options.SaveOptions(
+        function_aliases={
+            # Alias 2 out of 3 traces of f
+            "my_func": [
+                f.get_concrete_function(
+                    x=tensor_spec.TensorSpec([], dtypes.int32)
+                ),
+                f.get_concrete_function(
+                    x=tensor_spec.TensorSpec([], dtypes.float32)
+                ),
+            ],
+        }
+    )
+    self.assertLen(f._list_all_concrete_functions(), 3)
+    save.save(root, save_dir, options=options)
+    loaded = test_load(
+        save_dir,
+        use_cpp_bindings=use_cpp_bindings,
+        options=load_options.LoadOptions(
+            experimental_load_function_aliases=True
+        ),
+    )
+    self.assertLen(loaded.function_aliases, 1)
+    self.assertIn("my_func", loaded.function_aliases)
+    self.assertLen(loaded.function_aliases["my_func"], 2)
+    self.assertIsInstance(
+        loaded.function_aliases["my_func"][0], types_core.ConcreteFunction
+    )
+    self.assertIsInstance(
+        loaded.function_aliases["my_func"][1], types_core.ConcreteFunction
+    )
+
+  def test_function_aliases_name_collision(self, use_cpp_bindings):
+    if use_cpp_bindings:
+      self.skipTest("Not implemented for cpp.")
+
+    root = autotrackable.AutoTrackable()
+    root.f = def_function.function(
+        lambda x: 2. * x,
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+    root.function_aliases = variables.Variable(1.0)
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    options = save_options.SaveOptions(function_aliases={
+        "my_func": root.f,
+    })
+    save.save(root, save_dir, root.f, options=options)
+    with self.assertRaisesRegex(
+        ValueError, "Could not load with experimental_load_function_aliases"
+    ):
+      test_load(
+          save_dir,
+          use_cpp_bindings=use_cpp_bindings,
+          options=load_options.LoadOptions(
+              experimental_load_function_aliases=True
+          ),
+      )
 
 
 # TODO(b/264882754) Support Cpp bindings DeferredInitModuleVariablesTest

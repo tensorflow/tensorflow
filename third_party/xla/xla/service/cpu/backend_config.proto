@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package xla.cpu;
+
+import "xla/service/cpu/onednn_config.proto";
+
+// Backend config for XLA:CPU.
+message BackendConfig {
+  // Number of partitions per outer dimension (in order, starting with
+  // outer-most dimension first). Used by the parallel cpu backend to partition
+  // HLOs into parallel tasks.
+  repeated int64 outer_dimension_partitions = 1;
+  oneof backend_config_oneof {
+    // Configuration to be used by oneDNN matmul
+    OneDnnMatMulConfig onednn_matmul_config = 2;
+    // Configuration to be used by oneDNN layer norm
+    OneDnnNormConfig onednn_layer_norm_config = 3;
+    // Configuration to be used by oneDNN softmax
+    OneDnnSoftmaxConfig onednn_softmax_config = 4;
+    // Configuration to be used by oneDNN convolution
+    OneDnnConvolutionConfig onednn_conv_config = 5;
+  }
+}

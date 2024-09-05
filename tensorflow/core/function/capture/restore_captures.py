@@ -20,6 +20,7 @@ This functionality should ultimately be moved into a first-class core API.
 
 import warnings
 
+from tensorflow.core.function.polymorphism import function_type as function_type_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -131,3 +132,11 @@ def restore_captures(concrete_function, inputs):
         "warning if using tf.keras.models.load_model."
     )
   concrete_function.set_external_captures(captured_inputs_list)
+
+  # Update FunctionType with new captures.
+  if concrete_function.function_type:
+    concrete_function._function_type = function_type_lib.FunctionType(  # pylint: disable=protected-access
+        concrete_function.function_type.parameters.values(),
+        concrete_function.graph.function_captures.capture_types,
+        return_annotation=concrete_function.function_type.output,
+    )

@@ -20,6 +20,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import ref_variable
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -342,7 +343,7 @@ class ScatterTest(test.TestCase):
                          "implementation")
   @test_util.run_cuda_only
   def testDeterminismExceptionThrowing(self):
-    v = variables.RefVariable(np.array([1., 2., 3.]))
+    v = ref_variable.RefVariable(np.array([1., 2., 3.]))
     indices = np.array([0, 0, 0])
     updates = np.array([-3, -4, -5]).astype(np.float32)
     with test_util.deterministic_ops():

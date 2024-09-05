@@ -38,7 +38,7 @@ inline Status CheckKeyCounterShape(int minimum_counter_size,
         "; got shape: ", counter_shape.DebugString(),
         ". (Note that batched counters are not supported yet.)");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // A base class for kernels of stateless RNG ops that take shape, key, counter

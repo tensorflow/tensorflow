@@ -1,0 +1,55 @@
+toc:
+- heading: XLA developer guide
+- title: Getting started
+  section:
+    - title: Overview
+      path: /xla
+    - title: XLA architecture
+      path: /xla/architecture
+    - title: Operation semantics
+      path: /xla/operation_semantics
+- title: Developer details
+  section:
+    - title: Broadcasting
+      path: /xla/broadcasting
+    - title: Shapes and layout
+      path: /xla/shapes
+    - title: Aliasing
+      path: /xla/aliasing
+    - title: Indexing Analysis
+      path: /xla/indexing
+    - title: Tiled layout
+      path: /xla/tiled_layout
+    - title: Writing custom calls
+      path: /xla/custom_call
+    - title: Persisted autotuning
+      path: /xla/persisted_autotuning
+    - title: Determinism
+      path: /xla/determinism
+    - title: XLA Tooling
+      path: /xla/tools
+    - title: Using LSP autocompletion
+      path: /xla/lsp
+- title: Contributing
+  section:
+    - title: Contributing
+      path: /xla/contributing
+    - title: Developer guide
+      path: /xla/developer_guide
+    - title: Build from source
+      path: /xla/build_from_source
+    - title: Develop a new backend for XLA
+      path: /xla/developing_new_backend
+    - title: Develop a new PJRT plugin
+      path: /xla/pjrt_integration
+- title: Using XLA in TensorFlow
+  section:
+    - title: Using XLA in TensorFlow
+      path: /xla/tf2xla
+    - title: Use tfcompile
+      path: /xla/tf2xla/tfcompile
+    - title: Autoclustering tutorial
+      path: /xla/tf2xla/tutorials/autoclustering_xla
+    - title: Use XLA with tf.function
+      path: /xla/tf2xla/tutorials/jit_compile
+

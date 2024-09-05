@@ -807,19 +807,19 @@ func.func @nested_IfRegions_with_same_predicate_same_block_level_merged() {
 func.func @two_overlapped_if_groups_with_no_dependency_merged() {
   // CHECK:      tf_device.cluster
   // CHECK:        "tf.IfRegion"
-  // CHECK:          "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
-  // CHECK           "tf.Const"() {value = dense<5.000000e+00> : tensor<f32>} : () -> tensor<f32>
-  // CHECK           "tf.Const"() {value = dense<9.000000e+00> : tensor<f32>} : () -> tensor<f32>
-  // CHECK:          "tf.Const"() {value = dense<2.000000e+00> : tensor<f32>} : () -> tensor<f32>
-  // CHECK           "tf.Const"() {value = dense<6.000000e+00> : tensor<f32>} : () -> tensor<f32>
-  // CHECK           "tf.Const"() {value = dense<1.000000e+01> : tensor<f32>} : () -> tensor<f32>
+  // CHECK:          "tf.Const"() <{value = dense<1.000000e+00> : tensor<f32>}> : () -> tensor<f32>
+  // CHECK           "tf.Const"() <{value = dense<5.000000e+00> : tensor<f32>}> : () -> tensor<f32>
+  // CHECK           "tf.Const"() <{value = dense<9.000000e+00> : tensor<f32>}> : () -> tensor<f32>
+  // CHECK:          "tf.Const"() <{value = dense<2.000000e+00> : tensor<f32>}> : () -> tensor<f32>
+  // CHECK           "tf.Const"() <{value = dense<6.000000e+00> : tensor<f32>}> : () -> tensor<f32>
+  // CHECK           "tf.Const"() <{value = dense<1.000000e+01> : tensor<f32>}> : () -> tensor<f32>
   // CHECK:        "tf.IfRegion"
-  // CHECK:          "tf.Const"() {value = dense<3.000000e+00> : tensor<f32>} : () -> tensor<f32>
-  // CHECK           "tf.Const"() {value = dense<7.000000e+00> : tensor<f32>} : () -> tensor<f32>
-  // CHECK           "tf.Const"() {value = dense<1.100000e+01> : tensor<f32>} : () -> tensor<f32>
-  // CHECK:          "tf.Const"() {value = dense<4.000000e+00> : tensor<f32>} : () -> tensor<f32>
-  // CHECK           "tf.Const"() {value = dense<8.000000e+00> : tensor<f32>} : () -> tensor<f32>
-  // CHECK           "tf.Const"() {value = dense<1.200000e+01> : tensor<f32>} : () -> tensor<f32>
+  // CHECK:          "tf.Const"() <{value = dense<3.000000e+00> : tensor<f32>}> : () -> tensor<f32>
+  // CHECK           "tf.Const"() <{value = dense<7.000000e+00> : tensor<f32>}> : () -> tensor<f32>
+  // CHECK           "tf.Const"() <{value = dense<1.100000e+01> : tensor<f32>}> : () -> tensor<f32>
+  // CHECK:          "tf.Const"() <{value = dense<4.000000e+00> : tensor<f32>}> : () -> tensor<f32>
+  // CHECK           "tf.Const"() <{value = dense<8.000000e+00> : tensor<f32>}> : () -> tensor<f32>
+  // CHECK           "tf.Const"() <{value = dense<1.200000e+01> : tensor<f32>}> : () -> tensor<f32>
   // CHECK-NOT:    "tf.IfRegion"
   "tf_device.cluster"() ({
     %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
@@ -888,12 +888,12 @@ func.func @two_overlapped_if_groups_with_no_dependency_merged() {
   // CHECK:          "tf.E"
   // CHECK:          "tf.F"
   // CHECK:        "tf.IfRegion"
-  // CHECK:          "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
-  // CHECK:          "tf.Const"() {value = dense<3.000000e+00> : tensor<f32>} : () -> tensor<f32>
-  // CHECK:          "tf.Const"() {value = dense<5.000000e+00> : tensor<f32>} : () -> tensor<f32>
-  // CHECK:          "tf.Const"() {value = dense<2.000000e+00> : tensor<f32>} : () -> tensor<f32>
-  // CHECK:          "tf.Const"() {value = dense<4.000000e+00> : tensor<f32>} : () -> tensor<f32>
-  // CHECK;          "tf.Const"() {value = dense<6.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK:          "tf.Const"() <{value = dense<1.000000e+00> : tensor<f32>}> : () -> tensor<f32>
+  // CHECK:          "tf.Const"() <{value = dense<3.000000e+00> : tensor<f32>}> : () -> tensor<f32>
+  // CHECK:          "tf.Const"() <{value = dense<5.000000e+00> : tensor<f32>}> : () -> tensor<f32>
+  // CHECK:          "tf.Const"() <{value = dense<2.000000e+00> : tensor<f32>}> : () -> tensor<f32>
+  // CHECK:          "tf.Const"() <{value = dense<4.000000e+00> : tensor<f32>}> : () -> tensor<f32>
+  // CHECK;          "tf.Const"() <{value = dense<6.000000e+00> : tensor<f32>}> : () -> tensor<f32>
   // CHECK-NOT:    "tf.IfRegion"
 func.func @two_overlapped_if_groups_with_dependency_not_merged_for_first_if_region_group() {
   "tf_device.cluster"() ({

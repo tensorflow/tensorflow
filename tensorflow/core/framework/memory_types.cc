@@ -171,7 +171,7 @@ Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

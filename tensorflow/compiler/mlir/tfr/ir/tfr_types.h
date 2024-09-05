@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFR_IR_TFR_TYPES_H_
 #define TENSORFLOW_COMPILER_MLIR_TFR_IR_TFR_TYPES_H_
 
+#include <memory>
+#include <string>
+
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
@@ -99,18 +102,21 @@ class TFRTypeImpl : public Type::TypeBase<Derived, TFRType, TFRTypeStorage> {
 class TFRTensorType : public detail::TFRTypeImpl<TFRTensorType> {
  public:
   using TFRBase::TFRBase;
+  static constexpr StringLiteral name = "tfr.tensor";
   static std::string getTypeName() { return "TFRTensorType"; }
 };
 
 class TFRTensorListType : public detail::TFRTypeImpl<TFRTensorListType> {
  public:
   using TFRBase::TFRBase;
+  static constexpr StringLiteral name = "tfr.tensor_list";
   static std::string getTypeName() { return "TFRTensorListType"; }
 };
 
 class TFRAttrType : public Type::TypeBase<TFRAttrType, TFRType, TypeStorage> {
  public:
   using Base::Base;
+  static constexpr StringLiteral name = "tfr.attr";
   static std::string getTypeName() { return "TFRAttrType"; }
 };
 

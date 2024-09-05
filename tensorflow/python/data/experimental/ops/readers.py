@@ -21,6 +21,7 @@ import gzip
 import numpy as np
 
 from tensorflow.python import tf2
+from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.experimental.ops import error_ops
 from tensorflow.python.data.experimental.ops import parsing_ops
 from tensorflow.python.data.ops import dataset_ops
@@ -420,9 +421,7 @@ def make_csv_dataset_v2(
       index.
     label_name: A optional string corresponding to the label column. If
       provided, the data for this column is returned as a separate `Tensor` from
-      the features dictionary, so that the dataset complies with the format
-      expected by a `tf.Estimator.train` or `tf.Estimator.evaluate` input
-      function.
+      the features dictionary.
     select_columns: An optional list of integer indices or string column
       names, that specifies a subset of columns of CSV data to select. If
       column names are provided, these must correspond to names provided in
@@ -698,28 +697,29 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
   ... )
 
   The expected output of its iterations is:
-
-  >>> for element in dataset.as_numpy_iterator():
-  ...   print(element)
-  (4.28e10, 5.55e6, 12)
-  (-5.3e14, 0.0, 2)
+  >>> for n0, n1, n2 in dataset.as_numpy_iterator():
+  ...   print(n0, n1, n2)
+  4.28e10 5.55e6 12
+  -5.3e14 0.0 2
 
   See
   https://www.tensorflow.org/tutorials/load_data/csv#tfdataexperimentalcsvdataset
   for more in-depth example usage.
   """
 
-  def __init__(self,
-               filenames,
-               record_defaults,
-               compression_type=None,
-               buffer_size=None,
-               header=False,
-               field_delim=",",
-               use_quote_delim=True,
-               na_value="",
-               select_cols=None,
-               exclude_cols=None):
+  def __init__(
+      self,
+      filenames,
+      record_defaults,
+      compression_type=None,
+      buffer_size=None,
+      header=False,
+      field_delim=",",
+      use_quote_delim=True,
+      na_value="",
+      select_cols=None,
+      exclude_cols=None,
+  ):
     """Creates a `CsvDataset` by reading and decoding CSV files.
 
     Args:
@@ -1220,3 +1220,20 @@ else:
   SqlDataset = SqlDatasetV1
   make_batched_features_dataset = make_batched_features_dataset_v1
   make_csv_dataset = make_csv_dataset_v1
+
+
+def _tf2_callback():
+  global CsvDataset, SqlDataset, make_batched_features_dataset, make_csv_dataset
+  if tf2.enabled():
+    CsvDataset = CsvDatasetV2
+    SqlDataset = SqlDatasetV2
+    make_batched_features_dataset = make_batched_features_dataset_v2
+    make_csv_dataset = make_csv_dataset_v2
+  else:
+    CsvDataset = CsvDatasetV1
+    SqlDataset = SqlDatasetV1
+    make_batched_features_dataset = make_batched_features_dataset_v1
+    make_csv_dataset = make_csv_dataset_v1
+
+
+v2_compat.register_data_v2_callback(_tf2_callback)

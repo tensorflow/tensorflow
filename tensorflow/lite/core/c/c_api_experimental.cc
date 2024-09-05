@@ -17,12 +17,14 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <cstddef>
 #include <memory>
 #include <utility>
 #include <vector>
 
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/c/c_api.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/profiling/telemetry/profiler.h"
@@ -33,6 +35,16 @@ extern "C" {
 TfLiteStatus TfLiteInterpreterResetVariableTensors(
     TfLiteInterpreter* interpreter) {
   return interpreter->impl->ResetVariableTensors();
+}
+
+int32_t TfLiteInterpreterGetVariableTensorCount(
+    const TfLiteInterpreter* interpreter) {
+  return static_cast<int32_t>(interpreter->impl->variables().size());
+}
+
+TfLiteTensor* TfLiteInterpreterGetVariableTensor(
+    const TfLiteInterpreter* interpreter, int32_t input_index) {
+  return interpreter->impl->tensor(interpreter->impl->variables()[input_index]);
 }
 
 void TfLiteInterpreterOptionsAddBuiltinOp(
@@ -61,6 +73,42 @@ void TfLiteInterpreterOptionsAddCustomOp(TfLiteInterpreterOptions* options,
                                          max_version);
 }
 
+void TfLiteInterpreterOptionsSetOpResolverExternal(
+    TfLiteInterpreterOptions* options,
+    const TfLiteOperator* (*find_builtin_op)(void* user_data, int op,
+                                             int version),
+    const TfLiteOperator* (*find_custom_op)(void* user_data,
+                                            const char* custom_op, int version),
+    void* op_resolver_user_data) {
+  options->op_resolver_callbacks = {};  // Sets all fields to null.
+  options->op_resolver_callbacks.find_builtin_op_external = find_builtin_op;
+  options->op_resolver_callbacks.find_custom_op_external = find_custom_op;
+  options->op_resolver_callbacks.user_data = op_resolver_user_data;
+}
+
+void TfLiteInterpreterOptionsSetOpResolverExternalWithFallback(
+    TfLiteInterpreterOptions* options,
+    const TfLiteOperator* (*find_builtin_op_external)(void* user_data, int op,
+                                                      int version),
+    const TfLiteOperator* (*find_custom_op_external)(void* user_data,
+                                                     const char* custom_op,
+                                                     int version),
+    const TfLiteRegistration* (*find_builtin_op)(void* user_data,
+                                                 TfLiteBuiltinOperator op,
+                                                 int version),
+    const TfLiteRegistration* (*find_custom_op)(void* user_data, const char* op,
+                                                int version),
+    void* op_resolver_user_data) {
+  options->op_resolver_callbacks = {};  // Sets all fields to null.
+  options->op_resolver_callbacks.find_builtin_op_external =
+      find_builtin_op_external;
+  options->op_resolver_callbacks.find_custom_op_external =
+      find_custom_op_external;
+  options->op_resolver_callbacks.find_builtin_op = find_builtin_op;
+  options->op_resolver_callbacks.find_custom_op = find_custom_op;
+  options->op_resolver_callbacks.user_data = op_resolver_user_data;
+}
+
 void TfLiteInterpreterOptionsSetOpResolver(
     TfLiteInterpreterOptions* options,
     const TfLiteRegistration* (*find_builtin_op)(void* user_data,
@@ -69,6 +117,7 @@ void TfLiteInterpreterOptionsSetOpResolver(
     const TfLiteRegistration* (*find_custom_op)(void* user_data, const char* op,
                                                 int version),
     void* op_resolver_user_data) {
+  options->op_resolver_callbacks = {};  // Sets all fields to null.
   options->op_resolver_callbacks.find_builtin_op = find_builtin_op;
   options->op_resolver_callbacks.find_custom_op = find_custom_op;
   options->op_resolver_callbacks.user_data = op_resolver_user_data;
@@ -83,8 +132,24 @@ void TfLiteInterpreterOptionsSetOpResolverV1(
                                                       const char* op,
                                                       int version),
     void* op_resolver_user_data) {
+  options->op_resolver_callbacks = {};  // Sets all fields to null.
   options->op_resolver_callbacks.find_builtin_op_v1 = find_builtin_op_v1;
   options->op_resolver_callbacks.find_custom_op_v1 = find_custom_op_v1;
+  options->op_resolver_callbacks.user_data = op_resolver_user_data;
+}
+
+void TfLiteInterpreterOptionsSetOpResolverV3(
+    TfLiteInterpreterOptions* options,
+    const TfLiteRegistration_V3* (*find_builtin_op_v3)(void* user_data,
+                                                       TfLiteBuiltinOperator op,
+                                                       int version),
+    const TfLiteRegistration_V3* (*find_custom_op_v3)(void* user_data,
+                                                      const char* op,
+                                                      int version),
+    void* op_resolver_user_data) {
+  options->op_resolver_callbacks = {};  // Sets all fields to null.
+  options->op_resolver_callbacks.find_builtin_op_v3 = find_builtin_op_v3;
+  options->op_resolver_callbacks.find_custom_op_v3 = find_custom_op_v3;
   options->op_resolver_callbacks.user_data = op_resolver_user_data;
 }
 
@@ -97,6 +162,7 @@ void TfLiteInterpreterOptionsSetOpResolverV2(
                                                       const char* op,
                                                       int version),
     void* op_resolver_user_data) {
+  options->op_resolver_callbacks = {};  // Sets all fields to null.
   options->op_resolver_callbacks.find_builtin_op_v2 = find_builtin_op_v2;
   options->op_resolver_callbacks.find_custom_op_v2 = find_custom_op_v2;
   options->op_resolver_callbacks.user_data = op_resolver_user_data;
@@ -110,11 +176,6 @@ void TfLiteInterpreterOptionsSetUseNNAPI(TfLiteInterpreterOptions* options,
 void TfLiteInterpreterOptionsSetEnableDelegateFallback(
     TfLiteInterpreterOptions* options, bool enable) {
   options->enable_delegate_fallback = enable;
-}
-
-void TfLiteSetAllowBufferHandleOutput(const TfLiteInterpreter* interpreter,
-                                      bool allow_buffer_handle_output) {
-  interpreter->impl->SetAllowBufferHandleOutput(allow_buffer_handle_output);
 }
 
 TfLiteStatus TfLiteInterpreterModifyGraphWithDelegate(
@@ -135,6 +196,41 @@ int32_t TfLiteInterpreterGetOutputTensorIndex(
 int32_t TfLiteInterpreterGetSignatureCount(
     const TfLiteInterpreter* interpreter) {
   return static_cast<int32_t>(interpreter->impl->signature_keys().size());
+}
+
+TfLiteStatus TfLiteInterpreterSetBufferHandle(TfLiteInterpreter* interpreter,
+                                              TfLiteTensor* tensor,
+                                              TfLiteBufferHandle buffer_handle,
+                                              TfLiteOpaqueDelegate* delegate) {
+  return interpreter->impl->SetBufferHandle(tensor, buffer_handle, delegate);
+}
+
+TfLiteStatus TfLiteInterpreterGetBufferHandle(TfLiteInterpreter* interpreter,
+                                              int tensor_index,
+                                              TfLiteBufferHandle* buffer_handle,
+                                              TfLiteOpaqueDelegate** delegate) {
+  return interpreter->impl->GetBufferHandle(tensor_index, buffer_handle,
+                                            delegate);
+}
+
+void TfLiteSetAllowBufferHandleOutput(const TfLiteInterpreter* interpreter,
+                                      bool allow_buffer_handle_output) {
+  interpreter->impl->SetAllowBufferHandleOutput(allow_buffer_handle_output);
+}
+
+TfLiteStatus TfLiteInterpreterSetCustomAllocationForTensor(
+    TfLiteInterpreter* interpreter, int tensor_index,
+    const TfLiteCustomAllocation* allocation, int64_t flags) {
+  if (allocation == nullptr) {
+    return kTfLiteError;
+  }
+  return interpreter->impl->SetCustomAllocationForTensor(tensor_index,
+                                                         *allocation, flags);
+}
+
+TfLiteStatus TfLiteInterpreterEnsureTensorDataIsReadable(
+    TfLiteInterpreter* interpreter, int tensor_index) {
+  return interpreter->impl->EnsureTensorDataIsReadable(tensor_index);
 }
 
 const char* TfLiteInterpreterGetSignatureKey(

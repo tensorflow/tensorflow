@@ -140,7 +140,7 @@ average time:10.348 ms
 ```
 
 To run a model with the Hexagon Delegate, assuming we have followed the
-[Hexagon Delegate Guide](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/performance/hexagon_delegate.md)
+[Hexagon Delegate Guide](https://www.tensorflow.org/lite/android/delegates/hexagon)
 and installed Hexagon libraries in `/data/local/tmp`. Run it with (`-j 1`)
 
 ```

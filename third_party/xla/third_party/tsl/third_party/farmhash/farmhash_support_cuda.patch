@@ -1,0 +1,289 @@
+From eb130493c8042280a01e03c28bb89bd5ae0c5d18 Mon Sep 17 00:00:00 2001
+From: Kaixi Hou <kaixih@nvidia.com>
+Date: Tue, 23 Mar 2021 12:49:18 -0700
+Subject: [PATCH] Add device modifiers for GPUs
+
+---
+ src/{farmhash.cc => farmhash_gpu.h} | 95 +++++++++++++++++++++++------
+ 1 file changed, 75 insertions(+), 20 deletions(-)
+ rename src/{farmhash.cc => farmhash_gpu.h} (99%)
+
+diff --git a/src/farmhash.cc b/src/farmhash_gpu.h
+similarity index 99%
+rename from src/farmhash.cc
+rename to src/farmhash_gpu.h
+index cfd4a47..50994b6 100644
+--- a/src/farmhash.cc
++++ b/src/farmhash_gpu.h
+@@ -20,6 +20,17 @@
+ //
+ // FarmHash, by Geoff Pike
+ 
++#ifndef FARM_HASH_GPU_H_
++#define FARM_HASH_GPU_H_
++
++#include <cstdint>
++#include <string.h>   // for memcpy and memset
++
++#define NAMESPACE_FOR_HASH_FUNCTIONS_GPU util_gpu
++#define DEVICE_MODIFIER __device__ __host__
++
++// We use DEVICE_MODIFIER to remove those code unused by GPUs.
++#ifndef DEVICE_MODIFIER
+ #include "farmhash.h"
+ // FARMHASH ASSUMPTIONS: Modify as needed, or use -DFARMHASH_ASSUME_SSE42 etc.
+ // Note that if you use -DFARMHASH_ASSUME_SSE42 you likely need -msse42
+@@ -187,7 +198,14 @@
+ #define uint64_in_expected_order(x) (x)
+ #endif
+ 
+-namespace NAMESPACE_FOR_HASH_FUNCTIONS {
++#endif // DEVICE_MODIFIER
++
++#define uint32_in_expected_order(x) (x)
++#define uint64_in_expected_order(x) (x)
++
++#define STATIC_INLINE DEVICE_MODIFIER inline
++
++namespace NAMESPACE_FOR_HASH_FUNCTIONS_GPU {
+ 
+ STATIC_INLINE uint64_t Fetch64(const char *p) {
+   uint64_t result;
+@@ -201,6 +219,7 @@ STATIC_INLINE uint32_t Fetch32(const char *p) {
+   return uint32_in_expected_order(result);
+ }
+ 
++#ifndef DEVICE_MODIFIER
+ STATIC_INLINE uint32_t Bswap32(uint32_t val) { return bswap_32(val); }
+ STATIC_INLINE uint64_t Bswap64(uint64_t val) { return bswap_64(val); }
+ 
+@@ -210,12 +229,14 @@ STATIC_INLINE uint32_t BasicRotate32(uint32_t val, int shift) {
+   // Avoid shifting by 32: doing so yields an undefined result.
+   return shift == 0 ? val : ((val >> shift) | (val << (32 - shift)));
+ }
++#endif // DEVICE_MODIFIER
+ 
+ STATIC_INLINE uint64_t BasicRotate64(uint64_t val, int shift) {
+   // Avoid shifting by 64: doing so yields an undefined result.
+   return shift == 0 ? val : ((val >> shift) | (val << (64 - shift)));
+ }
+ 
++#ifndef DEVICE_MODIFIER
+ #if defined(_WIN32) && defined(FARMHASH_ROTR)
+ 
+ STATIC_INLINE uint32_t Rotate32(uint32_t val, int shift) {
+@@ -240,12 +261,18 @@ STATIC_INLINE uint64_t Rotate64(uint64_t val, int shift) {
+ }
+ 
+ #endif
++#endif // DEVICE_MODIFIER
+ 
+-}  // namespace NAMESPACE_FOR_HASH_FUNCTIONS
++STATIC_INLINE uint64_t Rotate64(uint64_t val, int shift) {
++  return BasicRotate64(val, shift);
++}
++
++}  // namespace NAMESPACE_FOR_HASH_FUNCTIONS_GPU
+ 
+ // FARMHASH PORTABILITY LAYER: debug mode or max speed?
+ // One may use -DFARMHASH_DEBUG=1 or -DFARMHASH_DEBUG=0 to force the issue.
+ 
++#ifndef DEVICE_MODIFIER
+ #if !defined(FARMHASH_DEBUG) && (!defined(NDEBUG) || defined(_DEBUG))
+ #define FARMHASH_DEBUG 1
+ #endif
+@@ -345,14 +372,21 @@ STATIC_INLINE __m128i Fetch128(const char* s) {
+ 
+ #undef PERMUTE3
+ #define PERMUTE3(a, b, c) do { std::swap(a, b); std::swap(a, c); } while (0)
++#endif // DEVICE_MODIFIER
++
++struct Pair {
++  uint64_t first;
++  uint64_t second;
++};
+ 
+-namespace NAMESPACE_FOR_HASH_FUNCTIONS {
++namespace NAMESPACE_FOR_HASH_FUNCTIONS_GPU {
+ 
+ // Some primes between 2^63 and 2^64 for various uses.
+ static const uint64_t k0 = 0xc3a5c85c97cb3127ULL;
+ static const uint64_t k1 = 0xb492b66fbe98f273ULL;
+ static const uint64_t k2 = 0x9ae16a3b2f90404fULL;
+ 
++#ifndef DEVICE_MODIFIER
+ // Magic numbers for 32-bit hashing.  Copied from Murmur3.
+ static const uint32_t c1 = 0xcc9e2d51;
+ static const uint32_t c2 = 0x1b873593;
+@@ -399,28 +433,34 @@ template <> uint128_t DebugTweak(uint128_t x) {
+   }
+   return x;
+ }
++#endif // DEVICE_MODIFIER
++}  // namespace NAMESPACE_FOR_HASH_FUNCTIONS_GPU
+ 
+-}  // namespace NAMESPACE_FOR_HASH_FUNCTIONS
+-
++#ifndef DEVICE_MODIFIER
+ using namespace std;
+-using namespace NAMESPACE_FOR_HASH_FUNCTIONS;
+-namespace farmhashna {
++#endif // DEVICE_MODIFIER
++using namespace NAMESPACE_FOR_HASH_FUNCTIONS_GPU;
++namespace farmhashna_gpu {
+ #undef Fetch
+ #define Fetch Fetch64
+ 
+ #undef Rotate
+ #define Rotate Rotate64
+ 
++#ifndef DEVICE_MODIFIER
+ #undef Bswap
+ #define Bswap Bswap64
++#endif // DEVICE_MODIFIER
+ 
+ STATIC_INLINE uint64_t ShiftMix(uint64_t val) {
+   return val ^ (val >> 47);
+ }
+ 
++#ifndef DEVICE_MODIFIER
+ STATIC_INLINE uint64_t HashLen16(uint64_t u, uint64_t v) {
+   return Hash128to64(Uint128(u, v));
+ }
++#endif // DEVICE_MODIFIER
+ 
+ STATIC_INLINE uint64_t HashLen16(uint64_t u, uint64_t v, uint64_t mul) {
+   // Murmur-inspired hashing.
+@@ -471,7 +511,7 @@ STATIC_INLINE uint64_t HashLen17to32(const char *s, size_t len) {
+ 
+ // Return a 16-byte hash for 48 bytes.  Quick and dirty.
+ // Callers do best to use "random-looking" values for a and b.
+-STATIC_INLINE pair<uint64_t, uint64_t> WeakHashLen32WithSeeds(
++STATIC_INLINE Pair WeakHashLen32WithSeeds(
+     uint64_t w, uint64_t x, uint64_t y, uint64_t z, uint64_t a, uint64_t b) {
+   a += w;
+   b = Rotate(b + a + z, 21);
+@@ -479,11 +519,11 @@ STATIC_INLINE pair<uint64_t, uint64_t> WeakHashLen32WithSeeds(
+   a += x;
+   a += y;
+   b += Rotate(a, 44);
+-  return make_pair(a + z, b + c);
++  return Pair{a + z, b + c};
+ }
+ 
+ // Return a 16-byte hash for s[0] ... s[31], a, and b.  Quick and dirty.
+-STATIC_INLINE pair<uint64_t, uint64_t> WeakHashLen32WithSeeds(
++STATIC_INLINE Pair WeakHashLen32WithSeeds(
+     const char* s, uint64_t a, uint64_t b) {
+   return WeakHashLen32WithSeeds(Fetch(s),
+                                 Fetch(s + 8),
+@@ -510,7 +550,7 @@ STATIC_INLINE uint64_t HashLen33to64(const char *s, size_t len) {
+                    e + Rotate(f + a, 18) + g, mul);
+ }
+ 
+-uint64_t Hash64(const char *s, size_t len) {
++DEVICE_MODIFIER uint64_t Hash64(const char *s, size_t len) {
+   const uint64_t seed = 81;
+   if (len <= 32) {
+     if (len <= 16) {
+@@ -527,8 +567,8 @@ uint64_t Hash64(const char *s, size_t len) {
+   uint64_t x = seed;
+   uint64_t y = seed * k1 + 113;
+   uint64_t z = ShiftMix(y * k2 + 113) * k2;
+-  pair<uint64_t, uint64_t> v = make_pair(0, 0);
+-  pair<uint64_t, uint64_t> w = make_pair(0, 0);
++  Pair v = {0, 0};
++  Pair w = {0, 0};
+   x = x * k2 + Fetch(s);
+ 
+   // Set end so that after the loop we have 1 to 64 bytes left to process.
+@@ -543,7 +583,9 @@ uint64_t Hash64(const char *s, size_t len) {
+     z = Rotate(z + w.first, 33) * k1;
+     v = WeakHashLen32WithSeeds(s, v.second * k1, x + w.first);
+     w = WeakHashLen32WithSeeds(s + 32, z + w.second, y + Fetch(s + 16));
+-    std::swap(z, x);
++    auto tmp = z;
++    z = x;
++    x = tmp;
+     s += 64;
+   } while (s != end);
+   uint64_t mul = k1 + ((z & 0xff) << 1);
+@@ -559,12 +601,15 @@ uint64_t Hash64(const char *s, size_t len) {
+   z = Rotate(z + w.first, 33) * mul;
+   v = WeakHashLen32WithSeeds(s, v.second * mul, x + w.first);
+   w = WeakHashLen32WithSeeds(s + 32, z + w.second, y + Fetch(s + 16));
+-  std::swap(z, x);
++  auto tmp = z;
++  z = x;
++  x = tmp;
+   return HashLen16(HashLen16(v.first, w.first, mul) + ShiftMix(y) * k0 + z,
+                    HashLen16(v.second, w.second, mul) + x,
+                    mul);
+ }
+ 
++#ifndef DEVICE_MODIFIER
+ uint64_t Hash64WithSeeds(const char *s, size_t len, uint64_t seed0, uint64_t seed1);
+ 
+ uint64_t Hash64WithSeed(const char *s, size_t len, uint64_t seed) {
+@@ -574,7 +619,9 @@ uint64_t Hash64WithSeed(const char *s, size_t len, uint64_t seed) {
+ uint64_t Hash64WithSeeds(const char *s, size_t len, uint64_t seed0, uint64_t seed1) {
+   return HashLen16(Hash64(s, len) - seed0, seed1);
+ }
+-}  // namespace farmhashna
++#endif // DEVICE_MODIFIER
++}  // namespace farmhashna_gpu
++#ifndef DEVICE_MODIFIER
+ namespace farmhashuo {
+ #undef Fetch
+ #define Fetch Fetch64
+@@ -1864,8 +1911,10 @@ uint128_t Fingerprint128(const char* s, size_t len) {
+   return CityHash128(s, len);
+ }
+ }  // namespace farmhashcc
+-namespace NAMESPACE_FOR_HASH_FUNCTIONS {
++#endif // DEVICE_MODIFIER
++namespace NAMESPACE_FOR_HASH_FUNCTIONS_GPU {
+ 
++#ifndef DEVICE_MODIFIER
+ // BASIC STRING HASHING
+ 
+ // Hash function for a byte array.  See also Hash(), below.
+@@ -1948,12 +1997,14 @@ uint128_t Hash128WithSeed(const char* s, size_t len, uint128_t seed) {
+ uint32_t Fingerprint32(const char* s, size_t len) {
+   return farmhashmk::Hash32(s, len);
+ }
++#endif // DEVICE_MODIFIER
+ 
+ // Fingerprint function for a byte array.
+-uint64_t Fingerprint64(const char* s, size_t len) {
+-  return farmhashna::Hash64(s, len);
++DEVICE_MODIFIER uint64_t Fingerprint64(const char* s, size_t len) {
++  return farmhashna_gpu::Hash64(s, len);
+ }
+ 
++#ifndef DEVICE_MODIFIER
+ // Fingerprint function for a byte array.
+ uint128_t Fingerprint128(const char* s, size_t len) {
+   return farmhashcc::Fingerprint128(s, len);
+@@ -1961,9 +2012,11 @@ uint128_t Fingerprint128(const char* s, size_t len) {
+ 
+ // Older and still available but perhaps not as fast as the above:
+ //   farmhashns::Hash32{,WithSeed}()
++#endif // DEVICE_MODIFIER
+ 
+-}  // namespace NAMESPACE_FOR_HASH_FUNCTIONS
++}  // namespace NAMESPACE_FOR_HASH_FUNCTIONS_GPU
+ 
++#ifndef DEVICE_MODIFIER
+ #if FARMHASHSELFTEST
+ 
+ #ifndef FARMHASH_SELF_TEST_GUARD
+@@ -11829,3 +11882,5 @@ int main() {
+ }
+ 
+ #endif  // FARMHASHSELFTEST
++#endif // DEVICE_MODIFIER
++#endif // FARM_HASH_GPU_H_
+-- 
+2.17.1
+

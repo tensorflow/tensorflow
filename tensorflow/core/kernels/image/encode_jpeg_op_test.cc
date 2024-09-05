@@ -40,8 +40,7 @@ TEST_F(EncodeJpegWithVariableQualityTest, FailsForInvalidQuality) {
   AddInputFromArray<int32>(TensorShape({}), {200});
   Status status = RunOpKernel();
   EXPECT_TRUE(errors::IsInvalidArgument(status));
-  EXPECT_TRUE(
-      absl::StartsWith(status.error_message(), "quality must be in [0,100]"));
+  EXPECT_TRUE(absl::StartsWith(status.message(), "quality must be in [0,100]"));
 }
 
 }  // namespace

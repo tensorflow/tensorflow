@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "xnnpack.h"  // from @XNNPACK
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
 #endif  // TFLITE_KERNEL_USE_XNNPACK
 
@@ -91,7 +92,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_TYPES_EQ(context, op_context.input->type,
                           op_context.output->type);
 
-  if (!IsConstantTensor(op_context.perm)) {
+  if (!IsConstantOrPersistentTensor(op_context.perm)) {
     SetTensorToDynamic(op_context.output);
     return kTfLiteOk;
   }
@@ -116,7 +117,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   CpuBackendContext* cpu_backend_context =
       CpuBackendContext::GetFromContext(context);
   pthreadpool_t threadpool = cpu_backend_context->get_xnnpack_threadpool();
-  threadpool = nullptr;
   std::array<size_t, kTransposeMaxDimensions> xnn_input_shape;
   std::array<size_t, kTransposeMaxDimensions> xnn_perm;
   TfLiteIntArray* input_shape = op_context.input->dims;
@@ -152,7 +152,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         status = xnn_run_transpose_nd_x32(
             GetTensorData<int32_t>(op_context.input),
             GetTensorData<int32_t>(op_context.output), size,
-            xnn_input_shape.data(), xnn_perm.data(), /*flags=*/0, threadpool);
+            xnn_input_shape.data(), xnn_perm.data(),
+            /*flags=*/XNN_FLAG_YIELD_WORKERS, threadpool);
         if (status != xnn_status_success) {
           TFLITE_LOG(
               TFLITE_LOG_INFO,
@@ -180,7 +181,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         status = xnn_run_transpose_nd_x8(
             GetTensorData<int8_t>(op_context.input),
             GetTensorData<int8_t>(op_context.output), size,
-            xnn_input_shape.data(), xnn_perm.data(), /*flags=*/0, threadpool);
+            xnn_input_shape.data(), xnn_perm.data(),
+            /*flags=*/XNN_FLAG_YIELD_WORKERS, threadpool);
         if (status != xnn_status_success) {
           TFLITE_LOG(
               TFLITE_LOG_INFO,
@@ -201,7 +203,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         status = xnn_run_transpose_nd_x16(
             GetTensorData<int16_t>(op_context.input),
             GetTensorData<int16_t>(op_context.output), size,
-            xnn_input_shape.data(), xnn_perm.data(), /*flags=*/0, threadpool);
+            xnn_input_shape.data(), xnn_perm.data(),
+            /*flags=*/XNN_FLAG_YIELD_WORKERS, threadpool);
         if (status != xnn_status_success) {
           TFLITE_LOG(
               TFLITE_LOG_INFO,

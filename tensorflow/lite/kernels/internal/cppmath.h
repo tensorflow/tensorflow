@@ -32,8 +32,8 @@ namespace tflite {
     return TF_LITE_GLOBAL_STD_PREFIX::std_name(x);    \
   }
 
-DECLARE_STD_GLOBAL_SWITCH1(TfLiteRound, round);
-DECLARE_STD_GLOBAL_SWITCH1(TfLiteExpm1, expm1);
+DECLARE_STD_GLOBAL_SWITCH1(TfLiteRound, round)
+DECLARE_STD_GLOBAL_SWITCH1(TfLiteExpm1, expm1)
 
 }  // namespace tflite
 

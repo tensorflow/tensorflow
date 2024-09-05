@@ -37,6 +37,7 @@ const int32_t kInt16Max = std::numeric_limits<int16_t>::max();
 const int32_t kInt16Min = std::numeric_limits<int16_t>::min();
 }  // namespace
 
+// LINT.IfChange(portable_symmetric_quantize_floats)
 void PortableSymmetricQuantizeFloats(const float* values, const int size,
                                      int8_t* quantized_values, float* min_value,
                                      float* max_value, float* scaling_factor) {
@@ -68,6 +69,7 @@ void PortableSymmetricQuantizeFloats(const float* values, const int size,
         std::min(kScale, std::max(-kScale, quantized_value)));
   }
 }
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/portable_tensor_utils.cc:portable_symmetric_quantize_floats)
 
 void PortableAsymmetricQuantizeFloats(const float* values, const int size,
                                       int8_t* quantized_values,
@@ -157,7 +159,7 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
       *result += dotprod * batch_scaling_factor;
       ++result;
     }  // for row
-  }    // for batch
+  }  // for batch
 }
 
 void PortableMatrixBatchVectorMultiplyAccumulate(
@@ -200,7 +202,7 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
       *result += dotprod * scale;
       ++result;
     }  // for row
-  }    // for batch
+  }  // for batch
 }
 
 void PortableSparseMatrixBatchVectorMultiplyAccumulate1x4(
@@ -232,7 +234,8 @@ void PortableSparseMatrixBatchVectorMultiplyAccumulate1x16(
     const int32_t* __restrict__ indices, int m_rows, int m_cols,
     const int8_t* __restrict__ vector, const int32_t* __restrict__ bias_vector,
     int n_batch, const int32_t input_offset, const int32_t output_multiplier,
-    const int32_t output_shift, const int32_t output_offset,
+    const int32_t output_shift, const int32_t* per_channel_scale,
+    const int32_t* per_channel_shift, const int32_t output_offset,
     const int32_t output_activation_min, const int32_t output_activation_max,
     int8_t* __restrict__ result) {
   const int kBlockSize = 16;
@@ -252,8 +255,10 @@ void PortableSparseMatrixBatchVectorMultiplyAccumulate1x16(
         }
       }
       const int32_t bias_value = bias_vector != nullptr ? bias_vector[row] : 0;
-      dot_prod = MultiplyByQuantizedMultiplier(dot_prod + bias_value,
-                                               output_multiplier, output_shift);
+      dot_prod = MultiplyByQuantizedMultiplier(
+          dot_prod + bias_value,
+          per_channel_scale ? per_channel_scale[row] : output_multiplier,
+          per_channel_shift ? per_channel_shift[row] : output_shift);
       dot_prod += output_offset;
       result[batch * m_rows + row] =
           static_cast<int8_t>(ActivationFunctionWithMinMax(
@@ -294,7 +299,8 @@ void PortableSparseMatrixBatchVectorMultiplyAccumulate(
 void PortableSparseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const uint8_t* ledger, const int m_rows,
     const int m_cols, const int8_t* __restrict__ vectors,
-    const float* scaling_factors, int n_batch, float* __restrict__ result) {
+    const float* scaling_factors, int n_batch, float* __restrict__ result,
+    const float* per_channel_scale) {
   static const int kBlockSize = 16;
   TFLITE_DCHECK_EQ(  // NOLINT
       m_cols % kBlockSize, 0);
@@ -318,10 +324,14 @@ void PortableSparseMatrixBatchVectorMultiplyAccumulate(
         for (int c = 0; c < kBlockSize; c++) {
           dotprod += (*row_ptr++) * (*vector_block_ptr++);
         }  // for block
-      }    // for num_nonzero_blocks
-      result[batch * m_rows + row] += dotprod * batch_scaling_factor;
+      }  // for num_nonzero_blocks
+      float scaling_factor = batch_scaling_factor;
+      if (per_channel_scale) {
+        scaling_factor *= per_channel_scale[row];
+      }
+      result[batch * m_rows + row] += dotprod * scaling_factor;
     }  // for row
-  }    // for batch
+  }  // for batch
 }
 
 template <typename T>

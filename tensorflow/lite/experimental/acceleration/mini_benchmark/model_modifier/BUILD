@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+load("//tensorflow/lite/experimental/acceleration/mini_benchmark:special_rules.bzl", "libjpeg_handle_deps", "register_selected_ops_deps")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
@@ -40,6 +42,9 @@ cc_library(
     hdrs = ["embedder.h"],
     deps = [
         ":validation_graph_builder",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+        "@flatbuffers",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/core:framework",
@@ -47,11 +52,9 @@ cc_library(
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:decode_jpeg_status",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:jpeg_common",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:jpeg_header_parser",
+        # TODO(bekzhan): Remove duplicate dependency when only one of the two schemas is used.
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_fbs_with_reflection",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings:str_format",
-        "@flatbuffers",
     ],
 )
 
@@ -81,13 +84,15 @@ cc_binary(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core:model_builder",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:call",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:decode_jpeg",
+        "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_fbs_with_reflection",
         "//tensorflow/lite/tools:command_line_flags",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
-    ],
+    ] + libjpeg_handle_deps() + register_selected_ops_deps(),
 )
 
 cc_library(
@@ -123,5 +128,6 @@ cc_test(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools:model_loader",
         "@com_google_googletest//:gtest_main",
-    ],
+        "@flatbuffers//:runtime_cc",
+    ] + libjpeg_handle_deps() + register_selected_ops_deps(),
 )

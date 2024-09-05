@@ -26,14 +26,11 @@ from tensorflow.python.training import session_run_hook
 class LocalCLIDebugHook(session_run_hook.SessionRunHook):
   """Command-line-interface debugger hook.
 
-  Can be used as a hook for `tf.compat.v1.train.MonitoredSession`s and
-  `tf.estimator.Estimator`s. Provides a substitute for
-  `tfdbg.LocalCLIDebugWrapperSession` in cases where the session is not directly
-  available.
+  Can be used as a hook for `tf.compat.v1.train.MonitoredSession`.
   """
 
   def __init__(self,
-               ui_type="curses",
+               ui_type="readline",
                dump_root=None,
                thread_name_filter=None,
                config_file_path=None):
@@ -41,7 +38,7 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook):
 
     Args:
       ui_type: (`str`) requested user-interface type. Currently supported:
-        (curses | readline).
+        (readline).
       dump_root: (`str`) optional path to the dump root directory. Must be a
         directory that does not exist or an empty directory. If the directory
         does not exist, it will be created by the debugger core during debug
@@ -147,15 +144,13 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook):
 class DumpingDebugHook(session_run_hook.SessionRunHook):
   """A debugger hook that dumps debug data to filesystem.
 
-  Can be used as a hook for `tf.compat.v1.train.MonitoredSession`s and
-  `tf.estimator.Estimator`s.
+  Can be used as a hook for `tf.compat.v1.train.MonitoredSession`.
   """
 
   def __init__(self,
                session_root,
                watch_fn=None,
-               thread_name_filter=None,
-               log_usage=True):
+               thread_name_filter=None):
     """Create a local debugger command-line interface (CLI) hook.
 
     Args:
@@ -166,13 +161,11 @@ class DumpingDebugHook(session_run_hook.SessionRunHook):
       thread_name_filter: Regular-expression white list for threads on which the
         wrapper session will be active. See doc of `BaseDebugWrapperSession` for
         more details.
-      log_usage: (bool) Whether usage is to be logged.
     """
 
     self._session_root = session_root
     self._watch_fn = watch_fn
     self._thread_name_filter = thread_name_filter
-    self._log_usage = log_usage
     self._session_wrapper = None
 
   def begin(self):
@@ -185,8 +178,7 @@ class DumpingDebugHook(session_run_hook.SessionRunHook):
           run_context.session,
           self._session_root,
           watch_fn=self._watch_fn,
-          thread_name_filter=self._thread_name_filter,
-          log_usage=self._log_usage)
+          thread_name_filter=self._thread_name_filter)
       reset_disk_byte_usage = True
 
     self._session_wrapper.increment_run_call_count()
@@ -226,15 +218,13 @@ class GrpcDebugHook(session_run_hook.SessionRunHook):
   When the arguments of debug_utils.watch_graph changes, strongly consider
   changing arguments here too so that features are available to tflearn users.
 
-  Can be used as a hook for `tf.compat.v1.train.MonitoredSession`s and
-  `tf.estimator.Estimator`s.
+  Can be used as a hook for `tf.compat.v1.train.MonitoredSession`.
   """
 
   def __init__(self,
                grpc_debug_server_addresses,
                watch_fn=None,
-               thread_name_filter=None,
-               log_usage=True):
+               thread_name_filter=None):
     """Constructs a GrpcDebugHook.
 
     Args:
@@ -247,7 +237,6 @@ class GrpcDebugHook(session_run_hook.SessionRunHook):
       thread_name_filter: Regular-expression white list for threads on which the
         wrapper session will be active. See doc of `BaseDebugWrapperSession` for
         more details.
-      log_usage: (bool) Whether usage is to be logged.
     """
     self._grpc_debug_wrapper_session = None
     self._thread_name_filter = thread_name_filter
@@ -257,7 +246,6 @@ class GrpcDebugHook(session_run_hook.SessionRunHook):
         [grpc_debug_server_addresses])
 
     self._watch_fn = watch_fn
-    self._log_usage = log_usage
 
   def before_run(self, run_context):
     """Called right before a session is run.
@@ -275,8 +263,7 @@ class GrpcDebugHook(session_run_hook.SessionRunHook):
           run_context.session,
           self._grpc_debug_server_addresses,
           watch_fn=self._watch_fn,
-          thread_name_filter=self._thread_name_filter,
-          log_usage=self._log_usage)
+          thread_name_filter=self._thread_name_filter)
 
     fetches = run_context.original_args.fetches
     feed_dict = run_context.original_args.feed_dict
@@ -313,8 +300,7 @@ class TensorBoardDebugHook(GrpcDebugHook):
   def __init__(self,
                grpc_debug_server_addresses,
                thread_name_filter=None,
-               send_traceback_and_source_code=True,
-               log_usage=True):
+               send_traceback_and_source_code=True):
     """Constructor of TensorBoardDebugHook.
 
     Args:
@@ -324,8 +310,6 @@ class TensorBoardDebugHook(GrpcDebugHook):
       thread_name_filter: Optional filter for thread names.
       send_traceback_and_source_code: Whether traceback of graph elements and
         the source code are to be sent to the debug server(s).
-      log_usage: Whether the usage of this class is to be logged (if
-        applicable).
     """
 
     def _gated_grpc_watch_fn(fetches, feeds):
@@ -336,8 +320,7 @@ class TensorBoardDebugHook(GrpcDebugHook):
     super(TensorBoardDebugHook, self).__init__(
         grpc_debug_server_addresses,
         watch_fn=_gated_grpc_watch_fn,
-        thread_name_filter=thread_name_filter,
-        log_usage=log_usage)
+        thread_name_filter=thread_name_filter)
 
     self._grpc_debug_server_addresses = grpc_debug_server_addresses
     self._send_traceback_and_source_code = send_traceback_and_source_code

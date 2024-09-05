@@ -21,12 +21,15 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tsl/platform/thread_annotations.h"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 
@@ -124,7 +127,8 @@ class Coordinator {
   std::vector<std::unique_ptr<RunnerInterface>> runners_
       TF_GUARDED_BY(runners_lock_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Coordinator);
+  Coordinator(const Coordinator&) = delete;
+  void operator=(const Coordinator&) = delete;
 };
 
 }  // namespace tensorflow

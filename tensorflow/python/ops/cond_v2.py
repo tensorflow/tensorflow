@@ -23,6 +23,7 @@ import collections
 
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.eager import backprop_util
+from tensorflow.python.eager import context
 from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import auto_control_deps_utils as acd
 from tensorflow.python.framework import constant_op
@@ -30,7 +31,9 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import indexed_slices
+from tensorflow.python.framework import none_tensor  # pylint: disable=unused-import
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
@@ -136,7 +139,10 @@ def _IfGrad(op, *grads):  # pylint: disable=invalid-name
     # NOTE(skyewm): if there are any active sessions, this modification to `op`
     # may make them unrunnable!
 
-    if control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
+    if (
+        not context.optionals_in_gradients_enabled()
+        or control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph())
+    ):
       # XLA does not yet support optionals, so output intermediates directly and
       # make them match via FakeParams, which can be converted to zeros in XLA.
       # TODO(skyewm,jpienaar): can XLA support optionals?
@@ -188,6 +194,34 @@ def _IfGrad(op, *grads):  # pylint: disable=invalid-name
 
   # The predicate has no gradient.
   return [None] + outputs
+
+
+def _is_op_stateful(op):
+  """Check whether an op is stateful.
+
+  This helper function handles two special cases to make the stateful analysis
+  consistent with the mlir side effect analysis.
+  1. GlobalIterIdOp should be stateless.
+  2. CollectiveGatherV2 with attribute is_stateless to be True should be
+     stateless.
+
+  Args:
+   op: Operation
+
+  Returns:
+    Boolean indicates whether the operation is stateless or not.
+  """
+  # TODO(pineapplejuice233): Remove these hardcode op names once they can be marked as
+  # stateless in TF.
+  if op.type == "GlobalIterId":
+    return False
+  if op.type == "UpdateFdoWithGlobalMinibatchStatistics":
+    return False
+  if op.type == "CollectiveGatherV2" and op.get_attr("is_stateless"):
+    return False
+  if op.type == "CollectiveAllToAllV2" and op.get_attr("is_stateless"):
+    return False
+  return op._is_stateful
 
 
 def _build_cond(pred,
@@ -254,13 +288,17 @@ def _build_cond(pred,
 
   # Create the If op.
   with ops.control_dependencies(
-      list(true_graph._function_captures.control) + list(  # pylint: disable=protected-access
-          false_graph._function_captures.control)):  # pylint: disable=protected-access
+      list(true_graph.function_captures.control) + list(
+          false_graph.function_captures.control)):
     true_stateful_ops = [
-        op for op in true_graph.get_operations() if op._is_stateful
+        op
+        for op in true_graph.get_operations()
+        if _is_op_stateful(op)
     ]
     false_stateful_ops = [
-        op for op in false_graph.get_operations() if op._is_stateful
+        op
+        for op in false_graph.get_operations()
+        if _is_op_stateful(op)
     ]
     if (true_stateful_ops or false_stateful_ops):
       op_fn = gen_functional_ops._if
@@ -333,7 +371,7 @@ def get_func_graphs(op):
       func_graph = util.get_func_graph(op, input_shapes, name_attr_list.name)
     for external_t, internal_t in zip(inputs, func_graph.inputs):
       handle_data_util.copy_handle_data(external_t, internal_t)
-    func_graph._function_captures.reset_captures(inputs, func_graph.inputs)
+    func_graph.function_captures.reset_captures(inputs, func_graph.inputs)
     # Link the op so that the gradient code can use it.
     func_graph._forward_cond = op
     return func_graph
@@ -584,7 +622,7 @@ def _make_inputs_match(branch_graphs, branch_inputs):
     branch_graph.inputs = input_list
 
     # Rewrite the FuncGraphs' state to reflect the new inputs.
-    branch_graph._function_captures.reset_captures(
+    branch_graph.function_captures.reset_captures(
         new_inputs, branch_graph.inputs)
 
   return new_inputs
@@ -650,7 +688,7 @@ def _make_output_composite_tensors_match(op_type, branch_graphs):
     for branch_idx, branch_out in enumerate(branch_outs):
       if isinstance(branch_out, indexed_slices.IndexedSlices):
         continue
-      elif isinstance(branch_out, ops.Tensor):
+      elif isinstance(branch_out, tensor_lib.Tensor):
         with branch_graphs[branch_idx].as_default():
           branch_outputs[branch_idx][output_idx] = math_ops._as_indexed_slices(
               branch_out)
@@ -998,7 +1036,10 @@ class _CondGradFuncGraph(util.CondBranchFuncGraph):
           tensor_util.constant_value(tensor), dtype=tensor.dtype)
       return self._captured_constants[tensor_id]
 
-    if control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
+    if (
+        not context.optionals_in_gradients_enabled()
+        or control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph())
+    ):
       # XLA does not yet support optionals, so capture intermediates directly.
       # TODO(skyewm,jpienaar): can XLA support optionals?
       if all(tensor is not capture for capture in self.external_captures):
@@ -1129,7 +1170,10 @@ def _CaseGrad(op, *grads):  # pylint: disable=invalid-name
     # NOTE(bjp): if there are any active sessions, this modification to `op`
     # may make them unrunnable!
 
-    if control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
+    if (
+        not context.optionals_in_gradients_enabled()
+        or control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph())
+    ):
       # XLA does not yet support optionals, so output intermediates directly and
       # make them match via FakeParams, which can be converted to zeros in XLA.
       # TODO(bjp,jpienaar): can XLA support optionals?
@@ -1237,7 +1281,7 @@ def _build_case(branch_index,
 
   # Create the Case op.
   with ops.control_dependencies(
-      sum((list(bg._function_captures.control) for bg in branch_graphs), [])):  # pylint: disable=protected-access
+      sum((list(bg.function_captures.control) for bg in branch_graphs), [])):
 
     def _make_op(inputs):
       case_op, tensors = util.get_op_and_outputs(op_fn(

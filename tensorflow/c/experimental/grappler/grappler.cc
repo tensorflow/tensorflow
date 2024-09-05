@@ -19,61 +19,72 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/grappler/grappler.h"
 
-#include <memory>
+#include <algorithm>
+#include <cstddef>
+#include <cstring>
+#include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
-#include "tensorflow/c/c_api_internal.h"
+#include "absl/status/status.h"
+#include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/experimental/grappler/grappler_internal.h"
+#include "tensorflow/c/tf_buffer.h"
 #include "tensorflow/c/tf_buffer_internal.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
+#include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
 
 namespace {
 
-#define VALIDATE_STRUCT_SIZE(STRUCT_NAME, STRUCT_OBJ, SIZE_VALUE_NAME)    \
-  do {                                                                    \
-    if (STRUCT_OBJ.struct_size == 0) {                                    \
-      return tensorflow::Status(absl::StatusCode::kFailedPrecondition,    \
-                                "struct_size field in " #STRUCT_NAME      \
-                                " must be set to " #SIZE_VALUE_NAME "."); \
-    }                                                                     \
-  } while (0)
-
-#define VALIDATE_MEMBER(STRUCT_NAME, STRUCT_OBJ, NAME)                 \
+#define VALIDATE_STRUCT_SIZE(STRUCT_NAME, STRUCT_OBJ, SIZE_VALUE_NAME) \
   do {                                                                 \
-    if (STRUCT_OBJ.NAME == 0) {                                        \
-      return tensorflow::Status(absl::StatusCode::kFailedPrecondition, \
-                                "'" #NAME "' field in " #STRUCT_NAME   \
-                                " must be set.");                      \
+    if (STRUCT_OBJ.struct_size == 0) {                                 \
+      return absl::Status(absl::StatusCode::kFailedPrecondition,       \
+                          "struct_size field in " #STRUCT_NAME         \
+                          " must be set to " #SIZE_VALUE_NAME ".");    \
     }                                                                  \
   } while (0)
 
-tensorflow::Status ValidateTPOptimizerRegistrationParams(
+#define VALIDATE_MEMBER(STRUCT_NAME, STRUCT_OBJ, NAME)           \
+  do {                                                           \
+    if (STRUCT_OBJ.NAME == 0) {                                  \
+      return absl::Status(absl::StatusCode::kFailedPrecondition, \
+                          "'" #NAME "' field in " #STRUCT_NAME   \
+                          " must be set.");                      \
+    }                                                            \
+  } while (0)
+
+absl::Status ValidateTPOptimizerRegistrationParams(
     const TP_OptimizerRegistrationParams& params) {
   VALIDATE_STRUCT_SIZE(TP_OptimizerRegistrationParams, params,
                        TP_OPTIMIZER_REGISTRATION_PARAMS_STRUCT_SIZE);
   VALIDATE_MEMBER(TP_OptimizerRegistrationParams, params, device_type);
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
-tensorflow::Status ValidateTPOptimizer(const TP_Optimizer& optimizer) {
+absl::Status ValidateTPOptimizer(const TP_Optimizer& optimizer) {
   VALIDATE_STRUCT_SIZE(TP_Optimizer, optimizer, TP_OPTIMIZER_STRUCT_SIZE);
   VALIDATE_MEMBER(TP_Optimizer, optimizer, optimize_func);
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
-tensorflow::Status ValidateTPOptimizerConfigs(
-    const TP_OptimizerConfigs& configs) {
+absl::Status ValidateTPOptimizerConfigs(const TP_OptimizerConfigs& configs) {
   VALIDATE_STRUCT_SIZE(TP_OptimizerConfigs, configs,
                        TP_OPTIMIZER_CONFIGS_STRUCT_SIZE);
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 #undef VALIDATE_MEMBER
@@ -93,11 +104,11 @@ Status CGraphOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   optimizer_.optimize_func(c_optimizer_, graph_buf.get(),
                            reinterpret_cast<const TF_GrapplerItem*>(&item),
                            optimized_graph_buf.get(), c_status.get());
-  TF_RETURN_IF_ERROR(tensorflow::StatusFromTF_Status(c_status.get()));
+  TF_RETURN_IF_ERROR(tsl::StatusFromTF_Status(c_status.get()));
   TF_RETURN_IF_ERROR(
       BufferToMessage(optimized_graph_buf.get(), optimized_graph_def));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 #define CONFIG_TOGGLE(optimizer)                             \
@@ -140,8 +151,8 @@ void CGraphOptimizerRegister(
 
 #undef CONFIG_TOGGLE
 
-tensorflow::Status InitGraphPlugin(void* dso_handle) {
-  tensorflow::Env* env = tensorflow::Env::Default();
+absl::Status InitGraphPlugin(void* dso_handle) {
+  tsl::Env* env = tsl::Env::Default();
 
   // Step 1: Load symbol for `TF_InitPlugin`
   void* dso_symbol;
@@ -153,7 +164,7 @@ tensorflow::Status InitGraphPlugin(void* dso_handle) {
   return InitGraphPlugin(init_fn);
 }
 
-tensorflow::Status InitGraphPlugin(TFInitGraphPluginFn init_fn) {
+absl::Status InitGraphPlugin(TFInitGraphPluginFn init_fn) {
   TP_OptimizerRegistrationParams params{
       TP_OPTIMIZER_REGISTRATION_PARAMS_STRUCT_SIZE};
   TP_Optimizer optimizer{TP_OPTIMIZER_STRUCT_SIZE};
@@ -166,7 +177,7 @@ tensorflow::Status InitGraphPlugin(TFInitGraphPluginFn init_fn) {
 
   OwnedTFStatus c_status(TF_NewStatus());
   init_fn(&params, c_status.get());
-  TF_RETURN_IF_ERROR(tensorflow::StatusFromTF_Status(c_status.get()));
+  TF_RETURN_IF_ERROR(tsl::StatusFromTF_Status(c_status.get()));
   TF_RETURN_IF_ERROR(ValidateTPOptimizerRegistrationParams(params));
   TF_RETURN_IF_ERROR(ValidateTPOptimizer(optimizer));
   TF_RETURN_IF_ERROR(ValidateTPOptimizerConfigs(optimizer_configs));
@@ -175,7 +186,7 @@ tensorflow::Status InitGraphPlugin(TFInitGraphPluginFn init_fn) {
       [=]() { return new CGraphOptimizer(optimizer, params.device_type); },
       optimizer_configs, params.device_type);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace grappler
@@ -209,8 +220,10 @@ void TF_GetNodesToPreserveList(const TF_GrapplerItem* item, char** values,
     values[index] = p;
     lengths[index] = s.size();
     if ((p + s.size()) > (static_cast<char*>(storage) + storage_size)) {
-      status->status = tensorflow::errors::InvalidArgument(
-          "Not enough storage to hold the requested list of nodes");
+      tsl::Set_TF_Status_from_Status(
+          status,
+          absl::InvalidArgumentError(
+              "Not enough storage to hold the requested list of nodes"));
       return;
     }
     memcpy(values[index], s.data(), s.size());
@@ -245,8 +258,10 @@ void TF_GetFetchNodesList(const TF_GrapplerItem* item, char** values,
     values[index] = p;
     lengths[index] = s.size();
     if ((p + s.size()) > (static_cast<char*>(storage) + storage_size)) {
-      status->status = tensorflow::errors::InvalidArgument(
-          "Not enough storage to hold the requested list of nodes");
+      tsl::Set_TF_Status_from_Status(
+          status,
+          absl::InvalidArgumentError(
+              "Not enough storage to hold the requested list of nodes"));
       return;
     }
     memcpy(values[index], s.data(), s.size());
@@ -273,13 +288,13 @@ void TF_InferStatically(TF_GraphProperties* graph_properties,
                         TF_Bool include_output_tensor_values,
                         TF_Status* status) {
   TF_SetStatus(status, TF_OK, "");
-  tensorflow::Status s =
+  absl::Status s =
       reinterpret_cast<tensorflow::grappler::GraphProperties*>(graph_properties)
           ->InferStatically(assume_valid_feeds, aggressive_shape_inference,
                             include_input_tensor_values,
                             include_output_tensor_values);
   if (!s.ok()) {
-    ::tensorflow::Set_TF_Status_from_Status(status, s);
+    tsl::Set_TF_Status_from_Status(status, s);
   }
 }
 
@@ -313,10 +328,10 @@ void TF_GetInputPropertiesList(TF_GraphProperties* graph_properties,
   const int len =
       std::min(num_values, static_cast<int>(tensor_properties.size()));
   for (int i = 0; i < len; ++i) {
-    tensorflow::Status s =
+    absl::Status s =
         tensorflow::MessageToBuffer(tensor_properties[i], properties[i]);
     if (!s.ok()) {
-      ::tensorflow::Set_TF_Status_from_Status(status, s);
+      tsl::Set_TF_Status_from_Status(status, s);
       return;
     }
   }
@@ -332,10 +347,10 @@ void TF_GetOutputPropertiesList(TF_GraphProperties* graph_properties,
   const int len =
       std::min(num_values, static_cast<int>(tensor_properties.size()));
   for (int i = 0; i < len; ++i) {
-    tensorflow::Status s =
+    absl::Status s =
         tensorflow::MessageToBuffer(tensor_properties[i], properties[i]);
     if (!s.ok()) {
-      ::tensorflow::Set_TF_Status_from_Status(status, s);
+      tsl::Set_TF_Status_from_Status(status, s);
       return;
     }
   }
@@ -345,9 +360,9 @@ TF_FunctionLibraryDefinition* TF_NewFunctionLibraryDefinition(
     const TF_Buffer* graph_buf, TF_Status* status) {
   TF_SetStatus(status, TF_OK, "");
   tensorflow::GraphDef graph_def;
-  tensorflow::Status s = tensorflow::BufferToMessage(graph_buf, &graph_def);
+  absl::Status s = tensorflow::BufferToMessage(graph_buf, &graph_def);
   if (!s.ok()) {
-    ::tensorflow::Set_TF_Status_from_Status(status, s);
+    tsl::Set_TF_Status_from_Status(status, s);
     return nullptr;
   }
   return reinterpret_cast<TF_FunctionLibraryDefinition*>(
@@ -364,17 +379,17 @@ void TF_LookUpOpDef(TF_FunctionLibraryDefinition* fn_lib, const char* name,
                     TF_Buffer* buf, TF_Status* status) {
   TF_SetStatus(status, TF_OK, "");
   const tensorflow::OpDef* op_def_ptr = nullptr;
-  tensorflow::Status s =
+  absl::Status s =
       reinterpret_cast<tensorflow::FunctionLibraryDefinition*>(fn_lib)
           ->LookUpOpDef(name, &op_def_ptr);
   if (!s.ok()) {
-    ::tensorflow::Set_TF_Status_from_Status(status, s);
+    tsl::Set_TF_Status_from_Status(status, s);
     return;
   }
 
   s = tensorflow::MessageToBuffer(*op_def_ptr, buf);
   if (!s.ok()) {
-    ::tensorflow::Set_TF_Status_from_Status(status, s);
+    tsl::Set_TF_Status_from_Status(status, s);
     return;
   }
 }

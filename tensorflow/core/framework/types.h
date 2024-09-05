@@ -16,11 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_TYPES_H_
 #define TENSORFLOW_CORE_FRAMEWORK_TYPES_H_
 
+#include <cstddef>
 #include <map>
 #include <set>
 #include <string>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "absl/numeric/bits.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "xla/tsl/framework/device_type.h"
 #include "tensorflow/core/framework/bfloat16.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/numeric_types.h"
@@ -31,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/framework/device_type.h"
 
 namespace tensorflow {
 
@@ -73,15 +75,14 @@ struct DeviceName<Eigen::GpuDevice> {
 };
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+typedef absl::InlinedVector<MemoryType, 4UL> MemoryTypeVector;
+typedef absl::Span<const MemoryType> MemoryTypeSlice;
 
-typedef gtl::InlinedVector<MemoryType, 4> MemoryTypeVector;
-typedef gtl::ArraySlice<MemoryType> MemoryTypeSlice;
+typedef absl::InlinedVector<DataType, 4UL> DataTypeVector;
+typedef absl::Span<const DataType> DataTypeSlice;
 
-typedef gtl::InlinedVector<DataType, 4> DataTypeVector;
-typedef gtl::ArraySlice<DataType> DataTypeSlice;
-
-typedef gtl::InlinedVector<DeviceType, 4> DeviceTypeVector;
-typedef gtl::InlinedVector<std::pair<DeviceType, int32>, 4>
+typedef absl::InlinedVector<DeviceType, 4UL> DeviceTypeVector;
+typedef absl::InlinedVector<std::pair<DeviceType, int32>, 4UL>
     PrioritizedDeviceTypeVector;
 
 // Convert the enums to strings for errors:
@@ -125,7 +126,7 @@ class DataTypeSet {
       if (pos_ < kNumBits) {
         uint32 remaining_mask = set_.mask_ >> pos_;
         if (remaining_mask != 0u) {
-          pos_ += ctz_uint32(remaining_mask);
+          pos_ += absl::countr_zero(remaining_mask);
         }
       }
       DCHECK_LE(pos_, kNumBits);
@@ -138,39 +139,11 @@ class DataTypeSet {
     }
   };
 
-  static uint32 ctz_uint32(uint32 x) {
-    DCHECK_NE(x, 0u);
-#ifdef __GNUC__
-    return __builtin_ctz(x);
-#else
-    uint32 n = 0u;
-    while ((x & 1u) == 0u) {
-      x >>= 1;
-      ++n;
-    }
-    return n;
-#endif
-  }
-
-  static uint32 clz_uint32(uint32 x) {
-    DCHECK_NE(x, 0u);
-#ifdef __GNUC__
-    return __builtin_clz(x);
-#else
-    uint32 n = 0u;
-    while ((x >> (kNumBits - 1u)) == 0u) {
-      x <<= 1;
-      ++n;
-    }
-    return n;
-#endif
-  }
-
   Iterator begin() const {
     // The begin position is the index of the first bit set to 1 in the entire
     // bit mask. If there are no bits set to 1, then the index is 0.
     if (mask_ != 0) {
-      return Iterator(*this, ctz_uint32(mask_));
+      return Iterator(*this, absl::countr_zero(mask_));
     }
     // The set is empty.
     return Iterator(*this, 0);
@@ -180,25 +153,13 @@ class DataTypeSet {
     // The end position is the index of the highest bit that is set, plus 1.
     // If there are no bits set to 1, then the index is 0.
     if (mask_ != 0) {
-      return Iterator(*this, kNumBits - clz_uint32(mask_));
+      return Iterator(*this, kNumBits - absl::countl_zero(mask_));
     }
     // The set is empty.
     return Iterator(*this, 0);
   }
 
-  size_t size() const {
-#if defined(__GNUC__)
-    return __builtin_popcount(mask_);
-#else
-    size_t n = 0;
-    uint32 x = mask_;
-    while (x > 0) {
-      n += x & 1u;
-      x >>= 1;
-    }
-    return n;
-#endif
-  }
+  size_t size() const { return absl::popcount(mask_); }
 
   constexpr DataTypeSet operator|(const DataTypeSet& other) const {
     return DataTypeSet(mask_ | other.mask_);
@@ -243,7 +204,9 @@ constexpr DataTypeSet kAllTypes =
     ToSet(DT_BOOL) | ToSet(DT_QINT8) | ToSet(DT_QUINT8) | ToSet(DT_QINT16) |
     ToSet(DT_QUINT16) | ToSet(DT_QINT32) | ToSet(DT_HALF) | ToSet(DT_RESOURCE) |
     ToSet(DT_VARIANT) | ToSet(DT_UINT32) | ToSet(DT_UINT64) |
-    ToSet(DT_BFLOAT16) | ToSet(DT_FLOAT8_E5M2) | ToSet(DT_FLOAT8_E4M3FN);
+    ToSet(DT_BFLOAT16) | ToSet(DT_FLOAT8_E5M2) | ToSet(DT_FLOAT8_E4M3FN) |
+    ToSet(DT_INT4) | ToSet(DT_UINT4);
+
 inline const DataTypeSet& AllTypes() { return kAllTypes; }
 
 #if !defined(IS_MOBILE_PLATFORM) || defined(SUPPORT_SELECTIVE_REGISTRATION)
@@ -253,7 +216,7 @@ constexpr DataTypeSet kRealNumberTypes =
     ToSet(DT_FLOAT) | ToSet(DT_DOUBLE) | ToSet(DT_INT32) | ToSet(DT_INT64) |
     ToSet(DT_UINT8) | ToSet(DT_INT16) | ToSet(DT_INT8) | ToSet(DT_UINT16) |
     ToSet(DT_HALF) | ToSet(DT_UINT32) | ToSet(DT_UINT64) | ToSet(DT_BFLOAT16);
-inline const DataTypeSet RealNumberTypes() { return kRealNumberTypes; }
+inline const DataTypeSet& RealNumberTypes() { return kRealNumberTypes; }
 
 // Return the list of all numeric types.
 // Includes complex and quantized types.
@@ -379,6 +342,8 @@ MATCH_TYPE_AND_ENUM(bfloat16, DT_BFLOAT16);
 MATCH_TYPE_AND_ENUM(Eigen::half, DT_HALF);
 MATCH_TYPE_AND_ENUM(float8_e5m2, DT_FLOAT8_E5M2);
 MATCH_TYPE_AND_ENUM(float8_e4m3fn, DT_FLOAT8_E4M3FN);
+MATCH_TYPE_AND_ENUM(int4, DT_INT4);
+MATCH_TYPE_AND_ENUM(uint4, DT_UINT4);
 MATCH_TYPE_AND_ENUM(ResourceHandle, DT_RESOURCE);
 MATCH_TYPE_AND_ENUM(Variant, DT_VARIANT);
 
@@ -456,7 +421,7 @@ constexpr DataTypeSet kDataTypesCanUseMemcpy =
     ToSet(DT_UINT64) | ToSet(DT_BOOL) | ToSet(DT_QINT8) | ToSet(DT_QUINT8) |
     ToSet(DT_QINT16) | ToSet(DT_QUINT16) | ToSet(DT_QINT32) |
     ToSet(DT_BFLOAT16) | ToSet(DT_HALF) | ToSet(DT_FLOAT8_E5M2) |
-    ToSet(DT_FLOAT8_E4M3FN);
+    ToSet(DT_FLOAT8_E4M3FN) | ToSet(DT_INT4) | ToSet(DT_UINT4);
 inline bool DataTypeCanUseMemcpy(DataType dt) {
   return kDataTypesCanUseMemcpy.Contains(dt);
 }
@@ -468,6 +433,9 @@ constexpr DataTypeSet kDataTypeIsFloating =
 inline bool DataTypeIsFloating(DataType dt) {
   return kDataTypeIsFloating.Contains(dt);
 }
+
+// Returns true iff 'dt' is a numeric type.
+inline bool DataTypeIsNumeric(DataType dt) { return kNumberTypes.Contains(dt); }
 
 // Returns true iff 'dt' is a complex type.
 constexpr DataTypeSet kDataTypeIsComplex =
@@ -482,22 +450,25 @@ inline bool DataTypeIsQuantized(DataType dt) {
 
 // Is the dtype nonquantized integral?
 constexpr DataTypeSet kDataTypeIsInteger =
-    ToSet(DT_INT8) | ToSet(DT_UINT8) | ToSet(DT_INT16) | ToSet(DT_UINT16) |
-    ToSet(DT_INT32) | ToSet(DT_UINT32) | ToSet(DT_INT64) | ToSet(DT_UINT64);
+    ToSet(DT_INT4) | ToSet(DT_UINT4) | ToSet(DT_INT8) | ToSet(DT_UINT8) |
+    ToSet(DT_INT16) | ToSet(DT_UINT16) | ToSet(DT_INT32) | ToSet(DT_UINT32) |
+    ToSet(DT_INT64) | ToSet(DT_UINT64);
 inline bool DataTypeIsInteger(DataType dt) {
   return kDataTypeIsInteger.Contains(dt);
 }
 
 // Is the dtype a signed integral type?
-constexpr DataTypeSet kDataTypeIsSigned =
-    ToSet(DT_INT8) | ToSet(DT_INT16) | ToSet(DT_INT32) | ToSet(DT_INT64);
+constexpr DataTypeSet kDataTypeIsSigned = ToSet(DT_INT4) | ToSet(DT_INT8) |
+                                          ToSet(DT_INT16) | ToSet(DT_INT32) |
+                                          ToSet(DT_INT64);
 inline bool DataTypeIsSigned(DataType dt) {
   return kDataTypeIsSigned.Contains(dt);
 }
 
 // Is the dtype an unsigned integral type?
-constexpr DataTypeSet kDataTypeIsUnsigned =
-    ToSet(DT_UINT8) | ToSet(DT_UINT16) | ToSet(DT_UINT32) | ToSet(DT_UINT64);
+constexpr DataTypeSet kDataTypeIsUnsigned = ToSet(DT_UINT4) | ToSet(DT_UINT8) |
+                                            ToSet(DT_UINT16) |
+                                            ToSet(DT_UINT32) | ToSet(DT_UINT64);
 inline bool DataTypeIsUnsigned(DataType dt) {
   return kDataTypeIsUnsigned.Contains(dt);
 }

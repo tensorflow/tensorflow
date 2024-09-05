@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/resource_op_lifting_cleanup.h"
 
 #include <optional>
+#include <variant>
 
 #include "llvm/ADT/BitVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -23,6 +24,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -31,7 +33,7 @@ namespace mlir {
 namespace {
 
 bool IsResource(Value value) {
-  return getElementTypeOrSelf(value.getType()).isa<TF::ResourceType>();
+  return mlir::isa<TF::ResourceType>(getElementTypeOrSelf(value.getType()));
 }
 
 // Checks if a cast op is casting a resource -> resource.
@@ -52,22 +54,55 @@ void RemovePassthroughOp(Block &block) {
   }
 }
 
+using LocalVarOp = std::variant<TF::VarHandleOp, TF::MlirLocalVarOp>;
+
+Value LocalVarOp_resource(LocalVarOp &op) {
+  if (auto var_handle_op = std::get_if<TF::VarHandleOp>(&op)) {
+    return var_handle_op->getResource();
+  } else {
+    return std::get<TF::MlirLocalVarOp>(op).getResource();
+  }
+}
+
+void LocalVarOp_erase(LocalVarOp &op) {
+  if (auto var_handle_op = std::get_if<TF::VarHandleOp>(&op)) {
+    var_handle_op->erase();
+  } else {
+    std::get<TF::MlirLocalVarOp>(op).erase();
+  }
+}
+
+std::optional<LocalVarOp> IsLocalVarOp(Operation &op) {
+  if (TF::MlirLocalVarOp mlir_local_var_op =
+          llvm::dyn_cast<TF::MlirLocalVarOp>(&op)) {
+    return std::make_optional(LocalVarOp(mlir_local_var_op));
+  }
+  if (TF::VarHandleOp var_handle_op = llvm::dyn_cast<TF::VarHandleOp>(&op)) {
+    auto ANONYMOUS_NAME = ::tensorflow::ResourceHandle::ANONYMOUS_NAME;
+    if (var_handle_op.getSharedName() == ANONYMOUS_NAME) {
+      return std::make_optional(LocalVarOp(var_handle_op));
+    }
+  }
+  return {};
+}
+
 // Eliminate local variables that are only assigned to but never read, and thus
 // are dead.
 void RemoveDeadLocalVariables(Block &block) {
-  llvm::SmallVector<TF::MlirLocalVarOp, 8> local_vars;
+  llvm::SmallVector<LocalVarOp, 8> local_vars;
   for (Operation &op : block) {
-    if (auto local_var = llvm::dyn_cast<TF::MlirLocalVarOp>(&op)) {
-      local_vars.push_back(local_var);
+    if (auto local_var = IsLocalVarOp(op)) {
+      local_vars.push_back(local_var.value());
     }
   }
   for (auto local_var : local_vars) {
-    auto users = local_var.getResource().getUsers();
+    auto users = LocalVarOp_resource(local_var).getUsers();
     if (llvm::all_of(users, [](const Operation *user) {
-          return isa<TF::AssignVariableOp>(user);
+          return isa<TF::AssignVariableOp>(user) ||
+                 isa<TF::DestroyResourceOp>(user);
         })) {
       for (auto user : llvm::make_early_inc_range(users)) user->erase();
-      local_var.erase();
+      LocalVarOp_erase(local_var);
     }
   }
 }
@@ -97,7 +132,8 @@ void EliminateUnusedResults(
   OpBuilder builder(op);
   Operation *new_op = Operation::create(
       op->getLoc(), op->getName(), new_result_types, op->getOperands(),
-      op->getAttrs(), op->getSuccessors(), op->getNumRegions());
+      op->getAttrs(), op->getPropertiesStorage(), op->getSuccessors(),
+      op->getNumRegions());
   builder.insert(new_op);
 
   // Move region bodies to the new operation.
@@ -147,7 +183,7 @@ void EliminateUnusedResultsForIfCase(Operation *op,
     if (cloned == func) continue;
     // Patch up the op attribute to point to the new function.
     for (NamedAttribute attr : op->getAttrs()) {
-      auto symref = attr.getValue().dyn_cast<FlatSymbolRefAttr>();
+      auto symref = mlir::dyn_cast<FlatSymbolRefAttr>(attr.getValue());
       if (!symref) continue;
       if (symref.getValue() != func.getName()) continue;
       op->setAttr(attr.getName(),
@@ -266,7 +302,8 @@ LogicalResult ForwardCommonArgToOutput(Operation *op,
     std::optional<int> common_arg_index;
     for (func::FuncOp func : branches) {
       auto ret = func.front().getTerminator();
-      auto block_arg = ret->getOperand(result_idx).dyn_cast<BlockArgument>();
+      auto block_arg =
+          mlir::dyn_cast<BlockArgument>(ret->getOperand(result_idx));
       if (!block_arg) {
         return op->emitOpError("result #")
                << result_idx << " not tied to function argument for branch @"

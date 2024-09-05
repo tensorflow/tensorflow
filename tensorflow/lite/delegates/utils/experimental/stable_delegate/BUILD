@@ -18,15 +18,23 @@ load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_linkopts_no_undefined")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+
 cc_library_with_tflite(
     name = "delegate_loader",
     srcs = ["delegate_loader.cc"],
     hdrs = ["delegate_loader.h"],
-    tflite_deps = ["//tensorflow/lite/experimental/acceleration/configuration/c:stable_delegate"],
+    generate_opaque_delegate_target = True,
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-ldl"],
+    }),
+    tflite_deps = ["//tensorflow/lite/acceleration/configuration/c:stable_delegate"],
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
         "//tensorflow/lite/tools:logging",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -34,7 +42,7 @@ cc_library_with_tflite(
     name = "stable_delegate_interface",
     hdrs = ["stable_delegate_interface.h"],
     generate_opaque_delegate_target = True,
-    tflite_deps = ["//tensorflow/lite/experimental/acceleration/configuration/c:stable_delegate"],
+    tflite_deps = ["//tensorflow/lite/acceleration/configuration/c:stable_delegate"],
     visibility = ["//visibility:public"],
 )
 
@@ -59,9 +67,9 @@ tflite_cc_shared_object(
     deps = [
         ":stable_delegate_interface",
         ":version_script.lds",
-        "//tensorflow/lite/core/shims:c_api",
-        "//tensorflow/lite/core/shims:xnnpack_plugin",
-        "//tensorflow/lite/experimental/acceleration/configuration/c:stable_delegate",
+        "//tensorflow/lite/acceleration/configuration/c:stable_delegate",
+        "//tensorflow/lite/acceleration/configuration/c:xnnpack_plugin",
+        "//tensorflow/lite/c:c_api",
     ],
 )
 
@@ -71,8 +79,9 @@ cc_test(
     data = ["//tensorflow/lite/delegates/utils/experimental/sample_stable_delegate:tensorflowlite_sample_stable_delegate"],
     deps = [
         ":delegate_loader",
+        "//tensorflow/lite/acceleration/configuration:configuration_fbs",
+        "//tensorflow/lite/acceleration/configuration/c:stable_delegate",
         "//tensorflow/lite/delegates/utils/experimental/sample_stable_delegate",
-        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -81,12 +90,12 @@ cc_library(
     name = "tflite_settings_json_parser",
     srcs = [
         "tflite_settings_json_parser.cc",
-        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs_contents-inl.h",
+        "//tensorflow/lite/acceleration/configuration:configuration_fbs_contents-inl.h",
     ],
     hdrs = ["tflite_settings_json_parser.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "//tensorflow/lite/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/tools:logging",
         "@flatbuffers",
@@ -112,9 +121,40 @@ cc_test(
     ],
     deps = [
         ":tflite_settings_json_parser",
-        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "//tensorflow/lite/acceleration/configuration:configuration_fbs",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
+    ],
+)
+
+cc_library(
+    name = "kernel_test_main",
+    testonly = 1,
+    srcs = ["kernel_test_main.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/kernels:acceleration_test_util",
+        "//tensorflow/lite/kernels:acceleration_test_util_internal",
+        "//tensorflow/lite/kernels:test_delegate_providers_lib",
+        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/kernels:test_util_delegate_providers",
+        "//tensorflow/lite/testing:util",
+        "@com_google_benchmark//:benchmark",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "stable_delegate_test_suite",
+    size = "medium",
+    tags = [
+        "manual",
+        "notap",
+    ],
+    deps = [
+        ":kernel_test_main",
+        "//tensorflow/lite/kernels:combined_all_kernel_tests_lib",
     ],
 )
 

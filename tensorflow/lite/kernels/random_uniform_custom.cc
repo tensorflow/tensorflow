@@ -76,7 +76,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                  input->type == kTfLiteInt32 || input->type == kTfLiteInt64);
   TF_LITE_ENSURE_EQ(context, tflite::NumDimensions(input), 1);
   TfLiteTensor* output = tflite::GetOutput(context, node, 0);
-  if (!IsConstantTensor(input)) {
+  if (!IsConstantOrPersistentTensor(input)) {
     SetTensorToDynamic(output);
     return kTfLiteOk;
   }

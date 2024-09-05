@@ -17,25 +17,29 @@ limitations under the License.
 // TODO(misard,phawkins): handle random number generator seeds/states correctly.
 // TODO(misard,phawkins): add tests.
 
-#include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
+#include <vector>
+
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "tensorflow/compiler/tf2xla/lib/broadcast.h"
 #include "tensorflow/compiler/tf2xla/lib/random.h"
-#include "tensorflow/compiler/tf2xla/lib/util.h"
 #include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/arithmetic.h"
-#include "tensorflow/compiler/xla/client/lib/comparators.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/lib/dynamic_shaped_ops.h"
-#include "tensorflow/compiler/xla/client/lib/loops.h"
-#include "tensorflow/compiler/xla/client/value_inference.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "xla/client/lib/constants.h"
+#include "xla/client/lib/dynamic_shaped_ops.h"
+#include "xla/client/value_inference.h"
+#include "xla/client/xla_builder.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -69,7 +73,8 @@ class RandomUniformOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(RandomUniformOp);
+  RandomUniformOp(const RandomUniformOp&) = delete;
+  void operator=(const RandomUniformOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("RandomUniform").CompileTimeConstantInput("shape"),
@@ -108,7 +113,8 @@ class RandomUniformIntOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(RandomUniformIntOp);
+  RandomUniformIntOp(const RandomUniformIntOp&) = delete;
+  void operator=(const RandomUniformIntOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("RandomUniformInt").CompileTimeConstantInput("shape"),
@@ -141,7 +147,8 @@ class RandomStandardNormalOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(RandomStandardNormalOp);
+  RandomStandardNormalOp(const RandomStandardNormalOp&) = delete;
+  void operator=(const RandomStandardNormalOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("RandomStandardNormal").CompileTimeConstantInput("shape"),
@@ -184,8 +191,8 @@ REGISTER_XLA_OP(Name("TruncatedNormal")
 // the parameter is a vector of shape [num_batches], then it is broadcast along
 // dimension 0 to ([num_batches] x samples_per_batch). Otherwise it is a scalar
 // or has shape [1], in which case the single value is broadcast.
-static StatusOr<xla::XlaOp> BroadcastParameters(xla::XlaOp params,
-                                                TensorShape& output_shape) {
+static absl::StatusOr<xla::XlaOp> BroadcastParameters(
+    xla::XlaOp params, TensorShape& output_shape) {
   // broadcast to [samples1, ..., num_batches]
   int rank = output_shape.dims();
   std::vector<int64_t> bcast_shape;
@@ -235,7 +242,7 @@ class ParameterizedTruncatedNormalOp : public XlaOpKernel {
         << name();
     xla::XlaOp uniform = xla::RngUniform(min_positive, one, xla_shape);
 
-    auto result = b->ReportErrorOrReturn([&]() -> StatusOr<xla::XlaOp> {
+    auto result = b->ReportErrorOrReturn([&]() -> absl::StatusOr<xla::XlaOp> {
       TF_ASSIGN_OR_RETURN(xla::XlaOp means,
                           BroadcastParameters(ctx->Input(1), shape));
       TF_ASSIGN_OR_RETURN(xla::XlaOp stddevs,

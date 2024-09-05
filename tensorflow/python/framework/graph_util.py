@@ -14,6 +14,8 @@
 # ==============================================================================
 
 """Helpers to manipulate a tensor graph in python.
+
+API docstring: tensorflow.graph_util
 """
 
 

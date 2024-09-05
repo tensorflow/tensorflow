@@ -21,10 +21,17 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/lite/kernels/shim/op_kernel.h"
+#include "tensorflow/lite/kernels/shim/shape.h"
 #include "tensorflow/lite/kernels/shim/status_macros.h"
 #include "tensorflow/lite/kernels/shim/tensor_view.h"
 #include "tensorflow/lite/kernels/shim/tf_tensor_view.h"
@@ -100,7 +107,7 @@ TensorViewOr TfInvokeContext::GetOutput(const int idx,
   for (int i = 0; i < shape->size(); ++i) shape_64[i] = (*shape)[i];
   auto status = context_->allocate_output(
       idx, ::tensorflow::TensorShape(shape_64), &output_t);
-  if (!status.ok()) return ToAbslStatus(status);
+  if (!status.ok()) return status;
   SH_ASSIGN_OR_RETURN(const TfTensorView& tensor_view,
                       TensorView::New(output_t));
   return std::make_unique<TfTensorView>(std::move(tensor_view));

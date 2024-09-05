@@ -23,20 +23,22 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
+#include "tensorflow/compiler/mlir/lite/experimental/remat/metadata_util.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_conversion_utils.h"
+#include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/c/c_api_opaque.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter_builder.h"
 #include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/delegates/delegate_test_util.h"
-#include "tensorflow/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/interpreter_options.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/schema/schema_conversion_utils.h"
+#include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/version.h"
 
 namespace tflite {
@@ -51,7 +53,8 @@ using test_utils::TestTwoDelegates;
 namespace {
 
 TEST_F(TestDelegate, NullDelegate) {
-  EXPECT_EQ(interpreter_->ModifyGraphWithDelegate(nullptr),
+  TfLiteOpaqueDelegate* delegate = nullptr;
+  EXPECT_EQ(interpreter_->ModifyGraphWithDelegate(delegate),
             kTfLiteDelegateError);
 }
 
@@ -100,7 +103,7 @@ TEST_F(TestDelegate, DelegateNodePrepareFailure) {
   // Verify Invoke() behavior.
   memcpy(interpreter_->typed_tensor<float>(0), input.data(), 3 * sizeof(float));
   memcpy(interpreter_->typed_tensor<float>(1), input.data(), 3 * sizeof(float));
-  interpreter_->Invoke();
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   for (int i = 0; i < 3; ++i) {
     EXPECT_EQ(tensor->data.f[i], expected_output[i]) << i;
   }
@@ -178,14 +181,14 @@ TEST_F(TestDelegate, SetBufferHandleToInput) {
   TfLiteDelegate* delegate = delegate_->get_tf_lite_delegate();
   interpreter_->ModifyGraphWithDelegate(delegate);
 
-  constexpr int kOutputTensorIndex = 0;
-  TfLiteTensor* tensor = interpreter_->tensor(kOutputTensorIndex);
+  constexpr int kInputTensorIndex = 0;
+  TfLiteTensor* tensor = interpreter_->tensor(kInputTensorIndex);
   ASSERT_EQ(tensor->delegate, nullptr);
   ASSERT_EQ(tensor->buffer_handle, kTfLiteNullBufferHandle);
 
   TfLiteBufferHandle handle = AllocateBufferHandle();
   TfLiteStatus status =
-      interpreter_->SetBufferHandle(kOutputTensorIndex, handle, delegate);
+      interpreter_->SetBufferHandle(kInputTensorIndex, handle, delegate);
   ASSERT_EQ(status, kTfLiteOk);
   EXPECT_EQ(tensor->delegate, delegate);
   EXPECT_EQ(tensor->buffer_handle, handle);
@@ -212,10 +215,10 @@ TEST_F(TestDelegate, SetBufferHandleToOutput) {
 }
 
 TEST_F(TestDelegate, SetInvalidHandleToTensor) {
-  interpreter_->Invoke();
   delegate_ = std::unique_ptr<SimpleDelegate>(new SimpleDelegate({0, 1, 2}));
   TfLiteDelegate* delegate = delegate_->get_tf_lite_delegate();
   interpreter_->ModifyGraphWithDelegate(delegate);
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
 
   SimpleDelegate another_simple_delegate({0, 1, 2});
 
@@ -264,7 +267,7 @@ TEST_F(TestDelegate, TestResizeInputWithNonDynamicDelegate) {
   // Verify Invoke() behavior.
   memcpy(interpreter_->typed_tensor<float>(0), input.data(), 3 * sizeof(float));
   memcpy(interpreter_->typed_tensor<float>(1), input.data(), 3 * sizeof(float));
-  interpreter_->Invoke();
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   for (int i = 0; i < 3; ++i) {
     EXPECT_EQ(tensor->data.f[i], expected_output[i]) << i;
   }
@@ -278,7 +281,7 @@ TEST_F(TestDelegate, TestResizeInputWithNonDynamicDelegate) {
 
   memcpy(interpreter_->typed_tensor<float>(0), input.data(), 4 * sizeof(float));
   memcpy(interpreter_->typed_tensor<float>(1), input.data(), 4 * sizeof(float));
-  interpreter_->Invoke();
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   for (int i = 0; i < 4; ++i) {
     EXPECT_EQ(tensor->data.f[i], expected_output[i]) << i;
   }
@@ -307,7 +310,7 @@ TEST_F(TestDelegate, TestRequirePropagatedShapes_NonDynamicDelegate) {
 
   memcpy(interpreter_->typed_tensor<float>(0), input.data(), 4 * sizeof(float));
   memcpy(interpreter_->typed_tensor<float>(1), input.data(), 4 * sizeof(float));
-  interpreter_->Invoke();
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   for (int i = 0; i < 4; ++i) {
     EXPECT_EQ(tensor->data.f[i], expected_output[i]) << i;
   }
@@ -337,7 +340,7 @@ TEST_F(TestDelegate, TestRequirePropagatedShapes_DynamicDelegateWithFlag) {
 
   memcpy(interpreter_->typed_tensor<float>(0), input.data(), 4 * sizeof(float));
   memcpy(interpreter_->typed_tensor<float>(1), input.data(), 4 * sizeof(float));
-  interpreter_->Invoke();
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   for (int i = 0; i < 4; ++i) {
     EXPECT_EQ(tensor->data.f[i], expected_output[i]) << i;
   }
@@ -381,7 +384,7 @@ TEST_F(TestDelegate, TestCopyFromBufferInvoke) {
   ASSERT_EQ(tensor->buffer_handle, kTfLiteNullBufferHandle);
 
   // Called Invoke without setting the buffer will not call the CopyFromBuffer
-  interpreter_->Invoke();
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   std::vector<float> res = {2.0f, 4.0f, 6.0f};
   for (int i = 0; i < tensor->dims->data[0]; ++i) {
     ASSERT_EQ(tensor->data.f[i], res[i]);
@@ -389,6 +392,7 @@ TEST_F(TestDelegate, TestCopyFromBufferInvoke) {
 }
 
 TEST_F(TestDelegate, TestCopyFromBuffer) {
+  interpreter_->Invoke();
   delegate_ = std::unique_ptr<SimpleDelegate>(new SimpleDelegate({0, 1, 2}));
   TfLiteDelegate* delegate = delegate_->get_tf_lite_delegate();
   interpreter_->ModifyGraphWithDelegate(delegate);
@@ -410,8 +414,8 @@ TEST_F(TestDelegate, TestCopyFromBuffer) {
   TfLiteBufferHandle handle = AllocateBufferHandle();
   TfLiteStatus status =
       interpreter_->SetBufferHandle(kOutputTensorIndex, handle, delegate);
-  interpreter_->Invoke();
   ASSERT_EQ(status, kTfLiteOk);
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   EXPECT_EQ(tensor->delegate, delegate);
   EXPECT_EQ(tensor->buffer_handle, handle);
   for (int i = 0; i < tensor->dims->data[0]; ++i) {
@@ -445,6 +449,10 @@ struct OpaqueTestDelegate {
     delegate_state->delegate_prepared = true;
 
     TfLiteRegistration registration{};
+    registration.registration_external = TfLiteOperatorCreate(
+        kTfLiteBuiltinDelegate, "OpaqueTestDelegate delegate kernel", 1,
+        /*user_data=*/nullptr);
+
     registration.prepare = [](TfLiteContext* context,
                               TfLiteNode* node) -> TfLiteStatus {
       return kTfLiteOk;
@@ -510,7 +518,7 @@ TEST(TestOpaqueDelegate, PrepareCopyFromFree) {
 
   std::unique_ptr<tflite::FlatBufferModel> model =
       tflite::FlatBufferModel::BuildFromFile(
-          "third_party/tensorflow/lite/testdata/add.bin");
+          "tensorflow/lite/testdata/add.bin");
   ASSERT_NE(model, nullptr);
   constexpr int kNumTensorElements = 1 * 8 * 8 * 3;
 
@@ -581,7 +589,7 @@ TEST(TestOpaqueDelegate, PrepareCopyFromFree) {
 TEST(TestDelegateKernel, WithoutName) {
   std::unique_ptr<tflite::FlatBufferModel> model =
       tflite::FlatBufferModel::BuildFromFile(
-          "third_party/tensorflow/lite/testdata/add.bin");
+          "tensorflow/lite/testdata/add.bin");
   ASSERT_NE(model, nullptr);
 
   tflite::ops::builtin::BuiltinOpResolver resolver;
@@ -752,7 +760,7 @@ TEST_P(TestTwoDelegates, SecondDelegationPrepareFailure) {
   // Verify Invoke() behavior.
   memcpy(interpreter_->typed_tensor<float>(0), input.data(), 3 * sizeof(float));
   memcpy(interpreter_->typed_tensor<float>(1), input.data(), 3 * sizeof(float));
-  interpreter_->Invoke();
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   for (int i = 0; i < 3; ++i) {
     EXPECT_EQ(tensor->data.f[i], expected_output[i]) << i;
   }
@@ -872,7 +880,7 @@ TEST_P(TestTwoDelegates, TestResizeInputTensors) {
   // Verify Invoke() behavior.
   memcpy(interpreter_->typed_tensor<float>(0), input.data(), 4 * sizeof(float));
   memcpy(interpreter_->typed_tensor<float>(1), input.data(), 4 * sizeof(float));
-  interpreter_->Invoke();
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   for (int i = 0; i < 4; ++i) {
     EXPECT_EQ(tensor->data.f[i], expected_output[i]) << i;
   }
@@ -943,7 +951,7 @@ TEST_P(TestTwoDelegates, TestRequirePropagatedShapes) {
 
   memcpy(interpreter_->typed_tensor<float>(0), input.data(), 4 * sizeof(float));
   memcpy(interpreter_->typed_tensor<float>(1), input.data(), 4 * sizeof(float));
-  interpreter_->Invoke();
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   for (int i = 0; i < 4; ++i) {
     EXPECT_EQ(tensor->data.f[i], expected_output[i]) << i;
   }
@@ -981,7 +989,7 @@ TEST_P(TestTwoDelegates, ReleaseNonPersistentMemoryWithDelegates) {
   // Verify Invoke() behavior.
   memcpy(interpreter_->typed_tensor<float>(0), input.data(), 3 * sizeof(float));
   memcpy(interpreter_->typed_tensor<float>(1), input.data(), 3 * sizeof(float));
-  interpreter_->Invoke();
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   for (int i = 0; i < 3; ++i) {
     EXPECT_EQ(tensor->data.f[i], expected_output[i]) << i;
   }
@@ -1125,12 +1133,12 @@ class TestDelegateWithDynamicTensors : public ::testing::Test {
   TfLiteDelegate delegate_;
 };
 
-TfLiteRegistrationExternal* CreateTfLiteRegistrationExternal() {
-  auto registration = TfLiteRegistrationExternalCreate(
-      kTfLiteBuiltinDelegate, "OpaqueDelegateKernel", 1);
-  TfLiteRegistrationExternalSetPrepare(
+TfLiteOperator* CreateTfLiteOperator() {
+  auto* registration = TfLiteOperatorCreate(
+      kTfLiteBuiltinDelegate, "OpaqueDelegateKernel", 1, /*user_data=*/nullptr);
+  TfLiteOperatorSetPrepareWithData(
       registration,
-      [](TfLiteOpaqueContext* context,
+      [](void* user_data, TfLiteOpaqueContext* context,
          TfLiteOpaqueNode* opaque_node) -> TfLiteStatus {
         // If tensors are resized, the runtime should propagate shapes
         // automatically if 'kTfLiteDelegateFlagsRequirePropagatedShapes' flag
@@ -1181,7 +1189,7 @@ class TestOpaqueDelegateBuilderWithDynamicTensors
       TfLiteIntArray* execution_plan;
       TfLiteOpaqueContextGetExecutionPlan(opaque_context, &execution_plan);
       return TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
-          opaque_context, CreateTfLiteRegistrationExternal(), execution_plan,
+          opaque_context, CreateTfLiteOperator(), execution_plan,
           opaque_delegate);
     };
     delegate_external_.flags = kTfLiteDelegateFlagsNone;
@@ -1484,7 +1492,8 @@ TEST_P(TestFP16Delegation, NonDelegatedInterpreterWorks) {
 }
 
 TEST_F(TestFP16Delegation, NullDelegate) {
-  EXPECT_EQ(interpreter_->ModifyGraphWithDelegate(nullptr),
+  TfLiteOpaqueDelegate* delegate = nullptr;
+  EXPECT_EQ(interpreter_->ModifyGraphWithDelegate(delegate),
             kTfLiteDelegateError);
   // Verify that resulting interpreter still works, despite null delegate.
   ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);

@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_DEMANGLE_H_
 
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/demangle.h"
+#include "tsl/platform/demangle.h"
 
 namespace tensorflow {
 namespace port {

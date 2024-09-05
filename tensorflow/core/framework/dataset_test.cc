@@ -15,8 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/framework/dataset.h"
 
+#include <memory>
+#include <tuple>
+
+#include <gtest/gtest.h>
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -155,6 +163,73 @@ TEST(DatasetTest, IsDatasetOp) {
     op_def.set_name(name);
     EXPECT_TRUE(DatasetOpKernel::IsDatasetOp(op_def));
   }
+}
+
+TEST(DatasetTest, IdRegistry) {
+  MemoryCheckpoint::IdRegistry id_registry;
+
+  auto id_1 = id_registry.Add("foo", "key_1");
+  auto id_2 = id_registry.Add("foo:bar", "key_2");
+  auto id_3 = id_registry.Add("foo:bar:baz", "key_3");
+
+  auto [prefix_1, key_1] = id_registry.Get(id_1);
+  EXPECT_EQ(prefix_1, "foo");
+  EXPECT_EQ(key_1, "key_1");
+
+  auto [prefix_2, key_2] = id_registry.Get(id_2);
+  EXPECT_EQ(prefix_2, "foo:bar");
+  EXPECT_EQ(key_2, "key_2");
+
+  auto [prefix_3, key_3] = id_registry.Get(id_3);
+  EXPECT_EQ(prefix_3, "foo:bar:baz");
+  EXPECT_EQ(key_3, "key_3");
+
+  auto matching_ids = id_registry.GetMatchingIds("hello");
+  EXPECT_EQ(matching_ids.size(), 0);
+  matching_ids = id_registry.GetMatchingIds("foo:bar:baz");
+  EXPECT_EQ(matching_ids.size(), 1);
+  matching_ids = id_registry.GetMatchingIds("foo:bar");
+  EXPECT_EQ(matching_ids.size(), 2);
+  matching_ids = id_registry.GetMatchingIds("foo");
+  EXPECT_EQ(matching_ids.size(), 3);
+  matching_ids = id_registry.GetMatchingIds("f");
+  EXPECT_EQ(matching_ids.size(), 3);
+
+  absl::flat_hash_set<int64_t> matching_ids_set(matching_ids.begin(),
+                                                matching_ids.end());
+  EXPECT_TRUE(matching_ids_set.contains(id_1));
+  EXPECT_TRUE(matching_ids_set.contains(id_2));
+  EXPECT_TRUE(matching_ids_set.contains(id_3));
+
+  id_registry.RemoveIds(matching_ids);
+  matching_ids = id_registry.GetMatchingIds("foo");
+  EXPECT_EQ(matching_ids.size(), 0);
+}
+TEST(DatasetTest, MemoryCheckpointWrites) {
+  std::shared_ptr<MemoryCheckpoint::IdRegistry> id_registry =
+      std::make_shared<MemoryCheckpoint::IdRegistry>();
+  MemoryCheckpoint memory_checkpoint(id_registry);
+  Tensor input_tensor(DT_FLOAT, {1});
+  input_tensor.flat<float>()(0) = 2.0f;
+
+  TF_EXPECT_OK(memory_checkpoint.WriteScalar("name_foo", "key_bar", 5));
+  TF_EXPECT_OK(
+      memory_checkpoint.WriteTensor("name_corgi", "key_baz", input_tensor));
+
+  auto matching_ids = id_registry->GetMatchingIds("name_foo");
+  EXPECT_EQ(matching_ids.size(), 1);
+
+  auto id = matching_ids.at(0);
+  auto [_, key] = id_registry->Get(id);
+
+  EXPECT_EQ(key, "key_bar");
+
+  matching_ids = id_registry->GetMatchingIds("name_corgi");
+  EXPECT_EQ(matching_ids.size(), 1);
+  id = matching_ids.at(0);
+  std::tie(_, key) = id_registry->Get(id);
+
+  EXPECT_EQ(key, "key_baz");
 }
 
 }  // namespace data

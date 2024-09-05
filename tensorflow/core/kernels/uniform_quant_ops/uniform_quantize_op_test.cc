@@ -20,8 +20,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-using errors::IsInvalidArgument;
-
 class UniformQuantizeOpsTest : public OpsTestBase {
  protected:
 };
@@ -38,7 +36,7 @@ TEST_F(UniformQuantizeOpsTest, QuantizeInvalidQuantizationAxis) {
                    .Attr("quantization_max_val", 127)
                    .Finalize(node_def()));
   // quantization_axis < -1.
-  EXPECT_TRUE(IsInvalidArgument(InitOp()));
+  EXPECT_TRUE(absl::IsInvalidArgument(InitOp()));
 
   TF_ASSERT_OK(NodeDefBuilder("test", "UniformQuantize")
                    .Input(FakeInput(DT_FLOAT))
@@ -57,7 +55,7 @@ TEST_F(UniformQuantizeOpsTest, QuantizeInvalidQuantizationAxis) {
   AddInputFromArray<int32>(TensorShape({}), {0});
 
   // quantization_axis >= input tensor rank.
-  EXPECT_TRUE(IsInvalidArgument(RunOpKernel()));
+  EXPECT_TRUE(absl::IsInvalidArgument(RunOpKernel()));
 }
 
 TEST_F(UniformQuantizeOpsTest, PerTensorQuantize) {

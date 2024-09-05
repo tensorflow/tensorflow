@@ -27,8 +27,8 @@ limitations under the License.
 #include "tensorflow/compiler/jit/device_compilation_cluster_signature.h"
 #include "tensorflow/compiler/jit/xla_compile_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
-#include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "xla/client/local_client.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/platform/mutex.h"
 
 namespace tensorflow {
@@ -151,7 +151,8 @@ class DeviceCompilationCache {
   absl::flat_hash_map<Key, std::unique_ptr<Entry>, Key::Hash> cache_
       TF_GUARDED_BY(compile_cache_mu_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DeviceCompilationCache);
+  DeviceCompilationCache(const DeviceCompilationCache&) = delete;
+  void operator=(const DeviceCompilationCache&) = delete;
 };
 
 template <typename ExecutableType>

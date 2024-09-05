@@ -20,16 +20,18 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/statusor.h"
 #include "absl/strings/substitute.h"
 #include "third_party/protobuf/text_format.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/optimized_function_graph.pb.h"
 #include "tensorflow/core/graph/node_builder.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/status_matchers.h"
-#include "tensorflow/tsl/platform/test.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/status_matchers.h"
+#include "tsl/platform/test.h"
 
 namespace tensorflow {
 namespace {
@@ -84,24 +86,29 @@ constexpr absl::string_view kLibraryPb =
            }
          })pb";
 
-TEST(OptimizedFunctionGraphUtilsTest, ToProtoProducesCorrectResult) {
-  // Create a simple graph with one trivial node.
+// Creates a simple graph with one trivial node.
+absl::StatusOr<OptimizedFunctionGraphInfo>
+CreateSimpleOptimizedFunctionGraphInfo() {
   NodeDef node_def;
-  TF_ASSERT_OK(NodeDefBuilder("A", "OneOutput").Finalize(&node_def));
+  TF_RETURN_IF_ERROR(NodeDefBuilder("A", "OneOutput").Finalize(&node_def));
   auto graph = std::make_unique<Graph>(OpRegistry::Global());
   Status status;
   graph->AddNode(node_def, &status);
-  TF_ASSERT_OK(status);
+  TF_RETURN_IF_ERROR(status);
 
   // Create a simple library with one function.
-  FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
-  TF_ASSERT_OK(lib_def.AddFunctionDef(test::function::NonZero()));
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), FunctionDefLibrary());
+  TF_RETURN_IF_ERROR(lib_def.AddFunctionDef(test::function::NonZero()));
 
   // Construct an OptimizedFunctionGraphInfo.
-  OptimizedFunctionGraphInfo test_info{
-      std::string(kFunctionName), std::move(graph),
-      std::move(lib_def),         {{"A", "B"}},
-      {DT_FLOAT, DT_DOUBLE},      1};
+  return OptimizedFunctionGraphInfo(
+      std::string(kFunctionName), std::move(graph), std::move(lib_def),
+      {{"A", "B"}}, {DT_FLOAT, DT_DOUBLE}, 1, 5, OptimizedFunctionGraph::JIT);
+}
+
+TEST(OptimizedFunctionGraphUtilsTest, ToProtoProducesCorrectResult) {
+  TF_ASSERT_OK_AND_ASSIGN(OptimizedFunctionGraphInfo test_info,
+                          CreateSimpleOptimizedFunctionGraphInfo());
 
   const OptimizedFunctionGraph test_result =
       OptimizedFunctionGraphInfo::ToProto(test_info);
@@ -114,6 +121,8 @@ TEST(OptimizedFunctionGraphUtilsTest, ToProtoProducesCorrectResult) {
                     ret_types: DT_FLOAT
                     ret_types: DT_DOUBLE
                     num_return_nodes: 1
+                    source: JIT
+                    optimization_time_usecs: 5
                   )pb",
                   kLibraryPb))));
 }
@@ -129,7 +138,7 @@ TEST(OptimizedFunctionGraphUtilsTest,
       )pb",
       &proto);
 
-  EXPECT_THAT(OptimizedFunctionGraphInfo::FromProto(proto),
+  EXPECT_THAT(OptimizedFunctionGraphInfo::FromProto(std::move(proto)),
               StatusIs(tsl::error::INVALID_ARGUMENT,
                        "Node 'B' is missing a device specification"));
 }
@@ -148,12 +157,14 @@ TEST(OptimizedFunctionGraphUtilsTest, FromProtoProducesCorrectResult) {
             ret_types: DT_DOUBLE
             ret_types: DT_BOOL
             num_return_nodes: 2
+            optimization_time_usecs: 15
+            source: 1
           )pb",
           kLibraryPb),
       &proto);
 
-  const StatusOr<OptimizedFunctionGraphInfo> test_result =
-      OptimizedFunctionGraphInfo::FromProto(proto);
+  const absl::StatusOr<OptimizedFunctionGraphInfo> test_result =
+      OptimizedFunctionGraphInfo::FromProto(std::move(proto));
   TF_EXPECT_OK(test_result.status());
   // Compare graph.
   GraphDef test_result_graph_def;
@@ -173,6 +184,89 @@ TEST(OptimizedFunctionGraphUtilsTest, FromProtoProducesCorrectResult) {
   EXPECT_THAT(test_result->node_name_to_control_ret,
               UnorderedElementsAre(Pair("B", "A")));
   EXPECT_EQ(test_result->num_return_nodes, 2);
+  EXPECT_EQ(test_result->optimization_duration_usecs, 15);
+  EXPECT_EQ(test_result->optimization_source, OptimizedFunctionGraph::AOT);
+}
+
+TEST(OptimizedFunctionGraphUtilsTest,
+     FromProtoProducesCorrectResultWithFunctionCall) {
+  OptimizedFunctionGraph proto;
+  proto2::TextFormat::ParseFromString(
+      absl::Substitute(
+          R"pb(
+            name: "test_func",
+            function_graph {
+              node {
+                name: 'B'
+                op: 'NonZero'
+                device: ':CPU'
+                attr {
+                  key: "T"
+                  value { type: DT_FLOAT }
+                }
+              } $0
+            }
+            node_name_to_control_ret { key: "B" value: "A" }
+            ret_types: DT_FLOAT
+            ret_types: DT_DOUBLE
+            ret_types: DT_BOOL
+            num_return_nodes: 2
+            optimization_time_usecs: 15
+            source: 1
+          )pb",
+          kLibraryPb),
+      &proto);
+
+  const absl::StatusOr<OptimizedFunctionGraphInfo> test_result =
+      OptimizedFunctionGraphInfo::FromProto(std::move(proto));
+  TF_EXPECT_OK(test_result.status());
+  // Compare graph.
+  GraphDef test_result_graph_def;
+  test_result->function_graph->ToGraphDef(&test_result_graph_def);
+  EXPECT_THAT(test_result_graph_def,
+              Partially(EqualsProto(R"pb(node {
+                                           name: 'B'
+                                           op: 'NonZero'
+                                           device: ':CPU'
+                                           attr {
+                                             key: "T"
+                                             value { type: DT_FLOAT }
+                                           }
+                                         })pb")));
+  // The lib_def in graph is already cleared.
+  EXPECT_EQ(test_result->function_graph->flib_def().Find("NonZero"), nullptr);
+  // The function should be found in result's lib_def.
+  EXPECT_NE(test_result->lib_def.Find("NonZero"), nullptr);
+  EXPECT_THAT(test_result->ret_types,
+              ElementsAre(DT_FLOAT, DT_DOUBLE, DT_BOOL));
+  EXPECT_THAT(test_result->node_name_to_control_ret,
+              UnorderedElementsAre(Pair("B", "A")));
+  EXPECT_EQ(test_result->num_return_nodes, 2);
+  EXPECT_EQ(test_result->optimization_duration_usecs, 15);
+  EXPECT_EQ(test_result->optimization_source, OptimizedFunctionGraph::AOT);
+}
+
+TEST(OptimizedFunctionGraphUtilsTest, MoveTest) {
+  TF_ASSERT_OK_AND_ASSIGN(OptimizedFunctionGraphInfo test_info,
+                          CreateSimpleOptimizedFunctionGraphInfo());
+
+  OptimizedFunctionGraphInfo moved_result = std::move(test_info);
+
+  // Compare graph.
+  GraphDef moved_result_graph_def;
+  moved_result.function_graph->ToGraphDef(&moved_result_graph_def);
+  EXPECT_EQ(moved_result.name, kFunctionName);
+  EXPECT_THAT(
+      moved_result_graph_def,
+      Partially(EqualsProto(R"pb(node { name: 'A' op: 'OneOutput' })pb")));
+  // The function should be found in result's lib_def.
+  EXPECT_NE(moved_result.lib_def.Find("NonZero"), nullptr);
+  EXPECT_THAT(moved_result.ret_types, ElementsAre(DT_FLOAT, DT_DOUBLE));
+  EXPECT_THAT(moved_result.node_name_to_control_ret,
+              UnorderedElementsAre(Pair("A", "B")));
+  EXPECT_EQ(moved_result.num_return_nodes, 1);
+  EXPECT_EQ(moved_result.optimization_duration_usecs, 5);
+  EXPECT_EQ(moved_result.optimization_source, OptimizedFunctionGraph::JIT);
 }
 
 }  // namespace

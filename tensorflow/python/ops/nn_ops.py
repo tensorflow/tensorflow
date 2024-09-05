@@ -162,6 +162,7 @@ array([[1.5, 1.5],
        [1. , 1. ],
        [1. , 1. ]], dtype=float32)
 
+API docstring: tensorflow.nn
 """
 
 import functools
@@ -177,6 +178,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -185,6 +187,8 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
+# Ensure all gradients are registered for nn_ops
+from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import variables as variables_lib
@@ -1239,7 +1243,8 @@ def convolution_internal(
       not tensor_util.is_tf_type(filters)):
     with ops.name_scope("convolution_internal", None, [filters, input]):
       filters = ops.convert_to_tensor(filters, name='filters')
-  if (not isinstance(input, ops.Tensor) and not tensor_util.is_tf_type(input)):
+  if (not isinstance(input, tensor_lib.Tensor) and not tensor_util.is_tf_type(
+      input)):
     with ops.name_scope("convolution_internal", None, [filters, input]):
       input = ops.convert_to_tensor(input, name="input")
 
@@ -2236,7 +2241,7 @@ def conv1d_transpose(
     input = array_ops.expand_dims(input, spatial_start_dim)
     filters = array_ops.expand_dims(filters, 0)
     output_shape = list(output_shape) if not isinstance(
-        output_shape, ops.Tensor) else output_shape
+        output_shape, tensor_lib.Tensor) else output_shape
     output_shape = array_ops.concat([output_shape[: spatial_start_dim], [1],
                                      output_shape[spatial_start_dim:]], 0)
 
@@ -3820,7 +3825,7 @@ def _wrap_2d_function(inputs, compute_op, dim=-1, name=None):
     return compute_op(inputs, name=name)
 
   dim_val = dim
-  if isinstance(dim, ops.Tensor):
+  if isinstance(dim, tensor_lib.Tensor):
     dim_val = tensor_util.constant_value(dim)
   if dim_val is not None and not -shape.ndims <= dim_val < shape.ndims:
     raise errors_impl.InvalidArgumentError(
@@ -3834,7 +3839,7 @@ def _wrap_2d_function(inputs, compute_op, dim=-1, name=None):
 
   # In case dim is negative (and is not last dimension -1), add shape.ndims
   ndims = array_ops.rank(inputs)
-  if not isinstance(dim, ops.Tensor):
+  if not isinstance(dim, tensor_lib.Tensor):
     if dim < 0:
       dim += ndims
   else:
@@ -5809,7 +5814,7 @@ def _dropout(x, rate, noise_shape, uniform_sampler, dummy_rng_step, name,
 
 @tf_export("math.top_k", "nn.top_k")
 @dispatch.add_dispatch_support
-def top_k(input, k=1, sorted=True, name=None):  # pylint: disable=redefined-builtin
+def top_k(input, k=1, sorted=True, index_type=dtypes.int32, name=None):  # pylint: disable=redefined-builtin
   """Finds values and indices of the `k` largest entries for the last dimension.
 
   If the input is a vector (rank=1), finds the `k` largest entries in the vector
@@ -5846,13 +5851,22 @@ def top_k(input, k=1, sorted=True, name=None):  # pylint: disable=redefined-buil
   ...                        k=3)
   >>> result.indices.numpy()
   array([0, 1, 3], dtype=int32)
+  
+  By default, indices are returned as type `int32`, however, this can be changed
+  by specifying the `index_type`.
+  
+  >>> result = tf.math.top_k([1, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0],
+  ...                        k=3, index_type=tf.int16)
+  >>> result.indices.numpy()
+  array([0, 1, 3], dtype=int16)
 
   Args:
     input: 1-D or higher `Tensor` with last dimension at least `k`.
-    k: 0-D `int32` `Tensor`.  Number of top elements to look for along the last
-      dimension (along each row for matrices).
+    k: 0-D `Tensor` of type `int16`, `int32` or `int64`.  Number of top element
+      to look for along the last dimension (along each row for matrices).
     sorted: If true the resulting `k` elements will be sorted by the values in
       descending order.
+    index_type: Optional dtype for output indices.
     name: Optional name for the operation.
 
   Returns:
@@ -5860,7 +5874,9 @@ def top_k(input, k=1, sorted=True, name=None):  # pylint: disable=redefined-buil
     values: The `k` largest elements along each last dimensional slice.
     indices: The indices of `values` within the last dimension of `input`.
   """
-  return gen_nn_ops.top_kv2(input, k=k, sorted=sorted, name=name)
+  return gen_nn_ops.top_kv2(
+      input, k=k, sorted=sorted, index_type=index_type, name=name
+  )
 
 
 @tf_export("math.approx_max_k", "nn.approx_max_k")
@@ -6584,14 +6600,18 @@ def in_top_k_v2(targets, predictions, k, name=None):
   return in_top_k(predictions, targets, k, name)
 
 
-tf_export(v1=["nn.quantized_avg_pool"])(
-    dispatch.add_dispatch_support(gen_nn_ops.quantized_avg_pool))
-tf_export(v1=["nn.quantized_conv2d"])(
-    dispatch.add_dispatch_support(gen_nn_ops.quantized_conv2d))
-tf_export(v1=["nn.quantized_relu_x"])(
-    dispatch.add_dispatch_support(gen_nn_ops.quantized_relu_x))
-tf_export(v1=["nn.quantized_max_pool"])(
-    dispatch.add_dispatch_support(gen_nn_ops.quantized_max_pool))
+quantized_avg_pool = tf_export(v1=["nn.quantized_avg_pool"])(
+    dispatch.add_dispatch_support(gen_nn_ops.quantized_avg_pool)
+)
+quantized_conv2d = tf_export(v1=["nn.quantized_conv2d"])(
+    dispatch.add_dispatch_support(gen_nn_ops.quantized_conv2d)
+)
+quantized_relu_x = tf_export(v1=["nn.quantized_relu_x"])(
+    dispatch.add_dispatch_support(gen_nn_ops.quantized_relu_x)
+)
+quantized_max_pool = tf_export(v1=["nn.quantized_max_pool"])(
+    dispatch.add_dispatch_support(gen_nn_ops.quantized_max_pool)
+)
 
 
 @tf_export("nn.isotonic_regression", v1=[])

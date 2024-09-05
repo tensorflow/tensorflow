@@ -54,7 +54,9 @@ class LoadAllTPUEmbeddingParametersOp : public OpKernel {
   tpu::TPUEmbeddingConfiguration config_;
   std::vector<TensorShape> table_shapes_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(LoadAllTPUEmbeddingParametersOp);
+  LoadAllTPUEmbeddingParametersOp(const LoadAllTPUEmbeddingParametersOp&) =
+      delete;
+  void operator=(const LoadAllTPUEmbeddingParametersOp&) = delete;
 };
 
 // The RetrieveAllTPUEmbeddingParameters op is used to retrieve updated
@@ -87,7 +89,9 @@ class RetrieveAllTPUEmbeddingParametersOp : public OpKernel {
   tpu::TPUEmbeddingConfiguration config_;
   std::vector<TensorShape> table_shapes_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(RetrieveAllTPUEmbeddingParametersOp);
+  RetrieveAllTPUEmbeddingParametersOp(
+      const RetrieveAllTPUEmbeddingParametersOp&) = delete;
+  void operator=(const RetrieveAllTPUEmbeddingParametersOp&) = delete;
 };
 
 }  // namespace tensorflow

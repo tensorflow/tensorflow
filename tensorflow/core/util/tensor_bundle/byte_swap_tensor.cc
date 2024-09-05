@@ -15,10 +15,25 @@ limitations under the License.
 
 #include "tensorflow/core/util/tensor_bundle/byte_swap_tensor.h"
 
+#include <cstddef>
+#include <cstring>
+#include <string>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
+#include "tensorflow/core/util/tensor_bundle/byte_swap_array.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tsl/platform/mem.h"
 
 namespace tensorflow {
 
@@ -48,7 +63,7 @@ Status ByteSwapBuffer(char* buff, size_t size, DataType dtype,
     case DT_BOOL:
     case DT_UINT8:
     case DT_INT8:
-      return OkStatus();
+      return absl::OkStatus();
 
     // 16-bit types
     case DT_BFLOAT16:
@@ -94,17 +109,17 @@ Status ByteSwapBuffer(char* buff, size_t size, DataType dtype,
     // Types that ought to be supported in the future
     case DT_RESOURCE:
     case DT_VARIANT:
-      return errors::Unimplemented(
-          "Byte-swapping not yet implemented for tensors with dtype ", dtype);
+      return absl::UnimplementedError(absl::StrCat(
+          "Byte-swapping not yet implemented for tensors with dtype ", dtype));
 
     // Byte-swapping shouldn't make sense for other dtypes.
     default:
-      return errors::Unimplemented(
-          "Byte-swapping not supported for tensors with dtype ", dtype);
+      return absl::UnimplementedError(absl::StrCat(
+          "Byte-swapping not supported for tensors with dtype ", dtype));
   }
 
   TF_RETURN_IF_ERROR(ByteSwapArray(buff, bytes_per_elem, array_len));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -162,26 +177,28 @@ Status ByteSwapTensorContentInNode(NodeDef& node) {
             TF_RETURN_IF_ERROR(ByteSwapTensor(&parsed));
             (*node.mutable_attr())["value"]
                 .mutable_tensor()
-                ->set_tensor_content(string(
+                ->set_tensor_content(std::string(
                     reinterpret_cast<const char*>(parsed.tensor_data().data()),
                     parsed.tensor_data().size()));
           } else {
-            void* copy = tensorflow::port::Malloc(tsize);
-            memcpy(copy,
-                   string(node_value.mutable_tensor()->tensor_content()).data(),
-                   tsize);
+            void* copy = tsl::port::Malloc(tsize);
+            std::memcpy(
+                copy,
+                std::string(node_value.mutable_tensor()->tensor_content())
+                    .data(),
+                tsize);
             TF_RETURN_IF_ERROR(ByteSwapBuffer((char*)copy, tsize, p_type, -1));
             (*node.mutable_attr())["value"]
                 .mutable_tensor()
                 ->set_tensor_content(
-                    string(reinterpret_cast<const char*>(copy), tsize));
-            tensorflow::port::Free(copy);
+                    std::string(reinterpret_cast<const char*>(copy), tsize));
+            tsl::port::Free(copy);
           }
         }
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ByteSwapTensorContentInMetaGraphDef(MetaGraphDef* meta_graph_def) {
@@ -190,13 +207,13 @@ Status ByteSwapTensorContentInMetaGraphDef(MetaGraphDef* meta_graph_def) {
                              ->mutable_function())
     for (auto& node : (*function.mutable_node_def()))
       TF_RETURN_IF_ERROR(ByteSwapTensorContentInNode(node));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ByteSwapTensorContentInGraphDef(GraphDef* graph_def) {
   for (auto& node : *graph_def->mutable_node())
     TF_RETURN_IF_ERROR(ByteSwapTensorContentInNode(node));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

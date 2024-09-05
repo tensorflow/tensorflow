@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/utils/scc.h"
+
+#include <memory>
+
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -31,7 +34,7 @@ class SCCTest : public ::testing::Test {
     std::unordered_map<string, DeviceProperties> devices;
     DeviceProperties unknown_device;
     devices["MY_DEVICE"] = unknown_device;
-    cluster_.reset(new VirtualCluster(devices));
+    cluster_ = std::make_unique<VirtualCluster>(devices);
     TF_CHECK_OK(cluster_->Provision());
   }
 
@@ -39,7 +42,7 @@ class SCCTest : public ::testing::Test {
 
  protected:
   static NodeDef CreateNode(const string& name,
-                            gtl::ArraySlice<string> inputs) {
+                            absl::Span<const string> inputs) {
     NodeDef node;
     node.set_name(name);
     for (const string& input : inputs) {

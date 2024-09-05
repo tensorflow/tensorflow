@@ -14,6 +14,7 @@ option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framewo
 
 // Protocol buffer representing a tensor.
 message TensorProto {
+  // Data type of the tensor.
   DataType dtype = 1;
 
   // Shape of the tensor.  TODO(touts): sort out the 0-rank issues.

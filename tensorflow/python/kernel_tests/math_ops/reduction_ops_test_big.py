@@ -16,6 +16,7 @@
 
 import numpy as np
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -43,6 +44,31 @@ class BigReductionTest(BaseReductionTest):
 
   def _tf_reduce_sum(self, x, reduction_axes, keepdims):
     return math_ops.reduce_sum(x, reduction_axes, keepdims)
+
+  @test_util.run_deprecated_v1
+  def testFloat32Bfloat16Mean(self):
+    arrfp32 = np.random.normal(size=[4105, 4105]).astype(np.float32)
+    arrbf16 = arrfp32.astype(dtypes.bfloat16.as_numpy_dtype)
+    with self.session(graph=ops.Graph(), use_gpu=False) as sess:
+      arrfp32_placeholder = array_ops.placeholder(
+          dtype=np.float32, shape=(4105, 4105)
+      )
+      arrbf16_placeholder = array_ops.placeholder(
+          dtype=dtypes.bfloat16.as_numpy_dtype, shape=(4105, 4105)
+      )
+      tf_full_mean_fp32 = self._tf_reduce_mean(
+          arrfp32_placeholder, [0, 1], False
+      )
+      tf_full_mean_bf16 = self._tf_reduce_mean(
+          arrbf16_placeholder, [0, 1], False
+      )
+      tf_full_mean_bf16_cast = math_ops.cast(tf_full_mean_bf16, dtypes.float32)
+
+      tf_out_full_f, tf_out_full_b = sess.run(
+          [tf_full_mean_fp32, tf_full_mean_bf16_cast],
+          {arrfp32_placeholder: arrfp32, arrbf16_placeholder: arrbf16},
+      )
+    self.assertAllClose(tf_out_full_f, tf_out_full_b)
 
   @test_util.run_deprecated_v1
   def testFloat32Sum(self):

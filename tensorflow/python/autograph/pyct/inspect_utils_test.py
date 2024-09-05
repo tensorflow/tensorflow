@@ -17,8 +17,8 @@
 import abc
 import collections
 import functools
-import imp
 import textwrap
+import types
 
 from tensorflow.python import lib
 from tensorflow.python.autograph.pyct import inspect_utils
@@ -302,8 +302,8 @@ class InspectUtilsTest(test.TestCase):
 
   def test_getqualifiedname(self):
     foo = object()
-    qux = imp.new_module('quxmodule')
-    bar = imp.new_module('barmodule')
+    qux = types.ModuleType('quxmodule')
+    bar = types.ModuleType('barmodule')
     baz = object()
     bar.baz = baz
 
@@ -331,7 +331,7 @@ class InspectUtilsTest(test.TestCase):
       current_level = []
       for j in range(10):
         mod_name = 'mod_{}_{}'.format(i, j)
-        mod = imp.new_module(mod_name)
+        mod = types.ModuleType(mod_name)
         current_level.append(mod)
         if i == 9 and j == 9:
           mod.foo = foo
@@ -358,7 +358,7 @@ class InspectUtilsTest(test.TestCase):
     ns = {}
     mods = []
     for i in range(10):
-      mod = imp.new_module('mod_{}'.format(i))
+      mod = types.ModuleType('mod_{}'.format(i))
       if i == 9:
         mod.foo = foo
       # Module i refers to module i+1

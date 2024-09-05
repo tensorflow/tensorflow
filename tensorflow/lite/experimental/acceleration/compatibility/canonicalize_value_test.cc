@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/experimental/acceleration/compatibility/variables.h"
 
 namespace tflite::acceleration {
 namespace {
@@ -40,6 +41,12 @@ TEST(CanonicalizeValue, OtherSpecialCharactersAreUnaffected) {
     std::string s = {1, static_cast<char>(c)};
     EXPECT_EQ(CanonicalizeValue(s), s);
   }
+}
+
+TEST(CanonicalizeValue, SamsungXclipseGpuNormalized) {
+  EXPECT_EQ(CanonicalizeValueWithKey(
+                kGPUModel, "ANGLE (Samsung Xclipse 920) on Vulkan 1.1.179"),
+            "angle_(samsung_xclipse_920)_on_vulkan");
 }
 }  // namespace
 }  // namespace tflite::acceleration

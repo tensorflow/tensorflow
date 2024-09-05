@@ -9,13 +9,11 @@ cc_library(
     name = "mla_test_utils",
     testonly = True,
     hdrs = ["mla_test_utils.h"],
-    visibility = [
-        "//tensorflow/core/tfrt/saved_model/tests:__pkg__",
-    ],
+    visibility = ["//visibility:private"],
     deps = [
-        "@com_google_absl//absl/strings",
-        "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/strings",
     ] + if_google([
         "//third_party/mira/mlarchive:mla",
         "//third_party/mira/mlarchive/google:google_env",
@@ -27,13 +25,11 @@ cc_library(
 cc_library(
     name = "mla_utils",
     hdrs = ["mla_utils.h"],
-    visibility = [
-        "//tensorflow/core/tfrt/saved_model:__pkg__",
-    ],
+    visibility = ["//visibility:private"],
     deps = [
-        "@com_google_absl//absl/strings",
-        "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/strings",
     ] + if_google([
         "//third_party/mira/mlarchive:mla",
         "//third_party/mira/mlarchive:status_macro",

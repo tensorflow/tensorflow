@@ -41,7 +41,7 @@ TEST_F(DeviceCompilerSerializeTest, PersistentCacheOptionsTest) {
       AlterPersistentCacheEntryHloModuleNames(tensorflow::testing::TmpDir());
   EXPECT_FALSE(status.ok());
   EXPECT_TRUE(absl::StrContains(
-      status.error_message(),
+      status.message(),
       "Did not find any persistent XLA compilation cache entries to alter."));
 
   TF_ASSERT_OK(AlterPersistentCacheEntryHloModuleNames(

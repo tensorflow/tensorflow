@@ -15,6 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_C_GPU_PLUGIN_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_C_GPU_PLUGIN_H_
 
-#include "tensorflow/lite/core/experimental/acceleration/configuration/c/gpu_plugin.h"
+// This header file is no longer experimental.
+// Please use the non-experimental file instead.
+
+#include "tensorflow/lite/acceleration/configuration/c/gpu_plugin.h"  // IWYU pragma: export
+
+// IWYU pragma: private, include "third_party/tensorflow/lite/acceleration/configuration/c/gpu_plugin.h"
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_C_GPU_PLUGIN_H_

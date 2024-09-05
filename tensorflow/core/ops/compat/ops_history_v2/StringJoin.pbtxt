@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "StringJoin"
   input_arg {
     name: "inputs"
@@ -14,6 +14,30 @@ op 	 {
     type: "int"
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "separator"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+}
+op {
+  name: "StringJoin"
+  input_arg {
+    name: "inputs"
+    type: DT_STRING
+    number_attr: "N"
+  }
+  output_arg {
+    name: "output"
+    type: DT_STRING
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
   }
   attr {
     name: "separator"

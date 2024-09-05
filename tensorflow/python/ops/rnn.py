@@ -17,6 +17,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -125,7 +126,7 @@ def _infer_state_dtype(explicit_dtype, state):
 
 
 def _maybe_tensor_shape_from_tensor(shape):
-  if isinstance(shape, ops.Tensor):
+  if isinstance(shape, tensor.Tensor):
     return tensor_shape.as_shape(tensor_util.constant_value(shape))
   else:
     return shape

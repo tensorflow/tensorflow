@@ -43,7 +43,7 @@ class NodeDefBuilderTest : public ::testing::Test {
   // to Op() above.
   NodeDefBuilder& Builder() {
     EXPECT_FALSE(op_def_.name().empty()) << "Must call Op() before Builder()";
-    builder_.reset(new NodeDefBuilder("n", &op_def_));
+    builder_ = std::make_unique<NodeDefBuilder>("n", &op_def_);
     return *builder_;
   }
 
@@ -84,7 +84,7 @@ class NodeDefBuilderTest : public ::testing::Test {
     EXPECT_FALSE(status.ok()) << SummarizeNodeDef(node_def);
     if (status.ok()) return;
     for (const string& message : messages) {
-      EXPECT_TRUE(absl::StrContains(status.error_message(), message))
+      EXPECT_TRUE(absl::StrContains(status.message(), message))
           << status << ", " << message;
     }
   }
@@ -107,8 +107,8 @@ class NodeDefBuilderTest : public ::testing::Test {
     }
     EXPECT_FALSE(status.ok()) << SummarizeNodeDef(node_def);
     if (status.ok()) return;
-    EXPECT_TRUE(absl::StrContains(status.error_message(), message))
-        << "Actual error: " << status.error_message()
+    EXPECT_TRUE(absl::StrContains(status.message(), message))
+        << "Actual error: " << status.message()
         << "\nDoes not contain: " << message;
   }
 

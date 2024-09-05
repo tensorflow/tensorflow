@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/name_utils.h"
 
+#include <vector>
+
 #include "absl/strings/str_join.h"
 
 namespace tensorflow {

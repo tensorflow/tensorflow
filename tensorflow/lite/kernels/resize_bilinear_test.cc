@@ -289,7 +289,7 @@ TEST_P(ResizeBilinearOpTest, TwoDimensionalResizeWithTwoBatchesUInt8) {
                                             9, 12, 14,   //
                                             12, 14, 16,  //
                                         },
-                                        /*max_abs_error=*/1)));
+                                        /*max_abs_err=*/1)));
 }
 
 TEST_P(ResizeBilinearOpTest,
@@ -312,7 +312,7 @@ TEST_P(ResizeBilinearOpTest,
                                             8, 10, 13,   //
                                             12, 14, 16,  //
                                         },
-                                        /*max_abs_error=*/1)));
+                                        /*max_abs_err=*/1)));
 }
 
 TEST_P(ResizeBilinearOpTest, TwoDimensionalResizeWithTwoBatchesInt8) {
@@ -333,7 +333,7 @@ TEST_P(ResizeBilinearOpTest, TwoDimensionalResizeWithTwoBatchesInt8) {
                                              9, 12, 13,   //
                                              12, 14, 16,  //
                                          },
-                                         /*max_abs_error=*/1)));
+                                         /*max_abs_err=*/1)));
 }
 
 TEST_P(ResizeBilinearOpTest, TwoDimensionalResizeWithTwoBatchesInt16) {
@@ -357,7 +357,7 @@ TEST_P(ResizeBilinearOpTest, TwoDimensionalResizeWithTwoBatchesInt16) {
                                               9, 12, 13,   //
                                               12, 14, 16,  //
                                           },
-                                          /*max_abs_error=*/1)));
+                                          /*max_abs_err=*/1)));
 }
 
 TEST_P(ResizeBilinearOpTest, ThreeDimensionalResizeUInt8) {
@@ -373,7 +373,7 @@ TEST_P(ResizeBilinearOpTest, ThreeDimensionalResizeUInt8) {
                                             7, 9, 10, 12, 11, 14,    //
                                             10, 12, 12, 14, 14, 16,  //
                                         },
-                                        /*max_abs_error=*/1)));
+                                        /*max_abs_err=*/1)));
 }
 
 TEST_P(ResizeBilinearOpTest, ThreeDimensionalResizeInt8) {
@@ -389,7 +389,7 @@ TEST_P(ResizeBilinearOpTest, ThreeDimensionalResizeInt8) {
                                              7, 9, 10, 12, 11, 13,    //
                                              10, 12, 12, 14, 14, 16,  //
                                          },
-                                         /*max_abs_error=*/1)));
+                                         /*max_abs_err=*/1)));
 }
 
 TEST_P(ResizeBilinearOpTest, ThreeDimensionalResizeInt16) {
@@ -408,7 +408,7 @@ TEST_P(ResizeBilinearOpTest, ThreeDimensionalResizeInt16) {
                                               7, 9, 10, 12, 11, 13,    //
                                               10, 12, 12, 14, 14, 16,  //
                                           },
-                                          /*max_abs_error=*/1)));
+                                          /*max_abs_err=*/1)));
 }
 
 TEST_P(ResizeBilinearOpTest, HorizontalResizeExtremeValuesUInt8) {
@@ -436,6 +436,30 @@ TEST_P(ResizeBilinearOpTest, HorizontalResizeExtremeValuesInt16) {
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear({32765, 32766, 32767})));
+}
+
+TEST_P(ResizeBilinearOpTest, HorizontalResizeExtremeNegativeValuesInt8) {
+  ResizeBilinearOpModel m({TensorType_INT8, {1, 1, 2, 1}}, {1, 3}, GetParam());
+  m.SetInput<int8_t>({-120, -128});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear({-120, -125, -128})));
+}
+
+TEST_P(ResizeBilinearOpTest, HorizontalResizeExtremeNegativeValuesInt16) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  ResizeBilinearOpModel m({TensorType_INT16, {1, 1, 2, 1}}, {1, 3}, GetParam());
+  m.SetInput<int16_t>({-32256, -32768});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+#if TFLITE_SINGLE_ROUNDING
+  EXPECT_THAT(m.GetOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear({-32256, -32597, -32768})));
+#else
+  EXPECT_THAT(m.GetOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear({-32256, -32598, -32768})));
+#endif  // TFLITE_SINGLE_ROUNDING
 }
 
 INSTANTIATE_TEST_SUITE_P(ResizeBilinearOpTest, ResizeBilinearOpTest,

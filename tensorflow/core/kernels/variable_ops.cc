@@ -76,7 +76,7 @@ void VariableOp::Compute(OpKernelContext* ctx) {
   auto creator = [this](LegacyVar** var) {
     *var = new LegacyVar(dtype_);
     (*var)->tensor()->set_shape(shape_);
-    return OkStatus();
+    return absl::OkStatus();
   };
   LegacyVar* var;
   OP_REQUIRES_OK(ctx, cinfo_.resource_manager()->LookupOrCreate<LegacyVar>(

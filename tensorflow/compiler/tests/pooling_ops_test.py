@@ -20,6 +20,7 @@ from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
@@ -36,7 +37,7 @@ def NHWCToNCHW(input_tensor):
   Returns:
     the converted tensor or a shape array
   """
-  if isinstance(input_tensor, ops.Tensor):
+  if isinstance(input_tensor, tensor.Tensor):
     return array_ops.transpose(input_tensor, [0, 3, 1, 2])
   else:
     return [input_tensor[0], input_tensor[3], input_tensor[1], input_tensor[2]]
@@ -51,7 +52,7 @@ def NCHWToNHWC(input_tensor):
   Returns:
     the converted tensor or a shape array
   """
-  if isinstance(input_tensor, ops.Tensor):
+  if isinstance(input_tensor, tensor.Tensor):
     return array_ops.transpose(input_tensor, [0, 2, 3, 1])
   else:
     return [input_tensor[0], input_tensor[2], input_tensor[3], input_tensor[1]]

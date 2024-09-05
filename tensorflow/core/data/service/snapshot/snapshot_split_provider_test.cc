@@ -20,23 +20,28 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/time/time.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/test_util.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
-#include "tensorflow/tsl/lib/io/compression.h"
-#include "tensorflow/tsl/platform/env.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/path.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/status_matchers.h"
-#include "tensorflow/tsl/platform/test.h"
-#include "tensorflow/tsl/protobuf/error_codes.pb.h"
+#include "tsl/lib/io/compression.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/path.h"
+#include "tsl/platform/status_matchers.h"
+#include "tsl/platform/test.h"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -57,14 +62,12 @@ class MockDispatcherClient : public DataServiceDispatcherClient {
       : DataServiceDispatcherClient(/*address=*/"localhost",
                                     /*protocol=*/"grpc") {}
 
-  // NOLINTBEGIN(MOCK_METHOD does not work on Windows build, using deprecated
-  // MOCK_METHOD<N> instead)
-  MOCK_METHOD7(GetSnapshotSplit,
-               Status(const std::string& worker_address,
-                      const std::string& base_path, int64_t stream_index,
-                      int64_t source_index, Tensor& split,
-                      int64_t& local_split_index, bool& end_of_splits));
-  // NOLINTEND
+  MOCK_METHOD(absl::Status, GetSnapshotSplit,
+              (const std::string& worker_address, const std::string& base_path,
+               int64_t stream_index, int64_t source_index,
+               int64_t repetition_index, Tensor& split,
+               int64_t& local_split_index, bool& end_of_splits),
+              (override));
 };
 
 SnapshotTaskDef TestSnapshotTask() {
@@ -76,9 +79,12 @@ SnapshotTaskDef TestSnapshotTask() {
   return snapshot_task;
 }
 
-Status WriteSplits(const SnapshotTaskDef& snapshot_task, int64_t num_splits) {
-  std::string source_dir = SourceDirectory(
-      snapshot_task.base_path(), snapshot_task.stream_index(), /*source_id=*/0);
+absl::Status WriteSplits(const SnapshotTaskDef& snapshot_task,
+                         int64_t num_splits) {
+  std::string source_dir =
+      RepetitionDirectory(snapshot_task.base_path(),
+                          snapshot_task.stream_index(), /*source_index=*/0,
+                          /*repetition_index=*/0);
   TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(source_dir));
   for (int64_t i = 0; i < num_splits; ++i) {
     std::string split_filename = absl::StrCat("split_", i, "_", i);
@@ -87,7 +93,7 @@ Status WriteSplits(const SnapshotTaskDef& snapshot_task, int64_t num_splits) {
     TF_RETURN_IF_ERROR(AtomicallyWriteTFRecords(
         split_path, {split}, tsl::io::compression::kNone, Env::Default()));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 TEST(SnapshotSplitProviderTest, GetSplitFromDispatcher) {
@@ -96,11 +102,11 @@ TEST(SnapshotSplitProviderTest, GetSplitFromDispatcher) {
   auto mock_dispatcher_ptr = std::make_unique<MockDispatcherClient>();
   MockDispatcherClient* mock_dispatcher = mock_dispatcher_ptr.get();
   // The dispatcher sends split 0 to the worker.
-  EXPECT_CALL(*mock_dispatcher, GetSnapshotSplit(_, _, _, _, _, _, _))
-      .WillOnce(DoAll(SetArgReferee<4>(split),
-                      SetArgReferee<5>(0),      // local_split_index
-                      SetArgReferee<6>(false),  // end_of_splits
-                      Return(OkStatus())));
+  EXPECT_CALL(*mock_dispatcher, GetSnapshotSplit(_, _, _, _, _, _, _, _))
+      .WillOnce(DoAll(SetArgReferee<5>(split),
+                      SetArgReferee<6>(0),      // local_split_index
+                      SetArgReferee<7>(false),  // end_of_splits
+                      Return(absl::OkStatus())));
 
   Tensor result;
   bool end_of_splits = false;
@@ -120,11 +126,11 @@ TEST(SnapshotSplitProviderTest, GetSplitFromFile) {
   MockDispatcherClient* mock_dispatcher = mock_dispatcher_ptr.get();
   // The dispatcher sends split 9 to the worker. The worker should get previous
   // splits from the split files.
-  EXPECT_CALL(*mock_dispatcher, GetSnapshotSplit(_, _, _, _, _, _, _))
-      .WillOnce(DoAll(SetArgReferee<4>(split),
-                      SetArgReferee<5>(9),      // local_split_index
-                      SetArgReferee<6>(false),  // end_of_splits
-                      Return(OkStatus())));
+  EXPECT_CALL(*mock_dispatcher, GetSnapshotSplit(_, _, _, _, _, _, _, _))
+      .WillOnce(DoAll(SetArgReferee<5>(split),
+                      SetArgReferee<6>(9),      // local_split_index
+                      SetArgReferee<7>(false),  // end_of_splits
+                      Return(absl::OkStatus())));
   TF_ASSERT_OK(WriteSplits(snapshot_task, /*num_splits=*/10));
 
   SnapshotSplitProvider split_provider(
@@ -146,10 +152,10 @@ TEST(SnapshotSplitProviderTest, EndOfSplits) {
   auto mock_dispatcher_ptr = std::make_unique<MockDispatcherClient>();
   MockDispatcherClient* mock_dispatcher = mock_dispatcher_ptr.get();
   // The dispatcher sends `end_of_splits` to the worker.
-  EXPECT_CALL(*mock_dispatcher, GetSnapshotSplit(_, _, _, _, _, _, _))
-      .WillOnce(DoAll(SetArgReferee<5>(0),     // local_split_index
-                      SetArgReferee<6>(true),  // end_of_splits
-                      Return(OkStatus())));
+  EXPECT_CALL(*mock_dispatcher, GetSnapshotSplit(_, _, _, _, _, _, _, _))
+      .WillOnce(DoAll(SetArgReferee<6>(0),     // local_split_index
+                      SetArgReferee<7>(true),  // end_of_splits
+                      Return(absl::OkStatus())));
 
   SnapshotSplitProvider split_provider(
       "worker_address", snapshot_task, /*source_index=*/0,
@@ -167,11 +173,11 @@ TEST(SnapshotSplitProviderTest, SplitNotFound) {
   auto mock_dispatcher_ptr = std::make_unique<MockDispatcherClient>();
   MockDispatcherClient* mock_dispatcher = mock_dispatcher_ptr.get();
   // The dispatcher sends split 10, but no splits are written.
-  EXPECT_CALL(*mock_dispatcher, GetSnapshotSplit(_, _, _, _, _, _, _))
-      .WillOnce(DoAll(SetArgReferee<4>(split),
-                      SetArgReferee<5>(10),     // local_split_index
-                      SetArgReferee<6>(false),  // end_of_splits
-                      Return(OkStatus())));
+  EXPECT_CALL(*mock_dispatcher, GetSnapshotSplit(_, _, _, _, _, _, _, _))
+      .WillOnce(DoAll(SetArgReferee<5>(split),
+                      SetArgReferee<6>(10),     // local_split_index
+                      SetArgReferee<7>(false),  // end_of_splits
+                      Return(absl::OkStatus())));
   TF_ASSERT_OK(WriteSplits(snapshot_task, /*num_splits=*/0));
 
   SnapshotSplitProvider split_provider(
@@ -181,11 +187,60 @@ TEST(SnapshotSplitProviderTest, SplitNotFound) {
   Tensor result;
   bool end_of_splits = false;
   EXPECT_THAT(split_provider.GetNext(&result, &end_of_splits),
-              StatusIs(error::INTERNAL,
+              StatusIs(absl::StatusCode::kInternal,
                        HasSubstr("not all splits between [0, 10] are found")));
 }
 
-// TODO(b/266126556): Add a test for checkpointing the split provider.
+std::string full_name(const std::string& name) {
+  return FullName("test", name);
+}
+
+TEST(SnapshotSplitProviderTest, SaveRestore) {
+  const SnapshotTaskDef snapshot_task = TestSnapshotTask();
+  Tensor split(int64_t{9});
+  auto mock_dispatcher_ptr = std::make_unique<MockDispatcherClient>();
+  MockDispatcherClient* mock_dispatcher = mock_dispatcher_ptr.get();
+  EXPECT_CALL(*mock_dispatcher, GetSnapshotSplit(_, _, _, _, _, _, _, _))
+      .WillOnce(DoAll(SetArgReferee<5>(split),
+                      SetArgReferee<6>(9),      // local_split_index
+                      SetArgReferee<7>(false),  // end_of_splits
+                      Return(absl::OkStatus())));
+  TF_ASSERT_OK(WriteSplits(snapshot_task, /*num_splits=*/10));
+
+  SnapshotSplitProvider split_provider(
+      "worker_address", snapshot_task, /*source_index=*/0,
+      /*timeout=*/absl::Seconds(10), std::move(mock_dispatcher_ptr),
+      Env::Default());
+
+  // Reads splits 0--4 and then saves.
+  for (int64_t i = 0; i < 5; ++i) {
+    Tensor result;
+    bool end_of_splits = false;
+    TF_EXPECT_OK(split_provider.GetNext(&result, &end_of_splits));
+    test::ExpectTensorEqual<int64_t>(result, Tensor(int64_t{i}));
+    EXPECT_FALSE(end_of_splits);
+  }
+
+  VariantTensorDataWriter writer;
+  TF_ASSERT_OK(split_provider.Save(full_name, &writer));
+  std::vector<const VariantTensorData*> variants;
+  writer.GetData(&variants);
+  VariantTensorDataReader reader(variants);
+
+  // Reads splits 5--9.
+  SnapshotSplitProvider restored_split_provider(
+      "worker_address", snapshot_task, /*source_index=*/0,
+      /*timeout=*/absl::Seconds(10), std::make_unique<MockDispatcherClient>(),
+      Env::Default());
+  TF_ASSERT_OK(restored_split_provider.Restore(full_name, &reader));
+  for (int64_t i = 5; i <= 9; ++i) {
+    Tensor result;
+    bool end_of_splits = false;
+    TF_EXPECT_OK(split_provider.GetNext(&result, &end_of_splits));
+    test::ExpectTensorEqual<int64_t>(result, Tensor(int64_t{i}));
+    EXPECT_FALSE(end_of_splits);
+  }
+}
 
 }  // namespace
 }  // namespace data

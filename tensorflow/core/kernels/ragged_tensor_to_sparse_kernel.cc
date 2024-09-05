@@ -188,7 +188,7 @@ class RaggedTensorToSparseOp : public OpKernel {
           "Final value of ragged splits must match the length "
           "the corresponding ragged values.");
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Build a list of index suffixes that should be added for each ragged item,

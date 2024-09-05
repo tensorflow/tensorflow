@@ -15,25 +15,48 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/optimize_function_graph_utils.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <iterator>
 #include <memory>
+#include <string>
+#include <type_traits>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
+#include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/common_runtime/function_optimization_registry.h"
 #include "tensorflow/core/common_runtime/function_utils.h"
+#include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/common_runtime/optimized_function_graph_info.h"
 #include "tensorflow/core/common_runtime/partitioning_utils.h"
 #include "tensorflow/core/common_runtime/placer.h"
 #include "tensorflow/core/common_runtime/replicate_per_replica_nodes.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/metrics.h"
+#include "tensorflow/core/framework/optimized_function_graph.pb.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_node_util.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
-#include "tensorflow/core/util/dump_graph.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/host_info.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -50,7 +73,7 @@ Status ValidateNoListArguments(
           " and outputs");
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ValidateMultiDeviceOptions(
@@ -85,7 +108,7 @@ Status ValidateMultiDeviceOptions(
         options.output_devices.size(),
         " number of arguments = ", signature.output_arg_size());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status SetArgShape(const std::unordered_map<int, DtypeAndPartialTensorShape>&
@@ -111,7 +134,7 @@ Status SetArgShape(const std::unordered_map<int, DtypeAndPartialTensorShape>&
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 const string* AssignedOrRequestedDeviceName(const Node& node) {
@@ -134,17 +157,120 @@ void GetColocationGroup(const Node* node, string* group) {
     *group = attr_value->list().s(0);
   }
 }
-}  // namespace
 
-Status GetGraphAndArgRets(
-    const string& function_name, AttrSlice attrs, const FunctionDef* fdef,
-    const FunctionLibraryDefinition* lib_def, std::unique_ptr<Graph>* graph,
-    std::vector<Node*>* arg_nodes, std::vector<Node*>* ret_nodes,
-    std::vector<string>* ret_node_names, DataTypeVector* ret_types,
-    std::vector<string>* control_ret_node_names) {
+// Writes the OptimizedFunctionGraphInfo proto into a cache file.
+// Returns error if the cache file writing fails.
+Status WriteToCache(const std::string& dir_name, const std::string& file_name,
+                    OptimizedFunctionGraphInfo& optimized_function_graph_info,
+                    Env* env) {
+  const absl::Time cache_writing_start_time = absl::Now();
+
+  OptimizedFunctionGraph optimized_function_graph_proto;
+  string optimized_function_graph_proto_str;
+  optimized_function_graph_proto =
+      OptimizedFunctionGraphInfo::ToProto(optimized_function_graph_info);
+  optimized_function_graph_proto.SerializeToString(
+      &optimized_function_graph_proto_str);
+
+  // Creates the directory if not already existent.
+  if (!env->FileExists(dir_name).ok()) {
+    TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(dir_name));
+  }
+  {
+    bool has_atomic_move = false;
+    TF_RETURN_IF_ERROR(env->HasAtomicMove(dir_name, &has_atomic_move));
+    if (!has_atomic_move) {
+      LOG_EVERY_POW_2(WARNING)
+          << "Filesystem for OptimizedFunctionGraphInfo persistent cache at "
+          << dir_name
+          << " does not support atomic moves. Therefore the "
+             "persistent cache is racy if you have multiple optimizations "
+             "occurring simultaneously!";
+    }
+  }
+  std::string temp_file_name = file_name;
+  if (!env->CreateUniqueFileName(&temp_file_name, ".pb.tmp")) {
+    return absl::UnavailableError(
+        absl::StrCat("Could not create a unique file inside ", dir_name));
+  }
+  TF_RETURN_IF_ERROR(tsl::WriteStringToFile(
+      env, temp_file_name, optimized_function_graph_proto_str));
+  TF_RETURN_IF_ERROR(env->RenameFile(temp_file_name, file_name));
+
+  const absl::Duration cache_writing_duration =
+      absl::Now() - cache_writing_start_time;
+  VLOG(3) << "Finished writing Tensorflow optimized graph into cache; took "
+          << absl::ToInt64Milliseconds(cache_writing_duration)
+          << " msecs, file name: " << file_name;
+
+  return absl::OkStatus();
+}
+
+// Retrieves the OptimizedFunctionGraphInfo from a cache file.
+// Returns error if cache file loading fails.
+absl::StatusOr<OptimizedFunctionGraphInfo> ReadFromCache(
+    const string& file_name, Env* env) {
+  absl::Time cache_reading_start_time = absl::Now();
+
+  OptimizedFunctionGraph optimized_function_graph_proto;
+  string optimized_function_graph_proto_str;
+  TF_RETURN_IF_ERROR(tsl::ReadFileToString(
+      env, file_name, &optimized_function_graph_proto_str));
+
+  optimized_function_graph_proto.ParseFromString(
+      optimized_function_graph_proto_str);
+  TF_ASSIGN_OR_RETURN(absl::StatusOr<OptimizedFunctionGraphInfo>
+                          optimized_function_graph_info_restored,
+                      OptimizedFunctionGraphInfo::FromProto(
+                          std::move(optimized_function_graph_proto)));
+
+  const absl::Duration cache_reading_duration =
+      absl::Now() - cache_reading_start_time;
+  VLOG(3) << "Finished reading Tensorflow optimized graph from cache; took "
+          << absl::ToInt64Milliseconds(cache_reading_duration) << " msecs";
+
+  return optimized_function_graph_info_restored;
+}
+
+// Gets the full path name of the file cache.
+// TODO(b/276813768) Include more runtime specific info like env/flag
+// values, or line number. An alternative is to use the fingerprint of the
+// graph once graph building cache is enabled.
+//
+// Current file cache key components:
+// 1) Job name.
+// 2) Task ID.
+// 3) Function name (without UUID suffix).
+// 4) TF graph node count.
+string GetFileCacheName(const string& dir_name, const string& function_name,
+                        const FunctionDef* fdef) {
+  string plain_func_name = function_name;
+  // Remove the random UUID in the function name.
+  if (absl::StrContains(function_name, "_")) {
+    std::vector<string> func_name_tokens = absl::StrSplit(function_name, '_');
+    func_name_tokens.pop_back();
+    plain_func_name = absl::StrJoin(func_name_tokens, "_");
+  }
+
+  return absl::StrCat(dir_name, "/", tsl::port::JobName(), "_",
+                      tsl::port::TaskId(), "_", plain_func_name, "_",
+                      fdef->node_def_size());
+}
+
+// Generates graph and return information given the input function name,
+// attributes and function definition.
+Status GetGraphAndArgRets(const string& function_name, AttrSlice attrs,
+                          core::RefCountPtr<FunctionRecord>&& fdef,
+                          const FunctionLibraryDefinition* lib_def,
+                          std::unique_ptr<Graph>* graph,
+                          std::vector<Node*>* arg_nodes,
+                          std::vector<Node*>* ret_nodes,
+                          std::vector<string>* ret_node_names,
+                          DataTypeVector* ret_types,
+                          std::vector<string>* control_ret_node_names) {
   std::unique_ptr<FunctionBody> fbody;
-  // TODO(iga): FunctionDefToBodyHelper copies fdef. Avoid this copy.
-  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*fdef, attrs, lib_def, &fbody));
+  TF_RETURN_IF_ERROR(
+      FunctionDefToBodyHelper(std::move(fdef), attrs, lib_def, &fbody));
   if (!fbody) {
     LOG(ERROR) << "Failed to get FunctionBody for \"" << function_name << "\"";
     return errors::Internal("Failed to construct FunctionBody for ",
@@ -169,8 +295,9 @@ Status GetGraphAndArgRets(
   for (const Node* node : fbody->control_ret_nodes) {
     control_ret_node_names->push_back(node->name());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
+}  // namespace
 
 Status PinArgsAndRets(const std::vector<string>& input_devices,
                       const std::vector<string>& output_devices,
@@ -334,25 +461,27 @@ Status PinArgsAndRets(const std::vector<string>& input_devices,
       node->set_assigned_device_name(output_devices[index]);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
+absl::StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
     const string& function_name, AttrSlice attrs,
     const FunctionLibraryRuntime::InstantiateOptions& options,
     const DeviceSet& dev_set, const FunctionLibraryDefinition* input_lib_def,
     const std::vector<CompositeDevice*>& composite_devices, Device* cpu_device,
-    Device* default_device, Env* env) {
+    Device* default_device, Env* env,
+    OptimizedFunctionGraph::OptimizationSource optimization_source) {
+  const uint64_t graph_optimization_start_time_usecs = env->NowMicros();
   const FunctionLibraryDefinition* lib_def =
       options.lib_def == nullptr ? input_lib_def : options.lib_def;
 
-  const FunctionDef* fdef = lib_def->Find(function_name);
+  core::RefCountPtr<FunctionRecord> fdef = lib_def->FindRecord(function_name);
   if (fdef == nullptr) {
     return errors::InvalidArgument("Failed to find function \"", function_name,
                                    "\" in function library: ", lib_def);
   }
 
-  TF_RETURN_IF_ERROR(ValidateMultiDeviceOptions(*fdef, options));
+  TF_RETURN_IF_ERROR(ValidateMultiDeviceOptions(fdef->fdef(), options));
 
   std::unique_ptr<Graph> graph;
   std::vector<Node*> arg_nodes, ret_nodes;
@@ -361,11 +490,11 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
   std::vector<string> control_ret_node_names;
 
   TF_RETURN_IF_ERROR(GetGraphAndArgRets(
-      function_name, attrs, fdef, lib_def, &graph, &arg_nodes, &ret_nodes,
-      &ret_node_names, &ret_types, &control_ret_node_names));
+      function_name, attrs, fdef.GetNewRef(), lib_def, &graph, &arg_nodes,
+      &ret_nodes, &ret_node_names, &ret_types, &control_ret_node_names));
 
-  // Dump the initial graph.
-  DUMP_GRAPH(function_name, "initial", graph.get());
+  DEBUG_DATA_DUMPER()->DumpOpCreationStackTraces(
+      function_name, kDebugGroupOpStacktrace, "before_opt", graph.get());
 
   GraphDef graph_def;
   graph->ToGraphDef(&graph_def);
@@ -375,6 +504,10 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
   if (options.graph_collector != nullptr) {
     options.graph_collector->CollectRawGraph(graph_def);
   }
+
+  // Dump the initial graph.
+  DEBUG_DATA_DUMPER()->DumpGraph(function_name, kDebugGroupMain, "initial",
+                                 graph.get(), &reachable_lib_def, false);
 
   // Mark and assign device for each node in the graph to be compiled by
   // specified device.
@@ -416,10 +549,11 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
 
   bool control_rets_updated = false;
   if (should_run_optimization_passes) {
+    FunctionOptimizationPass::FunctionOptions function_options{
+        options.xla_compile_device_type, options.allow_soft_placement};
     TF_RETURN_IF_ERROR(FunctionOptimizationPassRegistry::Global().Run(
-        function_name, dev_set, options.config_proto,
-        options.xla_compile_device_type, &graph, &reachable_lib_def,
-        &control_ret_node_names, &control_rets_updated));
+        function_name, dev_set, options.config_proto, function_options, &graph,
+        &reachable_lib_def, &control_ret_node_names, &control_rets_updated));
   }
 
   if (control_rets_updated) {
@@ -429,7 +563,7 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
       node_name_to_control_ret.emplace(control_ret, control_ret);
     }
   } else {
-    for (const auto& control_ret : fdef->control_ret()) {
+    for (const auto& control_ret : fdef->fdef().control_ret()) {
       node_name_to_control_ret.emplace(control_ret.second, control_ret.first);
     }
   }
@@ -446,13 +580,14 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
   optimization_options.is_function_graph = true;
   optimization_options.composite_devices = &composite_devices;
   optimization_options.default_function_device = default_device;
-  optimization_options.function_def = fdef;
+  optimization_options.function_def = &fdef->fdef();
   optimization_options.shape_inference_on_tfe_dialect_import =
       options.shape_inference_on_tfe_dialect_import;
-  optimization_options.debug_filename_prefix = "pflr_optmz_";
-  env->CreateUniqueFileName(&optimization_options.debug_filename_prefix, "_");
+  optimization_options.debug_filename_prefix = function_name;
 
-  DUMP_GRAPH(function_name, "before_pre_placement_passes", graph.get());
+  DEBUG_DATA_DUMPER()->DumpGraph(function_name, kDebugGroupMain,
+                                 "before_pre_placement_passes", graph.get(),
+                                 &reachable_lib_def, false);
   if (should_run_optimization_passes) {
     TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
         OptimizationPassRegistry::PRE_PLACEMENT, optimization_options));
@@ -460,53 +595,191 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
 
   // TODO(b/124993244): Smartly merge options in nested defuns, and raise
   // exceptions/warnings in case where nested function call options are ignored.
-  DUMP_GRAPH(function_name, "before_placer", graph.get());
+  DEBUG_DATA_DUMPER()->DumpGraph(function_name, kDebugGroupMain,
+                                 "before_placer", graph.get(),
+                                 &reachable_lib_def, false);
   Placer placer(graph.get(), function_name, optimization_options.flib_def,
                 &dev_set, default_device,
                 options.config_proto.allow_soft_placement(),
                 options.config_proto.log_device_placement());
   TF_RETURN_IF_ERROR(placer.Run(optimization_options));
 
-  DUMP_GRAPH(function_name, "before_post_placement_passes", graph.get());
+  DEBUG_DATA_DUMPER()->DumpGraph(function_name, kDebugGroupMain,
+                                 "before_post_placement_passes", graph.get(),
+                                 &reachable_lib_def, false);
   if (should_run_optimization_passes) {
     TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
         OptimizationPassRegistry::POST_PLACEMENT, optimization_options));
   }
 
   if (options.optimize_graph_fn) {
-    DUMP_GRAPH(function_name, "before_graph_optimization", graph.get());
+    DEBUG_DATA_DUMPER()->DumpGraph(function_name, kDebugGroupMain,
+                                   "before_graph_optimization", graph.get(),
+                                   &reachable_lib_def, false);
     Status status = options.optimize_graph_fn(
         std::move(ret_node_names), std::move(control_ret_node_names),
         &reachable_lib_def, dev_set, cpu_device, &graph);
     if (!status.ok()) {
       LOG(WARNING) << "Ignoring multi-device function optimization failure: "
-                   << status.ToString();
+                   << status;
     }
-    DUMP_GRAPH(function_name, "after_graph_optimization", graph.get());
+    DEBUG_DATA_DUMPER()->DumpGraph(function_name, kDebugGroupMain,
+                                   "after_graph_optimization", graph.get(),
+                                   &reachable_lib_def, false);
   }
 
-  DUMP_GRAPH(function_name, "before_post_rewrite_for_exec_passes", graph.get());
+  DEBUG_DATA_DUMPER()->DumpGraph(function_name, kDebugGroupMain,
+                                 "before_post_rewrite_for_exec_passes",
+                                 graph.get(), &reachable_lib_def, false);
   if (should_run_optimization_passes) {
     TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
         OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, optimization_options));
   }
+  DEBUG_DATA_DUMPER()->DumpGraph(function_name, kDebugGroupMain,
+                                 "after_post_rewrite_for_exec_passes",
+                                 graph.get(), &reachable_lib_def, false);
 
   graph->mutable_flib_def()->set_default_registry(nullptr);
   graph->mutable_flib_def()->Clear();
-  return OptimizedFunctionGraphInfo{function_name,
-                                    std::move(graph),
-                                    std::move(reachable_lib_def),
-                                    node_name_to_control_ret,
-                                    std::move(ret_types),
-                                    ret_nodes.size()};
+
+  FunctionLibraryDefinition pruned_lib_def =
+      reachable_lib_def.ReachableDefinitions(*graph);
+
+  return OptimizedFunctionGraphInfo(
+      function_name, std::move(graph), std::move(pruned_lib_def),
+      node_name_to_control_ret, ret_types, ret_nodes.size(),
+      env->NowMicros() - graph_optimization_start_time_usecs,
+      optimization_source);
 }
 
-StatusOr<std::unique_ptr<std::unordered_map<string, std::unique_ptr<Graph>>>>
+absl::StatusOr<OptimizedFunctionGraphInfo>
+OptimizeFunctionGraphOrReadFromFileCache(
+    const string& function_name, AttrSlice attrs,
+    const FunctionLibraryRuntime::InstantiateOptions& options,
+    const DeviceSet& dev_set, const FunctionLibraryDefinition* input_lib_def,
+    const std::vector<CompositeDevice*>& composite_devices, Device* cpu_device,
+    Device* default_device, Env* env,
+    absl::Duration caching_threshold_duration) {
+  // There are 3 scenarios in this codepath:
+  // (1) This function is not eligible for caching.
+  // (2) This function is eligible for caching and its cache exists.
+  // (3) This function is eligible for caching and its cache does not exist.
+
+  // Get the caching directory from Env variable.
+  const string dir_name = absl::StrCat(getenv(kGraphCachingEnvVariableName));
+
+  // Scenario (1): Not eligible for caching. Run the optimization passes.
+  if (dir_name.empty() || options.is_component_function) {
+    return OptimizeFunctionGraph(function_name, attrs, options, dev_set,
+                                 input_lib_def, composite_devices, cpu_device,
+                                 default_device, env,
+                                 OptimizedFunctionGraph::JIT);
+  }
+
+  const FunctionLibraryDefinition* lib_def =
+      options.lib_def == nullptr ? input_lib_def : options.lib_def;
+  const FunctionDef* fdef = lib_def->Find(function_name);
+  // If the function definition can't be found, return as error because there's
+  // no point running the graph optimization passes as that will fail too.
+  if (fdef == nullptr) {
+    return absl::AbortedError(absl::StrCat(
+        "Failed to find function ", function_name,
+        " in function library: ", lib_def->ToProto().DebugString()));
+  }
+  const string file_name = GetFileCacheName(dir_name, function_name, fdef);
+
+  // Scenario (2): File cache exists for this function; restore from the cache.
+  if (env->FileExists(file_name).ok()) {
+    LOG(INFO)
+        << "TensorFlow graph cache existed; reading from cache; function name: "
+        << function_name << ", full cache file path: " << file_name;
+
+    absl::StatusOr<OptimizedFunctionGraphInfo> optimized_function_graph_info =
+        ReadFromCache(file_name, env);
+    if (optimized_function_graph_info.ok()) {
+      metrics::UpdateFunctionGraphOptimizationSavingTime(
+          optimized_function_graph_info->optimization_duration_usecs,
+          metrics::GraphOptimizationSource::kJit);
+      metrics::IncrementFunctionGraphOptimizationCacheHitCount(
+          1, metrics::GraphOptimizationSource::kJit);
+      LOG(INFO)
+          << "Successfully restored the Tensorflow optimized graph from "
+             "the cache for the function: "
+          << function_name << ", saved optimized time: "
+          << absl::ToInt64Milliseconds(absl::Microseconds(
+                 optimized_function_graph_info->optimization_duration_usecs))
+          << " msecs";
+      return optimized_function_graph_info;
+    }
+
+    // Run the optimization passes if reading from cache fails.
+    metrics::IncrementFunctionGraphOptimizationCacheFailureCount(
+        1, metrics::GraphOptimizationSource::kJit);
+    LOG(ERROR)
+        << "Reading from Tensorflow graph optimization cache failed. Continue "
+           "to run the Tensorflow graph optimization passes instead. Error: "
+        << optimized_function_graph_info.status();
+    return OptimizeFunctionGraph(function_name, attrs, options, dev_set,
+                                 input_lib_def, composite_devices, cpu_device,
+                                 default_device, env,
+                                 OptimizedFunctionGraph::JIT);
+  }
+
+  // Scenario (3): No file cache exists for this function.
+  // Run the optimization (Step 1) then write to the cache if eligible (Step 2).
+  metrics::IncrementFunctionGraphOptimizationCacheMissCount(
+      1, metrics::GraphOptimizationSource::kJit);
+  VLOG(3) << "No cache existed; run the optimization passes. function name:"
+          << " " << function_name;
+
+  // Step 1: Run the graph optimization passes normally.
+  absl::Time optimization_start_time = absl::Now();
+  TF_ASSIGN_OR_RETURN(
+      absl::StatusOr<OptimizedFunctionGraphInfo> optimized_function_graph_info,
+      OptimizeFunctionGraph(function_name, attrs, options, dev_set,
+                            input_lib_def, composite_devices, cpu_device,
+                            default_device, env, OptimizedFunctionGraph::JIT));
+  const absl::Duration graph_optimization_duration =
+      absl::Now() - optimization_start_time;
+  VLOG(3) << "Finished running the optimization passes; took "
+          << absl::ToInt64Seconds(graph_optimization_duration)
+          << " secs; function name: " << function_name;
+
+  // Step 2: Write the optimized function graph into the cache if eligible.
+  if (graph_optimization_duration >= caching_threshold_duration) {
+    LOG(INFO)
+        << "Writing the optimized TensorFlow graph into cache: function name: "
+        << function_name << ", full cache file path: " << file_name;
+    Status s = WriteToCache(dir_name, file_name,
+                            optimized_function_graph_info.value(), env);
+    // If writing to cache failed, log the error message and move on without
+    // failing the program.
+    if (!s.ok()) {
+      LOG(ERROR) << "Caching the Tensorflow graph optimization results failed; "
+                    "cotinue without caching. Error message: "
+                 << s;
+    }
+
+    LOG(INFO) << "Successfully wrote the optimized Tensorflow graph into cache "
+                 "for the function: "
+              << function_name << ", graph optimization time ( / threshold): "
+              << absl::ToInt64Milliseconds(graph_optimization_duration)
+              << " / (" << absl::ToInt64Milliseconds(caching_threshold_duration)
+              << ") msecs";
+  }
+
+  return optimized_function_graph_info;
+}
+
+absl::StatusOr<
+    std::unique_ptr<std::unordered_map<string, std::unique_ptr<Graph>>>>
 PreprocessAndPartitionGraph(
+    const std::string& function_name,
     OptimizedFunctionGraphInfo& input_optimized_graph,
     const FunctionLibraryRuntime::InstantiateOptions& options,
     const DeviceSet& dev_set, const FunctionLibraryDefinition* input_lib_def,
-    const std::vector<CompositeDevice*>& composite_devices, Env* env) {
+    const std::vector<CompositeDevice*>& composite_devices, Device* cpu_device,
+    Env* env) {
   std::unique_ptr<Graph>& graph = input_optimized_graph.function_graph;
 
   // Expand the nodes assigned to a CompositeDevice before graph partition to
@@ -526,28 +799,49 @@ PreprocessAndPartitionGraph(
     options.graph_collector->CollectOptimizedGraph(def);
   }
 
-  VLOG(4) << "Main function graph to be partitioned:";
-  VLOG(4) << DebugString(graph->ToGraphDefDebug());
+  // Dump graph before the partition starts.
+  DEBUG_DATA_DUMPER()->DumpGraph(function_name, kDebugGroupMain,
+                                 "before_partition", graph.get(),
+                                 &input_optimized_graph.lib_def, VLOG_IS_ON(4));
 
+  // Partition the graph.
   auto device_name_to_subgraphs =
       std::make_unique<std::unordered_map<string, std::unique_ptr<Graph>>>();
   TF_RETURN_IF_ERROR(PartitionFunctionGraph(dev_set, std::move(graph),
                                             device_name_to_subgraphs.get()));
 
+  // Dump graphs before post-partitioning passes.
   for (const auto& pair : *device_name_to_subgraphs) {
-    DumpGraph(strings::StrCat("Before running POST_PARTITIONING passes (",
-                              pair.first, ")"),
-              pair.second.get());
+    std::string partitioned_func_name =
+        absl::StrCat(function_name, "_partition_" + pair.first);
+    const auto* optimized_subgraph = pair.second.get();
+    DEBUG_DATA_DUMPER()->DumpGraph(
+        partitioned_func_name, kDebugGroupMain, "before_partition_passes",
+        optimized_subgraph, &input_optimized_graph.lib_def, false);
   }
 
+  // Doing post-partitioning passes.
   GraphOptimizationPassOptions optimization_options;
+  SessionOptions session_options;
+  session_options.env = env;
+  session_options.config = options.config_proto;
+  optimization_options.session_options = &session_options;
   optimization_options.flib_def = &(input_optimized_graph.lib_def);
   optimization_options.is_function_graph = true;
   optimization_options.graph = nullptr;
   optimization_options.device_set = nullptr;
   optimization_options.partition_graphs = device_name_to_subgraphs.get();
-  optimization_options.debug_filename_prefix = "pflr_imd_";
-  env->CreateUniqueFileName(&optimization_options.debug_filename_prefix, "_");
+  optimization_options.debug_filename_prefix = function_name;
+
+  // As not all devices might set number of threads for intra op
+  // parallelisation we restrict this only to local device which does.
+  if (cpu_device && std::is_same<decltype(cpu_device), LocalDevice>::value &&
+      cpu_device->tensorflow_cpu_worker_threads() != nullptr) {
+    // Forward to the optimisation pass number of intra threads that are used to
+    // parallelise operations.
+    session_options.config.set_intra_op_parallelism_threads(
+        cpu_device->tensorflow_cpu_worker_threads()->num_threads);
+  }
 
   // Normally POST_PARTITIONING passes are run by distributed workers.
   // Distributed workers are currently not supported in this code path, so we
@@ -557,19 +851,17 @@ PreprocessAndPartitionGraph(
     TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
         OptimizationPassRegistry::POST_PARTITIONING, optimization_options));
   }
+
+  // Dump graphs after post-partitioning passes.
   for (const auto& pair : *device_name_to_subgraphs) {
+    std::string partitioned_func_name =
+        absl::StrCat(function_name, "_partition_" + pair.first);
     const auto* optimized_subgraph = pair.second.get();
-    DumpGraph(
-        strings::StrCat("After all optimization passes (", pair.first, ")"),
-        optimized_subgraph);
-    if (VLOG_IS_ON(3)) {
-      DumpGraphDefToFile(
-          strings::StrCat("pflr_after_all_optimization_passes_",
-                          reinterpret_cast<uintptr_t>(optimized_subgraph), "_",
-                          pair.first),
-          optimized_subgraph->ToGraphDefDebug());
-    }
+    DEBUG_DATA_DUMPER()->DumpGraph(partitioned_func_name, kDebugGroupMain,
+                                   "after_partition_passes", optimized_subgraph,
+                                   &input_optimized_graph.lib_def, false);
   }
+
   return std::move(device_name_to_subgraphs);
 }
 

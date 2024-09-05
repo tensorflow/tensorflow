@@ -30,7 +30,7 @@ namespace cl {
 
 TEST_F(OpenCLOperationTest, LSTM) {
   auto status = LstmTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 }  // namespace cl

@@ -25,7 +25,17 @@
 #
 # under kokoro, this is run by learning/brain/testing/kokoro/rel/docker/aot_compile.sh
 #=============================================================================
-set -euo pipefail -o history
+set -eo pipefail -o history
+
+# If the TENSORFLOW_PACKAGE_PATH variable is set, add an argument to the cmake
+# command-line to explicitly set the package path.
+# This must be done before disallowing unset variables.
+CMAKE_TENSORFLOW_PACKAGE_ARG=
+if [ ! -z "$TENSORFLOW_PACKAGE_PATH" ]; then
+  CMAKE_TENSORFLOW_PACKAGE_ARG="-DTENSORFLOW_PACKAGE_PATH=${TENSORFLOW_PACKAGE_PATH}"
+fi
+
+set -u
 
 echo "Building x_matmul_y models"
 python3 \
@@ -53,12 +63,14 @@ saved_model_cli aot_compile_cpu \
   --dir tensorflow/cc/saved_model/testdata/VarsAndArithmeticObjectGraph \
   --output_prefix "${GEN_PREFIX}/aot_compiled_vars_and_arithmetic" \
   --variables_to_feed variable_x \
-  --cpp_class VarsAndArithmetic --signature_def_key serving_default --tag_set serve
+  --cpp_class VarsAndArithmetic --signature_def_key serving_default \
+  --tag_set serve
 
 saved_model_cli aot_compile_cpu \
   --dir tensorflow/cc/saved_model/testdata/VarsAndArithmeticObjectGraph \
   --output_prefix "${GEN_PREFIX}/aot_compiled_vars_and_arithmetic_frozen" \
-  --cpp_class VarsAndArithmeticFrozen --signature_def_key serving_default --tag_set serve
+  --cpp_class VarsAndArithmeticFrozen --signature_def_key serving_default \
+  --tag_set serve
 
 saved_model_cli aot_compile_cpu \
   --dir /tmp/saved_models/x_matmul_y_small \
@@ -74,14 +86,15 @@ saved_model_cli aot_compile_cpu \
   --dir /tmp/saved_models/x_matmul_y_large \
   --output_prefix "${GEN_PREFIX}/aot_compiled_x_matmul_y_large_multithreaded" \
   --multithreading True \
-  --cpp_class XMatmulYLargeMultithreaded --signature_def_key serving_default --tag_set serve
+  --cpp_class XMatmulYLargeMultithreaded --signature_def_key serving_default \
+  --tag_set serve
 
 saved_model_cli aot_compile_cpu \
   --dir tensorflow/cc/saved_model/testdata/x_plus_y_v2_debuginfo \
   --output_prefix "${GEN_PREFIX}/aot_compiled_x_plus_y" \
   --cpp_class XPlusY --signature_def_key serving_default --tag_set serve
 
-echo "Creaating project and copying object files"
+echo "Creating project and copying object files"
 mkdir -p "${PROJECT}"
 cp -f \
   "${GEN_PREFIX}/aot_compiled_vars_and_arithmetic.o" \
@@ -99,8 +112,48 @@ cp tensorflow/tools/pip_package/xla_build/pip_test/CMakeLists.txt \
 
 echo "Building"
 mkdir "${PROJECT}/build"
-cmake -GNinja -S "${PROJECT}" -B "${PROJECT}/build" -DCMAKE_BUILD_TYPE=Release
+cmake -GNinja -S "${PROJECT}" -B "${PROJECT}/build" -DCMAKE_BUILD_TYPE=Release $CMAKE_TENSORFLOW_PACKAGE_ARG
 ninja -C "${PROJECT}/build"
 
 echo "Running test"
 "${PROJECT}/build/aot_compiled_test"
+
+echo "Cross-compile AOT models"
+failed=0
+
+function check_crosscompile() {
+  local triple="${1}"
+  local check_string="${2}"
+  echo "============================"
+  echo "Cross-compiling to ${triple}"
+  echo "============================"
+  saved_model_cli aot_compile_cpu \
+    --dir tensorflow/cc/saved_model/testdata/VarsAndArithmeticObjectGraph \
+    --output_prefix "${GEN_PREFIX}/${triple}/aot_compiled_vars_and_arithmetic" \
+    --variables_to_feed variable_x \
+    --target_triple "${triple}" \
+    --cpp_class VarsAndArithmetic \
+    --signature_def_key serving_default \
+    --tag_set serve
+
+  file "${GEN_PREFIX}/${triple}/aot_compiled_vars_and_arithmetic.o" \
+    | grep "${check_string}"
+  if [ 0 -ne $? ]
+  then
+    echo "${triple}: FAILED"
+    failed=1
+  else
+    echo "${triple}: SUCCESS"
+  fi
+}
+
+check_crosscompile aarch64-unknown-linux-gnu \
+  "ELF 64-bit LSB relocatable, ARM aarch64"
+check_crosscompile x86_64-unknown-linux-gnu "ELF 64-bit LSB relocatable, x86-64"
+check_crosscompile arm64-apple-darwin "Mach-O 64-bit arm64 object"
+check_crosscompile x86_64-apple-darwin "Mach-O 64-bit x86_64 object"
+# check_crosscompile aarch64-pc-windows-msvc "<tbd>"
+check_crosscompile x86_64-pc-windows-msvc "Intel amd64 COFF object file"
+# check_crosscompile riscv64gc-unknown-linux-gnu "<tbd>"
+
+exit "${failed}"

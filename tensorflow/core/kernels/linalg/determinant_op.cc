@@ -19,11 +19,11 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #define EIGEN_USE_GPU
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/kernels/linalg/determinant_op.h"
 #endif
 
-#include "third_party/eigen3/Eigen/LU"
+#include "Eigen/LU"  // from @eigen_archive
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -64,12 +64,7 @@ static typename Eigen::NumTraits<Scalar>::Real SLogDet(
     auto diag = LU.diagonal().array().eval();
     auto abs_diag = diag.cwiseAbs().eval();
     log_abs_det += abs_diag.log().sum();
-    *sign *= (diag / abs_diag).prod();
-  }
-  if (!Eigen::numext::isfinite(log_abs_det)) {
-    *sign = 0;
-    log_abs_det =
-        log_abs_det > 0 ? -std::log(RealScalar(0)) : std::log(RealScalar(0));
+    *sign *= diag.array().sign().prod();
   }
   return log_abs_det;
 }
@@ -164,8 +159,7 @@ class DeterminantOpGpu : public AsyncOpKernel {
       return;
     }
 
-    // TODO(rmlarsen): Convert to absl::make_unique when available.
-    std::unique_ptr<GpuSolver> solver(new GpuSolver(context));
+    auto solver = std::make_unique<GpuSolver>(context);
 
     // Reuse the input buffer or make a copy for the factorization step,
     // depending on whether this ops owns it exclusively.
@@ -309,8 +303,7 @@ class LogDeterminantOpGpu : public AsyncOpKernel {
       return;
     }
 
-    // TODO(rmlarsen): Convert to absl::make_unique when available.
-    std::unique_ptr<GpuSolver> solver(new GpuSolver(context));
+    auto solver = std::make_unique<GpuSolver>(context);
 
     // Reuse the input buffer or make a copy for the factorization step,
     // depending on whether this ops owns it exclusively.

@@ -26,8 +26,10 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/utils/utils.h"
 
 namespace mlir {
 namespace TFL {
@@ -58,7 +60,7 @@ class ConvertLSTMCellSimpleToFusedLSTM {
       delete;
   ConvertLSTMCellSimpleToFusedLSTM& operator=(
       const ConvertLSTMCellSimpleToFusedLSTM&) = delete;
-  virtual ~ConvertLSTMCellSimpleToFusedLSTM() {}
+  virtual ~ConvertLSTMCellSimpleToFusedLSTM() = default;
 
   virtual llvm::StringRef GetCompositeOpName() { return kLstmCellSimple; }
 
@@ -184,7 +186,7 @@ class ConvertLayerNormalizedLSTMCellSimpleToFusedLSTM
       const ConvertLayerNormalizedLSTMCellSimpleToFusedLSTM&) = delete;
   ConvertLayerNormalizedLSTMCellSimpleToFusedLSTM& operator=(
       const ConvertLayerNormalizedLSTMCellSimpleToFusedLSTM&) = delete;
-  ~ConvertLayerNormalizedLSTMCellSimpleToFusedLSTM() override {}
+  ~ConvertLayerNormalizedLSTMCellSimpleToFusedLSTM() override = default;
 
   llvm::StringRef GetCompositeOpName() override {
     return kLayerNormalizedLstmCellSimple;

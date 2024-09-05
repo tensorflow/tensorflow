@@ -47,6 +47,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import test_util as framework_test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -1982,7 +1983,7 @@ class DistributedIteratorTfDataServiceTest(DistributedIteratorTestBase,
               num_replicas_in_sync=num_workers))
 
     class InnerType(extension_type.ExtensionType):
-      tensor: ops.Tensor
+      tensor: tensor.Tensor
 
     class OuterType(extension_type.ExtensionType):
       inner: InnerType

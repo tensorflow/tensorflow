@@ -65,7 +65,7 @@ class PluggableDevice : public LocalDevice {
   Allocator* GetAllocator(AllocatorAttributes attr) override;
 
   Status MakeTensorFromProto(const TensorProto& tensor_proto,
-                             const AllocatorAttributes alloc_attrs,
+                             AllocatorAttributes alloc_attrs,
                              Tensor* tensor) override;
 
   void CopyTensorInSameDevice(const Tensor* input_tensor, Tensor* output_tensor,
@@ -100,7 +100,7 @@ class PluggableDevice : public LocalDevice {
   std::unique_ptr<thread::ThreadPool> thread_pool_;
   bool force_gpu_compatible_ = false;
   std::string ComputeOpKernelDebugString(const OpKernel& op_kernel,
-                                         const int stream_id);
+                                         int stream_id);
 
   // This method returns an initialization status, in addition to
   // calling the "done" StatusCallback, if there is a failure to

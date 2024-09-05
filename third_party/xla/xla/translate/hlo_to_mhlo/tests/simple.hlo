@@ -1,0 +1,153 @@
+# RUN: xla-translate -hlo-to-mlir-hlo %s -o - | FileCheck %s
+# RUN: xla-translate -hlo-to-stablehlo %s -o - | FileCheck %s --check-prefix CHECK-SHLO
+
+name: "foo.5"
+entry_computation_name: "foo.5"
+computations {
+  name: "foo.5"
+  instructions {
+    name: "Arg_0.1"
+    opcode: "parameter"
+    shape {
+      element_type: F32
+      dimensions: 4
+      layout {
+        minor_to_major: 0
+        format: DENSE
+      }
+      is_dynamic_dimension: false
+    }
+    metadata {
+    }
+    id: 1
+  }
+  instructions {
+    name: "Arg_1.2"
+    opcode: "parameter"
+    shape {
+      element_type: F32
+      dimensions: 4
+      layout {
+        minor_to_major: 0
+        format: DENSE
+      }
+      is_dynamic_dimension: false
+    }
+    metadata {
+    }
+    parameter_number: 1
+    id: 2
+  }
+  instructions {
+    name: "add.3"
+    opcode: "add"
+    shape {
+      element_type: F32
+      dimensions: 4
+      layout {
+        minor_to_major: 0
+        format: DENSE
+      }
+      is_dynamic_dimension: false
+    }
+    metadata {
+    }
+    id: 3
+    operand_ids: 1
+    operand_ids: 2
+  }
+  instructions {
+    name: "dot.4"
+    opcode: "dot"
+    shape {
+      element_type: F32
+      layout {
+        format: DENSE
+      }
+    }
+    metadata {
+    }
+    dot_dimension_numbers {
+      lhs_contracting_dimensions: 0
+      rhs_contracting_dimensions: 0
+    }
+    id: 4
+    operand_ids: 3
+    operand_ids: 2
+  }
+  program_shape {
+    parameters {
+      element_type: F32
+      dimensions: 4
+      layout {
+        minor_to_major: 0
+        format: DENSE
+      }
+      is_dynamic_dimension: false
+    }
+    parameters {
+      element_type: F32
+      dimensions: 4
+      layout {
+        minor_to_major: 0
+        format: DENSE
+      }
+      is_dynamic_dimension: false
+    }
+    result {
+      element_type: F32
+      layout {
+        format: DENSE
+      }
+    }
+    parameter_names: "Arg_0"
+    parameter_names: "Arg_1"
+  }
+  id: 5
+  root_id: 4
+}
+host_program_shape {
+  parameters {
+    element_type: F32
+    dimensions: 4
+    layout {
+      minor_to_major: 0
+      format: DENSE
+    }
+    is_dynamic_dimension: false
+  }
+  parameters {
+    element_type: F32
+    dimensions: 4
+    layout {
+      minor_to_major: 0
+      format: DENSE
+    }
+    is_dynamic_dimension: false
+  }
+  result {
+    element_type: F32
+    layout {
+      format: DENSE
+    }
+  }
+  parameter_names: "Arg_0"
+  parameter_names: "Arg_1"
+}
+id: 5
+entry_computation_id: 5
+dynamic_parameter_binding {
+}
+
+# CHECK-LABEL: func @main(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<f32> {
+# CHECK-NEXT:   %0 = mhlo.add %arg0, %arg1 : tensor<4xf32>
+# TODO(b/129709049) consider making this default precision config inferred.
+# CHECK-NEXT:   %1 = "mhlo.dot"(%0, %arg1) <{precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]}> : (tensor<4xf32>, tensor<4xf32>) -> tensor<f32>
+# CHECK-NEXT:   return %1 : tensor<f32>
+# CHECK-NEXT: }
+#
+# CHECK-SHLO-LABEL: func @main(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<f32> {
+# CHECK-SHLO-NEXT:   %0 = stablehlo.add %arg0, %arg1 : tensor<4xf32>
+# CHECK-SHLO-NEXT:   %1 = stablehlo.dot %0, %arg1, precision = [DEFAULT, DEFAULT] : (tensor<4xf32>, tensor<4xf32>) -> tensor<f32>
+# CHECK-SHLO-NEXT:   return %1 : tensor<f32>
+# CHECK-SHLO-NEXT: }

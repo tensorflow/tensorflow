@@ -18,6 +18,7 @@ from absl.testing import parameterized
 import numpy as np
 from tensorflow.python.checkpoint import checkpoint as util
 from tensorflow.python.compat import v2_compat
+from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -31,7 +32,6 @@ from tensorflow.python.saved_model import save
 from tensorflow.python.tpu import tpu_embedding_for_serving
 from tensorflow.python.tpu import tpu_embedding_v2
 from tensorflow.python.tpu import tpu_embedding_v2_utils
-from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.tpu.tests import tpu_embedding_base_test
 from tensorflow.python.training import checkpoint_utils
 
@@ -86,7 +86,7 @@ class TPUEmbeddingCheckpointTest(tpu_embedding_base_test.TPUEmbeddingBaseTest):
         msg='Checkpoint should contain values from the first api object.')
 
     # Reinitialize the tpu.
-    tpu_strategy_util.initialize_tpu_system(self.resolver)
+    tpu_cluster_resolver.initialize_tpu_system(self.resolver)
 
     with strategy.scope():
       second_mid_level_contents = np.ones((num_rows, 4)) * 2
@@ -148,7 +148,7 @@ class TPUEmbeddingCheckpointTest(tpu_embedding_base_test.TPUEmbeddingBaseTest):
     first_checkpoint = util.Checkpoint(model=first_mid_level)
     first_checkpoint.save(self._get_tmpdir('restore', 'save'))
 
-    tpu_strategy_util.initialize_tpu_system(self.resolver)
+    tpu_cluster_resolver.initialize_tpu_system(self.resolver)
 
     with strategy.scope():
       second_mid_level_contents = np.ones((num_rows, 4)) * 2

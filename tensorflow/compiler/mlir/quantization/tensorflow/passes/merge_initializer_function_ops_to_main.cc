@@ -34,7 +34,10 @@ limitations under the License.
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/common/func.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/manipulate_model_attr.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -54,7 +57,6 @@ using ::mlir::tf_saved_model::kTfSavedModelInitializerInitType;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerTypeAttr;
 using ::mlir::tf_saved_model::SessionInitializerOp;
-using ::tensorflow::kImportModelDefaultGraphFuncName;
 
 // Array of initializer functions' types. The corresponding initializer
 // functions should be merged in this order. This is because:
@@ -106,20 +108,6 @@ class MergeInitializerFunctionOpsToMainPass
   }
 };
 
-// Gets the "main" function from the module. Returns an empty op iff it doesn't
-// exist.
-func::FuncOp GetMainFunction(ModuleOp module_op) {
-  const auto main_func_id =
-      StringAttr::get(module_op.getContext(), kImportModelDefaultGraphFuncName);
-  auto func_ops = module_op.getOps<func::FuncOp>();
-  auto main_func_itr = absl::c_find_if(func_ops, [&main_func_id](auto func_op) {
-    return func_op.getName() == main_func_id;
-  });
-
-  if (main_func_itr == func_ops.end()) return {};
-  return *main_func_itr;
-}
-
 // Returns true iff func_op has either no Region or the body has no Blocks.
 bool IsFuncOpEmpty(func::FuncOp func_op) {
   return func_op->getNumRegions() == 0 || func_op.getBody().empty();
@@ -165,7 +153,7 @@ LogicalResult ValidateInitFunc(func::FuncOp init_func_op) {
 
   FetchOp fetch_op = graph_op.GetFetch();
   for (const Value fetch : fetch_op.getFetches()) {
-    if (!fetch.getType().isa<tf_executor::ControlType>()) {
+    if (!mlir::isa<tf_executor::ControlType>(fetch.getType())) {
       fetch_op.emitError(absl::StrFormat(
           "Validation failed for the initializer function: %s. "
           "All initializer function's fetches should be "
@@ -205,42 +193,6 @@ FailureOr<absl::flat_hash_map<std::string, func::FuncOp>> GetInitFuncOps(
   return init_func_ops;
 }
 
-// If `main_func_op` has the `tf.entry_function` attribute, adds a new input
-// name to the `inputs` field of the attribute. Otherwise, no attribute is
-// modified.
-void MaybeAddEntryFunctionInput(const StringRef input_name,
-                                func::FuncOp main_func_op) {
-  auto entry_func_attr =
-      main_func_op->getAttrOfType<DictionaryAttr>("tf.entry_function");
-  if (!entry_func_attr) return;
-
-  auto entry_func_attrs = SmallVector<NamedAttribute>(entry_func_attr.begin(),
-                                                      entry_func_attr.end());
-
-  MLIRContext* ctx = main_func_op.getContext();
-  for (auto& named_attr : entry_func_attrs) {
-    if (named_attr.getName() != "inputs") continue;
-
-    // Splits the "inputs" field to retrieve individual input names. Ignores
-    // empty strings.
-    SmallVector<StringRef> inputs_attrs{};
-    cast<StringAttr>(named_attr.getValue())
-        .strref()
-        .split(inputs_attrs, /*Separator=*/',', /*MaxSplit=*/-1,
-               /*KeepEmpty=*/false);
-
-    inputs_attrs.emplace_back(input_name);
-
-    const std::string new_inputs_attr_str =
-        llvm::join(std::move(inputs_attrs), /*Separator=*/",");
-
-    named_attr.setValue(StringAttr::get(ctx, new_inputs_attr_str));
-  }
-
-  main_func_op->setAttr("tf.entry_function",
-                        DictionaryAttr::get(ctx, entry_func_attrs));
-}
-
 // Creates new arguments to the main function that corresponds to the source
 // function's arguments. Returns the `IRMapping` that contains the
 // relationship.
@@ -265,7 +217,7 @@ IRMapping CloneSrcFuncArgumentsToMainFunc(func::FuncOp src_func_op,
     const std::string new_input_name =
         absl::StrCat(GetInitializerType(src_func_op), "_", src_arg_idx, ":0");
 
-    MaybeAddEntryFunctionInput(new_input_name, main_func_op);
+    AddEntryFunctionInput(new_input_name, main_func_op);
 
     // During cloning, let it know that the source function's argument
     // corresponds to the main function's newly created argument when cloning
@@ -371,7 +323,7 @@ void MergeInitializerFunctionOpsToMainPass::runOnOperation() {
   ModuleOp module_op = getOperation();
   MLIRContext* ctx = module_op.getContext();
 
-  func::FuncOp main_func_op = GetMainFunction(module_op);
+  func::FuncOp main_func_op = FindMainFuncOp(module_op);
   if (!main_func_op) {
     module_op.emitError("Main function op not found.");
     return signalPassFailure();

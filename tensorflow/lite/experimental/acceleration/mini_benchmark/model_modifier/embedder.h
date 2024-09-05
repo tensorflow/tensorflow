@@ -21,10 +21,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "flatbuffers/reflection_generated.h"  // from @flatbuffers
 #include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/schema/reflection/schema_generated.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace acceleration {

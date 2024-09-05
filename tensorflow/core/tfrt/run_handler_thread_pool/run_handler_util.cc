@@ -16,6 +16,9 @@ limitations under the License.
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler_util.h"
 
 #include <cmath>
+#include <cstdlib>
+#include <string>
+#include <vector>
 
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
@@ -75,7 +78,7 @@ std::vector<int> ParamFromEnvWithDefault(const char* var_name,
 
 bool ParamFromEnvBoolWithDefault(const char* var_name, bool default_value) {
   const char* val = std::getenv(var_name);
-  return (val) ? tensorflow::str_util::Lowercase(val) == "true" : default_value;
+  return (val) ? absl::AsciiStrToLower(val) == "true" : default_value;
 }
 
 }  // namespace tf

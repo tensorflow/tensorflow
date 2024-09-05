@@ -15,9 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfr/utils/utils.h"
 
-#include "llvm/ADT/ArrayRef.h"
+#include <string>
+
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
+#include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/Region.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfr/ir/tfr_ops.h"
 

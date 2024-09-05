@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/sparse_utils.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
@@ -44,10 +45,10 @@ template <typename T>
 struct SparseReorderFunctor<CPUDevice, T> {
   void operator()(OpKernelContext* context, const Tensor& input_ind,
                   const Tensor& input_val, const Tensor& input_shape_in) {
-    gtl::ArraySlice<int64_t> input_shape(input_shape_in.vec<int64_t>().data(),
-                                         input_shape_in.NumElements());
+    absl::Span<const int64_t> input_shape(input_shape_in.vec<int64_t>().data(),
+                                          input_shape_in.NumElements());
 
-    gtl::InlinedVector<int64_t, 8> std_order(input_shape.size());
+    absl::InlinedVector<int64_t, 8UL> std_order(input_shape.size());
     std::iota(std_order.begin(), std_order.end(), 0);
 
     // Check if the sparse tensor is already ordered correctly
@@ -82,23 +83,13 @@ class SparseReorderOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input_ind = context->input(0);
-    OP_REQUIRES(context, TensorShapeUtils::IsMatrix(input_ind.shape()),
-                errors::InvalidArgument(
-                    "Input indices should be a matrix but received shape ",
-                    input_ind.shape().DebugString()));
-
     const Tensor& input_val = context->input(1);
-    OP_REQUIRES(context, TensorShapeUtils::IsVector(input_val.shape()),
-                errors::InvalidArgument(
-                    "Input values should be a vector but received shape ",
-                    input_val.shape().DebugString()));
-
     const Tensor& input_shape_in = context->input(2);
-    OP_REQUIRES(context, TensorShapeUtils::IsVector(input_shape_in.shape()),
-                errors::InvalidArgument(
-                    "Input shape should be a vector but received shape ",
-                    input_shape_in.shape().DebugString()));
-
+    // Indices aren't used, and some ops use -1 as a placeholder for missing
+    // values.
+    OP_REQUIRES_OK(context, (sparse_utils::ValidateSparseTensor<int64_t>(
+                                input_ind, input_val, input_shape_in,
+                                sparse_utils::IndexValidation::kNone)));
     functor::SparseReorderFunctor<Device, T>()(context, input_ind, input_val,
                                                input_shape_in);
   }

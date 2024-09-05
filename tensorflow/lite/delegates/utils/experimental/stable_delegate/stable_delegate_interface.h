@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_UTILS_EXPERIMENTAL_STABLE_DELEGATE_STABLE_DELEGATE_INTERFACE_H_
 #define TENSORFLOW_LITE_DELEGATES_UTILS_EXPERIMENTAL_STABLE_DELEGATE_STABLE_DELEGATE_INTERFACE_H_
 
-#include "tensorflow/lite/experimental/acceleration/configuration/c/stable_delegate.h"
+#include "tensorflow/lite/acceleration/configuration/c/stable_delegate.h"
 
 // This header file declares the interface that stable delegate shared
 // libraries need to implement. The stable delegate loader will dynamically load

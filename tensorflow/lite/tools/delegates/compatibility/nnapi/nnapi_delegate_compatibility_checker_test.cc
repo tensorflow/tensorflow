@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -25,9 +26,16 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/lite/kernels/test_util.h"
+#include "tensorflow/lite/model_builder.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/tools/delegates/compatibility/protos/compatibility_result.pb.h"
 
 namespace tflite {
 namespace tools {
+
+#ifndef EXPECT_OK
+#define EXPECT_OK(x) EXPECT_TRUE(x.ok());
+#endif
 
 namespace {
 
@@ -83,33 +91,33 @@ TEST_F(NnapiDccTest, ValidRuntimeFeatureLevel) {
 TEST_F(NnapiDccTest, InvalidRuntimeFeatureLevel) {
   std::unordered_map dcc_configs = nnapi_dcc_.getDccConfigurations();
   dcc_configs["nnapi-runtime_feature_level"] = "03";
-  EXPECT_THAT(nnapi_dcc_.setDccConfigurations(dcc_configs),
-              testing::status::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_EQ(nnapi_dcc_.setDccConfigurations(dcc_configs).code(),
+            absl::StatusCode::kInvalidArgument);
 
   dcc_configs["nnapi-runtime_feature_level"] = "a";
-  EXPECT_THAT(nnapi_dcc_.setDccConfigurations(dcc_configs),
-              testing::status::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_EQ(nnapi_dcc_.setDccConfigurations(dcc_configs).code(),
+            absl::StatusCode::kInvalidArgument);
 
   dcc_configs["nnapi-runtime_feature_level"] = "28123497123489123841212344516";
-  EXPECT_THAT(nnapi_dcc_.setDccConfigurations(dcc_configs),
-              testing::status::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_EQ(nnapi_dcc_.setDccConfigurations(dcc_configs).code(),
+            absl::StatusCode::kInvalidArgument);
 
   dcc_configs["nnapi-runtime_feature_level"] = "30.0";
-  EXPECT_THAT(nnapi_dcc_.setDccConfigurations(dcc_configs),
-              testing::status::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_EQ(nnapi_dcc_.setDccConfigurations(dcc_configs).code(),
+            absl::StatusCode::kInvalidArgument);
 
   dcc_configs["nnapi-runtime_feature_level"] = "-30";
-  EXPECT_THAT(nnapi_dcc_.setDccConfigurations(dcc_configs),
-              testing::status::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_EQ(nnapi_dcc_.setDccConfigurations(dcc_configs).code(),
+            absl::StatusCode::kInvalidArgument);
 
   dcc_configs["nnapi-runtime_feature_level"] = "9";
-  EXPECT_THAT(nnapi_dcc_.setDccConfigurations(dcc_configs),
-              testing::status::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_EQ(nnapi_dcc_.setDccConfigurations(dcc_configs).code(),
+            absl::StatusCode::kInvalidArgument);
 
   dcc_configs.clear();
   dcc_configs["nnapi-runtim_feature_level"] = "8";
-  EXPECT_THAT(nnapi_dcc_.setDccConfigurations(dcc_configs),
-              testing::status::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_EQ(nnapi_dcc_.setDccConfigurations(dcc_configs).code(),
+            absl::StatusCode::kInvalidArgument);
 }
 
 TEST_F(NnapiDccTest, CompatibleModelOnlineMode) {

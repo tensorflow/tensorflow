@@ -14,9 +14,20 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/data/dataset_test_base.h"
-#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/serialization_utils.h"
+#include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/framework/variant_tensor_data.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace data {
@@ -58,7 +69,7 @@ class WindowDatasetParams : public DatasetParams {
     input_names->emplace_back(WindowDatasetOp::kShift);
     input_names->emplace_back(WindowDatasetOp::kStride);
     input_names->emplace_back(WindowDatasetOp::kDropRemainder);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -66,7 +77,7 @@ class WindowDatasetParams : public DatasetParams {
     attr_vector->emplace_back("output_types", output_dtypes_);
     attr_vector->emplace_back("output_shapes", output_shapes_);
     attr_vector->emplace_back("metadata", "");
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   string dataset_type() const override { return WindowDatasetOp::kDatasetType; }
@@ -474,6 +485,9 @@ TEST_P(ParameterizedIteratorSaveAndRestoreTest, IteratorSaveAndRestore) {
   std::unique_ptr<SerializationContext> serialization_ctx;
   TF_ASSERT_OK(CreateSerializationContext(&serialization_ctx));
 
+  std::unique_ptr<SerializationContext> window_serialization_ctx;
+  TF_ASSERT_OK(CreateSerializationContext(&window_serialization_ctx));
+
   bool end_of_sequence = false;
   auto expected_outputs_it = test_case.expected_outputs.begin();
   int cur_iteration = 0;
@@ -506,6 +520,30 @@ TEST_P(ParameterizedIteratorSaveAndRestoreTest, IteratorSaveAndRestore) {
                 &window_dataset_iterator));
             bool end_of_window_dataset = false;
             std::vector<Tensor> window_elements;
+
+            // BEGIN of Test save and restore the window_dataset_iterator
+            VariantTensorDataWriter window_dataset_writer;
+            std::vector<const VariantTensorData*> window_dataset_data;
+            TF_EXPECT_OK(window_dataset_iterator->Save(
+                window_serialization_ctx.get(), &window_dataset_writer));
+            window_dataset_writer.GetData(&window_dataset_data);
+            VariantTensorDataReader window_reader(window_dataset_data);
+            // Run out the iterator and then restoring it
+            // should give its original state back
+
+            while (!end_of_window_dataset) {
+              std::vector<Tensor> next_element;
+              TF_EXPECT_OK(window_dataset_iterator->GetNext(
+                  iterator_ctx_.get(), &next_element, &end_of_window_dataset));
+            }
+
+            TF_EXPECT_OK(
+                RestoreIterator(iterator_ctx_.get(), &window_reader,
+                                test_case.dataset_params.iterator_prefix(),
+                                *window_dataset, &window_dataset_iterator));
+            // END of Test save and restore the window_dataset_iterator
+
+            end_of_window_dataset = false;
             while (!end_of_window_dataset) {
               std::vector<Tensor> next_element;
               TF_EXPECT_OK(window_dataset_iterator->GetNext(

@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "tensorflow/core/activity_watcher/activity.h"
+#include "tensorflow/core/activity_watcher/activity_utils.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
@@ -33,6 +35,10 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/connected_traceme.h"
+#include "tensorflow/core/profiler/lib/context_types.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/profiler/lib/traceme_encode.h"
 
 namespace tensorflow {
 
@@ -57,8 +63,8 @@ static std::unique_ptr<OpKernel> BuildOpKernel(OpKernelConstruction* c,
                      c->device()->GetAllocator(AllocatorAttributes()),
                      *sub_node, c->graph_def_version(), &status);
   if (!status.ok()) {
-    c->CtxFailureWithWarning(errors::Internal(
-        "Failed to build OpKernel for ", name, " : ", status.error_message()));
+    c->CtxFailureWithWarning(errors::Internal("Failed to build OpKernel for ",
+                                              name, " : ", status.message()));
   }
   return k;
 }
@@ -214,7 +220,8 @@ class CollectiveGatherOpKernel : public CollectiveOpV1Kernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(CollectiveGatherOpKernel);
+  CollectiveGatherOpKernel(const CollectiveGatherOpKernel&) = delete;
+  void operator=(const CollectiveGatherOpKernel&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("CollectiveGather").Device(DEVICE_CPU),
@@ -324,7 +331,8 @@ class CollectiveReduceOpKernel : public CollectiveOpV1Kernel {
  private:
   std::unique_ptr<OpKernel> merge_op_;
   std::unique_ptr<OpKernel> final_op_;
-  TF_DISALLOW_COPY_AND_ASSIGN(CollectiveReduceOpKernel);
+  CollectiveReduceOpKernel(const CollectiveReduceOpKernel&) = delete;
+  void operator=(const CollectiveReduceOpKernel&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("CollectiveReduce").Device(DEVICE_CPU),
@@ -401,7 +409,8 @@ class CollectiveBcastSendOpKernel : public CollectiveOpV1Kernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(CollectiveBcastSendOpKernel);
+  CollectiveBcastSendOpKernel(const CollectiveBcastSendOpKernel&) = delete;
+  void operator=(const CollectiveBcastSendOpKernel&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("CollectiveBcastSend").Device(DEVICE_CPU),
@@ -471,7 +480,8 @@ class CollectiveBcastRecvOpKernel : public CollectiveOpV1Kernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(CollectiveBcastRecvOpKernel);
+  CollectiveBcastRecvOpKernel(const CollectiveBcastRecvOpKernel&) = delete;
+  void operator=(const CollectiveBcastRecvOpKernel&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("CollectiveBcastRecv").Device(DEVICE_CPU),
@@ -550,7 +560,7 @@ class CollectiveAssignGroupV2OpKernel : public OpKernel {
                   << " device_index = " << index
                   << " group_key = " << group_key->DebugString()
                   << " group_size = " << group_size->DebugString();
-          return OkStatus();
+          return absl::OkStatus();
         }
       }
     }
@@ -628,13 +638,22 @@ class CollectiveOpV2Kernel : public AsyncOpKernel {
     col_params->instance.instance_key = instance_key.unaligned_flat<int32>()(0);
     col_params->instance.impl_details.communication_hint = communication_hint_;
     col_params->instance.impl_details.timeout_seconds = timeout_seconds_;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Runs a collective. The output tensor must be allocated before calling this
   // method. col_params must live until done is called.
   void Run(OpKernelContext* c, CollectiveParams* col_params,
            DoneCallback done) {
+    // Trace the Run event.
+    tsl::profiler::TraceMeProducer producer(
+        [this] {
+          return tsl::profiler::TraceMeEncode("CollectiveOpV2Kernel::Run",
+                                              {{"name", name()}});
+        },
+        tsl::profiler::ContextType::kTfExecutor);
+    auto xprof_ctx_id = producer.GetContextId();
+
     CollectiveExecutor* col_exec = c->collective_executor();
     OP_REQUIRES_ASYNC(
         c, col_exec,
@@ -642,21 +661,69 @@ class CollectiveOpV2Kernel : public AsyncOpKernel {
             "Failed to get CollectiveExecutor from OpKernelContext for Op ",
             name_),
         done);
+    std::string device_type = c->device()->attributes().device_type();
+    OP_REQUIRES_ASYNC(
+        c,
+        !(col_params->is_stateless &&
+          device_type == DeviceType(DEVICE_GPU).type()),
+        errors::Internal(
+            "is_stateless is not supported with device type GPU for Op ",
+            name_),
+        done);
+
+    auto activity_id = activity_watcher::ActivityStart([&]() {
+      return activity_watcher::ActivityFromContext(
+          c, "CollectiveV2Op::Run",
+          activity_watcher::ActivityCategory::kCollective,
+          {
+              {"group_key", absl::StrCat(col_params->group.group_key)},
+              {"group_size", absl::StrCat(col_params->group.group_size)},
+              {"instance_key", absl::StrCat(col_params->instance.instance_key)},
+              {"communication_hint",
+               col_params->instance.impl_details.communication_hint},
+          });
+    });
     // Resolve the collective params.
     // Schedule the `CompleteParamsAsync` call on a work queue that can handle
     // blocking work because it's not guaranteed that this call cannot block.
-    c->collective_executor()->RunClosure([c, done = std::move(done), col_params,
-                                          col_exec]() {
+    c->collective_executor()->RunClosure([c, activity_id, xprof_ctx_id,
+                                          done = std::move(done), col_params,
+                                          col_exec]() mutable {
+      tsl::profiler::TraceMeConsumer consumer(
+          [&] {
+            return tsl::profiler::TraceMeEncode(
+                "CollectiveExecutor::RunClosure",
+                {{"name", c->op_kernel().name()}});
+          },
+          tsl::profiler::ContextType::kTfExecutor, xprof_ctx_id);
+
       VLOG(1) << "Collective CompleteParams for " << col_params->name
               << " device " << c->device()->name() << " group "
               << col_params->group.group_key << " instance "
               << col_params->instance.instance_key;
       col_exec->CompleteParamsAsync(
           c->device()->attributes(), col_params, c->cancellation_manager(),
-          [c, done = std::move(done), col_params, col_exec](const Status& s) {
+          [c, activity_id, xprof_ctx_id, done = std::move(done), col_params,
+           col_exec](const Status& s) mutable {
+            tsl::profiler::TraceMeConsumer consumer(
+                [&] {
+                  return tsl::profiler::TraceMeEncode(
+                      "CollectiveExecutor::CompleteParamsAsync::Done",
+                      {{"name", c->op_kernel().name()}});
+                },
+                tsl::profiler::ContextType::kTfExecutor, xprof_ctx_id);
+
             if (s.ok()) {
-              auto actual_done = [c, col_params,
+              auto actual_done = [c, activity_id, col_params, xprof_ctx_id,
                                   done = std::move(done)](const Status& s) {
+                tsl::profiler::TraceMeConsumer consumer(
+                    [&] {
+                      return tsl::profiler::TraceMeEncode(
+                          "CollectiveExecutor::ExecuteAsync::Done",
+                          {{"name", c->op_kernel().name()}});
+                    },
+                    tsl::profiler::ContextType::kTfExecutor, xprof_ctx_id);
+
                 VLOG(1) << "Collective ExecuteAsync done for "
                         << col_params->name << " device " << c->device()->name()
                         << " group " << col_params->group.group_key
@@ -666,6 +733,7 @@ class CollectiveOpV2Kernel : public AsyncOpKernel {
                   c->SetStatus(s);
                 }
                 done();
+                activity_watcher::ActivityEnd(activity_id);
               };
               VLOG(1) << "Collective ExecuteAsync start for "
                       << col_params->name << " device " << c->device()->name()
@@ -679,6 +747,7 @@ class CollectiveOpV2Kernel : public AsyncOpKernel {
             } else {
               c->SetStatus(s);
               done();
+              activity_watcher::ActivityEnd(activity_id);
             }
           });
     });
@@ -1004,7 +1073,7 @@ class CollectiveInitializeCommunicatorOpKernel : public AsyncOpKernel {
           "rank must be less than group size but got ", rank,
           " >= ", group_size);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   void ComputeAsync(OpKernelContext* c, DoneCallback done) override {
@@ -1045,7 +1114,7 @@ class CollectiveInitializeCommunicatorOpKernel : public AsyncOpKernel {
     auto* col_exec = c->collective_executor();
 
     c->collective_executor()->RunClosure([c, done = std::move(done),
-                                          group_params, col_exec]() {
+                                          group_params, col_exec]() mutable {
       VLOG(1) << "Collective Group initialization for "
               << " device " << c->device()->name() << " group "
               << group_params->group_key;
@@ -1128,7 +1197,7 @@ class CollectiveOpV3Kernel : public AsyncOpKernel {
     col_params->instance.impl_details.timeout_seconds =
         timeout_seconds_ > 0 ? resource->timeout_seconds() : timeout_seconds_;
     col_params->run_group_initialization = false;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Runs a collective. The output tensor must be allocated before calling this
@@ -1145,14 +1214,16 @@ class CollectiveOpV3Kernel : public AsyncOpKernel {
     // Resolve the collective params.
     // Schedule the `CompleteParamsAsync` call on a work queue that can handle
     // blocking work because it's not guaranteed that this call cannot block.
-    col_exec->RunClosure([c, done = std::move(done), col_params, col_exec]() {
+    col_exec->RunClosure([c, done = std::move(done), col_params,
+                          col_exec]() mutable {
       VLOG(1) << "Collective CompleteParams for " << col_params->name
               << " device " << c->device()->name() << " group "
               << col_params->group.group_key << " instance "
               << col_params->instance.instance_key;
       col_exec->CompleteParamsAsync(
           c->device()->attributes(), col_params, c->cancellation_manager(),
-          [c, done = std::move(done), col_params, col_exec](const Status& s) {
+          [c, done = std::move(done), col_params,
+           col_exec](const Status& s) mutable {
             if (s.ok()) {
               auto actual_done = [c, col_params,
                                   done = std::move(done)](const Status& s) {

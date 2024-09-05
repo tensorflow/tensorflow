@@ -51,7 +51,7 @@ class RepeatDatasetParams : public DatasetParams {
     input_names->clear();
     input_names->emplace_back(RepeatDatasetOp::kInputDataset);
     input_names->emplace_back(RepeatDatasetOp::kCount);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -59,7 +59,7 @@ class RepeatDatasetParams : public DatasetParams {
     attr_vector->emplace_back("output_types", output_dtypes_);
     attr_vector->emplace_back("output_shapes", output_shapes_);
     attr_vector->emplace_back("metadata", "");
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   string dataset_type() const override { return RepeatDatasetOp::kDatasetType; }

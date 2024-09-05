@@ -268,17 +268,7 @@ TEST_F(GraphPropertiesTest, DynamicProperties) {
         EXPECT_EQ(10, prop.shape().dim(0).size());
         EXPECT_EQ(1, prop.shape().dim(1).size());
         const auto out_props = properties.GetOutputProperties(node.name());
-#ifdef INTEL_MKL
-        if (!NativeFormatEnabled()) {
-          // Intel MKL AddN OP would have two output.
-          // One is the real output, another one for MKL metadata
-          EXPECT_EQ(2, out_props.size());
-        } else {
-          EXPECT_EQ(1, out_props.size());
-        }
-#else
         EXPECT_EQ(1, out_props.size());
-#endif  // INTEL_MKL
         string prop_str;
         ::tensorflow::protobuf::TextFormat::PrintToString(prop, &prop_str);
         string out_prop_str;
@@ -300,7 +290,7 @@ REGISTER_OP("DetectInputValueInShapeInferenceOp")
       if (c->input_tensor(0)) {
         // 10x10 if input_tensor is given to the inference context.
         c->set_output(0, c->Matrix(10, 10));
-        return OkStatus();
+        return absl::OkStatus();
       }
       // unknown rank if input_tensor is not provided.
       return shape_inference::UnknownShape(c);
@@ -324,7 +314,7 @@ class ConstTensorSkipTestCase {
               << ", expected: " << expected_;
     // Build a graph with Const --> Identity --> Detect.
     GrapplerItem item;
-    const gtl::ArraySlice<int64_t> shape_array_slice(shape_);
+    const absl::Span<const int64_t> shape_array_slice(shape_);
     Tensor const_tensor_value(data_type_, TensorShape(shape_array_slice));
     // Fill the const tensor value based on data type.
     switch (data_type_) {

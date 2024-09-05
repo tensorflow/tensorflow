@@ -38,7 +38,7 @@ tensorflow::Status ParseOutput(const string& output_opt, string* output_type,
   // The default is to use stdout.
   if (output_opt.empty()) {
     *output_type = kOutput[1];
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   std::set<string> output_types(kOutput,
@@ -61,7 +61,7 @@ tensorflow::Status ParseOutput(const string& output_opt, string* output_type,
           absl::StrFormat("E.g. Unknown output type: %s, Valid types: %s\n",
                           *output_type, absl::StrJoin(output_types, ",")));
     }
-    kv_split = absl::StrSplit(output_opt.substr(opt_split + 1), ",",
+    kv_split = absl::StrSplit(output_opt.substr(opt_split + 1), ',',
                               absl::SkipEmpty());
   }
 
@@ -92,7 +92,7 @@ tensorflow::Status ParseOutput(const string& output_opt, string* output_type,
 
   for (const string& kv_str : kv_split) {
     const std::vector<string> kv =
-        absl::StrSplit(kv_str, "=", absl::SkipEmpty());
+        absl::StrSplit(kv_str, '=', absl::SkipEmpty());
     if (kv.size() < 2) {
       return tensorflow::Status(
           absl::StatusCode::kInvalidArgument,
@@ -117,7 +117,7 @@ tensorflow::Status ParseOutput(const string& output_opt, string* output_type,
                           *output_type, *output_type, opt));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 tensorflow::Status Options::FromProtoStr(const string& opts_proto_str,
@@ -167,7 +167,7 @@ tensorflow::Status Options::FromProtoStr(const string& opts_proto_str,
       opts_pb.account_displayed_op_only(),
       std::vector<string>(opts_pb.select().begin(), opts_pb.select().end()),
       output_type, output_options);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::string Options::ToString() const {

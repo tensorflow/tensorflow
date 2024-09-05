@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/fusion_utils.h"
 
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/strip.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -31,15 +35,32 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace grappler {
 namespace fusion_utils {
 
 namespace {
+
+// See the comment for the proto field `tensorflow.NodeDef.input`.
+constexpr char kControlInputPrefix[] = "^";
+
+bool IsControlInput(const string& node_input) {
+  return absl::StartsWith(node_input, kControlInputPrefix);
+}
+
+string StripControlInputNotation(const string& node_input) {
+  return string(absl::StripPrefix(node_input, kControlInputPrefix));
+}
+
+string AddControlInputNotation(const string& node_input) {
+  return absl::StrCat(kControlInputPrefix, node_input);
+}
+
+// Returns e.g. `"node"` given `"node:out"` or `"node:out:0"`. See the comment
+// for the proto field `tensorflow.FunctionDef.node_def`.
 string ParseNodeConnection(const string& name) {
-  // If input/output node name has semicolon, take the prefix.  Otherwise take
-  // the whole string.
   return name.substr(0, name.find(':'));
 }
 
@@ -113,18 +134,22 @@ gtl::FlatMap<string, string> GetUniqueNames(const Iterable& first_iterable,
 // We need to rename them and the connections of the inputs that refer to them.
 // Nodes that will be added to the function can have the same name as the nodes
 // from parent function.
-void RenameFunctionNodes(const FunctionDef& first_function,
-                         protobuf::RepeatedPtrField<NodeDef>* nodes_to_fuse,
-                         protobuf::Map<string, string>* rets_to_fuse) {
+void RenameFunctionNodes(
+    const FunctionDef& first_function,
+    protobuf::RepeatedPtrField<NodeDef>* nodes_to_fuse,
+    protobuf::Map<string, string>* rets_to_fuse,
+    protobuf::Map<string, string>* control_rets_to_fuse,
+    protobuf::RepeatedPtrField<string>* control_outputs_to_fuse) {
   const gtl::FlatMap<string, string> changed_node_names =
       GetUniqueNames(first_function.node_def(), *nodes_to_fuse);
 
-  auto update_name = [&changed_node_names](string* input) {
-    string input_node = ParseNodeConnection(*input);
+  auto updated_name = [&changed_node_names](const string& input) {
+    string input_node = ParseNodeConnection(input);
     auto iter = changed_node_names.find(input_node);
     if (iter != changed_node_names.end()) {
-      *input = iter->second + ParseOutputNode(*input);
+      return iter->second + ParseOutputNode(input);
     }
+    return input;
   };
 
   for (NodeDef& function_node : *nodes_to_fuse) {
@@ -134,11 +159,30 @@ void RenameFunctionNodes(const FunctionDef& first_function,
     }
 
     for (string& input : *function_node.mutable_input()) {
-      update_name(&input);
+      input = updated_name(input);
     }
   }
 
-  for (auto& ret : *rets_to_fuse) update_name(&ret.second);
+  // Update `FunctionDef.ret` values (node names that may have changed).
+  for (auto& [unused, ret_node] : *rets_to_fuse) {
+    ret_node = updated_name(ret_node);
+  }
+
+  // Update `FunctionDef.control_ret` values (node names that may have changed).
+  // Additionally overwrite `FunctionDef.control_ret` keys and
+  // `FunctionDef.signature.control_output` elements with these new values.
+  // The old keys and elements are ignored; these keys and elements serve only
+  // to look up one another.
+  protobuf::Map<string, string> new_control_rets_to_fuse;
+  protobuf::RepeatedPtrField<string> new_control_outputs_to_fuse;
+  for (const auto& [unused, control_ret_node] : *control_rets_to_fuse) {
+    string updated_control_ret_node = updated_name(control_ret_node);
+    new_control_rets_to_fuse.insert(
+        {updated_control_ret_node, updated_control_ret_node});
+    *new_control_outputs_to_fuse.Add() = updated_control_ret_node;
+  }
+  *control_rets_to_fuse = new_control_rets_to_fuse;
+  *control_outputs_to_fuse = new_control_outputs_to_fuse;
 }
 
 StringCollection GetFunctionInputs(const FunctionDef& function) {
@@ -152,6 +196,7 @@ StringCollection GetFunctionInputs(const FunctionDef& function) {
 OpDef GetUniqueSignature(const OpDef& first_signature,
                          const OpDef& second_signature,
                          protobuf::Map<string, string>* rets_to_fuse,
+                         protobuf::Map<string, string>* control_rets_to_fuse,
                          protobuf::RepeatedPtrField<NodeDef>* nodes_to_fuse) {
   const gtl::FlatMap<string, string> changed_input_names =
       GetUniqueNames(first_signature.input_arg(), second_signature.input_arg());
@@ -178,28 +223,42 @@ OpDef GetUniqueSignature(const OpDef& first_signature,
     }
   }
 
-  protobuf::Map<string, string> new_rets;
-  for (const auto& ret : *rets_to_fuse) {
-    const auto& key = changed_output_names.count(ret.first)
-                          ? changed_output_names.at(ret.first)
-                          : ret.first;
-    const auto& input = ParseNodeConnection(ret.second);
-    const auto& value =
-        changed_input_names.count(input)
-            ? changed_input_names.at(input) + ParseOutputNode(ret.second)
-            : ret.second;
-    new_rets[key] = value;
-  }
-  *rets_to_fuse = std::move(new_rets);
+  auto new_rets = [&](const protobuf::Map<string, string>& old_rets) {
+    protobuf::Map<string, string> new_rets;
+    for (const auto& ret : old_rets) {
+      const auto& key = changed_output_names.count(ret.first)
+                            ? changed_output_names.at(ret.first)
+                            : ret.first;
+      const auto& input = ParseNodeConnection(ret.second);
+      const auto& value =
+          changed_input_names.count(input)
+              ? changed_input_names.at(input) + ParseOutputNode(ret.second)
+              : ret.second;
+      new_rets[key] = value;
+    }
+    return new_rets;
+  };
+
+  *rets_to_fuse = new_rets(*rets_to_fuse);
+  *control_rets_to_fuse = new_rets(*control_rets_to_fuse);
 
   for (NodeDef& function_node : *nodes_to_fuse) {
     for (auto& node_input : *function_node.mutable_input()) {
-      const auto& input = ParseNodeConnection(node_input);
+      bool is_control_input = IsControlInput(node_input);
+      const auto& input =
+          ParseNodeConnection(StripControlInputNotation(node_input));
       if (const string* new_name =
               gtl::FindOrNull(changed_input_names, input)) {
         node_input = *new_name + ParseOutputNode(node_input);
+        if (is_control_input) {
+          node_input = AddControlInputNotation(node_input);
+        }
       }
     }
+  }
+
+  if (second_signature.is_stateful()) {
+    signature.set_is_stateful(true);
   }
 
   return signature;
@@ -215,7 +274,9 @@ void FuseFunctionNodes(const StringCollection& first_inputs,
                        protobuf::RepeatedPtrField<NodeDef>* nodes_to_fuse) {
   for (NodeDef& function_node : *nodes_to_fuse) {
     for (auto& node_input : *function_node.mutable_input()) {
-      auto parsed_name = ParseNodeConnection(node_input);
+      bool is_control_input = IsControlInput(node_input);
+      auto parsed_name =
+          ParseNodeConnection(StripControlInputNotation(node_input));
 
       auto input_it =
           std::find(second_inputs.begin(), second_inputs.end(), parsed_name);
@@ -224,6 +285,9 @@ void FuseFunctionNodes(const StringCollection& first_inputs,
       auto arg_num = std::distance(second_inputs.begin(), input_it);
       node_input =
           set_input(first_inputs, second_inputs, first_outputs, arg_num);
+      if (is_control_input) {
+        node_input = AddControlInputNotation(node_input);
+      }
     }
   }
 }
@@ -326,6 +390,20 @@ void ComposeSignature(const OpDef& first_signature,
   *fused_signature->mutable_input_arg() = first_signature.input_arg();
   // Copy output signature from second function.
   *fused_signature->mutable_output_arg() = second_signature.output_arg();
+
+  if (first_signature.is_stateful() || second_signature.is_stateful()) {
+    if (!(first_signature.is_stateful() && second_signature.is_stateful())) {
+      metrics::RecordTFDataDebug("fused_with_mixed_statefulness");
+    }
+    fused_signature->set_is_stateful(true);
+  }
+
+  fused_signature->mutable_control_output()->Add(
+      first_signature.control_output().begin(),
+      first_signature.control_output().end());
+  fused_signature->mutable_control_output()->Add(
+      second_signature.control_output().begin(),
+      second_signature.control_output().end());
 }
 
 void ComposeOutput(const protobuf::Map<string, string>& first_ret,
@@ -447,20 +525,24 @@ FunctionDef* FuseFunctions(
   FunctionDef setup_function = second_function;
   *setup_function.mutable_signature() = GetUniqueSignature(
       first_function.signature(), setup_function.signature(),
-      setup_function.mutable_ret(), setup_function.mutable_node_def());
+      setup_function.mutable_ret(), setup_function.mutable_control_ret(),
+      setup_function.mutable_node_def());
 
   FunctionDef* fused_function = library->add_function();
 
+  RenameFunctionNodes(
+      first_function, setup_function.mutable_node_def(),
+      setup_function.mutable_ret(), setup_function.mutable_control_ret(),
+      setup_function.mutable_signature()->mutable_control_output());
+  set_output(first_function.ret(), setup_function.ret(),
+             fused_function->mutable_ret());
+  CombineOutput(first_function.control_ret(), setup_function.control_ret(),
+                fused_function->mutable_control_ret());
   set_signature(first_function.signature(), setup_function.signature(),
                 fused_function->mutable_signature());
 
   graph_utils::SetUniqueGraphFunctionName(fused_name_prefix, library,
                                           fused_function);
-
-  RenameFunctionNodes(first_function, setup_function.mutable_node_def(),
-                      setup_function.mutable_ret());
-  set_output(first_function.ret(), setup_function.ret(),
-             fused_function->mutable_ret());
 
   CHECK(fused_function->signature().output_arg_size() ==
         fused_function->ret_size())

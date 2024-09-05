@@ -123,7 +123,8 @@ class Dimension {
 
   friend class InferenceContext;
   friend class ShapeManager;
-  TF_DISALLOW_COPY_AND_ASSIGN(Dimension);
+  Dimension(const Dimension&) = delete;
+  void operator=(const Dimension&) = delete;
 };
 
 class DimensionHandle {
@@ -163,7 +164,8 @@ class Shape {
   friend class InferenceContext;
   friend class ::tensorflow::grappler::SymbolicShapeManager;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Shape);
+  Shape(const Shape&) = delete;
+  void operator=(const Shape&) = delete;
 };
 
 class ShapeHandle {
@@ -453,7 +455,7 @@ class InferenceContext {
   std::string DebugString(ShapeHandle s);
   std::string DebugString(DimensionHandle d);
   std::string DebugString(const ShapeAndType& shape_and_type);
-  std::string DebugString(gtl::ArraySlice<ShapeAndType> shape_and_types);
+  std::string DebugString(absl::Span<const ShapeAndType> shape_and_types);
 
   // Describes the whole context, for debugging purposes.
   std::string DebugString() const;
@@ -565,7 +567,8 @@ class InferenceContext {
 
   // Returns in <out> a new shape corresponding to <shape>.
   Status MakeShapeFromTensorShape(const TensorShape& shape, ShapeHandle* out);
-  StatusOr<ShapeHandle> MakeShapeFromShapeTensor(const TensorShape& shape);
+  absl::StatusOr<ShapeHandle> MakeShapeFromShapeTensor(
+      const TensorShape& shape);
 
   // Returns a new dimension of the given size.  The returned value is owned by
   // this context.
@@ -680,6 +683,10 @@ class InferenceContext {
 
   void set_input_handle_shapes_and_types(
       int idx, const std::vector<ShapeAndType>& shapes_and_types) {
+    CHECK_GE(idx, 0) << "idx must be non-negative. Got idx: " << idx << ".";
+    CHECK_LT(idx, input_handle_shapes_and_types_.size())
+        << "Got idx: " << idx << " but only "
+        << input_handle_shapes_and_types_.size() << " inputs.";
     input_handle_shapes_and_types_[idx] =
         absl::make_unique<std::vector<ShapeAndType>>(shapes_and_types);
   }
@@ -687,17 +694,29 @@ class InferenceContext {
   // Returns the output handle shapes and types, for the resource tensor output
   // at index <idx>. Returns NULL if the shape and types were never set.
   const std::vector<ShapeAndType>* output_handle_shapes_and_types(int idx) {
+    CHECK_GE(idx, 0) << "idx must be non-negative. Got idx: " << idx << ".";
+    CHECK_LT(idx, output_handle_shapes_and_types_.size())
+        << "Got idx: " << idx << " but only "
+        << output_handle_shapes_and_types_.size() << " outputs.";
     return output_handle_shapes_and_types_[idx].get();
   }
 
   // Returns the inputs handle shapes and types, for the resource tensor input
   // at index <idx>. Returns NULL if the shape and types were not available.
   const std::vector<ShapeAndType>* input_handle_shapes_and_types(int idx) {
+    CHECK_GE(idx, 0) << "idx must be non-negative. Got idx: " << idx << ".";
+    CHECK_LT(idx, input_handle_shapes_and_types_.size())
+        << "Got idx: " << idx << " but only "
+        << input_handle_shapes_and_types_.size() << " inputs.";
     return input_handle_shapes_and_types_[idx].get();
   }
 
   void set_output_handle_shapes_and_types(
       int idx, const std::vector<ShapeAndType>& shapes_and_types) {
+    CHECK_GE(idx, 0) << "idx must be non-negative. Got idx: " << idx << ".";
+    CHECK_LT(idx, output_handle_shapes_and_types_.size())
+        << "Got idx: " << idx << " but only "
+        << output_handle_shapes_and_types_.size() << " inputs.";
     output_handle_shapes_and_types_[idx] =
         absl::make_unique<std::vector<ShapeAndType>>(shapes_and_types);
   }
@@ -769,12 +788,12 @@ class InferenceContext {
 
   Status ReturnUnknownShape(ShapeHandle* out) {
     *out = UnknownShape();
-    return OkStatus();
+    return absl::OkStatus();
   }
   Status ReturnCreatedShape(const std::vector<DimensionHandle>& dims,
                             ShapeHandle* out) {
     *out = MakeShape(dims);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Adds additional context to the given status.
@@ -861,7 +880,8 @@ class InferenceContext {
   std::vector<std::pair<ShapeHandle, ShapeHandle>> merged_shapes_;
   std::vector<std::pair<DimensionHandle, DimensionHandle>> merged_dims_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(InferenceContext);
+  InferenceContext(const InferenceContext&) = delete;
+  void operator=(const InferenceContext&) = delete;
 };
 
 // -----------------------------------------------------------------------------

@@ -19,6 +19,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_SHOW_H_
 
 #include <algorithm>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -39,7 +40,7 @@ class TFShow {
  public:
   explicit TFShow(checkpoint::CheckpointReader* ckpt_reader)
       : ckpt_reader_(ckpt_reader) {}
-  virtual ~TFShow() {}
+  virtual ~TFShow() = default;
   virtual void AddNode(TFGraphNode* node) = 0;
   virtual void Build() = 0;
   virtual const GraphNodeProto& Show(const string& prefix,

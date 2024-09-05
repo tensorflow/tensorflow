@@ -19,8 +19,10 @@ from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.types import core
 from tensorflow.python.util import compat
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("__internal__.ops.get_resource_handle_data", v1=[])
 def get_resource_handle_data(graph_op):
   assert (isinstance(graph_op, core.Symbol)
           and not isinstance(graph_op, core.Value))
@@ -58,13 +60,18 @@ def copy_handle_data(source_t, target_t):
   if (target_t.dtype == dtypes.resource or
       target_t.dtype == dtypes.variant):
     handle_data = get_handle_data(source_t)
-    if (handle_data is not None
-        and handle_data.is_set
-        and handle_data.shape_and_type):
-      set_handle_data(target_t, handle_data)
+    set_handle_data(target_t, handle_data)
 
 
 def set_handle_data(target_t, handle_data):
+  """Sets handle data on the giver tensor."""
+  if (
+      handle_data is None
+      or not handle_data.is_set
+      or not handle_data.shape_and_type
+  ):
+    return
+
   # pylint: disable=protected-access
   if isinstance(target_t, core.Value):
     target_t._handle_data = handle_data

@@ -79,7 +79,7 @@ module attributes {tf_saved_model.semantics} {
   // CHECK-NOT: "tf.AssignVariableOp"
   // CHECK: %[[CST:.*]] = "tf.Const"()
   // CHECK-NEXT: %[[IDENTITY:.*]] = "tf.Identity"(%[[CST]])
-  // CHECK-NEXT: %[[VAR:.*]] = "tf.VarHandleOp"() {{{.*shared_name = "var_1".*}}}
+  // CHECK-NEXT: %[[VAR:.*]] = "tf.VarHandleOp"() <{{{.*shared_name = "var_1".*}}}>
   // CHECK-NEXT: "tf.AssignVariableOp"(%[[VAR]], %[[IDENTITY]])
 }
 

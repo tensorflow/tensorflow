@@ -19,12 +19,14 @@ include "mlir/IR/OpBase.td"
 include "mlir/IR/PatternBase.td"
 include "mlir/Dialect/Arith/IR/ArithOps.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
+include "mlir/IR/CommonTypeConstraints.td"
+include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 
 // Quantize attribute $0 by using quantization parameter from %1.
 def QuantizeByQuantizedType : NativeCodeCall<"quant::Quantize($0, $1.getValue())">;
 def F32ElementsAttr : ElementsAttrBase<
-  CPred<"$_self.cast<ElementsAttr>().getType().getElementType().isF32()">, "float constant tensor">;
+  CPred<"$_self.cast<ElementsAttr>().getShapedType().getElementType().isF32()">, "float constant tensor">;
 
 // Squash tfl.dequantize and tfl.quantize pairs.
 // TODO(fengliuai): Compare the scale of input and output. This can also be
@@ -36,3 +38,20 @@ def : Pat<(TFL_QuantizeOp (TFL_DequantizeOp $in), $qt), (replaceWithValue $in)>;
 def : Pat<(TFL_DequantizeOp
              (TFL_QuantizeOp (Arith_ConstantOp F32ElementsAttr:$cst), $qt)),
           (TFL_ConstOp $cst)>;
+
+// Transpose conv supports hybrid computation with quantized weights.
+def FoldQuantWeightsIntoTposeConv : Pat<
+  (TFL_TransposeConvOp
+    $output_shape,
+    (TFL_DequantizeOp $quant_weights),
+    $quant_input,
+    $bias, $padding, $stride_h, $stride_w, $faf),
+  (TFL_TransposeConvOp $output_shape, $quant_weights,
+    $quant_input, $bias, $padding, $stride_h, $stride_w, $faf), 
+  [(TensorOf<[QI8, QUI8, QI16]> $quant_weights)]>;
+
+// EmbeddingLookup supports quantized table tensors.
+def FoldQuantWeightsIntoEmbeddingLookup : Pat<
+  (TFL_EmbeddingLookupOp:$output $indices, (TFL_DequantizeOp $table)),
+  (TFL_EmbeddingLookupOp $indices, $table),
+  [(TensorOf<[QI4, QI8, QUI8]> $table), (TensorOf<[F32]> $output)]>;

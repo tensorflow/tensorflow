@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 
+#include <cstring>
 #include <string>
 
 #include "absl/strings/match.h"
@@ -92,7 +93,7 @@ Status DemangleDataType(absl::string_view str, DataType* proto) {
     return errors::FailedPrecondition(
         "Could not parse TFDataType mangled proto");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace mangling_util

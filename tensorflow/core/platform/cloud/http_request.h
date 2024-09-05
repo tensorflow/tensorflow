@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/cloud/http_request.h"
+#include "tsl/platform/cloud/http_request.h"
 
 namespace tensorflow {
 using tsl::HttpRequest;  // NOLINT(misc-unused-using-decls)

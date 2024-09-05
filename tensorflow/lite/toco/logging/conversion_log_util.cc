@@ -210,7 +210,7 @@ std::string GetModelHash(const Model& model) {
 
 // This function scans through the error message string, extracts the part about
 // missing ops and prunes away all other information in the error info.
-std::string SanitizeErrorMessage(const std::string& error_message) {
+std::string SanitizeErrorMessage(absl::string_view error_message) {
   const std::string s1 = "Ops that can be supported by the flex runtime";
   const std::string s2 = "Ops that need custom implementation";
   std::string pruned_message;

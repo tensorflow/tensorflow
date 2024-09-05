@@ -1,0 +1,52 @@
+/* Copyright 2017 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#ifndef XLA_SERVICE_CPU_LLVM_IR_RUNTIME_H_
+#define XLA_SERVICE_CPU_LLVM_IR_RUNTIME_H_
+
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Operator.h"
+#include "xla/service/llvm_ir/llvm_util.h"
+
+namespace xla {
+namespace cpu {
+namespace runtime {
+
+extern const char* const kTanhV4F32SymbolName;
+extern const char* const kTanhV8F32SymbolName;
+extern const char* const kTanhV16F32SymbolName;
+extern const char* const kExpV4F32SymbolName;
+extern const char* const kExpV8F32SymbolName;
+extern const char* const kExpV16F32SymbolName;
+extern const char* const kLogV4F32SymbolName;
+extern const char* const kLogV8F32SymbolName;
+extern const char* const kLogV16F32SymbolName;
+
+// The following CPU runtime functions have LLVM-IR only implementations:
+//
+//  - __xla_cpu_runtime_TanhV4F32
+//  - __xla_cpu_runtime_TanhV8F32
+//
+// |LinkIRRuntimeFunctions| rewrites calls to these functions into generic LLVM
+// IR.
+
+void RewriteIRRuntimeFunctions(llvm::Module* module,
+                               llvm::FastMathFlags fast_math_flags);
+
+}  // namespace runtime
+}  // namespace cpu
+}  // namespace xla
+
+#endif  // XLA_SERVICE_CPU_LLVM_IR_RUNTIME_H_

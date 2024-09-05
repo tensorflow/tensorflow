@@ -19,15 +19,21 @@ limitations under the License.
 
 #include <optional>
 
+#include "absl/status/status.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_status.cc.inc"
 
 // Generated dialect definitions.
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_dialect.cc.inc"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace mlir {
 namespace kernel_gen {
@@ -60,11 +66,11 @@ Type TFFrameworkDialect::parseType(DialectAsmParser &parser) const {
 
 /// Print a type registered to this dialect.
 void TFFrameworkDialect::printType(Type type, DialectAsmPrinter &os) const {
-  if (type.isa<OpKernelContextType>()) {
+  if (mlir::isa<OpKernelContextType>(type)) {
     os << "op_kernel_context";
     return;
   }
-  if (type.isa<JITCallableType>()) {
+  if (mlir::isa<JITCallableType>(type)) {
     os << "jit_callable";
     return;
   }
@@ -120,43 +126,43 @@ std::optional<Value> JITExecuteOp::buildClone(OpBuilder &builder, Value alloc) {
       .getResult();
 }
 
-::tensorflow::error::Code ConvertAttrToEnumValue(ErrorCode error_code) {
+absl::StatusCode ConvertAttrToEnumValue(ErrorCode error_code) {
   using ::tensorflow::error::Code;
   switch (error_code) {
     case ErrorCode::OK:
-      return Code::OK;
+      return absl::StatusCode::kOk;
     case ErrorCode::CANCELLED:
-      return Code::CANCELLED;
+      return absl::StatusCode::kCancelled;
     case ErrorCode::UNKNOWN:
-      return Code::UNKNOWN;
+      return absl::StatusCode::kUnknown;
     case ErrorCode::INVALID_ARGUMENT:
-      return Code::INVALID_ARGUMENT;
+      return absl::StatusCode::kInvalidArgument;
     case ErrorCode::DEADLINE_EXCEEDED:
-      return Code::DEADLINE_EXCEEDED;
+      return absl::StatusCode::kDeadlineExceeded;
     case ErrorCode::NOT_FOUND:
-      return Code::NOT_FOUND;
+      return absl::StatusCode::kNotFound;
     case ErrorCode::ALREADY_EXISTS:
-      return Code::ALREADY_EXISTS;
+      return absl::StatusCode::kAlreadyExists;
     case ErrorCode::PERMISSION_DENIED:
-      return Code::PERMISSION_DENIED;
+      return absl::StatusCode::kPermissionDenied;
     case ErrorCode::UNAUTHENTICATED:
-      return Code::UNAUTHENTICATED;
+      return absl::StatusCode::kUnauthenticated;
     case ErrorCode::RESOURCE_EXHAUSTED:
-      return Code::RESOURCE_EXHAUSTED;
+      return absl::StatusCode::kResourceExhausted;
     case ErrorCode::FAILED_PRECONDITION:
-      return Code::FAILED_PRECONDITION;
+      return absl::StatusCode::kFailedPrecondition;
     case ErrorCode::ABORTED:
-      return Code::ABORTED;
+      return absl::StatusCode::kAborted;
     case ErrorCode::OUT_OF_RANGE:
-      return Code::OUT_OF_RANGE;
+      return absl::StatusCode::kOutOfRange;
     case ErrorCode::UNIMPLEMENTED:
-      return Code::UNIMPLEMENTED;
+      return absl::StatusCode::kUnimplemented;
     case ErrorCode::INTERNAL:
-      return Code::INTERNAL;
+      return absl::StatusCode::kInternal;
     case ErrorCode::UNAVAILABLE:
-      return Code::UNAVAILABLE;
+      return absl::StatusCode::kUnavailable;
     case ErrorCode::DATA_LOSS:
-      return Code::DATA_LOSS;
+      return absl::StatusCode::kDataLoss;
   }
 }
 

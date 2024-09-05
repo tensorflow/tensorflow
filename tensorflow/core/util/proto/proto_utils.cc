@@ -85,7 +85,7 @@ Status ParseTextFormatFromString(absl::string_view input,
   if (!parser.ParseFromString(string(input), output)) {
     return Status(absl::StatusCode::kInvalidArgument, err);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 StringErrorCollector::StringErrorCollector(string* error_text)

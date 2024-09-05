@@ -15,6 +15,7 @@
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
@@ -370,6 +371,26 @@ class SquareLinearOperatorBlockDiagTest(
     with self.cached_session() as sess:
       sess.run([x.initializer for x in operator.variables])
       self.check_convert_variables_to_tensors(operator)
+
+  def test_composite_gradients(self):
+    with backprop.GradientTape() as tape:
+      op1 = linalg.LinearOperatorFullMatrix([[1., 0.], [0., 1.]])
+      op2 = linalg.LinearOperatorDiag([1., 2., 3.])
+      tape.watch([op1, op2])
+      operator = block_diag.LinearOperatorBlockDiag([op1, op2])
+
+      x = self.make_x(op1, adjoint=False)
+      y = op1.matmul(x)
+      connected_grad, disconnected_grad, composite_grad = tape.gradient(
+          y, [op1, op2, operator]
+      )
+
+    disconnected_component_grad = composite_grad.operators[1].to_dense()
+    self.assertAllClose(connected_grad.to_dense(),
+                        composite_grad.operators[0].to_dense())
+    self.assertAllClose(disconnected_component_grad,
+                        array_ops.zeros_like(disconnected_component_grad))
+    self.assertIsNone(disconnected_grad)
 
   def test_is_non_singular_auto_set(self):
     # Matrix with two positive eigenvalues, 11 and 8.

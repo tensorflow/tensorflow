@@ -228,7 +228,10 @@ class CumprodTest(test.TestCase):
     with self.cached_session():
       tf_out = math_ops.cumprod(x, axis, exclusive, reverse).eval()
 
-    self.assertAllClose(np_out, tf_out)
+    atol = rtol = 1e-6
+    if x.dtype == dtypes.bfloat16.as_numpy_dtype:
+      atol = rtol = 1e-2
+    self.assertAllClose(np_out, tf_out, atol=atol, rtol=rtol)
 
   def _compareAll(self, x, axis):
     for exclusive in [True, False]:

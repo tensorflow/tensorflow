@@ -15,13 +15,65 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
+#include <tuple>
+#include <vector>
+
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/notification.h"
+#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
+#include "tsl/platform/criticality.h"
 
 namespace tensorflow {
 namespace serving {
 namespace {
+
+using ::testing::ElementsAre;
+using ::testing::Eq;
+using ::testing::Pointer;
+using ::testing::Property;
+
+TEST(MixedPriorityBatchingPolicyTest, InvalidAttrValueError) {
+  EXPECT_THAT(
+      GetMixedPriorityBatchingPolicy("invalid_attr_value"),
+      testing::StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          ::testing::HasSubstr(
+              "Unknown mixed priority batching policy: invalid_attr_value")));
+}
+
+using MixedPriorityBatchingPolicyParameterizedTest = ::testing::TestWithParam<
+    std::tuple<std::string, MixedPriorityBatchingPolicy>>;
+
+TEST_P(MixedPriorityBatchingPolicyParameterizedTest,
+       GetMixedPriorityBatchingPolicySuccess) {
+  auto [attr_name, policy] = GetParam();
+  EXPECT_THAT(GetMixedPriorityBatchingPolicy(attr_name),
+              testing::IsOkAndHolds(Eq(policy)));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    Parameter, MixedPriorityBatchingPolicyParameterizedTest,
+    ::testing::Values(
+        std::make_tuple(
+            /*attr_name=*/kLowPriorityPaddingWithMaxBatchSizeAttrValue,
+            /*policy=*/MixedPriorityBatchingPolicy::
+                kLowPriorityPaddingWithMaxBatchSize),
+        std::make_tuple(
+            /*attr_name=*/kLowPriorityPaddingWithNextAllowedBatchSizeAttrValue,
+            /*policy=*/MixedPriorityBatchingPolicy::
+                kLowPriorityPaddingWithNextAllowedBatchSize),
+        std::make_tuple(
+            /*attr_name=*/kPriorityIsolationAttrValue,
+            /*policy=*/MixedPriorityBatchingPolicy::kPriorityIsolation)));
 
 class FakeTask : public BatchTask {
  public:
@@ -34,8 +86,205 @@ class FakeTask : public BatchTask {
  private:
   const size_t size_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(FakeTask);
+  FakeTask(const FakeTask&) = delete;
+  void operator=(const FakeTask&) = delete;
 };
+
+TEST(TaskCriticalityTest, CriticalityDefaultsToCritical) {
+  FakeTask fake_task(0);
+  EXPECT_EQ(fake_task.criticality(), tsl::criticality::Criticality::kCritical);
+}
+
+TEST(TaskQueueTest, EmptyTaskQueue) {
+  TaskQueue<FakeTask> task_queue;
+
+  EXPECT_TRUE(task_queue.empty());
+  EXPECT_EQ(0, task_queue.num_tasks());
+  EXPECT_EQ(0, task_queue.size());
+}
+
+TEST(TaskQueueTest, AddTaskToTaskQueue) {
+  TaskQueue<FakeTask> task_queue;
+
+  task_queue.AddTask(std::make_unique<FakeTask>(1), 1);
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(1, task_queue.num_tasks());
+  EXPECT_EQ(1, task_queue.size());
+}
+
+TEST(TaskQueueTest, AddTasksToTaskQueue) {
+  TaskQueue<FakeTask> task_queue;
+
+  task_queue.AddTask(std::make_unique<FakeTask>(1), 1);
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(1, task_queue.num_tasks());
+  EXPECT_EQ(1, task_queue.size());
+
+  task_queue.AddTask(std::make_unique<FakeTask>(2), 2);
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(2, task_queue.num_tasks());
+  EXPECT_EQ(3, task_queue.size());
+
+  task_queue.AddTask(std::make_unique<FakeTask>(3), 3);
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(3, task_queue.num_tasks());
+  EXPECT_EQ(6, task_queue.size());
+}
+
+TEST(TaskQueueTest, RemoveTaskFromTaskQueueWithSingleTask) {
+  TaskQueue<FakeTask> task_queue;
+
+  task_queue.AddTask(std::make_unique<FakeTask>(1), 1);
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(1, task_queue.num_tasks());
+  EXPECT_EQ(1, task_queue.size());
+
+  EXPECT_THAT(task_queue.RemoveTask(),
+              Pointee(Property(&FakeTask::size, Eq(1))));
+  EXPECT_TRUE(task_queue.empty());
+  EXPECT_EQ(0, task_queue.num_tasks());
+  EXPECT_EQ(0, task_queue.size());
+}
+
+TEST(TaskQueueTest, RemoveTaskFromTaskQueueWithMultipleTasks) {
+  TaskQueue<FakeTask> task_queue;
+
+  task_queue.AddTask(std::make_unique<FakeTask>(2), 1);
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(1, task_queue.num_tasks());
+  EXPECT_EQ(2, task_queue.size());
+
+  task_queue.AddTask(std::make_unique<FakeTask>(1), 2);
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(2, task_queue.num_tasks());
+  EXPECT_EQ(3, task_queue.size());
+
+  EXPECT_THAT(task_queue.RemoveTask(),
+              Pointee(Property(&FakeTask::size, Eq(2))));
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(1, task_queue.num_tasks());
+  EXPECT_EQ(1, task_queue.size());
+}
+
+TEST(TaskQueueTest, RemoveTasksFromTaskQueue) {
+  TaskQueue<FakeTask> task_queue;
+
+  task_queue.AddTask(std::make_unique<FakeTask>(1), 1);
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(1, task_queue.num_tasks());
+  EXPECT_EQ(1, task_queue.size());
+
+  task_queue.AddTask(std::make_unique<FakeTask>(2), 2);
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(2, task_queue.num_tasks());
+  EXPECT_EQ(3, task_queue.size());
+
+  task_queue.AddTask(std::make_unique<FakeTask>(3), 3);
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(3, task_queue.num_tasks());
+  EXPECT_EQ(6, task_queue.size());
+
+  // The first two tasks are removed because they sum up to the size 3 as
+  // specified.
+  EXPECT_THAT(task_queue.RemoveTask(3),
+              ElementsAre(Pointee(Property(&FakeTask::size, Eq(1))),
+                          Pointee(Property(&FakeTask::size, Eq(2)))));
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(1, task_queue.num_tasks());
+  EXPECT_EQ(3, task_queue.size());
+}
+
+TEST(TaskQueueTest, RemoveTasksFewerThanArgFromTaskQueue) {
+  TaskQueue<FakeTask> task_queue;
+
+  task_queue.AddTask(std::make_unique<FakeTask>(1), 1);
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(1, task_queue.num_tasks());
+  EXPECT_EQ(1, task_queue.size());
+
+  task_queue.AddTask(std::make_unique<FakeTask>(2), 2);
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(2, task_queue.num_tasks());
+  EXPECT_EQ(3, task_queue.size());
+
+  task_queue.AddTask(std::make_unique<FakeTask>(3), 3);
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(3, task_queue.num_tasks());
+  EXPECT_EQ(6, task_queue.size());
+
+  // The last task is not removed since that will end up removing tasks that
+  // sum up to the size larger than 5.
+  EXPECT_THAT(task_queue.RemoveTask(5),
+              ElementsAre(Pointee(Property(&FakeTask::size, Eq(1))),
+                          Pointee(Property(&FakeTask::size, Eq(2)))));
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(1, task_queue.num_tasks());
+  EXPECT_EQ(3, task_queue.size());
+}
+
+TEST(TaskQueueTest, RemoveAllTasksWhenArgGreaterThanTaskSize) {
+  TaskQueue<FakeTask> task_queue;
+
+  task_queue.AddTask(std::make_unique<FakeTask>(1), 1);
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(1, task_queue.num_tasks());
+  EXPECT_EQ(1, task_queue.size());
+
+  task_queue.AddTask(std::make_unique<FakeTask>(2), 2);
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(2, task_queue.num_tasks());
+  EXPECT_EQ(3, task_queue.size());
+
+  task_queue.AddTask(std::make_unique<FakeTask>(3), 3);
+  EXPECT_FALSE(task_queue.empty());
+  EXPECT_EQ(3, task_queue.num_tasks());
+  EXPECT_EQ(6, task_queue.size());
+
+  // All tasks upto the size 6 shoule be remove when the size 8 is specified.
+  EXPECT_THAT(task_queue.RemoveTask(8),
+              ElementsAre(Pointee(Property(&FakeTask::size, Eq(1))),
+                          Pointee(Property(&FakeTask::size, Eq(2))),
+                          Pointee(Property(&FakeTask::size, Eq(3)))));
+  EXPECT_TRUE(task_queue.empty());
+  EXPECT_EQ(0, task_queue.num_tasks());
+  EXPECT_EQ(0, task_queue.size());
+}
+
+TEST(TaskQueueTest, EarliestStartTimeWithEmptyQueue) {
+  TaskQueue<FakeTask> task_queue;
+  EXPECT_FALSE(task_queue.EarliestTaskStartTime().has_value());
+}
+
+TEST(TaskQueueTest, EarliestStartTimeWithMultipleTasksInQueue) {
+  TaskQueue<FakeTask> task_queue;
+
+  task_queue.AddTask(std::make_unique<FakeTask>(1), 1);
+  task_queue.AddTask(std::make_unique<FakeTask>(2), 2);
+
+  std::optional<uint64_t> result = task_queue.EarliestTaskStartTime();
+  EXPECT_TRUE(result.has_value());
+  EXPECT_EQ(*result, 1);
+}
+
+TEST(TaskQueueTest, EarliestStartTimeAfterTaskRemoval) {
+  TaskQueue<FakeTask> task_queue;
+
+  task_queue.AddTask(std::make_unique<FakeTask>(1), 1);
+  task_queue.AddTask(std::make_unique<FakeTask>(2), 2);
+  task_queue.AddTask(std::make_unique<FakeTask>(3), 3);
+
+  std::optional<uint64_t> result = task_queue.EarliestTaskStartTime();
+  EXPECT_TRUE(result.has_value());
+  EXPECT_EQ(*result, 1);
+
+  EXPECT_THAT(task_queue.RemoveTask(3),
+              ElementsAre(Pointee(Property(&FakeTask::size, Eq(1))),
+                          Pointee(Property(&FakeTask::size, Eq(2)))));
+
+  result = task_queue.EarliestTaskStartTime();
+  EXPECT_TRUE(result.has_value());
+  EXPECT_EQ(*result, 3);
+}
 
 TEST(BatchTest, Basic) {
   Batch<FakeTask> batch;
@@ -137,6 +386,53 @@ TEST(BatchTest, RemoveAllTasks) {
   // batch is closed.
   EXPECT_THAT(batch.RemoveAllTasks(), ::testing::IsEmpty());  // second call
   EXPECT_THAT(batch.RemoveAllTasks(), ::testing::IsEmpty());  // third call
+}
+
+TEST(BatchTest, TryTrimToNewSizeTrimsAndReturnsTrimmedElementsInOrder) {
+  Batch<FakeTask> batch;
+
+  auto task0 = new FakeTask(3);
+  batch.AddTask(std::unique_ptr<FakeTask>(task0));
+
+  auto task1 = new FakeTask(5);
+  batch.AddTask(std::unique_ptr<FakeTask>(task1));
+
+  auto task2 = new FakeTask(7);
+  batch.AddTask(std::unique_ptr<FakeTask>(task2));
+
+  auto task3 = new FakeTask(9);
+  batch.AddTask(std::unique_ptr<FakeTask>(task3));
+
+  std::vector<std::unique_ptr<FakeTask>> trimmed_tasks;
+  batch.TryTrimToNewSize(/* new_size= */ 8,
+                         /* out_trimmed_tasks= */ trimmed_tasks);
+
+  EXPECT_EQ(batch.size(), 8);
+  EXPECT_EQ(batch.num_tasks(), 2);
+
+  EXPECT_THAT(trimmed_tasks, ElementsAre(Pointer(task2), Pointer(task3)));
+
+  batch.Close();  // Batch::~Batch blocks until the batch is closed.
+}
+
+TEST(BatchTest, TryTrimToNewSizeDoesNotTrimWhenItWouldNeedToSplitATask) {
+  Batch<FakeTask> batch;
+
+  auto task0 = new FakeTask(3);
+  batch.AddTask(std::unique_ptr<FakeTask>(task0));
+
+  auto task1 = new FakeTask(5);
+  batch.AddTask(std::unique_ptr<FakeTask>(task1));
+
+  std::vector<std::unique_ptr<FakeTask>> trimmed_tasks;
+  batch.TryTrimToNewSize(/* new_size= */ 4,
+                         /* out_trimmed_tasks= */ trimmed_tasks);
+
+  EXPECT_EQ(batch.size(), 8);
+  EXPECT_EQ(batch.num_tasks(), 2);
+  EXPECT_TRUE(trimmed_tasks.empty());
+
+  batch.Close();  // Batch::~Batch blocks until the batch is closed.
 }
 
 }  // namespace

@@ -148,6 +148,8 @@ func.func @resource_missing_subtype(%arg0: tensor<!tf_type.resource>, %arg1: ten
 
 // -----
 
+func.func private @computation(%arg0: tensor<i32>) -> tensor<i32>
+
 func.func @missing_num_cores_per_replica(%arg0: tensor<!tf_type.resource<tensor<i32>>>) {
   // expected-error@+1 {{op num cores per replica unavailable}}
   %0 = "tf.TPUPartitionedInputV2"(%arg0) {_XlaSharding = "", partition_dims = [], is_packed = true} : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<!tf_type.resource<tensor<i32>>>
@@ -158,6 +160,8 @@ func.func @missing_num_cores_per_replica(%arg0: tensor<!tf_type.resource<tensor<
 }
 
 // -----
+
+func.func private @computation(%arg0: tensor<i32>) -> tensor<i32>
 
 func.func @mismatch_num_cores_per_replica(%arg0: tensor<!tf_type.resource<tensor<i32>>>) {
   // expected-error@+1 {{expects 2 operands but found 3}}
@@ -190,7 +194,7 @@ func.func @with_host_process(%arg0: tensor<!tf_type.resource<tensor<i32>>>, %arg
     "tf_device.launch"() ({
       "tf.OpA"(%1) : (tensor<i32>) -> ()
       tf_device.return
-    }) {device = "TPU_REPLICATED_HOST"} : () -> ()
+    }) {device = "TPU_REPLICATED_HOST_0"} : () -> ()
     tf_device.return
   }, {
     %3 = "tf_device.cluster_func"(%1) {func = @computation, use_spmd_for_xla_partitioning = true} : (tensor<i32>) -> tensor<i32>
@@ -231,7 +235,7 @@ func.func @non_replicated_sharding(%arg0: tensor<!tf_type.resource<tensor<i32>>>
     "tf_device.launch"() ({
       "tf.OpA"(%1) : (tensor<i32>) -> ()
       tf_device.return
-    }) {device = "TPU_REPLICATED_HOST"} : () -> ()
+    }) {device = "TPU_REPLICATED_HOST_0"} : () -> ()
     tf_device.return
   }, {
     %3 = "tf_device.cluster_func"(%1) {func = @computation, use_spmd_for_xla_partitioning = true} : (tensor<i32>) -> tensor<i32>
@@ -243,6 +247,8 @@ func.func @non_replicated_sharding(%arg0: tensor<!tf_type.resource<tensor<i32>>>
 
 // -----
 
+func.func private @computation(%arg0: tensor<i32>) -> tensor<i32>
+
 func.func @packed_replicated(%arg0: tensor<!tf_type.resource<tensor<i32>>> {tf.device = "COMPOSITE"}) {
   // expected-error@+1 {{support}}
   %0 = "tf.TPUPartitionedInputV2"(%arg0, %arg0) {_XlaSharding = "", partition_dims = [], is_packed = false} : (tensor<!tf_type.resource<tensor<i32>>>, tensor<!tf_type.resource<tensor<i32>>>) -> tensor<!tf_type.resource<tensor<i32>>>
@@ -251,7 +257,7 @@ func.func @packed_replicated(%arg0: tensor<!tf_type.resource<tensor<i32>>> {tf.d
     "tf_device.launch"() ({
       "tf.OpA"(%1) : (tensor<i32>) -> ()
       tf_device.return
-    }) {device = "TPU_REPLICATED_HOST"} : () -> ()
+    }) {device = "TPU_REPLICATED_HOST_0"} : () -> ()
     tf_device.return
   }, {
     %3 = "tf_device.cluster_func"(%1) {func = @computation, use_spmd_for_xla_partitioning = true} : (tensor<i32>) -> tensor<i32>

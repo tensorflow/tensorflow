@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 
+#include "absl/base/call_once.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -111,8 +112,11 @@ PluginGraphOptimizerRegistry::CreateOptimizers(
   for (auto it = GetPluginRegistrationMap()->begin();
        it != GetPluginRegistrationMap()->end(); ++it) {
     if (device_types.find(it->first) == device_types.end()) continue;
-    LOG(INFO) << "Plugin optimizer for device_type " << it->first
-              << " is enabled.";
+    static absl::once_flag plugin_optimizer_flag;
+    absl::call_once(plugin_optimizer_flag, [&]() {
+      LOG(INFO) << "Plugin optimizer for device_type " << it->first
+                << " is enabled.";
+    });
     optimizer_list.emplace_back(
         std::unique_ptr<CustomGraphOptimizer>(it->second()));
   }

@@ -59,7 +59,8 @@ class PriorityQueueOp : public TypedQueueOp {
 
   std::vector<TensorShape> component_shapes_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(PriorityQueueOp);
+  PriorityQueueOp(const PriorityQueueOp&) = delete;
+  void operator=(const PriorityQueueOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("PriorityQueue").Device(DEVICE_CPU),

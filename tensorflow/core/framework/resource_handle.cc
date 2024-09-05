@@ -96,7 +96,7 @@ Status ResourceHandle::FromProto(const ResourceHandleProto& proto) {
     dtypes_and_shapes.push_back(DtypeAndPartialTensorShape{dtype, shape});
   }
   dtypes_and_shapes_ = std::move(dtypes_and_shapes);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 string ResourceHandle::SerializeAsString() const {
@@ -138,8 +138,9 @@ ResourceHandle ResourceHandle::MakeRefCountingHandle(
   // and they get process-unique handle names.
   result.set_container("Anonymous");
   result.set_definition_stack_trace(definition_stack_trace);
-  result.set_name(
-      absl::StrFormat("Resource-%d-at-%p", GenerateUniqueId(), resource));
+  auto resource_id = GenerateUniqueId();
+  std::string handle_name = resource->MakeRefCountingHandleName(resource_id);
+  result.set_name(handle_name);
   result.set_hash_code(type_index.hash_code());
   result.set_maybe_type_name(type_index.name());
   result.set_dtypes_and_shapes(dtypes_and_shapes);
@@ -156,7 +157,7 @@ Status ResourceHandle::ValidateType(const TypeIndex& type_index) const {
         port::Demangle(type_index.name()), "' (hash code ",
         type_index.hash_code(), ")");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::atomic<int64_t> ResourceHandle::current_id_;

@@ -15,15 +15,18 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/xla_builder.h"
+#include "xla/shape.h"
+#include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace {
@@ -48,7 +51,8 @@ class XlaSpmdFullToShardShapeOp : public XlaOpKernel {
     xla::XlaOp input = ctx->Input(0);
 
     xla::OpSharding sharding;
-    if (!sharding.ParseFromString(manual_sharding_str_)) {
+    if (tensorflow::DecodeShardingAttribute(manual_sharding_str_, sharding)
+            .failed()) {
       OP_REQUIRES_OK(ctx,
                      xla::InvalidArgument("manual_sharding attribute was not a "
                                           "valid encoded xla::OpSharding "
@@ -67,7 +71,8 @@ class XlaSpmdFullToShardShapeOp : public XlaOpKernel {
   string manual_sharding_str_;
   int32 single_dim_;
   std::vector<int64_t> unspecified_dims_;
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaSpmdFullToShardShapeOp);
+  XlaSpmdFullToShardShapeOp(const XlaSpmdFullToShardShapeOp&) = delete;
+  void operator=(const XlaSpmdFullToShardShapeOp&) = delete;
 };
 
 class XlaSpmdShardToFullShapeOp : public XlaOpKernel {
@@ -95,7 +100,8 @@ class XlaSpmdShardToFullShapeOp : public XlaOpKernel {
         /*tensor_shape=*/full_shape_);
 
     xla::OpSharding sharding;
-    if (!sharding.ParseFromString(manual_sharding_str_)) {
+    if (tensorflow::DecodeShardingAttribute(manual_sharding_str_, sharding)
+            .failed()) {
       OP_REQUIRES_OK(ctx,
                      xla::InvalidArgument("manual_sharding attribute was not a "
                                           "valid encoded xla::OpSharding "
@@ -116,7 +122,8 @@ class XlaSpmdShardToFullShapeOp : public XlaOpKernel {
   string manual_sharding_str_;
   int32 single_dim_;
   std::vector<int64_t> unspecified_dims_;
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaSpmdShardToFullShapeOp);
+  XlaSpmdShardToFullShapeOp(const XlaSpmdShardToFullShapeOp&) = delete;
+  void operator=(const XlaSpmdShardToFullShapeOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("XlaSpmdFullToShardShape"), XlaSpmdFullToShardShapeOp);

@@ -16,8 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_INFEED_OPS_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_INFEED_OPS_H_
 
+#include <memory>
+#include <vector>
+
+#include "xla/shape.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/kernels/transfer_ops.h"
@@ -40,7 +45,6 @@ class TpuInfeedEnqueueOp : public TpuTransferAsyncOpKernel {
   DataType dtype_;
   xla::Shape xla_shape_;
 
-  // TpuInfeedEnqueueOp is neither copyable nor movable.
   TpuInfeedEnqueueOp(const TpuInfeedEnqueueOp&) = delete;
   TpuInfeedEnqueueOp& operator=(const TpuInfeedEnqueueOp&) = delete;
 };
@@ -59,7 +63,6 @@ class TpuInfeedEnqueueTupleOp : public TpuTransferAsyncOpKernel {
   DataTypeVector dtypes_;
   xla::Shape tuple_shape_;
 
-  // TpuInfeedEnqueueTupleOp is neither copyable nor movable.
   TpuInfeedEnqueueTupleOp(const TpuInfeedEnqueueTupleOp&) = delete;
   TpuInfeedEnqueueTupleOp& operator=(const TpuInfeedEnqueueTupleOp&) = delete;
 };
@@ -75,12 +78,12 @@ class InfeedEnqueuePrelinearizedBufferOp : public TpuTransferAsyncOpKernel {
   Status DoWork(OpKernelContext* ctx, int device_ordinal) override;
 
  private:
-  // InfeedEnqueuePrelinearizedBufferOp is neither copyable nor movable.
   InfeedEnqueuePrelinearizedBufferOp(
       const InfeedEnqueuePrelinearizedBufferOp&) = delete;
   InfeedEnqueuePrelinearizedBufferOp& operator=(
       const InfeedEnqueuePrelinearizedBufferOp&) = delete;
 };
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_TPU_KERNELS_INFEED_OPS_H_

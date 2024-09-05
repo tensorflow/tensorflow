@@ -26,10 +26,10 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/tensor_format.h"
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
 #include "tensorflow/core/platform/mutex.h"
 #endif
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 
 using dnnl::prop_kind;
 using dnnl::softmax_forward;
@@ -64,10 +64,10 @@ class MklSoftmaxPrimitive : public MklPrimitive {
   //   dst_data:  output data buffer of dst
   void Execute(const T* src_data, T* dst_data,
                std::shared_ptr<stream> fwd_cpu_stream) {
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
     mutex_lock lock(primitive_execution_mu_);
 #endif
-#ifndef ENABLE_ONEDNN_OPENMP
+#if !defined(ENABLE_ONEDNN_OPENMP) && !defined(ENABLE_ONEDNN_V3)
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)), *fwd_cpu_stream);
     context_.dst_mem->set_data_handle(static_cast<void*>(dst_data),
@@ -76,7 +76,7 @@ class MklSoftmaxPrimitive : public MklPrimitive {
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)));
     context_.dst_mem->set_data_handle(static_cast<void*>(dst_data));
-#endif  // !ENABLE_ONEDNN_OPENMP
+#endif  // !ENABLE_ONEDNN_OPENMP && !ENABLE_ONEDNN_V3
 
     DCHECK_EQ(context_.fwd_primitives.size(), context_.fwd_net_args.size());
     execute_primitives(context_.fwd_primitives, fwd_cpu_stream,
@@ -98,7 +98,9 @@ class MklSoftmaxPrimitive : public MklPrimitive {
     std::shared_ptr<memory> dst_mem;
 
     // Primitive descriptor.
+#ifndef ENABLE_ONEDNN_V3
     std::shared_ptr<dnnl::softmax_forward::desc> fwd_desc;
+#endif  // !ENABLE_ONEDNN_V3
 
     // Memory descriptor.
     std::shared_ptr<memory::desc> src_md;
@@ -113,10 +115,13 @@ class MklSoftmaxPrimitive : public MklPrimitive {
     SoftmaxFwdContext()
         : src_mem(nullptr),
           dst_mem(nullptr),
+#ifndef ENABLE_ONEDNN_V3
           fwd_desc(nullptr),
+#endif  // !ENABLE_ONEDNN_V3
           src_md(nullptr),
           fwd_pd(nullptr),
-          softmax_fwd(nullptr) {}
+          softmax_fwd(nullptr) {
+    }
   };
 
   // Softmax forward primitive setup
@@ -127,10 +132,17 @@ class MklSoftmaxPrimitive : public MklPrimitive {
         new memory::desc({fwdParams.src_dims}, MklDnnType<T>(), src_format));
 
     // Create softmax descriptor and primitive descriptor.
+#ifndef ENABLE_ONEDNN_V3
     context_.fwd_desc.reset(new dnnl::softmax_forward::desc(
         prop_kind::forward_scoring, *context_.src_md, fwdParams.axis));
     context_.fwd_pd.reset(new dnnl::softmax_forward::primitive_desc(
         *context_.fwd_desc, cpu_engine_));
+#else
+    context_.fwd_pd.reset(new dnnl::softmax_forward::primitive_desc(
+        cpu_engine_, prop_kind::forward_inference,
+        dnnl::algorithm::softmax_accurate, *context_.src_md,
+        *context_.src_md /* dst_md */, fwdParams.axis));
+#endif  // !ENABLE_ONEDNN_V3
 
     // Create memory primitive based on dummy data.
     context_.src_mem.reset(
@@ -148,7 +160,7 @@ class MklSoftmaxPrimitive : public MklPrimitive {
 
   struct SoftmaxFwdContext context_;
 
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
   mutex primitive_execution_mu_;
 #endif
 };
@@ -237,7 +249,7 @@ class MklSoftmaxOp : public OpKernel {
           break;
         default:
           OP_REQUIRES_OK(context,
-                         errors::Aborted("Input dims must be <= 5 and >=1"));
+                         absl::AbortedError("Input dims must be <= 5 and >=1"));
           return;
       }
 
@@ -254,6 +266,12 @@ class MklSoftmaxOp : public OpKernel {
       fwdParams.aarch64_counter =
           MklSoftmaxPrimitiveFactory<T>::IncrementCounter();
 #endif
+      // Create the oneDNN wrapper over Eigen threadpool and set max threads
+      // in oneDNN.
+      Eigen::ThreadPoolInterface* eigen_interface =
+          EigenThreadPoolFromTfContext(context);
+      tsl::OneDnnThreadPool eigen_tp(eigen_interface,
+                                     ThreadPoolUseCallerThread());
       MklSoftmaxPrimitive<T>* softmax_fwd =
           MklSoftmaxPrimitiveFactory<T>::Get(fwdParams);
 
@@ -263,22 +281,22 @@ class MklSoftmaxOp : public OpKernel {
       const T* src_data = src_tensor.flat<T>().data();
       T* dst_data = reinterpret_cast<T*>(output_tensor->flat<T>().data());
       std::shared_ptr<stream> fwd_cpu_stream;
-      MklDnnThreadPool eigen_tp(context);
+
       fwd_cpu_stream.reset(CreateStream(&eigen_tp, softmax_fwd->GetEngine()));
       softmax_fwd->Execute(src_data, dst_data, fwd_cpu_stream);
     } catch (dnnl::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
                          string(__FILE__) + ":" + std::to_string(__LINE__);
-      OP_REQUIRES_OK(
-          context,
-          errors::Aborted("Operation received an exception:", error_msg));
+      OP_REQUIRES_OK(context,
+                     absl::AbortedError(absl::StrCat(
+                         "Operation received an exception:", error_msg)));
     }
   }
 };
 
-/* Register DNN kernels for supported operations and supported types - right now
- * it is only Softmax and f32 */
+// Register oneDNN kernels for supported operations and supported types:
+// right now it is Softmax for fp32 and bf16
 #define REGISTER_SOFTMAX_MKL_SUPPORTED_KERNELS_TYPES(type)                    \
   REGISTER_KERNEL_BUILDER(Name("_MklSoftmax")                                 \
                               .Device(DEVICE_CPU)                             \
@@ -288,6 +306,7 @@ class MklSoftmaxOp : public OpKernel {
 
 TF_CALL_float(REGISTER_SOFTMAX_MKL_SUPPORTED_KERNELS_TYPES);
 TF_CALL_bfloat16(REGISTER_SOFTMAX_MKL_SUPPORTED_KERNELS_TYPES);
+TF_CALL_half(REGISTER_SOFTMAX_MKL_SUPPORTED_KERNELS_TYPES);
 
 }  // namespace tensorflow
 

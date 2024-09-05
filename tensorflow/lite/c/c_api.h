@@ -15,6 +15,44 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_C_C_API_H_
 #define TENSORFLOW_LITE_C_C_API_H_
 
+/// \file
+///
+/// C API for TensorFlow Lite.
+///
+/// For documentation, see tensorflow/lite/core/c/c_api.h
+
 #include "tensorflow/lite/core/c/c_api.h"
+
+#ifndef DOYXGEN_SKIP
+// For backwards compatibility.
+// Deprecated. Use the names starting with TfLiteOperator instead.
+#ifdef __cplusplus
+using TfLiteRegistrationExternal = TfLiteOperator;
+// NOLINTBEGIN
+const auto TfLiteRegistrationExternalCreate = TfLiteOperatorCreate;
+const auto TfLiteRegistrationExternalGetBuiltInCode =
+    TfLiteOperatorGetBuiltInCode;
+const auto TfLiteRegistrationExternalGetVersion = TfLiteOperatorGetVersion;
+const auto TfLiteRegistrationExternalDelete = TfLiteOperatorDelete;
+const auto TfLiteRegistrationExternalSetInit = TfLiteOperatorSetInit;
+const auto TfLiteRegistrationExternalSetFree = TfLiteOperatorSetFree;
+const auto TfLiteRegistrationExternalSetPrepare = TfLiteOperatorSetPrepare;
+const auto TfLiteRegistrationExternalSetInvoke = TfLiteOperatorSetInvoke;
+const auto TfLiteRegistrationExternalGetCustomName =
+    TfLiteOperatorGetCustomName;
+// NOLINTEND
+#else
+typedef TfLiteOperator TfLiteRegistrationExternal;
+#define TfLiteRegistrationExternalCreate TfLiteOperatorCreate
+#define TfLiteRegistrationExternalGetBuiltInCode TfLiteOperatorGetBuiltInCode
+#define TfLiteRegistrationExternalGetVersion TfLiteOperatorGetVersion
+#define TfLiteRegistrationExternalDelete TfLiteOperatorDelete
+#define TfLiteRegistrationExternalSetInit TfLiteOperatorSetInit
+#define TfLiteRegistrationExternalSetFree TfLiteOperatorSetFree
+#define TfLiteRegistrationExternalSetPrepare TfLiteOperatorSetPrepare
+#define TfLiteRegistrationExternalSetInvoke TfLiteOperatorSetInvoke
+#define TfLiteRegistrationExternalGetCustomName TfLiteOperatorGetCustomName
+#endif  // __cplusplus
+#endif  // DOYXGEN_SKIP
 
 #endif  // TENSORFLOW_LITE_C_C_API_H_

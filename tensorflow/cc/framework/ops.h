@@ -21,6 +21,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/graph/graph.h"
@@ -156,9 +158,9 @@ class Input {
       typedef typename RealType<T>::type RealT;
       Tensor t(DataTypeToEnum<RealT>::v(), shape);
       if (t.NumElements() != static_cast<int64_t>(v.size())) {
-        status = errors::InvalidArgument(
+        status = absl::InvalidArgumentError(absl::StrCat(
             "Cannot construct a tensor with ", t.NumElements(),
-            " from an initializer list with ", v.size(), " elements");
+            " from an initializer list with ", v.size(), " elements"));
         return;
       }
       std::copy_n(v.begin(), v.size(), t.flat<RealT>().data());
@@ -219,7 +221,7 @@ class Input {
         tensor_(init.tensor) {}
 
   Input(const Tensor& t)  // NOLINT(runtime/explicit)
-      : status_(OkStatus()), tensor_(t) {}
+      : status_(absl::OkStatus()), tensor_(t) {}
 
   Input(const std::initializer_list<Initializer>&
             init) {  // NOLINT(runtime/explicit)
@@ -272,8 +274,7 @@ class InputList {
       const std::initializer_list<Input>& inputs)  // NOLINT(runtime/explicit)
       : inputs_(inputs.begin(), inputs.end()) {}
 
-  InputList(const tensorflow::gtl::ArraySlice<Input>&
-                inputs)  // NOLINT(runtime/explicit)
+  InputList(const absl::Span<const Input>& inputs)  // NOLINT(runtime/explicit)
       : inputs_(inputs.begin(), inputs.end()) {}
 
   InputList(

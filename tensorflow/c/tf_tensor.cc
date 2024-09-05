@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/coding.h"
@@ -35,6 +36,8 @@ using tensorflow::Tensor;
 using tensorflow::TensorBuffer;
 using tensorflow::errors::FailedPrecondition;
 using tensorflow::errors::InvalidArgument;
+
+#ifndef LIBTPU_EXCLUDE_C_API_IMPL
 
 namespace tensorflow {
 void* allocate_tensor(const char* operation, size_t len, Allocator* allocator) {
@@ -75,16 +78,14 @@ TF_Tensor* CreateTensor(TF_ManagedBuffer* buf, TF_DataType dtype,
     dimvec[i] = static_cast<int64_t>(dims[i]);
   }
 
-  // TODO(gjn): Make the choice of interface a compile-time configuration.
-  tensorflow::TensorInterface ret(
-      Tensor(static_cast<tensorflow::DataType>(dtype),
-             tensorflow::TensorShape(dimvec), buf));
+  Tensor ret(static_cast<tensorflow::DataType>(dtype),
+             tensorflow::TensorShape(dimvec), buf);
   buf->Unref();
   size_t elem_size = TF_DataTypeSize(dtype);
   if (elem_size > 0 && len < (elem_size * ret.NumElements())) {
     return nullptr;
   }
-  return new TF_Tensor{new tensorflow::TensorInterface(ret)};
+  return new TF_Tensor{new tensorflow::TensorInterface(std::move(ret))};
 }
 }  // namespace
 
@@ -128,6 +129,8 @@ TF_Tensor* TF_NewTensor(TF_DataType dtype, const int64_t* dims, int num_dims,
 
   return CreateTensor(buf, dtype, dims, num_dims, len);
 }
+
+size_t TF_TensorDefaultAlignment() { return EIGEN_MAX_ALIGN_BYTES; }
 
 TF_Tensor* TF_TensorMaybeMove(TF_Tensor* t) {
   return t->tensor->CanMove() ? t : nullptr;
@@ -183,8 +186,10 @@ void TF_TensorBitcastFrom(const TF_Tensor* from, TF_DataType type,
               *tensorflow::down_cast<const tensorflow::TensorInterface*>(
                   from->tensor),
               static_cast<tensorflow::DataType>(type), new_dims, num_new_dims));
-  Set_TF_Status_from_Status(status, cc_status);
+  tsl::Set_TF_Status_from_Status(status, cc_status);
 }
+
+#endif  // LIBTPU_EXCLUDE_C_API_IMPL
 
 namespace tensorflow {
 
@@ -255,7 +260,7 @@ Status TensorInterface::BitcastFrom(const TensorInterface& from, DataType type,
 
 Status TensorInterface::FromProto(const tensorflow::TensorProto& from) {
   bool success = tensor_.FromProto(from);
-  if (success) return OkStatus();
+  if (success) return absl::OkStatus();
   return errors::InvalidArgument("Unparseable tensor proto");
 }
 
@@ -291,7 +296,7 @@ namespace tensorflow {
 
 AbstractTensorInterface* TensorInterfaceFromTensor(const Tensor& src,
                                                    Status* status) {
-  *status = OkStatus();
+  *status = absl::OkStatus();
   if (!src.IsInitialized()) {
     *status = FailedPrecondition(
         "attempt to use a tensor with an uninitialized value");
@@ -319,7 +324,7 @@ TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src, Status* status) {
 
 TF_Tensor* TF_TensorFromTensorShallow(const tensorflow::Tensor& src,
                                       Status* status) {
-  *status = OkStatus();
+  *status = absl::OkStatus();
   if (!src.IsInitialized()) {
     *status = FailedPrecondition(
         "attempt to use a tensor with an uninitialized value");
@@ -338,7 +343,7 @@ Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst) {
 
 Status TensorInterface::ToTensor(tensorflow::Tensor* dst) const {
   *dst = tensor_;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool TensorInterface::IsAligned() const { return tensor_.IsAligned(); }

@@ -73,7 +73,8 @@ class PlacerInspectionRequiredOpChecker {
 // Extracts `fdef` and `func` from `flib_def` for the function identified
 // in "f" attribute of `node`.
 Status GetFunctionDefAndAttrs(const FunctionLibraryDefinition& flib_def,
-                              const Node& node, const FunctionDef** fdef,
+                              const Node& node,
+                              core::RefCountPtr<FunctionRecord>* fdef,
                               NameAttrList* func);
 
 // The "call" stack of functions.

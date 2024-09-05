@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/lower_functional_ops.h"
+#include "tensorflow/core/config/flag_defs.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
@@ -131,6 +132,95 @@ TEST(LowerFunctionCallTest, InlineFunctionCall) {
     EXPECT_EQ(out_tensors.size(), 1);
     EXPECT_EQ(out_tensors[0].scalar<int>()(), 100);
   }
+}
+
+TEST(LowerFunctionCallTest, InlineFunctionCallAfterPruning) {
+  flags::Global().enable_function_pruning_before_inlining.reset(true);
+  using FDH = FunctionDefHelper;
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+
+  FunctionDefLibrary f_lib_proto;
+
+  // `add` node is not required to compute regular output `o`, but it must
+  // execute because it is in `control_ret`.
+  // The `div` node and the unused arguments `j` and `k` should be pruned.
+  *(f_lib_proto.add_function()) = FDH::Create(
+      "AddAndMul", {"i: int32", "j: int32", "k: int32", "r: resource"},
+      {"o: int32"}, {},
+      {{{"add"}, "Add", {"i", "i"}, {{"T", DT_INT32}}},
+       {{"div"}, "FloorDiv", {"i", "i"}, {{"T", DT_INT32}}},
+       {{"gather"},
+        "ResourceGather",
+        {"r", "i"},
+        {{"Tindices", DT_INT32}, {"dtype", DT_FLOAT}}},
+       {{"ret"}, "Mul", {"i", "i"}, {{"T", DT_INT32}}}},
+      /*ret_def=*/{{"o", "ret:z:0"}},
+      /*control_ret_def=*/{{"must_execute", "add"}});
+
+  // Construct a graph:
+  //   X = Placeholder[dtype=int32]
+  //   Y = Placeholder[dtype=int32]
+  //   Z = Placeholder[dtype=int32]
+  //   R = Placeholder[dtype=resource]
+  //   F = PartitionedCall[f=AddAndMul](a)
+  //   B = Identity(func, ^func)
+  Scope root = Scope::NewRootScope().ExitOnError();
+  TF_ASSERT_OK(root.graph()->AddFunctionLibrary(f_lib_proto));
+  auto x = ops::Placeholder(root.WithOpName("X"), DT_INT32);
+  auto y = ops::Placeholder(root.WithOpName("Y"), DT_INT32);
+  auto z = ops::Placeholder(root.WithOpName("Z"), DT_INT32);
+  auto r = ops::Placeholder(root.WithOpName("R"), DT_RESOURCE);
+  Node* function_call;
+  std::vector<NodeBuilder::NodeOut> inputs(
+      {NodeBuilder::NodeOut(x.node()), NodeBuilder::NodeOut(y.node()),
+       NodeBuilder::NodeOut(z.node()), NodeBuilder::NodeOut(r.node())});
+  TF_ASSERT_OK(NodeBuilder("F", "PartitionedCall", &root.graph()->flib_def())
+                   .Input(inputs)
+                   .Attr("Tin", {DT_INT32, DT_INT32, DT_INT32, DT_RESOURCE})
+                   .Attr("Tout", {DT_INT32})
+                   .Attr("f", FuncAttr("AddAndMul"))
+                   .Finalize(root.graph(), &function_call));
+  TF_ASSERT_OK(root.DoShapeInference(function_call));
+
+  auto b = ops::Identity(root.WithOpName("B"), Output(function_call, 0));
+  root.graph()->AddControlEdge(function_call, b.node());
+
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+  TF_ASSERT_OK(Rewrite(&graph));
+
+  // Verify the resultant graph has no PartitionedCall ops and function body was
+  // inlined into the main graph.
+  int partitioned_call_count = 0;
+  int add_count = 0;
+  int mul_count = 0;
+  int floor_div_count = 0;
+  int resource_gather_count = 0;
+  for (const auto* op : graph->op_nodes()) {
+    if (op->IsPartitionedCall()) partitioned_call_count++;
+    if (op->type_string() == "Add") add_count++;
+    if (op->type_string() == "Mul") mul_count++;
+    if (op->type_string() == "FloorDiv") floor_div_count++;
+    if (op->type_string() == "ResourceGather") resource_gather_count++;
+  }
+
+  ASSERT_EQ(partitioned_call_count, 0);
+  ASSERT_EQ(add_count, 1);
+  ASSERT_EQ(mul_count, 1);
+  ASSERT_EQ(floor_div_count, 0);
+  ASSERT_EQ(resource_gather_count, 0);
+
+  // Verify execution.
+  ClientSession session(root, SessionOptionsWithInlining());
+  {
+    ClientSession::FeedType feeds;
+    feeds.emplace(Output(x.node()), Input::Initializer(10));
+    std::vector<Tensor> out_tensors;
+    TF_ASSERT_OK(session.Run(feeds, {Output(b)}, &out_tensors));
+    EXPECT_EQ(out_tensors.size(), 1);
+    EXPECT_EQ(out_tensors[0].scalar<int>()(), 100);
+  }
+  flags::Global().enable_function_pruning_before_inlining.reset(false);
 }
 
 TEST(LowerFunctionCallTest, DoNotInlineTpuOrXlaFunctions) {

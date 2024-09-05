@@ -100,7 +100,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                                  &input_max_output_size));
   TF_LITE_ENSURE_EQ(context, input_max_output_size->type, kTfLiteInt32);
   TF_LITE_ENSURE_EQ(context, NumDimensions(input_max_output_size), 0);
-  const bool is_max_output_size_const = IsConstantTensor(input_max_output_size);
+  const bool is_max_output_size_const =
+      IsConstantOrPersistentTensor(input_max_output_size);
   int max_output_size_value = 0;
   if (is_max_output_size_const) {
     max_output_size_value = *GetTensorData<int>(input_max_output_size);
@@ -214,7 +215,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                                  &input_max_output_size));
   const int max_output_size_value = *GetTensorData<int>(input_max_output_size);
   TF_LITE_ENSURE(context, (max_output_size_value >= 0));
-  const bool is_max_output_size_const = IsConstantTensor(input_max_output_size);
+  const bool is_max_output_size_const =
+      IsConstantOrPersistentTensor(input_max_output_size);
   const TfLiteTensor* input_iou_threshold;
   TF_LITE_ENSURE_OK(context,
                     GetInputSafe(context, node, kInputTensorIouThreshold,

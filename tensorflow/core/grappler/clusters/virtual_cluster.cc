@@ -57,10 +57,10 @@ VirtualCluster::VirtualCluster(const DeviceSet* device_set)
 
 VirtualCluster::~VirtualCluster() {}
 
-Status VirtualCluster::Provision() { return OkStatus(); }
+Status VirtualCluster::Provision() { return absl::OkStatus(); }
 
 Status VirtualCluster::Initialize(const GrapplerItem& item) {
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status VirtualCluster::Run(const GraphDef& graph,
@@ -114,7 +114,7 @@ Status VirtualCluster::Run(const GrapplerItem& item, RunMetadata* metadata) {
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace grappler

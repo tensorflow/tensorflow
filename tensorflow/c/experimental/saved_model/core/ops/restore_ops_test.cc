@@ -15,14 +15,16 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/saved_model/core/ops/restore_ops.h"
 
-#include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/experimental/saved_model/core/test_utils.h"
 #include "tensorflow/c/tensor_interface.h"
 #include "tensorflow/cc/saved_model/constants.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -96,7 +98,7 @@ TEST_F(RestoreOpsTest, BadCheckpointPrefixShouldFail) {
   Status status = internal::SingleRestore(
       context(), CheckpointPrefix("unknown_bad_checkpoint_prefix"),
       "x/.ATTRIBUTES/VARIABLE_VALUE", DT_FLOAT, &x_handle);
-  EXPECT_FALSE(status.ok()) << status.error_message();
+  EXPECT_FALSE(status.ok()) << status.message();
 }
 
 TEST_F(RestoreOpsTest, BadCheckpointKeyShouldFail) {
@@ -104,7 +106,7 @@ TEST_F(RestoreOpsTest, BadCheckpointKeyShouldFail) {
   Status status = internal::SingleRestore(
       context(), CheckpointPrefix("VarsAndArithmeticObjectGraph"),
       "bad_checkpoint_key", DT_FLOAT, &x_handle);
-  EXPECT_FALSE(status.ok()) << status.error_message();
+  EXPECT_FALSE(status.ok()) << status.message();
 }
 
 }  // namespace

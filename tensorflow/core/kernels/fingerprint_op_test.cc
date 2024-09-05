@@ -54,7 +54,7 @@ class FingerprintOpTest : public OpsTestBase {
     method_ = Tensor(DT_STRING, TensorShape{});
     method_.scalar<tstring>()() = method;
     inputs_.push_back(TensorValue(&method_));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Tensor batch_dims_;
@@ -197,7 +197,7 @@ TEST_F(FingerprintOpTest, SupportedMethods) {
 
   const Status status = RunOpKernel();
   EXPECT_FALSE(status.ok());
-  EXPECT_NE(status.error_message().find("unsupported_method"), string::npos);
+  EXPECT_NE(status.message().find("unsupported_method"), string::npos);
 }
 
 TEST_F(FingerprintOpTest, SupportedTypes) {

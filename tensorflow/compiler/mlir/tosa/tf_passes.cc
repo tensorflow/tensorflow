@@ -36,8 +36,8 @@ void createTFtoTOSALegalizationPipeline(
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 
-  pm.addPass(mlir::createLoopFusionPass());
-  pm.addPass(mlir::createAffineScalarReplacementPass());
+  pm.addPass(mlir::affine::createLoopFusionPass());
+  pm.addPass(mlir::affine::createAffineScalarReplacementPass());
 
   //----------------------------------------------------------------------------
   // Perform main conversion.

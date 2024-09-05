@@ -51,13 +51,13 @@ class TextLineDatasetParams : public DatasetParams {
         TextLineDatasetOp::kCompressionType,
         TextLineDatasetOp::kBufferSize,
     };
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
     attr_vector->clear();
     attr_vector->emplace_back("metadata", "");
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   string dataset_type() const override {
@@ -86,7 +86,7 @@ Status CreateTestFiles(const std::vector<tstring>& filenames,
     TF_RETURN_IF_ERROR(
         WriteDataToFile(filenames[i], contents[i].data(), params));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Test case 1: multiple text files with ZLIB compression.
@@ -97,8 +97,8 @@ TextLineDatasetParams TextLineDatasetParams1() {
       absl::StrCat("abcd, EFgH\n", "           \n", "$%^&*()\n")};
   CompressionType compression_type = CompressionType::ZLIB;
   if (!CreateTestFiles(filenames, contents, compression_type).ok()) {
-    VLOG(WARNING) << "Failed to create the test files: "
-                  << absl::StrJoin(filenames, ", ");
+    LOG(WARNING) << "Failed to create the test files: "
+                 << absl::StrJoin(filenames, ", ");
   }
   return TextLineDatasetParams(filenames,
                                /*compression_type=*/compression_type,
@@ -114,8 +114,8 @@ TextLineDatasetParams TextLineDatasetParams2() {
       absl::StrCat("abcd, EFgH\n", "           \n", "$%^&*()\n")};
   CompressionType compression_type = CompressionType::GZIP;
   if (!CreateTestFiles(filenames, contents, compression_type).ok()) {
-    VLOG(WARNING) << "Failed to create the test files: "
-                  << absl::StrJoin(filenames, ", ");
+    LOG(WARNING) << "Failed to create the test files: "
+                 << absl::StrJoin(filenames, ", ");
   }
   return TextLineDatasetParams(filenames,
                                /*compression_type=*/compression_type,
@@ -131,8 +131,8 @@ TextLineDatasetParams TextLineDatasetParams3() {
       absl::StrCat("abcd, EFgH\n", "           \n", "$%^&*()\n")};
   CompressionType compression_type = CompressionType::UNCOMPRESSED;
   if (!CreateTestFiles(filenames, contents, compression_type).ok()) {
-    VLOG(WARNING) << "Failed to create the test files: "
-                  << absl::StrJoin(filenames, ", ");
+    LOG(WARNING) << "Failed to create the test files: "
+                 << absl::StrJoin(filenames, ", ");
   }
   return TextLineDatasetParams(filenames,
                                /*compression_type=*/compression_type,

@@ -17,25 +17,70 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_STABLEHLO_TRANSFORMS_PASSES_H_
 
 #include <memory>
-#include <string>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace mlir {
 namespace odml {
 
-// Creates a pass which unfuses MHLO batch norm inference op into arithmetic
-// ops.
+// Unfuses MHLO batch norm inference op into arithmetic ops.
 std::unique_ptr<Pass> createUnfuseBatchNormPass();
 
-// Creates a pass which constant folds broadcast_in_dim op conditionally.
+// Constant folds broadcast_in_dim op conditionally.
 std::unique_ptr<Pass> createFoldBroadcastPass();
 
-// Creates a pass which fuses MHLO binary element-wise ops and convolution op.
+// Fuses MHLO binary element-wise ops and convolution op.
 std::unique_ptr<Pass> createFuseConvolutionPass();
 
-// Creates a pass which applies various optimizations on MHLO IR.
+// Applies various optimizations on MHLO IR.
 std::unique_ptr<Pass> createOptimizePass();
+
+// Finds quantization patterns and compose them to uniform
+// quantized types.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateComposeUniformQuantizedTypePass();
+
+// Finds stablehlo ops that accept or produce uniform
+// quantized typed tensors and converts them to equivalent ops in the TFLite
+// dialect.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateUniformQuantizedStableHloToTflPass();
+
+// Commutes transposes through specific ops
+std::unique_ptr<OperationPass<ModuleOp>> CreateTransposeCommuteOpsPass();
+
+// Legalizes MHLO to TF dialect.
+std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeHloToTfPass();
+
+// Replaces a splat constant tensor with a BroadcastInDim
+// op.
+std::unique_ptr<OperationPass<ModuleOp>> CreateUnfoldSplatConstantPass();
+
+// Legalizes MHLO to TFLite dialect.
+std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeHloToTfLitePass();
+
+// Lowers stablehlo composite ops to tflite ops.
+std::unique_ptr<OperationPass<ModuleOp>> CreateCompositeLoweringPass();
+
+// Legalizes CHLO to tflite dialect.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateLegalizeChloToTflPass();
+
+// Rewrites MHLO in preparation for tflite legalization.
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareHloPass();
+
+// Folds tfl.BroadcastTo nodes with subsequent ops that supports implicit
+// broadcasting.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateFoldBroadcastToPass();
+
+// Adds the HLO to TF rewrite patterns to the specified pattern list.
+void PopulateLegalizeHloToTfPatterns(RewritePatternSet* patterns,
+                                     MLIRContext* context);
+
+#define GEN_PASS_DECL
+#define GEN_PASS_REGISTRATION
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h.inc"
 
 }  // namespace odml
 }  // namespace mlir

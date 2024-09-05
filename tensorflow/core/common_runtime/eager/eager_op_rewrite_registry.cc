@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/eager/eager_op_rewrite_registry.h"
 
+#include <memory>
+#include <utility>
+
 namespace tensorflow {
 
 EagerOpRewriteRegistry* EagerOpRewriteRegistry::Global() {
@@ -53,7 +56,7 @@ Status EagerOpRewriteRegistry::RunRewrite(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

@@ -29,7 +29,7 @@ class TransposeOp : public OpKernel {
 
  protected:
   virtual Status DoTranspose(OpKernelContext* ctx, const Tensor& in,
-                             gtl::ArraySlice<int32> perm, Tensor* out) = 0;
+                             absl::Span<const int32> perm, Tensor* out) = 0;
   virtual bool IsConjugate() const { return false; }
 };
 
@@ -39,7 +39,7 @@ class TransposeCpuOp : public TransposeOp {
 
  protected:
   Status DoTranspose(OpKernelContext* ctx, const Tensor& in,
-                     gtl::ArraySlice<int32> perm, Tensor* out) override;
+                     absl::Span<const int32> perm, Tensor* out) override;
 };
 
 #if defined(INTEL_MKL)
@@ -59,7 +59,7 @@ class TransposeGpuOp : public TransposeOp {
 
  protected:
   Status DoTranspose(OpKernelContext* ctx, const Tensor& in,
-                     gtl::ArraySlice<int32> perm, Tensor* out) override;
+                     absl::Span<const int32> perm, Tensor* out) override;
 };
 
 
@@ -71,7 +71,7 @@ class ConjugateTransposeCpuOp : public TransposeOp {
 
  protected:
   Status DoTranspose(OpKernelContext* ctx, const Tensor& in,
-                     gtl::ArraySlice<int32> perm, Tensor* out) override;
+                     absl::Span<const int32> perm, Tensor* out) override;
   bool IsConjugate() const override { return true; }
 };
 
@@ -95,7 +95,7 @@ class ConjugateTransposeGpuOp : public TransposeOp {
 
  protected:
   Status DoTranspose(OpKernelContext* ctx, const Tensor& in,
-                     gtl::ArraySlice<int32> perm, Tensor* out) override;
+                     absl::Span<const int32> perm, Tensor* out) override;
   bool IsConjugate() const override { return true; }
 };
 

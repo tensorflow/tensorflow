@@ -29,6 +29,31 @@ from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
+def _infer_fft_length_for_fftn(input_tensor):
+  return _array_ops.shape(input_tensor)[-len(input_tensor.shape) :]
+
+
+def _infer_fft_length_for_irfftn(input_tensor):
+  fft_shape = input_tensor.get_shape()[-len(input_tensor.shape) :]
+  fft_length = fft_shape.as_list()
+  fft_length[-1] = max(0, 2 * (fft_length[-1] - 1))
+  return _ops.convert_to_tensor(fft_length, _dtypes.int32)
+
+
+def _infer_axes_for_fftn(input_tensor):
+  return _ops.convert_to_tensor(
+      np.arange(len(input_tensor.shape)), _dtypes.int32
+  )
+
+
+def _process_empty_axes(input_tensor, axes):
+  if axes is None:
+    axes = _infer_axes_for_fftn(input_tensor)
+  else:
+    axes = _ops.convert_to_tensor(axes, _dtypes.int32)
+  return axes
+
+
 def _infer_fft_length_for_rfft(input_tensor, fft_rank):
   """Infers the `fft_length` argument for a `rank` RFFT from `input_tensor`."""
   # A TensorShape for the inner fft_rank dimensions.
@@ -175,6 +200,194 @@ def _irfft_wrapper(ifft_fn, fft_rank, default_name):
   return _irfft
 
 
+def _fftn_wrapper(fft_n, default_name):
+  """Wrapper around gen_spectral_ops.fftn."""
+
+  def _fftn(input_tensor, fft_length=None, axes=None, norm=None, name=None):
+    """Wrapper around gen_spectral_ops.*fft that infers fft_length and axes arguments."""
+    with _ops.name_scope(
+        name, default_name, [input_tensor, fft_length, axes]
+    ) as name:
+      axes = _process_empty_axes(input_tensor, axes)
+      fft_rank = axes.shape[0]
+      input_tensor = _ops.convert_to_tensor(
+          input_tensor, preferred_dtype=_dtypes.complex64
+      )
+      input_tensor.shape.with_rank_at_least(fft_rank)
+      if fft_length is None:
+        fft_length = _infer_fft_length_for_fftn(input_tensor)
+      else:
+        fft_length = _ops.convert_to_tensor(fft_length, _dtypes.int32)
+      input_tensor = _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length)
+
+      fft_length_static = _tensor_util.constant_value(fft_length)
+      if fft_length_static is not None:
+        fft_length = fft_length_static
+      if norm is None:
+        norm = "backward"
+      n = 1
+      if norm != "backward":
+        for fft_length_i in fft_length:
+          n *= fft_length_i
+        if norm == "forward":
+          input_tensor /= n
+        elif norm == "ortho":
+          input_tensor /= np.sqrt(n)  # should be sqrt(N)
+      return fft_n(input_tensor, fft_length, axes, name=name)
+
+  _fftn.__doc__ = re.sub(r"    Tcomplex.*?\n", "", fft_n.__doc__)
+  return _fftn
+
+
+def _ifftn_wrapper(ifft_n, default_name):
+  """Wrapper around gen_spectral_ops.ifftn."""
+
+  def _ifftn(input_tensor, fft_length=None, axes=None, norm=None, name=None):
+    """Wrapper around gen_spectral_ops.*fft that infers fft_length and axes arguments."""
+    with _ops.name_scope(
+        name, default_name, [input_tensor, fft_length, axes]
+    ) as name:
+      axes = _process_empty_axes(input_tensor, axes)
+      fft_rank = axes.shape[0]
+      input_tensor = _ops.convert_to_tensor(
+          input_tensor, preferred_dtype=_dtypes.complex64
+      )
+      input_tensor.shape.with_rank_at_least(fft_rank)
+      if fft_length is None:
+        fft_length = _infer_fft_length_for_fftn(input_tensor)
+      else:
+        fft_length = _ops.convert_to_tensor(fft_length, _dtypes.int32)
+      input_tensor = _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length)
+
+      fft_length_static = _tensor_util.constant_value(fft_length)
+      if fft_length_static is not None:
+        fft_length = fft_length_static
+      if norm is None:
+        norm = "backward"
+      n = 1
+      if norm != "backward":
+        for fft_length_i in fft_length:
+          n *= fft_length_i
+        if norm == "forward":
+          input_tensor *= n
+        elif norm == "ortho":
+          input_tensor *= np.sqrt(n)  # should be sqrt(N)
+      return ifft_n(input_tensor, fft_length, axes, name=name)
+
+  _ifftn.__doc__ = re.sub(r"    Tcomplex.*?\n", "", ifft_n.__doc__)
+  return _ifftn
+
+
+def _rfftn_wrapper(rfft_n, default_name):
+  """Wrapper around gen_spectral_ops.rfftn."""
+
+  def _rfftn(input_tensor, fft_length=None, axes=None, norm=None, name=None):
+    """Wrapper around gen_spectral_ops.*fft that infers fft_length and axes arguments."""
+    with _ops.name_scope(
+        name, default_name, [input_tensor, fft_length, axes]
+    ) as name:
+      axes = _process_empty_axes(input_tensor, axes)
+      fft_rank = axes.shape[0]
+      input_tensor = _ops.convert_to_tensor(
+          input_tensor, preferred_dtype=_dtypes.float32
+      )
+      if input_tensor.dtype not in (_dtypes.float32, _dtypes.float64):
+        raise ValueError(
+            "RFFT requires tf.float32 or tf.float64 inputs, got: %s"
+            % input_tensor
+        )
+      real_dtype = input_tensor.dtype
+      if real_dtype == _dtypes.float32:
+        complex_dtype = _dtypes.complex64
+      else:
+        assert real_dtype == _dtypes.float64
+        complex_dtype = _dtypes.complex128
+      input_tensor.shape.with_rank_at_least(fft_rank)
+      if fft_length is None:
+        fft_length = _infer_fft_length_for_fftn(input_tensor)
+      else:
+        fft_length = _ops.convert_to_tensor(fft_length, _dtypes.int32)
+      input_tensor = _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length)
+
+      fft_length_static = _tensor_util.constant_value(fft_length)
+      if fft_length_static is not None:
+        fft_length = fft_length_static
+      if norm is None:
+        norm = "backward"
+      n = 1
+      if norm != "backward":
+        for fft_length_i in fft_length:
+          n *= fft_length_i
+        if norm == "forward":
+          input_tensor /= n
+        elif norm == "ortho":
+          input_tensor /= np.sqrt(n)  # should be sqrt(N)
+      return rfft_n(
+          input_tensor,
+          fft_length,
+          axes,
+          Tcomplex=complex_dtype,
+          name=name,
+      )
+
+  _rfftn.__doc__ = re.sub(r"    Tcomplex.*?\n", "", rfft_n.__doc__)
+  return _rfftn
+
+
+def _irfftn_wrapper(irfft_n, default_name):
+  """Wrapper around gen_spectral_ops.irfftn."""
+
+  def _irfftn(input_tensor, fft_length=None, axes=None, norm=None, name=None):
+    """Wrapper irfft* that infers fft_length argument."""
+    with _ops.name_scope(
+        name, default_name, [input_tensor, fft_length]
+    ) as name:
+      axes = _process_empty_axes(input_tensor, axes)
+      fft_rank = axes.shape[0]
+      input_tensor = _ops.convert_to_tensor(
+          input_tensor, preferred_dtype=_dtypes.complex64
+      )
+      input_tensor.shape.with_rank_at_least(fft_rank)
+      if input_tensor.dtype not in (_dtypes.complex64, _dtypes.complex128):
+        raise ValueError(
+            "IRFFT requires tf.complex64 or tf.complex128 inputs, got: %s"
+            % input_tensor
+        )
+      complex_dtype = input_tensor.dtype
+      real_dtype = complex_dtype.real_dtype
+      if fft_length is None:
+        fft_length = _infer_fft_length_for_irfftn(input_tensor)
+      else:
+        fft_length = _ops.convert_to_tensor(fft_length, _dtypes.int32)
+      input_tensor = _maybe_pad_for_rfft(
+          input_tensor, fft_rank, fft_length, is_reverse=True
+      )
+      fft_length_static = _tensor_util.constant_value(fft_length)
+      if fft_length_static is not None:
+        fft_length = fft_length_static
+
+      if norm is None:
+        norm = "backward"
+      n = 1
+      if norm != "backward":
+        for fft_length_i in fft_length:
+          n *= fft_length_i
+        if norm == "forward":
+          input_tensor *= n
+        elif norm == "ortho":
+          input_tensor *= np.sqrt(n)  # should be sqrt(N)
+      return irfft_n(
+          input_tensor, fft_length, axes, Treal=real_dtype, name=name
+      )
+
+  _irfftn.__doc__ = re.sub(
+      "`input`",
+      "`input_tensor`",
+      re.sub(r"    Treal.*?\n", "", irfft_n.__doc__),
+  )
+  return _irfftn
+
+
 # FFT/IFFT 1/2/3D are exported via
 # third_party/tensorflow/core/api_def/python_api/
 fft = gen_spectral_ops.fft
@@ -183,6 +396,14 @@ fft2d = gen_spectral_ops.fft2d
 ifft2d = gen_spectral_ops.ifft2d
 fft3d = gen_spectral_ops.fft3d
 ifft3d = gen_spectral_ops.ifft3d
+fftnd = _fftn_wrapper(gen_spectral_ops.fftnd, "fftnd")
+tf_export("signal.fftnd")(
+    dispatch.add_dispatch_support(fftnd)
+)
+ifftnd = _ifftn_wrapper(gen_spectral_ops.ifftnd, "ifftnd")
+tf_export("signal.ifftnd")(
+    dispatch.add_dispatch_support(ifftnd)
+)
 rfft = _rfft_wrapper(gen_spectral_ops.rfft, 1, "rfft")
 tf_export("signal.rfft", v1=["signal.rfft", "spectral.rfft"])(
     dispatch.add_dispatch_support(rfft))
@@ -201,6 +422,14 @@ tf_export("signal.rfft3d", v1=["signal.rfft3d", "spectral.rfft3d"])(
 irfft3d = _irfft_wrapper(gen_spectral_ops.irfft3d, 3, "irfft3d")
 tf_export("signal.irfft3d", v1=["signal.irfft3d", "spectral.irfft3d"])(
     dispatch.add_dispatch_support(irfft3d))
+rfftnd = _rfftn_wrapper(gen_spectral_ops.rfftnd, "rfftnd")
+tf_export("signal.rfftnd")(
+    dispatch.add_dispatch_support(rfftnd)
+)
+irfftnd = _irfftn_wrapper(gen_spectral_ops.irfftnd, "irfftnd")
+tf_export("signal.irfftnd")(
+    dispatch.add_dispatch_support(irfftnd)
+)
 
 
 def _fft_size_for_grad(grad, rank):

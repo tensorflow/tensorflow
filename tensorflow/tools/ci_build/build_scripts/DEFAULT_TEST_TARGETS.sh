@@ -17,9 +17,7 @@ set -x
 
 DEFAULT_BAZEL_TARGETS="//tensorflow/... \
 -//tensorflow/compiler/tf2tensorrt/... \
--//tensorflow/compiler/xrt/... \
 -//tensorflow/core/tpu/... \
 -//tensorflow/go/... \
 -//tensorflow/java/... \
--//tensorflow/python/integration_testing/... \
 -//tensorflow/tools/toolchains/..."

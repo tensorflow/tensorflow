@@ -21,14 +21,14 @@ import sys
 
 from absl import logging
 
+from tensorflow.core.framework import graph_debug_info_pb2
 from tensorflow.core.function.capture import restore_captures
-from tensorflow.core.protobuf import graph_debug_info_pb2
 from tensorflow.python.checkpoint import checkpoint
 from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.checkpoint import graph_view
 from tensorflow.python.checkpoint import restore
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
@@ -45,6 +45,7 @@ from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import fingerprinting
+from tensorflow.python.saved_model import fingerprinting_utils
 from tensorflow.python.saved_model import function_deserialization
 from tensorflow.python.saved_model import load_options
 from tensorflow.python.saved_model import load_v1_in_v2
@@ -120,7 +121,7 @@ class _WrapperFunction(function.ConcreteFunction):
     # Shallow copy the concrete_function
     self.__dict__.update(vars(concrete_function))
 
-  def _call_flat(self, args, captured_inputs, cancellation_manager=None):
+  def _call_flat(self, args, captured_inputs):
 
     def get_handle(x):
       return x.handle if distribute_utils.is_distributed_variable(x) else x
@@ -129,7 +130,7 @@ class _WrapperFunction(function.ConcreteFunction):
       return _unused_handle() if distribute_utils.is_distributed_variable(x)   \
           else x
 
-    if (ds_context.get_replica_context() is not None or
+    if (distribute_lib.get_replica_context() is not None or
         values_util.is_saving_non_distributed()):
       # If we're in the replica context or are saving a non-distributed version
       # of the model, we resolve the captured variables to the corresponding
@@ -142,8 +143,7 @@ class _WrapperFunction(function.ConcreteFunction):
       captured_inputs = list(map(get_handle, captured_inputs))
     else:  # cross-replica context
       captured_inputs = list(map(get_unused_handle, captured_inputs))
-    return super(_WrapperFunction, self)._call_flat(args, captured_inputs,
-                                                    cancellation_manager)
+    return super()._call_flat(args, captured_inputs)
 
 
 class Loader(object):
@@ -167,6 +167,33 @@ class Loader(object):
     self._restored_concrete_functions = set()
     self._checkpoint_options = ckpt_options
     self._save_options = save_options
+
+    # Metagraph has a mapping from FunctionDef name to aliases
+    self._concrete_function_aliases = meta_graph.meta_info_def.function_aliases
+    self.function_aliases = {}
+    if self._save_options.experimental_load_function_aliases:
+      # Create a mapping from aliases to polymorphic restored functions or lists
+      # of concrete functions. This mapping can later be used with SaveOptions
+      # when re-saving the loaded object to a SavedModel. We start with a
+      # mapping from aliases to lists of concrete functions. Later in
+      # _recreate_function, on a entry by entry basis, we replace lists with
+      # polymorphic restored functions if the concrete function associated with
+      # a restored function is identical to a list of concrete functions in an
+      # entry.
+      concrete_func_list_by_alias = collections.defaultdict(list)
+      for concrete_func_name, alias in self._concrete_function_aliases.items():
+        if concrete_func_name not in self._concrete_functions:
+          logging.warn(
+              (
+                  "ConcreteFunction `%s` is listed in function alias but it"
+                  " is not found."
+              ),
+              concrete_func_name,
+          )
+          continue
+        concrete_function = self._concrete_functions[concrete_func_name]
+        concrete_func_list_by_alias[alias].append(concrete_function)
+      self.function_aliases = dict(concrete_func_list_by_alias)
 
     self._pretty_printer = checkpoint.ObjectGraphProtoPrettyPrinter(self._proto)
 
@@ -575,6 +602,7 @@ class Loader(object):
     """Rewrite func names in the debug info by using the concrete func names."""
     output_debug_info = graph_debug_info_pb2.GraphDebugInfo()
     output_debug_info.files[:] = debug_info.files
+    # TODO: b/292007261 - Read name_to_trace_id as well as traces
     for key in debug_info.traces:
       node, func = key.split("@")
       new_func = ""
@@ -652,14 +680,26 @@ class Loader(object):
       # to be able to load the "optimizer" object (OptimizerV2), which has
       # special logic around adding slot variables with `add_slot` in this file.
       try:
-        import keras.optimizers.legacy as _  # pylint: disable=g-import-not-at-top
+        import tf_keras  # pylint: disable=g-import-not-at-top,unused-import
+        try:
+          import tf_keras.optimizers.legacy as _  # pylint: disable=g-import-not-at-top
+        except ImportError:
+          try:
+            import tf_keras.optimizers.optimizer_v2 as _  # pylint: disable=g-import-not-at-top
+          except ImportError as e:
+            raise ImportError(
+                "Error when importing Keras. Unable to load SavedModel that "
+                "contains an optimizer without the Keras module.") from e
       except ImportError:
         try:
-          import keras.optimizers.optimizer_v2 as _  # pylint: disable=g-import-not-at-top
-        except ImportError as e:
-          raise ImportError(
-              "Error when importing Keras. Unable to load SavedModel that "
-              "contains an optimizer without the Keras module.") from e
+          import keras.optimizers.legacy as _  # pylint: disable=g-import-not-at-top
+        except ImportError:
+          try:
+            import keras.optimizers.optimizer_v2 as _  # pylint: disable=g-import-not-at-top
+          except ImportError as e:
+            raise ImportError(
+                "Error when importing Keras. Unable to load SavedModel that "
+                "contains an optimizer without the Keras module.") from e
     looked_up = revived_types.deserialize(proto)
     if looked_up is None:
       return self._recreate_base_user_object(proto, node_id)
@@ -681,6 +721,39 @@ class Loader(object):
         proto, self._concrete_functions)
     for name in proto.concrete_functions:
       self._setup_function_captures(name, dependencies)
+
+    # If the list of concrete functions associated with this polymorphic
+    # restored function is identical to a list of concrete functions found in
+    # the function alias mapping, we replace the latter with this restored
+    # function. Also see comments in the __init__ method.
+    if self._save_options.experimental_load_function_aliases:
+      if proto.concrete_functions and all(
+          name in self._concrete_function_aliases
+          for name in proto.concrete_functions
+      ):
+        alias = self._concrete_function_aliases[
+            next(iter(proto.concrete_functions))
+        ]
+        aliased = self.function_aliases.get(alias)
+        assert isinstance(aliased, list)
+        # Note that we cannot compare f.name below with proto.concrete_functions
+        # because the former is new name for the restored ConcreteFunction
+        # object while the latter is the old name in the original proto.
+        if set(f.name for f in aliased) == set(
+            f.name for f in fn._list_all_concrete_functions()  # pylint: disable=protected-access
+        ):
+          self.function_aliases[alias] = fn
+        else:
+          logging.warn(
+              (
+                  "Not aliasing '%s' to polymorphic restored function because"
+                  " of mismatched concrete functions: %s vs %s"
+              ),
+              alias,
+              set(f.name for f in aliased),
+              set(f.name for f in fn._list_all_concrete_functions()),  # pylint: disable=protected-access
+          )
+
     return fn, setattr
 
   def _recreate_bare_concrete_function(self, proto, dependencies):
@@ -788,9 +861,8 @@ def load(export_dir, tags=None, options=None):
 
   _Importing SavedModels from TensorFlow 1.x_
 
-  SavedModels from `tf.estimator.Estimator` or 1.x SavedModel APIs have a flat
-  graph instead of `tf.function` objects. These SavedModels will be loaded with
-  the following attributes:
+  1.x SavedModels APIs have a flat graph instead of `tf.function` objects.
+  These SavedModels will be loaded with the following attributes:
 
   * `.signatures`: A dictionary mapping signature names to functions.
   * `.prune(feeds, fetches) `: A method which allows you to extract
@@ -851,8 +923,7 @@ def load_partial(export_dir, filters, tags=None, options=None):
   `tf.saved_model.load(export_dir)` are equivalent.
 
   Note: This only works for SavedModels saved with TensorFlow V2 from
-  `tf.saved_model.save` or Keras. This will not load SavedModels save from
-  the Estimator API.
+  `tf.saved_model.save` or Keras.
 
   In Tensorflow V2, SavedModel stores the **object graph** of the saved object.
   The graph contains nodes (`tf.Module`, `tf.Variable`, `tf.function`, Keras
@@ -944,6 +1015,7 @@ def load_partial(export_dir, filters, tags=None, options=None):
   saved_model_proto, debug_info = (
       loader_impl.parse_saved_model_with_debug_info(export_dir))
 
+  loader = None
   if (len(saved_model_proto.meta_graphs) == 1 and
       saved_model_proto.meta_graphs[0].HasField("object_graph_def")):
     metrics.IncrementReadApi(_LOAD_V2_LABEL)
@@ -981,12 +1053,23 @@ def load_partial(export_dir, filters, tags=None, options=None):
     root.tensorflow_git_version = (
         meta_graph_def.meta_info_def.tensorflow_git_version)
     metrics.IncrementRead(write_version="2")
+
+    if options.experimental_load_function_aliases:
+      if hasattr(root, "function_aliases"):
+        raise ValueError(
+            "Could not load with experimental_load_function_aliases option"
+            " because the top-level object already has an attributed with name"
+            " 'function_aliases'"
+        )
+      root.function_aliases = loader.function_aliases
   else:
     if filters:
-      raise ValueError("SavedModels saved from Tensorflow 1.x or Estimator (any"
-                       " version) cannot be loaded with node filters.")
+      raise ValueError("SavedModels saved from Tensorflow 1.x) cannot be "
+                       "loaded with node filters.")
     with ops.init_scope():
-      root = load_v1_in_v2.load(export_dir, tags)
+      root = load_v1_in_v2.load(
+          export_dir, tags, options.experimental_skip_checkpoint
+      )
       root.graph_debug_info = debug_info
   # For privacy concerns, please see the note in
   #  tensorflow/cc/saved_model/metrics.h
@@ -995,14 +1078,68 @@ def load_partial(export_dir, filters, tags=None, options=None):
   # Read and log SavedModel checksum, if it is nonzero.
   try:
     fingerprint = fingerprinting.read_fingerprint(export_dir)
-    if fingerprint.saved_model_checksum != 0:
-      metrics.SetReadFingerprint(
-          saved_model_checksum=str(fingerprint.saved_model_checksum))
   except FileNotFoundError:
-    logging.error("Unable to load fingerprint when loading saved model.",
-                  exc_info=True)
+    metrics.SetFoundFingerprintOnLoad(found_status=metrics.kFingerprintNotFound)
+    logging.info(
+        "Fingerprint not found. Saved model loading will continue.")
+    singleprint = ""
+  except RuntimeError:
+    metrics.SetFoundFingerprintOnLoad(found_status=metrics.kFingerprintError)
+    logging.exception(
+        "Fingerprint was found, but there was an error when reading the proto. "
+        "Saved model loading will continue.")
+    singleprint = ""
+  else:
+    metrics.SetFoundFingerprintOnLoad(found_status=metrics.kFingerprintFound)
+    metrics.SetReadFingerprint(
+        fingerprint=fingerprinting_utils.to_proto(
+            fingerprint).SerializeToString())
+    singleprint = fingerprint.singleprint()
 
-  if filters:
+  try:
+    metrics.SetReadPathAndSingleprint(path=export_dir, singleprint=singleprint)
+  except metrics.MetricException:
+    logging.info("path_and_singleprint metric could not be logged. "
+                 "Saved model loading will continue.")
+
+  if filters and loader is not None:
     return {node_id: loader.get(node_id) for node_id in filters}
   else:
     return {"root": root}
+
+
+def is_tf2_saved_model(export_dir):
+  """Identifies if an exported SavedModel is a TF2 SavedModel.
+
+  There are differences in SavedModel semantics between TF1 and TF2 that are
+  documented here:
+  https://www.tensorflow.org/guide/migrate/saved_model#savedmodel. This helper
+  util function serves to distinguish the TF1 vs TF2 semantics used when
+  exporting SavedModels.
+
+  Args:
+    export_dir: The SavedModel directory to load from.
+
+  Returns:
+    True if TF2 SavedModel semantics are used, False if TF1 SavedModel semantics
+    are used.
+  """
+  # Try reading the fingerprint first before parsing the SavedModel proto
+  try:
+    fingerprint = fingerprinting.read_fingerprint(export_dir)
+    if fingerprint.saved_object_graph_hash != 0:
+      logging.info("SavedModel at %s is a TF2 SavedModel", export_dir)
+      return True
+  except Exception:  # pylint: disable=broad-exception-caught
+    logging.info(
+        "Failed to read fingerprint from SavedModel. Parsing MetaGraph ..."
+    )
+    saved_model_proto = loader_impl.parse_saved_model(export_dir)
+    if len(
+        saved_model_proto.meta_graphs
+    ) == 1 and saved_model_proto.meta_graphs[0].HasField("object_graph_def"):
+      logging.info("SavedModel at %s is a TF2 SavedModel", export_dir)
+      return True
+
+  logging.info("SavedModel at %s is a TF1 SavedModel", export_dir)
+  return False

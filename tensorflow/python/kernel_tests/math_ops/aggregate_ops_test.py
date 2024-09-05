@@ -73,6 +73,8 @@ class AddNTest(test.TestCase):
           self.assertAllCloseAccordingToType(
               expected,
               actual,
+              float_rtol=5e-6,
+              float_atol=5e-6,
               half_rtol=5e-3,
               half_atol=5e-3,
           )

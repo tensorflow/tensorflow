@@ -92,7 +92,7 @@ tfrt::AsyncValueRef<TensorWrapperType> TransferTensorToDevice(
         // that might have nothing to do with this tensor to complete).
         Status s = src_device->Sync();
         if (!s.ok()) {
-          result.SetError(absl::InternalError(s.error_message()));
+          result.SetError(absl::InternalError(s.message()));
           return;
         }
         tensorflow::Notification n;

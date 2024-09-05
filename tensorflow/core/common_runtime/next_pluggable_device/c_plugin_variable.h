@@ -29,16 +29,16 @@ class CPluginVariable : public PluginVariable {
   ~CPluginVariable() override;
   explicit CPluginVariable(TF_VariableInfo* var_info) : var_info_(var_info) {}
 
-  tsl::Status GetTensor(const Tensor** result_tensor) override;
+  absl::Status GetTensor(const Tensor** result_tensor) override;
 
-  tsl::Status GetMutableTensor(Tensor** result_tensor) override;
+  absl::Status GetMutableTensor(Tensor** result_tensor) override;
 
   TF_VariableInfo* GetVariableInfo() { return var_info_; }
 
   friend class CPluginOpKernelContext;
 
  private:
-  tsl::Status GetTensorInternal();
+  absl::Status GetTensorInternal();
 
   TF_VariableInfo* var_info_;  // Owned. Cleared by destructor.
   bool tensor_obtained_ = false;

@@ -26,9 +26,9 @@ limitations under the License.
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/util.h"
+#include "tsl/platform/tracing.h"
 
 namespace tensorflow {
 
@@ -154,30 +154,33 @@ int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
 }
 
 thread::ThreadPool* NewThreadPoolFromSessionOptions(
-    const SessionOptions& options) {
-  const int32_t num_threads = NumInterOpThreadsFromSessionOptions(options);
-  VLOG(1) << "Session inter op parallelism threads: " << num_threads;
+    const SessionOptions& options, int32_t num_threads) {
+  const int32_t num_threads_real =
+      num_threads > 0 ? num_threads
+                      : NumInterOpThreadsFromSessionOptions(options);
+  VLOG(1) << "Session inter op parallelism threads: " << num_threads_real;
   return new thread::ThreadPool(
-      options.env, ThreadOptions(), "Compute", num_threads,
+      options.env, ThreadOptions(), "Compute", num_threads_real,
       !options.config.experimental().disable_thread_spinning(),
       /*allocator=*/nullptr);
 }
 
-void SchedClosure(std::function<void()> closure) {
-  if (!tracing::EventCollector::IsEnabled()) {
+void SchedClosure(absl::AnyInvocable<void()> closure) {
+  if (!tsl::tracing::EventCollector::IsEnabled()) {
     return Env::Default()->SchedClosure(std::move(closure));
   }
-  uint64 id = tracing::GetUniqueArg();
-  tracing::RecordEvent(tracing::EventCategory::kScheduleClosure, id);
+  uint64 id = tsl::tracing::GetUniqueArg();
+  tsl::tracing::RecordEvent(tsl::tracing::EventCategory::kScheduleClosure, id);
 
-  Env::Default()->SchedClosure([id, closure = std::move(closure)]() {
-    tracing::ScopedRegion region(tracing::EventCategory::kRunClosure, id);
+  Env::Default()->SchedClosure([id, closure = std::move(closure)]() mutable {
+    tsl::tracing::ScopedRegion region(tsl::tracing::EventCategory::kRunClosure,
+                                      id);
     closure();
   });
 }
 
 void SchedNonBlockingClosureAfter(int64_t micros,
-                                  std::function<void()> closure) {
+                                  absl::AnyInvocable<void()> closure) {
   Env::Default()->SchedClosureAfter(micros, std::move(closure));
 }
 

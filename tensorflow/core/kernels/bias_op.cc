@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/bias_op.h"
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -31,12 +31,10 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_format.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "xla/stream_executor/event_based_timer.h"
 #include "tensorflow/core/kernels/bias_op_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_stream.h"
-#endif  // GOOGLE_CUDA
 
 namespace tensorflow {
 
@@ -457,7 +455,8 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
     OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
     se::DeviceMemoryBase output_ptr(output->flat<T>().data(),
                                     output->NumElements() * sizeof(T));
-    stream->ThenMemZero(&output_ptr, output->NumElements() * sizeof(T));
+    OP_REQUIRES_OK(context, stream->MemZero(&output_ptr,
+                                            output->NumElements() * sizeof(T)));
     if (output_backprop.NumElements() <= 0) return;
     if (OpDeterminismRequired()) {
       // ComputeWithReduceSum is the only deterministic algorithm.
@@ -481,28 +480,36 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
       profiler::ScopedAnnotation trace("bias_grad_autotuning");
 
       BiasGradGPUProfileResult best_result;
+
       // Initialize the timer.
-      perftools::gputools::Timer timer(stream->parent());
-      stream->InitTimer(&timer);
-      stream->ThenStartTimer(&timer);
+      StatusOr<std::unique_ptr<se::EventBasedTimer>> timer =
+          stream->CreateEventBasedTimer(false);
+      OP_REQUIRES_OK(context, timer.status());
       ComputeWithCustomKernel(context, output_backprop, batch, width, height,
                               depth, channel, output);
-      stream->ThenStopTimer(&timer);
-      uint64 elapsed_microseconds = timer.Microseconds();
+      StatusOr<absl::Duration> bias_duration =
+          timer.value()->GetElapsedDuration();
+      OP_REQUIRES_OK(context, bias_duration.status());
+      int64_t elapsed_microseconds = absl::ToInt64Microseconds(*bias_duration);
+
       VLOG(1) << "BiasAddGrad " << bias_parameters.ToString()
-              << " Native algo latency: " << elapsed_microseconds;
+              << " Native algo latency: " << elapsed_microseconds << "us";
       if (elapsed_microseconds < best_result.elapsed_time()) {
         best_result.set_algorithm(BiasAddGradGPUMode::kNative);
         best_result.set_elapsed_time(elapsed_microseconds);
       }
 
       // Try reduction and profile.
-      stream->ThenStartTimer(&timer);
+      StatusOr<std::unique_ptr<se::EventBasedTimer>> reduction_timer =
+          stream->CreateEventBasedTimer(false);
+      OP_REQUIRES_OK(context, reduction_timer.status());
       ComputeWithReduceSum(context, output_backprop, batch, width, height,
                            depth, channel, output);
-      stream->ThenStopTimer(&timer);
+      StatusOr<absl::Duration> reduction_duration =
+          reduction_timer.value()->GetElapsedDuration();
+      OP_REQUIRES_OK(context, reduction_duration.status());
 
-      elapsed_microseconds = timer.Microseconds();
+      elapsed_microseconds += absl::ToInt64Microseconds(*reduction_duration);
       VLOG(1) << "BiasAddGrad " << bias_parameters.ToString()
               << " Reduction algo latency: " << elapsed_microseconds;
       if (elapsed_microseconds < best_result.elapsed_time()) {

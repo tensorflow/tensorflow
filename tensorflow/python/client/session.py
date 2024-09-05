@@ -18,7 +18,6 @@ import collections
 import functools
 import re
 import threading
-import warnings
 
 import numpy as np
 import wrapt
@@ -35,13 +34,17 @@ from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import stack
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import session_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.experimental import mixed_precision_global_state
 from tensorflow.python.util import compat
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
+from tensorflow.python.util import numpy_compat
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
+
 
 _python_session_create_counter = monitoring.Counter(
     '/tensorflow/api/python/session_create_counter',
@@ -138,14 +141,19 @@ _REGISTERED_EXPANSIONS = [
 
 def _convert_to_numpy_obj(numpy_dtype, obj):
   """Explicitly convert obj based on numpy type except for string type."""
-  return numpy_dtype(obj) if numpy_dtype is not object else str(obj)
+  return (
+      numpy_dtype(np.array(obj).astype(numpy_dtype))
+      if numpy_dtype is not object
+      else str(obj)
+  )
 
 
 def register_session_run_conversion_functions(
     tensor_type,
     fetch_function,
     feed_function=None,
-    feed_function_for_partial_run=None):
+    feed_function_for_partial_run=None,
+):
   """Register fetch and feed conversion functions for `tf.Session.run()`.
 
   This function registers a triple of conversion functions for fetching and/or
@@ -500,7 +508,7 @@ class _FetchHandler(object):
         self._fetches.append(fetch)
         self._ops.append(False)
       # Remember the fetch if it is for a tensor handle.
-      if (isinstance(fetch, ops.Tensor) and
+      if (isinstance(fetch, tensor.Tensor) and
           (fetch.op.type == 'GetSessionHandle' or
            fetch.op.type == 'GetSessionHandleV2')):
         self._fetch_handles[fetch.ref()] = fetch.op.inputs[0].dtype
@@ -978,8 +986,18 @@ class BaseSession(SessionInterface):
         tf_session.TF_DeleteBuffer(options_ptr)
     return result
 
+  @deprecation.deprecated(
+      '2023-06-01',
+      'This function is deprecated and we do not expect adding new'
+      'functionality to it. Please do not have your code depending'
+      'on this function.',
+  )
   def partial_run(self, handle, fetches, feed_dict=None):
     """Continues the execution with more feeds and fetches.
+
+    NOTE: This function is deprecated and we do not expect adding new
+    functionality to it. Please do not have your code depending on this
+    function.
 
     This is EXPERIMENTAL and subject to change.
 
@@ -1025,8 +1043,18 @@ class BaseSession(SessionInterface):
     # TODO(touts): Support feeding and fetching the same tensor.
     return self._run(handle, fetches, feed_dict, None, None)
 
+  @deprecation.deprecated(
+      '2023-06-01',
+      'This function is deprecated and we do not expect adding new'
+      'functionality to it. Please do not have your code depending'
+      'on this function.',
+  )
   def partial_run_setup(self, fetches, feeds=None):
     """Sets up a graph with feeds and fetches for partial run.
+
+    NOTE: This function is deprecated and we do not expect adding new
+    functionality to it. Please do not have your code depending on this
+    function.
 
     This is EXPERIMENTAL and subject to change.
 
@@ -1136,7 +1164,7 @@ class BaseSession(SessionInterface):
             raise TypeError(
                 f'Cannot interpret feed_dict key as Tensor: {e.args[0]}')
 
-          if isinstance(subfeed_val, ops.Tensor):
+          if isinstance(subfeed_val, tensor.Tensor):
             raise TypeError(
                 'The value of a feed cannot be a tf.Tensor object. Acceptable '
                 'feed values include Python scalars, strings, lists, numpy '
@@ -1159,7 +1187,7 @@ class BaseSession(SessionInterface):
             np_val = subfeed_val.to_numpy_array()
             feed_handles[subfeed_t.ref()] = subfeed_val
           else:
-            np_val = np.asarray(subfeed_val, dtype=subfeed_dtype)
+            np_val = numpy_compat.np_asarray(subfeed_val, subfeed_dtype)
 
           if (not is_tensor_handle_feed and
               not subfeed_t.get_shape().is_compatible_with(np_val.shape)):
@@ -1300,7 +1328,7 @@ class BaseSession(SessionInterface):
         self._call_tf_sessionrun(None, {}, [], target_list, None)
 
       return _single_operation_run
-    elif isinstance(fetches, ops.Tensor):
+    elif isinstance(fetches, tensor.Tensor):
       # Special case for fetching a single tensor, because the
       # function can return the result of `TF_Run()` directly.
       assert len(fetch_list) == 1
@@ -1389,7 +1417,7 @@ class BaseSession(SessionInterface):
           node_def = op.node_def
         except KeyError:
           pass
-      message = error_interpolation.interpolate(message, self._graph)
+      message = error_interpolation.interpolate_graph(message, self._graph)
       if 'only supports NHWC tensor format' in message:
         message += ('\nA possible workaround: Try disabling Grappler optimizer'
                     '\nby modifying the config for creating the session eg.'
@@ -1607,7 +1635,7 @@ class Session(BaseSession):
     self._default_graph_context_manager = None
     self._default_session_context_manager = None
 
-  def __enter__(self):
+  def __enter__(self) -> 'Session':
     if self._default_graph_context_manager is None:
       self._default_graph_context_manager = self.graph.as_default()
     else:
@@ -1767,10 +1795,14 @@ class InteractiveSession(BaseSession):
     super(InteractiveSession, self).__init__(target, graph, config)
     with InteractiveSession._count_lock:
       if InteractiveSession._active_session_count > 0:
-        warnings.warn('An interactive session is already active. This can '
-                      'cause out-of-memory errors in some cases. You must '
-                      'explicitly call `InteractiveSession.close()` to release '
-                      'resources held by the other session(s).')
+        logging.error(
+            'An interactive session is already active. This can cause'
+            ' out-of-memory errors or some other unexpected errors (due to'
+            ' the unpredictable timing of garbage collection) in some cases.'
+            ' You must explicitly call `InteractiveSession.close()` to release'
+            ' resources held by the other session(s). Please use `tf.Session()`'
+            ' if you intend to productionize.'
+        )
       InteractiveSession._active_session_count += 1
     # NOTE(mrry): We do not use `Session._closed` here because it has unhelpful
     # semantics (in particular, it is not set to true if `Session.close()` is

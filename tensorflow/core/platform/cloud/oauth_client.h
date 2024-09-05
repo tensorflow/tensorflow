@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/core/platform/cloud/http_request.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/tsl/platform/cloud/oauth_client.h"
+#include "tsl/platform/cloud/oauth_client.h"
 
 namespace tensorflow {
 using tsl::OAuthClient;  // NOLINT(misc-unused-using-decls)

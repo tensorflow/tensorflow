@@ -228,7 +228,8 @@ class GraphExecutionState {
   // Whether to run Placer.
   bool run_placer_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GraphExecutionState);
+  GraphExecutionState(const GraphExecutionState&) = delete;
+  void operator=(const GraphExecutionState&) = delete;
 };
 
 }  // namespace tensorflow

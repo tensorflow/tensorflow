@@ -1,6 +1,7 @@
 """BUILD rules for converting proto text files into binary format."""
 
 load("@bazel_skylib//lib:new_sets.bzl", "sets")
+# copybara:uncomment load("//third_party/protobuf/bazel/common:proto_info.bzl", "ProtoInfo")
 
 def _descriptor_set_list(deps):
     """Makes a list of distinct FileDescriptorSet files of deps's transitive dependencies"""
@@ -65,7 +66,6 @@ _TOOL = "@com_google_protobuf//:protoc"
 #        output file is name + ".binarypb" extension.
 proto_data = rule(
     implementation = _proto_data_impl,
-    output_to_genfiles = True,
     attrs = {
         "src": attr.label(
             allow_single_file = True,

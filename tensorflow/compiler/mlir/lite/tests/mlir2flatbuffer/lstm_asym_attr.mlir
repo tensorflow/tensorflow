@@ -273,7 +273,7 @@ func.func @main(tensor<1x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf3
 // CHECK-NEXT:   }, {
 // CHECK-NEXT:     data: [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ]
 // CHECK-NEXT:   }, {
-// CHECK-NEXT:     data: [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ]
+// CHECK-EMPTY:
 // CHECK-NEXT:   }, {
 // CHECK-EMPTY:
 // CHECK-NEXT:   }, {

@@ -46,45 +46,13 @@ namespace mhlo {
 /// patterns from TF2XLA fallback for provided device type (see
 /// legalize_tf_with_tf2xla.cc for details). By default, TF2XLA fallback is not
 /// used.
-std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFPass(
-    bool allow_partial_conversion = false, bool legalize_chlo = true,
+/// Note: This is a module pass because when legalizing with TF2XLA fallback,
+/// functions are imported into the module. Importing functions into a
+/// module is not thread safe.
+std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFPass(
+    bool legalize_chlo = true,
     std::optional<StringRef> tf2xla_fallback_device_type = std::nullopt,
     bool prefer_tf2xla = false);
-
-/// Legalize whitelisted Ops using TF2XLA fallback for ops that must also be
-/// able to create new functions.
-std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFModulePass(
-    StringRef tf2xla_fallback_device_type = "");
-
-// Legalizes from MHLO quantized ops with MHLO quant types to MHLO primitive ops
-// like int ops.
-std::unique_ptr<OperationPass<func::FuncOp>> createConvertMHLOQuantToIntPass();
-
-/// Lowers from TF dialect to HLO dialect. When allow_partial_conversion is
-/// false, emits an error if there is any operation that can't be legalized.
-std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFNoFallbackPass(
-    bool allow_partial_conversion = false);
-
-/// Replaces types that do not exist in MHLO with equivalent types that do
-/// exist.
-std::unique_ptr<OperationPass<void>> CreateLegalizeTfTypesPass();
-
-/// Converter to be used along with the fallback Tf2Xla patterns below.
-class Tf2XlaTypeConverter : public TypeConverter {
- public:
-  Tf2XlaTypeConverter();
-};
-
-/// Adds the TF to XLA via TF2XLA rewrite patterns to the pattern list.
-/// `prefer_tf2xla` means an op will be included iff it is not in
-/// `MlirLegalizedUnderPreferTf2XlaSet`. `!prefer_tf2xla` mean an op will be
-/// included if there is no native MLIR legalization for the op.
-void PopulateLegalizeTfWithTf2XlaPatterns(llvm::StringRef device_type,
-                                          RewritePatternSet& patterns,
-                                          MLIRContext* ctx,
-                                          Tf2XlaTypeConverter& converter,
-                                          bool prefer_tf2xla = false,
-                                          bool is_module_pass = false);
 
 /// Adds the TF to TF lowerings and TF to XLA rewrite patterns to the pattern
 /// list.
@@ -97,9 +65,6 @@ void PopulateLegalizeTfPatterns(MLIRContext* context,
 // legalization in the ODML conversion pipeline.
 void PopulateLegalizeTfQuantizationPatterns(MLIRContext* context,
                                             RewritePatternSet* patterns);
-
-/// Checks whether the op is supported by the Tf2Xla fallback for legalization.
-bool HasTf2XlaFallback(Operation* op);
 
 /// Converts the provided Operation as well as all nested operations into HLO
 /// dialect using the conversion patterns registered by the HLO dialect. When
@@ -137,12 +102,10 @@ std::unique_ptr<OperationPass<func::FuncOp>>
 CreateInfeedsOpsXlaAdjustLayoutPass();
 
 #define GEN_PASS_REGISTRATION
-#define GEN_PASS_DECL_CONVERTMHLOQUANTTOINT
 #define GEN_PASS_DECL_INFEEDSOPSXLAADJUSTLAYOUT
 #define GEN_PASS_DECL_LEGALIZETF
 #define GEN_PASS_DECL_LEGALIZETFCOLLECTIVE
 #define GEN_PASS_DECL_LEGALIZETFMODULEPASS
-#define GEN_PASS_DECL_LEGALIZETFNOFALLBACK
 #define GEN_PASS_DECL_LEGALIZETFTYPESPASS
 #define GEN_PASS_DECL_TFXLADEVICESPECIFICTRANSFORMS
 #define GEN_PASS_DECL_VERIFYTFXLALEGALIZATION
@@ -150,7 +113,6 @@ CreateInfeedsOpsXlaAdjustLayoutPass();
 
 #define GEN_PASS_REGISTRATION
 #define GEN_PASS_DECL_LEGALIZETFCOMMUNICATIONPASS
-#define GEN_PASS_DECL_LEGALIZETFWITHTF2XLA
 #include "tensorflow/compiler/mlir/tf2xla/transforms/tf_xla_passes.h.inc"
 }  // namespace mhlo
 }  // namespace mlir

@@ -344,7 +344,7 @@ class FusedResizeAndPadConvFunctor {
     std::function<Status(Im2ColBufferResource<T1, kMaxChunkSize>**)> creator =
         [](Im2ColBufferResource<T1, kMaxChunkSize>** resource) {
           *resource = new Im2ColBufferResource<T1, kMaxChunkSize>();
-          return OkStatus();
+          return absl::OkStatus();
         };
     OP_REQUIRES_OK(context, context->resource_manager()->LookupOrCreate(
                                 "Conv2d", "im2col_buffer",
@@ -382,7 +382,7 @@ class FusedResizeAndPadConvFunctor {
         resize_creator =
             [](Im2ColBufferResource<T1, kResizeCacheSize>** resource) {
               *resource = new Im2ColBufferResource<T1, kResizeCacheSize>();
-              return OkStatus();
+              return absl::OkStatus();
             };
     OP_REQUIRES_OK(context, context->resource_manager()->LookupOrCreate(
                                 "Conv2d", "resize_cache",
@@ -825,12 +825,12 @@ class FusedResizeConv2DUsingGemmOp : public OpKernel {
     const int stride_cols = GetTensorDim(strides_, FORMAT_NHWC, 'W');
 
     int64_t out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;
-    OP_REQUIRES_OK(context,
-                   GetWindowedOutputSize(padded_rows, filter_rows, stride_rows,
-                                         padding_, &out_rows, &pad_rows));
-    OP_REQUIRES_OK(context,
-                   GetWindowedOutputSize(padded_cols, filter_cols, stride_cols,
-                                         padding_, &out_cols, &pad_cols));
+    OP_REQUIRES_OK(context, GetWindowedOutputSize(
+                                padded_rows, filter_rows, /*dilation_rate=*/1,
+                                stride_rows, padding_, &out_rows, &pad_rows));
+    OP_REQUIRES_OK(context, GetWindowedOutputSize(
+                                padded_cols, filter_cols, /*dilation_rate=*/1,
+                                stride_cols, padding_, &out_cols, &pad_cols));
     TensorShape out_shape;
     OP_REQUIRES_OK(context,
                    ShapeFromFormatWithStatus(FORMAT_NHWC, batch, out_rows,
@@ -872,7 +872,8 @@ class FusedResizeConv2DUsingGemmOp : public OpKernel {
   bool align_corners_;
   int offset_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(FusedResizeConv2DUsingGemmOp);
+  FusedResizeConv2DUsingGemmOp(const FusedResizeConv2DUsingGemmOp&) = delete;
+  void operator=(const FusedResizeConv2DUsingGemmOp&) = delete;
 };
 
 #define REGISTER_FUSED(T)                                                 \
@@ -902,5 +903,6 @@ TF_CALL_double(REGISTER_FUSED);
 TF_CALL_half(REGISTER_PAD_ONLY_FUSED);
 TF_CALL_float(REGISTER_PAD_ONLY_FUSED);
 TF_CALL_double(REGISTER_PAD_ONLY_FUSED);
+TF_CALL_bfloat16(REGISTER_PAD_ONLY_FUSED);
 
 }  // namespace tensorflow

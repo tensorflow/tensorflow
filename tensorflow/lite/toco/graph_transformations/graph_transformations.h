@@ -21,6 +21,8 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/toco_port.h"
 
@@ -111,7 +113,7 @@ inline void RunGraphTransformations(
     Model* model, const std::string& msg,
     const GraphTransformationsSet& transformations) {
   auto s = RunGraphTransformationsWithStatus(model, msg, transformations);
-  CHECK(s.ok()) << s.error_message();
+  CHECK(s.ok()) << s.message();
 }
 
 #define DECLARE_GRAPH_TRANSFORMATION(GTName)                     \

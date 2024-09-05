@@ -27,7 +27,6 @@ limitations under the License.
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
@@ -179,13 +178,14 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
   for (func::FuncOp func : outlined_module.getOps<func::FuncOp>()) {
     func.walk([&](Operation *op) {
       for (NamedAttribute attr : op->getAttrs()) {
-        if (auto symbol_ref = attr.getValue().dyn_cast<FlatSymbolRefAttr>()) {
+        if (auto symbol_ref =
+                mlir::dyn_cast<FlatSymbolRefAttr>(attr.getValue())) {
           MoveFuncOp(symbol_ref, symbol_table, outlined_symbol_table);
           continue;
         }
-        if (auto array_attr = attr.getValue().dyn_cast<ArrayAttr>()) {
+        if (auto array_attr = mlir::dyn_cast<ArrayAttr>(attr.getValue())) {
           for (const Attribute &attribute : array_attr) {
-            auto symbol_ref = attribute.dyn_cast<FlatSymbolRefAttr>();
+            auto symbol_ref = mlir::dyn_cast<FlatSymbolRefAttr>(attribute);
             if (!symbol_ref) continue;
             MoveFuncOp(symbol_ref, symbol_table, outlined_symbol_table);
           }

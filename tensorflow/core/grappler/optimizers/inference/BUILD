@@ -1,3 +1,4 @@
+# Placeholder: load py_proto_library
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 
@@ -14,12 +15,21 @@ package(
     licenses = ["notice"],
 )
 
+# Expand the DEFAULT_VISIBILITY so that we can replace with public visibility with copybara.
 tf_proto_library(
     name = "batch_op_rewriter_proto",
     srcs = ["batch_op_rewriter.proto"],
-    cc_api_version = 2,
-    visibility = DEFAULT_VISIBILITY,
+    visibility = ["//visibility:public"],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "batch_op_rewriter_proto_py_pb2",
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":batch_op_rewriter_proto"],
+# )
+# copybara:uncomment_end
 
 cc_library(
     name = "batch_op_rewriter",

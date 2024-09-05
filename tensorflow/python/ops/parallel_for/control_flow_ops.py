@@ -25,6 +25,7 @@ from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
@@ -314,7 +315,7 @@ def _pfor_impl(loop_fn,
   for loop_fn_output in nest.flatten(loop_fn_output_tensors):
     if (loop_fn_output is not None and not isinstance(
         loop_fn_output,
-        (ops.Operation, ops.Tensor, sparse_tensor.SparseTensor))):
+        (ops.Operation, tensor.Tensor, sparse_tensor.SparseTensor))):
       if isinstance(loop_fn_output, indexed_slices.IndexedSlices):
         logging.warn("Converting %s to a dense representation may make it slow."
                      " Alternatively, output the indices and values of the"

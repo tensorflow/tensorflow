@@ -22,6 +22,7 @@ from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.cli import tensor_format
 from tensorflow.python.debug.lib import common
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 
@@ -402,7 +403,9 @@ def get_run_short_description(run_call_count,
 
   description = "run #%d: " % run_call_count
 
-  if isinstance(fetches, (ops.Tensor, ops.Operation, variables.Variable)):
+  if isinstance(
+      fetches, (tensor_lib.Tensor, ops.Operation, variables.Variable)
+  ):
     description += "1 fetch (%s); " % common.get_graph_element_name(fetches)
   else:
     # Could be (nested) list, tuple, dict or namedtuple.

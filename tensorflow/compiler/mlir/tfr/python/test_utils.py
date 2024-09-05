@@ -13,6 +13,7 @@
 # limitations under the License.
 """Test utils for composite op definition."""
 from tensorflow.python.eager import backprop
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
@@ -23,6 +24,8 @@ class OpsDefsTest(test.TestCase):
                             op_kwargs=None):
     if op_kwargs is None:
       op_kwargs = kwargs
+    if test_util.IsMklEnabled():
+      self.skipTest("Not compatible with oneDNN custom ops.")
 
     # compute with op.
     with backprop.GradientTape() as gt:

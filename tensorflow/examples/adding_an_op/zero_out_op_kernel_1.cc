@@ -24,7 +24,7 @@ REGISTER_OP("ZeroOut")
     .Output("zeroed: int32")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->input(0));
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 Zeros out all but the first value of a Tensor.
@@ -40,13 +40,13 @@ class ZeroOutOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     // Grab the input tensor
     const Tensor& input_tensor = context->input(0);
-    auto input = input_tensor.flat<int32>();
+    auto input = input_tensor.flat<int32_t>();
 
     // Create an output tensor
     Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, input_tensor.shape(),
                                                      &output_tensor));
-    auto output = output_tensor->template flat<int32>();
+    auto output = output_tensor->template flat<int32_t>();
 
     // Set all but the first element of the output tensor to 0.
     const int N = input.size();
@@ -66,7 +66,7 @@ REGISTER_OP("Namespace>ZeroOut")
     .Output("zeroed: int32")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->input(0));
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 Zeros out all but the first value of a Tensor.
@@ -83,7 +83,7 @@ REGISTER_OP("Namespace>Nested>ZeroOut")
     .Output("zeroed: int32")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->input(0));
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
     })
     .Doc(R"doc(
 Zeros out all but the first value of a Tensor.

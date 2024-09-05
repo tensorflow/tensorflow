@@ -16,35 +16,20 @@
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices as indexed_slices_lib
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
-from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
 class ClipTest(test.TestCase):
-
-  @test_util.run_deprecated_v1
-  def testClipByValueGradient(self):
-    inputs = constant_op.constant([1.0, 2.0, 3.0, 4.0], dtype=dtypes.float32)
-    outputs_1 = clip_ops.clip_by_value(inputs, 0.5, 3.5)
-    min_val = constant_op.constant([0.5, 0.5, 0.5, 0.5], dtype=dtypes.float32)
-    max_val = constant_op.constant([3.5, 3.5, 3.5, 3.5], dtype=dtypes.float32)
-    outputs_2 = clip_ops.clip_by_value(inputs, min_val, max_val)
-    with self.cached_session():
-      error_1 = gradient_checker.compute_gradient_error(inputs, [4], outputs_1,
-                                                        [4])
-      self.assertLess(error_1, 1e-4)
-
-      error_2 = gradient_checker.compute_gradient_error(inputs, [4], outputs_2,
-                                                        [4])
-      self.assertLess(error_2, 1e-4)
 
   # ClipByValue test
   def testClipByValue(self):
@@ -148,6 +133,63 @@ class ClipTest(test.TestCase):
         tf_ans = self.evaluate(ans)
 
       self.assertAllClose(np_ans, tf_ans)
+
+  def testClipByValueGradient(self):
+    def grad(x, y, z, clip_fn):
+      x = constant_op.constant(x, dtype=dtypes.float32)
+      y = constant_op.constant(y, dtype=dtypes.float32)
+      z = constant_op.constant(z, dtype=dtypes.float32)
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        tape.watch(y)
+        tape.watch(z)
+        output = clip_fn(x, y, z)
+      return tape.gradient(output, [x, y, z])
+
+    for f in (clip_ops.clip_by_value, gen_math_ops._clip_by_value):
+      with self.subTest(f=f):
+        # Input: [Scalar, Scalar, Scalar]
+        xg, yg, zg = grad(0, -1, 1, clip_fn=f)
+        self.assertEqual(self.evaluate(xg), 1)
+        self.assertEqual(self.evaluate(yg), 0)
+        self.assertEqual(self.evaluate(zg), 0)
+
+        # Input: [Scalar, Scalar, Scalar]
+        xg, yg, zg = grad(2, -1, 1, clip_fn=f)
+        self.assertEqual(self.evaluate(xg), 0)
+        self.assertEqual(self.evaluate(yg), 0)
+        self.assertEqual(self.evaluate(zg), 1)
+
+        # Input: [Vector, Scalar, Scalar]
+        xg, yg, zg = grad([0, -2, 2, -2], -1, 1, clip_fn=f)
+        self.assertAllEqual(self.evaluate(xg), [1, 0, 0, 0])
+        self.assertEqual(self.evaluate(yg), 2)
+        self.assertEqual(self.evaluate(zg), 1)
+
+        # Input: [Vector, Vector, Scalar]
+        xg, yg, zg = grad([-1, -2, 0, 2], [-2, -1, -3, 0], 1, clip_fn=f)
+        self.assertAllEqual(self.evaluate(xg), [1, 0, 1, 0])
+        self.assertAllEqual(self.evaluate(yg), [0, 1, 0, 0])
+        self.assertEqual(self.evaluate(zg), 1)
+
+        # Input: [Vector, Vector, Vector]
+        xg, yg, zg = grad(
+            [-1, -2, 0, 2], [-2, -1, -3, 0], [1, 2, -1, 1], clip_fn=f
+        )
+        self.assertAllEqual(self.evaluate(xg), [1, 0, 0, 0])
+        self.assertAllEqual(self.evaluate(yg), [0, 1, 0, 0])
+        self.assertAllEqual(self.evaluate(zg), [0, 0, 1, 1])
+
+    # Only test the following with `clip_ops.clip_by_value`, as
+    # `gen_math_ops._clip_by_value` requires the min and max values to be
+    # scalar or the same shape as the input.
+
+    # Input: [Matrix, Vector, Matrix]
+    xg, yg, zg = grad([[-2, 3], [2, -1]], [-1, -2], [[1, 2], [3, 4]],
+                      clip_fn=clip_ops.clip_by_value)
+    self.assertAllEqual(self.evaluate(xg), [[0, 0], [1, 1]])
+    self.assertAllEqual(self.evaluate(yg), [1, 0])
+    self.assertAllEqual(self.evaluate(zg), [[0, 1], [0, 0]])
 
   def testClipByValueBadShape(self):
     with self.session():

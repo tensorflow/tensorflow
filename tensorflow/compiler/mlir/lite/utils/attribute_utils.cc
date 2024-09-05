@@ -13,31 +13,34 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace mlir {
 namespace TFL {
 
 FloatAttr ExtractSingleElementAsFloat(ElementsAttr attr) {
-  if (attr.getType().getNumElements() != 1 ||
-      !attr.getType().getElementType().isa<FloatType>()) {
+  if (attr.getShapedType().getNumElements() != 1 ||
+      !mlir::isa<FloatType>(attr.getShapedType().getElementType())) {
     return {};
   }
   return attr.getSplatValue<FloatAttr>();
 }
 
 FloatAttr GetSingleElementAsFloatOrSelf(Attribute attr) {
-  if (auto m = attr.dyn_cast_or_null<ElementsAttr>()) {
+  if (auto m = mlir::dyn_cast_or_null<ElementsAttr>(attr)) {
     return ExtractSingleElementAsFloat(m);
   } else {
-    return attr.dyn_cast_or_null<FloatAttr>();
+    return mlir::dyn_cast_or_null<FloatAttr>(attr);
   }
 }
 
 IntegerAttr ExtractSingleElementAsInteger(ElementsAttr attr) {
-  if (attr.getType().getNumElements() != 1 ||
-      !attr.getType().getElementType().isSignlessInteger()) {
+  if (attr.getShapedType().getNumElements() != 1 ||
+      !attr.getShapedType().getElementType().isSignlessInteger()) {
     return {};
   }
   return attr.getSplatValue<IntegerAttr>();

@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
 
 namespace tensorflow {
@@ -66,12 +67,12 @@ std::string DTensorLocationToString(mlir::Location loc) {
 
   while (!queue.empty()) {
     mlir::Location& front = queue.front();
-    if (auto name_loc = front.dyn_cast<mlir::NameLoc>()) {
+    if (auto name_loc = mlir::dyn_cast<mlir::NameLoc>(front)) {
       queue.push(name_loc.getChildLoc());
-    } else if (auto callsite_loc = front.dyn_cast<mlir::CallSiteLoc>()) {
+    } else if (auto callsite_loc = mlir::dyn_cast<mlir::CallSiteLoc>(front)) {
       queue.push(callsite_loc.getCallee());
       queue.push(callsite_loc.getCaller());
-    } else if (auto line_loc = front.dyn_cast<mlir::FileLineColLoc>()) {
+    } else if (auto line_loc = mlir::dyn_cast<mlir::FileLineColLoc>(front)) {
       stack.push_back(CreateLocalLocationString(line_loc));
     }
     queue.pop();

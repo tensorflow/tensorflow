@@ -1,12 +1,13 @@
-# DTensor C++ runtime and libraries.
+#include "third_party/absl/strings/str_cat.h"
+#DTensor C++ runtime and libraries.
 
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow:tensorflow.bzl", "if_google", "if_libtpu")
+load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_dtensor_tpu_dependencies",
 )
-load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
-load("//tensorflow:tensorflow.bzl", "if_google", "if_libtpu")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 default_visibility = [
     "//tensorflow/dtensor:dtensor-internal",
@@ -42,6 +43,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla/tsl/util:env_var",
     ],
 )
 
@@ -103,34 +105,54 @@ cc_library(
 )
 
 cc_library(
+    name = "dtensor_operation",
+    hdrs = ["dtensor_operation.h"],
+    deps = [
+        ":tensor_layout",
+        "//tensorflow/c/eager:c_api",
+    ],
+)
+
+cc_library(
     name = "dtensor_device_util",
     srcs = ["dtensor_device_util.cc"],
     hdrs = ["dtensor_device_util.h"],
     deps = [
         ":constants",
         ":dstatus",
+        ":dtensor_operation",
+        ":dtensor_utils",
         ":small_constant_optimization",
         ":tensor_layout",
         ":tensor_with_layout",
+        "//tensorflow/c:safe_ptr",
+        "//tensorflow/c:tf_datatype",
         "//tensorflow/c:tf_status_headers",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c:tf_tensor",
+        "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/eager:c_api_internal",
         "//tensorflow/c/eager:tfe_context_internal",
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/c/eager/parallel_device:parallel_device_lib",
-        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/eager:context",
-        "//tensorflow/tsl/platform:refcount",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:refcount",
+        "@local_tsl//tsl/platform:status",
+        "@local_xla//xla:status_macros",
     ],
 )
 
@@ -182,6 +204,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -209,11 +232,6 @@ tf_kernel_library(
         ":tpu_system_interface",
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/c:tf_status_helper",
-        "//tensorflow/compiler/xla/stream_executor/tpu:c_api_decl",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_base",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_topology_external",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/tpu:tpu_configuration",
@@ -227,6 +245,12 @@ tf_kernel_library(
         "//tensorflow/core/tpu/kernels:tpu_pod_state",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/time",
+        "@local_xla//xla/stream_executor/tpu:c_api_decl",
+        "@local_xla//xla/stream_executor/tpu:status_helper",
+        "@local_xla//xla/stream_executor/tpu:tpu_api",
+        "@local_xla//xla/stream_executor/tpu:tpu_executor_base",
+        "@local_xla//xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
+        "@local_xla//xla/stream_executor/tpu:tpu_topology_external",
     ],
     alwayslink = 1,
 )
@@ -245,7 +269,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
-        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -254,12 +277,14 @@ cc_library(
         "//tensorflow/dtensor/mlir:dtensor_mlir_passes",
         "//tensorflow/dtensor/mlir:tf_dtensor_dialect",
         "//tensorflow/dtensor/mlir/dtensor_dialect:Dialect",
-        "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@llvm-project//mlir:FuncDialect",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:AllExtensions",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:status",
+        "@local_xla//xla:status_macros",
     ],
 )
 
@@ -280,7 +305,7 @@ cc_library(
     deps = [
         ":parallel_executor_interface",
         "//tensorflow/core/platform:logging",
-        "//tensorflow/tsl/platform:statusor",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -288,10 +313,12 @@ cc_library(
     name = "parallel_executor_interface",
     hdrs = ["parallel_executor.h"],
     deps = [
-        ":dtensor_device_util",
-        "//tensorflow/compiler/xla/pjrt:pjrt_future",
-        "//tensorflow/tsl/platform:statusor",
+        ":tensor_layout",
+        ":tensor_with_layout",
+        "//tensorflow/c/eager:c_api_internal",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@local_xla//xla/pjrt:pjrt_future",
     ],
 )
 
@@ -302,23 +329,18 @@ cc_library(
     deps = [
         ":constants",
         ":default_parallel_executor_lib",
-        ":parallel_executor_interface",
         ":dstatus",
         ":dtensor_device_util",
         ":dtensor_graph_to_mlir_pass",
         ":dtensor_meta_ops",
+        ":dtensor_operation",
         ":dtensor_ops",
         ":dtensor_tpu_ops",
+        ":dtensor_utils",
+        ":parallel_executor_interface",
         ":small_constant_optimization",
         ":tensor_layout",
         ":tpu_system_interface",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_experimental",
         "//tensorflow/c:tf_status_helper",
@@ -326,26 +348,37 @@ cc_library(
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/eager:tfe_context_internal",
+        "//tensorflow/c/eager:tfe_op_attrs_internal",
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/c/eager/parallel_device:parallel_device_lib",
-        "//tensorflow/compiler/mlir/tensorflow:export_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
-        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/mlir/tf2xla/api/v2:tf_executor_to_graph",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:device_set",
         "//tensorflow/core/common_runtime/eager:context",
+        "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/dtensor/mlir:layout_parsing",
+        "//tensorflow/dtensor/mlir:op_utils",
+        "//tensorflow/dtensor/mlir:spmd_expander",
         "//tensorflow/dtensor/proto:layout_proto_cc",
-        "//tensorflow/compiler/xla/stream_executor/tpu:c_api_decl",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_platform_interface",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_topology_external",
-        "//tensorflow/tsl/platform:status",
-        "//tensorflow/tsl/util:env_var",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:status",
+        "@local_xla//xla:status_macros",
+        "@local_xla//xla/stream_executor/tpu:c_api_decl",
+        "@local_xla//xla/stream_executor/tpu:tpu_platform_interface",
+        "@local_xla//xla/stream_executor/tpu:tpu_topology_external",
+        "@local_xla//xla/tsl/util:env_var",
     ] + tf_dtensor_tpu_dependencies(),
 )
 
@@ -354,12 +387,15 @@ cc_library(
     srcs = ["xla_spmd/layout_to_xla_sharding.cc"],
     hdrs = ["xla_spmd/layout_to_xla_sharding.h"],
     deps = [
-        ":constants",
         ":dstatus",
         ":tensor_layout",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/core/platform:errors",
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+        "@local_xla//xla:status_macros",
+        "@local_xla//xla:xla_data_proto_cc",
     ],
 )
 
@@ -369,5 +405,16 @@ cc_library(
     deps = [
         ":tensor_layout",
         "//tensorflow/c:conversion_macros",
+    ],
+)
+
+cc_library(
+    name = "slice_util",
+    srcs = ["slice_util.cc"],
+    hdrs = ["slice_util.h"],
+    deps = [
+        ":tensor_layout",
+        "//tensorflow/core:lib",
+        "@llvm-project//mlir:IR",
     ],
 )

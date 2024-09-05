@@ -1,14 +1,14 @@
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load(
+    "@local_xla//xla/tsl/mkl:build_defs.bzl",
+    "if_mkl",
+)
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
     "tf_cc_tests",
 )
-load(
-    "//third_party/mkl:build_defs.bzl",
-    "if_mkl",
-)
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -65,6 +65,7 @@ filegroup(
         "algorithm.h",
         "default_device.h",
         "graph.h",
+        "graph_debug_info_builder.h",
         "graph_def_builder.h",
         "graph_node_util.h",
         "node_builder.h",
@@ -78,6 +79,7 @@ filegroup(
     srcs = [
         "edgeset.h",
         "graph.h",
+        "graph_debug_info_builder.h",
         "graph_def_builder.h",
         "graph_node_util.h",
         "node_builder.h",
@@ -91,6 +93,7 @@ filegroup(
     srcs = [
         "edgeset.cc",
         "graph.cc",
+        "graph_debug_info_builder.cc",
         "graph_def_builder.cc",
         "graph_node_util.cc",
         "node_builder.cc",
@@ -115,6 +118,7 @@ filegroup(
         "default_device.h",
         "edgeset.h",
         "graph.h",
+        "graph_debug_info_builder.h",
         "graph_def_builder.h",
         "graph_node_util.h",
         "graph_partition.h",
@@ -185,6 +189,8 @@ filegroup(
         "edgeset.h",
         "graph.cc",
         "graph.h",
+        "graph_debug_info_builder.cc",
+        "graph_debug_info_builder.h",
         "graph_def_builder.cc",
         "graph_def_builder.h",
         "graph_node_util.cc",
@@ -221,6 +227,7 @@ exports_files(
         "control_flow_test.cc",
         "costmodel_test.cc",
         "edgeset_test.cc",
+        "graph_debug_info_builder_test.cc",
         "graph_def_builder_test.cc",
         "graph_partition_test.cc",
         "graph_test.cc",
@@ -241,6 +248,7 @@ tf_cc_tests(
         "control_flow_test.cc",
         "costmodel_test.cc",
         "edgeset_test.cc",
+        "graph_debug_info_builder_test.cc",
         "graph_def_builder_test.cc",
         "graph_partition_test.cc",
         "graph_test.cc",
@@ -279,9 +287,10 @@ tf_cc_tests(
         "//tensorflow/core/platform:regexp",
         "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/util:protos_test_cc",
-        "//third_party/eigen3",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@eigen_archive//:eigen3",
     ],
 )

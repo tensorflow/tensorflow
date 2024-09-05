@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_client.h"
 
+#include <cstdint>
 #include <string>
 
 #include "grpcpp/generic/generic_stub.h"
+#include "xla/tsl/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_service.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_client_cq_tag.h"
@@ -148,6 +150,33 @@ class GrpcEagerClient : public EagerClient {
 
 #undef CLIENT_METHOD
 
+#define CLIENT_METHOD_WITH_TIMEOUT_AND_RETRIES(method)                       \
+  void method##Async(const method##Request* request,                         \
+                     method##Response* response, StatusCallback done,        \
+                     int64_t init_timeout_in_ms, int retries) override {     \
+    CallOptions* call_ops = nullptr;                                         \
+    StatusCallback done_wrapped;                                             \
+    if (init_timeout_in_ms > 0) {                                            \
+      call_ops = new CallOptions;                                            \
+      call_ops->SetTimeout(init_timeout_in_ms);                              \
+      auto new_done = [call_ops, done = std::move(done)](const Status& s) {  \
+        done(s);                                                             \
+        delete call_ops;                                                     \
+      };                                                                     \
+      done_wrapped = callback_wrapper(new_done);                             \
+    } else {                                                                 \
+      done_wrapped = callback_wrapper(std::move(done));                      \
+    }                                                                        \
+    new RPCState<protobuf::Message>(                                         \
+        &stub_, cq_, "/tensorflow.eager.EagerService/" #method, *request,    \
+        response, std::move(done_wrapped), call_ops, /*threadpool=*/nullptr, \
+        /*max_retries=*/retries, /*fail_fast=*/true, &target_);              \
+  }
+
+  CLIENT_METHOD_WITH_TIMEOUT_AND_RETRIES(CreateContext);
+
+#undef CLIENT_METHOD_WITH_TIMEOUT_AND_RETRIES
+
 #define CLIENT_CANCELABLE_METHOD(method)                                      \
   void method##Async(CallOptions* call_opts, const method##Request* request,  \
                      method##Response* response, StatusCallback done)         \
@@ -253,10 +282,10 @@ class GrpcEagerClient : public EagerClient {
           metrics::UpdateEagerClientErrorCounter(
               error_source_proto.ErrorSource_Name(
                   error_source_proto.error_source()),
-              error_name(status.code()));
+              absl::StatusCodeToString(status.code()));
         } else {
-          metrics::UpdateEagerClientErrorCounter("unknown",
-                                                 error_name(status.code()));
+          metrics::UpdateEagerClientErrorCounter(
+              "unknown", absl::StatusCodeToString(status.code()));
         }
       }
     };
@@ -295,7 +324,7 @@ class GrpcEagerClientCache : public EagerClientCache {
 
     it->second->Ref();
     client->reset(it->second.get());
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

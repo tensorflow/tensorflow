@@ -45,7 +45,7 @@ NodeDefBuilder::NodeDefBuilder(StringPiece name, StringPiece op_name,
   if (status.ok()) {
     Initialize();
   } else {
-    errors_.push_back(status.error_message());
+    errors_.push_back(std::string(status.message()));
     inputs_specified_ = 0;
   }
   if (debug != nullptr) MergeDebugInfo(*debug, &node_def_);
@@ -88,7 +88,7 @@ bool NodeDefBuilder::NextArgAvailable() {
 NodeDefBuilder& NodeDefBuilder::Input(FakeInputFunctor fake_input) {
   if (NextArgAvailable()) {
     Status status = fake_input(*op_def_, inputs_specified_, node_def_, this);
-    if (!status.ok()) errors_.push_back(status.error_message());
+    if (!status.ok()) errors_.push_back(std::string(status.message()));
   }
   return *this;
 }
@@ -106,7 +106,7 @@ NodeDefBuilder& NodeDefBuilder::Input(const NodeOut& src) {
 }
 
 // For inputs that take a list of tensors.
-NodeDefBuilder& NodeDefBuilder::Input(gtl::ArraySlice<NodeOut> src_list) {
+NodeDefBuilder& NodeDefBuilder::Input(absl::Span<const NodeOut> src_list) {
   const OpDef::ArgDef* arg = NextArgDef();
   if (arg != nullptr) ListInput(arg, src_list);
   return *this;
@@ -134,7 +134,7 @@ void NodeDefBuilder::SingleInput(const OpDef::ArgDef* input_arg,
 }
 
 void NodeDefBuilder::ListInput(const OpDef::ArgDef* input_arg,
-                               gtl::ArraySlice<NodeOut> src_list) {
+                               absl::Span<const NodeOut> src_list) {
   for (const auto& node_out : src_list) {
     AddInput(node_out.node, node_out.index);
   }
@@ -262,7 +262,7 @@ Status NodeDefBuilder::Finalize(NodeDef* node_def, bool consume) {
     // Add default values for unspecified attrs.
     AddDefaultsToNodeDef(*op_def_, node_def);
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 }
 
@@ -311,21 +311,21 @@ ATTR(const PartialTensorShape&)
 ATTR(const Tensor&)
 ATTR(const TensorProto&)
 ATTR(const NameAttrList&)
-ATTR(gtl::ArraySlice<StringPiece>)
-ATTR(gtl::ArraySlice<const char*>)
-ATTR(gtl::ArraySlice<string>)
-ATTR(gtl::ArraySlice<tstring>)
-ATTR(gtl::ArraySlice<int32>)
-ATTR(gtl::ArraySlice<int64_t>)
-ATTR(gtl::ArraySlice<float>)
-ATTR(gtl::ArraySlice<bool>)
+ATTR(absl::Span<const StringPiece>)
+ATTR(absl::Span<const char* const>)
+ATTR(absl::Span<const string>)
+ATTR(absl::Span<const tstring>)
+ATTR(absl::Span<const int32>)
+ATTR(absl::Span<const int64_t>)
+ATTR(absl::Span<const float>)
+ATTR(absl::Span<const bool>)
 ATTR(const std::vector<bool>&)
-ATTR(gtl::ArraySlice<DataType>)
-ATTR(gtl::ArraySlice<TensorShape>)
-ATTR(gtl::ArraySlice<PartialTensorShape>)
-ATTR(gtl::ArraySlice<TensorShapeProto>)
-ATTR(gtl::ArraySlice<Tensor>)
-ATTR(gtl::ArraySlice<NameAttrList>)
+ATTR(absl::Span<const DataType>)
+ATTR(absl::Span<const TensorShape>)
+ATTR(absl::Span<const PartialTensorShape>)
+ATTR(absl::Span<const TensorShapeProto>)
+ATTR(absl::Span<const Tensor>)
+ATTR(absl::Span<const NameAttrList>)
 #undef ATTR
 
 }  // namespace tensorflow

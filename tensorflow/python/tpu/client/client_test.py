@@ -110,6 +110,19 @@ class CloudTpuClientTest(test.TestCase):
     self.assertEqual('https://{api}.internal/{apiVersion}',
                      (client._environment_discovery_url()))
 
+  def testEnvironmentGCEDefault(self):
+    self.assertEqual(
+        'http://metadata.google.internal', client._gce_metadata_endpoint()
+    )
+
+  @mock.patch.dict(os.environ, {'GCE_METADATA_IP': '1.2.3.4'})
+  def testEnvironmentGCEIPOverride(self):
+    self.assertEqual('http://1.2.3.4', client._gce_metadata_endpoint())
+
+  @mock.patch.dict(os.environ, {'GCE_METADATA_HOST': 'foo.bar'})
+  def testEnvironmentGCEHostOverride(self):
+    self.assertEqual('http://foo.bar', client._gce_metadata_endpoint())
+
   def testEnvironmentVarToNetworkEndpointsSingleIp(self):
     self.assertEqual(
         [{'ipAddress': '1.2.3.4', 'port': '1234'}],

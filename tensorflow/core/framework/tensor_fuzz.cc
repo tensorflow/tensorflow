@@ -12,16 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <utility>
-
 #include "fuzztest/fuzztest.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/security/fuzzing/cc/core/framework/datatype_domains.h"
 #include "tensorflow/security/fuzzing/cc/core/framework/tensor_domains.h"
 #include "tensorflow/security/fuzzing/cc/core/framework/tensor_shape_domains.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace tensorflow::fuzzing {
 namespace {
@@ -41,10 +39,11 @@ void DebugStringCheck(const Tensor& tensor) {
   string out = tensor.DeviceSafeDebugString();
 }
 FUZZ_TEST(TensorFuzz, DebugStringCheck)
-    .WithDomains(AnyValidTensor(AnyValidTensorShape(/*max_rank=*/3,
-                                                    /*dim_lower_bound=*/0,
-                                                    /*dim_upper_bound=*/10),
-                                AnyValidDataType()));
+    .WithDomains(
+        AnyValidNumericTensor(AnyValidTensorShape(/*max_rank=*/3,
+                                                  /*dim_lower_bound=*/0,
+                                                  /*dim_upper_bound=*/10),
+                              AnyValidDataType()));
 
 }  // namespace
 }  // namespace tensorflow::fuzzing

@@ -15,7 +15,7 @@ package(
 #     name = "bfloat16",
 #     hdrs = ["bfloat16.h"],
 #     deps = [
-#         "//third_party/eigen3",
+#         "@eigen_archive//:eigen3",
 #         "//tensorflow/core/platform:byte_order",
 #     ],
 # )

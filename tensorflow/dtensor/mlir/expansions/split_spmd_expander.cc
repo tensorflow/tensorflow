@@ -17,14 +17,18 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <string>
+#include <vector>
 
-#include "absl/types/optional.h"
+#include "llvm/ADT/DenseMap.h"
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
+#include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/shape_utils.h"
-#include "tensorflow/dtensor/mlir/spmd_expander_common.h"
 #include "tensorflow/dtensor/mlir/value_utils.h"
 #include "tensorflow/dtensor/proto/layout.pb.h"
 
@@ -40,25 +44,22 @@ StatusOr<Layout> MergeLayoutsForSplitOutput(
     int64_t split_dim, const llvm::DenseMap<int, Layout>& layouts) {
   assert(!layouts.empty());
   const Layout& first_layout = layouts.begin()->getSecond();
-  std::vector<ShardingSpec> sharding_specs(
-      first_layout.sharding_specs().begin(),
-      first_layout.sharding_specs().end());
+  std::vector<std::string> sharding_specs = first_layout.sharding_spec_strs();
 
   // Merge remaining layouts. If there is a conflicting sharding, then set the
   // dim to replicated.
   for (auto it = layouts.begin(); it != layouts.end(); ++it) {
     const Layout& output_layout = it->getSecond();
     for (int dim = 0; dim < output_layout.rank(); ++dim) {
-      if (Layout::IsShardedDimension(output_layout.dim(dim).sharding_spec()) &&
-          Layout::IsShardedDimension(sharding_specs[dim].sharding_spec()) &&
-          output_layout.dim(dim).sharding_spec() !=
-              sharding_specs[dim].sharding_spec()) {
-        sharding_specs[dim].set_sharding_spec(Layout::kUnshardedDim);
+      if (Layout::IsShardedDimension(output_layout.sharding_spec(dim)) &&
+          Layout::IsShardedDimension(sharding_specs[dim]) &&
+          output_layout.sharding_spec(dim) != sharding_specs[dim]) {
+        sharding_specs[dim] = Layout::kUnshardedDim;
       }
     }
   }
   // Force the split_dim to be unsharded.
-  sharding_specs[split_dim].set_sharding_spec(Layout::kUnshardedDim);
+  sharding_specs[split_dim] = Layout::kUnshardedDim;
   return Layout::GetLayout(sharding_specs, first_layout.mesh());
 }
 
@@ -89,7 +90,7 @@ StatusOr<mlir::Operation*> SplitSPMDExpander::ExpandOp(mlir::Operation* op) {
       const int64_t split_dim,
       GetAdjustedSplitDim(split_op.getSplitDim(), split_op.getValue()));
 
-  if (Layout::IsShardedDimension(input_layout.dim(split_dim).sharding_spec())) {
+  if (Layout::IsShardedDimension(input_layout.sharding_spec(split_dim))) {
     return errors::InvalidArgument(
         "Spliting over sharded dimension is not supported.");
   }
@@ -142,7 +143,7 @@ StatusOr<mlir::Operation*> SplitVSPMDExpander::ExpandOp(mlir::Operation* op) {
       const int64_t split_dim,
       GetAdjustedSplitDim(split_v_op.getSplitDim(), split_v_op.getValue()));
 
-  if (Layout::IsShardedDimension(input_layout.dim(split_dim).sharding_spec())) {
+  if (Layout::IsShardedDimension(input_layout.sharding_spec(split_dim))) {
     return errors::InvalidArgument(
         "Spliting over sharded dimension is not supported.");
   }

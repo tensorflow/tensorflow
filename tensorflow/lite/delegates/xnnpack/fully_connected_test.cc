@@ -19,6 +19,7 @@ limitations under the License.
 #include <random>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/delegates/xnnpack/fully_connected_tester.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 
@@ -298,7 +299,7 @@ TEST(FullyConnected, FP16WeightsNoBias) {
       .Test(xnnpack_delegate.get());
 }
 
-TEST(FullyConnected, INT8Weights) {
+TEST(FullyConnected, DynamicWeights) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -317,11 +318,11 @@ TEST(FullyConnected, INT8Weights) {
       .InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
-      .INT8Weights()
+      .DynamicWeights()
       .Test(xnnpack_delegate.get());
 }
 
-TEST(FullyConnected, INT8WeightsNoBias) {
+TEST(FullyConnected, DynamicWeightsNoBias) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -340,12 +341,12 @@ TEST(FullyConnected, INT8WeightsNoBias) {
       .InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
-      .INT8Weights()
+      .DynamicWeights()
       .NoBias()
       .Test(xnnpack_delegate.get());
 }
 
-TEST(FullyConnected, INT8ChannelWiseWeights) {
+TEST(FullyConnected, DynamicBias) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -364,11 +365,11 @@ TEST(FullyConnected, INT8ChannelWiseWeights) {
       .InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
-      .INT8ChannelWiseWeights()
+      .DynamicBias()
       .Test(xnnpack_delegate.get());
 }
 
-TEST(FullyConnected, INT8ChannelWiseWeightsNoBias) {
+TEST(FullyConnected, DynamicWeightsAndBias) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
@@ -387,7 +388,101 @@ TEST(FullyConnected, INT8ChannelWiseWeightsNoBias) {
       .InputShape({batch, input_channels})
       .InputChannels(input_channels)
       .OutputChannels(output_channels)
-      .INT8ChannelWiseWeights()
+      .DynamicWeights()
+      .DynamicBias()
+      .Test(xnnpack_delegate.get());
+}
+
+TEST(FullyConnected, TensorWiseQuantizedInt8Weights) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto batch_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  auto channels_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 9), std::ref(rng));
+  const auto batch = batch_rng();
+  const auto input_channels = channels_rng();
+  const auto output_channels = channels_rng();
+
+  FullyConnectedTester()
+      .InputShape({batch, input_channels})
+      .InputChannels(input_channels)
+      .OutputChannels(output_channels)
+      .TensorWiseQuantizedInt8Weights()
+      .Test(xnnpack_delegate.get());
+}
+
+TEST(FullyConnected, TensorWiseQuantizedInt8WeightsNoBias) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto batch_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  auto channels_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 9), std::ref(rng));
+  const auto batch = batch_rng();
+  const auto input_channels = channels_rng();
+  const auto output_channels = channels_rng();
+
+  FullyConnectedTester()
+      .InputShape({batch, input_channels})
+      .InputChannels(input_channels)
+      .OutputChannels(output_channels)
+      .TensorWiseQuantizedInt8Weights()
+      .NoBias()
+      .Test(xnnpack_delegate.get());
+}
+
+TEST(FullyConnected, ChannelWiseQuantizedInt8Weights) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto batch_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  auto channels_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 9), std::ref(rng));
+  const auto batch = batch_rng();
+  const auto input_channels = channels_rng();
+  const auto output_channels = channels_rng();
+
+  FullyConnectedTester()
+      .InputShape({batch, input_channels})
+      .InputChannels(input_channels)
+      .OutputChannels(output_channels)
+      .ChannelWiseQuantizedInt8Weights()
+      .Test(xnnpack_delegate.get());
+}
+
+TEST(FullyConnected, ChannelWiseQuantizedInt8WeightsNoBias) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto batch_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  auto channels_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 9), std::ref(rng));
+  const auto batch = batch_rng();
+  const auto input_channels = channels_rng();
+  const auto output_channels = channels_rng();
+
+  FullyConnectedTester()
+      .InputShape({batch, input_channels})
+      .InputChannels(input_channels)
+      .OutputChannels(output_channels)
+      .ChannelWiseQuantizedInt8Weights()
       .NoBias()
       .Test(xnnpack_delegate.get());
 }

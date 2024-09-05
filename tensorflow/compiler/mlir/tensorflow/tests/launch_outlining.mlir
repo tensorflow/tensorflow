@@ -10,7 +10,7 @@ func.func @single_launch(%arg0: tensor<?xi32>) -> tensor<?xi32> {
       // CHECK: %[[A_OUTPUT:[0-9]*]] = "tf.A"(%[[ARG_0]])
       %2 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
 
-      // CHECK: %[[LAUNCH_OUTPUT:[0-9]*]] = "tf_device.launch_func"(%[[A_OUTPUT]]) {device = "/device:test_device:0", func = @[[LAUNCH:.*]]}
+      // CHECK: %[[LAUNCH_OUTPUT:[0-9]*]] = "tf_device.launch_func"(%[[A_OUTPUT]]) <{device = "/device:test_device:0", func = @[[LAUNCH:.*]]}>
       %3 = "tf_device.launch"() ({
         %4 = "tf.B"(%2) : (tensor<?xi32>) -> tensor<?xi32>
         tf_device.return %4 : tensor<?xi32>
@@ -42,7 +42,7 @@ func.func @multiple_launches(%arg0: tensor<?xi32>) -> tensor<?xi32> {
       // CHECK: %[[A_OUTPUT:[0-9]*]] = "tf.A"(%[[ARG_0]])
       %2 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
 
-      // CHECK: %[[LAUNCH_0_OUTPUT:[0-9]*]] = "tf_device.launch_func"(%[[A_OUTPUT]]) {device = "/device:test_device:0", func = @[[LAUNCH_0:.*]]}
+      // CHECK: %[[LAUNCH_0_OUTPUT:[0-9]*]] = "tf_device.launch_func"(%[[A_OUTPUT]]) <{device = "/device:test_device:0", func = @[[LAUNCH_0:.*]]}>
       %3 = "tf_device.launch"() ({
         %6 = "tf.B"(%2) : (tensor<?xi32>) -> tensor<?xi32>
         tf_device.return %6 : tensor<?xi32>
@@ -51,7 +51,7 @@ func.func @multiple_launches(%arg0: tensor<?xi32>) -> tensor<?xi32> {
       // CHECK: %[[D_OUTPUT:[0-9]*]] = "tf.D"(%[[LAUNCH_0_OUTPUT]])
       %4 = "tf.D"(%3) : (tensor<?xi32>) -> tensor<?xi32>
 
-      // CHECK: %[[LAUNCH_1_OUTPUT:[0-9]*]] = "tf_device.launch_func"(%[[LAUNCH_0_OUTPUT]], %[[D_OUTPUT]]) {device = "/device:test_device:0", func = @[[LAUNCH_1:.*]]}
+      // CHECK: %[[LAUNCH_1_OUTPUT:[0-9]*]] = "tf_device.launch_func"(%[[LAUNCH_0_OUTPUT]], %[[D_OUTPUT]]) <{device = "/device:test_device:0", func = @[[LAUNCH_1:.*]]}>
       %5 = "tf_device.launch"() ({
         %6 = "tf.E"(%3) : (tensor<?xi32>) -> tensor<?xi32>
         %7 = "tf.F"(%4, %6) : (tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
@@ -86,7 +86,7 @@ func.func @multiple_launches(%arg0: tensor<?xi32>) -> tensor<?xi32> {
 func.func @launch_operands(%arg0: tensor<?xi32>) -> tensor<?xi32> {
   %0 = tf_executor.graph {
     %1:2 = tf_executor.island wraps
-      // CHECK: %[[LAUNCH_OUTPUT:[a-z0-9]*]], %{{.*}} = {{.*}} "tf_device.launch_func"() {device = "/device:test_device:0", func = @[[LAUNCH:.*]]}
+      // CHECK: %[[LAUNCH_OUTPUT:[a-z0-9]*]], %{{.*}} = {{.*}} "tf_device.launch_func"() <{device = "/device:test_device:0", func = @[[LAUNCH:.*]]}>
       "tf_device.launch"() ({
         %3 = "tf.A"() : () -> tensor<?xi32>
         tf_device.return %3 : tensor<?xi32>

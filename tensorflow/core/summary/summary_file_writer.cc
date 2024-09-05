@@ -63,7 +63,7 @@ class SummaryFileWriter : public SummaryWriterInterface {
         "Could not initialize events writer.");
     last_flush_ = env_->NowMicros();
     is_initialized_ = true;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Flush() override {
@@ -157,7 +157,7 @@ class SummaryFileWriter : public SummaryWriterInterface {
         env_->NowMicros() - last_flush_ > 1000 * flush_millis_) {
       return InternalFlush();
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   string DebugString() const override { return "SummaryFileWriter"; }
@@ -175,7 +175,7 @@ class SummaryFileWriter : public SummaryWriterInterface {
     TF_RETURN_WITH_CONTEXT_IF_ERROR(events_writer_->Flush(),
                                     "Could not flush events file.");
     last_flush_ = env_->NowMicros();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   bool is_initialized_;
@@ -205,7 +205,7 @@ Status CreateSummaryFileWriter(int max_queue, int flush_millis,
     return s;
   }
   *result = w;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

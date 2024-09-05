@@ -76,6 +76,10 @@ TEST(PythonOpGenAnnotatorTest, AddAnnotationWithSourceOffsets) {
 
   EXPECT_EQ(actual.meta(0).type(), MappingRule::ANCHOR_ANCHOR);
   EXPECT_EQ(actual.meta(0).edge(), "/kythe/edge/imputes");
+  EXPECT_EQ(
+      actual.meta(0).source_vname().signature(),
+      absl::StrFormat("@7:11@tensorflow_op#fake_op#%s#file/path/to/fake_op.cc",
+                      kKytheCorpus));
   EXPECT_EQ(actual.meta(0).source_vname().path(), "file/path/to/fake_op.cc");
   EXPECT_EQ(actual.meta(0).source_begin(), 7);
   EXPECT_EQ(actual.meta(0).source_end(), 11);
@@ -110,7 +114,7 @@ TEST(PythonOpGenAnnotatorTest, AddAnnotationWithSourceOffsetsAndNonZeroBase) {
   EXPECT_EQ(actual.meta(0).edge(), "/kythe/edge/imputes");
   EXPECT_EQ(
       actual.meta(0).source_vname().signature(),
-      absl::StrFormat("@7:11@tensorflow/op#fake_op#%s#file/path/to/fake_op.cc",
+      absl::StrFormat("@7:11@tensorflow_op#fake_op#%s#file/path/to/fake_op.cc",
                       kKytheCorpus));
   EXPECT_EQ(actual.meta(0).source_vname().path(), "file/path/to/fake_op.cc");
   EXPECT_EQ(actual.meta(0).source_begin(), 7);

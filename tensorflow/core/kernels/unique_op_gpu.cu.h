@@ -20,7 +20,7 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -32,7 +32,7 @@ limitations under the License.
 #include "tensorflow/core/util/gpu_solvers.h"  // For ScratchSpace
 
 #if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
+#include "xla/stream_executor/cuda/cuda_activation.h"
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
 #endif
@@ -312,17 +312,15 @@ class UniqueOpGPU : public AsyncOpKernel {
     // Copy the last element of sorted_input_unique_ids back to the host to
     // obtain uniq_size.
     ScratchSpace<TIndex> last_idx_host(context, 1, /*on_host=*/true);
-    OP_REQUIRES_ASYNC(
+    OP_REQUIRES_OK_ASYNC(
         context,
-        stream
-            ->ThenMemcpy(last_idx_host.mutable_data(),
-                         se::DeviceMemoryBase(
-                             const_cast<TIndex*>(sorted_input_unique_ids_ptr) +
-                                 (input_size - 1),
-                             sizeof(*last_idx_host.data())),
-                         sizeof(*last_idx_host.data()))
-            .ok(),
-        errors::Internal("Failed to copy last_idx to host"), done);
+        stream->Memcpy(last_idx_host.mutable_data(),
+                       se::DeviceMemoryBase(
+                           const_cast<TIndex*>(sorted_input_unique_ids_ptr) +
+                               (input_size - 1),
+                           sizeof(*last_idx_host.data())),
+                       sizeof(*last_idx_host.data())),
+        done);
 
     auto async_finish_computation = [this, context, input_size, input_ptr,
                                      sorted_input_inds, sorted_input_inds_ptr,

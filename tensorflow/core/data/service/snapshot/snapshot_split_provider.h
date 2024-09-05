@@ -19,16 +19,18 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/container/btree_map.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/tsl/platform/mutex.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/thread_annotations.h"
+#include "tsl/platform/mutex.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace data {
@@ -42,12 +44,12 @@ class SnapshotSplitProvider : public SplitProvider {
                         std::unique_ptr<DataServiceDispatcherClient> dispatcher,
                         Env* env);
 
-  Status GetNext(Tensor* split, bool* end_of_splits) override;
-  Status Reset() override;
-  Status Save(std::function<std::string(std::string)> full_name,
-              IteratorStateWriter* writer) override;
-  Status Restore(std::function<std::string(std::string)> full_name,
-                 IteratorStateReader* reader) override;
+  absl::Status GetNext(Tensor* split, bool* end_of_splits) override;
+  absl::Status Reset() override;
+  absl::Status Save(std::function<std::string(std::string)> full_name,
+                    IteratorStateWriter* writer) override;
+  absl::Status Restore(std::function<std::string(std::string)> full_name,
+                       IteratorStateReader* reader) override;
 
  private:
   const std::string worker_address_;
@@ -57,30 +59,31 @@ class SnapshotSplitProvider : public SplitProvider {
   Env* const env_;
 
   // Gets the next split from file or dispatcher and validates it.
-  Status GetAndValidateSplit(Tensor* split, bool* end_of_splits);
+  absl::Status GetAndValidateSplit(Tensor* split, bool* end_of_splits);
 
   // Gets the next split by reading from the splits directory.
-  Status GetSplitFromFile(const std::string& split_file, Tensor* split,
-                          bool* end_of_splits);
+  absl::Status GetSplitFromFile(const std::string& split_file, Tensor* split,
+                                bool* end_of_splits);
 
   // Gets the next split by sending an RPC to the dispatcher. Returns the local
   // split index from the dispatcher.
-  StatusOr<int64_t> GetSplitFromDispatcher(Tensor* split, bool* end_of_splits);
+  absl::StatusOr<int64_t> GetSplitFromDispatcher(Tensor* split,
+                                                 bool* end_of_splits);
 
   // Reads from the split directory and returns a map of split index to absolute
   // file path of the split, starting at `start_index`.
-  StatusOr<absl::btree_map<int64_t, std::string>> GetSplitsFiles(
+  absl::StatusOr<absl::btree_map<int64_t, std::string>> GetSplitsFiles(
       int64_t start_index) const;
 
   // Verifies `split_files` contains consecutive splits starting at
   // `start_index`.
-  Status ValidateSplitFiles(
+  absl::Status ValidateSplitFiles(
       const absl::btree_map<int64_t, std::string>& split_files,
       int64_t start_index) const;
 
   // Verifies `split_files` contains consecutive splits starting at
   // `start_index` and ending at `end_index`.
-  Status ValidateSplitFiles(
+  absl::Status ValidateSplitFiles(
       const absl::btree_map<int64_t, std::string>& split_files,
       int64_t start_index, int64_t end_index, bool end_of_splits) const;
 
@@ -89,6 +92,9 @@ class SnapshotSplitProvider : public SplitProvider {
 
   // The next split to read.
   int64_t next_split_index_ TF_GUARDED_BY(mu_) = 0;
+
+  // Number of times the dataset has repeated.
+  int64_t repetition_index_ TF_GUARDED_BY(mu_) = 0;
 
   // Maps the local split index to the absolute split file path.
   absl::btree_map<int64_t, std::string> split_to_file_map_ TF_GUARDED_BY(mu_);

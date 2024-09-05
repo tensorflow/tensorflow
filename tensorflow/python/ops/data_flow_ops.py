@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#==============================================================================
+# ==============================================================================
 """Data Flow Operations."""
 # pylint: disable=g-bad-name
 import functools
@@ -550,7 +550,7 @@ class QueueBase:
     the given queue. Subsequent `enqueue` and `enqueue_many`
     operations will fail. Subsequent `dequeue` and `dequeue_many`
     operations will continue to succeed if sufficient elements remain
-    in the queue. Subsequently dequeue and dequeue_many operations
+    in the queue. Subsequently, dequeue and dequeue_many operations
     that would otherwise block waiting for more elements (if close
     hadn't been called) will now fail immediately.
 
@@ -558,8 +558,8 @@ class QueueBase:
     be canceled.
 
     Args:
-      cancel_pending_enqueues: (Optional.) A boolean, defaulting to
-        `False` (described above).
+      cancel_pending_enqueues: (Optional.) A boolean, defaulting to `False`
+        (described above).
       name: A name for the operation (optional).
 
     Returns:
@@ -779,7 +779,7 @@ class GPUCompatibleFIFOQueue(QueueBase):
   will be colocated with the queue resource. GPUCompatibleFIFOQueue only
   supports enqueue and dequeue at the moment, not enqueue_many or dequeue_many.
 
-  See `tf.queue.QueueBase` for a description of the methods on this class.
+  See `tf.queue.QueueBase` for a description of the methods in this class.
   """
 
   def __init__(self,
@@ -805,17 +805,17 @@ class GPUCompatibleFIFOQueue(QueueBase):
     but the use of `dequeue_many` is disallowed.
 
     Args:
-      capacity: An integer. The upper bound on the number of elements
-        that may be stored in this queue.
-      dtypes:  A list of `DType` objects. The length of `dtypes` must equal
-        the number of tensors in each queue element.
-      shapes: (Optional.) A list of fully-defined `TensorShape` objects
-        with the same length as `dtypes`, or `None`.
-      names: (Optional.) A list of string naming the components in the queue
+      capacity: An integer. The upper bound on the number of elements that may
+        be stored in this queue.
+      dtypes:  A list of `DType` objects. The length of `dtypes` must equal the
+        number of tensors in each queue element.
+      shapes: (Optional.) A list of fully-defined `TensorShape` objects with the
+        same length as `dtypes`, or `None`.
+      names: (Optional.) A list of strings naming the components in the queue
         with the same length as `dtypes`, or `None`.  If specified the dequeue
         methods return a dictionary with the names as keys.
-      shared_name: (Optional.) If non-empty, this queue will be shared under
-        the given name across multiple sessions.
+      shared_name: (Optional.) If non-empty, this queue will be shared under the
+        given name across multiple sessions.
       name: Optional name for the queue operation.
     """
     dtypes = _as_type_list(dtypes)

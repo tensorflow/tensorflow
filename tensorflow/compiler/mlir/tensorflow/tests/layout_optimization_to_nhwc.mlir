@@ -32,7 +32,7 @@ func.func @transpose_resnet_layer(%arg0: tensor<?x224x224x3xf32>, // input
   // Shuffled paddings.
   // CHECK: %[[PADDINGS:.*]] = "tf.Const"(){{.*}}[0, 0], [3, 3], [3, 3], [0, 0]
   // NOFOLD: %[[PADDING:.*]] = "tf.Const"(){{.*}}[0, 0], [0, 0], [3, 3], [3, 3]
-  // NOFOLD: %[[CST:.*]] = "tf.Const"() {value = dense<[0, 3, 1, 2]> : tensor<4xi32>} : () -> tensor<4xi32>
+  // NOFOLD: %[[CST:.*]] = "tf.Const"() <{value = dense<[0, 3, 1, 2]> : tensor<4xi32>}> : () -> tensor<4xi32>
   // NOFOLD: %[[TRANSPOSE:[0-9]*]] = "tf.Transpose"(%arg0, %[[CST]]) : (tensor<?x224x224x3xf32>, tensor<4xi32>) -> tensor<?x3x224x224xf32>
 
   // Pad input with new paddings.
@@ -151,7 +151,7 @@ func.func @transpose_resnet_layer(%arg0: tensor<?x224x224x3xf32>, // input
   %16 = "tf.Mean"(%15, %1) : (tensor<?x256x56x56xf32>, tensor<2xi32>) -> tensor<?x256xf32>
 
   // Mean should compute reduction over NHWC spatial dimensions.
-  // CHECK: %[[MEAN_DIMS:.*]] = "tf.Const"() {value = dense<[1, 2]> : tensor<2xi32>}
+  // CHECK: %[[MEAN_DIMS:.*]] = "tf.Const"() <{value = dense<[1, 2]> : tensor<2xi32>}>
   // CHECK: %[[MEAN:[0-9]*]] = "tf.Mean"(%[[RELU]], %[[MEAN_DIMS]])
   // CHECK-SAME: (tensor<?x56x56x256xf32>, tensor<2xi32>) -> tensor<?x256xf32>
   // CHECK: return %[[MEAN]] : tensor<?x256xf32>

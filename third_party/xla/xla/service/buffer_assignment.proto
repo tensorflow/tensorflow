@@ -1,0 +1,105 @@
+/* Copyright 2023 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto3";
+
+package xla.buffer_assignment;
+
+// This defines the buffer isolation configuration, which is a debugging tool to
+// move buffers around to isolate them. The idea is to isolate buffers from the
+// heap-simulator-packed assignments one at a time, with an optional padding, to
+// help debug buffer corruption issues using bisection and compiler fuel.
+// Consider the following heap-simulator-packed assignments:
+//
+//  space
+//    ^
+//  7 |                 +--------+
+//  6 |          +----+ |   C    |
+//  5 |          |    | +--------+
+//  4 |          | A  |
+//  3 |          |    |    +------+
+//  2 |       +--+----+--+ |  B   |
+//  1 |       |    D     | |      |
+//  0 +-------+----------+-+------+----> time
+//
+// A offset: 2, size: 4
+// B offset: 0, size: 3
+// C offset: 5, size: 2
+// D offset: 0, size: 2
+// Total size of heap-simulator-packed buffers: 7
+//
+// *base_offset_bytes* sets the base offset of all buffers. For example,
+// BufferIsolationConfig(base_offset_bytes=2, isolation_fuel=0) will produce the
+// following:
+//
+// A offset: 4, size: 4
+// B offset: 2, size: 3
+// C offset: 7, size: 2
+// D offset: 2, size: 2
+//
+// *isolation_fuel* controls how many buffers to isolate, on top of the
+// heap-simulator-allocated buffers. We will use a deterministic pseudo-random
+// order, using the isolation_order_salt value to ensure determinism. Assuming
+// the salt value we picked happen to respect the alphabetical order of buffers,
+// BufferIsolationConfig(base_offset_bytes=2, isolation_fuel=2) will produce the
+// following:
+//
+// A offset: 9,  size: 4 (isolated)
+// B offset: 13, size: 3 (isolated)
+// C offset: 7,  size: 2 (not isolated)
+// D offset: 2,  size: 2 (not isolated)
+//
+// In contrast, BufferIsolationConfig(base_offset_bytes=2, isolation_fuel=4)
+// will produce the following:
+//
+// A offset: 9,  size: 4 (isolated)
+// B offset: 13, size: 3 (isolated)
+// C offset: 16, size: 2 (isolated)
+// D offset: 18, size: 2 (isolated)
+//
+// *isolation_padding_bytes* controls extra padding between the isolated
+// buffers. For example, BufferIsolationConfig(base_offset_bytes=2,
+// isolation_fuel=2, isolation_padding_bytes=1) will produce the following:
+//
+// A offset: 10, size: 4 (isolated)
+// B offset: 15, size: 3 (isolated)
+// C offset: 7,  size: 2 (not isolated)
+// D offset: 2,  size: 2 (not isolated)
+//
+// *isolation_order_salt* allows us to pick a deterministic pseudo-random order
+// in isolating buffers. This is helpful when isolating every buffer may not be
+// feasible due to out-of-memory issues, but we still want to find a scenario
+// where isolating some buffers makes an error go away. For this scenario, we
+// would try different salt and fuel values to find allocations where we are not
+// out-of-memory and the error goes away. Then we can bisect using the fuel to
+// find the first buffer to isolate that makes the error go away. For example,
+// assuming the salt value of 10 happens to order buffers by reverse
+// alphabetical order, BufferIsolationConfig(base_offset_bytes=2,
+// isolation_fuel=2, isolation_order_salt=10) will produce the following:
+//
+// A offset: 4,  size: 4 (not isolated)
+// B offset: 2,  size: 3 (not isolated)
+// C offset: 11, size: 2 (isolated)
+// D offset: 9,  size: 2 (isolated)
+//
+// *isolation_colors* picks which buffer colors would be isolated.
+//
+message BufferIsolationConfig {
+  int64 base_offset_bytes = 1;
+  int64 isolation_fuel = 2;
+  int64 isolation_padding_bytes = 3;
+  uint64 isolation_order_salt = 4;
+  repeated int32 isolation_colors = 5;
+}

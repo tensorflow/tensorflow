@@ -14,11 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include <vector>
 
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -29,7 +31,7 @@ void StridedSlice(StridedSliceOperator const& op, Array const& input_array,
                   Array* output_array) {
   // The TensorFlow documentation for StridedSlice is a bit ambiguous in places
   // (https://www.tensorflow.org/api_docs/cc/class/tensorflow/ops/strided-slice).
-  // Use the source code at /third_party/tensorflow/core/util/strided_op.cc as
+  // Use the source code at tensorflow/core/util/strided_op.cc as
   // "master documentation".
 
   CHECK(input_array.data_type == Type);
@@ -105,7 +107,7 @@ void StridedSlice(StridedSliceOperator const& op, Array const& input_array,
   const auto it = model->operators.begin() + op_index;
   const auto* base_op = it->get();
   if (base_op->type != OperatorType::kStridedSlice) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   const StridedSliceOperator* op =
@@ -115,28 +117,28 @@ void StridedSlice(StridedSliceOperator const& op, Array const& input_array,
   auto& output_array = model->GetArray(op->outputs[0]);
   if (output_array.data_type == ArrayDataType::kNone) {
     // Yield until the output type has been set by PropagateArrayDataTypes
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   if (!output_array.has_shape()) {
     // Yield until the output shape has been set by PropagateFixedShapes
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   if (op->start_indices.empty() || op->stop_indices.empty() ||
       op->strides.empty()) {
     // Attributes have not resolved yet.
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   const auto& input_array = model->GetArray(op->inputs[0]);
   if (!input_array.has_shape()) {
     // Yield until the value shape has been resolved.
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   if (!IsConstantParameterArray(*model, op->inputs[0])) {
     // Yield until the value is constant.
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   CHECK(!output_array.buffer);
@@ -165,7 +167,7 @@ void StridedSlice(StridedSliceOperator const& op, Array const& input_array,
 
   DeleteOpAndArrays(model, op);
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

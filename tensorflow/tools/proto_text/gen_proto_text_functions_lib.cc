@@ -145,7 +145,8 @@ class Generator {
 
   std::unordered_set<string> map_append_signatures_included_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Generator);
+  Generator(const Generator&) = delete;
+  void operator=(const Generator&) = delete;
 };
 
 // Returns the prefix needed to reference objects defined in <fd>. E.g.

@@ -15,8 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/ir/tf_op_registry.h"
 
+#include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def_builder.h"
+#include "tensorflow/core/ir/interfaces.h"
 #include "tensorflow/core/ir/ops.h"
 
 namespace mlir {
@@ -42,7 +46,7 @@ bool TensorFlowOpRegistryInterface::isStateful(Operation *op) const {
   // Handle TFG region ops.
   // TODO(jeffniu): Region ops should be marked with a trait.
   StringRef op_name = op->getName().stripDialect();
-  if (op->getNumRegions() && op_name.endswith("Region"))
+  if (op->getNumRegions() && op_name.ends_with("Region"))
     op_name = op_name.drop_back(/*len("Region")=*/6);
   return IsStatefulImpl(registry_, op_name);
 }

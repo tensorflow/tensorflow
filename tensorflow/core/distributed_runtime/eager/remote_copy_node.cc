@@ -60,7 +60,8 @@ Status CreateUncachedKernelAndDeviceOp(
 
   const NodeDef& ndef = op->MutableAttrs()->BuildNodeDef();
   return kernel->get()->Init(ctx.LogDevicePlacement(), ndef,
-                             /*graph_collector=*/nullptr);
+                             /*graph_collector=*/nullptr,
+                             /*eager_func_params=*/std::nullopt);
 }
 
 // This gets a unique wire ID. We add a random identifier so that if the
@@ -154,8 +155,7 @@ void RemoteCopyNode::StartSend() {
     auto* remote_op = request.add_queue()->mutable_operation();
     status = ctx_->RemoteMgr()->SerializeRemoteTensorHandle(
         src_, /*wait_until_ready=*/false,
-        remote_op->add_op_inputs()->mutable_remote_handle(), src_->device(),
-        src_->DeviceOrHostCPU(*ctx_)->name());
+        remote_op->add_op_inputs()->mutable_remote_handle(), src_->device());
     if (!status.ok()) {
       captured_state_->SetSendStatus(status);
       return;
@@ -215,7 +215,7 @@ Status RemoteCopyNode::RunLocalRecv(EagerOperation* op,
           "Expect to receive a Tensor but got a TensorShape.");
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void RemoteCopyNode::RunRemoteRecv(EagerOperation* op, StatusCallback done) {
@@ -350,14 +350,13 @@ Status SerializePackedHandle(const uint64 op_id, TensorHandle* packed_handle,
       // are ready before sending a packed handle to the function device.
       TF_RETURN_IF_ERROR(ctx->RemoteMgr()->SerializeRemoteTensorHandle(
           h, /*wait_until_ready=*/true,
-          op->add_handles()->mutable_remote_handle(), src_device,
-          h->DeviceOrHostCPU(*ctx)->name(),
+          op->add_handles()->mutable_remote_handle(), src_device, "",
           serialize_resource_dtype_and_shape));
     } else {
       return errors::InvalidArgument("Nested packed handles are not supported");
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void RemoteCopyNode::StartSendPackedHandle(StatusCallback done) {
@@ -478,7 +477,7 @@ void RemoteCopyNode::StartRemoteSendTensor(StatusCallback done) {
 
 Status RemoteCopyNode::Prepare() {
   TF_RETURN_IF_ERROR(captured_state_->dst()->CopyInferenceShape(src_));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void RemoteCopyNode::RunAsync(StatusCallback done) {

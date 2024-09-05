@@ -27,12 +27,16 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/strings/ascii.h"
-#include "tensorflow/core/lib/jpeg/jpeg_handle.h"
+#include "jpeglib.h"  // from @libjpeg_turbo
 #include "tensorflow/core/lib/jpeg/jpeg_mem.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/kernels/internal/reference/pad.h"
+#include "tensorflow/lite/kernels/internal/reference/resize_bilinear.h"
+#include "tensorflow/lite/kernels/internal/runtime_shape.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/profiling/time.h"
+#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
 #include "tensorflow/lite/tools/evaluation/proto/preprocessing_steps.pb.h"

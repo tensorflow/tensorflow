@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/build_graph_options.h"
 #include "tensorflow/core/common_runtime/profile_handler.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 
@@ -52,6 +53,8 @@ class StatsPublisherInterface {
   virtual void PublishGraphProto(
       const std::vector<const GraphDef*>& graph_defs) = 0;
   virtual void PublishGraphProto(std::vector<GraphDef> graph_defs) = 0;
+  virtual void PublishGraphProto(
+      std::vector<core::RefCountPtr<FunctionRecord>>&& function_records) = 0;
 
   // Returns a profile handler for the given step based on the execution_count
   // and RunOptions.

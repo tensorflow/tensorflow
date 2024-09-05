@@ -147,9 +147,9 @@ class InMemoryRunStepRequest : public MutableRunStepRequestWrapper {
  private:
   string session_handle_;
   string partial_run_handle_;
-  gtl::InlinedVector<std::pair<string, Tensor>, 4> feeds_;
-  gtl::InlinedVector<string, 4> fetches_;
-  gtl::InlinedVector<string, 4> targets_;
+  absl::InlinedVector<std::pair<string, Tensor>, 4UL> feeds_;
+  absl::InlinedVector<string, 4UL> fetches_;
+  absl::InlinedVector<string, 4UL> targets_;
   RunOptions options_;
   bool store_errors_in_response_body_ = false;
 
@@ -372,8 +372,8 @@ class InMemoryRunGraphRequest : public MutableRunGraphRequestWrapper {
   string graph_handle_;
   int64_t step_id_;
   ExecutorOpts exec_opts_;
-  gtl::InlinedVector<std::pair<string, Tensor>, 4> sends_;
-  gtl::InlinedVector<string, 4> recvs_;
+  absl::InlinedVector<std::pair<string, Tensor>, 4UL> sends_;
+  absl::InlinedVector<string, 4UL> recvs_;
   bool is_partial_ = false;
   bool is_last_partial_run_ = false;
   bool store_errors_in_response_body_ = false;
@@ -498,7 +498,6 @@ class MutableRunGraphResponseWrapper {
   // Returned status if requested.
   virtual Status status() const = 0;
   virtual absl::StatusCode status_code() const = 0;
-  virtual const string& status_error_message() const = 0;
   virtual void set_status(const Status& status) = 0;
 
  protected:
@@ -532,7 +531,6 @@ class InMemoryRunGraphResponse : public MutableRunGraphResponseWrapper {
   void AddPartitionGraph(const GraphDef& partition_graph) override;
   Status status() const override;
   absl::StatusCode status_code() const override;
-  const string& status_error_message() const override;
   void set_status(const Status& status) override;
 
  protected:
@@ -541,7 +539,7 @@ class InMemoryRunGraphResponse : public MutableRunGraphResponseWrapper {
   RunGraphResponse* get_proto() override;
 
  private:
-  gtl::InlinedVector<std::pair<string, Tensor>, 4> recvs_;
+  absl::InlinedVector<std::pair<string, Tensor>, 4UL> recvs_;
   StepStats step_stats_;
   CostGraphDef cost_graph_;
   std::vector<GraphDef> partition_graphs_;
@@ -566,7 +564,6 @@ class OwnedProtoRunGraphResponse : public MutableRunGraphResponseWrapper {
   void AddPartitionGraph(const GraphDef& partition_graph) override;
   Status status() const override;
   absl::StatusCode status_code() const override;
-  const string& status_error_message() const override;
   void set_status(const Status& status) override;
 
  protected:
@@ -594,7 +591,6 @@ class NonOwnedProtoRunGraphResponse : public MutableRunGraphResponseWrapper {
   void AddPartitionGraph(const GraphDef& partition_graph) override;
   Status status() const override;
   absl::StatusCode status_code() const override;
-  const string& status_error_message() const override;
   void set_status(const Status& status) override;
 
  protected:
@@ -648,7 +644,6 @@ class MutableRunStepResponseWrapper {
   // Returned status if requested.
   virtual Status status() const = 0;
   virtual absl::StatusCode status_code() const = 0;
-  virtual const string& status_error_message() const = 0;
   virtual void set_status(const Status& status) = 0;
 
  protected:
@@ -680,7 +675,6 @@ class InMemoryRunStepResponse : public MutableRunStepResponseWrapper {
   RunMetadata* mutable_metadata() override;
   Status status() const override;
   absl::StatusCode status_code() const override;
-  const string& status_error_message() const override;
   void set_status(const Status& status) override;
 
  protected:
@@ -689,7 +683,7 @@ class InMemoryRunStepResponse : public MutableRunStepResponseWrapper {
   RunStepResponse* get_proto() override;
 
  private:
-  gtl::InlinedVector<std::pair<string, Tensor>, 4> tensors_;
+  absl::InlinedVector<std::pair<string, Tensor>, 4UL> tensors_;
   RunMetadata metadata_;
   // Store the code and message separately so that they can be updated
   // independently by setters.
@@ -710,7 +704,6 @@ class OwnedProtoRunStepResponse : public MutableRunStepResponseWrapper {
   RunMetadata* mutable_metadata() override;
   Status status() const override;
   absl::StatusCode status_code() const override;
-  const string& status_error_message() const override;
   void set_status(const Status& status) override;
 
  protected:
@@ -736,7 +729,6 @@ class NonOwnedProtoRunStepResponse : public MutableRunStepResponseWrapper {
   RunMetadata* mutable_metadata() override;
   Status status() const override;
   absl::StatusCode status_code() const override;
-  const string& status_error_message() const override;
   void set_status(const Status& status) override;
 
  protected:

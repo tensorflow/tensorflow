@@ -123,13 +123,14 @@ struct GatherNdSlice<CPUDevice, T, Index, IXDIM> {
   }
 };
 
-#define REGISTER_GATHER_ND_FULL(T, Index)                                     \
-  template Index GatherNdSlice<CPUDevice, T, Index, CPU_PROVIDED_IXDIM>::     \
-  operator()(const CPUDevice& d, const Index slice_size,                      \
-             typename TTypes<int32>::Scalar Tscratch,                         \
-             typename TTypes<T, CPU_PROVIDED_IXDIM + 1>::ConstTensor Tparams, \
-             typename TTypes<Index>::ConstMatrix Tindices,                    \
-             typename TTypes<T>::Matrix Tout);
+#define REGISTER_GATHER_ND_FULL(T, Index)                              \
+  template Index                                                       \
+  GatherNdSlice<CPUDevice, T, Index, CPU_PROVIDED_IXDIM>::operator()(  \
+      const CPUDevice& d, const Index slice_size,                      \
+      typename TTypes<int32>::Scalar Tscratch,                         \
+      typename TTypes<T, CPU_PROVIDED_IXDIM + 1>::ConstTensor Tparams, \
+      typename TTypes<Index>::ConstMatrix Tindices,                    \
+      typename TTypes<T>::Matrix Tout);
 
 #define REGISTER_GATHER_ND_CPU(type)    \
   REGISTER_GATHER_ND_FULL(type, int16); \
@@ -138,6 +139,8 @@ struct GatherNdSlice<CPUDevice, T, Index, IXDIM> {
 
 TF_CALL_ALL_TYPES(REGISTER_GATHER_ND_CPU);
 TF_CALL_QUANTIZED_TYPES(REGISTER_GATHER_ND_CPU);
+TF_CALL_float8_e5m2(REGISTER_GATHER_ND_CPU);
+TF_CALL_float8_e4m3fn(REGISTER_GATHER_ND_CPU);
 
 }  // namespace functor
 

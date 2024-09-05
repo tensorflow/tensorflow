@@ -14,6 +14,8 @@
 # ==============================================================================
 """Utilities for the trace_type module."""
 
+from typing import Any, List, Tuple
+
 import numpy as np
 
 
@@ -35,3 +37,16 @@ def is_np_ndarray(value):
       isinstance(value, np.str_)
       # NumPy dtypes have __array__ as unbound methods.
       or isinstance(value, type))
+
+
+def cast_and_return_whether_casted(
+    trace_types, values, context
+) -> Tuple[List[Any], bool]:
+  did_cast = False
+  casted_values = []
+  for t, v in zip(trace_types, values):
+    casted_v = t.cast(v, context)
+    casted_values.append(casted_v)
+    if casted_v is not v:
+      did_cast = True
+  return casted_values, did_cast

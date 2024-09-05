@@ -17,24 +17,19 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_LOGGING_H_
 
 #include "tensorflow/core/platform/types.h"   // IWYU pragma: export
-#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: export
+#include "tsl/platform/logging.h"  // IWYU pragma: export
 
 // NOLINTBEGIN(misc-unused-using-decls)
 namespace tensorflow {
 namespace internal {
 using tsl::internal::LogString;
 }  // namespace internal
-using tsl::ERROR;
-using tsl::FATAL;
-using tsl::INFO;
-using tsl::NUM_SEVERITIES;
 using tsl::TFAddLogSink;
 using tsl::TFGetLogSinks;
 using tsl::TFLogEntry;
 using tsl::TFLogSink;
 using tsl::TFRemoveLogSink;
 using tsl::UpdateLogVerbosityIfDefined;
-using tsl::WARNING;
 }  // namespace tensorflow
 // NOLINTEND(misc-unused-using-decls)
 

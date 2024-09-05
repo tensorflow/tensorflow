@@ -18,8 +18,19 @@ limitations under the License.
 #include <iostream>
 #include <string>
 
+#include "absl/log/check.h"
 #include "absl/strings/escaping.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/core/public/session.h"
+#include "tensorflow/core/public/session_options.h"
+#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/join.h"
 #include "tensorflow/lite/testing/split.h"
@@ -31,7 +42,7 @@ namespace {
 
 tensorflow::Tensor CreateTensor(const tensorflow::DataType type,
                                 const std::vector<int64_t>& dim) {
-  tensorflow::TensorShape shape{tensorflow::gtl::ArraySlice<int64_t>{
+  tensorflow::TensorShape shape{absl::Span<const int64_t>{
       reinterpret_cast<const int64_t*>(dim.data()), dim.size()}};
   return {type, shape};
 }
@@ -149,7 +160,7 @@ void TfDriver::LoadModel(const string& bin_file_path) {
   session_.reset(tensorflow::NewSession(options));
   auto status = session_->Create(graphdef);
   if (!status.ok()) {
-    Invalidate("Failed to create session. " + status.error_message());
+    Invalidate(absl::StrCat("Failed to create session. ", status.message()));
   }
 }
 
@@ -197,8 +208,8 @@ void TfDriver::Invoke(const std::vector<std::pair<string, string>>& inputs) {
   auto status = session_->Run({input_tensors_.begin(), input_tensors_.end()},
                               output_names_, {}, &output_tensors_);
   if (!status.ok()) {
-    Invalidate(absl::StrCat("TensorFlow failed to run graph:",
-                            status.error_message()));
+    Invalidate(
+        absl::StrCat("TensorFlow failed to run graph:", status.message()));
   }
 }
 

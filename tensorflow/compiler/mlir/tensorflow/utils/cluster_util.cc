@@ -203,7 +203,7 @@ void ReorderOpResultUses(mlir::Operation* cluster) {
     }
   }
 
-  std::vector<mlir::Operation*> sorted = ops_to_reorder.takeVector();
+  llvm::SmallVector<mlir::Operation*, 0> sorted = ops_to_reorder.takeVector();
   llvm::sort(sorted, [](mlir::Operation* lhs, mlir::Operation* rhs) {
     return lhs->isBeforeInBlock(rhs);
   });

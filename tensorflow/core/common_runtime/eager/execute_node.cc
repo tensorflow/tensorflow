@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/eager/execute_node.h"
 
+#include "xla/tsl/util/env_var.h"
+#include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
@@ -37,7 +39,8 @@ Status ExecuteNodeArgs::InitPackedHandle(const int index, EagerContext* ctx,
                                          Device* input_device,
                                          TensorHandle* packed_handle) {
   int num_handles = packed_handle->NumPackedHandles();
-  packed_args_.emplace(index, gtl::InlinedVector<TensorValue, 4>(num_handles));
+  packed_args_.emplace(index,
+                       absl::InlinedVector<TensorValue, 4UL>(num_handles));
   TensorValue* packed_arg_flat = &(packed_args_[index][0]);
   for (int i = 0; i < num_handles; ++i) {
     TensorHandle* h = nullptr;
@@ -58,11 +61,11 @@ Status ExecuteNodeArgs::InitPackedHandle(const int index, EagerContext* ctx,
       return status;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ExecuteNodeArgs::Init(
-    EagerContext* ctx, const gtl::InlinedVector<TensorHandle*, 4>& op_inputs,
+    EagerContext* ctx, const absl::InlinedVector<TensorHandle*, 4UL>& op_inputs,
     const core::RefCountPtr<KernelAndDevice>& kernel) {
   // If there are multiple references to a TensorHandle in 'op_inputs' we must
   // increment the reference count of the corresponding Tensor or risk it being
@@ -112,26 +115,26 @@ Status ExecuteNodeArgs::Init(
       // worker before a remote execution request which produces an input of the
       // component function. So we wait until the remote input is ready before
       // serializing it.
-      const bool wait_util_ready = is_function;
-      return ctx->RemoteMgr()->SerializeRemoteTensorHandle(
-          h, wait_util_ready, handle, device, device->name());
+      bool wait_until_ready = SkipRemoteHandleWaitReady() ? false : is_function;
+      return ctx->RemoteMgr()->SerializeRemoteTensorHandle(h, wait_until_ready,
+                                                           handle, device);
     };
   }
 #endif  // !IS_MOBILE_PLATFORM
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ExecuteNodeArgs::GetLocalArg(const FunctionArgIndex& index,
                                     Tensor* val) const {
   Status s = EagerKernelArgs::GetLocalArg(index, val);
   if (s.ok()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (packed_args_.contains(index.index)) {
     Tensor* arg = packed_args_.at(index.index).at(index.sub_index).tensor;
     if (arg) {
       *val = *arg;
-      return OkStatus();
+      return absl::OkStatus();
     } else {
       return errors::NotFound("Argument (", index.index, ",", index.sub_index,
                               ") has no local tensor.");

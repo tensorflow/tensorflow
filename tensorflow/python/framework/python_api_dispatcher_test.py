@@ -19,7 +19,7 @@ import numpy as np
 
 from tensorflow.python.framework import _pywrap_python_api_dispatcher as dispatch
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -47,7 +47,7 @@ class PythonTypeCheckerTest(test_util.TensorFlowTestCase):
       self.assertEqual(repr(int_checker), '<PyTypeChecker int>')
 
     with self.subTest('tensor checker'):
-      tensor_checker = dispatch.MakeInstanceChecker(ops.Tensor)
+      tensor_checker = dispatch.MakeInstanceChecker(tensor.Tensor)
       self.assertEqual(tensor_checker.Check(t), MATCH)
       self.assertEqual(tensor_checker.Check(3), NO_MATCH)
       self.assertEqual(tensor_checker.Check(3.0), NO_MATCH)
@@ -119,7 +119,7 @@ class PythonTypeCheckerTest(test_util.TensorFlowTestCase):
     float_checker = dispatch.MakeInstanceChecker(float)
     str_checker = dispatch.MakeInstanceChecker(str)
     none_checker = dispatch.MakeInstanceChecker(type(None))
-    tensor_checker = dispatch.MakeInstanceChecker(ops.Tensor)
+    tensor_checker = dispatch.MakeInstanceChecker(tensor.Tensor)
     ragged_checker = dispatch.MakeInstanceChecker(ragged_tensor.RaggedTensor)
 
     t = constant_op.constant([1, 2, 3])
@@ -159,7 +159,7 @@ class PythonTypeCheckerTest(test_util.TensorFlowTestCase):
 
   def testListChecker(self):
     int_checker = dispatch.MakeInstanceChecker(int)
-    tensor_checker = dispatch.MakeInstanceChecker(ops.Tensor)
+    tensor_checker = dispatch.MakeInstanceChecker(tensor.Tensor)
     ragged_checker = dispatch.MakeInstanceChecker(ragged_tensor.RaggedTensor)
     np_int_checker = dispatch.MakeInstanceChecker(np.integer)
 
@@ -269,7 +269,7 @@ class PythonSignatureCheckerTest(test_util.TensorFlowTestCase):
 
   def testUnion(self):
     rt_checker = dispatch.MakeInstanceChecker(ragged_tensor.RaggedTensor)
-    tensor_checker = dispatch.MakeInstanceChecker(ops.Tensor)
+    tensor_checker = dispatch.MakeInstanceChecker(tensor.Tensor)
     rt_or_tensor = dispatch.MakeUnionChecker([rt_checker, tensor_checker])
     checker = dispatch.PySignatureChecker([(0, rt_or_tensor),
                                            (1, rt_or_tensor)])
@@ -383,7 +383,7 @@ class PythonAPIDispatcherTest(test_util.TensorFlowTestCase):
                                               (None,))
 
     rt_checker = dispatch.MakeInstanceChecker(ragged_tensor.RaggedTensor)
-    tensor_checker = dispatch.MakeInstanceChecker(ops.Tensor)
+    tensor_checker = dispatch.MakeInstanceChecker(tensor.Tensor)
     rt_or_t = dispatch.MakeUnionChecker([rt_checker, tensor_checker])
     list_of_rt_or_t = dispatch.MakeListChecker(rt_or_t)
     f1 = lambda x, ys, name=None: 'f1'

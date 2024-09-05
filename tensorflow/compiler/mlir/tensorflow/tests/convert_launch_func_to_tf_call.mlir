@@ -11,8 +11,8 @@ func.func @single_launch_func(%arg0: tensor<?xf32>) -> tensor<?xf32> {
       %2 = "tf.A"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
 
       // CHECK: %[[CALL_OUTPUT:[0-9]*]] = "tf.PartitionedCall"(%[[A_OUTPUT]])
-      // CHECK-SAME: device = "/device:test_device:0"
       // CHECK-SAME: f = @_func
+      // CHECK-SAME: device = "/device:test_device:0"
       %3 = "tf_device.launch_func"(%2) {device = "/device:test_device:0", func = @_func} : (tensor<?xf32>) -> tensor<?xf32>
 
       // CHECK: tf_executor.yield %[[CALL_OUTPUT]]
@@ -40,13 +40,13 @@ func.func @multi_launch_func(%arg0: tensor<?xf32>) -> tensor<?xf32> {
       %2 = "tf.A"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
 
       // CHECK: %[[CALL_OUTPUT_0:[0-9]*]] = "tf.PartitionedCall"(%[[A_OUTPUT]])
-      // CHECK-SAME: device = "/device:test_device:0"
       // CHECK-SAME: f = @_func
+      // CHECK-SAME: device = "/device:test_device:0"
       %3 = "tf_device.launch_func"(%2) {device = "/device:test_device:0", func = @_func} : (tensor<?xf32>) -> tensor<?xf32>
 
       // CHECK: %[[CALL_OUTPUT_1:[0-9]*]] = "tf.PartitionedCall"(%[[CALL_OUTPUT_0]])
-      // CHECK-SAME: device = "/device:test_device:1"
       // CHECK-SAME: f = @_func
+      // CHECK-SAME: device = "/device:test_device:1"
       %4 = "tf_device.launch_func"(%3) {device = "/device:test_device:1", func = @_func} : (tensor<?xf32>) -> tensor<?xf32>
 
       // CHECK: tf_executor.yield %[[CALL_OUTPUT_1]]

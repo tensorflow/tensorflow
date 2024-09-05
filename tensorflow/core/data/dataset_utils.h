@@ -15,8 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_DATASET_UTILS_H_
 #define TENSORFLOW_CORE_DATA_DATASET_UTILS_H_
 
+#include <atomic>
 #include <functional>
+#include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -33,9 +37,6 @@ namespace data {
 // should be supplied by the auto-sharding rewrite.
 constexpr int kShardHint = -1;
 
-// The initial parallelism value before Autotune has a chance to optimize.
-constexpr int kAutotuneDefaultParallelism = 16;
-
 // Creates a resource handle with a unique name for the given resource where
 // the resource is managed by the Resource Manager.
 template <typename T>
@@ -49,7 +50,7 @@ Status CreateWeakHandle(OpKernelContext* ctx, T* resource,
 
   *handle = MakeResourceHandle(container_name, unique_name, *ctx->device(),
                                TypeIndex::Make<T>());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Creates a ref-counting resource handle for the given resource, where the
@@ -61,7 +62,7 @@ Status CreateHandle(OpKernelContext* ctx, T* resource, ResourceHandle* handle) {
       ResourceHandle::MakeRefCountingHandle(resource, ctx->device()->name());
   TF_RETURN_IF_ERROR(
       mgr->CreateUnowned<T>(handle->container(), handle->name(), resource));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // TODO(b/198162355): Merge this class with ResourceOpKernel.
@@ -278,38 +279,16 @@ Status ProcessBatch(int64_t batch_size, int64_t num_elements,
                     IteratorContext* ctx, std::vector<Tensor>* output,
                     bool* end_of_sequence, std::vector<Tensor>* batch);
 
-// Constructs and stores the parameters for the CopyBatch function.
-struct CopyBatchParams {
-  Allocator* allocator;
-  std::function<void(std::function<void()>)>* runner;
-  int64 runner_threadpool_size;
-
-  explicit CopyBatchParams(IteratorContext* ctx) {
-    allocator = ctx->allocator({});
-    runner = ctx->runner();
-    runner_threadpool_size = ctx->runner_threadpool_size();
-  }
-
-  explicit CopyBatchParams(OpKernelContext* ctx) {
-    allocator = ctx->get_allocator({});
-    runner = ctx->runner();
-    runner_threadpool_size = GetRunnerThreadpoolSizeFromOpKernelContext(ctx);
-  }
-};
-
 // Copies the input elements to a batch.
 //
 // The `batch_elements` argument contains the individual elements to copy into a
 // batch. The `parallel_copy` argument indicates whether to parallelize the
-// copy. The `allocation_callback` argument can be used to pass a callback to
-// invoke upon successful allocation of the memory for the batch. The
-// `out_tensors` argument will be used to store the resulting batch (one for
+// copy.
+// The `out_tensors` argument will be used to store the resulting batch (one for
 // each component of the input).
-Status CopyBatch(CopyBatchParams params,
-                 const std::vector<std::vector<Tensor>>& batch_elements,
-                 bool parallel_copy,
-                 std::function<Status()> allocation_callback,
-                 std::vector<Tensor>* out_tensors);
+Status CopyBatch(AnyContext ctx,
+                 std::vector<std::vector<Tensor>>&& batch_elements,
+                 bool parallel_copy, std::vector<Tensor>* out_tensors);
 
 // Computes the set of experiments to apply based on the job name, task id,
 // rollout percentage of registered experiments, and the
@@ -363,13 +342,33 @@ inline int GetCpuBudget() {
 // optimization.
 int64 GetAutotuneDefaultParallelism(IteratorContext* ctx);
 
+// Creates an iterator context appropriate for a nested dataset's iterator. A
+// nested dataset is a dataset created within another dataset, e.g. by the
+// function passed to `interleave` or `flat_map`.
+IteratorContext MakeNestedIteratorContext(IteratorContext* ctx);
+
+// A `DatasetExperimentRegistry::JobSelector` that randomly selects
+// `rollout_pct` percent of all jobs. `name_hash` is a hash of the experiment
+// and job names.
+template <int64_t rollout_pct>
+bool RandomJobSamplePercentage(uint64_t name_hash) {
+  return name_hash % 100 < rollout_pct;
+}
+
+// A `DatasetExperimentRegistry::TaskSelector` that selects all tasks.
+bool AllTasks(int64_t unused_task_id, bool unused_evens);
+
+// A `DatasetExperimentRegistry::TaskSelector` that selects the tasks for half
+// of all hosts. Typically, one or two consecutive tasks run on a single host.
+// If `evens` is `true`, selects tasks 0,1,4,5,8,9,..., otherwise selects tasks
+// 2,3,6,7,10,11,...
+bool IndependentHostTasks(int64_t task_id, bool evens);
+
 // Registry of tf.data experiments.
 class DatasetExperimentRegistry {
  public:
-  using JobSelector = std::function<bool(
-      std::function<uint64_t(const string&)> hash_func,
-      const std::string& experiment_name, const std::string& job_name)>;
-  using TaskSelector = std::function<bool(int64_t task_id)>;
+  using JobSelector = std::function<bool(uint64_t name_hash)>;
+  using TaskSelector = std::function<bool(int64_t task_id, bool evens)>;
 
   struct ExperimentSelector {
     JobSelector job_selector;

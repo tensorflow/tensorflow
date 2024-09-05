@@ -20,9 +20,8 @@ import shutil
 import types
 from unittest import mock
 
+from packaging import version
 import tensorflow as tf
-from tensorflow import estimator as tf_estimator
-
 import yaml
 
 from tensorflow.python.platform import googletest
@@ -38,18 +37,20 @@ class AutoModule(types.ModuleType):
     setattr(self, name, mod)
     return mod
 
+
 # Make a mock tensorflow package that won't take too long to test.
 fake_tf = AutoModule('FakeTensorFlow')
 fake_tf.Module = tf.Module  # pylint: disable=invalid-name
-fake_tf.estimator.DNNClassifier = tf_estimator.DNNClassifier
 fake_tf.feature_column.nummeric_column = tf.feature_column.numeric_column
 fake_tf.keras.Model = tf.keras.Model
 fake_tf.keras.preprocessing = tf.keras.preprocessing
 fake_tf.keras.layers.Layer = tf.keras.layers.Layer
 fake_tf.keras.optimizers.Optimizer = tf.keras.optimizers.Optimizer
 fake_tf.nn.sigmoid_cross_entropy_with_logits = (
-    tf.nn.sigmoid_cross_entropy_with_logits)
+    tf.nn.sigmoid_cross_entropy_with_logits
+)
 fake_tf.raw_ops.Add = tf.raw_ops.Add
+fake_tf.raw_ops.Print = tf.raw_ops.Print  # op with no XLA support
 fake_tf.summary.audio = tf.summary.audio
 fake_tf.summary.audio2 = tf.summary.audio
 fake_tf.__version__ = tf.__version__
@@ -80,6 +81,15 @@ class Generate2Test(googletest.TestCase):
     }, toc['toc'][0]['section'][0])
     redirects = yaml.safe_load((output_dir / 'tf/_redirects.yaml').read_text())
     self.assertIn({'from': '/tf_overview', 'to': '/tf'}, redirects['redirects'])
+
+    if version.parse(fake_tf.__version__) >= version.parse('2.14'):
+      self.assertIn(
+          '<a id=Add href="/tf/raw_ops/Add.md">Add</a> | ✔️ | ✔️ |', raw_ops_page
+      )
+      self.assertIn(
+          '<a id=Print href="/tf/raw_ops/Print.md">Print</a> | ✔️ | ❌ |',
+          raw_ops_page,
+      )
 
 if __name__ == '__main__':
   googletest.main()

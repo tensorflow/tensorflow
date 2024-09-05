@@ -17,14 +17,17 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/kernels/ragged_utils.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/util/util.h"
 #include "tensorflow/core/util/work_sharder.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
@@ -205,7 +208,7 @@ class OutputWriterImpl : public OutputWriter {
   void WriteCombination(int64_t batch_index,
                         const std::vector<int>& combination, tstring* out) {
     static const auto k_feature_separator = "_X_";
-    gtl::InlinedVector<tstring, 6> cross_vec(features_.size());
+    absl::InlinedVector<tstring, 6> cross_vec(features_.size());
     for (int i = 0; i < combination.size(); ++i) {
       features_[i]->ReadValue(batch_index, combination[i], &cross_vec[i]);
     }
@@ -386,14 +389,15 @@ class RaggedCrossOp : public OpKernel {
 
     // Validate tensor shapes.
     for (int i = 0; i < num_ragged; ++i) {
-      if (!TensorShapeUtils::IsVector(ragged_values_list[i].shape())) {
-        return errors::InvalidArgument(
+      if (!TensorShapeUtils::IsVector(ragged_values_list[i].shape()) ||
+          !TensorShapeUtils::IsVector(ragged_splits_list[i].shape())) {
+        return absl::InvalidArgumentError(
             "tf.ragged.cross only supports inputs with rank=2.");
       }
-      if (!TensorShapeUtils::IsVector(ragged_splits_list[i].shape()) ||
-          (ragged_splits_list[i].NumElements() == 0)) {
-        return errors::InvalidArgument("Invalid RaggedTensor");
-      }
+
+      int64_t num_values = ragged_values_list[i].NumElements();
+      TF_RETURN_IF_ERROR(RaggedTensorVerifySplits<SplitsType>(
+          ragged_splits_list[i], true, num_values));
     }
     for (int i = 0; i < num_sparse; ++i) {
       if (!TensorShapeUtils::IsMatrix(sparse_indices_list[i].shape()) ||
@@ -435,7 +439,7 @@ class RaggedCrossOp : public OpKernel {
       }
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Calculate the batch size from any input tensor.  (We check that all input
@@ -514,7 +518,7 @@ class RaggedCrossOp : public OpKernel {
       }
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Builds a RaggedReatureReader
@@ -548,7 +552,7 @@ class RaggedCrossOp : public OpKernel {
             new RaggedFeatureReader<tstring, int32>(values, splits));
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Builds a DenseFaggedReatureReader.
@@ -563,7 +567,7 @@ class RaggedCrossOp : public OpKernel {
                                      (features->size() + 1), ": ",
                                      values.dtype());
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Builds a SparseFaggedReatureReader.
@@ -582,7 +586,7 @@ class RaggedCrossOp : public OpKernel {
                                      (features->size() + 1), ": ",
                                      values.dtype());
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Allocates output tensors with proper size, and populates row_splits_out.
@@ -608,7 +612,7 @@ class RaggedCrossOp : public OpKernel {
     TF_RETURN_IF_ERROR(context->allocate_output(
         0, TensorShape({cross_count_total}), values_out));
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Returns number of crosses for a given batch_index

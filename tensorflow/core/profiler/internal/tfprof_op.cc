@@ -17,7 +17,11 @@ limitations under the License.
 
 #include <stdio.h>
 
+#include <algorithm>
+#include <memory>
+#include <set>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -81,8 +85,7 @@ string FormatAcceleratorExecTime(const ShowMultiNode* node,
 void TFOp::AddNode(TFGraphNode* node) {
   const string& op = node->op();
   if (tfcnodes_map_.find(op) == tfcnodes_map_.end()) {
-    tfcnodes_map_[op] =
-        std::unique_ptr<TFMultiGraphNode>(new TFMultiGraphNode(op));
+    tfcnodes_map_[op] = std::make_unique<TFMultiGraphNode>(op);
   }
   TFMultiGraphNode* tfcnode = tfcnodes_map_[op].get();
   tfcnode->AddGraphNode(node);
@@ -90,13 +93,11 @@ void TFOp::AddNode(TFGraphNode* node) {
 
 void TFOp::Build() {
   for (auto& tn : tfcnodes_map_) {
-    cnodes_map_[tn.first] =
-        std::unique_ptr<OpNode>(new OpNode(tn.second.get()));
+    cnodes_map_[tn.first] = std::make_unique<OpNode>(tn.second.get());
   }
 
-  tfcnodes_map_[kTFProfRoot] =
-      std::unique_ptr<TFMultiGraphNode>(new TFMultiGraphNode(kTFProfRoot));
-  root_.reset(new OpNode(tfcnodes_map_[kTFProfRoot].get()));
+  tfcnodes_map_[kTFProfRoot] = std::make_unique<TFMultiGraphNode>(kTFProfRoot);
+  root_ = std::make_unique<OpNode>(tfcnodes_map_[kTFProfRoot].get());
 }
 
 const ShowMultiNode* TFOp::ShowInternal(const Options& opts,

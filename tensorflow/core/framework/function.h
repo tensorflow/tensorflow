@@ -16,10 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_FUNCTION_H_
 #define TENSORFLOW_CORE_FRAMEWORK_FUNCTION_H_
 
+#include <functional>
+#include <memory>
+#include <optional>
+#include <unordered_map>
 #include <vector>
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
+#include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
@@ -36,15 +42,16 @@ limitations under the License.
 #include "tensorflow/core/framework/optimized_function_graph.pb.h"
 #include "tensorflow/core/framework/registration/registration.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/graph/graph_debug_info_builder.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/random.h"
+#include "tensorflow/core/platform/stack_frame.h"
 #include "tensorflow/core/platform/threadpool_interface.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tsl/protobuf/error_codes.pb.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
 #endif  // IS_MOBILE_PLATFORM
@@ -117,7 +124,7 @@ class FunctionDefHelper {
   // Constructs an AttrValue.func given the "name" and "attrs".
   static AttrValueWrapper FunctionRef(
       const std::string& name,
-      gtl::ArraySlice<std::pair<string, AttrValueWrapper>> attrs);
+      absl::Span<const std::pair<string, AttrValueWrapper>> attrs);
   static AttrValueWrapper FunctionRef(const std::string& name) {
     return FunctionRef(name, {});
   }
@@ -162,35 +169,34 @@ class FunctionDefHelper {
   // - `control_ret_def` holds a mapping from the function control
   //   output names to the nodes from `node_def`.
   static FunctionDef Create(
-      const std::string& function_name, gtl::ArraySlice<string> in_def,
-      gtl::ArraySlice<string> out_def, gtl::ArraySlice<string> attr_def,
-      gtl::ArraySlice<Node> node_def,
-      gtl::ArraySlice<std::pair<string, string>> ret_def,
-      gtl::ArraySlice<std::pair<string, string>> control_ret_def);
+      const std::string& function_name, absl::Span<const string> in_def,
+      absl::Span<const string> out_def, absl::Span<const string> attr_def,
+      absl::Span<const Node> node_def,
+      absl::Span<const std::pair<string, string>> ret_def,
+      absl::Span<const std::pair<string, string>> control_ret_def);
 
   // Creates a FunctionDef from the given parameters. Node inputs must use
   // function encoding (node_name:output_name[:output_index]).
   // - `ret_def` holds a mapping from the function output names from `out_def`
   //   to the node outputs from `node_def`.
-  static FunctionDef Create(const std::string& function_name,
-                            gtl::ArraySlice<string> in_def,
-                            gtl::ArraySlice<string> out_def,
-                            gtl::ArraySlice<string> attr_def,
-                            gtl::ArraySlice<Node> node_def,
-                            gtl::ArraySlice<std::pair<string, string>> ret_def);
+  static FunctionDef Create(
+      const std::string& function_name, absl::Span<const string> in_def,
+      absl::Span<const string> out_def, absl::Span<const string> attr_def,
+      absl::Span<const Node> node_def,
+      absl::Span<const std::pair<string, string>> ret_def);
 
   // TODO(josh11b): Get rid of these and transition to the one above.
   static FunctionDef Define(const std::string& function_name,
-                            gtl::ArraySlice<string> arg_def,
-                            gtl::ArraySlice<string> ret_def,
-                            gtl::ArraySlice<string> attr_def,
-                            gtl::ArraySlice<Node> node_def);
+                            absl::Span<const string> arg_def,
+                            absl::Span<const string> ret_def,
+                            absl::Span<const string> attr_def,
+                            absl::Span<const Node> node_def);
 
   // Defines an anonymous function. I.e., its name is not relevant.
-  static FunctionDef Define(gtl::ArraySlice<string> arg_def,
-                            gtl::ArraySlice<string> ret_def,
-                            gtl::ArraySlice<string> attr_def,
-                            gtl::ArraySlice<Node> node_def);
+  static FunctionDef Define(absl::Span<const string> arg_def,
+                            absl::Span<const string> ret_def,
+                            absl::Span<const string> attr_def,
+                            absl::Span<const Node> node_def);
 
   // Helpers to construct a constant scalar.
   template <typename T>
@@ -272,7 +278,7 @@ Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
 // etc.)
 std::string DebugString(const FunctionDef& func_def);
 std::string DebugString(const GraphDef& instantiated_func_def);
-std::string DebugString(gtl::ArraySlice<NodeDef> instantiated_func_nodes);
+std::string DebugString(absl::Span<const NodeDef> instantiated_func_nodes);
 
 // Returns a debug string for a top level graph (the main program and
 // its supporting functions defined in its library).
@@ -322,7 +328,7 @@ class FunctionCallFrame : public CallFrameInterface {
   ~FunctionCallFrame() override;
 
   // Caller methods.
-  Status SetArgs(gtl::ArraySlice<Tensor> args);
+  Status SetArgs(absl::Span<const Tensor> args);
   Status GetRetvals(std::vector<Tensor>* rets) const;
 
   // Moves the return values from the frame to rets. If allow_dead_tensors is
@@ -339,44 +345,51 @@ class FunctionCallFrame : public CallFrameInterface {
  private:
   DataTypeVector arg_types_;
   DataTypeVector ret_types_;
-  gtl::InlinedVector<Tensor, 4> args_;
+  absl::InlinedVector<Tensor, 4UL> args_;
   struct Retval {
     bool has_val = false;
     Tensor val;
   };
-  gtl::InlinedVector<Retval, 4> rets_;
+  absl::InlinedVector<Retval, 4UL> rets_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(FunctionCallFrame);
+  FunctionCallFrame(const FunctionCallFrame&) = delete;
+  void operator=(const FunctionCallFrame&) = delete;
 };
 
-// Language agnostic stack traces.
-class AbstractStackTrace {
+// Map of function names to StackTracesMaps.
+using FunctionDefLibraryStackTraces =
+    absl::flat_hash_map<std::string, StackTracesMap>;
+
+// Holds Function information that can be shared in multiple places.
+// FunctionRecord must be explicitly finalized before being saved in
+// FunctionLibraryDefinition or any other place that expects immutability.
+class FunctionRecord : public core::RefCounted {
  public:
-  struct TracePrintingOptions {
-    // Show inline the contents of each stack line.
-    bool show_line_contents = false;
+  FunctionRecord(const FunctionDef& fdef, const StackTracesMap& stack_traces,
+                 bool finalized);
+  FunctionRecord(FunctionDef&& fdef, StackTracesMap&& stack_traces,
+                 bool finalized);
 
-    // Drop the common largest prefix of all filenames in stack frames.
-    bool filter_common_prefix = false;
+  // Mark FunctionRecord as finalized (disable mutation).
+  void finalize();
 
-    // Do not show internal frames.
-    bool drop_internal_frames = false;
-  };
+  // Get a mutable reference to the FunctionDef owned by the record.
+  // Will fail if record is finalized.
+  absl::StatusOr<FunctionDef*> mutable_fdef();
 
-  virtual ~AbstractStackTrace() {}
+  // Get an immutable access to FunctionRecord properties.
+  const FunctionDef& fdef() const;
+  const StackTracesMap& stack_traces() const;
+  const OpRegistrationData& op_registration_data() const;
+  const bool finalized() const;
 
-  // The returned span is alive as long as the AbstractStackTrace is alive.
-  virtual absl::Span<StackFrame const> ToFrames() const = 0;
+ private:
+  bool finalized_ = false;
 
-  // Returns the last stack frame from user code, attempting to ignore the
-  // framework code. Returns an empty frame if no such stack frame was found.
-  virtual StackFrame LastUserFrame() const = 0;
-  virtual std::string ToString(const TracePrintingOptions& opts) const = 0;
+  FunctionDef fdef_;
+  const StackTracesMap stack_traces_;
+  const OpRegistrationData op_registration_data_;
 };
-
-using StackTracesMap =
-    std::unordered_map<std::string,
-                       std::shared_ptr<tensorflow::AbstractStackTrace>>;
 
 // Helper to maintain a map between function names in a given
 // FunctionDefLibrary and function definitions.
@@ -400,15 +413,20 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
   // Note: This constructor grabs `lib_def`'s lock in shared mode.
   FunctionLibraryDefinition(const FunctionLibraryDefinition& lib_def);
+  explicit FunctionLibraryDefinition(
+      const OpRegistryInterface* default_registry,
+      const FunctionDefLibrary& lib_def = {},
+      const FunctionDefLibraryStackTraces& library_traces = {});
   FunctionLibraryDefinition(const OpRegistryInterface* default_registry,
-                            const FunctionDefLibrary& lib_def = {});
+                            const GraphDef& graph_def);
   ~FunctionLibraryDefinition() override;
 
   FunctionLibraryDefinition& operator=(const FunctionLibraryDefinition&) =
       delete;
+  FunctionLibraryDefinition& operator=(FunctionLibraryDefinition&& other);
 
   // Returns True if the library contains `func`, False otherwise.
-  bool Contains(const std::string& func) const;
+  bool Contains(const std::string& func) const TF_LOCKS_EXCLUDED(mu_);
 
   // Returns nullptr if "func" is not defined in "lib_def". Otherwise,
   // returns its definition proto.
@@ -416,6 +434,11 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // NB: This function returns a borrowed pointer, which can be invalidated by a
   // subsequent call to `ReplaceFunction()` with the given name.
   const FunctionDef* Find(const std::string& func) const TF_LOCKS_EXCLUDED(mu_);
+
+  // Returns nullptr if "func" is not defined in "lib_def". Otherwise,
+  // returns a strong reference pointer to the FunctionRecord in the library.
+  core::RefCountPtr<FunctionRecord> FindRecord(const std::string& func) const
+      TF_LOCKS_EXCLUDED(mu_);
 
   // Adds function definition 'fdef' to this function library.
   // Returns status 'ok' on success, or error otherwise. This is a no-op if
@@ -428,6 +451,10 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // `graph` has to outlive all instantiated graphs.
   Status AddFunctionDef(const FunctionDef& fdef,
                         const StackTracesMap& stack_traces = {})
+      TF_LOCKS_EXCLUDED(mu_);
+  Status AddFunctionDef(FunctionDef&& fdef, StackTracesMap&& stack_traces = {})
+      TF_LOCKS_EXCLUDED(mu_);
+  Status AddFunctionRecord(core::RefCountPtr<FunctionRecord> record)
       TF_LOCKS_EXCLUDED(mu_);
 
   // Adds gradient definition 'grad' to this function library.
@@ -465,11 +492,23 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // This operation is atomic.
   Status AddLibrary(const FunctionLibraryDefinition& other)
       TF_LOCKS_EXCLUDED(mu_);
+  Status AddLibrary(FunctionLibraryDefinition&& other) TF_LOCKS_EXCLUDED(mu_);
+
+  // Adds the functions and gradients in 'lib_def' to this function library.
+  // Duplicate functions and gradients are ignored. This overload adds the
+  // functions with no stack traces. This operation is atomic.
+  Status AddLibrary(const FunctionDefLibrary& lib_def) TF_LOCKS_EXCLUDED(mu_);
+  Status AddLibrary(FunctionDefLibrary&& lib_def) TF_LOCKS_EXCLUDED(mu_);
 
   // Adds the functions and gradients in 'lib_def' to this function library.
   // Duplicate functions and gradients are ignored.
   // This operation is atomic.
-  Status AddLibrary(const FunctionDefLibrary& lib_def) TF_LOCKS_EXCLUDED(mu_);
+  Status AddLibrary(const FunctionDefLibrary& lib_def,
+                    const FunctionDefLibraryStackTraces& library_traces)
+      TF_LOCKS_EXCLUDED(mu_);
+  Status AddLibrary(FunctionDefLibrary&& lib_def,
+                    const FunctionDefLibraryStackTraces& library_traces)
+      TF_LOCKS_EXCLUDED(mu_);
 
   // If the gradient function for 'func' is specified explicitly in
   // the library, returns the gradient function name.  Otherwise,
@@ -510,9 +549,9 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // Returns a proto representation of the state of this function library.
   FunctionDefLibrary ToProto() const TF_LOCKS_EXCLUDED(mu_);
 
-  size_t num_functions() const {
+  size_t num_functions() const TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
-    return function_defs_.size();
+    return records_.size();
   }
 
   // Returns all the function names in the FunctionLibraryDefinition.
@@ -529,6 +568,9 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // reachable from the nodes of `graph` or `func`.
   FunctionLibraryDefinition ReachableDefinitions(const GraphDef& graph) const;
   FunctionLibraryDefinition ReachableDefinitions(const FunctionDef& func) const;
+  FunctionLibraryDefinition ReachableDefinitions(const Graph& graph) const;
+  absl::StatusOr<FunctionLibraryDefinition> ReachableDefinitions(
+      const std::string& function_name) const;
 
   // Copies the function named `func` from `other` to this
   // FunctionLibraryDefinition.
@@ -537,66 +579,77 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // name `func` already exists in this function library, and has the same
   // implementation as in `other`. If the implementations conflict, an invalid
   // argument error is returned.
-  Status CopyFunctionDefFrom(const std::string& func,
-                             const FunctionLibraryDefinition& other)
-      TF_LOCKS_EXCLUDED(mu_);
+  Status CopyFunctionDefFrom(const std::string& name,
+                             const FunctionLibraryDefinition& other);
 
   // Returns graph with debug stack traces for the given function, or `nullptr`
   // if none found.
-  const StackTracesMap& GetStackTraces(const std::string& func_name) const {
-    tf_shared_lock l(mu_);
-    std::shared_ptr<FunctionDefAndOpRegistration> entry = FindHelper(func_name);
-    if (entry) {
-      return entry->stack_traces;
-    }
-    static const auto* empty_map = new StackTracesMap;
-    return *empty_map;
-  }
-
-  // Adds or updates an OptimizedFunctionGraph. Key is `function_name`.
-  void AddOptimizedFunctionGraph(const std::string& function_name,
-                                 const OptimizedFunctionGraph& graph) {
-    mutex_lock l(mu_);
-    optimized_function_graph_map_.emplace(function_name, graph);
-  }
-
-  // Look up for OptimizedFunctionGraph given `function_name`. Returns nullptr
-  // if not found.
-  OptimizedFunctionGraph* FindOptimizedFunctionGraph(
-      const std::string& function_name) const {
-    tf_shared_lock l(mu_);
-    if (auto it = optimized_function_graph_map_.find(function_name);
-        it != optimized_function_graph_map_.end()) {
-      return &(it->second);
+  const StackTracesMap* GetStackTraces(const std::string& func_name) const {
+    core::RefCountPtr<FunctionRecord> entry = FindRecord(func_name);
+    if (entry.get() != nullptr) {
+      return &entry->stack_traces();
     }
     return nullptr;
   }
 
+  // Adds or updates an OptimizedFunctionGraph. Key is `function_name`.
+  //
+  // NOTE: This overload will lead to a copy of a potentially large graph
+  // being stored in memory for the lifetime of the library. Using the lazy
+  // `creator` function overload is recommended in new code.
+  ABSL_DEPRECATED("Use the lazy `creator` function overload in new code.")
+  void AddOptimizedFunctionGraph(const std::string& function_name,
+                                 const OptimizedFunctionGraph& graph)
+      TF_LOCKS_EXCLUDED(mu_) {
+    std::function<absl::StatusOr<OptimizedFunctionGraph>()> creator =
+        [graph]() { return graph; };
+    AddOptimizedFunctionGraph(function_name, std::move(creator));
+  }
+
+  // Adds or updates an OptimizedFunctionGraph, using a `creator` that can
+  // lazily build or load the graph on demand. Key is `function_name`.
+  void AddOptimizedFunctionGraph(
+      const std::string& function_name,
+      std::function<absl::StatusOr<OptimizedFunctionGraph>()> creator)
+      TF_LOCKS_EXCLUDED(mu_) {
+    mutex_lock l(mu_);
+    optimized_function_graph_creator_map_.emplace(function_name,
+                                                  std::move(creator));
+  }
+
+  // Look up for OptimizedFunctionGraph given `function_name`. Returns nullopt
+  // if not found.
+  std::optional<absl::StatusOr<OptimizedFunctionGraph>>
+  FindOptimizedFunctionGraph(const std::string& function_name) const
+      TF_LOCKS_EXCLUDED(mu_) {
+    tf_shared_lock l(mu_);
+    if (auto it = optimized_function_graph_creator_map_.find(function_name);
+        it != optimized_function_graph_creator_map_.end()) {
+      return it->second();
+    }
+    return std::nullopt;
+  }
+
+  // Creates a map of function names to stack traces for a FunctionDefLibrary.
+  static FunctionDefLibraryStackTraces CreateStackTracesForFunctionDefLibrary(
+      const FunctionDefLibrary& library, const GraphDebugInfo& debug_info);
+
  private:
-  // Shape inference for functions is handled separately by ShapeRefiner.
+  void Initialize(const FunctionDefLibrary& library,
+                  const FunctionDefLibraryStackTraces& library_traces);
 
-  struct FunctionDefAndOpRegistration {
-    explicit FunctionDefAndOpRegistration(
-        const FunctionDef& fdef_in, const StackTracesMap& stack_traces = {});
-
-    const FunctionDef fdef;
-    const OpRegistrationData op_registration_data;
-    const StackTracesMap stack_traces;
-  };
-
-  std::shared_ptr<FunctionDefAndOpRegistration> FindHelper(
-      const string& func) const TF_SHARED_LOCKS_REQUIRED(mu_);
+  core::RefCountPtr<FunctionRecord> FindHelper(const string& func) const
+      TF_SHARED_LOCKS_REQUIRED(mu_);
   std::string FindGradientHelper(const std::string& func) const
       TF_SHARED_LOCKS_REQUIRED(mu_);
 
-  Status AddHelper(std::shared_ptr<FunctionDefAndOpRegistration> registration,
-                   bool* added) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  Status AddHelper(FunctionRecord* registration, bool* added)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Same as AddFunctionDef/AddGradientDef except these methods set
   // `added` to true if the `fdef`/`grad` were actually added to this.
-  Status AddFunctionDefHelper(const FunctionDef& fdef,
-                              const StackTracesMap& stack_traces, bool* added)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  Status AddFunctionDefHelper(FunctionDef&& fdef, StackTracesMap&& stack_traces,
+                              bool* added) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   Status AddGradientDefHelper(const GradientDef& grad, bool* added)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
@@ -624,12 +677,11 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
   mutable mutex mu_;
   const OpRegistryInterface* default_registry_;
-  gtl::FlatMap<string, std::shared_ptr<FunctionDefAndOpRegistration>>
-      function_defs_ TF_GUARDED_BY(mu_);
+  gtl::FlatMap<string, FunctionRecord*> records_ TF_GUARDED_BY(mu_);
   gtl::FlatMap<string, string> func_grad_ TF_GUARDED_BY(mu_);
   // Maps from function name to optimized function graph.
-  gtl::FlatMap<string, OptimizedFunctionGraph> optimized_function_graph_map_
-      TF_GUARDED_BY(mu_);
+  gtl::FlatMap<string, std::function<absl::StatusOr<OptimizedFunctionGraph>()>>
+      optimized_function_graph_creator_map_ TF_GUARDED_BY(mu_);
 };
 
 // Forward declare. Defined in common_runtime/function.h
@@ -654,7 +706,7 @@ struct FunctionArgIndex {
   int sub_index = -1;
 };
 
-class FunctionLibraryRuntime {
+class FunctionLibraryRuntime : public core::WeakRefCounted {
  public:
   virtual ~FunctionLibraryRuntime() {}
 
@@ -815,6 +867,11 @@ class FunctionLibraryRuntime {
     // Instantiates the function for XLA compilation on device_type. If empty,
     // function is not compiled.
     std::string xla_compile_device_type;
+
+    // This interface is EXPERIMENTAL and subject to change.
+    //
+    // Instantiates the function enabling soft placement or outside compilation.
+    bool allow_soft_placement = false;
   };
   typedef uint64 Handle;
   virtual Status Instantiate(const std::string& function_name, AttrSlice attrs,
@@ -851,8 +908,7 @@ class FunctionLibraryRuntime {
   // RPC calls.
   struct Options {
     Options() {}
-    explicit Options(const int64_t step_id)
-        : step_id(step_id), cleanup_rendezvous_after_run(false) {}
+    explicit Options(const int64_t step_id) : step_id(step_id) {}
 
     // Choose a step ID that is guaranteed not to clash with any
     // Session-generated step ID. DirectSession only generates
@@ -861,18 +917,13 @@ class FunctionLibraryRuntime {
     // always 0, so a negative random step ID should suffice.
     const int64_t step_id = -std::abs(static_cast<int64_t>(random::New64()));
 
-    // Whether to clean up rendezvous after run.
-    // If the function is a remote component of a cross-process function, a
-    // higher level component should determine the end of a step, and cleanup
-    // the rendezvous.
-    const bool cleanup_rendezvous_after_run = true;
-
     // op_id of the function running in eager mode. Set when we want to copy
     // remote outputs lazily. All components of a remote multi-device function
     // should use the same op_id, in order to correctly map remote output
     // tensors to the remote TensorHandles in the default device.
     absl::optional<int64_t> op_id = absl::nullopt;
 
+    // Not owned. Caller makes sure that the rendezvous outlives this Options.
     RendezvousInterface* rendezvous = nullptr;
     CancellationManager* cancellation_manager = nullptr;
     CollectiveExecutor* collective_executor = nullptr;
@@ -913,13 +964,13 @@ class FunctionLibraryRuntime {
   };
   typedef std::function<void(const Status&)> DoneCallback;
   virtual void Run(const Options& opts, Handle handle,
-                   gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
+                   absl::Span<const Tensor> args, std::vector<Tensor>* rets,
                    DoneCallback done) = 0;
   virtual void Run(const Options& opts, Handle handle,
                    CallFrameInterface* call_frame, DoneCallback done) = 0;
 
   virtual Status RunSync(Options opts, Handle handle,
-                         gtl::ArraySlice<Tensor> args,
+                         absl::Span<const Tensor> args,
                          std::vector<Tensor>* rets) = 0;
   virtual Status RunSync(Options opts, Handle handle,
                          CallFrameInterface* call_frame) = 0;
@@ -1074,7 +1125,7 @@ class DistributedFunctionLibraryRuntime {
   // opts.runner isn't used for execution.
   virtual void Run(const FunctionLibraryRuntime::Options& opts,
                    FunctionLibraryRuntime::LocalHandle handle,
-                   gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
+                   absl::Span<const Tensor> args, std::vector<Tensor>* rets,
                    FunctionLibraryRuntime::DoneCallback done) = 0;
 
   // Run an instantiated remote function (specified by `handle`) with a list of
@@ -1086,7 +1137,7 @@ class DistributedFunctionLibraryRuntime {
   // supported in TensorFlow v1 runtime.
   virtual void Run(const FunctionLibraryRuntime::Options& opts,
                    FunctionLibraryRuntime::LocalHandle handle,
-                   gtl::ArraySlice<FunctionArg> args,
+                   absl::Span<const FunctionArg> args,
                    std::vector<FunctionRet>* rets,
                    FunctionLibraryRuntime::DoneCallback done) = 0;
 

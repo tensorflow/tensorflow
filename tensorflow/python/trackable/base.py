@@ -121,7 +121,7 @@ class CheckpointInitialValueCallable(object):
 
 
 @tf_export("__internal__.tracking.CheckpointInitialValue", v1=[])
-class CheckpointInitialValue(ops.Tensor):
+class CheckpointInitialValue(object):
   """Tensor wrapper for managing update UIDs in `Variables`.
 
   When supplied as an initial value, objects of this type let a `Variable`
@@ -146,11 +146,10 @@ class CheckpointInitialValue(ops.Tensor):
         {VARIABLE_VALUE_KEY: shape_and_slice})[VARIABLE_VALUE_KEY]
     self._checkpoint_position = checkpoint_position
 
-  def __getattr__(self, attr):
-    try:
-      return getattr(self.wrapped_value, attr)
-    except AttributeError:
-      return self.__getattribute__(attr)
+  def __tf_tensor__(self, dtype=None, name=None):
+    del dtype
+    del name
+    return self.wrapped_value
 
   @property
   def checkpoint_position(self):
@@ -421,19 +420,23 @@ class Trackable(object):
     """
     return self._self_unconditional_deferred_dependencies
 
-  def _lookup_dependency(self, name):
+  def _lookup_dependency(self, name, cached_dependencies=None):
     """Look up a dependency by name.
 
     May be overridden to include conditional dependencies.
 
     Args:
       name: The local name of the dependency.
+      cached_dependencies: Optional dict containing all computed dependencies
+        returned by `self._trackable_children()`.
 
     Returns:
       A `Trackable` object, or `None` if no dependency by this name was
       found.
     """
-    return self._self_unconditional_dependency_names.get(name, None)
+    if cached_dependencies:
+      return cached_dependencies.get(name)
+    return self._self_unconditional_dependency_names.get(name)
 
   def _add_variable_with_custom_getter(self,
                                        name,
@@ -661,6 +664,11 @@ class Trackable(object):
     save their own values with the key `VARIABLE_VALUE_KEY`, but objects which
     reference variables simply add a dependency.
 
+    **AsyncCheckpoint Support**
+    If your Trackable implements `_gather_saveables_for_checkpoint`,
+    `_copy_trackable_to_cpu` needs to be implemented as well to support
+    asynchronous checkpoint.
+
     Returns:
       The dictionary mapping attribute names to `SaveableObject` factories
       described above. For example:
@@ -717,6 +725,11 @@ class Trackable(object):
     **TF1 Saver Compatibility**
     If your Trackable needs to be comatible with `tf.compat.v1.train.Saver`,
     implement `_gather_saveables_from_checkpoint`.
+
+    **AsyncCheckpoint Support**
+    If your Trackable implements `_serialize_to_tensors`,
+    `_copy_trackable_to_cpu` needs to be implemented as well to support
+    asynchronous checkpoint.
 
     Returns:
       A dictionary mapping names to tensors.
@@ -1046,3 +1059,35 @@ class Trackable(object):
     _, _, _ = object_map, tensor_map, options
     del kwargs
     return []
+
+  def _copy_trackable_to_cpu(self, object_map):
+    """Creates a copy of this object onto CPU, also copies values over.
+
+    Needs to be overridden if the `Trackable` requires AsyncCheckpoint support.
+    The method first checks whether a copy of `self` is already created in
+    `object_map`, and creates one if not already created. Then the method copies
+    the **values** of itself over to its copy mapped by `object_map`.
+
+    Args:
+      object_map: A dictionary that maps original Trackables to the copied
+        Trackables, which reside in the CPU.
+    """
+    del object_map  # Unused
+    raise NotImplementedError("Need to implement _copy_trackable_to_cpu() if "
+                              "the Trackable requires AsyncCheckpoint support.")
+
+  def _checkpoint_adapter(self, path: str):
+    """Returns a checkpoint adapter for this object.
+
+    Needs to be overridden if the `Trackable` requires adapter at restore.
+    Override this method to define callbacks for checkpoint positions to be
+    applied at restore time.
+
+    Args:
+      path: Checkpoint path.
+    Returns:
+      A subclass of AbstractCheckpointAdapter that defines callbacks at restore
+      for this trackable.
+    """
+    del path
+    return None

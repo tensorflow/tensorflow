@@ -13,36 +13,47 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// TODO(b/282059652): Merge google internal and open-source code path once TF
+// dependency issue is resolved.
+#if (defined(PLATFORM_GOOGLE) && defined(TF_PLATFORM_LINUX_X86_64))
+#define TF_GPU_USE_PJRT
+#endif  // PLATFORM_GOOGLE && TF_PLATFORM_LINUX_X86_64
+
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 
 #include <cstdlib>
 #include <cstring>
+#include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/compiler/xla/stream_executor/device_id_utils.h"
-#include "tensorflow/compiler/xla/stream_executor/device_mem_allocator.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
-#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/gpu/gpu_init.h"
+#include "xla/stream_executor/integrations/device_mem_allocator.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/framework/bfc_allocator.h"
+#include "xla/tsl/framework/device_id.h"
+#include "xla/tsl/framework/device_id_utils.h"
+#include "xla/tsl/util/env_var.h"
 #include "tensorflow/core/common_runtime/device/device_host_allocator.h"
+#include "tensorflow/core/common_runtime/device_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_cudamalloc_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_debug_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_virtual_mem_allocator.h"
 #include "tensorflow/core/common_runtime/pool_allocator.h"
 #include "tensorflow/core/common_runtime/shared_counter.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tracking_allocator.h"
-#include "tensorflow/tsl/framework/allocator.h"
-#include "tensorflow/tsl/framework/bfc_allocator.h"
-#include "tensorflow/tsl/framework/device_id.h"
-#include "tensorflow/tsl/platform/logging.h"
-#include "tensorflow/tsl/platform/mutex.h"
-#include "tensorflow/tsl/platform/strcat.h"
-#include "tensorflow/tsl/platform/types.h"
-#include "tensorflow/tsl/util/env_var.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/mutex.h"
+#include "tsl/platform/strcat.h"
+#include "tsl/platform/types.h"
+
+#if GOOGLE_CUDA
+#include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
+#endif  // GOOGLE_CUDA
 
 namespace tensorflow {
 
@@ -65,12 +76,12 @@ static bool UseCudaMallocAsyncAllocator() {
   const char* allocator_env = std::getenv("TF_GPU_ALLOCATOR");
   auto result = allocator_env != nullptr &&
                 std::strcmp(allocator_env, "cuda_malloc_async") == 0;
-#if TF_CUDA_MALLOC_ASYNC_SUPPORTED
+#if GOOGLE_CUDA
   return result;
 #else
   if (result)
     LOG(ERROR) << "TF_GPU_ALLOCATOR=cuda_malloc_async environment found, "
-               << "but TensorFlow was not compiled with CUDA 11.2+.";
+               << "but TensorFlow was not compiled with CUDA support.";
   return false;
 #endif
 }
@@ -89,8 +100,8 @@ GPUProcessState::GPUProcessState() : gpu_device_enabled_(false) {
 int GPUProcessState::BusIdForGPU(tsl::TfDeviceId tf_device_id) {
   // Return the NUMA node associated with the GPU's StreamExecutor.
   se::StreamExecutor* se =
-      se::DeviceIdUtil::ExecutorForTfDeviceId(
-          DEVICE_GPU, se::GPUMachineManager(), tf_device_id)
+      DeviceIdUtil::ExecutorForTfDeviceId(DEVICE_GPU, se::GPUMachineManager(),
+                                          tf_device_id)
           .value();
   int numa_node = se->GetDeviceDescription().numa_node();
   // bus_id must be non-negative.  If the numa_node is not known,
@@ -103,53 +114,17 @@ static std::unique_ptr<SubAllocator> CreateSubAllocator(
     const GPUOptions& options, tsl::PlatformDeviceId platform_device_id,
     const std::vector<SubAllocator::Visitor>& alloc_visitors,
     size_t total_bytes, const std::vector<tsl::TfDeviceId>& peer_gpu_ids) {
-  auto executor = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
-                      se::GPUMachineManager(), platform_device_id)
+  auto executor = se::GPUMachineManager()
+                      ->ExecutorForDevice(platform_device_id.value())
                       .value();
 
-  // FIXME(imintz): Observed OOM issues when using the virtual memory
-  // allocators. This should be reenabled when resolved.
-#if 0 && defined(GOOGLE_CUDA) && CUDA_VERSION >= 10020
-  // Use the old allocator when unified memory is required.
-  // TODO(imintz): Remove the cuMemAlloc capability of this allocator.
-  if (options.per_process_gpu_memory_fraction() > 1.0 ||
-      options.experimental().use_unified_memory()) {
-    return new se::DeviceMemAllocator(executor, platform_device_id,
-                                  /*use_unified_memory=*/true, alloc_visitors,
-                                  {});
-  } else {
-    auto* gpu_context = reinterpret_cast<stream_executor::gpu::GpuContext*>(
-        executor->implementation()->GpuContextHack());
-
-    absl::flat_hash_set<tsl::PlatformDeviceId> platform_peer_gpu_ids;
-    platform_peer_gpu_ids.reserve(peer_gpu_ids.size());
-    for (const tsl::TfDeviceId tf_device_id : peer_gpu_ids) {
-      tsl::PlatformDeviceId platform_device_id;
-      TF_CHECK_OK(GpuIdManager::TfToPlatformDeviceId(tf_device_id, &platform_device_id));
-      platform_peer_gpu_ids.insert(platform_device_id);
-    }
-    std::vector<tsl::PlatformDeviceId> platform_peer_gpu_ids_vec(
-        platform_peer_gpu_ids.begin(), platform_peer_gpu_ids.end());
-
-    // Adjust virtual address space to be slightly larger than the physical
-    // address space in case the BFC allocator performs suboptimal garbage
-    // collection.
-    // TODO(imintz): Update BFC allocator to ensure it doesn't create holes in
-    // the va space.
-    return GpuVirtualMemAllocator::Create(
-               alloc_visitors, {}, *gpu_context, platform_device_id,
-               /*virtual_address_space_size=*/total_bytes * 2,
-               platform_peer_gpu_ids_vec)
-        .value()
-        .release();
-  }
-#else
+  bool use_unified_memory = (options.per_process_gpu_memory_fraction() > 1.0 ||
+                             options.experimental().use_unified_memory());
   return absl::WrapUnique(new se::DeviceMemAllocator(
       executor, platform_device_id,
-      (options.per_process_gpu_memory_fraction() > 1.0 ||
-       options.experimental().use_unified_memory()),
+      use_unified_memory ? stream_executor::MemoryType::kUnified
+                         : stream_executor::MemoryType::kDevice,
       alloc_visitors, {}));
-#endif
 }
 
 Allocator* GPUProcessState::GetGPUAllocator(
@@ -160,8 +135,8 @@ Allocator* GPUProcessState::GetGPUAllocator(
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
   const string& allocator_type = options.allocator_type();
   mutex_lock lock(mu_);
-  se::DeviceIdUtil::CheckValidTfDeviceId(DEVICE_GPU, se::GPUMachineManager(),
-                                         tf_device_id);
+  tsl::CheckValidTfDeviceId(
+      DEVICE_GPU, se::GPUMachineManager()->VisibleDeviceCount(), tf_device_id);
 
   if (tf_device_id.value() >= static_cast<int64_t>(gpu_allocators_.size())) {
     gpu_allocators_.resize(tf_device_id.value() + 1);
@@ -188,7 +163,7 @@ Allocator* GPUProcessState::GetGPUAllocator(
                            total_bytes, peer_gpu_ids);
     SubAllocator* sub_allocator_ptr = sub_allocator.get();
 
-    auto gpu_bfc_allocator = absl::make_unique<GPUBFCAllocator>(
+    auto gpu_bfc_allocator = std::make_unique<GPUBFCAllocator>(
         std::move(sub_allocator), total_bytes,
         strings::StrCat("GPU_", tf_device_id.value(), "_bfc"), [&] {
           GPUBFCAllocator::Options o;
@@ -230,8 +205,10 @@ Allocator* GPUProcessState::GetGPUAllocator(
       // compute-sanitizer.
       // TODO: **WARNING** probably will not work in a multi-gpu scenario
       gpu_bfc_allocator.reset();
+#if GOOGLE_CUDA
       gpu_allocator =
           new se::GpuCudaMallocAsyncAllocator(platform_device_id, total_bytes);
+#endif
     }
 
     Allocator* recording_allocator = nullptr;
@@ -244,6 +221,14 @@ Allocator* GPUProcessState::GetGPUAllocator(
       recording_allocator = new internal::RecordingAllocator(
           &process_state_->mem_desc_map_, gpu_allocator, md, &mu_);
     }
+#ifdef TF_GPU_USE_PJRT
+    // Owning allocator is not set if `allocator_not_owned` is set.
+    allocator_parts.allocator_not_owned = gpu_allocator;
+    allocator_parts.counter.reset(timing_counter);
+    allocator_parts.bfc_allocator = gpu_bfc_allocator.release();
+    allocator_parts.sub_allocator = sub_allocator_ptr;
+    allocator_parts.recording_allocator.reset(recording_allocator);
+#else
     allocator_parts = {
         std::unique_ptr<Allocator>(gpu_allocator),
         std::unique_ptr<SharedCounter>(timing_counter),
@@ -251,11 +236,16 @@ Allocator* GPUProcessState::GetGPUAllocator(
         sub_allocator_ptr,
         std::unique_ptr<Allocator>(recording_allocator),
     };
+#endif  // TF_GPU_USE_PJRT
   }
   if (process_state_->ProcessState::FLAGS_brain_gpu_record_mem_types) {
     return allocator_parts.recording_allocator.get();
   } else {
+#ifdef TF_GPU_USE_PJRT
+    return allocator_parts.allocator_not_owned;
+#else
     return allocator_parts.allocator.get();
+#endif  // TF_GPU_USE_PJRT
   }
 #else
   LOG(FATAL) << "GPUAllocator unavailable. Not compiled with --config=cuda or "
@@ -269,8 +259,8 @@ SharedCounter* GPUProcessState::GPUAllocatorCounter(
   DCHECK(process_state_);
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
-  se::DeviceIdUtil::CheckValidTfDeviceId(DEVICE_GPU, se::GPUMachineManager(),
-                                         tf_device_id);
+  tsl::CheckValidTfDeviceId(
+      DEVICE_GPU, se::GPUMachineManager()->VisibleDeviceCount(), tf_device_id);
   mutex_lock l(mu_);
   if (tf_device_id.value() >= static_cast<int64_t>(gpu_allocators_.size())) {
     LOG(ERROR) << "Asked for counter for GPU allocator " << tf_device_id.value()
@@ -316,7 +306,11 @@ Allocator* GPUProcessState::GetGpuHostAllocator(const GPUOptions& options,
       return gpu_host_allocators_[0].recording_allocator.get();
     }
     if (static_cast<int>(gpu_host_allocators_.size()) > numa_node) {
+#ifdef TF_GPU_USE_PJRT
+      return gpu_host_allocators_[0].allocator_not_owned;
+#else
       return gpu_host_allocators_[0].allocator.get();
+#endif  // TF_GPU_USE_PJRT
     }
   }
 
@@ -330,8 +324,12 @@ Allocator* GPUProcessState::GetGpuHostAllocator(const GPUOptions& options,
   // it knows is valid.
   se::StreamExecutor* se = nullptr;
   for (int i = 0; i < static_cast<int>(gpu_allocators_.size()); ++i) {
+#ifdef TF_GPU_USE_PJRT
+    if (gpu_allocators_[i].allocator_not_owned != nullptr) {
+#else
     if (gpu_allocators_[i].allocator != nullptr) {
-      se = se::DeviceIdUtil::ExecutorForTfDeviceId(
+#endif  // TF_GPU_USE_PJRT
+      se = DeviceIdUtil::ExecutorForTfDeviceId(
                DEVICE_GPU, se::GPUMachineManager(), tsl::TfDeviceId(i))
                .value();
       break;
@@ -348,7 +346,7 @@ Allocator* GPUProcessState::GetGpuHostAllocator(const GPUOptions& options,
         tsl::ReadInt64FromEnvVar("TF_GPU_HOST_MEM_LIMIT_IN_MB",
                                  1LL << 17 /*2^17 MB == 128GB*/, &limit_mb);
     if (!status.ok()) {
-      LOG(ERROR) << "GetGpuHostAllocator: " << status.error_message();
+      LOG(ERROR) << "GetGpuHostAllocator: " << status.message();
     }
     mem_limit_bytes = limit_mb * (1LL << 20);
   }
@@ -376,10 +374,23 @@ Allocator* GPUProcessState::GetGpuHostAllocator(const GPUOptions& options,
       // at the cost of performance.
       allocator = new TrackingAllocator(allocator, true);
     }
-    gpu_host_allocators_.push_back({std::unique_ptr<Allocator>(allocator),
-                                    std::unique_ptr<SharedCounter>(nullptr),
-                                    nullptr, sub_allocator,
-                                    std::unique_ptr<Allocator>(nullptr)});
+#ifdef TF_GPU_USE_PJRT
+    // Ownership of the GPU host allocator will be transferred to PJRT.
+    AllocatorParts gpu_host_allocator({
+        /*allocator=*/nullptr,
+        std::unique_ptr<SharedCounter>(nullptr),
+        /*bfc_allocator=*/nullptr,
+        sub_allocator,
+        /*recording_allocator=*/nullptr,
+        /*allocator_not_owned=*/allocator,
+    });
+#else
+    AllocatorParts gpu_host_allocator({std::unique_ptr<Allocator>(allocator),
+                                       std::unique_ptr<SharedCounter>(nullptr),
+                                       /*bfc_allocator=*/nullptr, sub_allocator,
+                                       /*recording_allocator=*/nullptr});
+#endif  // TF_GPU_USE_PJRT
+    gpu_host_allocators_.push_back(std::move(gpu_host_allocator));
     AllocatorParts& allocator_parts = gpu_host_allocators_.back();
     if (process_state_->ProcessState::FLAGS_brain_gpu_record_mem_types) {
       ProcessState::MemDesc md;
@@ -387,16 +398,20 @@ Allocator* GPUProcessState::GetGpuHostAllocator(const GPUOptions& options,
       md.dev_index = 0;
       md.gpu_registered = true;
       md.nic_registered = false;
-      allocator_parts.recording_allocator.reset(
-          new internal::RecordingAllocator(&process_state_->mem_desc_map_,
-                                           allocator_parts.allocator.get(), md,
-                                           &mu_));
+      allocator_parts.recording_allocator =
+          std::make_unique<internal::RecordingAllocator>(
+              &process_state_->mem_desc_map_, allocator_parts.allocator.get(),
+              md, &mu_);
     }
   }
   if (process_state_->ProcessState::FLAGS_brain_gpu_record_mem_types) {
     return gpu_host_allocators_[0].recording_allocator.get();
   } else {
+#ifdef TF_GPU_USE_PJRT
+    return gpu_host_allocators_[0].allocator_not_owned;
+#else
     return gpu_host_allocators_[0].allocator.get();
+#endif  // TF_GPU_USE_PJRT
   }
 }
 

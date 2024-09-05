@@ -124,6 +124,11 @@ Status MapAndBatchFusion::OptimizeAndCollectStats(Cluster* cluster,
     if (node2->op() != "MapDataset" && !IsParallelMap(*node2)) {
       continue;
     }
+    // Do not fuse ParallelMap node that uses the unbounded thread pool.
+    if (node2->attr().find("use_unbounded_threadpool") != node2->attr().end() &&
+        node2->attr().at("use_unbounded_threadpool").b()) {
+      continue;
+    }
     // Use a more descriptive variable name now that we know the node type.
     NodeDef* map_node = node2;
 
@@ -139,7 +144,7 @@ Status MapAndBatchFusion::OptimizeAndCollectStats(Cluster* cluster,
   }
 
   TF_RETURN_IF_ERROR(graph.DeleteNodes(nodes_to_delete));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(MapAndBatchFusion, "map_and_batch_fusion");

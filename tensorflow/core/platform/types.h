@@ -17,10 +17,9 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_TYPES_H_
 
 #include "tensorflow/core/platform/bfloat16.h"
-#include "tensorflow/core/platform/float8.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/tstring.h"
-#include "tensorflow/tsl/platform/types.h"
+#include "tsl/platform/types.h"
 
 namespace tensorflow {
 
@@ -29,13 +28,18 @@ using tsl::string;
 
 using tsl::uint16;
 using tsl::uint32;
+using tsl::uint4;
 using tsl::uint64;
 using tsl::uint8;
 
 using tsl::int16;
 using tsl::int32;
+using tsl::int4;
 using tsl::int64;
 using tsl::int8;
+
+using tsl::float8_e4m3fn;
+using tsl::float8_e5m2;
 
 static const uint8 kuint8max = tsl::kuint8max;
 static const uint16 kuint16max = tsl::kuint16max;

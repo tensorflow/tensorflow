@@ -35,7 +35,7 @@ constexpr char kBadDecompositionMessage[] =
 // converge as only a few patterns create new resource ops that can be further
 // decomposed. The rest of the iterations are enough to clean up any dead ops
 // created by decomposition.
-constexpr int kMaxIterations = 10;
+constexpr int kMaxIterations = 20;
 
 // Populates `reachable_functions` with all functions that can be reached from
 // device cluster ops.

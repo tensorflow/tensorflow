@@ -27,9 +27,10 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/master.pb.h"
+#include "tsl/platform/retrying_utils.h"
+#include "tsl/platform/tracing.h"
 
 namespace tensorflow {
 
@@ -113,12 +114,13 @@ class GrpcRemoteMaster : public MasterInterface {
 
  private:
   // Start tracing, attaching a unique ID to both the trace and the RPC.
-  profiler::TraceMe* NewTraceRpc(StringPiece name, ::grpc::ClientContext* ctx) {
-    string trace_id = strings::StrCat(tracing::GetUniqueArg());
+  tsl::profiler::TraceMe* NewTraceRpc(StringPiece name,
+                                      ::grpc::ClientContext* ctx) {
+    string trace_id = strings::StrCat(tsl::tracing::GetUniqueArg());
     ctx->AddMetadata(GrpcIdKey(), trace_id);
-    return new profiler::TraceMe(
+    return new tsl::profiler::TraceMe(
         [&] { return strings::StrCat(name, ":", trace_id); },
-        profiler::TraceMeLevel::kInfo);
+        tsl::profiler::TraceMeLevel::kInfo);
   }
 
   template <typename Request, typename Response>
@@ -135,7 +137,7 @@ class GrpcRemoteMaster : public MasterInterface {
     Status s;
     for (int num_retries = 0;; ++num_retries) {
       ::grpc::ClientContext ctx;
-      std::unique_ptr<profiler::TraceMe> trace;
+      std::unique_ptr<tsl::profiler::TraceMe> trace;
       if (!trace_string.empty()) {
         trace.reset(NewTraceRpc(trace_string, &ctx));
       }
@@ -163,7 +165,7 @@ class GrpcRemoteMaster : public MasterInterface {
       }
       absl::Time now = absl::FromUnixMicros(Env::Default()->NowMicros());
       const absl::Time deadline_with_backoff =
-          now + absl::Microseconds(ComputeBackoffMicroseconds(num_retries));
+          now + tsl::ComputeRetryBackoff(num_retries);
       // Wait for a short period of time before retrying the RPC.  If our
       // backoff would put us past the RPC deadline, we truncate it to ensure
       // our RPC starts before the deadline.

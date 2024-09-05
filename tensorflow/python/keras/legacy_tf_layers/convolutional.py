@@ -19,12 +19,8 @@ import warnings
 from tensorflow.python.keras import layers as keras_layers
 from tensorflow.python.keras.legacy_tf_layers import base
 from tensorflow.python.ops import init_ops
-from tensorflow.python.util.tf_export import keras_export
-from tensorflow.python.util.tf_export import tf_export
 
 
-@keras_export(v1=['keras.__internal__.legacy.layers.Conv1D'])
-@tf_export(v1=['layers.Conv1D'])
 class Conv1D(keras_layers.Conv1D, base.Layer):
   """1D convolution layer (e.g. temporal convolution).
 
@@ -116,8 +112,6 @@ class Conv1D(keras_layers.Conv1D, base.Layer):
         name=name, **kwargs)
 
 
-@keras_export(v1=['keras.__internal__.legacy.layers.conv1d'])
-@tf_export(v1=['layers.conv1d'])
 def conv1d(inputs,
            filters,
            kernel_size,
@@ -223,8 +217,6 @@ def conv1d(inputs,
   return layer.apply(inputs)
 
 
-@keras_export(v1=['keras.__internal__.legacy.layers.Conv2D'])
-@tf_export(v1=['layers.Conv2D'])
 class Conv2D(keras_layers.Conv2D, base.Layer):
   """2D convolution layer (e.g. spatial convolution over images).
 
@@ -323,8 +315,6 @@ class Conv2D(keras_layers.Conv2D, base.Layer):
         name=name, **kwargs)
 
 
-@keras_export(v1=['keras.__internal__.legacy.layers.conv2d'])
-@tf_export(v1=['layers.conv2d'])
 def conv2d(inputs,
            filters,
            kernel_size,
@@ -437,8 +427,6 @@ def conv2d(inputs,
   return layer.apply(inputs)
 
 
-@keras_export(v1=['keras.__internal__.legacy.layers.Conv3D'])
-@tf_export(v1=['layers.Conv3D'])
 class Conv3D(keras_layers.Conv3D, base.Layer):
   """3D convolution layer (e.g. spatial convolution over volumes).
 
@@ -538,8 +526,6 @@ class Conv3D(keras_layers.Conv3D, base.Layer):
         name=name, **kwargs)
 
 
-@keras_export(v1=['keras.__internal__.legacy.layers.conv3d'])
-@tf_export(v1=['layers.conv3d'])
 def conv3d(inputs,
            filters,
            kernel_size,
@@ -653,8 +639,6 @@ def conv3d(inputs,
   return layer.apply(inputs)
 
 
-@keras_export(v1=['keras.__internal__.legacy.layers.SeparableConv1D'])
-@tf_export(v1=['layers.SeparableConv1D'])
 class SeparableConv1D(keras_layers.SeparableConv1D, base.Layer):
   """Depthwise separable 1D convolution.
 
@@ -764,8 +748,6 @@ class SeparableConv1D(keras_layers.SeparableConv1D, base.Layer):
         **kwargs)
 
 
-@keras_export(v1=['keras.__internal__.legacy.layers.SeparableConv2D'])
-@tf_export(v1=['layers.SeparableConv2D'])
 class SeparableConv2D(keras_layers.SeparableConv2D, base.Layer):
   """Depthwise separable 2D convolution.
 
@@ -880,8 +862,6 @@ class SeparableConv2D(keras_layers.SeparableConv2D, base.Layer):
         **kwargs)
 
 
-@keras_export(v1=['keras.__internal__.legacy.layers.separable_conv1d'])
-@tf_export(v1=['layers.separable_conv1d'])
 def separable_conv1d(inputs,
                      filters,
                      kernel_size,
@@ -1004,8 +984,6 @@ def separable_conv1d(inputs,
   return layer.apply(inputs)
 
 
-@keras_export(v1=['keras.__internal__.legacy.layers.separable_conv2d'])
-@tf_export(v1=['layers.separable_conv2d'])
 def separable_conv2d(inputs,
                      filters,
                      kernel_size,
@@ -1133,8 +1111,6 @@ def separable_conv2d(inputs,
   return layer.apply(inputs)
 
 
-@keras_export(v1=['keras.__internal__.legacy.layers.Conv2DTranspose'])
-@tf_export(v1=['layers.Conv2DTranspose'])
 class Conv2DTranspose(keras_layers.Conv2DTranspose, base.Layer):
   """Transposed 2D convolution layer (sometimes called 2D Deconvolution).
 
@@ -1222,8 +1198,6 @@ class Conv2DTranspose(keras_layers.Conv2DTranspose, base.Layer):
         **kwargs)
 
 
-@keras_export(v1=['keras.__internal__.legacy.layers.conv2d_transpose'])
-@tf_export(v1=['layers.conv2d_transpose'])
 def conv2d_transpose(inputs,
                      filters,
                      kernel_size,
@@ -1324,8 +1298,6 @@ def conv2d_transpose(inputs,
   return layer.apply(inputs)
 
 
-@keras_export(v1=['keras.__internal__.legacy.layers.Conv3DTranspose'])
-@tf_export(v1=['layers.Conv3DTranspose'])
 class Conv3DTranspose(keras_layers.Conv3DTranspose, base.Layer):
   """Transposed 3D convolution layer (sometimes called 3D Deconvolution).
 
@@ -1410,8 +1382,6 @@ class Conv3DTranspose(keras_layers.Conv3DTranspose, base.Layer):
         **kwargs)
 
 
-@keras_export(v1=['keras.__internal__.legacy.layers.conv3d_transpose'])
-@tf_export(v1=['layers.conv3d_transpose'])
 def conv3d_transpose(inputs,
                      filters,
                      kernel_size,

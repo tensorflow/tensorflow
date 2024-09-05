@@ -34,4 +34,8 @@ tf_class {
     name: "save"
     argspec: "args=[\'self\', \'checkpoint_number\', \'check_interval\', \'options\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\'], "
   }
+  member_method {
+    name: "sync"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
 }

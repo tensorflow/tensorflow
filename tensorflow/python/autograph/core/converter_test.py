@@ -14,7 +14,7 @@
 # ==============================================================================
 """Tests for converter module."""
 
-import imp
+import types
 
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.core import converter_testing
@@ -42,7 +42,7 @@ class ConversionOptionsTest(converter_testing.TestCase):
     opts_packed = templates.replace(template, opts_ast=opts_ast)
 
     reparsed, _, _ = loader.load_ast(opts_packed)
-    fake_ag = imp.new_module('fake_ag')
+    fake_ag = types.ModuleType('fake_ag')
     fake_ag.ConversionOptions = converter.ConversionOptions
     fake_ag.Feature = converter.Feature
     reparsed.ag__ = fake_ag

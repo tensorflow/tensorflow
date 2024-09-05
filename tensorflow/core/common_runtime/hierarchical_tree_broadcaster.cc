@@ -182,7 +182,7 @@ Status HierarchicalTreeBroadcaster::InitializeCollectiveParams(
   }
 
   VLOG(2) << collective_util::SubdivPermDebugString(*col_params);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status HierarchicalTreeBroadcaster::InitializeCollectiveContext(
@@ -316,9 +316,9 @@ void HierarchicalTreeBroadcaster::RunTree() {
 
     if (my_rank >= 0 && my_rank != source_rank) {
       // Begin by receiving the value.
-      profiler::TraceMe activity(
+      tsl::profiler::TraceMe activity(
           [&] { return strings::StrCat("ReceiveValue:", si); },
-          profiler::TraceMeLevel::kInfo);
+          tsl::profiler::TraceMeLevel::kInfo);
       int recv_from_rank = TreeRecvFrom(*col_params_, si);
       Notification note;
       DispatchRecv(si, recv_from_rank, my_rank, col_ctx_->output,
@@ -332,9 +332,9 @@ void HierarchicalTreeBroadcaster::RunTree() {
 
     // Then forward value to all descendent devices.
     {
-      profiler::TraceMe activity(
+      tsl::profiler::TraceMe activity(
           [&] { return strings::StrCat("ForwardValue:", si); },
-          profiler::TraceMeLevel::kInfo);
+          tsl::profiler::TraceMeLevel::kInfo);
       if (my_rank >= 0 && status_.ok()) {
         std::vector<int> send_to_ranks;
         TreeSendTo(*col_params_, si, &send_to_ranks);
@@ -408,7 +408,7 @@ void HierarchicalTreeBroadcaster::DispatchSend(int subdiv, int dst_rank,
                                                int src_rank,
                                                const Tensor* src_tensor,
                                                const StatusCallback& done) {
-  profiler::ScopedMemoryDebugAnnotation op_annotation(
+  tsl::profiler::ScopedMemoryDebugAnnotation op_annotation(
       col_params_->name.data(), col_ctx_->step_id, "dynamic",
       src_tensor->dtype(),
       [src_tensor]() { return src_tensor->shape().DebugString(); });

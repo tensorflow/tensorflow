@@ -488,7 +488,7 @@ public interface InterpreterApi extends AutoCloseable {
    * @throws IllegalArgumentException if {@code idx} is negative or is not smaller than the number
    *     of model inputs; or if error occurs when resizing the idx-th input.
    */
-  void resizeInput(int idx, @NonNull int[] dims);
+  void resizeInput(int idx, int @NonNull [] dims);
 
   /**
    * Resizes idx-th input of the native model to the given dims.
@@ -500,7 +500,7 @@ public interface InterpreterApi extends AutoCloseable {
    *     of model inputs; or if error occurs when resizing the idx-th input. Additionally, the error
    *     occurs when attempting to resize a tensor with fixed dimensions when `strict` is True.
    */
-  void resizeInput(int idx, @NonNull int[] dims, boolean strict);
+  void resizeInput(int idx, int @NonNull [] dims, boolean strict);
 
   /** Gets the number of input tensors. */
   int getInputTensorCount();

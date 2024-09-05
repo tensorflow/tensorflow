@@ -1,10 +1,14 @@
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
-load("//third_party:tf_runtime/workspace.bzl", tf_runtime = "repo")
+load("//third_party:repo.bzl", "tf_vendored")
 load("//third_party/llvm:workspace.bzl", llvm = "repo")
+load("//third_party/tf_runtime:workspace.bzl", tf_runtime = "repo")
 
 def workspace():
+    tf_vendored(name = "local_xla", relpath = "third_party/xla")
+    tf_vendored(name = "local_tsl", relpath = "third_party/xla/third_party/tsl")
+
     http_archive(
         name = "io_bazel_rules_closure",
         sha256 = "5b00383d08dd71f28503736db0500b6fb4dda47489ff5fc6bed42557c07c6ba9",
@@ -25,6 +29,15 @@ def workspace():
             "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/bazel-skylib/releases/download/1.3.0/bazel-skylib-1.3.0.tar.gz",
             "https://github.com/bazelbuild/bazel-skylib/releases/download/1.3.0/bazel-skylib-1.3.0.tar.gz",
         ],
+    )
+
+    http_archive(
+        name = "rules_license",
+        urls = [
+            "https://mirror.bazel.build/github.com/bazelbuild/rules_license/releases/download/0.0.7/rules_license-0.0.7.tar.gz",
+            "https://github.com/bazelbuild/rules_license/releases/download/0.0.7/rules_license-0.0.7.tar.gz",
+        ],
+        sha256 = "4531deccb913639c30e5c7512a054d5d875698daeb75d8cf90f284375fe7c360",
     )
 
     http_archive(

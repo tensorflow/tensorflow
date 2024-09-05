@@ -164,7 +164,7 @@ TEST_F(ShapeRefinerTest, BadShapes) {
   // an error.
   Status s = m.AddNode(mm.node());
   ASSERT_FALSE(s.ok());
-  ASSERT_TRUE(absl::StrContains(s.error_message(),
+  ASSERT_TRUE(absl::StrContains(s.message(),
                                 "Dimensions must be equal, but are 1 and 2"));
 }
 
@@ -330,7 +330,7 @@ REGISTER_OP("TestOp")
       if (c->input_tensor(0)) {
         if (c->input_tensor(1)) {
           c->set_output(0, c->Matrix(10, 10));
-          return OkStatus();
+          return absl::OkStatus();
         }
         return shape_inference::ScalarShape(c);
       }
@@ -384,7 +384,7 @@ REGISTER_OP("ShapeData")
       }
 
       c->set_output(0, c->MakeShape(dims));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("ShapeDataInt64")
@@ -403,7 +403,7 @@ REGISTER_OP("ShapeDataInt64")
       }
 
       c->set_output(0, c->MakeShape(dims));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 // An op with a shape function that looks at its input tensor
@@ -422,7 +422,7 @@ REGISTER_OP("ShapeVectorForAllElements")
       }
 
       c->set_output(0, c->Vector(total));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("MultiIdentity")
@@ -433,7 +433,7 @@ REGISTER_OP("MultiIdentity")
       for (int i = 0; i < c->num_inputs(); ++i) {
         c->set_output(i, c->input(i));
       }
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 class MultiIdentity : public OpKernel {
@@ -834,7 +834,7 @@ Status TensorAsShapeShapeFn(shape_inference::InferenceContext* c) {
   shape_inference::ShapeHandle out;
   TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0 /* input_idx */, &out));
   c->set_output(0, out);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status PartialTensorAsShapeShapeFn(shape_inference::InferenceContext* c) {
@@ -842,12 +842,12 @@ Status PartialTensorAsShapeShapeFn(shape_inference::InferenceContext* c) {
   const Tensor* t = c->input_tensor(0);
   if (t == nullptr || t->NumElements() != 1) {
     c->set_output(0, c->UnknownShape());
-    return OkStatus();
+    return absl::OkStatus();
   }
   TF_RETURN_IF_ERROR(
       c->MakeShapeFromTensorShape(TensorShape({t->flat<int32>()(0)}), &out));
   c->set_output(0, out);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Register ops used by the ConstantValueAsShape* tests.
@@ -881,7 +881,7 @@ REGISTER_OP("WithEmptyVectorShape")
     .SetDoNotOptimize()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Vector(0));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("WithPartialShape")
@@ -891,7 +891,7 @@ REGISTER_OP("WithPartialShape")
       c->set_output(
           0, c->MakeShape({1, shape_inference::InferenceContext::kUnknownDim, 3,
                            shape_inference::InferenceContext::kUnknownDim, 5}));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("WithPartialShape2")
@@ -901,7 +901,7 @@ REGISTER_OP("WithPartialShape2")
       c->set_output(
           0,
           c->MakeShape({6, shape_inference::InferenceContext::kUnknownDim, 8}));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("WithUnknownShape")
@@ -909,7 +909,7 @@ REGISTER_OP("WithUnknownShape")
     .SetDoNotOptimize()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->UnknownShape());
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 }  // namespace
@@ -1070,8 +1070,7 @@ TEST_F(ShapeRefinerTest, ConstantValueAsShape_PackInvalidInput) {
     TF_ASSERT_OK(m.AddNode(input.node()));
   }
   TF_ASSERT_OK(m.AddNode(pack.node()));
-  EXPECT_TRUE(
-      absl::StrContains(m.AddNode(result).error_message(), "but is rank 2"));
+  EXPECT_TRUE(absl::StrContains(m.AddNode(result).message(), "but is rank 2"));
 }
 
 TEST_F(ShapeRefinerTest, ConstantValueAsShape_Concat) {
@@ -1190,7 +1189,7 @@ TEST_F(ShapeRefinerTest, ConstantValueAsShape_ConcatInvalidDimValue) {
   TF_ASSERT_OK(m.AddNode(concat_dim.node()));
   TF_ASSERT_OK(m.AddNode(concat.node()));
   EXPECT_EQ("Invalid value in tensor used for shape: -2",
-            m.AddNode(result).error_message());
+            m.AddNode(result).message());
 }
 
 TEST_F(ShapeRefinerTest, ConstantValueAsShape_StridedSlice) {

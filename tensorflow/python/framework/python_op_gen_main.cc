@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
@@ -37,12 +38,8 @@ limitations under the License.
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/python/framework/op_reg_offset.pb.h"
 #include "tensorflow/python/framework/python_op_gen.h"
-#include "tensorflow/tsl/lib/io/buffered_inputstream.h"
-#include "tensorflow/tsl/lib/io/random_inputstream.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/protobuf.h"
-#include "tensorflow/tsl/platform/str_util.h"
-#include "tensorflow/tsl/util/command_line_flags.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/str_util.h"
 
 namespace tensorflow {
 namespace {
@@ -72,7 +69,7 @@ Status ReadOpListFromFile(const string& filename,
     s = input_buffer->ReadLine(&line_contents);
   }
   if (!errors::IsOutOfRange(s)) return s;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ReadOpRegOffsetsFromFile(absl::string_view filename,
@@ -85,7 +82,7 @@ Status ReadOpRegOffsetsFromFile(absl::string_view filename,
   string contents;
   TF_RETURN_IF_ERROR(in.ReadAll(&contents));
   op_reg_offsets->ParseFromString(contents);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::vector<string> GetSourceFileListFromOpRegOffsets(
@@ -153,7 +150,7 @@ Status PrintAllPythonOps(absl::Span<const string> api_def_dirs,
     TF_RETURN_IF_ERROR(file->Append(result));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

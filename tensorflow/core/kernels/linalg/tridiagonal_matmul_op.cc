@@ -120,7 +120,8 @@ class TridiagonalMatMulOp : public LinearAlgebraOp<Scalar> {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(TridiagonalMatMulOp);
+  TridiagonalMatMulOp(const TridiagonalMatMulOp&) = delete;
+  void operator=(const TridiagonalMatMulOp&) = delete;
 };
 
 REGISTER_LINALG_OP_CPU("TridiagonalMatMul", (TridiagonalMatMulOp<float>),

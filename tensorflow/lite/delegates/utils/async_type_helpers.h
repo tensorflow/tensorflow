@@ -18,8 +18,8 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
-#include "tensorflow/lite/core/async/interop/c/attribute_map.h"
-#include "tensorflow/lite/core/async/interop/c/types.h"
+#include "tensorflow/lite/async/interop/c/attribute_map.h"
+#include "tensorflow/lite/async/interop/c/types.h"
 
 namespace tflite::delegates::utils {
 

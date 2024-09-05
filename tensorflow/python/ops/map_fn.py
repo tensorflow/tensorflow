@@ -21,9 +21,9 @@ import re
 from tensorflow.python.autograph.core import ag_ctx as autograph_ctx
 from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.eager import context
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
@@ -31,7 +31,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import while_loop
-from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
@@ -390,8 +389,8 @@ def map_fn(fn,
     # If fn_output_signature was not specified, then assume that it matches the
     # input signature.
     result_flat_signature = [
-        _most_general_compatible_type(s)._unbatch()  # pylint: disable=protected-access
-        for s in elems_flat_signature
+        _most_general_type_spec(e)._unbatch()  # pylint: disable=protected-access
+        for e in elems_flat
     ]
     result_unflatten = elems_unflatten
   else:
@@ -527,20 +526,18 @@ def _dtype_to_spec(d):
   return d
 
 
-def _most_general_compatible_type(spec):
-  """Returns the most general TypeSpec compatible with `spec`."""
-  # TODO(edloper): Consider adding most_general_compatible_type to TypeSpec API
-  if isinstance(spec, tensor_spec.TensorSpec):
-    return tensor_spec.TensorSpec(None, spec.dtype)
-  elif isinstance(spec, ragged_tensor.RaggedTensorSpec):
-    # pylint: disable=protected-access
-    return ragged_tensor.RaggedTensorSpec(None, spec._dtype, spec._ragged_rank,
-                                          spec._row_splits_dtype)
-  elif isinstance(spec, sparse_tensor.SparseTensorSpec):
-    # pylint: disable=protected-access
-    return sparse_tensor.SparseTensorSpec(None, spec.dtype)
+def _most_general_type_spec(elem):
+  """Returns the most general TypeSpec for elem."""
+  if isinstance(elem, composite_tensor.CompositeTensor):
+    try:
+      spec = elem._shape_invariant_to_type_spec(tensor_shape.TensorShape(None))  # pylint: disable=protected-access
+    except NotImplementedError:
+      spec = type_spec.type_spec_from_value(elem)
   else:
-    return spec
+    spec = type_spec.type_spec_from_value(elem)
+    if isinstance(spec, tensor_spec.TensorSpec):
+      spec = tensor_spec.TensorSpec(None, spec.dtype)
+  return spec
 
 
 def _result_flat_signature_to_batchable_tensor_spec(result_flat_signature):

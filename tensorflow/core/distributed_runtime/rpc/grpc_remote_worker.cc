@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/protobuf/transport_options.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 #include "tensorflow/core/util/env_var.h"
@@ -118,13 +117,15 @@ class GrpcRemoteWorker : public WorkerInterface {
   void CleanupGraphAsync(const CleanupGraphRequest* request,
                          CleanupGraphResponse* response,
                          StatusCallback done) override {
-    IssueRequest(request, response, cleanupgraph_, std::move(done));
+    IssueRequest(request, response, cleanupgraph_, std::move(done),
+                 /*call_opts=*/nullptr, /*fail_fast=*/false);
   }
 
   void CleanupAllAsync(const CleanupAllRequest* request,
                        CleanupAllResponse* response,
                        StatusCallback done) override {
-    IssueRequest(request, response, cleanupall_, std::move(done));
+    IssueRequest(request, response, cleanupall_, std::move(done),
+                 /*call_opts=*/nullptr, /*fail_fast=*/false);
   }
 
   void RecvBufAsync(CallOptions* call_opts, const RecvBufRequest* request,
@@ -336,7 +337,8 @@ class GrpcRemoteWorker : public WorkerInterface {
   WorkerCacheLogger* logger_;
   const string target_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GrpcRemoteWorker);
+  GrpcRemoteWorker(const GrpcRemoteWorker&) = delete;
+  void operator=(const GrpcRemoteWorker&) = delete;
 };
 
 WorkerInterface* NewGrpcRemoteWorker(SharedGrpcChannelPtr channel,

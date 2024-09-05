@@ -61,18 +61,20 @@ struct MklEinsumHelper {
         ctx->allocate_temp(DataTypeToEnum<T>::value, output_shape, output));
 
     if (!(lhs.dims() >= 2))
-      return errors::InvalidArgument("In[0] ndims must be >= 2: ", lhs.dims());
+      return absl::InvalidArgumentError(
+          absl::StrCat("In[0] ndims must be >= 2: ", lhs.dims()));
 
     if (!(rhs.dims() >= 2))
-      return errors::InvalidArgument("In[1] ndims must be >= 2: ", rhs.dims());
+      return absl::InvalidArgumentError(
+          absl::StrCat("In[1] ndims must be >= 2: ", rhs.dims()));
 
     const auto ndims_lhs = lhs.dims();
     const auto ndims_rhs = rhs.dims();
     // In[0] and In[1] must have compatible batch dimensions
     if (!(bcast.IsValid()))
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "In[0] and In[1] must have compatible batch dimensions: ",
-          lhs.shape().DebugString(), " vs. ", rhs.shape().DebugString());
+          lhs.shape().DebugString(), " vs. ", rhs.shape().DebugString()));
 
     TensorShape out_shape = bcast.output_batch_shape();
     auto lhs_rows = lhs.dim_size(ndims_lhs - 2);
@@ -84,19 +86,19 @@ struct MklEinsumHelper {
     if (trans_y) std::swap(rhs_rows, rhs_cols);
     // lhs mismatch rhs shape: lhs_cols, " vs. ", rhs_rows
     if (lhs_cols != rhs_rows)
-      return errors::InvalidArgument(
-          "lhs mismatch rhs shape: ", lhs_cols, " vs. ", rhs_rows, ": ",
-          lhs.shape().DebugString(), " ", rhs.shape().DebugString(), " ",
-          trans_x, " ", trans_y);
+      return absl::InvalidArgumentError(
+          absl::StrCat("lhs mismatch rhs shape: ", lhs_cols, " vs. ", rhs_rows,
+                       ": ", lhs.shape().DebugString(), " ",
+                       rhs.shape().DebugString(), " ", trans_x, " ", trans_y));
 
     out_shape.AddDim(lhs_rows);
     out_shape.AddDim(rhs_cols);
     // The maximum number of dimensions for a tensor in DNNL is
     // DNNL_MAX_NDIMS = 12.
     if (!(out_shape.dims() <= DNNL_MAX_NDIMS))
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Rank of output tensor must be <= 12, ", "but is ", out_shape.dims(),
-          ". Current implementation supports upto ", "rank 12 tensors.");
+          ". Current implementation supports upto ", "rank 12 tensors."));
 
     if (lhs.NumElements() == 0 || rhs.NumElements() == 0) {
       functor::SetZeroFunctor<Device, T> f;
@@ -110,6 +112,12 @@ struct MklEinsumHelper {
     auto params = bmm.CreateMatMulParams(prefix, lhs.shape(), rhs.shape(),
                                          out_shape, trans_x, trans_y);
 
+    // Create the oneDNN wrapper over Eigen threadpool and set max threads
+    // in oneDNN.
+    Eigen::ThreadPoolInterface* eigen_interface =
+        EigenThreadPoolFromTfContext(ctx);
+    tsl::OneDnnThreadPool eigen_tp(eigen_interface,
+                                   ThreadPoolUseCallerThread());
     // Create or retrieve matmul primitive from cache.
     MklMatMulPrimitive<T, T, T>* matmul_prim =
         MklMatMulPrimitiveFactory<T, T, T, T>::Get(
@@ -162,7 +170,7 @@ struct MklEinsumHelper {
     scratch_pad.AllocateSPTensor(matmul_prim, ctx);
     // Execute matmul primitive.
     std::shared_ptr<stream> cpu_stream;
-    MklDnnThreadPool eigen_tp(ctx);
+
     cpu_stream.reset(CreateStream(&eigen_tp, matmul_prim->GetEngine()));
 
     matmul_prim->Execute(cpu_stream, lhs.flat<T>().data(), weight_data,
@@ -192,8 +200,12 @@ class MklEinsum : public OpKernel {
   virtual ~MklEinsum() {}
 
   void Compute(OpKernelContext* ctx) override {
-    OpInputList inputs;
+    OpInputList inputs(ctx, 0, 0);
     OP_REQUIRES_OK(ctx, ctx->input_list("inputs", &inputs));
+
+    if (std::is_same<T, float>::value) {
+      (void)SetFPMathMode();
+    }
 
     OperandLabels input_labels(mkl_input_labels_);
     Labels output_labels(mkl_output_labels_);
@@ -323,5 +335,7 @@ class MklEinsum : public OpKernel {
                           MklEinsum<CPUDevice, TYPE>)
 TF_CALL_float(REGISTER_EINSUM_MKL);
 TF_CALL_bfloat16(REGISTER_EINSUM_MKL);
+TF_CALL_half(REGISTER_EINSUM_MKL);
+
 }  // namespace tensorflow
 #endif  // INTEL_MKL

@@ -1,0 +1,77 @@
+syntax = "proto3";
+
+package tensorflow.proto_splitter;
+
+import "tensorflow/tools/proto_splitter/versions.proto";
+
+option cc_enable_arenas = true;
+
+// The ChunkMetadata is generated and saved as the last chunk when exported with
+// Splitter.write(prefix). This metadata is always located in the {prefix}.cpb
+// file.
+message ChunkMetadata {
+  // The version of the Splitter was used (for information purposes only), and
+  // what versions of the Merger can be used to read the chunked proto.
+  VersionDef version = 1;
+  // Metadata about how/where to read the chunk data.
+  repeated ChunkInfo chunks = 2;
+  // Recursive structural information of the proto that was passed to the
+  // Splitter. Used to merge the chunked data into a single proto.
+  ChunkedMessage message = 3;
+}
+
+message ChunkInfo {
+  // List of types supported by the Merger.
+  enum Type {
+    UNSET = 0;
+    MESSAGE = 1;
+    BYTES = 2;
+  }
+  Type type = 1;
+  uint64 size = 2;    // Size of this chunk in bytes.
+  uint64 offset = 3;  // Byte offset of this chunk.
+}
+
+message ChunkedMessage {
+  // Index of the ChunkInfo in ChunkMetadata.chunks.
+  optional uint64 chunk_index = 1;
+
+  // The same field can appear multiple times in this list. When this
+  // happens, the parsed chunk data is merged in the order that they appear.
+  // The way the field is merged depends on the type of field. e.g. Repeated
+  // fields are merged by appending them, bytes are merged concatenated.
+  repeated ChunkedField chunked_fields = 2;
+}
+
+message ChunkedField {
+  // Stores the nested field numbers, which tell us where and how to merge
+  // this chunk.
+  // E.g. If the parent ChunkedMessage contains a GraphDef, this field value
+  // could point to: `GraphDef.node[15].attr["value"].tensor.float_value`
+  // Field tag = [] (empty list) indicates that the chunked message is the same
+  // type as the parent. This is useful for slicing repeated fields.
+  repeated FieldIndex field_tag = 1;
+  ChunkedMessage message = 3;  // This allows us to build a tree of chunked
+                               // messages.
+}
+
+message FieldIndex {
+  message MapKey {
+    oneof type {
+      string s = 1;
+      bool boolean = 2;
+      uint32 ui32 = 3;
+      uint64 ui64 = 4;
+      int32 i32 = 5;
+      int64 i64 = 6;
+      // TODO(278326592): Add sfixed key types if needed.
+    }
+  }
+  oneof kind {
+    // uint32 is the maximum represent field tags:
+    // https://stackoverflow.com/a/63666587
+    uint32 field = 1;  // Field number
+    MapKey map_key = 2;
+    uint64 index = 3;
+  }
+}

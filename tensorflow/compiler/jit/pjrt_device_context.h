@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_PJRT_DEVICE_CONTEXT_H_
 #define TENSORFLOW_COMPILER_JIT_PJRT_DEVICE_CONTEXT_H_
 
-#include <memory>
+#include <utility>
 
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/platform/status.h"
 
@@ -28,6 +28,12 @@ namespace tensorflow {
 // devices using PjRt.
 class PjRtDeviceContext : public DeviceContext {
  public:
+  explicit PjRtDeviceContext(
+      XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
+      bool use_pjrt_tensor_buffer = false)
+      : shape_determination_fns_(std::move(shape_determination_fns)),
+        use_pjrt_tensor_buffer_(use_pjrt_tensor_buffer) {}
+
   void CopyCPUTensorToDevice(const Tensor* cpu_tensor, Device* device,
                              Tensor* device_tensor, StatusCallback done,
                              bool sync_dst_compute) const override;
@@ -37,7 +43,21 @@ class PjRtDeviceContext : public DeviceContext {
   void CopyTensorInSameDevice(const Tensor* input_tensor, Device* device,
                               Tensor* output_tensor,
                               StatusCallback done) const override;
+
+  bool use_pjrt_tensor_buffer() const { return use_pjrt_tensor_buffer_; }
+
+ private:
+  XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns_;
+  // Note: we currently assume the PjRtBuffer is a PjRtStreamExecutorBuffer.
+  bool use_pjrt_tensor_buffer_;
 };
+
+void PjRtDeviceToDeviceCopy(DeviceContext* send_dev_context,
+                            DeviceContext* recv_dev_context, Device* src,
+                            Device* dst, AllocatorAttributes src_alloc_attr,
+                            AllocatorAttributes dst_alloc_attr,
+                            const Tensor* input, Tensor* output,
+                            int dev_to_dev_stream_index, StatusCallback done);
 
 }  // namespace tensorflow
 

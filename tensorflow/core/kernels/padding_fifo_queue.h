@@ -57,7 +57,7 @@ class PaddingFIFOQueue : public FIFOQueue {
   // Any unknown dimension sizes are converted to 0.
   // REQUIRED: All the input shapes have well defined rank.
   static std::vector<TensorShape> ConvertShapesPartialDimensionsToZero(
-      const gtl::ArraySlice<PartialTensorShape>& partial_shapes);
+      absl::Span<const PartialTensorShape> partial_shapes);
 
   // Sets the values in the given element to zero.
   static Status SetElementZero(Tensor* element);
@@ -81,7 +81,8 @@ class PaddingFIFOQueue : public FIFOQueue {
   static Status IsSameSizeExceptZerosInFirst(const TensorShape& first,
                                              const TensorShape& second);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(PaddingFIFOQueue);
+  PaddingFIFOQueue(const PaddingFIFOQueue&) = delete;
+  void operator=(const PaddingFIFOQueue&) = delete;
 };
 
 }  // namespace tensorflow

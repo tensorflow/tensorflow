@@ -19,7 +19,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -33,10 +33,10 @@ limitations under the License.
 #include "tensorflow/core/util/gpu_solvers.h"  // For ScratchSpace
 
 #if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
+#include "xla/stream_executor/cuda/cuda_activation.h"
 using stream_executor::cuda::ScopedActivateExecutorContext;
 #elif TENSORFLOW_USE_ROCM
-#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_activation.h"
+#include "xla/stream_executor/rocm/rocm_activation.h"
 using stream_executor::rocm::ScopedActivateExecutorContext;
 #endif
 
@@ -191,15 +191,13 @@ struct SparseSliceFunctor<GPUDevice, T> {
 
     // Copy the number of selected non-zeros to the host.
     ScratchSpace<int64_t> output_nnz_host(context, 1, /*on_host=*/true);
-    OP_REQUIRES_ASYNC(
+    OP_REQUIRES_OK_ASYNC(
         context,
-        stream
-            ->ThenMemcpy(output_nnz_host.mutable_data(),
-                         se::DeviceMemoryBase(output_nnz_ptr,
-                                              sizeof(*output_nnz_host.data())),
-                         sizeof(*output_nnz_host.data()))
-            .ok(),
-        errors::Internal("Failed to copy output_nnz to host"), done);
+        stream->Memcpy(output_nnz_host.mutable_data(),
+                       se::DeviceMemoryBase(output_nnz_ptr,
+                                            sizeof(*output_nnz_host.data())),
+                       sizeof(*output_nnz_host.data())),
+        done);
 
     // Asynchronously wait for the copy to complete before finishing.
     auto async_finish_computation =
@@ -210,7 +208,8 @@ struct SparseSliceFunctor<GPUDevice, T> {
       // Ensure that within the callback, the proper GPU settings are
       // configured.
       auto stream = context->op_device_context()->stream();
-      ScopedActivateExecutorContext scoped_activation{stream->parent()};
+      std::optional<ScopedActivateExecutorContext> scoped_activation{
+          stream->parent()};
       int64_t output_nnz = *output_nnz_host.data();
 
       Tensor* output_indices = nullptr;
@@ -227,11 +226,16 @@ struct SparseSliceFunctor<GPUDevice, T> {
       T* output_values_ptr = output_values->vec<T>().data();
 
       if (output_nnz == 0) {
+        // Release ScopedActivateExecutorContext to prevent deadlock when done
+        // inlines another Op kernel, which may assume the original cuda
+        // Context.
+        scoped_activation.reset();
         done();
         return;
       }
 
-      // Gather (and offset) selected indices and values from input into output.
+      // Gather (and offset) selected indices and values from input into
+      // output.
       const GPUDevice& device = context->eigen_device<GPUDevice>();
       auto config = GetGpuLaunchConfig(output_nnz, device);
       OP_REQUIRES_OK_ASYNC(
@@ -243,6 +247,11 @@ struct SparseSliceFunctor<GPUDevice, T> {
                           selected_nonzeros_ptr, output_indices_ptr,
                           output_values_ptr),
           done);
+      // Release ScopedActivateExecutorContext to prevent deadlock when done
+      // inlines another Op kernel, which may assume the original cuda
+      // Context.
+      scoped_activation.reset();
+
       done();
     };
 

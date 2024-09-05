@@ -165,9 +165,6 @@ converter.representative_dataset = representative_dataset
 tflite_quant_model = converter.convert()
 </pre>
 
-Note: The converter will throw an error if it encounters an operation it cannot
-currently quantize.
-
 ### Float16 quantization
 
 You can reduce the size of a floating point model by quantizing the weights to

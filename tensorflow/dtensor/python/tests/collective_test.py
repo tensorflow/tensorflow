@@ -21,9 +21,11 @@ import numpy as np
 
 # pylint: disable=g-direct-tensorflow-import
 from tensorflow.dtensor.python import api
+from tensorflow.dtensor.python import config
 from tensorflow.dtensor.python import d_variable
 from tensorflow.dtensor.python import dtensor_device
 from tensorflow.dtensor.python import layout as layout_lib
+from tensorflow.dtensor.python.tests import test_backend_util
 from tensorflow.dtensor.python.tests import test_util
 from tensorflow.python.eager.polymorphic_function import polymorphic_function
 from tensorflow.python.framework import constant_op
@@ -88,7 +90,20 @@ class CollectiveTest(test_util.DTensorBaseTest):
 
     self.assertDTensorEqual(expected_result, self.scalar_layout, dtensor_result)
 
+  def testReduceOnInt8(self):
+    a = constant_op.constant(
+        np.array([[1, 2, 3, 4], [5, 6, 7, 8]]), dtype=dtypes.int8
+    )
+
+    expected_result = math_ops.reduce_sum(a)
+
+    sharded_a = api.relayout(a, self.first_dimension_sharded_layout_2d)
+    dtensor_result = math_ops.reduce_sum(sharded_a)
+
+    self.assertDTensorEqual(expected_result, self.scalar_layout, dtensor_result)
+
   def testTwoReducesWithAssign(self):
+    self.skipForPathways('TODO(b/260775095)')
     # FIXME(b/238384852): The purpose of this test is to validate the control
     # dependency added by DTensor.
     # However, as we have no way of testing the per-device graph
@@ -173,6 +188,32 @@ class CollectiveTest(test_util.DTensorBaseTest):
 
     self.assertDTensorEqual(a, self.fully_replicated_layout_2d, unsharded_a)
 
+  def testCollectiveOpsOnComplex64(self):
+    # This functions tests for AllScatter, AllGather, and AllReduce.
+    a = constant_op.constant(
+        np.array([[1, 2 + 2j], [3 + 1j, 4 + 5j]]), dtype=dtypes.complex64
+    )
+    # Tests AllScatter
+    sharded_a = api.relayout(a, self.first_dimension_sharded_layout_2d)
+    # Tests AllGather / AllReduce
+    unsharded_a = api.relayout(sharded_a, self.fully_replicated_layout_2d)
+
+    self.assertDTensorEqual(a, self.fully_replicated_layout_2d, unsharded_a)
+
+  def testCollectiveOpsOnComplex128(self):
+    # This function tests for AllScattering, AllReduce, and AllToAll.
+    self.skipForDeviceType(['TPU'], 'TPU does not support comolex128')
+    expected_layout = Layout.inner_sharded(self.mesh, 'x', rank=2)
+    initial_layout = Layout.batch_sharded(self.mesh, 'x', rank=2)
+
+    a = constant_op.constant(
+        np.array([[1, 2 + 2j], [3 + 1j, 4 + 5j]]), dtype=dtypes.complex128)
+    # Tests AllScatter
+    sharded_a_initial = api.relayout(a, initial_layout)
+    # Tests AllToAll / AllReduce
+    sharded_a = api.relayout(sharded_a_initial, expected_layout)
+    api.check_layout(sharded_a, expected_layout)
+
   def testNoOpAllToAll(self):
     self.skipForDeviceType(['TPU'],
                            'This test only needs to run on 2 cores.',
@@ -202,30 +243,31 @@ class CollectiveTest(test_util.DTensorBaseTest):
     mesh = layout_lib.Mesh(_MESH_DIMS, global_ids, local_ids,
                            test_util.create_device_list((2, 4), 'TPU'),
                            'tpu_mesh')
-    device = dtensor_device.DTensorDevice(meshes=[mesh])
     # This works because on 2x2, global device IDs are equal to physical TPU
     # core IDs: both are range(8). So local device IDs happen to be usable here.
     # TODO(b/180046115): Add a device.get_tpu_core_ids method and translate
     # device IDs to core IDs before setting the list here.
-    device.set_tpu_core_ids('tpu_mesh', local_ids)
+    if not config.backend_is_pw():
+      device = dtensor_device.DTensorDevice(meshes=[mesh])
+      device.set_tpu_core_ids('tpu_mesh', local_ids)
+    else:
+      test_backend_util.config_test_mesh(mesh)
     layout_x = Layout.batch_sharded(mesh, _MESH_DIM_X, 2)
     layout_y = Layout.batch_sharded(mesh, _MESH_DIM_Y, 2)
 
     # Create a 2x4 batch-sharded d-tensor, with batch IDs in its first column
     # and zeros in other columns.
-    # pylint: disable=g-complex-comprehension
-    replica_ids = [
-        constant_op.constant([loc[_MESH_DIM_X], 0, 0, 0],
-                             dtype=dtypes.int32,
-                             shape=[1, 4])
-        for loc in mesh.local_device_locations()
-    ]
-    # pylint: enable=g-complex-comprehension
-    replica_ids = device.pack(replica_ids, layout_x)
+    replica_ids = constant_op.constant(
+        np.array([[0, 0, 0, 0], [1, 0, 0, 0]]), dtype=dtypes.int32
+    )
+    replica_ids = api.relayout(replica_ids, layout_x)
 
     # Create a 4x4 y-sharded d-tensor filled with ones.
-    ones = [array_ops.ones([1, 4], dtype=dtypes.int32)] * 8
-    ones = device.pack(ones, layout_y)
+    ones = constant_op.constant(
+        np.array([[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]]),
+        dtype=dtypes.int32,
+    )
+    ones = api.relayout(ones, layout_y)
 
     # If `a` has a layout of [x, unsharded], and `b` has a layout of
     # [y, unsharded], the matmul will slice `a` to [x, y], do a local matmul,
@@ -236,7 +278,7 @@ class CollectiveTest(test_util.DTensorBaseTest):
     # function) to produce correct `begin` values for slicing `a`.
     #
     # Although this function only contains a single op, running it in op-by-op
-    # mode doesn't produce the intented effect because the output of
+    # mode doesn't produce the intended effect because the output of
     # math_ops.matmul would have a layout of [y, unsharded] instead of
     # [x, unsharded].
     @polymorphic_function.function
@@ -253,8 +295,8 @@ class CollectiveTest(test_util.DTensorBaseTest):
         for loc in mesh.local_device_locations()
     ]
 
-    self.assertEqual(device.fetch_layout(dtensor_result), layout_x)
-    dtensor_result = [t.numpy() for t in device.unpack(dtensor_result)]
+    self.assertEqual(api.fetch_layout(dtensor_result), layout_x)
+    dtensor_result = [t.numpy() for t in api.unpack(dtensor_result)]
     self.assertAllEqual(expected_result, dtensor_result)
 
   def testDifferentShapesBetweenCalls(self):
@@ -488,6 +530,52 @@ class CollectiveTestWithCustomMesh(test_util.DTensorBaseTest):
     else:
       del os.environ['DTENSOR_REDUCE_IN_BFLOAT16_MAX_GROUP_SIZE']
 
+  # Create two independent AllReduce ops with indirect dependency, that should
+  # not get combined.
+  def testAllReduceCombinerWithIndirectDependency(self):
+    # The purpose of this test is to validate the depdency check in AllReduce
+    # AllReduce combiner (dtensor_allreduce_combine_optimization). Specifically,
+    # the side effects from indirect dependency.
+    self.skipForPathways('TODO(b/260775095)')
+    self.skipForDeviceType(['TPU'],
+                           'This test requires 8 TPU cores.',
+                           unless_device_count_equals_to=8)
+
+    # Create and use an eight-device mesh just for this test.
+    global_ids = test_util.create_device_ids_array((8,))
+    local_ids = np.ravel(global_ids).tolist()
+    mesh_dict = {
+        device: layout_lib.Mesh([_MESH_DIM_X], global_ids, local_ids,
+                                test_util.create_device_list((8,), device))
+        for device in ('CPU', 'GPU', 'TPU')
+    }
+
+    mesh = self.configTestMesh(mesh_dict)
+    first_dim_sharded_layout_1d = Layout.batch_sharded(
+        mesh, _MESH_DIM_X, rank=1)
+
+    init_value = constant_op.constant(np.ones(32), dtype=dtypes.float32)
+    init_value = api.relayout(init_value, first_dim_sharded_layout_1d)
+
+    # 2nd reduction indrectly depend on the 1st reduction
+    @polymorphic_function.function
+    def func(v):
+      a = math_ops.reduce_sum(v)
+      v.assign_add(v+a)
+      b = math_ops.reduce_sum(v)
+      return b
+
+    v = d_variable.DVariable(init_value)
+    dtensor_result = func(v)
+
+    # Replicate the scenario above without using dtensor
+    expected_result = constant_op.constant(np.ones(32), dtype=dtypes.float32)
+    expected_result += expected_result + math_ops.reduce_sum(expected_result)
+    expected_result = math_ops.reduce_sum(expected_result)
+
+    self.assertDTensorEqual(
+        expected_result, Layout.replicated(mesh=mesh, rank=0), dtensor_result
+    )
 
 if __name__ == '__main__':
   test.main()

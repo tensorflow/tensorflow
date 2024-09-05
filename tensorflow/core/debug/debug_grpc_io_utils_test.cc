@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include "tensorflow/core/debug/debug_graph_utils.h"
 #include "tensorflow/core/debug/debug_grpc_testlib.h"
 #include "tensorflow/core/debug/debug_io_utils.h"
@@ -24,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/tracing.h"
 
 namespace tensorflow {
 
@@ -48,10 +49,10 @@ class GrpcDebugTest : public ::testing::Test {
                             int64_t server_start_delay_micros) {
     server_data->port = testing::PickUnusedPortOrDie();
     server_data->url = strings::StrCat("grpc://localhost:", server_data->port);
-    server_data->server.reset(new test::TestEventListenerImpl());
+    server_data->server = std::make_unique<test::TestEventListenerImpl>();
 
-    server_data->thread_pool.reset(
-        new thread::ThreadPool(Env::Default(), "test_server", 1));
+    server_data->thread_pool =
+        std::make_unique<thread::ThreadPool>(Env::Default(), "test_server", 1);
     server_data->thread_pool->Schedule(
         [server_data, server_start_delay_micros]() {
           Env::Default()->SleepForMicroseconds(server_start_delay_micros);
@@ -99,8 +100,7 @@ TEST_F(GrpcDebugTest, ConnectionTimeoutWorks) {
   const string expected_error_msg = strings::StrCat(
       "Failed to connect to gRPC channel at ", kInvalidGrpcUrl.substr(7),
       " within a timeout of ", kShortTimeoutMicros / 1e6, " s");
-  ASSERT_NE(string::npos,
-            publish_status.error_message().find(expected_error_msg));
+  ASSERT_NE(string::npos, publish_status.message().find(expected_error_msg));
 }
 
 TEST_F(GrpcDebugTest, ConnectionToDelayedStartingServerWorks) {
@@ -154,9 +154,9 @@ TEST_F(GrpcDebugTest, SendDebugTensorWithLargeStringAtIndex0ViaGrpcTest) {
   const Status status = DebugIO::PublishDebugTensor(
       kDebugNodeKey, tensor, Env::Default()->NowMicros(), {server_data_.url});
   ASSERT_FALSE(status.ok());
-  ASSERT_NE(status.error_message().find("string value at index 0 from debug "
-                                        "node foo_tensor:0:DebugIdentity does "
-                                        "not fit gRPC message size limit"),
+  ASSERT_NE(status.message().find("string value at index 0 from debug "
+                                  "node foo_tensor:0:DebugIdentity does "
+                                  "not fit gRPC message size limit"),
             string::npos);
   TF_ASSERT_OK(DebugIO::CloseDebugURL(server_data_.url));
 }
@@ -170,9 +170,9 @@ TEST_F(GrpcDebugTest, SendDebugTensorWithLargeStringAtIndex1ViaGrpcTest) {
   const Status status = DebugIO::PublishDebugTensor(
       kDebugNodeKey, tensor, Env::Default()->NowMicros(), {server_data_.url});
   ASSERT_FALSE(status.ok());
-  ASSERT_NE(status.error_message().find("string value at index 1 from debug "
-                                        "node foo_tensor:0:DebugIdentity does "
-                                        "not fit gRPC message size limit"),
+  ASSERT_NE(status.message().find("string value at index 1 from debug "
+                                  "node foo_tensor:0:DebugIdentity does "
+                                  "not fit gRPC message size limit"),
             string::npos);
   TF_ASSERT_OK(DebugIO::CloseDebugURL(server_data_.url));
 }

@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/util/stat_summarizer.h"
 
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "absl/strings/match.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -77,10 +82,10 @@ versions {
   const std::string by_node_type = stats.GetStatsByNodeType();
 
   // output should contain both the node type and node name.
-  ASSERT_TRUE(output.find("Const") != std::string::npos) << output;
-  ASSERT_TRUE(output.find("myconstant") != std::string::npos) << output;
+  ASSERT_TRUE(absl::StrContains(output, "Const")) << output;
+  ASSERT_TRUE(absl::StrContains(output, "myconstant")) << output;
   // stats by node type should include the type.
-  ASSERT_TRUE(by_node_type.find("Const") != std::string::npos) << by_node_type;
+  ASSERT_TRUE(absl::StrContains(by_node_type, "Const")) << by_node_type;
 }
 
 }  // namespace

@@ -23,11 +23,13 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <complex>
+#include <cstdlib>
 #include <functional>
 #include <initializer_list>
 #include <limits>
 #include <map>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <tuple>
@@ -40,7 +42,6 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
@@ -55,14 +56,40 @@ limitations under the License.
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
 #include "tensorflow/lite/type_to_tflitetype.h"
 #include "tensorflow/lite/util.h"
+#include "tsl/platform/logging.h"
 
 namespace tflite {
 
-// A gmock matcher that check that elements of a float vector match to a given
-// tolerance.
-std::vector<::testing::Matcher<float>> ArrayFloatNear(
-    const std::vector<float>& values, float max_abs_error = 1e-5);
+// This constant indicates the error bound is derived automatically in functions
+// like ArrayFloatNear.
+constexpr float kFpErrorAuto = -1;
 
+// Returns whether we allow FP16 precision for FP32 operations, i.e. in FP16
+// mode.
+bool AllowFp16PrecisionForFp32();
+
+// It checks if the actual number almost equals the expected number with the
+// tolerance of 4 FP16 ULPs in FP16 mode; 4 FP32 ULPs in FP32 mode.
+// Given float x, 2^e <= |x| <= 2^(e+1), then ULP(x) = 2^(max(e, e_min)-p+1)
+// where e_min is -24 for FP16, -126 for FP32; p is 10 for FP16, 23 for FP32.
+::testing::Matcher<std::tuple<float, float>> FloatingPointAlmostEq();
+
+// In FP32 mode, it equals to Eq(), which means the error bound is zero (no
+// error allowed); in FP16 mode, it checks if the actual number almost equals
+// the expected number with the tolerance of 4 FP16 ULPs.
+::testing::Matcher<std::tuple<float, float>> FloatingPointEq();
+
+// A gmock matcher that check that elements of a float vector match to a given
+// tolerance. In FP32 mode, the tolerance is max(max_abs_err, value *
+// max_rel_err). In FP16 mode, the tolerance is max(fp16_max_abs_err, value *
+// fp16_max_rel_err). If fp16_max_abs_err is kFpErrorAuto, it is set to
+// std::max(max_abs_err, sqrt(max_abs_err)) automatically.
+std::vector<::testing::Matcher<float>> ArrayFloatNear(
+    const std::vector<float>& values, float max_abs_err = 1e-5,
+    float fp16_max_abs_err = kFpErrorAuto, float max_rel_err = 0,
+    float fp16_max_rel_err = 0.01);
+
+// TODO(b/280061335): Add FP16 logic as ArrayFloatNear does.
 // A gmock matcher that check that elements of a complex vector match to a given
 // tolerance.
 std::vector<::testing::Matcher<std::complex<float>>> ArrayComplex64Near(
@@ -82,6 +109,7 @@ inline std::vector<T> Quantize(const std::vector<float>& data, float scale,
     max = 7;
   }
 
+  q.reserve(data.size());
   for (const auto& f : data) {
     q.push_back(static_cast<T>(std::max<float>(
         min, std::min<float>(max, std::round(zero_point + (f / scale))))));
@@ -214,7 +242,7 @@ class AccelerationValidator {
 
 class SingleOpModel {
  public:
-  SingleOpModel() {}
+  SingleOpModel() = default;
   ~SingleOpModel();
 
   // Set a delegate that is applied right after graph is prepared. This is
@@ -243,6 +271,15 @@ class SingleOpModel {
   int AddIntermediate(TensorType type, const std::vector<float>& scale,
                       const std::vector<int64_t>& zero_point);
 
+  // Returns the input tensor at position `index`.
+  TfLiteTensor* GetInputTensor(int index) {
+    return interpreter_->input_tensor(index);
+  }
+
+  // Returns the output tensor at position `index`.
+  TfLiteTensor* GetOutputTensor(int index) {
+    return interpreter_->output_tensor(index);
+  }
   // Templated version of AddConstInput() taking pointer and size.
   template <typename T>
   int AddConstInput(const TensorData& t, const T* data, size_t size) {
@@ -414,7 +451,10 @@ class SingleOpModel {
       buffer_id = buffers_.size();
       // When the quantization parameter is set for the added tensor, we
       // quantize the given data.
-      bool is_quantized = (t.min != 0 || t.max != 0 || t.scale != 0);
+      bool is_quantized = (t.min != 0 || t.max != 0 || t.scale != 0 ||
+                           (t.per_channel_quantization &&
+                            !t.per_channel_quantization_scales.empty() &&
+                            !t.per_channel_quantization_offsets.empty()));
       if (symmetric_quantize) {
         const int length = sparse_data.size();
         std::vector<int8_t> q(length);
@@ -432,14 +472,43 @@ class SingleOpModel {
       } else if (is_quantized) {
         CHECK_EQ(t.type, TensorType_INT8)
             << "The INT8 quantization is only supported for sparsified tensor";
-        auto q = Quantize<int8_t>(sparse_data, t.scale, t.zero_point);
-        std::vector<float> scales{t.scale};
-        std::vector<int64_t> zero_points{0};
+        std::vector<int8_t> quantized_output(sparse_data.size());
+        std::vector<float> scales;
+        std::vector<int64_t> zero_points;
+        if (t.per_channel_quantization) {
+          CHECK_EQ(t.per_channel_quantization_scales.size(),  // NOLINT
+                   t.per_channel_quantization_offsets.size())
+              << "Per channel quantization scales and offsets should have the "
+                 "same size";
+          std::vector<int8_t> temp_data(dense_data.size());
+          const int32_t num_channel = t.shape[t.channel_index];
+          std::vector<float> scales_inv(num_channel);
+          for (int i = 0; i < num_channel; ++i) {
+            scales_inv[i] = 1.0f / t.per_channel_quantization_scales[i];
+          }
+          optimize::utils::SymmetricPerChannelQuantizeValues(
+              dense_data.data(), scales_inv, t.shape, t.channel_index,
+              &temp_data, kTfLiteInt8);
+
+          tflite::internal::sparsity::FormatConverter<int8_t> quant_converter(
+              t.shape, t.traversal_order, t.format, t.block_size, t.block_map);
+          quant_converter.DenseToSparse(temp_data.data());
+          quantized_output = std::move(quant_converter.GetData());
+          scales = t.per_channel_quantization_scales;
+          zero_points = t.per_channel_quantization_offsets;
+
+        } else {
+          quantized_output =
+              std::move(Quantize<int8_t>(sparse_data, t.scale, t.zero_point));
+          scales = {t.scale};
+          zero_points = {0};
+        }
         q_params = CreateQuantizationParameters(
             builder_, t.min, t.max, builder_.CreateVector<float>(scales),
             builder_.CreateVector<int64_t>(zero_points));
         auto data_buffer = builder_.CreateVector(
-            reinterpret_cast<const uint8_t*>(q.data()), q.size());
+            reinterpret_cast<const uint8_t*>(quantized_output.data()),
+            quantized_output.size());
         buffers_.push_back(CreateBuffer(builder_, data_buffer));
       } else {
         auto data_buffer = builder_.CreateVector(
@@ -493,6 +562,15 @@ class SingleOpModel {
                                           const std::vector<float>& data) {
     std::vector<int8_t> q = QuantizeTensor(index, data);
     PopulateTensor(index, /*offset=*/0, q.data(), q.data() + q.size());
+  }
+
+  void SignedSymmetricQuantizeAndPopulate4Bit(int index,
+                                              const std::vector<float>& data) {
+    TfLiteTensor* t = interpreter_->tensor(index);
+    t->type = kTfLiteInt4;
+    std::vector<int8_t> q =
+        Quantize<int8_t>(data, t->params.scale, t->params.zero_point, t->type);
+    PopulateTensor4bit(index, /*offset=*/0, q.data(), q.data() + q.size());
   }
 
   // Quantize and populate data for filter with per channel quantization.
@@ -580,6 +658,9 @@ class SingleOpModel {
   // Define the operator in this model.
   void SetBuiltinOp(BuiltinOperator type, BuiltinOptions builtin_options_type,
                     flatbuffers::Offset<void> builtin_options);
+  void SetBuiltinOp(BuiltinOperator type,
+                    BuiltinOptions2 builtin_options_2_type,
+                    flatbuffers::Offset<void> builtin_options_2);
   void SetCustomOp(const string& name,
                    const std::vector<uint8_t>& custom_option,
                    const std::function<TfLiteRegistration*()>& registration);
@@ -621,6 +702,12 @@ class SingleOpModel {
   // Populates the tensor given its index.
   template <typename T>
   void PopulateTensor(int index, const std::vector<T>& data) {
+    PopulateTensorImpl<T>(index, /*offset=*/0, data);
+  }
+
+  // Populates the tensor given its index.
+  template <typename T>
+  void PopulateTensor(int index, absl::Span<const T> data) {
     PopulateTensorImpl<T>(index, /*offset=*/0, data);
   }
 
@@ -671,7 +758,7 @@ class SingleOpModel {
     if (reset_interpreter) {
       // Reconstruct interpreter as number of threads may affect internal state,
       // e.g. stratch buffer allocation.
-      BuildInterpreter(input_shapes_, num_threads, allocate_and_delegate_,
+      BuildInterpreter(input_shapes_, num_threads, allow_fp32_relax_to_fp16_,
                        apply_delegate_, allocate_and_delegate_);
     }
     interpreter_->SetNumThreads(num_threads);
@@ -686,6 +773,17 @@ class SingleOpModel {
   int CountOpsExecutedByCpuKernel();
   int CountNumberOfDelegatedPartitions() const;
   int GetNumberOfAppliedDelegates() const { return num_applied_delegates_; }
+  // Return the most recent return status of ApplyDelegate.
+  std::optional<TfLiteStatus> GetDelegateApplicationStatus() const {
+    return delegate_application_status_;
+  }
+  void SetDelegateApplicationStatus(std::optional<TfLiteStatus> status) {
+    delegate_application_status_ = status;
+  }
+
+  // Tell TF Lite runtime to apply default delegates (i.e. XNNPACK delegate)
+  // when handling this op-level model.
+  void SetApplyDefaultDelegates() { bypass_default_delegates_ = false; }
 
  protected:
   int32_t GetTensorSize(int index) const;
@@ -771,65 +869,6 @@ class SingleOpModel {
     return id;
   }
 
- private:
-  // Populates the tensor starting at offset using given data.
-  template <typename T, typename Container>
-  void PopulateTensorImpl(int index, int offset, const Container& data) {
-    T* v = interpreter_->typed_tensor<T>(index);
-    if (!v) {
-      auto* t = interpreter_->tensor(index);
-      CHECK(t) << "No tensor with index " << index << ".";
-      CHECK(t->data.raw) << "Empty data for tensor with index " << index << ".";
-      CHECK_EQ(t->type, typeToTfLiteType<T>())
-          << "Type mismatch for tensor with index " << index << ". Requested "
-          << TfLiteTypeGetName(typeToTfLiteType<T>()) << ", got "
-          << TfLiteTypeGetName(t->type) << ".";
-      LOG(FATAL) << "Unknown tensor error.";
-    }
-    absl::c_copy(data, v + offset);
-  }
-
-  void PackInt4ValuesDenselyInPlace(uint8_t* src_buffer, int buffer_size) {
-    for (int i = 0; i < buffer_size; ++i) {
-      if (i % 2 == 0) {
-        src_buffer[i / 2] = src_buffer[i] & 0x0F;
-      } else {
-        src_buffer[i / 2] |= src_buffer[i] << 4;
-      }
-    }
-    // the rest of the buffer should be empty since half of it is packed with
-    // the values
-    memset(src_buffer + (buffer_size + 1) / 2, 0, buffer_size / 2);
-  }
-
-  int ElementCount(TfLiteIntArray& dims) {
-    int result = 1;
-    for (int i = 0; i < dims.size; ++i) {
-      result *= dims.data[i];
-    }
-    return result;
-  }
-
-  // Partially populates the tensor, starting at the given offset.
-  void PopulateTensor4bit(int index, int offset, int8_t* begin, int8_t* end) {
-    auto data = absl::Span<int8_t>(begin, end - begin);
-    TfLiteTensor* tensor_ptr = interpreter_->tensor(index);
-    uint8_t* v = nullptr;
-    if (tensor_ptr) {
-      v = reinterpret_cast<uint8_t*>(tensor_ptr->data.data);
-    }
-
-    if (!v) {
-      auto* t = interpreter_->tensor(index);
-      CHECK(t) << "No tensor with index " << index << ".";
-      CHECK(t->data.raw) << "Empty data for tensor with index " << index << ".";
-      LOG(FATAL) << "Unknown tensor error.";
-    }
-    absl::c_copy(data, v + offset);
-    PackInt4ValuesDenselyInPlace(v, ElementCount(*tensor_ptr->dims));
-    tensor_ptr->bytes = ((ElementCount(*tensor_ptr->dims) + 1) / 2);
-  }
-
   template <typename T>
   std::pair<float, int32_t> QuantizationParams(
       float f_min, float f_max, TfLiteType type = kTfLiteNoType) {
@@ -908,6 +947,71 @@ class SingleOpModel {
     zero_point = nudged_zero_point;
     // finally, return the values
     return {scale, zero_point};
+  }
+
+  void AddSubgraphs(int subgraphs_to_add,
+                    int* first_new_subgraph_index = nullptr) {
+    interpreter_->AddSubgraphs(subgraphs_to_add, first_new_subgraph_index);
+  }
+
+  // Partially populates the tensor, starting at the given offset.
+  void PopulateTensor4bit(int index, int offset, const int8_t* begin,
+                          const int8_t* end) {
+    auto data = absl::Span<const int8_t>(begin, end - begin);
+    TfLiteTensor* tensor_ptr = interpreter_->tensor(index);
+    uint8_t* v = nullptr;
+    if (tensor_ptr) {
+      v = reinterpret_cast<uint8_t*>(tensor_ptr->data.data);
+    }
+
+    if (!v) {
+      auto* t = interpreter_->tensor(index);
+      CHECK(t) << "No tensor with index " << index << ".";
+      CHECK(t->data.raw) << "Empty data for tensor with index " << index << ".";
+      LOG(FATAL) << "Unknown tensor error.";
+    }
+    absl::c_copy(data, v + offset);
+    PackInt4ValuesDenselyInPlace(v, ElementCount(*tensor_ptr->dims));
+    tensor_ptr->bytes = ((ElementCount(*tensor_ptr->dims) + 1) / 2);
+  }
+
+ private:
+  // Populates the tensor starting at offset using given data.
+  template <typename T, typename Container>
+  void PopulateTensorImpl(int index, int offset, const Container& data) {
+    T* v = interpreter_->typed_tensor<T>(index);
+    if (!v) {
+      auto* t = interpreter_->tensor(index);
+      CHECK(t) << "No tensor with index " << index << ".";
+      CHECK(t->data.raw) << "Empty data for tensor with index " << index << ".";
+      CHECK_EQ(t->type, typeToTfLiteType<T>())
+          << "Type mismatch for tensor with index " << index << ". Requested "
+          << TfLiteTypeGetName(typeToTfLiteType<T>()) << ", got "
+          << TfLiteTypeGetName(t->type) << ".";
+      LOG(FATAL) << "Unknown tensor error.";
+    }
+    absl::c_copy(data, v + offset);
+  }
+
+  void PackInt4ValuesDenselyInPlace(uint8_t* src_buffer, int buffer_size) {
+    for (int i = 0; i < buffer_size; ++i) {
+      if (i % 2 == 0) {
+        src_buffer[i / 2] = src_buffer[i] & 0x0F;
+      } else {
+        src_buffer[i / 2] |= src_buffer[i] << 4;
+      }
+    }
+    // the rest of the buffer should be empty since half of it is packed with
+    // the values
+    memset(src_buffer + (buffer_size + 1) / 2, 0, buffer_size / 2);
+  }
+
+  int ElementCount(TfLiteIntArray& dims) {
+    int result = 1;
+    for (int i = 0; i < dims.size; ++i) {
+      result *= dims.data[i];
+    }
+    return result;
   }
 
   int AddTensorPerChannelQuant(const TensorData& t) {
@@ -1011,6 +1115,7 @@ class SingleOpModel {
   std::vector<flatbuffers::Offset<Tensor>> tensors_;
   std::vector<flatbuffers::Offset<Buffer>> buffers_;
   TfLiteDelegate* delegate_ = nullptr;  // not own the memory.
+  std::optional<TfLiteStatus> delegate_application_status_ = std::nullopt;
   std::vector<std::vector<int>> input_shapes_;
   int num_applied_delegates_ = 0;
   bool allow_fp32_relax_to_fp16_ = false;
@@ -1019,7 +1124,8 @@ class SingleOpModel {
 
   // Whether to bypass the application of TF Lite default delegates (i.e.
   // XNNPACK delegate) at rutnime.
-  bool bypass_default_delegates_ = false;
+  // True by default as delegated graphs are tested elsewhere.
+  bool bypass_default_delegates_ = true;
 };
 
 // Populate string tensors.
@@ -1060,23 +1166,38 @@ class SingleOpTest : public ::testing::TestWithParam<string> {
   }
 };
 
+// Maps the native C++ types to the corresponding TFLite tensor type enum
+// values.
+template <class T>
+struct TensorTypeFor;
+
+#define TFLITE_TENSOR_TYPE_ASSOC(CPP_TYPE, TENSORTYPE_VALUE) \
+  template <>                                                \
+  struct TensorTypeFor<CPP_TYPE> {                           \
+    static constexpr TensorType value = TENSORTYPE_VALUE;    \
+  };
+
+TFLITE_TENSOR_TYPE_ASSOC(bool, TensorType_BOOL);
+TFLITE_TENSOR_TYPE_ASSOC(int8_t, TensorType_INT8);
+TFLITE_TENSOR_TYPE_ASSOC(int16_t, TensorType_INT16);
+TFLITE_TENSOR_TYPE_ASSOC(int32_t, TensorType_INT32);
+TFLITE_TENSOR_TYPE_ASSOC(int64_t, TensorType_INT64);
+TFLITE_TENSOR_TYPE_ASSOC(uint8_t, TensorType_UINT8);
+TFLITE_TENSOR_TYPE_ASSOC(uint16_t, TensorType_UINT16);
+TFLITE_TENSOR_TYPE_ASSOC(uint32_t, TensorType_UINT32);
+TFLITE_TENSOR_TYPE_ASSOC(uint64_t, TensorType_UINT64);
+TFLITE_TENSOR_TYPE_ASSOC(TfLiteFloat16, TensorType_FLOAT16);
+TFLITE_TENSOR_TYPE_ASSOC(Eigen::half, TensorType_FLOAT16);
+TFLITE_TENSOR_TYPE_ASSOC(float, TensorType_FLOAT32);
+TFLITE_TENSOR_TYPE_ASSOC(double, TensorType_FLOAT64);
+TFLITE_TENSOR_TYPE_ASSOC(std::string, TensorType_STRING);
+
+#undef TFLITE_TENSOR_TYPE_ASSOC
+
 // Returns the corresponding TensorType given the type T.
 template <typename T>
-TensorType GetTensorType() {
-  if (std::is_same<T, float>::value) return TensorType_FLOAT32;
-  if (std::is_same<T, TfLiteFloat16>::value) return TensorType_FLOAT16;
-  if (std::is_same<T, Eigen::half>::value) return TensorType_FLOAT16;
-  if (std::is_same<T, double>::value) return TensorType_FLOAT64;
-  if (std::is_same<T, int8_t>::value) return TensorType_INT8;
-  if (std::is_same<T, int16_t>::value) return TensorType_INT16;
-  if (std::is_same<T, uint16_t>::value) return TensorType_UINT16;
-  if (std::is_same<T, int32_t>::value) return TensorType_INT32;
-  if (std::is_same<T, uint32_t>::value) return TensorType_UINT32;
-  if (std::is_same<T, int64_t>::value) return TensorType_INT64;
-  if (std::is_same<T, uint8_t>::value) return TensorType_UINT8;
-  if (std::is_same<T, string>::value) return TensorType_STRING;
-  if (std::is_same<T, bool>::value) return TensorType_BOOL;
-  return TensorType_MIN;  // default value
+constexpr TensorType GetTensorType() {
+  return TensorTypeFor<T>::value;
 }
 
 // Strings have a special implementation that is in test_util.cc
@@ -1165,7 +1286,7 @@ struct TypeUnion<uint8_t> {
 class MultiOpModel : public SingleOpModel {
  public:
   MultiOpModel() : SingleOpModel() {}
-  ~MultiOpModel() {}
+  ~MultiOpModel() = default;
 
   void AddBuiltinOp(BuiltinOperator type, BuiltinOptions builtin_options_type,
                     const flatbuffers::Offset<void>& builtin_options,
@@ -1204,7 +1325,7 @@ class DimsAreMatcher {
 
   // Required method to implement for matcher objects. We overload on
   // both `TfLiteTensor*` and `TfLiteIntArray` for flexibility.
-  bool MatchAndExplain(TfLiteIntArray* arg,
+  bool MatchAndExplain(const TfLiteIntArray* arg,
                        testing::MatchResultListener* result_listener) const {
     if (arg == nullptr) {
       *result_listener << "dims are null";
@@ -1217,8 +1338,12 @@ class DimsAreMatcher {
     return false;
   }
 
-  bool MatchAndExplain(TfLiteTensor* arg,
+  bool MatchAndExplain(const TfLiteTensor* arg,
                        testing::MatchResultListener* result_listener) const {
+    if (arg == nullptr) {
+      *result_listener << "tensor is null";
+      return false;
+    }
     return MatchAndExplain(arg->dims, result_listener);
   }
 
@@ -1241,6 +1366,14 @@ class DimsAreMatcher {
 
 inline DimsAreMatcher DimsAre(std::initializer_list<int> dims_list) {
   return DimsAreMatcher(dims_list);
+}
+
+inline DimsAreMatcher DimsAre(const std::vector<int>& dims) {
+  return DimsAreMatcher(dims);
+}
+
+inline DimsAreMatcher DimsAre(absl::Span<int> dims) {
+  return DimsAreMatcher(std::vector<int>(dims.begin(), dims.end()));
 }
 
 }  // namespace tflite

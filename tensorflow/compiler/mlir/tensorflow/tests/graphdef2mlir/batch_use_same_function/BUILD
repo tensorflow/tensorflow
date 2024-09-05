@@ -6,6 +6,7 @@ load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 licenses(["notice"])
 
 glob_lit_tests(
+    name = "all_tests",
     data = [
         ":debug_info_files",
         ":test_utilities",

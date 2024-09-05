@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_C_PLUGIN_OP_KERNEL_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_C_PLUGIN_OP_KERNEL_H_
 
+#include <cstdint>
+#include <deque>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -23,12 +25,12 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/c/kernels.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_coordination_service_agent.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_op_kernel.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/protobuf/config.pb.h"
-#include "tensorflow/tsl/platform/thread_annotations.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 
@@ -71,8 +73,8 @@ class CPluginOpKernelContext : public PluginOpKernelContext {
                                 void* create_func_args,
                                 void (*delete_func)(void*)) override;
 
-  PluginCoordinationServiceAgent* GetPluginCoordinationServiceAgent()
-      const override;
+  std::unique_ptr<PluginCoordinationServiceAgent>
+  GetPluginCoordinationServiceAgent() const override;
 
   Status CreatePluginVariable(int index,
                               PluginVariable** variable) const override;
@@ -81,9 +83,9 @@ class CPluginOpKernelContext : public PluginOpKernelContext {
 
   int NumInputs() const override { return TF_NumInputs(ctx_); }
 
-  Status GetInput(int index, Tensor* tensor) const override;
+  absl::Status GetInput(int index, const Tensor** tensor) const override;
 
-  Status GetInput(const char* name, const Tensor** tensor) override;
+  absl::Status GetInput(const char* name, const Tensor** tensor) const override;
 
   Status GetInputRange(std::string_view name,
                        std::pair<int, int>* range) const override;
@@ -101,6 +103,8 @@ class CPluginOpKernelContext : public PluginOpKernelContext {
   int64_t GetStepId() const override { return TF_GetStepId(ctx_); }
 
   int GetDeviceId() const override { return TF_GetDeviceId(ctx_); }
+
+  std::string_view GetDeviceName() const override;
 
   std::string GetSessionName() const override {
     // TODO(haoyuzhang): Implement with ctx_->session_metadata() if needed.
@@ -153,7 +157,11 @@ class CPluginOpKernelContext : public PluginOpKernelContext {
 
   // A cache for tensors obtained from the ctx_. This is needed to extend the
   // lifetime of the c++ tensorflow::Tensor created from `TF_TensorToTensor`.
-  std::vector<Tensor> obtained_tensors_ TF_GUARDED_BY(mu_);
+  // Use std::deque here to make sure elements in the container are pointer
+  // stable.
+  // "insertion and deletion at either end of a deque never invalidates pointers
+  //  or references to the rest of the elements."
+  mutable std::deque<Tensor> obtained_tensors_ TF_GUARDED_BY(mu_);
   TF_OpKernelContext* ctx_;  // not owned.
 };
 

@@ -19,9 +19,21 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/common_runtime/device_set.h"
-#include "tensorflow/core/tpu/tpu_defs.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/str_util.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
@@ -65,7 +77,7 @@ Status DistributedTPURewriteHelpers::GetSystemDevice(
       return errors::InvalidArgument(
           "System devices cannot be part "
           "of multiple different jobs.  Found: ",
-          str_util::Join(job_names, ","));
+          absl::StrJoin(job_names, ","));
     }
 
     // Identify the lexicographically first device from the list of
@@ -88,7 +100,7 @@ Status DistributedTPURewriteHelpers::GetSystemDevice(
                                    (*system_device)->name(),
                                    " as a device spec.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 // LINT.ThenChange(//tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.cc)
 
@@ -142,7 +154,7 @@ Status DistributedTPURewriteHelpers::GetHostSystemDevices(
               auto j_name = j->parsed_name();
               return i_name.task < j_name.task;
             });
-  return OkStatus();
+  return absl::OkStatus();
 }
 // LINT.ThenChange(//tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.cc)
 
@@ -193,7 +205,7 @@ Status DistributedTPURewriteHelpers::GetTPUDevices(
     }
     tpu_devices->push_back(std::move(host_tpu_devices));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 // LINT.ThenChange(//tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.cc)
 
@@ -249,7 +261,7 @@ Status DistributedTPURewriteHelpers::ForConfigurationNodeMatchingType(
                               input_dependencies, output_dependencies, graph));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

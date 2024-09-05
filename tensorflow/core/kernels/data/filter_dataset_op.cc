@@ -81,7 +81,7 @@ class FilterDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -107,7 +107,7 @@ class FilterDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(b->AddDataset(
         this, {{0, input_graph_node}}, {{1, other_arguments}},
         {{kPredicate, f}, {kTarguments, other_arguments_types_attr}}, output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -140,7 +140,7 @@ class FilterDatasetOp::Dataset : public DatasetBase {
           tf_shared_lock l(mu_);
           if (!input_impl_) {
             *end_of_sequence = true;
-            return OkStatus();
+            return absl::OkStatus();
           }
           TF_RETURN_IF_ERROR(
               input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
@@ -148,12 +148,15 @@ class FilterDatasetOp::Dataset : public DatasetBase {
         if (*end_of_sequence) {
           mutex_lock l(mu_);
           input_impl_.reset();
-          return OkStatus();
+          return absl::OkStatus();
         }
 
         std::vector<Tensor> result;
-        TF_RETURN_IF_ERROR(instantiated_captured_func_->RunWithBorrowedArgs(
-            ctx, *out_tensors, &result, model_node()));
+        auto status = instantiated_captured_func_->RunWithBorrowedArgs(
+            ctx, *out_tensors, &result, model_node());
+        if (!status.ok()) {
+          return AddErrorContext(status);
+        }
 
         if (result.size() != 1 || result[0].dtype() != DT_BOOL ||
             result[0].NumElements() != 1) {
@@ -201,7 +204,7 @@ class FilterDatasetOp::Dataset : public DatasetBase {
                                            static_cast<float>(1));
       }
       *end_of_sequence = false;
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    protected:
@@ -216,15 +219,15 @@ class FilterDatasetOp::Dataset : public DatasetBase {
           dataset()->captured_func_->CheckExternalState()));
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(
-          full_name(kInputImplEmpty), static_cast<int64_t>(!input_impl_)));
+          prefix(), kInputImplEmpty, static_cast<int64_t>(!input_impl_)));
       if (input_impl_) {
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       }
-      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kFilteredElements),
-                                             filtered_elements_));
       TF_RETURN_IF_ERROR(
-          writer->WriteScalar(full_name(kDroppedElements), dropped_elements_));
-      return OkStatus();
+          writer->WriteScalar(prefix(), kFilteredElements, filtered_elements_));
+      TF_RETURN_IF_ERROR(
+          writer->WriteScalar(prefix(), kDroppedElements, dropped_elements_));
+      return absl::OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -232,17 +235,17 @@ class FilterDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(mu_);
       int64_t input_empty;
       TF_RETURN_IF_ERROR(
-          reader->ReadScalar(full_name(kInputImplEmpty), &input_empty));
+          reader->ReadScalar(prefix(), kInputImplEmpty, &input_empty));
       if (static_cast<bool>(input_empty)) {
         input_impl_.reset();
       } else {
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       }
-      TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kFilteredElements),
-                                            &filtered_elements_));
       TF_RETURN_IF_ERROR(
-          reader->ReadScalar(full_name(kDroppedElements), &dropped_elements_));
-      return OkStatus();
+          reader->ReadScalar(prefix(), kFilteredElements, &filtered_elements_));
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(prefix(), kDroppedElements, &dropped_elements_));
+      return absl::OkStatus();
     }
 
     data::TraceMeMetadata GetTraceMeMetadata() const override {

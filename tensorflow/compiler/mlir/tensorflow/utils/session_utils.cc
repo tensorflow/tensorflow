@@ -14,9 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tensorflow/utils/session_utils.h"
 
+#include <string>
+#include <vector>
+
 #include "absl/status/status.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/utils/string_container_utils.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/device.h"
@@ -29,7 +33,7 @@ std::string GetVariableName(TF::VarHandleOp var_handle_op) {
   // In some cases the shared_name attribute doesn't have the same
   // tensor name in the model, so we first try to use the location
   // then fallback to shared_name attribute.
-  if (auto loc = var_handle_op->getLoc().dyn_cast<NameLoc>())
+  if (auto loc = mlir::dyn_cast<NameLoc>(var_handle_op->getLoc()))
     return loc.getName().str();
   return var_handle_op.getSharedName().str();
 }
@@ -71,7 +75,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> GetResourcesFromSession(
 
   auto status = session->Run({}, variable_names, {}, &resource_tensors);
   if (!status.ok())
-    return absl::Status(absl::StatusCode::kInternal, status.error_message());
+    return absl::Status(absl::StatusCode::kInternal, status.message());
   return resource_tensors;
 }
 }  // namespace tf_saved_model

@@ -15,13 +15,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_OPS_TPU_EMBEDDING_SHAPE_UTIL_H_
 #define TENSORFLOW_CORE_TPU_OPS_TPU_EMBEDDING_SHAPE_UTIL_H_
 
-#include <string>
+#include <cstdint>
 #include <vector>
 
-#include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/framework/tensor.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
 
 namespace tensorflow {
@@ -35,16 +35,16 @@ class TpuEmbeddingShapeUtil {
   // configuration is supplied in config. On success, shape is populated with
   // the shape of the embedding table that will be loaded or retrieved using
   // Ops such as {Load,Retrieve}TpuEmbedding*Parameters.
-  static Status ComputeOneTableShape(int64 vocabulary_size, int table_dimension,
-                                     int shard_id, int num_shards,
-                                     TensorShapeProto* shape);
+  static Status ComputeOneTableShape(int64_t vocabulary_size,
+                                     int table_dimension, int shard_id,
+                                     int num_shards, TensorShapeProto* shape);
 
   // Compute the shapes of the embedding tables stored on the
   // TpuEmbeddingEngine. The TpuEmbedding configuration is supplied in
   // config. On success, shapes is populated with the shape of each embedding
   // table that will be loaded or retrieved using Ops such as
   // {Load,Retrieve}AllTpuEmbeddingParameters.
-  static Status ComputeTableShapes(absl::Span<const int64> vocabulary_sizes,
+  static Status ComputeTableShapes(absl::Span<const int64_t> vocabulary_sizes,
                                    absl::Span<const int> table_dimensions,
                                    int shard_id, int num_shards,
                                    std::vector<TensorShapeProto>* shapes);
@@ -58,8 +58,8 @@ class TpuEmbeddingShapeUtil {
  private:
   // Compute the number of embedding IDs per embedding table shard.
   // There are as many shards as the number of hosts in the job.
-  static xla::StatusOr<int64> ComputeNumEmbeddingIdsPerShard(
-      int64 vocabulary_size, int shard_id, int num_shards);
+  static absl::StatusOr<int64_t> ComputeNumEmbeddingIdsPerShard(
+      int64_t vocabulary_size, int shard_id, int num_shards);
 };
 
 }  // namespace tpu

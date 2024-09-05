@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/tsl/platform/cloud/auth_provider.h"
+#include "tsl/platform/cloud/auth_provider.h"
 
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)

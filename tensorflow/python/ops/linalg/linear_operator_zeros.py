@@ -332,6 +332,16 @@ class LinearOperatorZeros(linear_operator.LinearOperator):
     zeros = array_ops.zeros(shape=output_shape, dtype=x.dtype)
     return self._possibly_broadcast_batch_shape(zeros)
 
+  def _linop_matmul(
+      self,
+      left_operator: "LinearOperatorZeros",
+      right_operator: linear_operator.LinearOperator
+    ) -> linear_operator.LinearOperator:
+    if not left_operator.is_square or not right_operator.is_square:
+      raise ValueError("Matmul with non-square `LinearOperator`s or non-square "
+                       "`LinearOperatorZeros` not supported at this time.")
+    return left_operator
+
   def _determinant(self):
     if self.batch_shape.is_fully_defined():
       return array_ops.zeros(shape=self.batch_shape, dtype=self.dtype)

@@ -26,15 +26,14 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/c/common.h"
-#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_mock_test.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -68,6 +67,7 @@ class AddSubOpsAcceleratedModel : public MultiOpModel {
     Init(input1, input2, input3, output, activation_type,
          allow_fp32_relax_to_fp16);
   }
+  ~AddSubOpsAcceleratedModel() { stateful_delegate_.reset(); }
 
   int input1() { return input1_; }
   int input2() { return input2_; }

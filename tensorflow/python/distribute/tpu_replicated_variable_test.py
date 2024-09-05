@@ -16,9 +16,13 @@
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.checkpoint import checkpoint as trackable_utils
+from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.distribute import tpu_replicated_variable
 from tensorflow.python.eager import test
 from tensorflow.python.framework import combinations
@@ -78,6 +82,67 @@ class TPUReplicatedVariableTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(
           self.evaluate(rv.variables[0].read_value()),
           self.evaluate(v))
+
+  @combinations.generate(combinations.combine(
+      mode=['graph', 'eager'],
+      enable_async_ckpt=[True, False]
+  ))
+  def test_tpu_replicated_variable_checkpoint(self, enable_async_ckpt):
+    batch_size = 4
+    num_feature_in = 2
+
+    # Initialize variables
+    x = np.random.rand(batch_size, num_feature_in).astype(np.float32)
+    w_init = np.random.rand(batch_size, num_feature_in).astype(np.float32)
+
+    w0 = variables_lib.Variable(w_init, dtype=dtypes.float32, name='w0')
+    w1 = variables_lib.Variable(w_init, dtype=dtypes.float32, name='w1')
+    self.evaluate(variables_lib.global_variables_initializer())
+    w = tpu_replicated_variable.TPUReplicatedVariable([w0, w1])
+    before_save = self.evaluate(w.read_value())
+
+    # Save w_init into checkpoint
+    ckpt = trackable_utils.Checkpoint(w=w)
+    ckpt_options = checkpoint_options.CheckpointOptions(
+        experimental_enable_async_checkpoint=enable_async_ckpt)
+    prefix = os.path.join(self.get_temp_dir(), 'ckpt')
+    with self.test_session():
+      save_path = ckpt.save(file_prefix=prefix, options=ckpt_options)
+
+    # Change values of w to x
+    self.evaluate(w.assign(x.copy()))
+    result = self.evaluate(w.read_value())
+    self.assertAllClose(result, x)
+    self.check_replicated_variables_all_the_same(w)
+
+    # Restore from the checkpoint
+    with self.test_session():
+      ckpt.restore(save_path).assert_consumed().run_restore_ops()
+    after_restore = self.evaluate(w.read_value())
+    self.check_replicated_variables_all_the_same(w)
+    self.assertAllClose(before_save, after_restore)
+
+    # Another round of saving/restoring to ensure that the logic of
+    # _copy_trackable_to_cpu works when a copy is already created in object_map.
+    y = np.random.rand(batch_size, num_feature_in).astype(np.float32)
+    z = np.random.rand(batch_size, num_feature_in).astype(np.float32)
+    self.evaluate(w.assign(y.copy()))  # change from x to y
+    before_save = self.evaluate(w.read_value())
+    self.assertAllClose(before_save, y)
+    self.check_replicated_variables_all_the_same(w)
+
+    with self.test_session():
+      save_path = ckpt.save(file_prefix=prefix, options=ckpt_options)
+
+    self.evaluate(w.assign(z.copy()))  # change from y to z
+    result = self.evaluate(w.read_value())
+    self.assertAllClose(result, z)
+
+    with self.test_session():
+      ckpt.restore(save_path).assert_consumed().run_restore_ops()
+    after_restore = self.evaluate(w.read_value())
+    self.check_replicated_variables_all_the_same(w)
+    self.assertAllClose(before_save, after_restore)
 
 
 if __name__ == '__main__':

@@ -34,7 +34,7 @@ from tensorflow.python.util import nest
 def extract_model_metrics(model):
   """Convert metrics from a Keras model `compile` API to dictionary.
 
-  This is used for converting Keras models to Estimators and SavedModels.
+  This is used for converting Keras models to SavedModels.
 
   Args:
     model: A `tf.keras.Model` object.
@@ -44,7 +44,6 @@ def extract_model_metrics(model):
     the model does not contain any metrics.
   """
   if getattr(model, '_compile_metrics', None):
-    # TODO(psv/kathywu): use this implementation in model to estimator flow.
     # We are not using model.metrics here because we want to exclude the metrics
     # added using `add_metric` API.
     return {m.name: m for m in model._compile_metric_functions}  # pylint: disable=protected-access

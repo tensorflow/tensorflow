@@ -14,7 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/runtime_fallback/kernel/tfrt_op_kernel.h"
 
+#include <memory>
 #include <optional>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
@@ -51,7 +55,7 @@ Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
     return MissingAttributeError(attr_name);
   }
   *value = view.str();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <>
@@ -64,7 +68,7 @@ Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
     return MissingAttributeError(attr_name);
   }
   *value = tfd::ConvertToTfDataType(attrtype);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <>
@@ -85,7 +89,7 @@ Status TFRTOpKernelConstruction::GetAttr(StringPiece attr_name,
     return MissingAttributeError(attr_name);
   }
   *value = arrayref;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void TFRTOpKernelConstruction::CtxFailure(const Status& s) {
@@ -156,7 +160,7 @@ Status TFRTOpKernelContext::allocate_temp(DataType type,
                                           const TensorShape& shape,
                                           Tensor* out_temp) {
   *out_temp = Tensor(type, shape);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status TFRTOpKernelContext::allocate_output(int index, const TensorShape& shape,
@@ -165,16 +169,14 @@ Status TFRTOpKernelContext::allocate_output(int index, const TensorShape& shape,
   DataType output_type = op_meta_->output_type(index);
   outputs_[index] = Tensor(output_type, shape);
   *tensor = &outputs_[index];
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 DataType TFRTOpKernelContext::expected_output_dtype(int i) const {
   return op_meta_->output_type(i);
 }
 
-void TFRTOpKernelContext::CtxFailure(const Status& s) {
-  error_ = s.error_message();
-}
+void TFRTOpKernelContext::CtxFailure(const Status& s) { error_ = s.message(); }
 void TFRTOpKernelContext::CtxFailureWithWarning(const Status& s) {
   CtxFailure(s);
 }
@@ -238,7 +240,7 @@ TFRTOpMeta TFRTOpMetaBuilder::BuildMeta() const {
   return TFRTOpMeta(output_types_);
 }
 
-TFRTOpMetaMap::TFRTOpMetaMap() {}
+TFRTOpMetaMap::TFRTOpMetaMap() = default;
 
 void TFRTOpMetaMap::RegisterOpMeta(const TFRTOpMetaBuilder& op_builder) {
   auto insert_result = op_metas_.insert(
@@ -266,7 +268,7 @@ llvm::ManagedStatic<TFRTOpKernelFactories> tfrt_forwarding_kernel_factories;
 // Forwarding kernel registration.
 //////////////////////////////////////////////////////////////////////
 
-TFRTOpKernelFactories::TFRTOpKernelFactories() {}
+TFRTOpKernelFactories::TFRTOpKernelFactories() = default;
 
 void TFRTOpKernelFactories::RegisterFactory(StringPiece kernel_class_name,
                                             TFRTOpKernelReg kernel_info) {
@@ -293,7 +295,7 @@ Status ValidKernelAttr(StringPiece kernel_class_name,
           " does not match attribute type ", DataTypeString(type), ".");
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::unique_ptr<TFRTOpKernel> TFRTOpKernelFactories::CreateKernel(

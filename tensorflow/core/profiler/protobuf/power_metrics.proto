@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package tensorflow.profiler;
+
+message PowerComponentMetrics {
+  // power rail or component name, e.g. HBM, Core.
+  string component_name = 1;
+  // maximum watts monitored.
+  double max_power = 2;
+  // average watts monitored.
+  double avg_power = 3;
+  // (SPI sampler only) maximum watts of moving average power over a time window
+  // of 100us.
+  double max_moving_avg_power_100us = 4;
+  // (SPI sampler only) maximum watts of moving average power over a time window
+  // of 1ms.
+  double max_moving_avg_power_1ms = 5;
+  // (SPI sampler only) maximum watts of moving average power over a time window
+  // of 10ms.
+  double max_moving_avg_power_10ms = 6;
+  // (FW only) The timescale in us to compute moving averages.
+  uint32 timescale_us = 7;
+  // The number of samples.
+  uint64 sample_count = 8;
+}
+
+message PowerMetrics {
+  repeated PowerComponentMetrics power_component_metrics = 1;
+}

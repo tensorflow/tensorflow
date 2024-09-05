@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_CAST_OP_H_
 #define TENSORFLOW_CORE_KERNELS_CAST_OP_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bfloat16.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -144,7 +144,8 @@ class CastOpBase : public OpKernel {
   CastFunctorType work_ = nullptr;
   Status Unimplemented();
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CastOpBase);
+  CastOpBase(const CastOpBase&) = delete;
+  void operator=(const CastOpBase&) = delete;
 };
 
 // CPU implementation of Cast

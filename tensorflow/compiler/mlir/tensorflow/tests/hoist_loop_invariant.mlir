@@ -244,3 +244,20 @@ func.func @readvariableop_not_hoisted_if_input_has_resource(%arg0: tensor<i32>, 
   return %0#0, %0#1 : tensor<i32>, tensor<i32>
 }
 
+// -----
+
+// CHECK-LABEL: globaliterid_not_hoisted
+// CHECK:       tf.WhileRegion
+// CHECK:         tf.GlobalIterId
+func.func @globaliterid_not_hoisted(%arg0: tensor<i32>, %arg1: tensor<i32>) -> (tensor<i32>, tensor<i32>) {
+  %0:2 = "tf.WhileRegion"(%arg0, %arg1) ({
+  ^bb0(%arg2: tensor<i32>, %arg3: tensor<i32>):
+    %1 = "tf.OpA"() {is_stateless = true} : () -> tensor<i1>
+    "tf.Yield"(%1) : (tensor<i1>) -> ()
+  }, {
+  ^bb0(%arg2: tensor<i32>, %arg3: tensor<i32>):
+    %1 = "tf.GlobalIterId"() : () -> tensor<i64>
+    "tf.Yield"(%arg2, %arg3) : (tensor<i32>, tensor<i32>) -> ()
+  }) {is_stateless = true, parallel_iterations = 10 : i64} : (tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>)
+  return %0#0, %0#1 : tensor<i32>, tensor<i32>
+}

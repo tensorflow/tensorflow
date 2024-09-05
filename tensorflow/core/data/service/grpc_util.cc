@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <string>
 
+#include "absl/time/time.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tsl/platform/retrying_utils.h"
 
 namespace tensorflow {
 namespace data {
@@ -70,7 +72,8 @@ Status Retry(const std::function<Status()>& f,
       return s;
     }
     int64_t deadline_with_backoff_micros =
-        now_micros + ::tensorflow::ComputeBackoffMicroseconds(num_retries);
+        now_micros +
+        absl::ToInt64Microseconds(tsl::ComputeRetryBackoff(num_retries));
     // Wait for a short period of time before retrying. If our backoff would put
     // us past the deadline, we truncate it to ensure our attempt starts before
     // the deadline.

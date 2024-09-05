@@ -145,6 +145,7 @@ the decode Ops to one of the cropping and resizing Ops.
 *   `tf.io.encode_jpeg`
 *   `tf.io.encode_png`
 
+API docstring: tensorflow.image
 """
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes

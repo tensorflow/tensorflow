@@ -110,8 +110,8 @@ TEST_F(PluginEventTestFixture, TestInvokeCallback) {
                &tennis_goat](const tensorflow::Status& status) {
     result_avref.emplace(42);
     LOG(INFO) << "Invoking status callback. Tennis goat is: "
-              << status.error_message();
-    tennis_goat = status.error_message();
+              << status.message();
+    tennis_goat = status.message();
   };
 
   TFNPD_DeviceEvent* event =

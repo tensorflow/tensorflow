@@ -83,9 +83,6 @@ void SynchronizeAllActivity(const SP_Device* const device,
 TF_Bool HostCallback(const SP_Device* const device, SP_Stream stream,
                      SE_StatusCallbackFn const callback_fn,
                      void* const callback_arg) {
-  TSL_Status* status_ignored = TSL_NewStatus();
-  callback_fn(callback_arg, status_ignored);
-  TSL_DeleteStatus(status_ignored);
   return true;
 }
 

@@ -141,6 +141,52 @@ class FunctionDefToGraphTest(test.TestCase):
     self.assertLen(graph_def.library.function, 1)
     self.assertEqual(graph_def.library.function[0].signature.name, gname)
 
+  def testCopyFunctionDefToGraphDefRecursively(self):
+    @def_function.function
+    def inner(x):
+      return x + 1
+
+    @def_function.function
+    def middle(x):
+      return inner(x) + 1
+
+    @def_function.function
+    def outer(x):
+      return middle(x) + 1
+
+    @def_function.function
+    def target_func(x):
+      return x
+
+    target_graph_def = target_func.get_concrete_function(1).graph.as_graph_def()
+
+    self.assertEmpty(target_graph_def.library.function)
+
+    concrete_outer = outer.get_concrete_function(1)
+    default_graph = ops.get_default_graph()
+    # Copy FunctionDefs in `outer` to the default graph.
+    concrete_outer.add_to_graph(default_graph)
+    outer_function_name = concrete_outer.function_def.signature.name
+    copied_functions = set()
+    # Copy all FunctionDefs from `outer` to `target_func`.
+    function_def_to_graph.copy_function_def_to_graph_def_recursively(
+        outer_function_name, target_graph_def, copied_functions, default_graph
+    )
+
+    outer_graph_def = concrete_outer.graph.as_graph_def()
+    nested_function_names = {
+        f.signature.name for f in outer_graph_def.library.function
+    }
+    expected_function_names = {outer_function_name} | nested_function_names
+
+    self.assertEqual(copied_functions, expected_function_names)
+
+    target_function_names = {
+        f.signature.name for f in target_graph_def.library.function
+    }
+
+    self.assertEqual(target_function_names, expected_function_names)
+
 
 class FunctionDefToGraphDefTest(test.TestCase):
 

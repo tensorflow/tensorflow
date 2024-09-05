@@ -37,7 +37,6 @@ from tensorflow.python.saved_model import save as save_lib
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
-from tensorflow.python.util.tf_export import keras_export
 
 # To avoid circular dependencies between keras/engine and keras/saving,
 # code in keras/saving must delay imports.
@@ -59,7 +58,6 @@ sequential = LazyLoader(
 SAVED_MODEL_FILENAME_JSON = 'saved_model.json'
 
 
-@keras_export(v1=['keras.experimental.export_saved_model'])
 def export_saved_model(model,
                        saved_model_path,
                        custom_objects=None,
@@ -191,8 +189,7 @@ def _save_v1_format(model, path, custom_objects, as_text, input_signature):
   # one save is needed once the weights can be copied from the model to clone.
   checkpoint_path = _export_model_variables(model, path)
 
-  # Export each mode. Use ModeKeys enums defined for `Estimator` to ensure that
-  # Keras models and `Estimator`s are exported with the same format.
+  # Export each mode.
   # Every time a mode is exported, the code checks to see if new variables have
   # been created (e.g. optimizer slot variables). If that is the case, the
   # checkpoint is re-saved to include the new variables.
@@ -236,7 +233,7 @@ def _export_mode(
   """Exports a model, and optionally saves new vars from the clone model.
 
   Args:
-    mode: A `tf.estimator.ModeKeys` string.
+    mode: A `KerasModeKeys` string.
     has_saved_vars: A `boolean` indicating whether the SavedModel has already
       exported variables.
     builder: A `SavedModelBuilder` object.
@@ -273,8 +270,7 @@ def _export_mode(
 
     # Make sure that iterations variable is added to the global step collection,
     # to ensure that, when the SavedModel graph is loaded, the iterations
-    # variable is returned by `tf.compat.v1.train.get_global_step()`. This is
-    # required for compatibility with the SavedModelEstimator.
+    # variable is returned by `tf.compat.v1.train.get_global_step()`.
     if compile_clone:
       g.add_to_collection(ops.GraphKeys.GLOBAL_STEP, clone.optimizer.iterations)
 
@@ -370,7 +366,6 @@ def _assert_same_non_optimizer_objects(model, model_graph, clone, clone_graph): 
   return True
 
 
-@keras_export(v1=['keras.experimental.load_from_saved_model'])
 def load_from_saved_model(saved_model_path, custom_objects=None):
   """Loads a keras Model from a SavedModel created by `export_saved_model()`.
 

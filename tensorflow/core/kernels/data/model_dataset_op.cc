@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/model_dataset_op.h"
 
+#include <cstdint>
+
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/cancellation.h"
 
@@ -35,7 +37,7 @@ namespace data {
 namespace {
 
 // Default share of available RAM that can be used by model's internal buffers.
-constexpr double kRamBudgetShare = 0.5;
+constexpr double kRamBudgetShare = model::kRamBudgetShare;
 
 }  // namespace
 
@@ -93,7 +95,7 @@ class ModelDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -119,7 +121,7 @@ class ModelDatasetOp::Dataset : public DatasetBase {
                        std::make_pair(kCpuBudget, cpu_budget_attr),
                        std::make_pair(kRamBudget, ram_budget_attr)},
                       output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -188,16 +190,23 @@ class ModelDatasetOp::Dataset : public DatasetBase {
     Status EnsureOptimizationLoopThreadStarted(IteratorContext* ctx)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (!model_thread_) {
-        model_thread_ = ctx->StartThread("tf_data_model", [this]() {
-          Status status =
-              model_->OptimizeLoop(dataset()->algorithm_, cpu_budget_,
-                                   ram_budget_, cancellation_manager_.get());
-          if (!status.ok()) {
-            LOG(WARNING) << "Optimization loop failed: " << status.ToString();
-          }
-        });
+        auto ram_budget_manager = ctx->ram_budget_manager();
+        model_thread_ =
+            ctx->StartThread("tf_data_model", [this, ram_budget_manager]() {
+              int64_t captured_cpu_budget = cpu_budget_;
+              int64_t captured_ram_budget = ram_budget_;
+              Status status = model_->OptimizeLoop(
+                  dataset()->algorithm_,
+                  [captured_cpu_budget]() { return captured_cpu_budget; }, 1.0,
+                  captured_ram_budget, *ram_budget_manager,
+                  cancellation_manager_.get());
+              if (!status.ok()) {
+                LOG(WARNING)
+                    << "Optimization loop failed: " << status.ToString();
+              }
+            });
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     mutex mu_;

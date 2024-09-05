@@ -14,20 +14,21 @@
 # ==============================================================================
 """Tests for `tf.data.Dataset.numpy()`."""
 import collections
+import os
 
 from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.checkpoint import checkpoint as trackable_utils
-from tensorflow.python.checkpoint import checkpoint_management
+from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import test
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
-from tensorflow.python.platform import test
 
 
 class AsNumpyIteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
@@ -86,10 +87,19 @@ class AsNumpyIteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.eager_only_combinations())
   def testRaggedElement(self):
     lst = [[1, 2], [3], [4, 5, 6]]
-    rt = ragged_factory_ops.constant(lst)
+    rt = ragged_factory_ops.constant([lst])
+    # This dataset consists of exactly one ragged tensor.
     ds = dataset_ops.Dataset.from_tensor_slices(rt)
-    for actual, expected in zip(ds.as_numpy_iterator(), lst):
-      self.assertTrue(np.array_equal(actual, expected))
+    expected = np.array([
+        np.array([1, 2], dtype=np.int32),
+        np.array([3], dtype=np.int32),
+        np.array([4, 5, 6], dtype=np.int32)
+    ], dtype=object)
+    for actual in ds.as_numpy_iterator():
+      self.assertEqual(len(actual), len(expected))
+      for actual_arr, expected_arr in zip(actual, expected):
+        self.assertTrue(np.array_equal(actual_arr, expected_arr),
+                        f'{actual_arr} != {expected_arr}')
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDatasetElement(self):
@@ -105,24 +115,28 @@ class AsNumpyIteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
     ds = dataset_ops.Dataset.from_tensors((2, None))
     self.assertDatasetProduces(ds, [(2, None)])
 
-  @combinations.generate(test_base.eager_only_combinations())
-  def testCompatibleWithCheckpoint(self):
+  @combinations.generate(combinations.times(
+      test_base.eager_only_combinations(),
+      combinations.combine(enable_async_ckpt=[True, False])
+  ))
+  def testCompatibleWithCheckpoint(self, enable_async_ckpt):
     ds = dataset_ops.Dataset.range(10)
     iterator = ds.as_numpy_iterator()
     ckpt = trackable_utils.Checkpoint(iterator=iterator)
-    ckpt_dir = self.get_temp_dir()
-    manager = checkpoint_management.CheckpointManager(
-        ckpt, ckpt_dir, max_to_keep=3
-    )
+    ckpt_options = checkpoint_options.CheckpointOptions(
+        experimental_enable_async_checkpoint=enable_async_ckpt)
     for _ in range(5):
       next(iterator)
 
-    manager.save()
+    prefix = os.path.join(self.get_temp_dir(), 'ckpt')
+    save_path = ckpt.save(prefix, options=ckpt_options)
     self.assertEqual(5, next(iterator))
     self.assertEqual(6, next(iterator))
     restore_iter = ds.as_numpy_iterator()
     restore_ckpt = trackable_utils.Checkpoint(iterator=restore_iter)
-    restore_ckpt.restore(manager.latest_checkpoint)
+    if enable_async_ckpt:
+      ckpt.sync()  # Otherwise save may not finish yet
+    restore_ckpt.restore(save_path)
     self.assertEqual(5, next(restore_iter))
 
 

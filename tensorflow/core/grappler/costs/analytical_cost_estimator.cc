@@ -108,7 +108,7 @@ Status AddCostNode(ReadyNodeManager* node_manager, const OpContext& op_context,
     }
     output_info->set_size(size);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -151,7 +151,7 @@ AnalyticalCostEstimator::AnalyticalCostEstimator(
 
 Status AnalyticalCostEstimator::Initialize(const GrapplerItem& item) {
   item_ = &item;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status AnalyticalCostEstimator::PredictCosts(const GraphDef& optimized_graph,
@@ -244,7 +244,7 @@ Status AnalyticalCostEstimator::PredictCosts(const GraphDef& optimized_graph,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // end namespace grappler

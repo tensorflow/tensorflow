@@ -66,7 +66,7 @@ TYPED_TEST(TypedGraphViewTest, GraphWithDuplicateNodeNames) {
   Status s;
   TypeParam graph_view(&graph, &s);
   EXPECT_FALSE(s.ok());
-  EXPECT_EQ(s.error_message(),
+  EXPECT_EQ(s.message(),
             absl::Substitute(
                 "$0::$0 error: graph has multiple nodes with the name 'a'.",
                 GetGraphViewTypeAsString<TypeParam>()));
@@ -78,7 +78,7 @@ TYPED_TEST(TypedGraphViewTest, GraphWithMissingFanins) {
   Status s;
   TypeParam graph_view(&graph, &s);
   EXPECT_FALSE(s.ok());
-  EXPECT_EQ(s.error_message(),
+  EXPECT_EQ(s.message(),
             absl::Substitute("$0::$0 error: node 'a' has missing fanin 'b:3'.",
                              GetGraphViewTypeAsString<TypeParam>()));
 }
@@ -90,7 +90,7 @@ TYPED_TEST(TypedGraphViewTest, GraphWithSelfCycles) {
   TypeParam graph_view(&graph, &s);
   EXPECT_FALSE(s.ok());
   EXPECT_EQ(
-      s.error_message(),
+      s.message(),
       absl::Substitute("$0::$0 error: node 'a' has self cycle fanin 'a:4'.",
                        GetGraphViewTypeAsString<TypeParam>()));
 }
@@ -102,7 +102,7 @@ TYPED_TEST(TypedGraphViewTest, GraphWithMisorderedFanins) {
   Status s;
   TypeParam graph_view(&graph, &s);
   EXPECT_FALSE(s.ok());
-  EXPECT_EQ(s.error_message(),
+  EXPECT_EQ(s.message(),
             absl::Substitute("$0::$0 error: node 'a' has regular fanin 'b:4' "
                              "after controlling fanins.",
                              GetGraphViewTypeAsString<TypeParam>()));
@@ -990,14 +990,14 @@ TEST_F(MutationTest, AddNewNode) {
       NDef("bad", "IdentityN", {"^b", "a:1"}, {{"N", 1}}, "foo");
   mutation->AddNode(std::move(bad_node_1), &s);
   EXPECT_FALSE(s.ok());
-  EXPECT_EQ(s.error_message(),
+  EXPECT_EQ(s.message(),
             "Mutation::AddNode error: node 'bad' has regular fanin 'a:1' after "
             "controlling fanins.");
 
   NodeDef bad_node_2 = NDef("bad", "IdentityN", {"bad:1"}, {}, "foo");
   mutation->AddNode(std::move(bad_node_2), &s);
   EXPECT_FALSE(s.ok());
-  EXPECT_EQ(s.error_message(),
+  EXPECT_EQ(s.message(),
             "Mutation::AddNode error: node 'bad' has self cycle fanin "
             "'bad:1'.");
 
@@ -1022,7 +1022,7 @@ TEST_F(MutationTest, NewNodeBadFaninsAfterAdd) {
   EXPECT_FALSE(s.ok());
   string expected_error_msg =
       "Mutation::Apply error: new node 'valid' is ill-formed.";
-  EXPECT_EQ(s.error_message(), expected_error_msg);
+  EXPECT_EQ(s.message(), expected_error_msg);
   CompareGraphViewWithGraph(&graph_view, SimpleTestGraphForMutation());
 }
 
@@ -1048,7 +1048,7 @@ TEST_F(MutationTest, NewNodesConflictingNames) {
   string expected_error_msg =
       "Mutation::Apply error: multiple nodes with the name: 'a' exists in "
       "Mutation.";
-  EXPECT_EQ(s.error_message(), expected_error_msg);
+  EXPECT_EQ(s.message(), expected_error_msg);
   CompareGraphViewWithGraph(&graph_view, SimpleTestGraphForMutation());
 }
 
@@ -1069,7 +1069,7 @@ TEST_F(MutationTest, UpdateNodeAndAddSelfLoop) {
   EXPECT_FALSE(s.ok());
   string expected_error_msg =
       "Mutation::Apply error: inplace updated node 'd' is ill-formed.";
-  EXPECT_EQ(s.error_message(), expected_error_msg);
+  EXPECT_EQ(s.message(), expected_error_msg);
   CompareGraphViewWithGraph(&graph_view, SimpleTestGraphForMutation());
 }
 
@@ -1091,7 +1091,7 @@ TEST_F(MutationTest, RenameNodeAndAddSelfLoop) {
   EXPECT_FALSE(s.ok());
   string expected_error_msg =
       "Mutation::Apply error: renamed updated node 'e' ('d') is ill-formed.";
-  EXPECT_EQ(s.error_message(), expected_error_msg);
+  EXPECT_EQ(s.message(), expected_error_msg);
   CompareGraphViewWithGraph(&graph_view, SimpleTestGraphForMutation());
 }
 
@@ -1117,7 +1117,7 @@ TEST_F(MutationTest, ExistingNodesConflictingNames) {
   string expected_error_msg =
       "Mutation::Apply error: multiple nodes with the name: 'b' exists in "
       "Mutation.";
-  EXPECT_EQ(s.error_message(), expected_error_msg);
+  EXPECT_EQ(s.message(), expected_error_msg);
   CompareGraphViewWithGraph(&graph_view, SimpleTestGraphForMutation());
 }
 
@@ -1143,7 +1143,7 @@ TEST_F(MutationTest, NewAndExistingNodesConflictingNames) {
   string expected_error_msg =
       "Mutation::Apply error: multiple nodes with the name: 'a' exists in "
       "Mutation.";
-  EXPECT_EQ(s.error_message(), expected_error_msg);
+  EXPECT_EQ(s.message(), expected_error_msg);
   CompareGraphViewWithGraph(&graph_view, SimpleTestGraphForMutation());
 }
 
@@ -1169,7 +1169,7 @@ TEST_F(MutationTest, NewAndExistingRenamedNodesConflictingNames) {
   string expected_error_msg =
       "Mutation::Apply error: multiple nodes with the name: 'e' exists in "
       "Mutation.";
-  EXPECT_EQ(s.error_message(), expected_error_msg);
+  EXPECT_EQ(s.message(), expected_error_msg);
   CompareGraphViewWithGraph(&graph_view, SimpleTestGraphForMutation());
 }
 
@@ -1190,7 +1190,7 @@ TEST_F(MutationTest, RemoveNodesWithFanouts) {
   EXPECT_FALSE(s.ok());
   string expected_error_msg =
       "Mutation::Apply error: fanout 'd' exist for missing node 'b'.";
-  EXPECT_EQ(s.error_message(), expected_error_msg);
+  EXPECT_EQ(s.message(), expected_error_msg);
   CompareGraphViewWithGraph(&graph_view, SimpleTestGraphForMutation());
 
   MutableNodeView* d_node = graph_view.GetNode("d");
@@ -1224,7 +1224,7 @@ TEST_F(MutationTest, SwapNodeNamesWithCycle) {
   EXPECT_FALSE(s.ok());
   string expected_error_msg =
       "Mutation::Apply error: renamed updated node 'b' ('d') is ill-formed.";
-  EXPECT_EQ(s.error_message(), expected_error_msg);
+  EXPECT_EQ(s.message(), expected_error_msg);
   CompareGraphViewWithGraph(&graph_view, SimpleTestGraphForMutation());
 
   mutation->AddOrUpdateRegularFanin(d_node, 1, {"d", 3});
@@ -1258,7 +1258,7 @@ TEST_F(MutationTest, RenamedNodeWithFanouts) {
   EXPECT_FALSE(s.ok());
   string expected_error_msg =
       "Mutation::Apply error: fanout 'd' exist for missing node 'a'.";
-  EXPECT_EQ(s.error_message(), expected_error_msg);
+  EXPECT_EQ(s.message(), expected_error_msg);
   CompareGraphViewWithGraph(&graph_view, SimpleTestGraphForMutation());
 
   mutation->UpdateNodeName(a_node, "a");
@@ -1272,7 +1272,7 @@ TEST_F(MutationTest, RenamedNodeWithFanouts) {
   expected_error_msg =
       "Mutation::Apply error: fanout 'd' exist for missing "
       "node 'b'.";
-  EXPECT_EQ(s.error_message(), expected_error_msg);
+  EXPECT_EQ(s.message(), expected_error_msg);
   CompareGraphViewWithGraph(&graph_view, SimpleTestGraphForMutation());
 }
 
@@ -1346,7 +1346,7 @@ TEST_F(MutationTest, UpdateNodeNameAndRemoveRegularFanout) {
   EXPECT_FALSE(s.ok());
   string expected_error_msg =
       "Mutation::Apply error: fanout 'd' exist for missing node 'a'.";
-  EXPECT_EQ(s.error_message(), expected_error_msg);
+  EXPECT_EQ(s.message(), expected_error_msg);
   CompareGraphViewWithGraph(&graph_view, SimpleTestGraphForMutation());
 
   MutableNodeView* d_node = graph_view.GetNode("d");
@@ -1357,7 +1357,7 @@ TEST_F(MutationTest, UpdateNodeNameAndRemoveRegularFanout) {
   EXPECT_FALSE(s.ok());
   expected_error_msg =
       "Mutation::Apply error: fanout 'd' exist for missing node 'a'.";
-  EXPECT_EQ(s.error_message(), expected_error_msg);
+  EXPECT_EQ(s.message(), expected_error_msg);
   CompareGraphViewWithGraph(&graph_view, SimpleTestGraphForMutation());
 
   mutation->AddOrUpdateRegularFanin(d_node, 0, {"b", 1});
@@ -1390,7 +1390,7 @@ TEST_F(MutationTest, UpdateNodeNameAndRemoveControlledFanout) {
   EXPECT_FALSE(s.ok());
   string expected_error_msg =
       "Mutation::Apply error: fanout 'd' exist for missing node 'c'.";
-  EXPECT_EQ(s.error_message(), expected_error_msg);
+  EXPECT_EQ(s.message(), expected_error_msg);
   CompareGraphViewWithGraph(&graph_view, SimpleTestGraphForMutation());
 
   MutableNodeView* d_node = graph_view.GetNode("d");
@@ -1401,7 +1401,7 @@ TEST_F(MutationTest, UpdateNodeNameAndRemoveControlledFanout) {
   EXPECT_FALSE(s.ok());
   expected_error_msg =
       "Mutation::Apply error: fanout 'd' exist for missing node 'c'.";
-  EXPECT_EQ(s.error_message(), expected_error_msg);
+  EXPECT_EQ(s.message(), expected_error_msg);
   CompareGraphViewWithGraph(&graph_view, SimpleTestGraphForMutation());
 
   mutation->RemoveControllingFanin(d_node, "c");
@@ -1707,7 +1707,7 @@ TEST_F(MutationTest, Reset) {
   EXPECT_FALSE(s.ok());
   string expected_error_msg =
       "Mutation::Apply error: fanout 'b' exist for missing node 'a'.";
-  EXPECT_EQ(s.error_message(), expected_error_msg);
+  EXPECT_EQ(s.message(), expected_error_msg);
   CompareGraphViewWithGraph(&graph_view, TestGraphForMutation());
 
   mutation->Reset();
@@ -2043,7 +2043,7 @@ TEST_F(TopologicalSortTest, ActiveMutationSort) {
     status = graph_view.SortTopologically(ignore_cycles, {});
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(
-        status.error_message(),
+        status.message(),
         "MutableGraphView::SortTopologically error: active mutation exists.");
     CompareGraphViewWithGraph(&graph_view, test_graph());
     CompareGraphOrder(graph_view, {"a", "b"});
@@ -2072,7 +2072,7 @@ TEST_F(TopologicalSortTest, BadExtraDependenciesSort) {
     status =
         graph_view_2.SortTopologically(ignore_cycles, {{a_node_1, b_node_2}});
     EXPECT_FALSE(status.ok());
-    EXPECT_EQ(status.error_message(),
+    EXPECT_EQ(status.message(),
               "MutableGraphView::SortTopologically error: invalid extra "
               "dependencies.");
     CompareGraphViewWithGraph(&graph_view_2, test_graph());
@@ -2096,7 +2096,7 @@ TEST_F(TopologicalSortTest, NoCyclesAllowed) {
 
   status = graph_view.SortTopologically(/*ignore_cycles=*/false, {});
   EXPECT_FALSE(status.ok());
-  EXPECT_EQ(status.error_message(),
+  EXPECT_EQ(status.message(),
             "MutableGraphView::SortTopologically error: detected edge(s) "
             "creating cycle(s) {'c' -> 'b'}.");
   CompareGraphViewWithGraph(&graph_view, test_graph());
@@ -2121,7 +2121,7 @@ TEST_F(TopologicalSortTest, NoNodesWithZeroFanins) {
 
   status = graph_view.SortTopologically(/*ignore_cycles=*/false, {});
   EXPECT_FALSE(status.ok());
-  EXPECT_EQ(status.error_message(),
+  EXPECT_EQ(status.message(),
             "MutableGraphView::SortTopologically error: was not able to sort "
             "all nodes topologically.");
   CompareGraphViewWithGraph(&graph_view, test_graph());
@@ -2146,7 +2146,7 @@ TEST_F(TopologicalSortTest, DidNotReachAllNodes) {
 
   status = graph_view.SortTopologically(/*ignore_cycles=*/false, {});
   EXPECT_FALSE(status.ok());
-  EXPECT_EQ(status.error_message(),
+  EXPECT_EQ(status.message(),
             "MutableGraphView::SortTopologically error: was not able to sort "
             "all nodes topologically.");
   CompareGraphViewWithGraph(&graph_view, test_graph());

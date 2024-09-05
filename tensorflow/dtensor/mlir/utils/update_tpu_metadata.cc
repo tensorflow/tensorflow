@@ -29,7 +29,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
@@ -45,26 +45,19 @@ limitations under the License.
 namespace tensorflow {
 namespace dtensor {
 
-namespace internal {
-#ifdef PLATFORM_GOOGLE
-extern void ComputeReplicaGroupSplitInfo(int requested_num_replicas,
-                                         int* num_replicas,
-                                         int* core_id_offset);
-#else
-// By default, all TPUs are connected, construct a single replica group.
-void ComputeReplicaGroupSplitInfo(int requested_num_replicas, int* num_replicas,
-                                  int* core_id_local_offset) {
-  *num_replicas = requested_num_replicas;
-  *core_id_local_offset = 0;
-}
-#endif
-}  // namespace internal
 namespace {
 #define GEN_PASS_DEF_DTENSORUPDATETPUMETADATA
 #include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 constexpr char kDeviceAttr[] = "device";
 constexpr char kFuncDeviceAttr[] = "tf.device";
+
+// By default, all TPUs are connected, construct a single replica group.
+void ComputeReplicaGroupSplitInfo(int requested_num_replicas, int* num_replicas,
+                                  int* core_id_local_offset) {
+  *num_replicas = requested_num_replicas;
+  *core_id_local_offset = 0;
+}
 
 // Removes explicit device assignment on TPUExecute and _TPUCompileMlir ops.
 // As TPU execution replication logic is delegated to DTensorDevice,
@@ -98,8 +91,8 @@ Status UpdateMetadataProtoXlaSpmd(const Mesh& mesh_config,
   int core_id_local_offset = 0;
   int num_replicas = mesh_config.num_devices();
 
-  internal::ComputeReplicaGroupSplitInfo(num_replicas, &num_replicas,
-                                         &core_id_local_offset);
+  ComputeReplicaGroupSplitInfo(num_replicas, &num_replicas,
+                               &core_id_local_offset);
 
   // DTensor will interact with Xla Spmd by setting 1 replica and
   // `num_devices` number of cores per that replica to ensure
@@ -172,7 +165,7 @@ Status UpdateMetadataProtoXlaSpmd(const Mesh& mesh_config,
       mesh_name = "";
     }
     const std::vector<int>& tpu_core_ids = Mesh::tpu_core_ids()[mesh_name];
-    VLOG(1) << "tpu_core_ids: " << str_util::Join(tpu_core_ids, ", ");
+    VLOG(1) << "tpu_core_ids: " << absl::StrJoin(tpu_core_ids, ", ");
 
     xla::DeviceAssignmentProto device_assignment;
     device_assignment.set_replica_count(1);
@@ -186,7 +179,7 @@ Status UpdateMetadataProtoXlaSpmd(const Mesh& mesh_config,
     }
     *proto.mutable_device_assignment() = device_assignment;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status UpdateMetadataProtoDtensorSpmd(const Mesh& mesh_config,
@@ -194,8 +187,8 @@ Status UpdateMetadataProtoDtensorSpmd(const Mesh& mesh_config,
   int core_id_local_offset = 0;
   int num_replicas = mesh_config.num_devices();
 
-  internal::ComputeReplicaGroupSplitInfo(num_replicas, &num_replicas,
-                                         &core_id_local_offset);
+  ComputeReplicaGroupSplitInfo(num_replicas, &num_replicas,
+                               &core_id_local_offset);
 
   proto.set_num_replicas(num_replicas);
 
@@ -230,7 +223,7 @@ Status UpdateMetadataProtoDtensorSpmd(const Mesh& mesh_config,
       mesh_name = "";
     }
     const std::vector<int>& tpu_core_ids = Mesh::tpu_core_ids()[mesh_name];
-    VLOG(1) << "tpu_core_ids: " << str_util::Join(tpu_core_ids, ", ");
+    VLOG(1) << "tpu_core_ids: " << absl::StrJoin(tpu_core_ids, ", ");
 
     xla::DeviceAssignmentProto device_assignment;
     device_assignment.set_replica_count(num_replicas);
@@ -245,7 +238,7 @@ Status UpdateMetadataProtoDtensorSpmd(const Mesh& mesh_config,
     }
     *proto.mutable_device_assignment() = device_assignment;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 mlir::LogicalResult UpdateTPUCompileMetadata(const Mesh& mesh_config,

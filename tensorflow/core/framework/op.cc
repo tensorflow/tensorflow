@@ -34,7 +34,7 @@ namespace tensorflow {
 
 Status DefaultValidator(const OpRegistryInterface& op_registry) {
   LOG(WARNING) << "No kernel validator registered with OpRegistry.";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // OpRegistry -----------------------------------------------------------------
@@ -45,7 +45,7 @@ Status OpRegistryInterface::LookUpOpDef(const string& op_type_name,
   const OpRegistrationData* op_reg_data = nullptr;
   TF_RETURN_IF_ERROR(LookUp(op_type_name, &op_reg_data));
   *op_def = &op_reg_data->op_def;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 OpRegistry::OpRegistry()
@@ -68,7 +68,7 @@ Status OpNotFound(const string& op_type_name) {
       port::Hostname(), ". ",
       "Make sure the Op and Kernel are registered in the binary running in "
       "this process. Note that if you are loading a saved graph which used ops "
-      "from tf.contrib, accessing (e.g.) `tf.contrib.resampler` should be done "
+      "from tf.contrib (e.g. `tf.contrib.resampler`), accessing should be done "
       "before importing the graph, as contrib ops are lazily registered when "
       "the module is first accessed.");
   VLOG(1) << status.ToString();
@@ -78,7 +78,7 @@ Status OpNotFound(const string& op_type_name) {
 
 Status OpRegistry::LookUp(const string& op_type_name,
                           const OpRegistrationData** op_reg_data) const {
-  if ((*op_reg_data = LookUp(op_type_name))) return OkStatus();
+  if ((*op_reg_data = LookUp(op_type_name))) return absl::OkStatus();
   return OpNotFound(op_type_name);
 }
 
@@ -155,7 +155,7 @@ Status OpRegistry::SetWatcher(const Watcher& watcher) {
         "Cannot over-write a valid watcher with another.");
   }
   watcher_ = watcher;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void OpRegistry::Export(bool include_internal, OpList* ops) const {
@@ -217,7 +217,7 @@ bool OpRegistry::MustCallDeferred() const {
 }
 
 Status OpRegistry::CallDeferred() const {
-  if (initialized_) return OkStatus();
+  if (initialized_) return absl::OkStatus();
   initialized_ = true;
   registry_.reserve(registry_.size() + deferred_.size());
   for (const auto& op_data_factory : deferred_) {
@@ -227,7 +227,7 @@ Status OpRegistry::CallDeferred() const {
     }
   }
   deferred_.clear();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status OpRegistry::RegisterAlreadyLocked(
@@ -278,7 +278,7 @@ const OpRegistrationData* OpListOpRegistry::LookUp(
 
 Status OpListOpRegistry::LookUp(const string& op_type_name,
                                 const OpRegistrationData** op_reg_data) const {
-  if ((*op_reg_data = LookUp(op_type_name))) return OkStatus();
+  if ((*op_reg_data = LookUp(op_type_name))) return absl::OkStatus();
   return OpNotFound(op_type_name);
 }
 

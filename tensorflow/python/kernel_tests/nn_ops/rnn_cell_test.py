@@ -29,8 +29,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
@@ -46,6 +46,7 @@ from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
@@ -172,8 +173,8 @@ class TestStateSaverWithCounters(TestStateSaver):
   @test_util.run_v1_only("b/124229375")
   def __init__(self, batch_size, state_size):
     super(TestStateSaverWithCounters, self).__init__(batch_size, state_size)
-    self._num_state_calls = variables_lib.VariableV1(0)
-    self._num_save_state_calls = variables_lib.VariableV1(0)
+    self._num_state_calls = variable_v1.VariableV1(0)
+    self._num_save_state_calls = variable_v1.VariableV1(0)
 
   def state(self, name):
     with ops.control_dependencies(
@@ -649,7 +650,7 @@ class LSTMTest(test.TestCase):
       self.assertEqual(len(outputs_notuple), len(inputs))
       self.assertEqual(len(outputs_tuple), len(inputs))
       self.assertTrue(isinstance(state_tuple, tuple))
-      self.assertTrue(isinstance(state_notuple, ops.Tensor))
+      self.assertTrue(isinstance(state_notuple, tensor.Tensor))
 
       variables_lib.global_variables_initializer().run()
       input_value = np.random.randn(batch_size, input_size)
@@ -1112,7 +1113,7 @@ class LSTMTest(test.TestCase):
       if test_util.is_xla_enabled():
         comparison_fn = self.assertAllClose
       if in_graph_mode:
-        comparison_fn(outputs_static, outputs_dynamic)
+        self.assertAllClose(outputs_static, outputs_dynamic)
       else:
         self.assertAllEqual(
             array_ops_stack.stack(outputs_static), outputs_dynamic)
@@ -1358,6 +1359,25 @@ class LSTMTest(test.TestCase):
               forget_bias=forget_bias,
               cell_clip=cell_clip,
               use_peephole=use_peephole))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testLSTMBlockCellEmptyInputRaisesError(self):
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, "is empty"):
+      self.evaluate(
+          gen_rnn_ops.lstm_block_cell(
+              x=constant_op.constant(0, shape=[2, 16], dtype=dtypes.half),
+              cs_prev=constant_op.constant(0, shape=[2, 0], dtype=dtypes.half),
+              h_prev=constant_op.constant(0, shape=[2, 0], dtype=dtypes.half),
+              w=constant_op.constant(0, shape=[16, 0], dtype=dtypes.half),
+              wci=constant_op.constant(0, shape=[5], dtype=dtypes.half),
+              wcf=constant_op.constant(0, shape=[16], dtype=dtypes.half),
+              wco=constant_op.constant(0, shape=[13], dtype=dtypes.half),
+              b=constant_op.constant(0, shape=[0], dtype=dtypes.half),
+              forget_bias=112.66590343649887,
+              cell_clip=67.12389445926587,
+              use_peephole=False,
+          )
+      )
 
   @test_util.run_in_graph_and_eager_modes
   def testLSTMBlockCellGradErrorHandling(self):
@@ -3191,7 +3211,7 @@ class RNNCellTest(test.TestCase, parameterized.TestCase):
     with self.cached_session():
       root = autotrackable.AutoTrackable()
       root.cell = rnn_cell_impl.LSTMCell(8)
-      @def_function.function(input_signature=[tensor_spec.TensorSpec([3, 8])])
+      @def_function.function(input_signature=[tensor.TensorSpec([3, 8])])
       def call(x):
         state = root.cell.zero_state(3, dtype=x.dtype)
         y, _ = root.cell(x, state)

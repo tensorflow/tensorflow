@@ -17,6 +17,7 @@
 import numpy as np
 
 from tensorflow.core.protobuf.tpu import topology_pb2
+from tensorflow.python.util import numpy_compat
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -80,8 +81,9 @@ class Topology(object):
     if serialized:
       self._parse_topology(serialized)
     else:
-      self._mesh_shape = np.asarray(mesh_shape, dtype=np.int32)
-      self._device_coordinates = np.asarray(device_coordinates, np.int32)
+      self._mesh_shape = numpy_compat.np_asarray(mesh_shape, dtype=np.int32)
+      self._device_coordinates = numpy_compat.np_asarray(device_coordinates,
+                                                         dtype=np.int32)
       if len(self._mesh_shape) != 4 or any(self._mesh_shape < 1):
         raise ValueError("`mesh_shape` must be a sequence of 4 positive "
                          f"entries; got `mesh_shape={self._mesh_shape}`")

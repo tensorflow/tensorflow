@@ -1,0 +1,1204 @@
+diff --git a/bits/utmp.h b/bits/utmp.h
+index 775123d..bf28c6d 100644
+--- a/bits/utmp.h
++++ b/bits/utmp.h
+@@ -1,5 +1,5 @@
+-/* The `struct utmp' type, describing entries in the utmp file.  Generic/BSDish
+-   Copyright (C) 1993, 1996, 1997 Free Software Foundation, Inc.
++/* The `struct utmp' type, describing entries in the utmp file.
++   Copyright (C) 1993-2022 Free Software Foundation, Inc.
+    This file is part of the GNU C Library.
+ 
+    The GNU C Library is free software; you can redistribute it and/or
+@@ -14,7 +14,7 @@
+ 
+    You should have received a copy of the GNU Lesser General Public
+    License along with the GNU C Library; if not, see
+-   <http://www.gnu.org/licenses/>.  */
++   <https://www.gnu.org/licenses/>.  */
+ 
+ #ifndef _UTMP_H
+ # error "Never include <bits/utmp.h> directly; use <utmp.h> instead."
+@@ -24,11 +24,13 @@
+ #include <time.h>
+ 
+ 
+-#define	UT_NAMESIZE	8
+-#define	UT_LINESIZE	8
+-#define	UT_HOSTSIZE	16
++#define UT_LINESIZE	32
++#define UT_NAMESIZE	32
++#define UT_HOSTSIZE	256
+ 
+ 
++/* The structure describing an entry in the database of
++   previous logins.  */
+ struct lastlog
+   {
+     time_t ll_time;
+@@ -36,12 +38,16 @@ struct lastlog
+     char ll_host[UT_HOSTSIZE];
+   };
+ 
++/* The structure describing an entry in the user accounting database.  */
+ struct utmp
+   {
+-    char ut_line[UT_LINESIZE];
+-    char ut_user[UT_NAMESIZE];
++    char ut_line[UT_LINESIZE]
++      __attribute_nonstring__;	/* Devicename.  */
++    char ut_user[UT_NAMESIZE]
++      __attribute_nonstring__;	/* Username.  */
+ #define ut_name ut_user
+-    char ut_host[UT_HOSTSIZE];
++    char ut_host[UT_HOSTSIZE]
++      __attribute_nonstring__;	/* Hostname for remote login.  */
+     long int ut_time;
+   };
+ 
+diff --git a/misc/sys/cdefs.h b/misc/sys/cdefs.h
+index 30482a1..551d5fd 100644
+--- a/misc/sys/cdefs.h
++++ b/misc/sys/cdefs.h
+@@ -391,6 +391,15 @@
+ 
+ #include <bits/wordsize.h>
+ 
++#if __GNUC_PREREQ (8, 0)
++/* Describes a char array whose address can safely be passed as the first
++   argument to strncpy and strncat, as the char array is not necessarily
++   a NUL-terminated string.  */
++# define __attribute_nonstring__ __attribute__ ((__nonstring__))
++#else
++# define __attribute_nonstring__
++#endif
++
+ #if defined __LONG_DOUBLE_MATH_OPTIONAL && defined __NO_LONG_DOUBLE_MATH
+ # define __LDBL_COMPAT 1
+ # ifdef __REDIRECT
+diff --git a/nis/nss_nisplus/nisplus-parser.c b/nis/nss_nisplus/nisplus-parser.c
+index a4d76fb..41600f0 100644
+--- a/nis/nss_nisplus/nisplus-parser.c
++++ b/nis/nss_nisplus/nisplus-parser.c
+@@ -82,7 +82,7 @@ _nss_nisplus_parse_pwent (nis_result *result, struct passwd *pw,
+ 
+   char *numstr = NISOBJVAL (2, obj);
+   len = NISOBJLEN (2, obj);
+-  if (len == 0 && numstr[len - 1] != '\0')
++  if (len == 0 || numstr[len - 1] != '\0')
+     {
+       if (len >= room_left)
+ 	goto no_more_room;
+@@ -98,7 +98,7 @@ _nss_nisplus_parse_pwent (nis_result *result, struct passwd *pw,
+ 
+   numstr = NISOBJVAL (3, obj);
+   len = NISOBJLEN (3, obj);
+-  if (len == 0 && numstr[len - 1] != '\0')
++  if (len == 0 || numstr[len - 1] != '\0')
+     {
+       if (len >= room_left)
+ 	goto no_more_room;
+diff --git a/string/bits/string2.h b/string/bits/string2.h
+index c9bf593..f461fc1 100644
+--- a/string/bits/string2.h
++++ b/string/bits/string2.h
+@@ -47,29 +47,7 @@
+ #endif
+ 
+ #if _STRING_ARCH_unaligned
+-/* If we can do unaligned memory accesses we must know the endianess.  */
+-# include <endian.h>
+ # include <bits/types.h>
+-
+-# if __BYTE_ORDER == __LITTLE_ENDIAN
+-#  define __STRING2_SMALL_GET16(src, idx) \
+-     (((const unsigned char *) (const char *) (src))[idx + 1] << 8	      \
+-      | ((const unsigned char *) (const char *) (src))[idx])
+-#  define __STRING2_SMALL_GET32(src, idx) \
+-     (((((const unsigned char *) (const char *) (src))[idx + 3] << 8	      \
+-	| ((const unsigned char *) (const char *) (src))[idx + 2]) << 8	      \
+-       | ((const unsigned char *) (const char *) (src))[idx + 1]) << 8	      \
+-      | ((const unsigned char *) (const char *) (src))[idx])
+-# else
+-#  define __STRING2_SMALL_GET16(src, idx) \
+-     (((const unsigned char *) (const char *) (src))[idx] << 8		      \
+-      | ((const unsigned char *) (const char *) (src))[idx + 1])
+-#  define __STRING2_SMALL_GET32(src, idx) \
+-     (((((const unsigned char *) (const char *) (src))[idx] << 8	      \
+-	| ((const unsigned char *) (const char *) (src))[idx + 1]) << 8	      \
+-       | ((const unsigned char *) (const char *) (src))[idx + 2]) << 8	      \
+-      | ((const unsigned char *) (const char *) (src))[idx + 3])
+-# endif
+ #else
+ /* These are a few types we need for the optimizations if we cannot
+    use unaligned memory accesses.  */
+@@ -94,148 +72,11 @@ __STRING2_COPY_TYPE (8);
+ 
+ /* Set N bytes of S to C.  */
+ #if !defined _HAVE_STRING_ARCH_memset
+-# if !__GNUC_PREREQ (3, 0)
+-#  if _STRING_ARCH_unaligned
+-#   define memset(s, c, n) \
+-  (__extension__ (__builtin_constant_p (n) && (n) <= 16			      \
+-		  ? ((n) == 1						      \
+-		     ? __memset_1 (s, c)				      \
+-		     : __memset_gc (s, c, n))				      \
+-		  : (__builtin_constant_p (c) && (c) == '\0'		      \
+-		     ? ({ void *__s = (s); __bzero (__s, n); __s; })	      \
+-		     : memset (s, c, n))))
+-
+-#   define __memset_1(s, c) ({ void *__s = (s);				      \
+-			    *((__uint8_t *) __s) = (__uint8_t) c; __s; })
+-
+-#   define __memset_gc(s, c, n) \
+-  ({ void *__s = (s);							      \
+-     union {								      \
+-       unsigned int __ui;						      \
+-       unsigned short int __usi;					      \
+-       unsigned char __uc;						      \
+-     } *__u = __s;							      \
+-     __uint8_t __c = (__uint8_t) (c);					      \
+-									      \
+-     /* This `switch' statement will be removed at compile-time.  */	      \
+-     switch ((unsigned int) (n))					      \
+-       {								      \
+-       case 15:								      \
+-	 __u->__ui = __c * 0x01010101;					      \
+-	 __u = __extension__ ((void *) __u + 4);			      \
+-       case 11:								      \
+-	 __u->__ui = __c * 0x01010101;					      \
+-	 __u = __extension__ ((void *) __u + 4);			      \
+-       case 7:								      \
+-	 __u->__ui = __c * 0x01010101;					      \
+-	 __u = __extension__ ((void *) __u + 4);			      \
+-       case 3:								      \
+-	 __u->__usi = (unsigned short int) __c * 0x0101;		      \
+-	 __u = __extension__ ((void *) __u + 2);			      \
+-	 __u->__uc = (unsigned char) __c;				      \
+-	 break;								      \
+-									      \
+-       case 14:								      \
+-	 __u->__ui = __c * 0x01010101;					      \
+-	 __u = __extension__ ((void *) __u + 4);			      \
+-       case 10:								      \
+-	 __u->__ui = __c * 0x01010101;					      \
+-	 __u = __extension__ ((void *) __u + 4);			      \
+-       case 6:								      \
+-	 __u->__ui = __c * 0x01010101;					      \
+-	 __u = __extension__ ((void *) __u + 4);			      \
+-       case 2:								      \
+-	 __u->__usi = (unsigned short int) __c * 0x0101;		      \
+-	 break;								      \
+-									      \
+-       case 13:								      \
+-	 __u->__ui = __c * 0x01010101;					      \
+-	 __u = __extension__ ((void *) __u + 4);			      \
+-       case 9:								      \
+-	 __u->__ui = __c * 0x01010101;					      \
+-	 __u = __extension__ ((void *) __u + 4);			      \
+-       case 5:								      \
+-	 __u->__ui = __c * 0x01010101;					      \
+-	 __u = __extension__ ((void *) __u + 4);			      \
+-       case 1:								      \
+-	 __u->__uc = (unsigned char) __c;				      \
+-	 break;								      \
+-									      \
+-       case 16:								      \
+-	 __u->__ui = __c * 0x01010101;					      \
+-	 __u = __extension__ ((void *) __u + 4);			      \
+-       case 12:								      \
+-	 __u->__ui = __c * 0x01010101;					      \
+-	 __u = __extension__ ((void *) __u + 4);			      \
+-       case 8:								      \
+-	 __u->__ui = __c * 0x01010101;					      \
+-	 __u = __extension__ ((void *) __u + 4);			      \
+-       case 4:								      \
+-	 __u->__ui = __c * 0x01010101;					      \
+-       case 0:								      \
+-	 break;								      \
+-       }								      \
+-									      \
+-     __s; })
+-#  else
+-#   define memset(s, c, n) \
+-  (__extension__ (__builtin_constant_p (c) && (c) == '\0'		      \
+-		  ? ({ void *__s = (s); __bzero (__s, n); __s; })	      \
+-		  : memset (s, c, n)))
+-#  endif
+-# endif
+-
+-/* GCC < 3.0 optimizes memset(s, 0, n) but not bzero(s, n).
+-   The optimization is broken before EGCS 1.1.
+-   GCC 3.0+ has __builtin_bzero as well, but at least till GCC 3.4
+-   if it decides to call the library function, it calls memset
+-   and not bzero.  */
+-# if __GNUC_PREREQ (2, 91)
+-#  define __bzero(s, n) __builtin_memset (s, '\0', n)
+-# endif
+-
++# define __bzero(s, n) __builtin_memset (s, '\0', n)
+ #endif
+ 
+-
+-/* Copy N bytes from SRC to DEST, returning pointer to byte following the
+-   last copied.  */
+-#ifdef __USE_GNU
+-# if !defined _HAVE_STRING_ARCH_mempcpy || defined _FORCE_INLINES
+-#  ifndef _HAVE_STRING_ARCH_mempcpy
+-#   if __GNUC_PREREQ (3, 4)
+-#    define __mempcpy(dest, src, n) __builtin_mempcpy (dest, src, n)
+-#   elif __GNUC_PREREQ (3, 0)
+-#    define __mempcpy(dest, src, n) \
+-  (__extension__ (__builtin_constant_p (src) && __builtin_constant_p (n)      \
+-		  && __string2_1bptr_p (src) && n <= 8			      \
+-		  ? __builtin_memcpy (dest, src, n) + (n)		      \
+-		  : __mempcpy (dest, src, n)))
+-#   else
+-#    define __mempcpy(dest, src, n) \
+-  (__extension__ (__builtin_constant_p (src) && __builtin_constant_p (n)      \
+-		  && __string2_1bptr_p (src) && n <= 8			      \
+-		  ? __mempcpy_small (dest, __mempcpy_args (src), n)	      \
+-		  : __mempcpy (dest, src, n)))
+-#   endif
+-/* In glibc we use this function frequently but for namespace reasons
+-   we have to use the name `__mempcpy'.  */
+-#   define mempcpy(dest, src, n) __mempcpy (dest, src, n)
+-#  endif
+-
+-#  if !__GNUC_PREREQ (3, 0) || defined _FORCE_INLINES
+-#   if _STRING_ARCH_unaligned
+-#    ifndef _FORCE_INLINES
+-#     define __mempcpy_args(src) \
+-     ((const char *) (src))[0], ((const char *) (src))[2],		      \
+-     ((const char *) (src))[4], ((const char *) (src))[6],		      \
+-     __extension__ __STRING2_SMALL_GET16 (src, 0),			      \
+-     __extension__ __STRING2_SMALL_GET16 (src, 4),			      \
+-     __extension__ __STRING2_SMALL_GET32 (src, 0),			      \
+-     __extension__ __STRING2_SMALL_GET32 (src, 4)
+-#    endif
+-__STRING_INLINE void *__mempcpy_small (void *, char, char, char, char,
+-				       __uint16_t, __uint16_t, __uint32_t,
+-				       __uint32_t, size_t);
++#if defined _FORCE_INLINES
++# if _STRING_ARCH_unaligned
+ __STRING_INLINE void *
+ __mempcpy_small (void *__dest1,
+ 		 char __src0_1, char __src2_1, char __src4_1, char __src6_1,
+@@ -298,44 +139,7 @@ __mempcpy_small (void *__dest1,
+     }
+   return (void *) __u;
+ }
+-#   else
+-#    ifndef _FORCE_INLINES
+-#     define __mempcpy_args(src) \
+-     ((const char *) (src))[0],						      \
+-     __extension__ ((__STRING2_COPY_ARR2)				      \
+-      { { ((const char *) (src))[0], ((const char *) (src))[1] } }),	      \
+-     __extension__ ((__STRING2_COPY_ARR3)				      \
+-      { { ((const char *) (src))[0], ((const char *) (src))[1],		      \
+-	  ((const char *) (src))[2] } }),				      \
+-     __extension__ ((__STRING2_COPY_ARR4)				      \
+-      { { ((const char *) (src))[0], ((const char *) (src))[1],		      \
+-	  ((const char *) (src))[2], ((const char *) (src))[3] } }),	      \
+-     __extension__ ((__STRING2_COPY_ARR5)				      \
+-      { { ((const char *) (src))[0], ((const char *) (src))[1],		      \
+-	  ((const char *) (src))[2], ((const char *) (src))[3],		      \
+-	  ((const char *) (src))[4] } }),				      \
+-     __extension__ ((__STRING2_COPY_ARR6)				      \
+-      { { ((const char *) (src))[0], ((const char *) (src))[1],		      \
+-	  ((const char *) (src))[2], ((const char *) (src))[3],		      \
+-	  ((const char *) (src))[4], ((const char *) (src))[5] } }),	      \
+-     __extension__ ((__STRING2_COPY_ARR7)				      \
+-      { { ((const char *) (src))[0], ((const char *) (src))[1],		      \
+-	  ((const char *) (src))[2], ((const char *) (src))[3],		      \
+-	  ((const char *) (src))[4], ((const char *) (src))[5],		      \
+-	  ((const char *) (src))[6] } }),				      \
+-     __extension__ ((__STRING2_COPY_ARR8)				      \
+-      { { ((const char *) (src))[0], ((const char *) (src))[1],		      \
+-	  ((const char *) (src))[2], ((const char *) (src))[3],		      \
+-	  ((const char *) (src))[4], ((const char *) (src))[5],		      \
+-	  ((const char *) (src))[6], ((const char *) (src))[7] } })
+-#    endif
+-__STRING_INLINE void *__mempcpy_small (void *, char, __STRING2_COPY_ARR2,
+-				       __STRING2_COPY_ARR3,
+-				       __STRING2_COPY_ARR4,
+-				       __STRING2_COPY_ARR5,
+-				       __STRING2_COPY_ARR6,
+-				       __STRING2_COPY_ARR7,
+-				       __STRING2_COPY_ARR8, size_t);
++#  else
+ __STRING_INLINE void *
+ __mempcpy_small (void *__dest, char __src1,
+ 		 __STRING2_COPY_ARR2 __src2, __STRING2_COPY_ARR3 __src3,
+@@ -382,8 +186,6 @@ __mempcpy_small (void *__dest, char __src1,
+     }
+   return __extension__ ((void *) __u + __srclen);
+ }
+-#   endif
+-#  endif
+ # endif
+ #endif
+ 
+@@ -391,44 +193,17 @@ __mempcpy_small (void *__dest, char __src1,
+ /* Return pointer to C in S.  */
+ #ifndef _HAVE_STRING_ARCH_strchr
+ extern void *__rawmemchr (const void *__s, int __c);
+-# if __GNUC_PREREQ (3, 2)
+ #  define strchr(s, c) \
+   (__extension__ (__builtin_constant_p (c) && !__builtin_constant_p (s)	      \
+ 		  && (c) == '\0'					      \
+ 		  ? (char *) __rawmemchr (s, c)				      \
+ 		  : __builtin_strchr (s, c)))
+-# else
+-#  define strchr(s, c) \
+-  (__extension__ (__builtin_constant_p (c) && (c) == '\0'		      \
+-		  ? (char *) __rawmemchr (s, c)				      \
+-		  : strchr (s, c)))
+-# endif
+ #endif
+ 
+ 
+ /* Copy SRC to DEST.  */
+-#if (!defined _HAVE_STRING_ARCH_strcpy && !__GNUC_PREREQ (3, 0)) \
+-    || defined _FORCE_INLINES
+-# if !defined _HAVE_STRING_ARCH_strcpy && !__GNUC_PREREQ (3, 0)
+-#  define strcpy(dest, src) \
+-  (__extension__ (__builtin_constant_p (src)				      \
+-		  ? (__string2_1bptr_p (src) && strlen (src) + 1 <= 8	      \
+-		     ? __strcpy_small (dest, __strcpy_args (src),	      \
+-				       strlen (src) + 1)		      \
+-		     : (char *) memcpy (dest, src, strlen (src) + 1))	      \
+-		  : strcpy (dest, src)))
+-# endif
+-
++#if defined _FORCE_INLINES
+ # if _STRING_ARCH_unaligned
+-#  ifndef _FORCE_INLINES
+-#   define __strcpy_args(src) \
+-     __extension__ __STRING2_SMALL_GET16 (src, 0),			      \
+-     __extension__ __STRING2_SMALL_GET16 (src, 4),			      \
+-     __extension__ __STRING2_SMALL_GET32 (src, 0),			      \
+-     __extension__ __STRING2_SMALL_GET32 (src, 4)
+-#  endif
+-__STRING_INLINE char *__strcpy_small (char *, __uint16_t, __uint16_t,
+-				      __uint32_t, __uint32_t, size_t);
+ __STRING_INLINE char *
+ __strcpy_small (char *__dest,
+ 		__uint16_t __src0_2, __uint16_t __src4_2,
+@@ -482,42 +257,6 @@ __strcpy_small (char *__dest,
+   return __dest;
+ }
+ # else
+-#  ifndef _FORCE_INLINES
+-#   define __strcpy_args(src) \
+-     __extension__ ((__STRING2_COPY_ARR2)				      \
+-      { { ((const char *) (src))[0], '\0' } }),				      \
+-     __extension__ ((__STRING2_COPY_ARR3)				      \
+-      { { ((const char *) (src))[0], ((const char *) (src))[1],		      \
+-	  '\0' } }),							      \
+-     __extension__ ((__STRING2_COPY_ARR4)				      \
+-      { { ((const char *) (src))[0], ((const char *) (src))[1],		      \
+-	  ((const char *) (src))[2], '\0' } }),				      \
+-     __extension__ ((__STRING2_COPY_ARR5)				      \
+-      { { ((const char *) (src))[0], ((const char *) (src))[1],		      \
+-	  ((const char *) (src))[2], ((const char *) (src))[3],		      \
+-	  '\0' } }),							      \
+-     __extension__ ((__STRING2_COPY_ARR6)				      \
+-      { { ((const char *) (src))[0], ((const char *) (src))[1],		      \
+-	  ((const char *) (src))[2], ((const char *) (src))[3],		      \
+-	  ((const char *) (src))[4], '\0' } }),				      \
+-     __extension__ ((__STRING2_COPY_ARR7)				      \
+-      { { ((const char *) (src))[0], ((const char *) (src))[1],		      \
+-	  ((const char *) (src))[2], ((const char *) (src))[3],		      \
+-	  ((const char *) (src))[4], ((const char *) (src))[5],		      \
+-	  '\0' } }),							      \
+-     __extension__ ((__STRING2_COPY_ARR8)				      \
+-      { { ((const char *) (src))[0], ((const char *) (src))[1],		      \
+-	  ((const char *) (src))[2], ((const char *) (src))[3],		      \
+-	  ((const char *) (src))[4], ((const char *) (src))[5],		      \
+-	  ((const char *) (src))[6], '\0' } })
+-#  endif
+-__STRING_INLINE char *__strcpy_small (char *, __STRING2_COPY_ARR2,
+-				      __STRING2_COPY_ARR3,
+-				      __STRING2_COPY_ARR4,
+-				      __STRING2_COPY_ARR5,
+-				      __STRING2_COPY_ARR6,
+-				      __STRING2_COPY_ARR7,
+-				      __STRING2_COPY_ARR8, size_t);
+ __STRING_INLINE char *
+ __strcpy_small (char *__dest,
+ 		__STRING2_COPY_ARR2 __src2, __STRING2_COPY_ARR3 __src3,
+@@ -570,44 +309,15 @@ __strcpy_small (char *__dest,
+ 
+ /* Copy SRC to DEST, returning pointer to final NUL byte.  */
+ #ifdef __USE_GNU
+-# if !defined _HAVE_STRING_ARCH_stpcpy || defined _FORCE_INLINES
+-#  ifndef _HAVE_STRING_ARCH_stpcpy
+-#   if __GNUC_PREREQ (3, 4)
+-#    define __stpcpy(dest, src) __builtin_stpcpy (dest, src)
+-#   elif __GNUC_PREREQ (3, 0)
+-#    define __stpcpy(dest, src) \
+-  (__extension__ (__builtin_constant_p (src)				      \
+-		  ? (__string2_1bptr_p (src) && strlen (src) + 1 <= 8	      \
+-		     ? __builtin_strcpy (dest, src) + strlen (src)	      \
+-		     : ((char *) (__mempcpy) (dest, src, strlen (src) + 1)    \
+-			- 1))						      \
+-		  : __stpcpy (dest, src)))
+-#   else
+-#    define __stpcpy(dest, src) \
+-  (__extension__ (__builtin_constant_p (src)				      \
+-		  ? (__string2_1bptr_p (src) && strlen (src) + 1 <= 8	      \
+-		     ? __stpcpy_small (dest, __stpcpy_args (src),	      \
+-				       strlen (src) + 1)		      \
+-		     : ((char *) (__mempcpy) (dest, src, strlen (src) + 1)    \
+-			- 1))						      \
+-		  : __stpcpy (dest, src)))
+-#   endif
++# ifndef _HAVE_STRING_ARCH_stpcpy
++#  define __stpcpy(dest, src) __builtin_stpcpy (dest, src)
+ /* In glibc we use this function frequently but for namespace reasons
+    we have to use the name `__stpcpy'.  */
+-#   define stpcpy(dest, src) __stpcpy (dest, src)
+-#  endif
++#  define stpcpy(dest, src) __stpcpy (dest, src)
++# endif
+ 
+-#  if !__GNUC_PREREQ (3, 0) || defined _FORCE_INLINES
+-#   if _STRING_ARCH_unaligned
+-#    ifndef _FORCE_INLINES
+-#     define __stpcpy_args(src) \
+-     __extension__ __STRING2_SMALL_GET16 (src, 0),			      \
+-     __extension__ __STRING2_SMALL_GET16 (src, 4),			      \
+-     __extension__ __STRING2_SMALL_GET32 (src, 0),			      \
+-     __extension__ __STRING2_SMALL_GET32 (src, 4)
+-#    endif
+-__STRING_INLINE char *__stpcpy_small (char *, __uint16_t, __uint16_t,
+-				      __uint32_t, __uint32_t, size_t);
++# ifndef _FORCE_INLINES
++#  if _STRING_ARCH_unaligned
+ __STRING_INLINE char *
+ __stpcpy_small (char *__dest,
+ 		__uint16_t __src0_2, __uint16_t __src4_2,
+@@ -665,43 +375,7 @@ __stpcpy_small (char *__dest,
+     }
+   return &__u->__c;
+ }
+-#   else
+-#    ifndef _FORCE_INLINES
+-#     define __stpcpy_args(src) \
+-     __extension__ ((__STRING2_COPY_ARR2)				      \
+-      { { ((const char *) (src))[0], '\0' } }),				      \
+-     __extension__ ((__STRING2_COPY_ARR3)				      \
+-      { { ((const char *) (src))[0], ((const char *) (src))[1],		      \
+-	  '\0' } }),							      \
+-     __extension__ ((__STRING2_COPY_ARR4)				      \
+-      { { ((const char *) (src))[0], ((const char *) (src))[1],		      \
+-	  ((const char *) (src))[2], '\0' } }),				      \
+-     __extension__ ((__STRING2_COPY_ARR5)				      \
+-      { { ((const char *) (src))[0], ((const char *) (src))[1],		      \
+-	  ((const char *) (src))[2], ((const char *) (src))[3],		      \
+-	  '\0' } }),							      \
+-     __extension__ ((__STRING2_COPY_ARR6)				      \
+-      { { ((const char *) (src))[0], ((const char *) (src))[1],		      \
+-	  ((const char *) (src))[2], ((const char *) (src))[3],		      \
+-	  ((const char *) (src))[4], '\0' } }),				      \
+-     __extension__ ((__STRING2_COPY_ARR7)				      \
+-      { { ((const char *) (src))[0], ((const char *) (src))[1],		      \
+-	  ((const char *) (src))[2], ((const char *) (src))[3],		      \
+-	  ((const char *) (src))[4], ((const char *) (src))[5],		      \
+-	  '\0' } }),							      \
+-     __extension__ ((__STRING2_COPY_ARR8)				      \
+-      { { ((const char *) (src))[0], ((const char *) (src))[1],		      \
+-	  ((const char *) (src))[2], ((const char *) (src))[3],		      \
+-	  ((const char *) (src))[4], ((const char *) (src))[5],		      \
+-	  ((const char *) (src))[6], '\0' } })
+-#    endif
+-__STRING_INLINE char *__stpcpy_small (char *, __STRING2_COPY_ARR2,
+-				      __STRING2_COPY_ARR3,
+-				      __STRING2_COPY_ARR4,
+-				      __STRING2_COPY_ARR5,
+-				      __STRING2_COPY_ARR6,
+-				      __STRING2_COPY_ARR7,
+-				      __STRING2_COPY_ARR8, size_t);
++#  else
+ __STRING_INLINE char *
+ __stpcpy_small (char *__dest,
+ 		__STRING2_COPY_ARR2 __src2, __STRING2_COPY_ARR3 __src3,
+@@ -748,27 +422,11 @@ __stpcpy_small (char *__dest,
+   }
+   return __dest + __srclen - 1;
+ }
+-#   endif
+ #  endif
+ # endif
+ #endif
+ 
+ 
+-/* Copy no more than N characters of SRC to DEST.  */
+-#ifndef _HAVE_STRING_ARCH_strncpy
+-# if __GNUC_PREREQ (3, 2)
+-#  define strncpy(dest, src, n) __builtin_strncpy (dest, src, n)
+-# else
+-#  define strncpy(dest, src, n) \
+-  (__extension__ (__builtin_constant_p (src) && __builtin_constant_p (n)      \
+-		  ? (strlen (src) + 1 >= ((size_t) (n))			      \
+-		     ? (char *) memcpy (dest, src, n)			      \
+-		     : strncpy (dest, src, n))				      \
+-		  : strncpy (dest, src, n)))
+-# endif
+-#endif
+-
+-
+ /* Append no more than N characters from SRC onto DEST.  */
+ #ifndef _HAVE_STRING_ARCH_strncat
+ # ifdef _USE_STRING_ARCH_strchr
+@@ -780,380 +438,29 @@ __stpcpy_small (char *__dest,
+ 		       : (*((char *) __mempcpy (strchr (__dest, '\0'),	      \
+ 						src, n)) = '\0', __dest))     \
+ 		    : strncat (dest, src, n); }))
+-# elif __GNUC_PREREQ (3, 2)
+-#  define strncat(dest, src, n) __builtin_strncat (dest, src, n)
+ # else
+-#  define strncat(dest, src, n) \
+-  (__extension__ (__builtin_constant_p (src) && __builtin_constant_p (n)      \
+-		  ? (strlen (src) < ((size_t) (n))			      \
+-		     ? strcat (dest, src)				      \
+-		     : strncat (dest, src, n))				      \
+-		  : strncat (dest, src, n)))
+-# endif
+-#endif
+-
+-
+-/* Compare characters of S1 and S2.  */
+-#ifndef _HAVE_STRING_ARCH_strcmp
+-# if __GNUC_PREREQ (3, 2)
+-#  define strcmp(s1, s2) \
+-  __extension__								      \
+-  ({ size_t __s1_len, __s2_len;						      \
+-     (__builtin_constant_p (s1) && __builtin_constant_p (s2)		      \
+-      && (__s1_len = strlen (s1), __s2_len = strlen (s2),		      \
+-	  (!__string2_1bptr_p (s1) || __s1_len >= 4)			      \
+-	  && (!__string2_1bptr_p (s2) || __s2_len >= 4))		      \
+-      ? __builtin_strcmp (s1, s2)					      \
+-      : (__builtin_constant_p (s1) && __string2_1bptr_p (s1)		      \
+-	 && (__s1_len = strlen (s1), __s1_len < 4)			      \
+-	 ? (__builtin_constant_p (s2) && __string2_1bptr_p (s2)		      \
+-	    ? __builtin_strcmp (s1, s2)					      \
+-	    : __strcmp_cg (s1, s2, __s1_len))				      \
+-	 : (__builtin_constant_p (s2) && __string2_1bptr_p (s2)		      \
+-	    && (__s2_len = strlen (s2), __s2_len < 4)			      \
+-	    ? (__builtin_constant_p (s1) && __string2_1bptr_p (s1)	      \
+-	       ? __builtin_strcmp (s1, s2)				      \
+-	       : __strcmp_gc (s1, s2, __s2_len))			      \
+-	    : __builtin_strcmp (s1, s2)))); })
+-# else
+-#  define strcmp(s1, s2) \
+-  __extension__								      \
+-  ({ size_t __s1_len, __s2_len;						      \
+-     (__builtin_constant_p (s1) && __builtin_constant_p (s2)		      \
+-      && (__s1_len = strlen (s1), __s2_len = strlen (s2),		      \
+-	  (!__string2_1bptr_p (s1) || __s1_len >= 4)			      \
+-	  && (!__string2_1bptr_p (s2) || __s2_len >= 4))		      \
+-      ? memcmp ((const char *) (s1), (const char *) (s2),		      \
+-		(__s1_len < __s2_len ? __s1_len : __s2_len) + 1)	      \
+-      : (__builtin_constant_p (s1) && __string2_1bptr_p (s1)		      \
+-	 && (__s1_len = strlen (s1), __s1_len < 4)			      \
+-	 ? (__builtin_constant_p (s2) && __string2_1bptr_p (s2)		      \
+-	    ? __strcmp_cc (s1, s2, __s1_len)				      \
+-	    : __strcmp_cg (s1, s2, __s1_len))				      \
+-	 : (__builtin_constant_p (s2) && __string2_1bptr_p (s2)		      \
+-	    && (__s2_len = strlen (s2), __s2_len < 4)			      \
+-	    ? (__builtin_constant_p (s1) && __string2_1bptr_p (s1)	      \
+-	       ? __strcmp_cc (s1, s2, __s2_len)				      \
+-	       : __strcmp_gc (s1, s2, __s2_len))			      \
+-	    : strcmp (s1, s2)))); })
++#  define strncat(dest, src, n) __builtin_strncat (dest, src, n)
+ # endif
+-
+-# define __strcmp_cc(s1, s2, l) \
+-  (__extension__ ({ int __result =					      \
+-		      (((const unsigned char *) (const char *) (s1))[0]	      \
+-		       - ((const unsigned char *) (const char *)(s2))[0]);    \
+-		    if (l > 0 && __result == 0)				      \
+-		      {							      \
+-			__result = (((const unsigned char *)		      \
+-				     (const char *) (s1))[1]		      \
+-				    - ((const unsigned char *)		      \
+-				       (const char *) (s2))[1]);	      \
+-			if (l > 1 && __result == 0)			      \
+-			  {						      \
+-			    __result =					      \
+-			      (((const unsigned char *)			      \
+-				(const char *) (s1))[2]			      \
+-			       - ((const unsigned char *)		      \
+-				  (const char *) (s2))[2]);		      \
+-			    if (l > 2 && __result == 0)			      \
+-			      __result =				      \
+-				(((const unsigned char *)		      \
+-				  (const char *) (s1))[3]		      \
+-				 - ((const unsigned char *)		      \
+-				    (const char *) (s2))[3]);		      \
+-			  }						      \
+-		      }							      \
+-		    __result; }))
+-
+-# define __strcmp_cg(s1, s2, l1) \
+-  (__extension__ ({ const unsigned char *__s2 =				      \
+-		      (const unsigned char *) (const char *) (s2);	      \
+-		    int __result =					      \
+-		      (((const unsigned char *) (const char *) (s1))[0]	      \
+-		       - __s2[0]);					      \
+-		    if (l1 > 0 && __result == 0)			      \
+-		      {							      \
+-			__result = (((const unsigned char *)		      \
+-				     (const char *) (s1))[1] - __s2[1]);      \
+-			if (l1 > 1 && __result == 0)			      \
+-			  {						      \
+-			    __result = (((const unsigned char *)	      \
+-					 (const char *) (s1))[2] - __s2[2]);  \
+-			    if (l1 > 2 && __result == 0)		      \
+-			      __result = (((const unsigned char *)	      \
+-					  (const char *)  (s1))[3]	      \
+-					  - __s2[3]);			      \
+-			  }						      \
+-		      }							      \
+-		    __result; }))
+-
+-# define __strcmp_gc(s1, s2, l2) \
+-  (__extension__ ({ const unsigned char *__s1 =				      \
+-		      (const unsigned char *) (const char *) (s1);	      \
+-		    register int __result =				      \
+-		      __s1[0] - ((const unsigned char *)		      \
+-				 (const char *) (s2))[0];		      \
+-		    if (l2 > 0 && __result == 0)			      \
+-		      {							      \
+-			__result = (__s1[1]				      \
+-				    - ((const unsigned char *)		      \
+-				       (const char *) (s2))[1]);	      \
+-			if (l2 > 1 && __result == 0)			      \
+-			  {						      \
+-			    __result =					      \
+-			      (__s1[2] - ((const unsigned char *)	      \
+-					  (const char *) (s2))[2]);	      \
+-			    if (l2 > 2 && __result == 0)		      \
+-			      __result =				      \
+-				(__s1[3]				      \
+-				 - ((const unsigned char *)		      \
+-				    (const char *) (s2))[3]);		      \
+-			  }						      \
+-		      }							      \
+-		    __result; }))
+-#endif
+-
+-
+-/* Compare N characters of S1 and S2.  */
+-#ifndef _HAVE_STRING_ARCH_strncmp
+-# define strncmp(s1, s2, n)						      \
+-  (__extension__ (__builtin_constant_p (n)				      \
+-		  && ((__builtin_constant_p (s1)			      \
+-		       && strlen (s1) < ((size_t) (n)))			      \
+-		      || (__builtin_constant_p (s2)			      \
+-			  && strlen (s2) < ((size_t) (n))))		      \
+-		  ? strcmp (s1, s2) : strncmp (s1, s2, n)))
+ #endif
+ 
+ 
+ /* Return the length of the initial segment of S which
+    consists entirely of characters not in REJECT.  */
+-#if !defined _HAVE_STRING_ARCH_strcspn || defined _FORCE_INLINES
+-# ifndef _HAVE_STRING_ARCH_strcspn
+-#  if __GNUC_PREREQ (3, 2)
+-#   define strcspn(s, reject) \
+-  __extension__								      \
+-  ({ char __r0, __r1, __r2;						      \
+-     (__builtin_constant_p (reject) && __string2_1bptr_p (reject)	      \
+-      ? ((__builtin_constant_p (s) && __string2_1bptr_p (s))		      \
+-	 ? __builtin_strcspn (s, reject)				      \
+-	 : ((__r0 = ((const char *) (reject))[0], __r0 == '\0')		      \
+-	    ? strlen (s)						      \
+-	    : ((__r1 = ((const char *) (reject))[1], __r1 == '\0')	      \
+-	       ? __strcspn_c1 (s, __r0)					      \
+-	       : ((__r2 = ((const char *) (reject))[2], __r2 == '\0')	      \
+-		  ? __strcspn_c2 (s, __r0, __r1)			      \
+-		  : (((const char *) (reject))[3] == '\0'		      \
+-		     ? __strcspn_c3 (s, __r0, __r1, __r2)		      \
+-		     : __builtin_strcspn (s, reject))))))		      \
+-      : __builtin_strcspn (s, reject)); })
+-#  else
+-#   define strcspn(s, reject) \
+-  __extension__								      \
+-  ({ char __r0, __r1, __r2;						      \
+-     (__builtin_constant_p (reject) && __string2_1bptr_p (reject)	      \
+-      ? ((__r0 = ((const char *) (reject))[0], __r0 == '\0')		      \
+-	 ? strlen (s)							      \
+-	 : ((__r1 = ((const char *) (reject))[1], __r1 == '\0')		      \
+-	    ? __strcspn_c1 (s, __r0)					      \
+-	    : ((__r2 = ((const char *) (reject))[2], __r2 == '\0')	      \
+-	       ? __strcspn_c2 (s, __r0, __r1)				      \
+-	       : (((const char *) (reject))[3] == '\0'			      \
+-		  ? __strcspn_c3 (s, __r0, __r1, __r2)			      \
+-		  : strcspn (s, reject)))))				      \
+-      : strcspn (s, reject)); })
+-#  endif
+-# endif
+-
+-__STRING_INLINE size_t __strcspn_c1 (const char *__s, int __reject);
+-__STRING_INLINE size_t
+-__strcspn_c1 (const char *__s, int __reject)
+-{
+-  size_t __result = 0;
+-  while (__s[__result] != '\0' && __s[__result] != __reject)
+-    ++__result;
+-  return __result;
+-}
+-
+-__STRING_INLINE size_t __strcspn_c2 (const char *__s, int __reject1,
+-				     int __reject2);
+-__STRING_INLINE size_t
+-__strcspn_c2 (const char *__s, int __reject1, int __reject2)
+-{
+-  size_t __result = 0;
+-  while (__s[__result] != '\0' && __s[__result] != __reject1
+-	 && __s[__result] != __reject2)
+-    ++__result;
+-  return __result;
+-}
+-
+-__STRING_INLINE size_t __strcspn_c3 (const char *__s, int __reject1,
+-				     int __reject2, int __reject3);
+-__STRING_INLINE size_t
+-__strcspn_c3 (const char *__s, int __reject1, int __reject2,
+-	      int __reject3)
+-{
+-  size_t __result = 0;
+-  while (__s[__result] != '\0' && __s[__result] != __reject1
+-	 && __s[__result] != __reject2 && __s[__result] != __reject3)
+-    ++__result;
+-  return __result;
+-}
++#ifndef _HAVE_STRING_ARCH_strcspn
++# define strcspn(s, reject) __builtin_strcspn (s, reject)
+ #endif
+ 
+ 
+ /* Return the length of the initial segment of S which
+    consists entirely of characters in ACCEPT.  */
+-#if !defined _HAVE_STRING_ARCH_strspn || defined _FORCE_INLINES
+-# ifndef _HAVE_STRING_ARCH_strspn
+-#  if __GNUC_PREREQ (3, 2)
+-#   define strspn(s, accept) \
+-  __extension__								      \
+-  ({ char __a0, __a1, __a2;						      \
+-     (__builtin_constant_p (accept) && __string2_1bptr_p (accept)	      \
+-      ? ((__builtin_constant_p (s) && __string2_1bptr_p (s))		      \
+-	 ? __builtin_strspn (s, accept)					      \
+-	 : ((__a0 = ((const char *) (accept))[0], __a0 == '\0')		      \
+-	    ? ((void) (s), (size_t) 0)					      \
+-	    : ((__a1 = ((const char *) (accept))[1], __a1 == '\0')	      \
+-	       ? __strspn_c1 (s, __a0)					      \
+-	       : ((__a2 = ((const char *) (accept))[2], __a2 == '\0')	      \
+-		  ? __strspn_c2 (s, __a0, __a1)				      \
+-		  : (((const char *) (accept))[3] == '\0'		      \
+-		     ? __strspn_c3 (s, __a0, __a1, __a2)		      \
+-		     : __builtin_strspn (s, accept))))))		      \
+-      : __builtin_strspn (s, accept)); })
+-#  else
+-#   define strspn(s, accept) \
+-  __extension__								      \
+-  ({ char __a0, __a1, __a2;						      \
+-     (__builtin_constant_p (accept) && __string2_1bptr_p (accept)	      \
+-      ? ((__a0 = ((const char *) (accept))[0], __a0 == '\0')		      \
+-	 ? ((void) (s), (size_t) 0)					      \
+-	 : ((__a1 = ((const char *) (accept))[1], __a1 == '\0')		      \
+-	    ? __strspn_c1 (s, __a0)					      \
+-	    : ((__a2 = ((const char *) (accept))[2], __a2 == '\0')	      \
+-	       ? __strspn_c2 (s, __a0, __a1)				      \
+-	       : (((const char *) (accept))[3] == '\0'			      \
+-		  ? __strspn_c3 (s, __a0, __a1, __a2)			      \
+-		  : strspn (s, accept)))))				      \
+-      : strspn (s, accept)); })
+-#  endif
+-# endif
+-
+-__STRING_INLINE size_t __strspn_c1 (const char *__s, int __accept);
+-__STRING_INLINE size_t
+-__strspn_c1 (const char *__s, int __accept)
+-{
+-  size_t __result = 0;
+-  /* Please note that __accept never can be '\0'.  */
+-  while (__s[__result] == __accept)
+-    ++__result;
+-  return __result;
+-}
+-
+-__STRING_INLINE size_t __strspn_c2 (const char *__s, int __accept1,
+-				    int __accept2);
+-__STRING_INLINE size_t
+-__strspn_c2 (const char *__s, int __accept1, int __accept2)
+-{
+-  size_t __result = 0;
+-  /* Please note that __accept1 and __accept2 never can be '\0'.  */
+-  while (__s[__result] == __accept1 || __s[__result] == __accept2)
+-    ++__result;
+-  return __result;
+-}
+-
+-__STRING_INLINE size_t __strspn_c3 (const char *__s, int __accept1,
+-				    int __accept2, int __accept3);
+-__STRING_INLINE size_t
+-__strspn_c3 (const char *__s, int __accept1, int __accept2, int __accept3)
+-{
+-  size_t __result = 0;
+-  /* Please note that __accept1 to __accept3 never can be '\0'.  */
+-  while (__s[__result] == __accept1 || __s[__result] == __accept2
+-	 || __s[__result] == __accept3)
+-    ++__result;
+-  return __result;
+-}
++#ifndef _HAVE_STRING_ARCH_strspn
++# define strspn(s, accept) __builtin_strspn (s, accept)
+ #endif
+ 
+ 
+ /* Find the first occurrence in S of any character in ACCEPT.  */
+-#if !defined _HAVE_STRING_ARCH_strpbrk || defined _FORCE_INLINES
+-# ifndef _HAVE_STRING_ARCH_strpbrk
+-#  if __GNUC_PREREQ (3, 2)
+-#   define strpbrk(s, accept) \
+-  __extension__								      \
+-  ({ char __a0, __a1, __a2;						      \
+-     (__builtin_constant_p (accept) && __string2_1bptr_p (accept)	      \
+-      ? ((__builtin_constant_p (s) && __string2_1bptr_p (s))		      \
+-	 ? __builtin_strpbrk (s, accept)				      \
+-	 : ((__a0 = ((const char  *) (accept))[0], __a0 == '\0')	      \
+-	    ? ((void) (s), (char *) NULL)				      \
+-	    : ((__a1 = ((const char *) (accept))[1], __a1 == '\0')	      \
+-	       ? __builtin_strchr (s, __a0)				      \
+-	       : ((__a2 = ((const char *) (accept))[2], __a2 == '\0')	      \
+-		  ? __strpbrk_c2 (s, __a0, __a1)			      \
+-		  : (((const char *) (accept))[3] == '\0'		      \
+-		     ? __strpbrk_c3 (s, __a0, __a1, __a2)		      \
+-		     : __builtin_strpbrk (s, accept))))))		      \
+-      : __builtin_strpbrk (s, accept)); })
+-#  else
+-#   define strpbrk(s, accept) \
+-  __extension__								      \
+-  ({ char __a0, __a1, __a2;						      \
+-     (__builtin_constant_p (accept) && __string2_1bptr_p (accept)	      \
+-      ? ((__a0 = ((const char  *) (accept))[0], __a0 == '\0')		      \
+-	 ? ((void) (s), (char *) NULL)					      \
+-	 : ((__a1 = ((const char *) (accept))[1], __a1 == '\0')		      \
+-	    ? strchr (s, __a0)						      \
+-	    : ((__a2 = ((const char *) (accept))[2], __a2 == '\0')	      \
+-	       ? __strpbrk_c2 (s, __a0, __a1)				      \
+-	       : (((const char *) (accept))[3] == '\0'			      \
+-		  ? __strpbrk_c3 (s, __a0, __a1, __a2)			      \
+-		  : strpbrk (s, accept)))))				      \
+-      : strpbrk (s, accept)); })
+-#  endif
+-# endif
+-
+-__STRING_INLINE char *__strpbrk_c2 (const char *__s, int __accept1,
+-				    int __accept2);
+-__STRING_INLINE char *
+-__strpbrk_c2 (const char *__s, int __accept1, int __accept2)
+-{
+-  /* Please note that __accept1 and __accept2 never can be '\0'.  */
+-  while (*__s != '\0' && *__s != __accept1 && *__s != __accept2)
+-    ++__s;
+-  return *__s == '\0' ? NULL : (char *) (size_t) __s;
+-}
+-
+-__STRING_INLINE char *__strpbrk_c3 (const char *__s, int __accept1,
+-				    int __accept2, int __accept3);
+-__STRING_INLINE char *
+-__strpbrk_c3 (const char *__s, int __accept1, int __accept2, int __accept3)
+-{
+-  /* Please note that __accept1 to __accept3 never can be '\0'.  */
+-  while (*__s != '\0' && *__s != __accept1 && *__s != __accept2
+-	 && *__s != __accept3)
+-    ++__s;
+-  return *__s == '\0' ? NULL : (char *) (size_t) __s;
+-}
+-#endif
+-
+-
+-/* Find the first occurrence of NEEDLE in HAYSTACK.  Newer gcc versions
+-   do this itself.  */
+-#if !defined _HAVE_STRING_ARCH_strstr && !__GNUC_PREREQ (2, 97)
+-# define strstr(haystack, needle) \
+-  (__extension__ (__builtin_constant_p (needle) && __string2_1bptr_p (needle) \
+-		  ? (((const char *) (needle))[0] == '\0'		      \
+-		     ? (char *) (size_t) (haystack)			      \
+-		     : (((const char *) (needle))[1] == '\0'		      \
+-			? strchr (haystack,				      \
+-				  ((const char *) (needle))[0]) 	      \
+-			: strstr (haystack, needle)))			      \
+-		  : strstr (haystack, needle)))
++#ifndef _HAVE_STRING_ARCH_strpbrk
++# define strpbrk(s, accept) __builtin_strpbrk (s, accept)
+ #endif
+ 
+ 
+diff --git a/string/strncat.c b/string/strncat.c
+index dcfb04d..a9cb913 100644
+--- a/string/strncat.c
++++ b/string/strncat.c
+@@ -1,4 +1,4 @@
+-/* Copyright (C) 1991,1997,2011 Free Software Foundation, Inc.
++/* Copyright (C) 1991-2022 Free Software Foundation, Inc.
+    This file is part of the GNU C Library.
+ 
+    The GNU C Library is free software; you can redistribute it and/or
+@@ -13,14 +13,10 @@
+ 
+    You should have received a copy of the GNU Lesser General Public
+    License along with the GNU C Library; if not, see
+-   <http://www.gnu.org/licenses/>.  */
++   <https://www.gnu.org/licenses/>.  */
+ 
+ #include <string.h>
+ 
+-#ifdef _LIBC
+-# include <memcopy.h>
+-#endif
+-
+ #ifndef STRNCAT
+ # undef strncat
+ # define STRNCAT  strncat
+@@ -29,54 +25,16 @@
+ char *
+ STRNCAT (char *s1, const char *s2, size_t n)
+ {
+-  char c;
+   char *s = s1;
+ 
+   /* Find the end of S1.  */
+-  do
+-    c = *s1++;
+-  while (c != '\0');
+-
+-  /* Make S1 point before next character, so we can increment
+-     it while memory is read (wins on pipelined cpus).  */
+-  s1 -= 2;
++  s1 += strlen (s1);
+ 
+-  if (n >= 4)
+-    {
+-      size_t n4 = n >> 2;
+-      do
+-	{
+-	  c = *s2++;
+-	  *++s1 = c;
+-	  if (c == '\0')
+-	    return s;
+-	  c = *s2++;
+-	  *++s1 = c;
+-	  if (c == '\0')
+-	    return s;
+-	  c = *s2++;
+-	  *++s1 = c;
+-	  if (c == '\0')
+-	    return s;
+-	  c = *s2++;
+-	  *++s1 = c;
+-	  if (c == '\0')
+-	    return s;
+-	} while (--n4 > 0);
+-      n &= 3;
+-    }
++  size_t ss = __strnlen (s2, n);
+ 
+-  while (n > 0)
+-    {
+-      c = *s2++;
+-      *++s1 = c;
+-      if (c == '\0')
+-	return s;
+-      n--;
+-    }
+-
+-  if (c != '\0')
+-    *++s1 = '\0';
++  s1[ss] = '\0';
++  memcpy (s1, s2, ss);
+ 
+   return s;
+ }
++
+diff --git a/string/strncpy.c b/string/strncpy.c
+index 19d501e..83fb610 100644
+--- a/string/strncpy.c
++++ b/string/strncpy.c
+@@ -1,4 +1,4 @@
+-/* Copyright (C) 1991, 1997, 2003 Free Software Foundation, Inc.
++/* Copyright (C) 1991-2022 Free Software Foundation, Inc.
+    This file is part of the GNU C Library.
+ 
+    The GNU C Library is free software; you can redistribute it and/or
+@@ -13,75 +13,22 @@
+ 
+    You should have received a copy of the GNU Lesser General Public
+    License along with the GNU C Library; if not, see
+-   <http://www.gnu.org/licenses/>.  */
++   <https://www.gnu.org/licenses/>.  */
+ 
+ #include <string.h>
+-#include <memcopy.h>
+ 
+ #undef strncpy
+ 
+ #ifndef STRNCPY
+-#define STRNCPY strncpy
++ #define STRNCPY strncpy
+ #endif
+ 
+ char *
+ STRNCPY (char *s1, const char *s2, size_t n)
+ {
+-  char c;
+-  char *s = s1;
+-
+-  --s1;
+-
+-  if (n >= 4)
+-    {
+-      size_t n4 = n >> 2;
+-
+-      for (;;)
+-	{
+-	  c = *s2++;
+-	  *++s1 = c;
+-	  if (c == '\0')
+-	    break;
+-	  c = *s2++;
+-	  *++s1 = c;
+-	  if (c == '\0')
+-	    break;
+-	  c = *s2++;
+-	  *++s1 = c;
+-	  if (c == '\0')
+-	    break;
+-	  c = *s2++;
+-	  *++s1 = c;
+-	  if (c == '\0')
+-	    break;
+-	  if (--n4 == 0)
+-	    goto last_chars;
+-	}
+-      n = n - (s1 - s) - 1;
+-      if (n == 0)
+-	return s;
+-      goto zero_fill;
+-    }
+-
+- last_chars:
+-  n &= 3;
+-  if (n == 0)
+-    return s;
+-
+-  do
+-    {
+-      c = *s2++;
+-      *++s1 = c;
+-      if (--n == 0)
+-	return s;
+-    }
+-  while (c != '\0');
+-
+- zero_fill:
+-  do
+-    *++s1 = '\0';
+-  while (--n > 0);
+-
+-  return s;
++  size_t size = __strnlen (s2, n);
++  if (size != n)
++    memset (s1 + size, '\0', n - size);
++  return memcpy (s1, s2, size);
+ }
+ libc_hidden_builtin_def (strncpy)
+diff --git a/sysdeps/gnu/bits/utmp.h b/sysdeps/gnu/bits/utmp.h
+index aed2750..434a533 100644
+--- a/sysdeps/gnu/bits/utmp.h
++++ b/sysdeps/gnu/bits/utmp.h
+@@ -59,10 +59,14 @@ struct utmp
+ {
+   short int ut_type;		/* Type of login.  */
+   pid_t ut_pid;			/* Process ID of login process.  */
+-  char ut_line[UT_LINESIZE];	/* Devicename.  */
+-  char ut_id[4];		/* Inittab ID.  */
+-  char ut_user[UT_NAMESIZE];	/* Username.  */
+-  char ut_host[UT_HOSTSIZE];	/* Hostname for remote login.  */
++  char ut_line[UT_LINESIZE]
++    __attribute_nonstring__;	/* Devicename.  */
++  char ut_id[4]
++    __attribute_nonstring__;		/* Inittab ID.  */
++  char ut_user[UT_NAMESIZE]
++    __attribute_nonstring__;	/* Username.  */
++  char ut_host[UT_HOSTSIZE]
++    __attribute_nonstring__;	/* Hostname for remote login.  */
+   struct exit_status ut_exit;	/* Exit status of a process marked
+ 				   as DEAD_PROCESS.  */
+ /* The ut_session and ut_tv fields must be the same size when compiled
+diff --git a/sysdeps/gnu/bits/utmpx.h b/sysdeps/gnu/bits/utmpx.h
+index f8716ca..13d84e4 100644
+--- a/sysdeps/gnu/bits/utmpx.h
++++ b/sysdeps/gnu/bits/utmpx.h
+@@ -56,10 +56,14 @@ struct utmpx
+ {
+   short int ut_type;		/* Type of login.  */
+   __pid_t ut_pid;		/* Process ID of login process.  */
+-  char ut_line[__UT_LINESIZE];	/* Devicename.  */
+-  char ut_id[4];		/* Inittab ID. */
+-  char ut_user[__UT_NAMESIZE];	/* Username.  */
+-  char ut_host[__UT_HOSTSIZE];	/* Hostname for remote login.  */
++  char ut_line[__UT_LINESIZE]
++    __attribute_nonstring__;	/* Devicename.  */
++  char ut_id[4]
++    __attribute_nonstring__;		/* Inittab ID. */
++  char ut_user[__UT_NAMESIZE]
++    __attribute_nonstring__;	/* Username.  */
++  char ut_host[__UT_HOSTSIZE]
++    __attribute_nonstring__;	/* Hostname for remote login.  */
+   struct __exit_status ut_exit;	/* Exit status of a process marked
+ 				   as DEAD_PROCESS.  */
+ 
+diff --git a/sysdeps/unix/sysv/linux/if_index.c b/sysdeps/unix/sysv/linux/if_index.c
+index 8ba5eae..b620d21 100644
+--- a/sysdeps/unix/sysv/linux/if_index.c
++++ b/sysdeps/unix/sysv/linux/if_index.c
+@@ -38,12 +38,19 @@ __if_nametoindex (const char *ifname)
+   return 0;
+ #else
+   struct ifreq ifr;
++  if (strlen (ifname) >= IFNAMSIZ)
++    {
++      __set_errno (ENODEV);
++      return 0;
++    }
++
++  strncpy (ifr.ifr_name, ifname, sizeof (ifr.ifr_name));
++
+   int fd = __opensock ();
+ 
+   if (fd < 0)
+     return 0;
+ 
+-  strncpy (ifr.ifr_name, ifname, sizeof (ifr.ifr_name));
+   if (__ioctl (fd, SIOCGIFINDEX, &ifr) < 0)
+     {
+       int saved_errno = errno;
+diff --git a/timezone/zic.c b/timezone/zic.c
+index a5202a1..772d081 100644
+--- a/timezone/zic.c
++++ b/timezone/zic.c
+@@ -1609,7 +1609,7 @@ writezone(const char *const name, const char *const string)
+ 		}
+ #define DO(field)	((void) fwrite(tzh.field, sizeof tzh.field, 1, fp))
+ 		tzh = tzh0;
+-		(void) strncpy(tzh.tzh_magic, TZ_MAGIC, sizeof tzh.tzh_magic);
++		memcpy(tzh.tzh_magic, TZ_MAGIC, sizeof tzh.tzh_magic);
+ 		tzh.tzh_version[0] = ZIC_VERSION;
+ 		convert(eitol(thistypecnt), tzh.tzh_ttisgmtcnt);
+ 		convert(eitol(thistypecnt), tzh.tzh_ttisstdcnt);

@@ -12,41 +12,41 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-// Copied and modified from
-// //third_party/tensorflow/compiler/mlir/lite/transforms/quantize.cc
-// This transformation pass applies quantization on TF dialect.
+#include <memory>
 #include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Matchers.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace mlir {
 namespace quant {
@@ -55,6 +55,8 @@ namespace quant {
 // The actual Quantize Pass.
 //===----------------------------------------------------------------------===//
 namespace {
+
+using ::tensorflow::quantization::OpSet;
 
 enum QuantizationTrait { kFullQuantization, kDynamicRangeQuantization };
 
@@ -81,14 +83,28 @@ struct TFQuantizationBase
   // range quantization.
   static bool AllowDynamicRangeQuantizedOperand(
       Operation* quantized_op, const CustomMap& custom_op_map) {
-    return quantization_trait == kDynamicRangeQuantization;
+    auto call_op = cast<TF::PartitionedCallOp>(quantized_op);
+    StringRef function_name =
+        call_op.getFAttr().cast<FlatSymbolRefAttr>().getValue();
+    // The below can be generalized as there are more read-only ops added such
+    // as slice.
+    const bool is_gather = function_name.contains("gather");
+    return quantization_trait != kFullQuantization || is_gather;
   }
 
   // All the quantized ops are supported if the quantization method is dynamic
   // range quantization.
   static bool AllowDynamicRangeQuantizedResult(Operation* quantized_op,
                                                const CustomMap& custom_op_map) {
-    return quantization_trait == kDynamicRangeQuantization;
+    auto call_op = cast<TF::PartitionedCallOp>(quantized_op);
+    StringRef function_name =
+        call_op.getFAttr().cast<FlatSymbolRefAttr>().getValue();
+    // The below can be generalized as there are more read-only ops added such
+    // as slice.
+    bool is_gather = false;
+    if (function_name.contains("gather")) is_gather = true;
+    return quantization_trait != kFullQuantization ||
+           (quantization_trait == kFullQuantization && is_gather);
   }
 
   // If weight_only_quantization is true, the legacy weight-only quantization is
@@ -164,7 +180,7 @@ class QuantizeSameScaleOpsPattern
 
   LogicalResult matchAndRewrite(quantfork::DequantizeCastOp op,
                                 PatternRewriter& rewriter) const override {
-    llvm::SmallVector<Operation*, 4> quantizing_ops;
+    SmallVector<Operation*, 4> quantizing_ops;
     auto users = op.getResult().getUsers();
     quantizing_ops.append(users.begin(), users.end());
 
@@ -297,7 +313,7 @@ class QuantizeSameScaleOpsPattern
   }
 
  private:
-  // Checks whether the operation is connnected with a composite function.
+  // Checks whether the operation is connected with a composite function.
   // If not, the same-scale op will not be quantized. This decision is based
   // on the current assumption that the performance gain of the same-scale
   // op itself could not beat the overhead of the quantize and dequantize
@@ -366,7 +382,7 @@ class QuantizeSameScaleOpsPattern
     }
 
     const auto f_attr = call_op.getFAttr().dyn_cast<FlatSymbolRefAttr>();
-    if (!f_attr || !f_attr.getValue().startswith("composite_")) {
+    if (!f_attr || !f_attr.getValue().starts_with("composite_")) {
       return false;
     }
 

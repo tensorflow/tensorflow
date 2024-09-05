@@ -16,21 +16,26 @@ limitations under the License.
 #include "tensorflow/core/data/dataset_utils.h"
 
 #include <algorithm>
+#include <array>
+#include <cstdint>
 #include <cstdlib>
 #include <functional>
 #include <memory>
 #include <queue>
+#include <random>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_def_util.h"
@@ -42,10 +47,12 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/work_sharder.h"
 
@@ -55,6 +62,8 @@ namespace {
 
 constexpr char kOutputSize[] = "output_size";
 constexpr char kCode[] = "code";
+constexpr char kExperimentOptAll[] = "all";
+constexpr char kExperimentOptOutAllExceptOptIn[] = "all_except_opt_in";
 constexpr char kMessage[] = "msg";
 constexpr char kOutput[] = "output";
 
@@ -87,10 +96,12 @@ constexpr char kAutotuneBufferSizesOpt[] = "autotune_buffer_sizes";
 constexpr char kDisablePrefetchLegacyAutotuneOpt[] =
     "disable_prefetch_legacy_autotune";
 constexpr char kMakeSloppyOpt[] = "make_sloppy";
-constexpr char kUseChooseFastestOpt[] = "use_choose_fastest";
 constexpr char kBatchParallelizationOpt[] = "batch_parallelization";
 constexpr char kEnableGradientDescentOpt[] = "enable_gradient_descent";
 constexpr char kInjectPrefetchOpt[] = "inject_prefetch";
+constexpr char kSeqInterleavePrefetchOpt[] = "seq_interleave_prefetch";
+constexpr char kInjectIoPrefetchEligibleOpt[] = "inject_io_prefetch_eligible";
+constexpr char kInjectIoPrefetchOpt[] = "inject_io_prefetch";
 constexpr char kAutotuneOpt[] = "autotune";
 constexpr char kSlackOpt[] = "slack";
 constexpr char kSlackPeriodOpt[] = "slack_period";
@@ -214,12 +225,12 @@ void DefaultOptimizationGraphRewrites(
       optimization_disabled->insert(kInjectPrefetchOpt);
     }
   }
-  if (optimization_options.optional_warm_start_case() ==
-      OptimizationOptions::kWarmStart) {
-    if (optimization_options.warm_start()) {
-      optimization_enabled->insert(kWarmStartOpt);
+  if (optimization_options.optional_seq_interleave_prefetch_case() ==
+      OptimizationOptions::kSeqInterleavePrefetch) {
+    if (optimization_options.seq_interleave_prefetch()) {
+      optimization_enabled->insert(kSeqInterleavePrefetchOpt);
     } else {
-      optimization_disabled->insert(kWarmStartOpt);
+      optimization_disabled->insert(kSeqInterleavePrefetchOpt);
     }
   }
 }
@@ -253,7 +264,7 @@ Status VerifyTypeMatch(const DataType& expected, const DataType& received,
                                    ": expected ", DataTypeString(expected),
                                    " but got ", DataTypeString(received), ".");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status VerifyTypesMatch(const DataTypeVector& expected,
@@ -266,7 +277,7 @@ Status VerifyTypesMatch(const DataTypeVector& expected,
   for (size_t i = 0; i < expected.size(); ++i) {
     TF_RETURN_IF_ERROR(VerifyTypeMatch(expected[i], received[i], i));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status VerifyTypesMatch(const DataTypeVector& expected,
@@ -279,7 +290,7 @@ Status VerifyTypesMatch(const DataTypeVector& expected,
   for (size_t i = 0; i < expected.size(); ++i) {
     TF_RETURN_IF_ERROR(VerifyTypeMatch(expected[i], received[i].dtype(), i));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status VerifyShapeCompatible(const PartialTensorShape& expected,
@@ -289,7 +300,7 @@ Status VerifyShapeCompatible(const PartialTensorShape& expected,
                                    ": expected ", expected.DebugString(),
                                    " but got ", received.DebugString(), ".");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
@@ -303,7 +314,7 @@ Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
     TF_RETURN_IF_ERROR(VerifyShapeCompatible(expected[i], received[i], i));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
@@ -318,7 +329,7 @@ Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
         VerifyShapeCompatible(expected[i], received[i].shape(), i));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
@@ -355,13 +366,13 @@ Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
 Status IsFunctionStateful(const FunctionLibraryDefinition& library,
                           const FunctionDef& function_def) {
   if (!function_def.signature().is_stateful()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   for (const NodeDef& node_def : function_def.node_def()) {
     TF_RETURN_IF_ERROR(IsNodeStateful(library, node_def));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IsNodeStateful(const FunctionLibraryDefinition& library,
@@ -373,7 +384,7 @@ Status IsNodeStateful(const FunctionLibraryDefinition& library,
   if (!OpRegistry::Global()->LookUpOpDef(node.op(), &op_def).ok() ||
       IsOpAllowlisted(op_def) || !op_def->is_stateful() ||
       op_def->name() == "Assert") {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (op_def->name() == "If") {
@@ -387,7 +398,7 @@ Status IsNodeStateful(const FunctionLibraryDefinition& library,
     if (else_func != nullptr) {
       TF_RETURN_IF_ERROR(IsFunctionStateful(library, *else_func));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (op_def->name() == "While") {
@@ -401,7 +412,7 @@ Status IsNodeStateful(const FunctionLibraryDefinition& library,
     if (body_func != nullptr) {
       TF_RETURN_IF_ERROR(IsFunctionStateful(library, *body_func));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   return errors::FailedPrecondition(op_def->name(), " is stateful.");
@@ -438,7 +449,7 @@ Status DeterminismPolicy::FromString(const std::string& s,
     return errors::InvalidArgument("Unrecognized determinism policy: ", s);
   }
   *out = DeterminismPolicy(type);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 DeterminismPolicy::DeterminismPolicy(bool is_deterministic) {
@@ -502,45 +513,57 @@ absl::flat_hash_set<string> GetExperiments(
     opt_outs_raw = string(opt_outs_raw_cs);
   }
 
-  // Identify opted out experiments.
   auto live_experiments = DatasetExperimentRegistry::Experiments();
+  for (const auto& [experiment, unused] : live_experiments) {
+    metrics::RecordTFDataExperimentLive(experiment);
+  }
+
+  // Identify opted out experiments.
   absl::flat_hash_set<string> opt_outs;
-  if (opt_outs_raw == "all") {
+  if (opt_outs_raw == kExperimentOptAll) {
     for (const auto& pair : live_experiments) {
       opt_outs.insert(pair.first);
     }
+    metrics::RecordTFDataExperimentOptOut(kExperimentOptAll);
   } else {
     for (const auto& experiment :
          str_util::Split(opt_outs_raw, ',', str_util::SkipEmpty())) {
       opt_outs.insert(experiment);
+      metrics::RecordTFDataExperimentOptOut(experiment);
     }
   }
 
   // Include opted in experiments unless they are opted out.
-  if (opt_ins_raw == "all") {
+  if (opt_ins_raw == kExperimentOptAll) {
     for (const auto& pair : live_experiments) {
       auto experiment = pair.first;
       if (!opt_outs.contains(experiment)) {
         experiments.insert(experiment);
       }
     }
+    metrics::RecordTFDataExperimentOptIn(kExperimentOptAll);
   } else {
     for (const auto& experiment :
          str_util::Split(opt_ins_raw, ',', str_util::SkipEmpty())) {
       if (!opt_outs.contains(experiment)) {
         experiments.insert(experiment);
       }
+      metrics::RecordTFDataExperimentOptIn(experiment);
     }
   }
 
-  if (opt_outs_raw == "all_except_opt_in") {
+  if (opt_outs_raw == kExperimentOptOutAllExceptOptIn) {
+    metrics::RecordTFDataExperimentOptOut(kExperimentOptOutAllExceptOptIn);
     return experiments;
   }
   // Stochastically include live experiments unless they are opted out.
   for (const auto& [experiment_name, experiment_selector] : live_experiments) {
-    if (experiment_selector.job_selector(hash_func, experiment_name,
-                                         job_name) &&
-        experiment_selector.task_selector(task_id) &&
+    uint64_t name_hash = hash_func(strings::StrCat(job_name, experiment_name));
+    std::mt19937_64 rng{name_hash};
+    std::bernoulli_distribution d{0.5};
+    bool evens = d(rng);
+    if (experiment_selector.job_selector(name_hash) &&
+        experiment_selector.task_selector(task_id, evens) &&
         !opt_outs.contains(experiment_name)) {
       experiments.insert(experiment_name);
     }
@@ -579,6 +602,13 @@ void GetOptimizations(const Options& options,
       optimizations_enabled->insert(kSlackOpt);
     } else {
       optimizations_disabled->insert(kSlackOpt);
+    }
+  }
+  if (options.optional_warm_start_case() == Options::kWarmStart) {
+    if (options.warm_start()) {
+      optimizations_enabled->insert(kWarmStartOpt);
+    } else {
+      optimizations_disabled->insert(kWarmStartOpt);
     }
   }
 }
@@ -620,7 +650,7 @@ Status CopyPartialBatch(int64_t num_elements, const Tensor& value,
       return errors::InvalidArgument("Unsupported data type: ",
                                      DataTypeString(value.dtype()));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ReadBatch(IteratorContext* ctx, IteratorStateReader* reader,
@@ -653,7 +683,7 @@ Status ReadBatch(IteratorContext* ctx, IteratorStateReader* reader,
       batch->emplace_back(std::move(t));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status WriteBatch(int64_t batch_size, int64_t num_elements,
@@ -678,7 +708,7 @@ Status WriteBatch(int64_t batch_size, int64_t num_elements,
                               strings::StrCat(kOutput, "_", i), (*batch)[i]));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ReadStatus(const string& iterator_prefix, const string& prefix,
@@ -696,9 +726,9 @@ Status ReadStatus(const string& iterator_prefix, const string& prefix,
         &error_message));
     *status = Status(code, error_message);
   } else {
-    *status = OkStatus();
+    *status = absl::OkStatus();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status WriteStatus(const string& iterator_prefix, const string& prefix,
@@ -709,9 +739,9 @@ Status WriteStatus(const string& iterator_prefix, const string& prefix,
   if (!status.ok()) {
     TF_RETURN_IF_ERROR(writer->WriteScalar(
         FullName(iterator_prefix, strings::StrCat(prefix, "_", kMessage)),
-        status.error_message()));
+        std::string(status.message())));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ProcessBatch(int64_t batch_size, int64_t num_elements,
@@ -719,22 +749,22 @@ Status ProcessBatch(int64_t batch_size, int64_t num_elements,
                     IteratorContext* ctx, std::vector<Tensor>* output,
                     bool* end_of_sequence, std::vector<Tensor>* batch) {
   if (num_elements == 0) {
-    if (status.ok() || errors::IsOutOfRange(status)) {
+    if (status.ok() || absl::IsOutOfRange(status)) {
       *end_of_sequence = true;
-      return OkStatus();
+      return absl::OkStatus();
     } else {
       *end_of_sequence = false;
       return status;
     }
   }
-  if (!status.ok() && !errors::IsOutOfRange(status)) {
+  if (!status.ok() && !absl::IsOutOfRange(status)) {
     *end_of_sequence = false;
     return status;
   }
   if (num_elements < batch_size) {
     if (drop_remainder) {
       *end_of_sequence = true;
-      return OkStatus();
+      return absl::OkStatus();
     }
     for (size_t i = 0; i < batch->size(); ++i) {
       TensorShape component_shape((*batch)[i].shape());
@@ -754,14 +784,12 @@ Status ProcessBatch(int64_t batch_size, int64_t num_elements,
     *output = std::move(*batch);
   }
   *end_of_sequence = false;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status CopyBatch(CopyBatchParams params,
-                 const std::vector<std::vector<Tensor>>& batch_elements,
-                 bool parallel_copy,
-                 std::function<Status()> allocation_callback,
-                 std::vector<Tensor>* out_tensors) {
+Status CopyBatch(AnyContext ctx,
+                 std::vector<std::vector<Tensor>>&& batch_elements,
+                 bool parallel_copy, std::vector<Tensor>* out_tensors) {
   const size_t num_tuple_components = batch_elements.at(0).size();
   out_tensors->reserve(num_tuple_components);
   const int64_t num_batch_elements = batch_elements.size();
@@ -771,16 +799,13 @@ Status CopyBatch(CopyBatchParams params,
     TensorShape first_element_shape(first_element.shape());
     TensorShape batch_component_shape({num_batch_elements});
     batch_component_shape.AppendShape(first_element_shape);
-    out_tensors->emplace_back(params.allocator, first_element.dtype(),
+    out_tensors->emplace_back(ctx.allocator, first_element.dtype(),
                               batch_component_shape);
     if (!out_tensors->back().IsInitialized()) {
       return errors::ResourceExhausted(
           "Failed to allocate memory for the batch of component ",
           component_index);
     }
-  }
-  if (allocation_callback) {
-    TF_RETURN_IF_ERROR(allocation_callback());
   }
   for (size_t component_index = 0; component_index < num_tuple_components;
        ++component_index) {
@@ -812,7 +837,7 @@ Status CopyBatch(CopyBatchParams params,
     if (parallel_copy && total_bytes >= (1 << 20)) {
       Status status;
       mutex status_mu;
-      const auto num_threads = params.runner_threadpool_size;
+      const auto num_threads = ctx.runner_threadpool_size;
       const auto slice_size = num_batch_elements / num_threads;
       int64_t offset = 0;
       BlockingCounter counter(num_threads);
@@ -822,8 +847,8 @@ Status CopyBatch(CopyBatchParams params,
         // evenly, the size of some slices is incremented to guarantee their
         // sizes add up to the total number of elements.
         if (i < num_batch_elements % num_threads) ++length;
-        (*params.runner)([offset, length, &status, &status_mu, &counter,
-                          &copy_element_fn]() {
+        (*ctx.runner)([offset, length, &status, &status_mu, &counter,
+                       &copy_element_fn]() {
           Status s;
           for (size_t j = offset; j < offset + length; ++j) {
             s.Update(copy_element_fn(j));
@@ -844,20 +869,24 @@ Status CopyBatch(CopyBatchParams params,
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::flat_hash_set<tstring> CreateGraphRewriteConfigs(const Options& options) {
   absl::flat_hash_set<tstring> configs;
   const auto& autotune_options = options.autotune_options();
-  std::vector<tstring> autotune_only_optimizations = {
+  std::array<tstring, 11> autotune_only_optimizations = {
       kAutotuneBufferSizesOpt,
       kBatchParallelizationOpt,
       kDisablePrefetchLegacyAutotuneOpt,
       kEnableGradientDescentOpt,
       kFilterParallelizationOpt,
       kMapParallelizationOpt,
-      kInjectPrefetchOpt};
+      kMapFusionOpt,
+      kSeqInterleavePrefetchOpt,
+      kInjectPrefetchOpt,
+      kInjectIoPrefetchEligibleOpt,
+      kInjectIoPrefetchOpt};
 
   if (autotune_options.optional_enabled_case() == AutotuneOptions::kEnabled &&
       !autotune_options.enabled()) {
@@ -911,7 +940,27 @@ bool ShouldApplyOptimizations(
 }
 
 int64 GetAutotuneDefaultParallelism(IteratorContext* ctx) {
-  return std::min(kAutotuneDefaultParallelism, ctx->runner_threadpool_size());
+  int64_t initial_parallelism = 16;
+  if (ctx->options()) {
+    int64_t initial_parallelism_option =
+        ctx->options()->autotune_options().initial_parallelism();
+    if (initial_parallelism_option > 0) {
+      initial_parallelism = initial_parallelism_option;
+    }
+  }
+  int64_t runner_threadpool_size = ctx->runner_threadpool_size();
+  int64_t value = std::min(initial_parallelism, runner_threadpool_size);
+  return value;
+}
+
+IteratorContext MakeNestedIteratorContext(IteratorContext* ctx) {
+  // Strips out any split providers so that they don't apply to sub-iterators.
+  if (ctx->split_providers().empty()) {
+    return *ctx;
+  }
+  IteratorContext::Params params(ctx);
+  params.split_providers.clear();
+  return IteratorContext(std::move(params));
 }
 
 // static
@@ -931,28 +980,24 @@ DatasetExperimentRegistry::Experiments() {
   return *get_dataset_experiments();
 }
 
+bool AllTasks(int64_t unused_task_id, bool unused_evens) { return true; }
+
+bool IndependentHostTasks(int64_t task_id, bool evens) {
+  int64_t lhs = task_id & 0x2;
+  int64_t rhs = 0x2;
+  return evens ? lhs != rhs : lhs == rhs;
+}
+
 namespace {
 
-// Select `rollout_pct` percent of jobs at random. `hash_func` takes a string
-// and returns a uint64 between 0 and 1.
-template <int64_t rollout_pct>
-bool RandomJobSamplePercentage(std::function<uint64_t(const string&)> hash_func,
-                               const std::string& experiment_name,
-                               const std::string& job_name) {
-  return hash_func(strings::StrCat(job_name, experiment_name)) % 100 <
-         rollout_pct;
-}
-bool AllTasks(int64_t task_id) { return true; }
-// Typically 2 tasks run on a single TPU host. This selector assigns every 2
-// other tasks in the experiment such that control and experiment do not run on
-// the same hosts. For example, if a job has 4 tasks, then task 0 and 1 are
-// assigned to control and tasks 2 and 3 experiment.
-bool IndependentHostTasks(int64_t task_id) { return (task_id & 0x2) == 0x2; }
-
+REGISTER_DATASET_EXPERIMENT("noop_task_level", RandomJobSamplePercentage<50>,
+                            IndependentHostTasks);
+REGISTER_DATASET_EXPERIMENT("noop_job_level", RandomJobSamplePercentage<50>,
+                            AllTasks);
 REGISTER_DATASET_EXPERIMENT("allow_small_function_optimizations",
                             RandomJobSamplePercentage<0>, AllTasks);
 REGISTER_DATASET_EXPERIMENT("autotune_buffer_optimization",
-                            RandomJobSamplePercentage<5>, IndependentHostTasks);
+                            RandomJobSamplePercentage<0>, IndependentHostTasks);
 REGISTER_DATASET_EXPERIMENT(kFilterParallelizationOpt,
                             RandomJobSamplePercentage<0>, AllTasks);
 REGISTER_DATASET_EXPERIMENT("min_outer_interleave_parallelism",
@@ -965,7 +1010,19 @@ REGISTER_DATASET_EXPERIMENT("stage_based_autotune",
                             RandomJobSamplePercentage<0>, IndependentHostTasks);
 REGISTER_DATASET_EXPERIMENT("stage_based_autotune_v2",
                             RandomJobSamplePercentage<0>, IndependentHostTasks);
-REGISTER_DATASET_EXPERIMENT("data_transfer", RandomJobSamplePercentage<5>,
+REGISTER_DATASET_EXPERIMENT("data_transfer", RandomJobSamplePercentage<0>,
+                            AllTasks);
+REGISTER_DATASET_EXPERIMENT("file_locality", RandomJobSamplePercentage<0>,
+                            AllTasks);
+REGISTER_DATASET_EXPERIMENT("file_locality_v2", RandomJobSamplePercentage<0>,
+                            AllTasks);
+REGISTER_DATASET_EXPERIMENT("no_compression", RandomJobSamplePercentage<0>,
+                            AllTasks);
+REGISTER_DATASET_EXPERIMENT("no_compression_v2", RandomJobSamplePercentage<0>,
+                            AllTasks);
+REGISTER_DATASET_EXPERIMENT("inject_io_prefetch", RandomJobSamplePercentage<0>,
+                            AllTasks);
+REGISTER_DATASET_EXPERIMENT("map_fusion", RandomJobSamplePercentage<0>,
                             IndependentHostTasks);
 }  // namespace
 }  // namespace data

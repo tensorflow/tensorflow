@@ -31,8 +31,8 @@ namespace gl {
 
 struct Variable {
   using ValueType =
-      std::variant<int32_t, int2, int4, uint32_t, uint4, float, float2, float4,
-                   std::vector<int2>, std::vector<float4>>;
+      absl::variant<int32_t, int2, int4, uint32_t, uint4, float, float2, float4,
+                    std::vector<int2>, std::vector<float4>>;
 
   std::string name;
   ValueType value;

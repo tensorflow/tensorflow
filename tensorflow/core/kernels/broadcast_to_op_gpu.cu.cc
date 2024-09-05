@@ -29,6 +29,8 @@ typedef Eigen::GpuDevice GPUDevice;
   template class functor::BroadcastTo<GPUDevice, Type>;
 TF_CALL_GPU_ALL_TYPES(INSTANTIATE_GPU_KERNEL);
 TF_CALL_int64(INSTANTIATE_GPU_KERNEL);
+TF_CALL_float8_e5m2(INSTANTIATE_GPU_KERNEL);
+TF_CALL_float8_e4m3fn(INSTANTIATE_GPU_KERNEL);
 #undef INSTANTIATE_GPU_KERNEL
 
 }  // namespace tensorflow

@@ -20,7 +20,8 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
+from tensorflow.python.framework import tensor
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import math_ops
@@ -251,7 +252,7 @@ def _assert_at_most_n_true(predicates, n, msg):
     n: maximum number of true predicates allowed.
     msg: Error message.
   """
-  preds_c = array_ops.stack(predicates, name="preds_c")
+  preds_c = array_ops_stack.stack(predicates, name="preds_c")
   num_true_conditions = math_ops.reduce_sum(
       math_ops.cast(preds_c, dtypes.int32), name="num_true_conds")
   condition = math_ops.less_equal(num_true_conditions,
@@ -288,7 +289,7 @@ def _case_create_default_action(predicates, actions):
                   "predicates are True: " % k)
     default_msg = ("Input error: "
                    "None of conditions evaluated as True:",
-                   array_ops.stack(predicates, name="preds_c"))
+                   array_ops_stack.stack(predicates, name="preds_c"))
     with ops.control_dependencies([
         _assert_at_most_n_true(  # pylint: disable=protected-access
             other_predicates, n=0, msg=others_msg),
@@ -401,7 +402,7 @@ def _case_verify_and_canonicalize_args(pred_fn_pairs, exclusive, name,
                       f"Received {pred_fn_pair}.")
     pred, fn = pred_fn_pair
 
-    if isinstance(pred, ops.Tensor):
+    if isinstance(pred, tensor.Tensor):
       if pred.dtype != dtypes.bool:
         raise TypeError("pred must be Tensor of type bool: %s" % pred.name)
     elif not allow_python_preds:

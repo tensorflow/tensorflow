@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tosa/tfl_passes.h"
 
+#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
@@ -29,8 +32,15 @@ void createTFLtoTOSALegalizationPipeline(
   //----------------------------------------------------------------------------
   // Prepare TFL module for conversion
   //----------------------------------------------------------------------------
+  pm.addPass(createRetainCallOnceFuncsPass());
+
   // Inline all functions into main and then delete the functions themselves.
   pm.addPass(mlir::createInlinerPass());
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createSymbolDCEPass());
+  if (opts.target_compilation_backend) {
+    pm.nest<func::FuncOp>().addPass(createConvertFunctionMetadataPass());
+  }
 
   // Add pass to decompose TFLite mixed quantization to non-quantized variants.
   pm.addPass(TFL::CreateDecomposeHybridQuantizationPass());
@@ -39,8 +49,8 @@ void createTFLtoTOSALegalizationPipeline(
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 
-  pm.addPass(mlir::createLoopFusionPass());
-  pm.addPass(mlir::createAffineScalarReplacementPass());
+  pm.addPass(mlir::affine::createLoopFusionPass());
+  pm.addPass(mlir::affine::createAffineScalarReplacementPass());
 
   //----------------------------------------------------------------------------
   // Perform main conversion.
@@ -49,6 +59,7 @@ void createTFLtoTOSALegalizationPipeline(
   if (opts.dequantize_tfl_softmax) {
     pm.addPass(mlir::tosa::createDequantizeTFLSoftmaxPass());
   }
+  pm.addPass(mlir::tosa::createLegalizeTFLStatefulPass());
   pm.addPass(mlir::tosa::createLegalizeTFLPass(opts.disabled_patterns,
                                                opts.enabled_patterns));
 
@@ -62,6 +73,15 @@ void createTFLtoTOSALegalizationPipeline(
   pm.addPass(mlir::createInlinerPass());
   // Clean up with DCE.
   pm.addPass(mlir::createSymbolDCEPass());
+
+  if (opts.target_compilation_backend) {
+    pm.nest<func::FuncOp>().addPass(mlir::tosa::createStripQuantTypesPass());
+    pm.addPass(createCanonicalizerPass());
+    pm.addPass(createReconcileUnrealizedCastsPass());
+    pm.nest<func::FuncOp>().addPass(createStripFunctionMetadataPass());
+    pm.addPass(createStripModuleMetadataPass());
+    pm.addPass(createVerifyFullyConvertedPass());
+  }
 }
 
 void registerTFLtoTOSALegalizationPipeline() {

@@ -16,7 +16,10 @@ limitations under the License.
 #ifdef INTEL_MKL
 
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
-#include "tensorflow/core/graph/mkl_testlib.h"
+#include "tensorflow/core/common_runtime/mkl_layout_pass.h"
+#include "tensorflow/core/graph/mkl_graph_util.h"
+#include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/util/util.h"
 
 namespace tensorflow {
 namespace {
@@ -29,9 +32,34 @@ static Graph* Matmul(int m, int k, int n, bool transpose_a, bool transpose_b,
   in0.flat<T>().setRandom();
   Tensor in1(type, transpose_b ? TensorShape({n, k}) : TensorShape({k, n}));
   in1.flat<T>().setRandom();
-  test::graph::oneDNNMatmul(g, test::graph::Constant(g, in0),
-                            test::graph::Constant(g, in1), transpose_a,
-                            transpose_b);
+
+  Node* src0 = test::graph::Constant(g, in0);
+  Node* src1 = test::graph::Constant(g, in1);
+  g->AddEdge(g->source_node(), 0, src0, 0);
+  g->AddEdge(g->source_node(), 1, src1, 0);
+  // Add shape sizes
+  AttrValue attr_input_shape;
+  TensorShapeProto* proto = attr_input_shape.mutable_list()->add_shape();
+  proto->add_dim()->set_size(m);
+  proto->add_dim()->set_size(k);
+  proto = attr_input_shape.mutable_list()->add_shape();
+  proto->add_dim()->set_size(k);
+  proto->add_dim()->set_size(n);
+
+  Node* ret = nullptr;
+  TF_CHECK_OK(NodeBuilder(g->NewName("matmul"), "MatMul")
+                  .Input(src0)
+                  .Input(src1)
+                  .Attr("transpose_a", transpose_a)
+                  .Attr("transpose_b", transpose_b)
+                  .Attr("_input_shapes", attr_input_shape)
+                  .Finalize(g, &ret));
+#ifdef INTEL_MKL
+  if (IsMKLEnabled()) {
+    std::unique_ptr<Graph>* ug = new std::unique_ptr<Graph>(g);
+    RunMklLayoutRewritePass(ug);
+  }
+#endif  // INTEL_MKL
   return g;
 }
 

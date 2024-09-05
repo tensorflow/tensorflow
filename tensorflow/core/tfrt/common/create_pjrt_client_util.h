@@ -15,11 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_COMMON_CREATE_PJRT_CLIENT_UTIL_H_
 #define TENSORFLOW_CORE_TFRT_COMMON_CREATE_PJRT_CLIENT_UTIL_H_
 
-#include <memory>
 #include <optional>
 #include <set>
 
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "absl/status/statusor.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/framework/types.h"
 
 namespace tensorflow {
@@ -34,7 +34,9 @@ namespace tensorflow {
 // created. `allowed_devices` is only used for GPU.
 // TODO(b/260802979): consider passing `XlaPlatformInfo` for the options to
 // create a client, or creating a class similar to `LocalClientOptions`.
-StatusOr<xla::PjRtClient*> GetOrCreatePjRtClient(
+// TODO(b/280111106): make PjrtClientFactoryOptions an input of
+// GetOrCreatePjRtClient.
+absl::StatusOr<xla::PjRtClient*> GetOrCreatePjRtClient(
     const DeviceType& device_type,
     std::optional<std::set<int>> allowed_devices = std::nullopt);
 

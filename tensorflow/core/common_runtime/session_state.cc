@@ -31,7 +31,7 @@ Status SessionState::GetTensor(const string& handle, Tensor* tensor) {
                                    "' is not in the session store.");
   }
   *tensor = it->second;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status SessionState::AddTensor(const string& handle, const Tensor& tensor) {
@@ -40,7 +40,7 @@ Status SessionState::AddTensor(const string& handle, const Tensor& tensor) {
     return errors::InvalidArgument("Failed to add a tensor with handle '",
                                    handle, "' to the session store.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status SessionState::DeleteTensor(const string& handle) {
@@ -49,7 +49,7 @@ Status SessionState::DeleteTensor(const string& handle) {
     return errors::InvalidArgument("Failed to delete a tensor with handle '",
                                    handle, "' in the session store.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int64_t SessionState::GetNewId() {
@@ -64,7 +64,7 @@ Status TensorStore::AddTensor(const string& name, const TensorAndKey& tk) {
                                    "' to the tensor store.");
   }
   dirty_ = true;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status TensorStore::SaveTensors(const std::vector<string>& output_names,
@@ -83,7 +83,7 @@ Status TensorStore::SaveTensors(const std::vector<string>& output_names,
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

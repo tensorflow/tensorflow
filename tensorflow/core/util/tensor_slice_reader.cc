@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_slice_reader.h"
 
 #include <climits>
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -37,7 +38,7 @@ namespace tensorflow {
 
 namespace checkpoint {
 
-TensorSliceReader::Table::~Table() {}
+TensorSliceReader::Table::~Table() = default;
 
 namespace {
 class TensorSliceReaderTable : public TensorSliceReader::Table {
@@ -84,10 +85,10 @@ Status OpenTableTensorSliceReader(const string& fname,
       s = table::Table::Open(options, f.get(), file_size, &table);
       if (s.ok()) {
         *result = new TensorSliceReaderTable(f.release(), table);
-        return OkStatus();
+        return absl::OkStatus();
       } else {
         s = errors::CreateWithUpdatedMessage(
-            s, strings::StrCat(s.error_message(),
+            s, strings::StrCat(s.message(),
                                ": perhaps your file is in a different "
                                "file format and you need to use a "
                                "different restore operator?"));
@@ -294,7 +295,7 @@ Status TensorSliceReader::GetTensor(
   }
   std::swap(*out_tensor, t);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 TensorSliceReader::VarToShapeMap TensorSliceReader::GetVariableToShapeMap()

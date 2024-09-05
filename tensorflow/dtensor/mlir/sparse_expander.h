@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_DTENSOR_MLIR_SPARSE_EXPANDER_H_
 #define TENSORFLOW_DTENSOR_MLIR_SPARSE_EXPANDER_H_
 
+#include <memory>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
@@ -23,6 +24,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
 #include "tensorflow/core/framework/registration/registration.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 
 namespace tensorflow {
@@ -33,7 +35,7 @@ namespace dtensor {
 // any sparse input tensors.
 class SparseExpanderBase {
  public:
-  virtual ~SparseExpanderBase() {}
+  virtual ~SparseExpanderBase() = default;
 
   // Converts `op` to a Sparse expanded form. Sparse expansion logic is
   // a function of op type and op's operand type.

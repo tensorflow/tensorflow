@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/hlo_proto_map.h"
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -26,12 +27,12 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/core/profiler/convert/xla_op_utils.h"
-#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
+#include "xla/service/hlo.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
+#include "tsl/profiler/convert/xla_op_utils.h"
+#include "tsl/profiler/utils/tf_xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -47,31 +48,17 @@ int NumHeapSimulatorTraceEvents(const xla::HloProto* hlo) {
 
 }  // namespace
 
-std::vector<std::pair<uint64_t, std::unique_ptr<xla::HloProto>>>
+absl::flat_hash_map<uint64_t, std::unique_ptr<xla::HloProto>>
 ParseHloProtosFromXSpace(const XSpace& space) {
-  std::vector<std::pair<uint64_t, std::unique_ptr<xla::HloProto>>> hlo_protos;
-  const XPlane* raw_plane = FindPlaneWithName(space, kMetadataPlaneName);
-  if (raw_plane != nullptr) {
-    XPlaneVisitor plane = CreateTfXPlaneVisitor(raw_plane);
-    if (raw_plane->stats_size() > 0) {
-      // Fallback for legacy aggregated XPlane.
-      // TODO(b/235990417): Remove after 06/14/2023.
-      plane.ForEachStat([&](const XStatVisitor& stat) {
-        if (stat.ValueCase() != XStat::kBytesValue) return;
-        auto hlo_proto = std::make_unique<xla::HloProto>();
-        absl::string_view byte_value = stat.BytesValue();
-        if (hlo_proto->ParseFromArray(byte_value.data(), byte_value.size())) {
-          hlo_protos.emplace_back(stat.Id(), std::move(hlo_proto));
-        }
-      });
-    } else {
+  absl::flat_hash_map<uint64_t, std::unique_ptr<xla::HloProto>> hlo_protos;
+  std::vector<const XPlane*> planes =
+      FindPlanesWithNames(space, {kMetadataPlaneName});
+  for (const XPlane* raw_plane : planes) {
+    if (raw_plane != nullptr) {
+      XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(raw_plane);
+
       const XStatMetadata* hlo_proto_stat_metadata =
           plane.GetStatMetadataByType(StatType::kHloProto);
-      if (hlo_proto_stat_metadata == nullptr) {
-        // Fallback for legacy XPlane.
-        // TODO(b/235990417): Remove after 06/14/2023.
-        hlo_proto_stat_metadata = plane.GetStatMetadata(StatType::kHloProto);
-      }
       if (hlo_proto_stat_metadata != nullptr) {
         plane.ForEachEventMetadata(
             [&](const XEventMetadataVisitor& event_metadata) {
@@ -83,8 +70,12 @@ ParseHloProtosFromXSpace(const XSpace& space) {
               absl::string_view byte_value = hlo_proto_stat->BytesValue();
               if (hlo_proto->ParseFromArray(byte_value.data(),
                                             byte_value.size())) {
-                hlo_protos.emplace_back(event_metadata.Id(),
-                                        std::move(hlo_proto));
+                if (!hlo_protos
+                         .try_emplace(event_metadata.Id(), std::move(hlo_proto))
+                         .second) {
+                  LOG(WARNING) << "Insert failed for hlo_proto with program_id"
+                               << event_metadata.Id();
+                }
               }
             });
       }
@@ -100,7 +91,8 @@ bool HloProtoMap::AddHloProto(uint64_t program_id,
   absl::string_view hlo_module_name = hlo_proto->hlo_module().name();
   bool new_module_name =
       hlo_protos_by_name_
-          .try_emplace(HloModuleNameWithProgramId(hlo_module_name, program_id),
+          .try_emplace(tsl::profiler::HloModuleNameWithProgramId(
+                           hlo_module_name, program_id),
                        hlo_proto)
           .second;
   return new_program_id || new_module_name;

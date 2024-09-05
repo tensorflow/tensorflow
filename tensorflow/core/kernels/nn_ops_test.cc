@@ -27,7 +27,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "third_party/eigen3/Eigen/Core"
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/nn_ops_internal.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -102,6 +102,7 @@ enum CONV_OP {
   CONV_OP_BACKPROP_INPUT = 1,
   CONV_OP_BACKPROP_FILTER = 2,
   CONV_OP_FUSED = 3,
+  CONV_OP_FUSED_PAD_ONLY = 4,
 };
 
 }  // namespace
@@ -130,10 +131,10 @@ static void BM_ConvFloat(::testing::benchmark::State& state, int batch,
   // For this, we need an input tensor and a filter tensor.
   // Compute the output size.
   int64_t out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;
-  TF_CHECK_OK(GetWindowedOutputSize(rows, filter_rows, stride, padding,
-                                    &out_rows, &pad_rows));
-  TF_CHECK_OK(GetWindowedOutputSize(cols, filter_cols, stride, padding,
-                                    &out_cols, &pad_cols));
+  TF_CHECK_OK(GetWindowedOutputSize(rows, filter_rows, /*dilation_rate=*/1,
+                                    stride, padding, &out_rows, &pad_rows));
+  TF_CHECK_OK(GetWindowedOutputSize(cols, filter_cols, /*dilation_rate=*/1,
+                                    stride, padding, &out_cols, &pad_cols));
   // Counting the number of floating point operations (both MUL and ADD)
   int64_t num_ops = 0;
   if (op == CONV_OP_FORWARD) {
@@ -219,6 +220,16 @@ static void BM_ConvFloat(::testing::benchmark::State& state, int batch,
                       .Attr("resize_align_corners", false)
                       .Finalize(conv));
       break;
+    case CONV_OP_FUSED_PAD_ONLY:
+      TF_CHECK_OK(NodeDefBuilder("conv2d", "FusedPadConv2D")
+                      .Input("input", 0, data_type)
+                      .Input("paddings", 0, DT_INT32)
+                      .Input("filter", 0, data_type)
+                      .Attr("mode", "REFLECT")
+                      .Attr("strides", {1, stride, stride, 1})
+                      .Attr("padding", padding == VALID ? "VALID" : "SAME")
+                      .Finalize(conv));
+      break;
   }
   Graph* g = new Graph(OpRegistry::Global());
   GraphConstructorOptions opts;
@@ -279,12 +290,21 @@ static void BM_ConvFloat(::testing::benchmark::State& state, int batch,
                  strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", OD, "_",    \
                                  KR, "_", KC, "_", STR, "_", PAD, "_h_gpu"));  \
   }                                                                            \
+  static void BM_ConvBFloat16FusedPadOnlyCPU4_##LABEL(                         \
+      ::testing::benchmark::State& state) {                                    \
+    BM_ConvFloat(                                                              \
+        state, BS, R, C, ID, OD, KR, KC, CONV_OP_FUSED_PAD_ONLY, 4, STR, PAD,  \
+        false, DT_BFLOAT16,                                                    \
+        strings::StrCat(BS, "_", R, "_", C, "_", ID, "_", OD, "_", KR, "_",    \
+                        KC, "_", STR, "_", PAD, "_bf_cpu4"));                  \
+  }                                                                            \
   BENCHMARK(BM_ConvFloatFwdCPU1_##LABEL)->UseRealTime();                       \
   BENCHMARK(BM_ConvFloatFwdCPU4_##LABEL)->UseRealTime();                       \
   BENCHMARK(BM_ConvFloatFusedCPU1_##LABEL)->UseRealTime();                     \
   BENCHMARK(BM_ConvFloatFusedCPU4_##LABEL)->UseRealTime();                     \
   BENCHMARK(BM_ConvFloatFwdGPU_##LABEL)->UseRealTime();                        \
-  BENCHMARK(BM_ConvHalfFwdGPU_##LABEL)->UseRealTime()
+  BENCHMARK(BM_ConvHalfFwdGPU_##LABEL)->UseRealTime();                         \
+  BENCHMARK(BM_ConvBFloat16FusedPadOnlyCPU4_##LABEL)->UseRealTime();
 
 BM_ConvFloatFwd(32, 5, 5, 1248, 128, 1, 1, 1, SAME, conv0);
 BM_ConvFloatFwd(32, 8, 8, 384, 384, 1, 3, 1, SAME, conv1);
@@ -541,10 +561,10 @@ static void BM_ConvFloatDepthwise(::testing::benchmark::State& state, int batch,
   // For this, we need an input tensor and a filter tensor.
   // Compute the output size.
   int64_t out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;
-  TF_CHECK_OK(GetWindowedOutputSize(rows, filter_rows, stride, padding,
-                                    &out_rows, &pad_rows));
-  TF_CHECK_OK(GetWindowedOutputSize(cols, filter_cols, stride, padding,
-                                    &out_cols, &pad_cols));
+  TF_CHECK_OK(GetWindowedOutputSize(rows, filter_rows, /*dilation_rate=*/1,
+                                    stride, padding, &out_rows, &pad_rows));
+  TF_CHECK_OK(GetWindowedOutputSize(cols, filter_cols, /*dilation_rate=*/1,
+                                    stride, padding, &out_cols, &pad_cols));
 
   int64_t num_ops = 0;
   if (op == DEPTHWISE_CONV_OP_FWD) {
@@ -780,7 +800,7 @@ static void BM_LRNFloat(::testing::benchmark::State& state, int depth, int cols,
                                            num_threads);
   device->set_eigen_cpu_device(&eigen_cpu_device);
 
-  gtl::InlinedVector<TensorValue, 4> inputs;
+  absl::InlinedVector<TensorValue, 4> inputs;
   TensorShape shape({batch_size, rows, cols, depth});
 
   Tensor input(DT_FLOAT, shape);
@@ -861,7 +881,7 @@ static void BM_AvgPool(::testing::benchmark::State& state, int batch_size,
                                            num_threads);
   device->set_eigen_cpu_device(&eigen_cpu_device);
 
-  gtl::InlinedVector<TensorValue, 4> inputs;
+  absl::InlinedVector<TensorValue, 4> inputs;
   TensorShape shape1({batch_size, rows, cols, depth});
   Tensor input1(DT_FLOAT, shape1);
   test::FillIota<float>(&input1, 1.0);
@@ -951,13 +971,13 @@ static void BM_AvgPoolBk(::testing::benchmark::State& state, int batch_size,
                                            num_threads);
   device->set_eigen_cpu_device(&eigen_cpu_device);
 
-  gtl::InlinedVector<TensorValue, 4> inputs;
+  absl::InlinedVector<TensorValue, 4> inputs;
 
   int64_t out_height, out_width, pad_rows, pad_cols;
-  TF_CHECK_OK(GetWindowedOutputSize(rows, kernel_rows, stride, padding,
-                                    &out_height, &pad_rows));
-  TF_CHECK_OK(GetWindowedOutputSize(cols, kernel_cols, stride, padding,
-                                    &out_width, &pad_cols));
+  TF_CHECK_OK(GetWindowedOutputSize(rows, kernel_rows, /*dilation_rate=*/1,
+                                    stride, padding, &out_height, &pad_rows));
+  TF_CHECK_OK(GetWindowedOutputSize(cols, kernel_cols, /*dilation_rate=*/1,
+                                    stride, padding, &out_width, &pad_cols));
   TensorShape output_shape({batch_size, out_height, out_width, depth});
   TensorShape shape2({4});
   Tensor input_shape_tensor(DT_INT32, shape2);
@@ -1056,7 +1076,7 @@ static void BM_MaxPool(::testing::benchmark::State& state, int batch_size,
                                            num_threads);
   device->set_eigen_cpu_device(&eigen_cpu_device);
 
-  gtl::InlinedVector<TensorValue, 4> inputs;
+  absl::InlinedVector<TensorValue, 4> inputs;
   TensorShape shape1({batch_size, rows, cols, depth});
   Tensor input1(DT_FLOAT, shape1);
   test::FillIota<float>(&input1, 1.0);
@@ -1149,10 +1169,10 @@ static void BM_MaxPoolBk(::testing::benchmark::State& state, int batch_size,
   auto root = Scope::NewRootScope().ExitOnError();
 
   int64_t out_height, out_width, pad_rows, pad_cols;
-  TF_CHECK_OK(GetWindowedOutputSize(rows, kernel_rows, stride, padding,
-                                    &out_height, &pad_rows));
-  TF_CHECK_OK(GetWindowedOutputSize(cols, kernel_cols, stride, padding,
-                                    &out_width, &pad_cols));
+  TF_CHECK_OK(GetWindowedOutputSize(rows, kernel_rows, /*dilation_rate=*/1,
+                                    stride, padding, &out_height, &pad_rows));
+  TF_CHECK_OK(GetWindowedOutputSize(cols, kernel_cols, /*dilation_rate=*/1,
+                                    stride, padding, &out_width, &pad_cols));
 
   Tensor input_data(DT_FLOAT, TensorShape({batch_size, rows, cols, depth}));
   input_data.flat<float>().setRandom();
@@ -1166,10 +1186,10 @@ static void BM_MaxPoolBk(::testing::benchmark::State& state, int batch_size,
   output_diff.flat<float>().setRandom();
 
   CHECK_EQ(kernel_rows, kernel_cols);
-  ops::internal::MaxPoolGrad(root, input_data, output_data, output_diff,
-                             {1, kernel_rows, kernel_cols, 1} /* ksize */,
-                             {1, stride, stride, 1} /* stride */,
-                             padding == VALID ? "VALID" : "SAME");
+  ops::internal::MaxPoolGrad give_me_a_name(
+      root, input_data, output_data, output_diff,
+      {1, kernel_rows, kernel_cols, 1} /* ksize */,
+      {1, stride, stride, 1} /* stride */, padding == VALID ? "VALID" : "SAME");
   TF_CHECK_OK(root.status());
   Graph* g = new Graph(OpRegistry::Global());
   TF_CHECK_OK(root.ToGraph(g));
@@ -1242,7 +1262,7 @@ static void BM_ReluFloat(::testing::benchmark::State& state, int batch_size,
                                            num_threads);
   device->set_eigen_cpu_device(&eigen_cpu_device);
 
-  gtl::InlinedVector<TensorValue, 4> inputs;
+  absl::InlinedVector<TensorValue, 4> inputs;
   TensorShape shape1({batch_size, rows, cols, depth});
   Tensor input1(DT_FLOAT, shape1);
   test::FillIota<float>(&input1, 1.0);
@@ -1313,7 +1333,7 @@ static void BM_SoftplusFloat(::testing::benchmark::State& state, int batch_size,
                                            num_threads);
   device->set_eigen_cpu_device(&eigen_cpu_device);
 
-  gtl::InlinedVector<TensorValue, 4> inputs;
+  absl::InlinedVector<TensorValue, 4> inputs;
   TensorShape shape1({batch_size, rows, cols, depth});
   Tensor input1(DT_FLOAT, shape1);
   input1.flat<float>().setRandom();

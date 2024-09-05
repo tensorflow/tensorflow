@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 package org.tensorflow.lite.benchmark.delegateperformance;
 
-import static org.tensorflow.lite.benchmark.delegateperformance.DelegatePerformanceBenchmark.checkNotNull;
+import static org.tensorflow.lite.benchmark.delegateperformance.Preconditions.checkNotNull;
 
 import android.util.Log;
 import java.util.LinkedHashMap;

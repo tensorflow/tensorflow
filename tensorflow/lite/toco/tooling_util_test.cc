@@ -105,7 +105,7 @@ static const char kLargeTensorMessage[] = "Tensor shape is too large";
 
 TEST(NumElementsTest, Int) {
   int count;
-  tensorflow::Status status = ::tensorflow::OkStatus();
+  tensorflow::Status status = absl::OkStatus();
 
   status = NumElements(std::vector<int>{1024, 1024, 2047}, &count);
   EXPECT_TRUE(status.ok());
@@ -116,60 +116,60 @@ TEST(NumElementsTest, Int) {
   EXPECT_EQ(count, 0);
 
   status = NumElements(std::vector<int>{1, 2, -3}, &count);
-  EXPECT_EQ(status.error_message(), kNegativeValuesMessage);
+  EXPECT_EQ(status.message(), kNegativeValuesMessage);
 
   status = NumElements(std::vector<int>{1024, 1024, 2048}, &count);
-  EXPECT_EQ(status.error_message(), kLargeTensorMessage);
+  EXPECT_EQ(status.message(), kLargeTensorMessage);
 }
 
 TEST(NumElementsTest, Int32) {
   int32_t count;
-  tensorflow::Status status = ::tensorflow::OkStatus();
+  tensorflow::Status status = absl::OkStatus();
 
   status = NumElements(std::vector<int32_t>{1024, 1024, 2047}, &count);
   EXPECT_TRUE(status.ok());
   EXPECT_EQ(count, 2146435072);
 
   status = NumElements(std::vector<int32_t>{1, 2, -3}, &count);
-  EXPECT_EQ(status.error_message(), kNegativeValuesMessage);
+  EXPECT_EQ(status.message(), kNegativeValuesMessage);
 
   status = NumElements(std::vector<int32_t>{1024, 1024, 2048}, &count);
-  EXPECT_EQ(status.error_message(), kLargeTensorMessage);
+  EXPECT_EQ(status.message(), kLargeTensorMessage);
 }
 
 TEST(NumElementsTest, Int64) {
   int64_t count;
-  tensorflow::Status status = ::tensorflow::OkStatus();
+  tensorflow::Status status = absl::OkStatus();
 
   status = NumElements(std::vector<int64_t>{16777216, 16777216, 32767}, &count);
   EXPECT_TRUE(status.ok());
   EXPECT_EQ(count, 9223090561878065152LL);
 
   status = NumElements(std::vector<int64_t>{1, 2, -3}, &count);
-  EXPECT_EQ(status.error_message(), kNegativeValuesMessage);
+  EXPECT_EQ(status.message(), kNegativeValuesMessage);
 
   status = NumElements(std::vector<int64_t>{16777216, 16777216, 32768}, &count);
-  EXPECT_EQ(status.error_message(), kLargeTensorMessage);
+  EXPECT_EQ(status.message(), kLargeTensorMessage);
 }
 
 TEST(NumElementsTest, UnsignedInt32) {
   uint32_t count;
-  tensorflow::Status status = ::tensorflow::OkStatus();
+  tensorflow::Status status = absl::OkStatus();
 
   status = NumElements(std::vector<uint32_t>{1024, 2048, 2047}, &count);
   EXPECT_TRUE(status.ok());
   EXPECT_EQ(count, 4292870144);
 
   status = NumElements(std::vector<int>{1, 2, -3}, &count);
-  EXPECT_EQ(status.error_message(), kNegativeValuesMessage);
+  EXPECT_EQ(status.message(), kNegativeValuesMessage);
 
   status = NumElements(std::vector<uint32_t>{1024, 2048, 2048}, &count);
-  EXPECT_EQ(status.error_message(), kLargeTensorMessage);
+  EXPECT_EQ(status.message(), kLargeTensorMessage);
 }
 
 TEST(NumElementsTest, UnsignedInt64) {
   uint64_t count;
-  tensorflow::Status status = ::tensorflow::OkStatus();
+  tensorflow::Status status = absl::OkStatus();
 
   status =
       NumElements(std::vector<uint64_t>{16777216, 16777216, 65535}, &count);
@@ -177,15 +177,15 @@ TEST(NumElementsTest, UnsignedInt64) {
   EXPECT_EQ(count, 18446462598732840960ULL);
 
   status = NumElements(std::vector<int>{1, 2, -3}, &count);
-  EXPECT_EQ(status.error_message(), kNegativeValuesMessage);
+  EXPECT_EQ(status.message(), kNegativeValuesMessage);
 
   status =
       NumElements(std::vector<uint64_t>{16777216, 16777216, 65536}, &count);
-  EXPECT_EQ(status.error_message(), kLargeTensorMessage);
+  EXPECT_EQ(status.message(), kLargeTensorMessage);
 }
 
 TEST(NumElementsTest, Scalar) {
-  tensorflow::Status status = ::tensorflow::OkStatus();
+  tensorflow::Status status = absl::OkStatus();
 
   int32_t count;
   status = NumElements(std::vector<int32_t>{}, &count);

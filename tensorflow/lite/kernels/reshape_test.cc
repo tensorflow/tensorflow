@@ -126,6 +126,22 @@ TYPED_TEST(ReshapeOpTest, InvalidShape) {
   }
 }
 
+TYPED_TEST(ReshapeOpTest, RegularShapesInplace) {
+  std::vector<TypeParam> input_data{1, 2, 3, 4, 5, 6, 7, 8};
+  ReshapeOpModel<TypeParam> m({1, 2, 4, 1}, {3}, {2, 2, 2},
+                              ShapeSpecificationType::kAsConstantTensor);
+  m.SetInput(input_data);
+  const int kInplaceInputTensorIdx = 0;
+  const int kInplaceOutputTensorIdx = 0;
+  const TfLiteTensor* input_tensor = m.GetInputTensor(kInplaceInputTensorIdx);
+  TfLiteTensor* output_tensor = m.GetOutputTensor(kInplaceOutputTensorIdx);
+  output_tensor->data.data = input_tensor->data.data;
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2}));
+  EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
+}
+
 // This is the normal scenario, where shape is a vector.
 TYPED_TEST(ReshapeOpTest, RegularShapes) {
   for (ShapeSpecificationType shape_type :

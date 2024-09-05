@@ -698,7 +698,7 @@ class PreemptionCheckpointHandler(object):
   def _maybe_set_received_own_sigterm(self):
     """Claim earliest preemption if no one else has done it before."""
     if self._local_mode:
-      logging.info('Received termination notice.',
+      logging.info('Member %s has received termination notice.',
                    self._id_in_cluster)
       self._received_own_sigterm_time = time.time()
       self._received_own_sigterm.set()
@@ -927,7 +927,7 @@ class PreemptionCheckpointHandler(object):
   # Disabling line-too-long check since we do not want to break the line when
   # converted to public documentation.
   # pylint: disable=line-too-long
-  def _save_checkpoint_if_preempted(self, *args, **kwargs):
+  def save_checkpoint_if_preempted(self, *args, **kwargs):
     """Saves a checkpoint if a preemption signal has been made available.
 
     This is an alternative API for `PreemptionCheckpointHandler.run` and
@@ -951,9 +951,10 @@ class PreemptionCheckpointHandler(object):
       preemption_handler = tf.distribute.experimental.PreemptionCheckpointHandler(cluster_resolver, checkpoint_manager)
 
     while trained_step.numpy() < NUM_STEPS:
+      # Train STEPS_IN_FUNCTION steps at once.
       train_multi_step_function()
       trained_step.assign_add(STEPS_IN_FUNCTION)
-      preemption_handler._save_checkpoint_if_preempted()
+      preemption_handler.save_checkpoint_if_preempted()
     ```
 
     Args:

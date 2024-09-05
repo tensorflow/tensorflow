@@ -25,6 +25,7 @@ export PACKAGE_VERSION="${TENSORFLOW_VERSION}${VERSION_SUFFIX}"
 export PROJECT_NAME=${WHEEL_PROJECT_NAME:-tflite_runtime}
 BUILD_DIR="${SCRIPT_DIR}/gen/tflite_pip/${PYTHON}"
 TENSORFLOW_TARGET=${TENSORFLOW_TARGET:-$1}
+BUILD_NUM_JOBS="${BUILD_NUM_JOBS:-4}"
 if [ "${TENSORFLOW_TARGET}" = "rpi" ]; then
   export TENSORFLOW_TARGET="armhf"
 fi
@@ -62,6 +63,17 @@ cp "${TENSORFLOW_LITE_DIR}/python/interpreter.py" \
 echo "__version__ = '${PACKAGE_VERSION}'" >> "${BUILD_DIR}/tflite_runtime/__init__.py"
 echo "__git_version__ = '$(git -C "${TENSORFLOW_DIR}" describe)'" >> "${BUILD_DIR}/tflite_runtime/__init__.py"
 
+# Build host tools
+if [[ "${TENSORFLOW_TARGET}" != "native" ]]; then
+  echo "Building for host tools."
+  HOST_BUILD_DIR="${BUILD_DIR}/cmake_build_host"
+  mkdir -p "${HOST_BUILD_DIR}"
+  pushd "${HOST_BUILD_DIR}"
+  cmake "${TENSORFLOW_LITE_DIR}"
+  cmake --build . --verbose -j ${BUILD_NUM_JOBS} -t flatbuffers-flatc
+  popd
+fi
+
 # Build python interpreter_wrapper.
 mkdir -p "${BUILD_DIR}/cmake_build"
 cd "${BUILD_DIR}/cmake_build"
@@ -79,6 +91,7 @@ case "${TENSORFLOW_TARGET}" in
       -DCMAKE_SYSTEM_NAME=Linux \
       -DCMAKE_SYSTEM_PROCESSOR=armv7 \
       -DTFLITE_ENABLE_XNNPACK=OFF \
+      -DTFLITE_HOST_TOOLS_DIR="${HOST_BUILD_DIR}" \
       "${TENSORFLOW_LITE_DIR}"
     ;;
   rpi0)
@@ -92,6 +105,7 @@ case "${TENSORFLOW_TARGET}" in
       -DCMAKE_SYSTEM_NAME=Linux \
       -DCMAKE_SYSTEM_PROCESSOR=armv6 \
       -DTFLITE_ENABLE_XNNPACK=OFF \
+      -DTFLITE_HOST_TOOLS_DIR="${HOST_BUILD_DIR}" \
       "${TENSORFLOW_LITE_DIR}"
     ;;
   aarch64)
@@ -104,6 +118,8 @@ case "${TENSORFLOW_TARGET}" in
       -DCMAKE_CXX_FLAGS="${ARMCC_FLAGS}" \
       -DCMAKE_SYSTEM_NAME=Linux \
       -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
+      -DXNNPACK_ENABLE_ARM_I8MM=OFF \
+      -DTFLITE_HOST_TOOLS_DIR="${HOST_BUILD_DIR}" \
       "${TENSORFLOW_LITE_DIR}"
     ;;
   native)

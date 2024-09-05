@@ -44,7 +44,7 @@
 // CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    }, {
 // CHECK-NEXT:      shape: [ 5, 384 ],
-// CHECK-NEXT:      buffer: 5,
+// CHECK-NEXT:      buffer: 4,
 // CHECK-NEXT:      name: "arith.constant2",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:

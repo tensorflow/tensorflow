@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/tensor_to_hash_bucket_op.h"
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/register_types.h"
 
 namespace tensorflow {
@@ -60,7 +60,8 @@ class TensorToHashBucketOp : public OpKernel {
  private:
   int64_t num_buckets_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TensorToHashBucketOp);
+  TensorToHashBucketOp(const TensorToHashBucketOp&) = delete;
+  void operator=(const TensorToHashBucketOp&) = delete;
 };
 
 #define REGISTER_CPU_KERNELS(type)                        \
@@ -73,7 +74,7 @@ TF_CALL_INTEGRAL_TYPES(REGISTER_CPU_KERNELS);
 
 #undef REGISTER_CPU_KERNELS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_GPU_KERNELS(type)                        \
   REGISTER_KERNEL_BUILDER(Name("_TensorToHashBucketFast") \
@@ -85,6 +86,6 @@ TF_CALL_INTEGRAL_TYPES(REGISTER_GPU_KERNELS);
 
 #undef REGISTER_GPU_KERNELS
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

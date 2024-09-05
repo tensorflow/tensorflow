@@ -11,31 +11,78 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/tf_record_dataset_op.h"
 
+#include <memory>
+#include <string>
+
+#include <gtest/gtest.h>
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/data/dataset_test_base.h"
+#include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/lib/io/record_reader.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
 constexpr char kNodeName[] = "tf_record_dataset";
+constexpr char kOpVersion = 2;
+
+// Returns the file offset for the record at the given index.
+int64_t GetOffset(const std::string& filename, int64_t index) {
+  Env* env_ = Env::Default();
+  std::unique_ptr<RandomAccessFile> file_;
+  std::unique_ptr<io::SequentialRecordReader> reader;
+  Status s1 = env_->NewRandomAccessFile(filename, &file_);
+  TF_CHECK_OK(s1) << s1;
+  reader = std::make_unique<io::SequentialRecordReader>(file_.get());
+  for (int i = 0; i < index; ++i) {
+    tstring record;
+    Status s2 = reader->ReadRecord(&record);
+    TF_CHECK_OK(s2) << s2;
+  }
+  return reader->TellOffset();
+}
 
 class TFRecordDatasetParams : public DatasetParams {
  public:
   TFRecordDatasetParams(std::vector<tstring> filenames,
                         CompressionType compression_type, int64_t buffer_size,
-                        string node_name)
+                        std::vector<int64_t> byte_offsets, string node_name)
       : DatasetParams({DT_STRING}, {PartialTensorShape({})},
                       std::move(node_name)),
         filenames_(std::move(filenames)),
         compression_type_(compression_type),
-        buffer_size_(buffer_size) {}
+        buffer_size_(buffer_size),
+        byte_offsets_(std::move(byte_offsets)) {
+    op_version_ = 2;
+  }
 
   std::vector<Tensor> GetInputTensors() const override {
     int num_files = filenames_.size();
+    int num_byte_offsets = byte_offsets_.size();
     return {
         CreateTensor<tstring>(TensorShape({num_files}), filenames_),
         CreateTensor<tstring>(TensorShape({}), {ToString(compression_type_)}),
-        CreateTensor<int64_t>(TensorShape({}), {buffer_size_})};
+        CreateTensor<int64_t>(TensorShape({}), {buffer_size_}),
+        CreateTensor<int64_t>(TensorShape({num_byte_offsets}), byte_offsets_)};
   }
 
   Status GetInputNames(std::vector<string>* input_names) const override {
@@ -44,14 +91,15 @@ class TFRecordDatasetParams : public DatasetParams {
         TFRecordDatasetOp::kFileNames,
         TFRecordDatasetOp::kCompressionType,
         TFRecordDatasetOp::kBufferSize,
+        TFRecordDatasetOp::kByteOffsets,
     };
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
     attr_vector->clear();
     attr_vector->emplace_back("metadata", "");
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   string dataset_type() const override {
@@ -62,6 +110,7 @@ class TFRecordDatasetParams : public DatasetParams {
   std::vector<tstring> filenames_;
   CompressionType compression_type_;
   int64_t buffer_size_;
+  std::vector<int64_t> byte_offsets_;
 };
 
 class TFRecordDatasetOpTest : public DatasetOpsTestBase {};
@@ -81,7 +130,7 @@ Status CreateTestFiles(const std::vector<tstring>& filenames,
                                            contents[i].end());
     TF_RETURN_IF_ERROR(WriteDataToTFRecordFile(filenames[i], records, params));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Test case 1: multiple text files with ZLIB compression.
@@ -93,12 +142,13 @@ TFRecordDatasetParams TFRecordDatasetParams1() {
                                                {"a", "bb", "ccc"}};
   CompressionType compression_type = CompressionType::ZLIB;
   if (!CreateTestFiles(filenames, contents, compression_type).ok()) {
-    VLOG(WARNING) << "Failed to create the test files: "
-                  << absl::StrJoin(filenames, ", ");
+    LOG(WARNING) << "Failed to create the test files: "
+                 << absl::StrJoin(filenames, ", ");
   }
   return TFRecordDatasetParams(filenames,
                                /*compression_type=*/compression_type,
                                /*buffer_size=*/10,
+                               /*byte_offsets=*/{},
                                /*node_name=*/kNodeName);
 }
 
@@ -111,12 +161,13 @@ TFRecordDatasetParams TFRecordDatasetParams2() {
                                                {"a", "bb", "ccc"}};
   CompressionType compression_type = CompressionType::GZIP;
   if (!CreateTestFiles(filenames, contents, compression_type).ok()) {
-    VLOG(WARNING) << "Failed to create the test files: "
-                  << absl::StrJoin(filenames, ", ");
+    LOG(WARNING) << "Failed to create the test files: "
+                 << absl::StrJoin(filenames, ", ");
   }
   return TFRecordDatasetParams(filenames,
                                /*compression_type=*/compression_type,
                                /*buffer_size=*/10,
+                               /*byte_offsets=*/{},
                                /*node_name=*/kNodeName);
 }
 
@@ -129,12 +180,50 @@ TFRecordDatasetParams TFRecordDatasetParams3() {
                                                {"a", "bb", "ccc"}};
   CompressionType compression_type = CompressionType::UNCOMPRESSED;
   if (!CreateTestFiles(filenames, contents, compression_type).ok()) {
-    VLOG(WARNING) << "Failed to create the test files: "
-                  << absl::StrJoin(filenames, ", ");
+    LOG(WARNING) << "Failed to create the test files: "
+                 << absl::StrJoin(filenames, ", ");
   }
   return TFRecordDatasetParams(filenames,
                                /*compression_type=*/compression_type,
                                /*buffer_size=*/10,
+                               /*byte_offsets=*/{},
+                               /*node_name=*/kNodeName);
+}
+
+// Test case 4: Read byte_offsets for records.
+TFRecordDatasetParams TFRecordDatasetParams4() {
+  std::vector<tstring> filenames = {
+      absl::StrCat(testing::TmpDir(), "/tf_record_UNCOMPRESSED_1"),
+      absl::StrCat(testing::TmpDir(), "/tf_record_UNCOMPRESSED_2"),
+      absl::StrCat(testing::TmpDir(), "/tf_record_UNCOMPRESSED_3")};
+  std::vector<std::vector<string>> contents = {
+      {"1", "22", "333"}, {"a", "bb", "ccc"}, {"x", "yy", "zzz"}};
+  CompressionType compression_type = CompressionType::UNCOMPRESSED;
+  absl::Status status = CreateTestFiles(filenames, contents, compression_type);
+  TF_CHECK_OK(status) << "Failed to create the test files: "
+                      << absl::StrJoin(filenames, ", ") << ": " << status;
+  std::vector<int64_t> byte_offsets = {};
+  byte_offsets.push_back(GetOffset(filenames[0], 0));
+  byte_offsets.push_back(GetOffset(filenames[1], 1));
+  byte_offsets.push_back(GetOffset(filenames[1], 2));
+  return TFRecordDatasetParams(filenames,
+                               /*compression_type=*/compression_type,
+                               /*buffer_size=*/10, byte_offsets,
+                               /*node_name=*/kNodeName);
+}
+
+// Test case 5: Read invalid byte_offsets for records.
+TFRecordDatasetParams InvalidByteOffsets() {
+  std::vector<tstring> filenames = {
+      absl::StrCat(testing::TmpDir(), "/tf_record_UNCOMPRESSED_1")};
+  std::vector<std::vector<string>> contents = {{"1", "22", "333"}};
+  CompressionType compression_type = CompressionType::UNCOMPRESSED;
+  absl::Status status = CreateTestFiles(filenames, contents, compression_type);
+  TF_CHECK_OK(status) << "Failed to create the test files: "
+                      << absl::StrJoin(filenames, ", ") << ": " << status;
+  return TFRecordDatasetParams(filenames,
+                               /*compression_type=*/compression_type,
+                               /*buffer_size=*/10, /*byte_offsets=*/{1},
                                /*node_name=*/kNodeName);
 }
 
@@ -149,7 +238,11 @@ std::vector<GetNextTestCase<TFRecordDatasetParams>> GetNextTestCases() {
            TensorShape({}), {{"1"}, {"22"}, {"333"}, {"a"}, {"bb"}, {"ccc"}})},
       {/*dataset_params=*/TFRecordDatasetParams3(),
        CreateTensors<tstring>(
-           TensorShape({}), {{"1"}, {"22"}, {"333"}, {"a"}, {"bb"}, {"ccc"}})}};
+           TensorShape({}), {{"1"}, {"22"}, {"333"}, {"a"}, {"bb"}, {"ccc"}})},
+      {/*dataset_params=*/TFRecordDatasetParams4(),
+       CreateTensors<tstring>(
+           TensorShape({}),
+           {{"1"}, {"22"}, {"333"}, {"bb"}, {"ccc"}, {"zzz"}})}};
 }
 
 ITERATOR_GET_NEXT_TEST_P(TFRecordDatasetOpTest, TFRecordDatasetParams,
@@ -202,8 +295,10 @@ TEST_F(TFRecordDatasetOpTest, DatasetNodeName) {
 TEST_F(TFRecordDatasetOpTest, DatasetTypeString) {
   auto dataset_params = TFRecordDatasetParams1();
   TF_ASSERT_OK(Initialize(dataset_params));
+  name_utils::OpNameParams params;
+  params.op_version = kOpVersion;
   TF_ASSERT_OK(CheckDatasetTypeString(
-      name_utils::OpName(TFRecordDatasetOp::kDatasetType)));
+      name_utils::OpName(TFRecordDatasetOp::kDatasetType, params)));
 }
 
 TEST_F(TFRecordDatasetOpTest, DatasetOutputDtypes) {
@@ -239,8 +334,22 @@ TEST_F(TFRecordDatasetOpTest, IteratorOutputShapes) {
 TEST_F(TFRecordDatasetOpTest, IteratorPrefix) {
   auto dataset_params = TFRecordDatasetParams1();
   TF_ASSERT_OK(Initialize(dataset_params));
+  name_utils::IteratorPrefixParams iterator_prefix_params;
+  iterator_prefix_params.op_version = kOpVersion;
   TF_ASSERT_OK(CheckIteratorPrefix(name_utils::IteratorPrefix(
-      TFRecordDatasetOp::kDatasetType, dataset_params.iterator_prefix())));
+      TFRecordDatasetOp::kDatasetType, dataset_params.iterator_prefix(),
+      iterator_prefix_params)));
+}
+
+TEST_F(TFRecordDatasetOpTest, InvalidByteOffsetsToSeek) {
+  auto dataset_params = InvalidByteOffsets();
+  TF_ASSERT_OK(Initialize(dataset_params));
+  bool end_of_sequence = false;
+  std::vector<Tensor> out_tensors;
+  EXPECT_EQ(
+      iterator_->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence)
+          .code(),
+      absl::StatusCode::kDataLoss);
 }
 
 std::vector<IteratorSaveAndRestoreTestCase<TFRecordDatasetParams>>

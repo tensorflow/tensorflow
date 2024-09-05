@@ -101,6 +101,9 @@ class TensorDescriptor : public GPUObjectDescriptor {
   template <DataType T>
   void UploadData(const tflite::gpu::Tensor<HWC, T>& src);
 
+  template <DataType T>
+  void UploadData(const tflite::gpu::Tensor<Linear, T>& src);
+
   int GetLinearIndex(const BHWDC& shape5d, int b, int x, int y, int d, int s,
                      int sub_c) const;
 
@@ -314,6 +317,12 @@ TensorDescriptor CreateConstantLinearTensorDescriptor(
 TensorDescriptor CreateConstantHWVec4TensorDescriptor(
     DataType data_type, TensorStorageType storage_type, int width, int height,
     const uint8_t* data);
+
+template <DataType T>
+void TensorDescriptor::UploadData(const tflite::gpu::Tensor<Linear, T>& src) {
+  shape_ = BHWDC(src.shape.v, 1, 1, 1, 1);
+  UploadData(src.data.data());
+}
 
 template <DataType T>
 void TensorDescriptor::UploadData(const tflite::gpu::Tensor<BHWC, T>& src) {

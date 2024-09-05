@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/util/exec_on_stall.h"
 
+#include <functional>
+#include <memory>
+#include <utility>
+
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/test.h"
@@ -28,7 +32,8 @@ struct Chunk {
 
 Chunk* NewChunk(int stall_seconds, std::function<void()> f) {
   Chunk* c = new Chunk;
-  c->stall_closure.reset(new ExecuteOnStall(stall_seconds, std::move(f)));
+  c->stall_closure =
+      std::make_unique<ExecuteOnStall>(stall_seconds, std::move(f));
   return c;
 }
 

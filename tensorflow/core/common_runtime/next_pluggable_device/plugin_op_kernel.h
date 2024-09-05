@@ -22,7 +22,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "absl/status/status.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/status.h"
@@ -96,8 +97,8 @@ class PluginOpKernelContext {
                                         void* create_func_args,
                                         void (*delete_func)(void*)) = 0;
 
-  virtual PluginCoordinationServiceAgent* GetPluginCoordinationServiceAgent()
-      const = 0;
+  virtual std::unique_ptr<PluginCoordinationServiceAgent>
+  GetPluginCoordinationServiceAgent() const = 0;
 
   // This method will allocate a new `PluginVariable`. Caller is responsible
   // for managing it's lifetime.
@@ -108,11 +109,10 @@ class PluginOpKernelContext {
 
   virtual int NumInputs() const = 0;
 
-  virtual Status GetInput(int index, Tensor* tensor) const = 0;
+  virtual absl::Status GetInput(int index, const Tensor** tensor) const = 0;
 
-  // This method is not marked const because CPluginOpKernel need to do some
-  // extra bookkeeping work.
-  virtual Status GetInput(const char* name, const Tensor** tensor) = 0;
+  virtual absl::Status GetInput(const char* name,
+                                const Tensor** tensor) const = 0;
 
   virtual Status GetInputRange(std::string_view name,
                                std::pair<int, int>* range) const = 0;
@@ -130,6 +130,8 @@ class PluginOpKernelContext {
   virtual int64_t GetStepId() const = 0;
 
   virtual int GetDeviceId() const = 0;
+
+  virtual std::string_view GetDeviceName() const = 0;
 
   virtual std::string GetSessionName() const = 0;
 

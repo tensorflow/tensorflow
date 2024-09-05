@@ -81,6 +81,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.Bucketize`
 *   `raw_ops.CTCBeamSearchDecoder`
 *   `raw_ops.CTCGreedyDecoder`
+*   `raw_ops.Case`
 *   `raw_ops.Cast`
 *   `raw_ops.Ceil`
 *   `raw_ops.CheckNumerics`
@@ -878,9 +879,9 @@ filegroup(
 (2) Add the operator name to the allowed list.
 
 The allowed list is defined in the
-`tensorflow/lite/delegates/flex/allowlisted_flex_ops.cc`. The TensorFlow core
-operator name is need to be listed in order to be allowed through the Select TF
-option.
+`tensorflow/compiler/mlir/lite/delegates/flex/allowlisted_flex_ops.cc`. The
+TensorFlow core operator name is need to be listed in order to be allowed
+through the Select TF option.
 
 ```
 static const std::set<std::string>* allowlisted_flex_ops =

@@ -21,7 +21,7 @@ import sys
 from google.protobuf import message
 from google.protobuf import text_format
 
-from tensorflow.core.protobuf import graph_debug_info_pb2
+from tensorflow.core.framework import graph_debug_info_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.python.framework import ops
@@ -32,6 +32,7 @@ from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import path_helpers
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
+# Placeholder for protosplitter merger import.
 from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.util import compat
@@ -93,6 +94,10 @@ def parse_saved_model(export_dir):
   path_to_pb = file_io.join(
       compat.as_bytes(compat.path_to_str(export_dir)),
       compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
+  # Build the path to the SavedModel in cpb format.
+  path_to_cpb = file_io.join(
+      compat.as_bytes(compat.path_to_str(export_dir)),
+      compat.as_bytes(constants.SAVED_MODEL_FILENAME_CPB))
 
   # Parse the SavedModel protocol buffer.
   saved_model = saved_model_pb2.SavedModel()
@@ -101,22 +106,21 @@ def parse_saved_model(export_dir):
       file_content = f.read()
     try:
       saved_model.ParseFromString(file_content)
-      return saved_model
     except message.DecodeError as e:
-      raise IOError(f"Cannot parse file {path_to_pb}: {str(e)}.")
+      raise IOError(f"Cannot parse file {path_to_pb}: {str(e)}.") from e
   elif file_io.file_exists(path_to_pbtxt):
     with file_io.FileIO(path_to_pbtxt, "rb") as f:
       file_content = f.read()
     try:
-      text_format.Merge(file_content.decode("utf-8"), saved_model)
-      return saved_model
+      text_format.Parse(file_content.decode("utf-8"), saved_model)
     except text_format.ParseError as e:
-      raise IOError(f"Cannot parse file {path_to_pbtxt}: {str(e)}.")
+      raise IOError(f"Cannot parse file {path_to_pbtxt}: {str(e)}.") from e
   else:
     raise IOError(
         f"SavedModel file does not exist at: {export_dir}{os.path.sep}"
         f"{{{constants.SAVED_MODEL_FILENAME_PBTXT}|"
         f"{constants.SAVED_MODEL_FILENAME_PB}}}")
+  return saved_model
 
 
 def get_asset_tensors(export_dir, meta_graph_def_to_load, import_scope=None):
@@ -178,8 +182,6 @@ def _get_main_op_tensor(
     RuntimeError: If the collection def corresponding to the main op key has
         other than exactly one tensor.
   """
-  # TODO(kathywu): Rename this method to _get_op_from_collection when
-  # dependency from SavedModelEstimator is removed.
   collection_def = meta_graph_def_to_load.collection_def
   init_op = None
   if init_op_key in collection_def:
@@ -244,7 +246,12 @@ def maybe_saved_model_directory(export_dir):
   """
   txt_path = file_io.join(export_dir, constants.SAVED_MODEL_FILENAME_PBTXT)
   pb_path = file_io.join(export_dir, constants.SAVED_MODEL_FILENAME_PB)
-  return file_io.file_exists(txt_path) or file_io.file_exists(pb_path)
+  cpb_path = file_io.join(export_dir, constants.SAVED_MODEL_FILENAME_CPB)
+  return (
+      file_io.file_exists(txt_path)
+      or file_io.file_exists(pb_path)
+      or file_io.file_exists(cpb_path)
+  )
 
 
 @tf_export("saved_model.contains_saved_model", v1=[])
@@ -380,6 +387,7 @@ class SavedModelLoader(object):
       RuntimeError: if no metagraphs were found with the associated tags.
     """
     found_match = False
+    meta_graph_def_to_load = None
     available_tags = []
     for meta_graph_def in self._saved_model.meta_graphs:
       available_tags.append(set(meta_graph_def.meta_info_def.tags))

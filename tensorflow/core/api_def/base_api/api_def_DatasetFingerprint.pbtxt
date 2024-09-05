@@ -1,0 +1,20 @@
+op {
+  graph_op_name: "DatasetFingerprint"
+  visibility: HIDDEN
+  in_arg {
+    name: "input_dataset"
+    description: <<END
+A variant tensor representing the dataset to return fingerprint for.
+END
+  }
+  out_arg {
+    name: "fingerprint"
+    description: <<END
+The fingerprint of `input_dataset` in `uint64`
+END
+  }
+  summary: "Returns the fingerprint of `input_dataset`."
+  description: <<END
+Returns the fingerprint of `input_dataset`.
+END
+}

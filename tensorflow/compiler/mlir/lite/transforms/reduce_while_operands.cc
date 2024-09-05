@@ -47,7 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
 namespace TFL {
@@ -104,7 +104,7 @@ void FindProducers(Value start_node, std::vector<uint64_t> &neighbors) {
   while (!queue.empty()) {
     auto node = queue.back();
     queue.pop_back();
-    if (auto arg = node.dyn_cast_or_null<BlockArgument>()) {
+    if (auto arg = mlir::dyn_cast_or_null<BlockArgument>(node)) {
       neighbors.push_back(arg.getArgNumber());
       continue;
     }
@@ -149,7 +149,7 @@ bool AllOperationSafe(Block &block) {
     // Fact: if every op's operands are defined in the same block as op,
     //       then no operation has implicit arugments (constant doesn't count).
     for (auto operand : op->getOperands()) {
-      if (operand.dyn_cast_or_null<BlockArgument>()) continue;
+      if (mlir::dyn_cast_or_null<BlockArgument>(operand)) continue;
       auto operand_op = operand.getDefiningOp();
       if (IsConstant(operand_op)) continue;
       if (operand_op->getBlock() != op->getBlock()) {

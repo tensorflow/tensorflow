@@ -117,7 +117,7 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
       inputs->push_back(input_);
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status CheckExternalState() const override {
@@ -161,7 +161,7 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
                          {"preserve_cardinality", preserve_cardinality_attr},
                          {"use_default_device", use_default_device_attr}},
                         output));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    private:
@@ -189,7 +189,7 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
         TF_RETURN_IF_ERROR(
             input_impl_->GetNext(ctx, &next_element, end_of_sequence));
         if (*end_of_sequence) {
-          return OkStatus();
+          return absl::OkStatus();
         }
 
         std::vector<Tensor> args;
@@ -243,13 +243,12 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
             // the dataset, we convert `OutOfRange` to `InvalidArgument` as the
             // former may be interpreted by a caller as the end of sequence.
             return errors::InvalidArgument(
-                "Function invocation produced OutOfRangeError: ",
-                s.error_message());
+                "Function invocation produced OutOfRangeError: ", s.message());
           } else {
             // `f` may deliberately raise `errors::OutOfRange` to indicate
             // that we should terminate the iteration early.
             *end_of_sequence = true;
-            return OkStatus();
+            return absl::OkStatus();
           }
         }
         return s;
@@ -274,7 +273,7 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
           TF_RETURN_IF_ERROR(writer->WriteTensor(
               full_name(strings::StrCat("state[", idx, "]")), state_[idx]));
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
@@ -289,7 +288,7 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
               ctx->flr(), full_name(strings::StrCat("state[", idx, "]")),
               &state_[idx]));
         }
-        return OkStatus();
+        return absl::OkStatus();
       }
 
      private:

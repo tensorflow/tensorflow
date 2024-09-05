@@ -19,8 +19,11 @@ from tensorflow.python.eager.polymorphic_function import eager_function_run
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond_v2
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util as util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
@@ -28,18 +31,7 @@ from tensorflow.python.types import core
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
-
-# TODO(b/269483538): below lazy loads
-#   needed for references while refactors are in progress
-control_flow_ops = LazyLoader(
-    "control_flow_ops", globals(),
-    "tensorflow.python.ops.control_flow_ops")
-# This is to avoid a circular dependency:
-# cond_v2 -> gradients_util -> control_flow_ops
-cond_v2 = LazyLoader("cond_v2", globals(),
-                     "tensorflow.python.ops.cond_v2")
 
 
 # pylint: disable=redefined-outer-name
@@ -216,7 +208,9 @@ def cond(pred,
     res_f_flat = nest.flatten(res_f, expand_composites=True)
 
     for (x, y) in zip(res_t_flat, res_f_flat):
-      assert isinstance(x, ops.Tensor) and isinstance(y, ops.Tensor)
+      assert (
+          isinstance(x, tensor_lib.Tensor)
+          and isinstance(y, tensor_lib.Tensor))
       if x.dtype.base_dtype != y.dtype.base_dtype:
         raise ValueError(
             "Outputs of 'true_fn' and 'false_fn' must have the same type(s). "
@@ -263,7 +257,7 @@ def cond_for_tf_v2(pred, true_fn=None, false_fn=None, name=None):
   ...   else:
   ...     z = y-1
   ...   return z
-  >>> fun1(tf.constant(7), tf.constant(3)).numpy()
+  >>> print(fun1(tf.constant(7), tf.constant(3)).numpy())
   4
 
   >>> @tf.function
@@ -272,7 +266,7 @@ def cond_for_tf_v2(pred, true_fn=None, false_fn=None, name=None):
   ...   true_fn =  lambda: y+1
   ...   false_fn = lambda: y-1
   ...   return tf.cond(pred, true_fn, false_fn)  # Use tf.cond() explicitly.
-  >>> fun1(tf.constant(7), tf.constant(3)).numpy()
+  >>> print(fun1(tf.constant(7), tf.constant(3)).numpy())
   4
 
   For more information, see [tf.function and AutoGraph guide](
@@ -291,7 +285,7 @@ def cond_for_tf_v2(pred, true_fn=None, false_fn=None, name=None):
   >>> x, y = tf.constant(2, dtype=tf.int32), tf.constant(4, dtype=tf.int32)
   >>> z = tf.multiply(x, y)
   >>> r = tf.cond(x < y, lambda: tf.add(x, z), lambda: tf.square(y))
-  >>> r.numpy()
+  >>> print(r.numpy())
   10
 
   If `x < y`, the `tf.add` operation will be executed and `tf.square`
@@ -342,7 +336,7 @@ def cond_for_tf_v2(pred, true_fn=None, false_fn=None, name=None):
   >>> r = tf.cond(tf.less(x, y), f1, f2)
   >>> # r is set to f1().
   >>> # Operations in f2 (e.g., tf.add) are not executed.
-  >>> r.numpy()
+  >>> print(r.numpy())
   14
 
   """
@@ -364,8 +358,8 @@ def _eager_cond_implementation(pred, true_fn, false_fn, strict, name):
     # Eager tensors from a parallel device may not have a constant
     # value. Running the cond op itself would work, but we don't have logic to
     # build cond ops without wrapping in a function first.
-    if (not isinstance(true_fn, core.GenericFunction)
-        or not isinstance(false_fn, core.GenericFunction)):
+    if (not isinstance(true_fn, core.PolymorphicFunction)
+        or not isinstance(false_fn, core.PolymorphicFunction)):
       raise TypeError("When running tf.cond on a parallel device, 'true_fn' "
                       "and 'false_fn' must be decorated with `tf.function`.")
     functions_run_eagerly = eager_function_run.functions_run_eagerly()

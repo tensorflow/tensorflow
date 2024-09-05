@@ -36,8 +36,6 @@ limitations under the License.
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
-#include "mlir/IR/FunctionImplementation.h"  // from @llvm-project
-#include "mlir/IR/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -46,6 +44,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Interfaces/ControlFlowInterfaces.h"  // from @llvm-project
+#include "mlir/Interfaces/FunctionImplementation.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
@@ -70,10 +69,11 @@ static void GenericGetAsmResultNames(Operation* op,
   // We only name the results when there are results to name, an op like `print`
   // which does not have results will just use the `ctl` name for the control
   // output.
-  if (op->getNumResults() > 1 && !op->getResult(0).getType().isa<ControlType>())
+  if (op->getNumResults() > 1 &&
+      !mlir::isa<ControlType>(op->getResult(0).getType()))
     set_name_fn(op->getResult(0), op->getName().stripDialect());
   for (Value result : op->getResults()) {
-    if (result.getType().isa<ControlType>()) {
+    if (mlir::isa<ControlType>(result.getType())) {
       set_name_fn(op->getResult(op->getNumResults() - 1), "ctl");
       break;
     }
@@ -311,8 +311,8 @@ static ParseResult ParseCustomTfOp(OpAsmParser& parser,
   llvm::SMLoc loc = parser.getCurrentLocation();
   Type control_type = ControlType::get(context);
   if (failed(parser.parseOptionalColonTypeList(arg_types))) return failure();
-  if (arg_types.size() == 1 && arg_types.front().isa<FunctionType>()) {
-    auto funcType = arg_types.front().cast<FunctionType>();
+  if (arg_types.size() == 1 && mlir::isa<FunctionType>(arg_types.front())) {
+    auto funcType = mlir::cast<FunctionType>(arg_types.front());
     if (funcType.getNumInputs() != numNonControlOperands)
       return parser.emitError(loc)
              << "got " << numNonControlOperands
@@ -399,8 +399,9 @@ bool GraphFuncOp::isMarkedForCompilation() {
   auto is_enabled = [this](StringRef attr_name) -> bool {
     Attribute attr = (*this)->getAttr(attr_name);
     if (!attr) return false;
-    if (auto bool_attr = attr.dyn_cast<BoolAttr>()) return bool_attr.getValue();
-    if (auto str_attr = attr.dyn_cast<StringAttr>())
+    if (auto bool_attr = mlir::dyn_cast<BoolAttr>(attr))
+      return bool_attr.getValue();
+    if (auto str_attr = mlir::dyn_cast<StringAttr>(attr))
       return !str_attr.getValue().empty();
     return false;
   };
@@ -674,7 +675,7 @@ void GraphFuncOp::print(OpAsmPrinter& p) {
     p.printOperand(getArgument(i));
     p << ": ";
     p.printType(arg_types[i]);
-    if (auto arg_attrs = args_attr[i].dyn_cast<DictionaryAttr>())
+    if (auto arg_attrs = mlir::dyn_cast<DictionaryAttr>(args_attr[i]))
       p.printOptionalAttrDict(arg_attrs.getValue());
     if (i != e - 2) {
       p << ", ";
@@ -692,7 +693,7 @@ void GraphFuncOp::print(OpAsmPrinter& p) {
     ArrayAttr results_attr = getAllResultAttrs();
     for (int i = 0, e = result_types.size(); i < e; ++i) {
       p.printType(result_types[i]);
-      if (auto result_attrs = results_attr[i].dyn_cast<DictionaryAttr>())
+      if (auto result_attrs = mlir::dyn_cast<DictionaryAttr>(results_attr[i]))
         p.printOptionalAttrDict(result_attrs.getValue());
       if (i != e - 1) {
         p << ", ";
@@ -721,7 +722,8 @@ GraphFuncOp GraphFuncOp::getCalledFunction(Operation* op,
   // Check if a node does indirect function call via PartitionedCallOp.
   // TODO(aminim): consider replacing with isa<...> when possible.
   if (op->getName().getStringRef() == "tfg.PartitionCall" ||
-      op->getName().getStringRef() == "tfg.StatefulPartitionedCall") {
+      op->getName().getStringRef() == "tfg.StatefulPartitionedCall" ||
+      op->getName().getStringRef() == "tfg.TPUPartitionedCall") {
     auto func_attr = op->getAttrOfType<FuncAttr>("f");
     if (!func_attr) return {};
     GraphFuncOp callee = symbol_table.lookup<GraphFuncOp>(
@@ -762,7 +764,8 @@ void GraphFuncOp::getAsmBlockArgumentNames(Region& region,
   ArrayAttr args_attr = getAllArgAttrs();
   if (!args_attr || args_attr.size() != args.size()) return;
   for (int arg_num = 0, e = args.size(); arg_num < e; arg_num += 2) {
-    DictionaryAttr arg_attrs = args_attr[arg_num].dyn_cast<DictionaryAttr>();
+    DictionaryAttr arg_attrs =
+        mlir::dyn_cast<DictionaryAttr>(args_attr[arg_num]);
     if (!arg_attrs) continue;
     if (auto strAttr = arg_attrs.getAs<StringAttr>("tfg.name")) {
       set_name_fn(args[arg_num], strAttr.getValue());
@@ -1054,7 +1057,7 @@ static LogicalResult VerifyCaseLikeOp(CaseLikeOp op,
   TypeRange func_args = ins->drop_front();
 
   for (const auto& it : llvm::enumerate(op.getBranches())) {
-    SymbolRefAttr func_name = it.value().template cast<FuncAttr>().getName();
+    SymbolRefAttr func_name = mlir::cast<FuncAttr>(it.value()).getName();
     auto func =
         symbol_table.lookupNearestSymbolFrom<GraphFuncOp>(op, func_name);
     if (func && failed(VerifySignature(func, op, func_args, *outs,
@@ -1127,7 +1130,7 @@ static LogicalResult VerifyPreservedAttrs(Operation* op,
   assert(op->getNumRegions() == preserved_attrs.size());
   for (auto it : llvm::zip(preserved_attrs, op->getRegions())) {
     // Preserved attributes for a particular region may not exist.
-    auto attrs = std::get<0>(it).dyn_cast_or_null<RegionAttr>();
+    auto attrs = mlir::dyn_cast_or_null<RegionAttr>(std::get<0>(it));
     if (!attrs) continue;
     Region& region = std::get<1>(it);
 
@@ -1151,7 +1154,7 @@ static LogicalResult VerifyPreservedAttrs(Operation* op,
       num_rets = 1;
     } else {
       num_rets = cast<RegionBranchTerminatorOpInterface>(terminator)
-                     .getMutableSuccessorOperands(region.getRegionNumber())
+                     .getMutableSuccessorOperands(region)
                      .size();
     }
     if (num_rets != attrs.getResAttrs().size()) {
@@ -1167,7 +1170,7 @@ static LogicalResult VerifyPreservedAttrs(Operation* op,
 // YieldOp
 
 MutableOperandRange YieldOp::getMutableSuccessorOperands(
-    std::optional<unsigned> index) {
+    RegionBranchPoint point) {
   // Get the subrange of non-control operands.
   return getArgsMutable();
 }
@@ -1196,7 +1199,7 @@ static LogicalResult VerifyIfLikeRegionOp(IfLikeRegionOp op) {
 // TODO(jeffniu): Incorporate the other cases of `tf.ToBool`.
 static std::optional<bool> GetStaticallyKnownBranch(Attribute cond_attr) {
   // Only handle the case of a scalar tensor of i1.
-  auto cond = cond_attr.dyn_cast_or_null<ElementsAttr>();
+  auto cond = mlir::dyn_cast_or_null<ElementsAttr>(cond_attr);
   if (cond && cond.getNumElements() == 1 &&
       cond.getElementType().isSignlessInteger(1))
     return cond.getSplatValue<bool>();
@@ -1206,16 +1209,29 @@ static std::optional<bool> GetStaticallyKnownBranch(Attribute cond_attr) {
 // Get the successor of the regions of an if-like op.
 template <typename IfLikeRegionOp>
 void GetIfLikeRegionOpSuccessorRegions(
-    IfLikeRegionOp op, std::optional<unsigned> index,
-    ArrayRef<Attribute> operands, SmallVectorImpl<RegionSuccessor>& regions) {
-  assert(index.has_value() ||
-         !operands.empty() && "if-like op expected at least 1 operand");
+    IfLikeRegionOp op, RegionBranchPoint point,
+    SmallVectorImpl<RegionSuccessor>& regions) {
   // Both regions branch back to the parent op.
-  if (index.has_value()) {
+  if (!point.isParent()) {
     // Ignore the control token.
     regions.emplace_back(
         ResultRange(op->result_begin(), std::prev(op->result_end())));
-  } else if (auto cond = GetStaticallyKnownBranch(operands[0])) {
+  } else {
+    // Unknown successor.
+    regions.emplace_back(&op.getThenRegion(),
+                         GetLoopRegionDataArgs(op.getThenRegion()));
+    regions.emplace_back(&op.getElseRegion(),
+                         GetLoopRegionDataArgs(op.getElseRegion()));
+  }
+}
+
+// Get the successor of the regions of an if-like op.
+template <typename IfLikeRegionOp>
+void GetIfLikeRegionOpEntrySuccessorRegions(
+    IfLikeRegionOp op, ArrayRef<Attribute> operands,
+    SmallVectorImpl<RegionSuccessor>& regions) {
+  assert(!operands.empty() && "if-like op expected at least 1 operand");
+  if (auto cond = GetStaticallyKnownBranch(operands[0])) {
     // Add only 1 possible successor if the condition is known.
     Region& region = *cond ? op.getThenRegion() : op.getElseRegion();
     regions.emplace_back(&region, GetLoopRegionDataArgs(region));
@@ -1263,7 +1279,7 @@ static LogicalResult VerifyCaseLikeRegionOp(CaseLikeRegionOp op) {
 // try to narrow it to a statically known branch index.
 static std::optional<unsigned> GetStaticallyKnownCaseBranch(
     Attribute branch_attr) {
-  auto branch = branch_attr.dyn_cast_or_null<ElementsAttr>();
+  auto branch = mlir::dyn_cast_or_null<ElementsAttr>(branch_attr);
   if (branch && branch.getNumElements() == 1 &&
       branch.getElementType().isSignlessInteger(32))
     return branch.getSplatValue<unsigned>();
@@ -1273,16 +1289,27 @@ static std::optional<unsigned> GetStaticallyKnownCaseBranch(
 // Get the successor of the regions of a case-like op.
 template <typename CaseLikeRegionOp>
 void GetCaseLikeRegionOpSuccessorRegions(
-    CaseLikeRegionOp op, std::optional<unsigned> index,
-    ArrayRef<Attribute> operands, SmallVectorImpl<RegionSuccessor>& regions) {
-  assert(index.has_value() ||
-         !operands.empty() && "case-like op expected at least 1 operand");
+    CaseLikeRegionOp op, RegionBranchPoint point,
+    SmallVectorImpl<RegionSuccessor>& regions) {
   // All branch regions branch back to the parent op.
-  if (index.has_value()) {
+  if (!point.isParent()) {
     // Ignore the control token.
     regions.emplace_back(
         ResultRange(op->result_begin(), std::prev(op->result_end())));
-  } else if (auto branch_index = GetStaticallyKnownCaseBranch(operands[0])) {
+  } else {
+    // Unknown successor. Add all of them.
+    for (Region& branch : op.getBranches())
+      regions.emplace_back(&branch, GetLoopRegionDataArgs(branch));
+  }
+}
+
+// Get the entry successor of the regions of a case-like op.
+template <typename CaseLikeRegionOp>
+void GetCaseLikeRegionOpEntrySuccessorRegions(
+    CaseLikeRegionOp op, ArrayRef<Attribute> operands,
+    SmallVectorImpl<RegionSuccessor>& regions) {
+  assert(!operands.empty() && "case-like op expected at least 1 operand");
+  if (auto branch_index = GetStaticallyKnownCaseBranch(operands[0])) {
     // Add only 1 possible successor if the condition is known.
     Region& region = op.getBranches()[*branch_index];
     regions.emplace_back(&region, GetLoopRegionDataArgs(region));
@@ -1297,7 +1324,7 @@ void GetCaseLikeRegionOpSuccessorRegions(
 // ConditionOp
 
 MutableOperandRange ConditionOp::getMutableSuccessorOperands(
-    std::optional<unsigned> index) {
+    RegionBranchPoint point) {
   // Get the subrange of non-control operands that are forwarded to the
   // successor region.
   return getArgsMutable();
@@ -1321,7 +1348,7 @@ static LogicalResult VerifyLoopRegionArgs(Operation* op, Region& region) {
   // the first half of the arguments are not control tokens, then we know for
   // sure that the second half is only control tokens.
   for (BlockArgument data : GetLoopRegionDataArgs(region))
-    if (data.getType().isa<ControlType>())
+    if (mlir::isa<ControlType>(data.getType()))
       return arg_error(data) << "should not be a control token";
   return success();
 }
@@ -1349,15 +1376,15 @@ static LogicalResult VerifyWhileLikeRegionOp(WhileLikeRegionOp op) {
 
 template <typename WhileLikeRegionOp>
 static void GetWhileLikeRegionOpSuccessorRegions(
-    WhileLikeRegionOp op, std::optional<unsigned> index,
-    ArrayRef<Attribute> operands, SmallVectorImpl<RegionSuccessor>& regions) {
-  // The parent op and the body region always branch to the condion region.
-  if (!index || *index == 1) {
+    WhileLikeRegionOp op, RegionBranchPoint point ,
+    SmallVectorImpl<RegionSuccessor>& regions) {
+  // The parent op and the body region always branch to the condition region.
+  if (point.isParent() || point == op.getRegion(1)) {
     regions.emplace_back(&op.getCondRegion(),
                          GetLoopRegionDataArgs(op.getCondRegion()));
     return;
   }
-  assert(*index == 0 && "invalid region index");
+  assert(point == op->getRegion(0) && "invalid region index");
   // The condition regions branches to the loop body or back to the parent.
   // Try to narrow the condition value to a constant.
   auto condition =
@@ -1389,7 +1416,7 @@ LogicalResult ForRegionOp::verify() {
         "expected the body block to have at least have the loop index as an "
         "argument");
   }
-  auto index = args.front().getType().dyn_cast<TensorType>();
+  auto index = mlir::dyn_cast<TensorType>(args.front().getType());
   if (!index || !index.getElementType().isSignlessInteger(32)) {
     return emitOpError(
         "expected first body block argument to be an i32 tensor");
@@ -1399,19 +1426,18 @@ LogicalResult ForRegionOp::verify() {
   return VerifyPreservedAttrs(*this, {getRegionAttrsAttr()});
 }
 
-OperandRange ForRegionOp::getSuccessorEntryOperands(
-    std::optional<unsigned> index) {
+OperandRange ForRegionOp::getEntrySuccessorOperands(
+    RegionBranchPoint point) {
   return getInit();
 }
 
 void ForRegionOp::getSuccessorRegions(
-    std::optional<unsigned> index, ArrayRef<Attribute> operands,
-    SmallVectorImpl<RegionSuccessor>& regions) {
+    RegionBranchPoint point, SmallVectorImpl<RegionSuccessor>& regions) {
   // Both the parent op and the body region branch to the body. Ignore the loop
   // index block argument, as it is not modified by the loop body itself.
   regions.emplace_back(&getBodyRegion(),
                        GetLoopRegionDataArgs(getBodyRegion()).drop_front());
-  if (!index) return;
+  if (point.isParent()) return;
   // The body might branch back to the parent. Drop the control token.
   regions.emplace_back((*this)->getResults().drop_back());
 }
@@ -1445,8 +1471,9 @@ bool FunctionTable::MayBeCall(Operation* op) const {
   if (IsLegacyCall(op)) return true;
   // The operation might be a call if it references a symbol.
   bool references_symbol = false;
-  op->getAttrDictionary().walk(
-      [&](Attribute attr) { references_symbol |= attr.isa<SymbolRefAttr>(); });
+  op->getAttrDictionary().walk([&](Attribute attr) {
+    references_symbol |= mlir::isa<SymbolRefAttr>(attr);
+  });
   return references_symbol;
 }
 

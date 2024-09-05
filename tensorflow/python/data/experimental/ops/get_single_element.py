@@ -89,44 +89,6 @@ def get_single_element(dataset):
                 signatures={'serving_default': preprocessing_model.serving_fn})
   ```
 
-  # Estimator
-
-  In the case of estimators, you need to generally define a `serving_input_fn`
-  which would require the features to be processed by the model while
-  inferencing.
-
-  ```python
-  def serving_input_fn():
-
-    raw_feature_spec = ... # Spec for the raw_features
-    input_fn = tf.estimator.export.build_parsing_serving_input_receiver_fn(
-        raw_feature_spec, default_batch_size=None)
-    )
-    serving_input_receiver = input_fn()
-    raw_features = serving_input_receiver.features
-
-    def preprocessing_fn(raw_feature):
-      # ... the raw_feature is preprocessed as per the use-case
-      return feature
-
-    dataset = (tf.data.Dataset.from_tensor_slices(raw_features)
-              .map(preprocessing_fn, num_parallel_calls=BATCH_SIZE)
-              .batch(BATCH_SIZE))
-
-    processed_features = tf.data.experimental.get_single_element(dataset)
-
-    # Please note that the value of `BATCH_SIZE` should be equal to
-    # the size of the leading dimension of `raw_features`. This ensures
-    # that `dataset` has only element, which is a pre-requisite for
-    # using `tf.data.experimental.get_single_element(dataset)`.
-
-    return tf.estimator.export.ServingInputReceiver(
-        processed_features, serving_input_receiver.receiver_tensors)
-
-  estimator = ... # A pre-built or custom estimator
-  estimator.export_saved_model(your_exported_model_dir, serving_input_fn)
-  ```
-
   Args:
     dataset: A `tf.data.Dataset` object containing a single element.
 

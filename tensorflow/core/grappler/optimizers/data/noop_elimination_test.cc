@@ -121,8 +121,6 @@ INSTANTIATE_TEST_CASE_P(
         std::make_tuple("SkipDataset", std::vector<int>({-1}), true),
         std::make_tuple("SkipDataset", std::vector<int>({0}), false),
         std::make_tuple("SkipDataset", std::vector<int>({3}), true),
-        std::make_tuple("PrefetchDataset", std::vector<int>({0}), false),
-        std::make_tuple("PrefetchDataset", std::vector<int>({1}), true),
         std::make_tuple("RepeatDataset", std::vector<int>({1}), false),
         std::make_tuple("RepeatDataset", std::vector<int>({2}), true),
         std::make_tuple("ShardDataset", std::vector<int>({1, 0}), false),
@@ -173,8 +171,6 @@ INSTANTIATE_TEST_CASE_P(
         std::make_tuple("SkipDataset", std::vector<int>({-1}), true),
         std::make_tuple("SkipDataset", std::vector<int>({0}), false),
         std::make_tuple("SkipDataset", std::vector<int>({3}), true),
-        std::make_tuple("PrefetchDataset", std::vector<int>({0}), false),
-        std::make_tuple("PrefetchDataset", std::vector<int>({1}), true),
         std::make_tuple("RepeatDataset", std::vector<int>({1}), false),
         std::make_tuple("RepeatDataset", std::vector<int>({2}), true),
         std::make_tuple("ShardDataset", std::vector<int>({1, 0}), false),
@@ -233,17 +229,14 @@ const auto *const kSkipNode =
     new std::pair<string, std::vector<int>>{"SkipDataset", {0}};
 const auto *const kRepeatNode =
     new std::pair<string, std::vector<int>>{"RepeatDataset", {1}};
-const auto *const kPrefetchNode =
-    new std::pair<string, std::vector<int>>{"PrefetchDataset", {0}};
 const auto *const kShardNode =
     new std::pair<string, std::vector<int>>{"ShardDataset", {1, 0}};
 
 INSTANTIATE_TEST_CASE_P(
     BasicRemovalTest, NoOpMultipleEliminationTest,
-    ::testing::Combine(::testing::Values(*kTakeNode, *kSkipNode, *kRepeatNode,
-                                         *kPrefetchNode, *kShardNode),
-                       ::testing::Values(*kTakeNode, *kSkipNode, *kRepeatNode,
-                                         *kPrefetchNode, *kShardNode)));
+    ::testing::Combine(
+        ::testing::Values(*kTakeNode, *kSkipNode, *kRepeatNode, *kShardNode),
+        ::testing::Values(*kTakeNode, *kSkipNode, *kRepeatNode, *kShardNode)));
 
 struct NoOpPlaceholdersTest
     : ::testing::TestWithParam<
@@ -283,8 +276,6 @@ const auto *const kNonConstSkipNode =
     new std::pair<string, std::vector<DataType>>{"SkipDataset", {DT_INT32}};
 const auto *const kNonConstRepeatNode =
     new std::pair<string, std::vector<DataType>>{"RepeatDataset", {DT_INT32}};
-const auto *const kNonConstPrefetchNode =
-    new std::pair<string, std::vector<DataType>>{"PrefetchDataset", {DT_INT32}};
 const auto *const kNonConstShardNode =
     new std::pair<string, std::vector<DataType>>{"ShardDataset",
                                                  {DT_INT32, DT_INT32}};
@@ -293,11 +284,9 @@ INSTANTIATE_TEST_CASE_P(
     DoNotRemovePlaceholders, NoOpPlaceholdersTest,
     ::testing::Combine(::testing::Values(*kNonConstTakeNode, *kNonConstSkipNode,
                                          *kNonConstRepeatNode,
-                                         *kNonConstPrefetchNode,
                                          *kNonConstShardNode),
                        ::testing::Values(*kNonConstTakeNode, *kNonConstSkipNode,
                                          *kNonConstRepeatNode,
-                                         *kNonConstPrefetchNode,
                                          *kNonConstShardNode)));
 
 }  // namespace

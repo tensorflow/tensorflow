@@ -2,8 +2,8 @@ syntax = "proto3";
 
 package tensorflow.tpu;
 
-import "tensorflow/compiler/xla/xla.proto";
-import "tensorflow/compiler/xla/xla_data.proto";
+import "xla/xla.proto";
+import "xla/xla_data.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
 import "tensorflow/core/protobuf/tpu/dynamic_padding.proto";
@@ -66,6 +66,9 @@ message TPUCompileMetadataProto {
     // Whether to use XLA collectives to broadcast this parameter to all
     // replicas, instead of using TensorFlow Send/Recv among the tasks.
     bool requires_xla_broadcast = 11;
+
+    // Which dimension of this arg is bounded dynamic.
+    repeated bool is_bounded_dynamic_dim = 12;
   }
   repeated Arg args = 1;
 
@@ -137,6 +140,9 @@ message TPUCompileMetadataProto {
   uint64 mlir_fingerprint = 17;
 
   TPUCompileOptions compile_options = 21;
+
+  // The name of the MLIR module.
+  string module_name = 22;
 }
 
 // Stable protobuf for TPU compilation options, suitable for persistent storage.

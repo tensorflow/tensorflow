@@ -16,10 +16,9 @@ limitations under the License.
 #include "tensorflow/lite/core/interpreter.h"
 
 #include <stddef.h>
+#include <stdint.h>
 #include <stdlib.h>
 
-#include <algorithm>
-#include <cstdint>
 #include <functional>
 #include <map>
 #include <memory>
@@ -28,13 +27,20 @@ limitations under the License.
 #include <vector>
 
 #include "ruy/denormal.h"  // from @ruy
-#include "tensorflow/lite/allocation.h"
+#include "tensorflow/compiler/mlir/lite/allocation.h"
+#include "tensorflow/compiler/mlir/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/signature_runner.h"
+#include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
+#include "tensorflow/lite/internal/signature_def.h"
 #include "tensorflow/lite/interpreter_options.h"
+#include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
+#include "tensorflow/lite/profiling/root_profiler.h"
+#include "tensorflow/lite/profiling/telemetry/c/telemetry_setting.h"
 #include "tensorflow/lite/profiling/telemetry/telemetry.h"
 #include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/util.h"
@@ -225,8 +231,8 @@ TfLiteStatus Interpreter::Invoke() {
   ScopedRuntimeInstrumentationProfile scoped_runtime_event(root_profiler_.get(),
                                                            "invoke");
 
-  // "Resets" cancellation flag so cancellation happens before this invoke will
-  // not take effect.
+  // "Resets" cancellation flag so cancellation that happens before this invoke
+  // will not take effect.
   if (cancellation_enabled_) (void)continue_invocation_.test_and_set();
 
   // Denormal floating point numbers could cause significant slowdown on
@@ -272,7 +278,7 @@ TfLiteStatus Interpreter::SetTensorParametersReadWrite(
 }
 
 TfLiteStatus Interpreter::SetTensorParametersReadOnly(
-    int tensor_index, TfLiteType type, const char* name, const size_t rank,
+    int tensor_index, TfLiteType type, const char* name, size_t rank,
     const int* dims, TfLiteQuantizationParams quantization, const char* buffer,
     size_t bytes, const Allocation* allocation) {
   TfLiteQuantization new_quantization = GetQuantizationFromLegacy(quantization);
@@ -282,9 +288,9 @@ TfLiteStatus Interpreter::SetTensorParametersReadOnly(
 }
 
 TfLiteStatus Interpreter::SetTensorParametersReadWrite(
-    int tensor_index, TfLiteType type, const char* name, const size_t rank,
+    int tensor_index, TfLiteType type, const char* name, size_t rank,
     const int* dims, TfLiteQuantizationParams quantization, bool is_variable,
-    const size_t rank_dims_signature, const int* dims_signature) {
+    size_t rank_dims_signature, const int* dims_signature) {
   TfLiteQuantization new_quantization = GetQuantizationFromLegacy(quantization);
   return primary_subgraph().SetTensorParametersReadWrite(
       tensor_index, type, name, rank, dims, new_quantization, is_variable,
@@ -394,7 +400,11 @@ TfLiteStatus Interpreter::ModifyGraphWithDelegateImpl(
     TfLiteDelegate* delegate) {
   TfLiteStatus status = kTfLiteOk;
   for (auto& subgraph : subgraphs_) {
-    if (IsValidationSubgraph(subgraph->GetName().c_str())) {
+    if (IsValidationSubgraph(subgraph->GetName().c_str()) ||
+        subgraph->IsDelegationSkippable()) {
+      TFLITE_LOG(TFLITE_LOG_INFO,
+                 "Skipping calling ModifyGraphWithDelegate on Subgraph %i: %s",
+                 subgraph->GetSubgraphIndex(), subgraph->GetName().c_str());
       continue;
     }
     status = subgraph->ModifyGraphWithDelegate(delegate);
@@ -488,14 +498,6 @@ TfLiteStatus Interpreter::ApplyOptionsImpl(InterpreterOptions* options) {
   for (auto& subgraph : subgraphs_) {
     subgraph->SetOptions(options_.get());
   }
-
-  // Handle `experimental_dynamic_allocation_for_large_tensors_`.
-  if (options->GetDynamicAllocationForLargeTensors() > 0) {
-    for (auto& subgraph : subgraphs_) {
-      subgraph->OptimizeMemoryForLargeTensors(
-          options->GetDynamicAllocationForLargeTensors());
-    }
-  }
   return kTfLiteOk;
 }
 
@@ -516,6 +518,94 @@ void Interpreter::AddProfiler(std::unique_ptr<Profiler> profiler) {
   }
   root_profiler_->AddProfiler(std::move(profiler));
   SetSubgraphProfiler();
+}
+
+impl::SignatureRunner* Interpreter::GetSignatureRunner(
+    const char* signature_key_) {
+  auto [signature_key, empty_signature_fallback] =
+      ReplaceWithPlaceholderSignatureKeyIfNeeded(signature_key_);
+  if (!signature_key) {
+    return nullptr;
+  }
+
+  auto iter = signature_runner_map_.find(signature_key);
+  if (iter != signature_runner_map_.end()) {
+    return &(iter->second);
+  }
+
+  // Default delegates are applied once for all subgraphs. Only returns error
+  // when the status is kTfLiteError. For other statuses, it will fall back to
+  // the default implementation.
+  if (ApplyLazyDelegateProviders() == kTfLiteError) {
+    return nullptr;
+  }
+
+  if (empty_signature_fallback) {
+    placeholder_signature_def_ = CreatePlaceholderSignatureDef();
+    auto status = signature_runner_map_.insert(
+        {signature_key, SignatureRunner(placeholder_signature_def_.get(),
+                                        &primary_subgraph())});
+    return &(status.first->second);
+  }
+
+  for (const auto& signature : signature_defs_) {
+    if (signature.signature_key == signature_key) {
+      auto status = signature_runner_map_.insert(
+          {signature_key,
+           SignatureRunner(&signature, subgraph(signature.subgraph_index))});
+      return &(status.first->second);
+    }
+  }
+
+  return nullptr;
+}
+
+std::unique_ptr<internal::SignatureDef>
+Interpreter::CreatePlaceholderSignatureDef() {
+  auto placeholder_signature_def = std::make_unique<internal::SignatureDef>();
+  for (auto i = 0; i < inputs().size(); ++i) {
+    auto* name = GetInputName(i);
+    placeholder_signature_def->inputs[name] = inputs()[i];
+  }
+  for (auto i = 0; i < outputs().size(); ++i) {
+    auto* name = GetOutputName(i);
+    placeholder_signature_def->outputs[name] = outputs()[i];
+  }
+  placeholder_signature_def->signature_key = kPlaceholderSignatureDefKey;
+  placeholder_signature_def->subgraph_index = 0;
+  return placeholder_signature_def;
+}
+
+std::pair<const char*, bool>
+Interpreter::ReplaceWithPlaceholderSignatureKeyIfNeeded(
+    const char* signature_key) {
+  // Handles nullptr signature key.
+  // If the model does not have signature def, use default name as placeholder.
+  // Otherwise use the first signature key that points to primary subgraph.
+  bool empty_signature_fallback = false;
+  if (signature_key == nullptr) {
+    if (signature_defs_.empty()) {
+      signature_key = kPlaceholderSignatureDefKey;
+      empty_signature_fallback = true;
+    } else {
+      for (const auto& signature : signature_defs_) {
+        if (signature.subgraph_index == 0) {
+          signature_key = signature.signature_key.c_str();
+          break;
+        }
+      }
+    }
+  }
+
+  if (signature_key == nullptr) {
+    // The model has signature def but none of those points to primary subgraph.
+    TF_LITE_REPORT_ERROR(error_reporter_,
+                         "The model has signature def but none of those points "
+                         "to primary subgraph.");
+    return {nullptr, empty_signature_fallback};
+  } else {
+    return {signature_key, empty_signature_fallback};
+  }
 }
 
 }  // namespace tflite

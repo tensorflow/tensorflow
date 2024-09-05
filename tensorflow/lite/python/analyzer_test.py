@@ -70,8 +70,8 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
           model_path=model_path, experimental_use_mlir=True)
     mlir = mock_stdout.getvalue()
     self.assertIn(
-        '%1 = "tfl.pseudo_const"() {value = dense_resource<__elided__> : '
-        'tensor<3x3x3x8xf32>} : () -> tensor<3x3x3x8xf32>', mlir)
+        '%1 = "tfl.pseudo_const"() <{value = dense_resource<__elided__> : '
+        'tensor<3x3x3x8xf32>}> : () -> tensor<3x3x3x8xf32>', mlir)
 
   def testTxtWithFlatBufferModel(self):
 
@@ -144,8 +144,7 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
           model_content=fb_model, gpu_compatibility=True)
     txt = mock_stdout.getvalue()
     self.assertIn(
-        'Your model looks compatible with GPU delegate with TFLite runtime',
-        txt)
+        'Your model looks compatible with GPU delegate on TFLite runtime', txt)
 
   def testTxtSignatureDefs(self):
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -216,6 +215,7 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
 
     converter = tf.lite.TFLiteConverter.from_concrete_functions(
         [func.get_concrete_function()], func)
+    converter.unfold_batchmatmul = True
     fb_model = converter.convert()
     mock_stdout = io.StringIO()
     with test.mock.patch.object(sys, 'stdout', mock_stdout):
@@ -226,13 +226,13 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
     self.assertIn('Op#2 FULLY_CONNECTED(T#0, T#6, T#-1) -> [T#7]', txt)
     self.assertIn('Op#3 RESHAPE(T#7, T#2[1, 100, 8, 64]) -> [T#8]', txt)
     self.assertIn(
-        'T#2(einsum/Einsum) shape:[4], type:INT32 RO 16 bytes, '
+        'T#2(arith.constant) shape:[4], type:INT32 RO 16 bytes, '
         'buffer: 3, data:[1, 100, 8, 64]', txt)
     self.assertIn(
-        'T#3(einsum/Einsum2) shape:[2], type:INT32 RO 8 bytes, '
+        'T#3(arith.constant1) shape:[2], type:INT32 RO 8 bytes, '
         'buffer: 4, data:[1, 0]', txt)
     self.assertIn(
-        'T#4(einsum/Einsum3) shape:[2], type:INT32 RO 8 bytes, '
+        'T#4(einsum/Einsum) shape:[2], type:INT32 RO 8 bytes, '
         'buffer: 5, data:[512, 512]', txt)
 
 

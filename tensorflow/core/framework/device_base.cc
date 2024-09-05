@@ -22,7 +22,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/notification.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
@@ -75,6 +75,11 @@ const string& DeviceBase::name() const {
 
 const DeviceNameUtils::ParsedName& DeviceBase::parsed_name() const {
   LOG(FATAL) << "DeviceBase does not implement parsed_name()";  // Crash OK
+  std::abort();
+}
+
+const std::string& DeviceBase::device_type() const {
+  LOG(FATAL) << "DeviceBase does not implement device_type()";  // Crash OK
   std::abort();
 }
 

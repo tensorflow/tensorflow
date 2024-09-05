@@ -17,7 +17,7 @@
 import abc
 import math
 import typing
-from typing import Any, Dict, Callable, Iterable, List, Optional, Text, Tuple, TypeVar, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Text, Tuple, TypeVar, Union
 
 from absl import logging
 
@@ -27,9 +27,12 @@ from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.framework import device_spec
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework.tensor_shape import TensorShape
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops_v2
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.types import core
@@ -183,6 +186,167 @@ class _Optimizer(metaclass=abc.ABCMeta):
     return hash(tuple(self.__dict__.items()))
 
 
+@tf_export("tpu.experimental.embedding.CustomOptimizer")
+class CustomOptimizer(_Optimizer):
+  """Optimization parameters for custom optimizer for TPU embeddings.
+
+  This optimizer gives the user the ability to define a custom optimizer
+  for running embedding lookups on TPU v5p.
+
+  The custom computation should be a function which takes gradient, embedding
+  table, a list of slot variables, learning_rate and a list of hyperparameters.
+  The function should perform the gradient update on the embedding_table +
+  slot_variables and return the updated embedding_table and slot_variables. e.g.
+
+  ```python
+  @tf.function
+  def sgd_optimizer_computation(
+      gradient,
+      embedding_table,
+      slot_variables,
+      learning_rate,
+      hyperparameters,
+  ):
+    del slot_variables, hyperparameters
+    return embedding_table - gradient * learning_rate
+  ```
+
+  Above is a simple example of a sgd optimizer. You can also define a more
+  complex optimizer which updates multiple tables and slot variables.
+
+  ```python
+  @def_function.function
+  def adagrad_optimizer_computation(
+      gradient,
+      embedding_table,
+      slot_variables,
+      learning_rate,
+      hyperparameters,
+  ):
+    del hyperparameters
+    accumulator = slot_variables[0]
+    new_accumulator = accumulator + gradient * gradient
+    updated_embedding_table = (
+        embedding_table
+        - learning_rate * gradient / math_ops.sqrt(new_accumulator)
+    )
+    return (updated_embedding_table, new_accumulator)
+  ```
+
+  The custom computation is defined as a per-row update function and it will be
+  auto scaled for the entire table (slot variables).
+
+  NOTE: This optimizer can only be used with the `TPUEmbeddingV2` class.
+
+  Pass this to `tf.tpu.experimental.embedding.TPUEmbeddingV2` via the
+  `optimizer` argument to set the global optimizer and its parameters:
+
+  ```python
+  optimizer = tf.tpu.experimental.embedding.CustomOptimizer(
+        custom_computation=adagrad_optimizer_computation,
+        learning_rate=1.0,
+        slot_names=['accumulators'],
+        slot_initializers=[
+            tf.constant_initializer(0.1, support_partition=True)
+        ],
+    )
+  embedding = tf.tpu.experimental.embedding.TPUEmbeddingV2(
+      ...
+      optimizer=optimizer)
+  ```
+
+  This can also be used in a `tf.tpu.experimental.embedding.TableConfig` as the
+  optimizer parameter to set a table specific optimizer. This will override the
+  optimizer and parameters for global embedding optimizer defined above:
+
+  ```python
+  table_one = tf.tpu.experimental.embedding.TableConfig(
+      vocabulary_size=...,
+      dim=...,
+      optimizer=optimizer)
+  table_two = tf.tpu.experimental.embedding.TableConfig(
+      vocabulary_size=...,
+      dim=...)
+
+  feature_config = (
+      tf.tpu.experimental.embedding.FeatureConfig(
+          table=table_one),
+      tf.tpu.experimental.embedding.FeatureConfig(
+          table=table_two))
+
+  embedding = tf.tpu.experimental.embedding.TPUEmbedding(
+      feature_config=feature_config,
+      batch_size=...
+      optimizer=optimizer)
+  ```
+  In this example, the optimizer of the first table will be the one specified
+  in the table config. The second table will use the optimizer specified in the
+  TPUEmbedding argument.
+  """
+
+  def __init__(
+      self,
+      custom_computation: core.PolymorphicFunction,
+      learning_rate: Union[float, Callable[[], float]] = 0.01,
+      slot_names: Optional[List[str]] = None,
+      slot_initializers: Optional[List[init_ops_v2.Initializer]] = None,
+      hyperparameters: Optional[List[Union[float, Callable[[], float]]]] = None,
+  ) -> Any:
+    super().__init__(
+        learning_rate,
+        use_gradient_accumulation=False,
+        clip_weight_min=None,
+        clip_weight_max=None,
+        weight_decay_factor=None,
+        multiply_weight_decay_factor_by_learning_rate=None,
+        clipvalue=None,
+        slot_variable_creation_fn=None,
+        low_dimensional_packing_status=False,
+    )
+    # We need to convert the slot names and initializers to tuples to make
+    # them hashable.
+    self._slot_names_attr = tuple(slot_names if slot_names else ())
+    self._slot_initializers_attr = tuple(
+        slot_initializers if slot_initializers else ()
+    )
+    num_slot_names = len(self._slot_names_attr)
+    num_slot_initializers = len(self._slot_initializers_attr)
+    if num_slot_names != num_slot_initializers:
+      raise ValueError(
+          f"The number of slot_names ({num_slot_names}) must match"
+          " the number of slot_initializers"
+          f" ({num_slot_initializers})."
+      )
+    self._hyperparameters = tuple(hyperparameters if hyperparameters else ())
+    self._custom_computation = custom_computation
+
+  def _slot_names(self) -> List[Text]:
+    return list(self._slot_names_attr)
+
+  def _slot_initializers(self) -> List[init_ops_v2.Initializer]:
+    return list(self._slot_initializers_attr)
+
+  def _load(self) -> Callable[..., ops.Operation]:
+    raise NotImplementedError(
+        "Custom optimizer does not support load op since it is only used for"
+        " TPUEmbeddingV2."
+    )
+
+  def _retrieve(self) -> Callable[..., core.Tensor]:
+    raise NotImplementedError(
+        "Custom optimizer does not support retrieve op since it is only used"
+        " for TPUEmbeddingV2."
+    )
+
+  @property
+  def hyperparameters(self) -> Tuple[Union[float, Callable[[], float]], ...]:
+    return self._hyperparameters
+
+  @property
+  def custom_computation(self) -> core.ConcreteFunction:
+    return self._custom_computation
+
+
 @tf_export("tpu.experimental.embedding.SGD")
 class SGD(_Optimizer):
   """Optimization parameters for stochastic gradient descent for TPU embeddings.
@@ -237,7 +401,7 @@ class SGD(_Optimizer):
       clip_weight_min: Optional[float] = None,
       clip_weight_max: Optional[float] = None,
       weight_decay_factor: Optional[float] = None,
-      multiply_weight_decay_factor_by_learning_rate: bool = None,
+      multiply_weight_decay_factor_by_learning_rate: Optional[bool] = None,
       clipvalue: Optional[ClipValueType] = None,
       low_dimensional_packing_status: bool = False,
   ):
@@ -354,7 +518,7 @@ class Adagrad(_Optimizer):
       clip_weight_min: Optional[float] = None,
       clip_weight_max: Optional[float] = None,
       weight_decay_factor: Optional[float] = None,
-      multiply_weight_decay_factor_by_learning_rate: bool = None,
+      multiply_weight_decay_factor_by_learning_rate: Optional[bool] = None,
       slot_variable_creation_fn: Optional[SlotVarCreationFnType] = None,
       clipvalue: Optional[ClipValueType] = None,
       low_dimensional_packing_status: bool = False,
@@ -410,7 +574,11 @@ class Adagrad(_Optimizer):
     return ["accumulators"]
 
   def _slot_initializers(self) -> List[init_ops_v2.Initializer]:
-    return [init_ops_v2.Constant(self.initial_accumulator_value)]
+    return [
+        init_ops_v2.Constant(
+            self.initial_accumulator_value, support_partition=True
+        )
+    ]
 
   def _set_optimization_parameters(
       self, parameters: optimization_parameters_pb2.OptimizationParameters):
@@ -483,7 +651,7 @@ class AdagradMomentum(_Optimizer):
       clip_weight_min: Optional[float] = None,
       clip_weight_max: Optional[float] = None,
       weight_decay_factor: Optional[float] = None,
-      multiply_weight_decay_factor_by_learning_rate: bool = None,
+      multiply_weight_decay_factor_by_learning_rate: Optional[bool] = None,
       slot_variable_creation_fn: Optional[SlotVarCreationFnType] = None,
       clipvalue: Optional[ClipValueType] = None,
       low_dimensional_packing_status: bool = False,
@@ -548,10 +716,14 @@ class AdagradMomentum(_Optimizer):
     return ["accumulators", "momenta"]
 
   def _slot_initializers(self) -> List[init_ops_v2.Initializer]:
-    return [init_ops_v2.Constant(), init_ops_v2.Constant()]
+    return [
+        init_ops_v2.Constant(support_partition=True),
+        init_ops_v2.Constant(support_partition=True),
+    ]
 
   def _set_optimization_parameters(
-      self, parameters: optimization_parameters_pb2.OptimizationParameters):
+      self, parameters: optimization_parameters_pb2.OptimizationParameters
+  ):
     super()._set_optimization_parameters(parameters)
     parameters.adagrad_momentum.SetInParent()
     parameters.adagrad_momentum.momentum = self.momentum
@@ -629,7 +801,7 @@ class FTRL(_Optimizer):
       clip_weight_min: Optional[float] = None,
       clip_weight_max: Optional[float] = None,
       weight_decay_factor: Optional[float] = None,
-      multiply_weight_decay_factor_by_learning_rate: bool = None,
+      multiply_weight_decay_factor_by_learning_rate: Optional[bool] = None,
       slot_variable_creation_fn: Optional[SlotVarCreationFnType] = None,
       clipvalue: Optional[ClipValueType] = None,
       multiply_linear_by_learning_rate: bool = False,
@@ -716,12 +888,15 @@ class FTRL(_Optimizer):
 
   def _slot_initializers(self) -> List[init_ops_v2.Initializer]:
     return [
-        init_ops_v2.Constant(self.initial_accumulator_value),
-        init_ops_v2.Constant()
+        init_ops_v2.Constant(
+            self.initial_accumulator_value, support_partition=True
+        ),
+        init_ops_v2.Constant(support_partition=True),
     ]
 
   def _set_optimization_parameters(
-      self, parameters: optimization_parameters_pb2.OptimizationParameters):
+      self, parameters: optimization_parameters_pb2.OptimizationParameters
+  ):
     super()._set_optimization_parameters(parameters)
     ftrl = parameters.ftrl
     ftrl.l1 = self.l1_regularization_strength
@@ -801,7 +976,7 @@ class Adam(_Optimizer):
       clip_weight_min: Optional[float] = None,
       clip_weight_max: Optional[float] = None,
       weight_decay_factor: Optional[float] = None,
-      multiply_weight_decay_factor_by_learning_rate: bool = None,
+      multiply_weight_decay_factor_by_learning_rate: Optional[bool] = None,
       slot_variable_creation_fn: Optional[SlotVarCreationFnType] = None,
       clipvalue: Optional[ClipValueType] = None,
       low_dimensional_packing_status: bool = False,
@@ -884,10 +1059,14 @@ class Adam(_Optimizer):
     return ["momenta", "velocities"]
 
   def _slot_initializers(self) -> List[init_ops_v2.Initializer]:
-    return [init_ops_v2.Constant(), init_ops_v2.Constant()]
+    return [
+        init_ops_v2.Constant(support_partition=True),
+        init_ops_v2.Constant(support_partition=True),
+    ]
 
   def _set_optimization_parameters(
-      self, parameters: optimization_parameters_pb2.OptimizationParameters):
+      self, parameters: optimization_parameters_pb2.OptimizationParameters
+  ):
     super(Adam, self)._set_optimization_parameters(parameters)
     parameters.adam.beta1 = self.beta_1
     parameters.adam.beta2 = self.beta_2
@@ -917,7 +1096,7 @@ class QuantizationConfig:
   if input > upper
     input = upper
   quantum = (upper - lower) / (num_buckets - 1)
-  input = math.floor((input - lower) / quantum + 0.5) * quantium + lower
+  input = math.floor((input - lower) / quantum + 0.5) * quantum + lower
   ```
 
   See tensorflow/core/protobuf/tpu/optimization_parameters.proto for more
@@ -1003,14 +1182,19 @@ class TableConfig:
 
   """
 
-  def __init__(self,
-               vocabulary_size: int,
-               dim: int,
-               initializer: Optional[Callable[[Any], None]] = None,
-               optimizer: Optional[_Optimizer] = None,
-               combiner: Text = "mean",
-               name: Optional[Text] = None,
-               quantization_config: QuantizationConfig = None):
+  def __init__(
+      self,
+      vocabulary_size: int,
+      dim: int,
+      initializer: Optional[Callable[[Any], None]] = None,
+      optimizer: Optional[_Optimizer] = None,
+      combiner: Text = "mean",
+      name: Optional[Text] = None,
+      quantization_config: QuantizationConfig = None,
+      # TODO(b/295372790): Change the type to SparseCoreTableLayout after it is
+      # open sourced.
+      layout: Optional[Any] = None,
+  ):
     """Embedding table configuration.
 
     Args:
@@ -1031,10 +1215,14 @@ class TableConfig:
         'mean' the default. 'sqrtn' often achieves good accuracy, in particular
         with bag-of-words columns. For more information, see
         `tf.nn.embedding_lookup_sparse`.
-      name: An optional string used to name the table. Useful for debugging.
+      name: An optional string used to name the table. Must be defined if
+        running on SparseCore.
       quantization_config: The simulated quantization config. An instance of
         `tf.tpu.experimental.embedding.QuantizationConfig`. See the class for
         more documentation.
+      layout: If the table already has its layout computed, you can pass it in
+        here. Otherwise, we will compute it for you. Most users should leave
+        this as None.
 
     Returns:
       `TableConfig`.
@@ -1068,6 +1256,12 @@ class TableConfig:
           f"Argument `combiner` must be one of {accepted_combiners}. "
           f"Received: {combiner}")
 
+    if name is None:
+      logging.warning(
+          "Name of the table config must be specified for running on"
+          " SparseCore. Different table configs must have unique names."
+      )
+
     self.vocabulary_size = vocabulary_size
     self.dim = dim
     self.initializer = initializer
@@ -1075,6 +1269,7 @@ class TableConfig:
     self.combiner = combiner
     self.name = name
     self.quantization_config = quantization_config
+    self.layout = layout
 
   def __repr__(self):
     # If using the default initializer, just print "None" for clarity.
@@ -1119,20 +1314,36 @@ class TableConfig:
     # We handle the learning rate separately here and don't allow the
     # optimization class to handle this, as it doesn't know about dynamic
     # rates.
-    if callable(self.optimizer.learning_rate):
-      parameters.learning_rate.dynamic.tag = (
-          learning_rate_index[self.optimizer.learning_rate])
-    else:
-      parameters.learning_rate.constant = self.optimizer.learning_rate
+    if self.optimizer:
+      if callable(self.optimizer.learning_rate):
+        parameters.learning_rate.dynamic.tag = (
+            learning_rate_index[self.optimizer.learning_rate])
+      else:
+        parameters.learning_rate.constant = self.optimizer.learning_rate
+      if self.optimizer.low_dimensional_packing_status:
+        parameters.low_dimensional_packing_status = (
+            optimization_parameters_pb2.LowDimensionalPackingStatus.Status.ENABLED
+        )
+      # Use optimizer to handle the rest of the parameters.
+      self.optimizer._set_optimization_parameters(parameters)  # pylint: disable=protected-access
 
-    if self.optimizer.low_dimensional_packing_status:
-      parameters.low_dimensional_packing_status = (
-          optimization_parameters_pb2.LowDimensionalPackingStatus.Status.ENABLED
-      )
-    # Use optimizer to handle the rest of the parameters.
-    self.optimizer._set_optimization_parameters(parameters)  # pylint: disable=protected-access
     if self.quantization_config:
       self.quantization_config._set_optimization_parameters(parameters)  # pylint: disable=protected-access
+
+
+@tf_export("tpu.experimental.embedding.RowIdInitializer")
+class RowIdInitializer:
+  """An initializer that initializes the table with vocabulary ids."""
+
+  def __init__(self, offset: int = 0):
+    self.offset = offset
+
+  def __call__(
+      self, shape: Union[Sequence[int], TensorShape], dtype: dtypes.DType
+  ) -> core.Tensor:
+    return math_ops.range(
+        start=self.offset, limit=self.offset + shape[0], delta=1, dtype=dtype
+    )[:, None] * array_ops.ones(shape, dtype=dtype)
 
 
 @tf_export("tpu.experimental.embedding.FeatureConfig")
@@ -1208,7 +1419,8 @@ class FeatureConfig:
         has to match the shape (for ragged tensor, the input shape and output
         shape can mismatch). If not provided, the shape can be either provided
         to the `embedding.build` or auto detected at the runtime.
-      name: An optional name for the feature, useful for debugging.
+      name: An optional string used to name the table. Must be defined if
+        running on SparseCore.
 
     Returns:
       `FeatureConfig`.

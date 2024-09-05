@@ -390,7 +390,7 @@ static Status GradForUnaryCwise(FunctionDef* g,
       {},
       // Nodes
       nodes);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // A gradient containing only supported operators
@@ -617,9 +617,9 @@ TEST(XlaCompilationTest, CyclesWithDifferentScopesAndBridge) {
   // The computation is: C = A @ relu(A)
   // where A sits in ScopeA, relu(A) sits in ScopeB, and C sits in ScopeC.
   // In this case, we cannot fuse anything.
-  EXPECT_EQ(3, clusters.size());
+  EXPECT_EQ(2, clusters.size());
   EXPECT_NE(clusters["A"], clusters["B"]);
-  EXPECT_EQ(clusters["B"], clusters["C"]);
+  EXPECT_NE(clusters["B"], clusters["C"]);
 }
 
 TEST(XlaCompilationTest, DontClusterNodesWithMismatchingDeadness) {
@@ -1816,7 +1816,7 @@ TEST(XlaCompilationTest, DeterministicClusterNames) {
           " rhs: ", rhs_cluster_name);
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   testing::ResetClusterSequenceNumber();

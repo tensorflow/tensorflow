@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/split_utils.h"
 
+#include <memory>
 #include <string>
+#include <vector>
 
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/data/dataset_utils.h"
@@ -37,7 +39,7 @@ Status SaveAndRestore(SplitProvider* split_provider) {
   writer.GetData(&variants);
   VariantTensorDataReader reader(variants);
   TF_RETURN_IF_ERROR(split_provider->Restore(full_name, &reader));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status CheckOutput(SplitProvider* split_provider,
@@ -52,7 +54,7 @@ Status CheckOutput(SplitProvider* split_provider,
     }
   }
   EXPECT_EQ(next, expected.size());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 TEST(IndexSplitProviderTest, Empty) {

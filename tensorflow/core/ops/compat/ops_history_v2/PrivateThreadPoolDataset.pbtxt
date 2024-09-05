@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "PrivateThreadPoolDataset"
   input_arg {
     name: "input_dataset"

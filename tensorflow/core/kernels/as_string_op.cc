@@ -20,12 +20,14 @@ limitations under the License.
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/stringpiece.h"
 
 namespace tensorflow {
 
@@ -47,6 +49,7 @@ class AsStringOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("width", &width));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("fill", &fill_string));
     switch (dtype) {
+      case DT_STRING:
       case DT_HALF:
       case DT_BFLOAT16:
       case DT_FLOAT:
@@ -95,6 +98,14 @@ class AsStringOp : public OpKernel {
       strings::Appendf(&format_, ".%d", precision);
     }
     switch (dtype) {
+      case DT_STRING:
+        // Clear format to signal pass-through.
+        if (width <= 0) {
+          format_ = "";
+        } else {
+          strings::Appendf(&format_, "s");
+        }
+        break;
       case DT_UINT8:
       case DT_UINT16:
       case DT_UINT32:
@@ -146,6 +157,12 @@ class AsStringOp : public OpKernel {
     OP_REQUIRES_OK(context, context->input("input", &input_tensor));
     const DataType& dtype = input_tensor->dtype();
 
+    // If input is string and width unspecified, simply forward to output.
+    if (dtype == DT_STRING && format_.empty()) {
+      context->set_output(0, context->input(0));
+      return;
+    }
+
     Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output("output", input_tensor->shape(),
@@ -175,6 +192,13 @@ class AsStringOp : public OpKernel {
         const auto& input_flat = input_tensor->flat<bool>();
         for (int i = 0; i < input_flat.size(); ++i) {
           output_flat(i) = (input_flat(i)) ? "true" : "false";
+        }
+      } break;
+      case (DT_STRING): {
+        const auto& input_flat = input_tensor->flat<tstring>();
+        for (int i = 0; i < input_flat.size(); ++i) {
+          output_flat(i) = strings::Printf(format_.c_str(),
+                                           StringPiece(input_flat(i)).data());
         }
       } break;
       case (DT_VARIANT): {

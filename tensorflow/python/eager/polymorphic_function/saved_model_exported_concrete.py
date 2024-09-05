@@ -21,6 +21,7 @@ This functionality should ultimately be moved into a first-class core API.
 """
 
 import gc
+from tensorflow.python.eager.polymorphic_function import function_type_utils
 from tensorflow.python.trackable import base as trackable
 
 
@@ -35,8 +36,12 @@ class ExportedConcreteFunction(trackable.Trackable):
     self.tensor_map = tensor_map
 
   def __call__(self, *args, **kwargs):
-    _, _, filtered_flat_args = (
-        self.function._function_spec.canonicalize_function_inputs(args, kwargs))
+    bound_arguments = function_type_utils.canonicalize_function_inputs(
+        args, kwargs, self.function._function_type
+    )
+    filtered_flat_args = self.function._function_type.unpack_inputs(
+        bound_arguments
+    )
     export_captures = _map_captures_to_created_tensors(
         self.function.graph.captures, self.tensor_map, self.function)
     return self.function._call_flat(filtered_flat_args, export_captures)

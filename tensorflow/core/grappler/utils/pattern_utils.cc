@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/pattern_utils.h"
 
 #include <algorithm>
+#include <memory>
 
 #include "absl/container/flat_hash_set.h"
 
@@ -57,9 +58,15 @@ template <>
 bool SubGraphMatcher<MatchingDirection::kFollowInputs>::DoesOpTypePatternMatch(
     const OpTypePattern& pattern, MutableNodeView* node_view,
     NodeViewMatch* match) {
-  // Currently no control inputs and outputs are allowed.
-  if (node_view->NumControllingFanins() > 0 ||
-      node_view->NumControlledFanouts() > 0)
+  // Currently the following cases are NOT allowed:
+  //  - If the node has control inputs and the node will NOT remain after the
+  //  fusion.
+  //  - If the node has control outputs and the node will be removed after the
+  //  fusion.
+  if ((node_view->NumControllingFanins() > 0 &&
+       pattern.node_status != NodeStatus::kRemain) ||
+      (node_view->NumControlledFanouts() > 0 &&
+       pattern.node_status == NodeStatus::kRemove))
     return false;
 
   bool op_type_matched = false;
@@ -171,7 +178,7 @@ bool SubGraphMatcher<MatchingDirection::kFollowInputs>::GetMatchedNodes(
     MutableNodeView* node_view, std::map<string, int>* matched_nodes_map,
     std::set<int>* remove_node_indices) {
   bool found_match = false;
-  match_.reset(new NodeViewMatch());
+  match_ = std::make_unique<NodeViewMatch>();
   if (DoesOpTypePatternMatch(pattern, node_view, match_.get())) {
     if (IsSafeNodesToRemove(nodes_to_preserve)) {
       found_match = true;

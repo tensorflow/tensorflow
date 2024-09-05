@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_PORTABLE_TENSOR_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_PORTABLE_TENSOR_H_
 
+#include <cstddef>
 #include <vector>
 
 #include "tensorflow/lite/core/c/common.h"
@@ -22,10 +23,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
-
-inline RuntimeShape GetTensorShape(std::vector<int32_t> data) {
-  return RuntimeShape(data.size(), data.data());
-}
 
 // A list of tensors in a format that can be used by kernels like split and
 // concatenation.
@@ -54,6 +51,26 @@ class VectorOfTensors {
       all_shape_ptr_.push_back(&all_shape_[i]);
     }
   }
+
+  explicit VectorOfTensors(const std::vector<TfLiteTensor*>& tensors) {
+    int num_tensors = tensors.size();
+
+    all_data_.reserve(num_tensors);
+    all_shape_.reserve(num_tensors);
+    all_shape_ptr_.reserve(num_tensors);
+
+    for (auto* t : tensors) {
+      all_data_.push_back(GetTensorData<T>(t));
+      all_shape_.push_back(GetTensorShape(t));
+    }
+
+    // Taking the pointer from inside a std::vector is only OK if the vector is
+    // never modified, so we populate all_shape in the previous loop and then we
+    // are free to grab iterators here.
+    for (int i = 0; i < num_tensors; ++i) {
+      all_shape_ptr_.push_back(&all_shape_[i]);
+    }
+  }
   // Return a pointer to the data pointers of all tensors in the list. For
   // example:
   //   float* const* f = v.data();
@@ -65,6 +82,8 @@ class VectorOfTensors {
   //   const RuntimeShape* const* d = v.dims();
   //   dims[1] are the dimensions of the second tensor in the list.
   const RuntimeShape* const* shapes() const { return all_shape_ptr_.data(); }
+
+  size_t size() const { return all_data_.size(); }
 
  private:
   std::vector<T*> all_data_;

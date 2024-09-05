@@ -22,9 +22,9 @@ limitations under the License.
 #include <vector>
 
 #if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/service/gpu/gpu_hlo_cost_analysis.h"
+#include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #endif
-#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/profiler/utils/hlo_proto_to_module.h"
@@ -46,7 +46,8 @@ int64_t ShapeSize(const xla::Shape& shape) {
 HloInstructionWrapper::HloInstructionWrapper(
     const xla::HloInstruction* instr, const xla::HloCostAnalysis* cost_analysis)
     : instr_(instr),
-      op_full_name_(TraceMeOp(Metadata().op_name(), Metadata().op_type())) {
+      op_full_name_(tsl::profiler::TraceMeOp(Metadata().op_name(),
+                                             Metadata().op_type())) {
   if (cost_analysis != nullptr) {
     flops_ = cost_analysis->flop_count(*instr_);
     bytes_accessed_ = cost_analysis->bytes_accessed(*instr_);

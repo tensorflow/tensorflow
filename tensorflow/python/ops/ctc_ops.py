@@ -17,7 +17,7 @@
 import uuid
 
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function as function_eager
+from tensorflow.python.eager import def_function
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device
@@ -31,6 +31,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_ctc_ops
 from tensorflow.python.ops import inplace_ops
 from tensorflow.python.ops import linalg_ops
@@ -63,8 +64,8 @@ def _generate_defun_backend(unique_api_name, preferred_device, func):
       _DEFUN_API_NAME_ATTRIBUTE: unique_api_name,
       _DEFUN_DEVICE_ATTRIBUTE: preferred_device,
   }
-  return function_eager.defun_with_attributes(
-      func=func, attributes=function_attributes, autograph=False)
+  return def_function.function(
+      func=func, experimental_attributes=function_attributes, autograph=False)
 
 # pylint: disable=protected-access, invalid-name
 @tf_export(v1=["nn.ctc_loss"])
@@ -1494,7 +1495,7 @@ def _scan(fn, elems, initial, reverse=False, inclusive=False, final_only=False):
     else:
       update_i = i + 1 if inclusive and not reverse else i
       new_out = [
-          inplace_ops.alias_inplace_update(x, update_i, y)
+          gen_array_ops.tensor_scatter_update(x, [[update_i]], [y])
           for x, y in zip(out, flat_accum)
       ]
     i = i - 1 if reverse else i + 1
@@ -1511,8 +1512,9 @@ def _scan(fn, elems, initial, reverse=False, inclusive=False, final_only=False):
           [[num_outputs], array_ops.shape(initial_accum)], 0)
       out = inplace_ops.empty(out_shape, dtype=initial_accum.dtype, init=True)
       if inclusive:
-        out = inplace_ops.alias_inplace_add(out, init_i + (1 if reverse else 0),
-                                            initial_accum)
+        out = gen_array_ops.tensor_scatter_add(
+            out, [[init_i + (1 if reverse else 0)]], [initial_accum]
+        )
       outputs.append(out)
   loop_in = [init_i, num_elems] + outputs + flat_initial
   hostmem = [

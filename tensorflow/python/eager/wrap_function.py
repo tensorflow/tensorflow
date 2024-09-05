@@ -17,18 +17,20 @@
 
 import weakref
 
+from tensorflow.core.function.polymorphism import function_type as function_type_lib
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.eager import lift_to_graph
+from tensorflow.python.eager.polymorphic_function import atomic_function
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
@@ -222,12 +224,20 @@ class WrappedFunction(function.ConcreteFunction):
     _lift_unlifted_variables(fn_graph, variable_holder)
     # We call __init__ after lifting variables so that the function's signature
     # properly reflects the new captured inputs.
-    for f in fn_graph.as_graph_def().library.function:
+    for f in fn_graph.as_graph_def(use_pybind11_proto=True).library.function:
       context.context().add_function_def(f)
     self._signature = signature
-    super(WrappedFunction, self).__init__(fn_graph, attrs=attrs)
+    function_type = function_type_lib.from_structured_signature(
+        fn_graph.structured_input_signature,
+        fn_graph.structured_outputs,
+        fn_graph.function_captures.capture_types,
+    )
+    atomic_fn = atomic_function.from_func_graph(
+        function._inference_name(fn_graph.name), fn_graph, attrs, function_type
+    )
+    super().__init__(atomic_fn)
 
-  def _call_impl(self, args, kwargs, cancellation_manager=None):
+  def _call_impl(self, args, kwargs):
     if self._arg_keywords is None:
       if kwargs:
         raise NotImplementedError(
@@ -236,12 +246,11 @@ class WrappedFunction(function.ConcreteFunction):
       if self._signature is not None:
         args = list(args)
         for i, arg in enumerate(args):
-          if isinstance(self._signature[i], tensor_spec.DenseSpec):
+          if isinstance(self._signature[i], tensor_lib.DenseSpec):
             args[i] = ops.convert_to_tensor(arg, self._signature[i].dtype)
       return self._call_flat(args, self.captured_inputs)
     else:
-      return super(WrappedFunction, self)._call_impl(
-          args, kwargs, cancellation_manager)
+      return super()._call_impl(args, kwargs)
 
   def prune(self, feeds, fetches, name=None, input_signature=None):
     """Extract a subgraph of this function's underlying graph.
@@ -272,9 +281,11 @@ class WrappedFunction(function.ConcreteFunction):
     flat_feeds = nest.flatten(feeds, expand_composites=True)
     flat_feeds = [self.graph.as_graph_element(t) for t in flat_feeds]
     for f in flat_feeds:
-      if not isinstance(f, ops.Tensor):
-        raise ValueError("All memebers of argument `feeds` must be tensors. "
-                         f"Got {f} with type {type(f)}.")
+      if not isinstance(f, tensor_lib.Tensor):
+        raise ValueError(
+            "All members of argument `feeds` must be tensors. "
+            f"Got {f} with type {type(f)}."
+        )
 
     # Ignoring all feeds that are captures allows prune to be called
     # using wrapped_func.inputs even when it uses variables
@@ -310,7 +321,8 @@ class WrappedFunction(function.ConcreteFunction):
         else:
           operation_fetches.append(decoded)
         return decoded
-      elif isinstance(fetch, (ops.Tensor, composite_tensor.CompositeTensor)):
+      elif isinstance(
+          fetch, (tensor_lib.Tensor, composite_tensor.CompositeTensor)):
         tensor_fetches.append(fetch)
         return fetch
       else:
@@ -368,6 +380,13 @@ class WrappedFunction(function.ConcreteFunction):
     # reconstituted into their original composite form.
     pruned_graph.structured_outputs = nest.map_structure(
         _structured_output_mapping, fetches, expand_composites=True)
+
+    if input_signature:
+      # canonicalize the signature before setting
+      args, kwargs = input_signature
+      args = () if args is None else args
+      input_signature = (args, kwargs)
+
     pruned_graph.structured_input_signature = input_signature
     pruned_fn = WrappedFunction(
         pruned_graph, variable_holder=self._variable_holder)

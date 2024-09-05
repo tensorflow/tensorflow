@@ -321,7 +321,8 @@ class RandomGammaOp : public OpKernel {
  private:
   GuardedPhiloxRandom generator_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(RandomGammaOp);
+  RandomGammaOp(const RandomGammaOp&) = delete;
+  void operator=(const RandomGammaOp&) = delete;
 };
 
 }  // namespace

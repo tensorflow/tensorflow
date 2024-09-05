@@ -14,36 +14,45 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <iterator>
+#include <map>
+#include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "absl/types/optional.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_remaining_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/dtensor/cc/constants.h"
+#include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
+#include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dtensor_attributes.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/spmd_expander_common.h"
@@ -53,6 +62,7 @@ namespace dtensor {
 
 namespace {
 #define GEN_PASS_DEF_DTENSORMERGECLUSTERS
+#define GEN_PASS_DEF_DTENSORDECOMPOSECONTROLFLOW
 #include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 constexpr char kMissingMeshErrorMsg[] =
@@ -222,8 +232,8 @@ mlir::LogicalResult MergeClusterMetadata(
 
 // Removes tf_device.Cluster ops if tf_device.Cluster is nested inside another
 // cluster and it has same mesh specification as parent cluster.
-mlir::LogicalResult InlineNestedDeviceClusters(mlir::ModuleOp module) {
-  auto clusters = FindAllDeviceClusters(module);
+mlir::LogicalResult InlineNestedDeviceClusters(mlir::Operation* op) {
+  auto clusters = FindAllDeviceClusters(op);
   for (mlir::tf_device::ClusterOp cluster : clusters) {
     auto parent_cluster =
         cluster->getParentOfType<mlir::tf_device::ClusterOp>();
@@ -272,16 +282,15 @@ void CloneEmptyIfWithPredicate(mlir::TF::IfRegionOp if_region, const Mesh& mesh,
   // DTensorSend op sends the predicate to `mesh` cluster with replicated
   // layout.
   mlir::TensorType predicate_tensor_type =
-      if_region.getCond().getType().cast<mlir::TensorType>();
+      mlir::cast<mlir::TensorType>(if_region.getCond().getType());
   const std::string send_recv_key =
       absl::StrCat(kSendRecvKeyPrefix, *num_send_recvs);
   *num_send_recvs += 1;
 
-  const Layout target_layout = Layout::ReplicatedOnMesh(mesh, 0);
   builder.create<mlir::TF::DTensorSend>(
       if_region.getLoc(), if_region.getCond(),
       builder.getStringAttr(send_recv_key),
-      mlir::dtensor::LayoutAttr::get(context, target_layout));
+      mlir::dtensor::MeshAttr::get(context, mesh));
 
   // Create new cluster op that contains cloned if operation.
   auto new_cluster = builder.create<mlir::tf_device::ClusterOp>(
@@ -297,7 +306,7 @@ void CloneEmptyIfWithPredicate(mlir::TF::IfRegionOp if_region, const Mesh& mesh,
       if_region.getLoc(), predicate_tensor_type,
       builder.getStringAttr(send_recv_key),
       mlir::TF::ShapeAttr::get(context, predicate_tensor_type),
-      mlir::dtensor::LayoutAttr::get(context, target_layout));
+      mlir::dtensor::MeshAttr::get(context, mesh));
 
   // Clone tf.IfRegion op inside newly created cluster and make sure
   // that the predicate tensor is from DTensorRecv op created above.
@@ -336,7 +345,7 @@ mlir::LogicalResult VerifyClusterInputOutput(
   mlir::LogicalResult result = mlir::success();
   mlir::visitUsedValuesDefinedAbove(
       cluster.getBody(), cluster.getBody(), [&](mlir::OpOperand* input) {
-        if (!input->get().isa<mlir::BlockArgument>()) {
+        if (!mlir::isa<mlir::BlockArgument>(input->get())) {
           result = cluster.emitOpError(
               "found nested tf_device.Cluster op with inputs. Nested cluster "
               "must use send/recv instead.");
@@ -358,6 +367,9 @@ bool IsInsideIfThenBranch(mlir::TF::IfRegionOp if_op,
 mlir::LogicalResult DecomposeIf(mlir::TF::IfRegionOp if_op,
                                 mlir::MLIRContext* context,
                                 int* num_control_flow_send_recvs) {
+  if (mlir::failed(InlineNestedDeviceClusters(if_op))) {
+    return mlir::failure();
+  }
   auto nested_clusters = FindAllDeviceClusters(if_op);
   if (nested_clusters.empty()) return mlir::success();
 
@@ -464,6 +476,10 @@ mlir::LogicalResult DecomposeControlflow(mlir::MLIRContext* context,
   for (mlir::tf_device::ClusterOp cluster : clusters) {
     mlir::WalkResult walk_result = cluster->walk([&](mlir::Operation* op) {
       if (auto if_op = mlir::dyn_cast<mlir::TF::IfRegionOp>(op)) {
+        // Remove the device attr to follow the 'default' placement set during
+        // replicated execution. If there is a device attr, TensorFlow will
+        // run the body on that device instead.
+        op->removeAttr("device");
         if (mlir::failed(
                 DecomposeIf(if_op, context, num_control_flow_send_recvs)))
           return mlir::WalkResult::interrupt();
@@ -481,6 +497,8 @@ mlir::LogicalResult DecomposeControlflow(mlir::MLIRContext* context,
 mlir::LogicalResult MergeClusters(mlir::ModuleOp module) {
   mlir::func::FuncOp main_func =
       module.lookupSymbol<mlir::func::FuncOp>("main");
+
+  if (!main_func) return mlir::success();
 
   // Create global cluster for each mesh in entire computation.
   auto clusters = FindAllDeviceClusters(main_func);
@@ -598,11 +616,6 @@ struct DTensorMergeClusters
     if (mlir::failed(InlineNestedDeviceClusters(module)))
       return signalPassFailure();
 
-    int num_controlflow_send_recv = 0;
-    if (mlir::failed(
-            DecomposeControlflow(&context, &num_controlflow_send_recv, module)))
-      return signalPassFailure();
-
     if (mlir::failed(MergeClusters(module))) return signalPassFailure();
 
     llvm::SmallVector<mlir::tf_device::ClusterOp, 4> clusters;
@@ -616,6 +629,24 @@ struct DTensorMergeClusters
   };
 };
 
+struct DTensorDecomposeControlflow
+    : public impl::DTensorDecomposeControlflowBase<
+          DTensorDecomposeControlflow> {
+  void getDependentDialects(mlir::DialectRegistry& registry) const override {
+    registry.insert<mlir::dtensor::DTensorDialect>();
+  }
+
+  void runOnOperation() override {
+    mlir::MLIRContext& context = getContext();
+    mlir::OpBuilder op_builder(&context);
+    auto module = getOperation();
+
+    int num = 0;
+    if (mlir::failed(DecomposeControlflow(&context, &num, module)))
+      return signalPassFailure();
+  }
+};
+
 }  // namespace
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
@@ -623,5 +654,9 @@ CreateDTensorMergeClustersPass() {
   return std::make_unique<DTensorMergeClusters>();
 }
 
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateDTensorDecomposeControlflowPass() {
+  return std::make_unique<DTensorDecomposeControlflow>();
+}
 }  // namespace dtensor
 }  // namespace tensorflow

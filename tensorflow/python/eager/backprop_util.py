@@ -19,6 +19,7 @@ from tensorflow.core.framework import types_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import handle_data_util
@@ -67,7 +68,7 @@ def IsTrainable(tensor_or_dtype):
 
 def FlattenNestedIndexedSlices(grad):
   assert isinstance(grad, indexed_slices.IndexedSlices)
-  if isinstance(grad.values, ops.Tensor):
+  if isinstance(grad.values, tensor_lib.Tensor):
     return grad
   else:
     assert isinstance(grad.values, indexed_slices.IndexedSlices)
@@ -85,7 +86,7 @@ def AggregateIndexedSlicesGradients(grads):
   grads = [g for g in grads if g is not None]
   # If any gradient is a `Tensor`, sum them up and return a dense tensor
   # object.
-  if any(isinstance(g, ops.Tensor) for g in grads):
+  if any(isinstance(g, tensor_lib.Tensor) for g in grads):
     return math_ops.add_n(grads)
 
   # The following `_as_indexed_slices_list` casts ids of IndexedSlices into

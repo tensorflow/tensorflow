@@ -11,11 +11,11 @@ func.func @lift_float_matmul(%arg0: tensor<1x12x12x512xf32>) -> (tensor<*xf32>, 
   } : (tensor<1x12x12x512xf32>, tensor<1x12x12x512xf32>) -> tensor<*xf32>
   func.return %out_1, %out_2 : tensor<*xf32>, tensor<*xf32>
 
-// CHECK-DAG: %[[CONST:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<512x512xf32>} : () -> tensor<512x512xf32>
+// CHECK-DAG: %[[CONST:.*]] = "tf.Const"() <{value = dense<0.000000e+00> : tensor<512x512xf32>}> : () -> tensor<512x512xf32>
 // CHECK: %[[PARTITIONEDCALL:.*]] = "tf.PartitionedCall"(%arg0, %[[CONST]])
-// CHECK-NOT: {_tfl_quant_trait = "fully_quantizable",
-// CHECK-SAME: {config = "",
-// CHECK-SAME: f = @composite_matmul_fn_1}
+// CHECK-SAME: <{config = "",
+// CHECK-SAME: f = @composite_matmul_fn_1}>
+// CHECK-NOT: {_tfl_quant_trait = "fully_quantizable"
 // CHECK: %[[UNQUANTIZED_OUTPUT:.*]] = "tf.MatMul"(%arg0, %arg0)
 // CHECK: }
 
@@ -33,9 +33,9 @@ func.func @not_lift_float_conv(%arg0: tensor<1x3x4x512xf32>) -> (tensor<*xf32>) 
   } : (tensor<1x3x4x512xf32>, tensor<2x3x512x512xf32>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
 
-// CHECK-DAG: %[[CONST:.*]] = "tf.Const"() {value = dense<3.000000e+00> : tensor<2x3x512x512xf32>} : () -> tensor<2x3x512x512xf32>
+// CHECK-DAG: %[[CONST:.*]] = "tf.Const"() <{value = dense<3.000000e+00> : tensor<2x3x512x512xf32>}> : () -> tensor<2x3x512x512xf32>
 // CHECK: %[[PARTITIONEDCALL:.*]] = "tf.PartitionedCall"(%arg0, %[[CONST]])
-// CHECK-NOT: {_tfl_quant_trait = "fully_quantizable",
-// CHECK-SAME: {config = "",
-// CHECK-SAME: f = @composite_conv2d_fn_1}
+// CHECK-SAME: <{config = "",
+// CHECK-SAME: f = @composite_conv2d_fn_1}>
+// CHECK-NOT: {_tfl_quant_trait = "fully_quantizable"
 }

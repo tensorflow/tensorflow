@@ -78,7 +78,7 @@ Status FillServerDef(const string& cluster_spec, const string& job_name,
                                    " is invalid (job \"", options->job_name(),
                                    "\" contains ", my_num_tasks, " tasks");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -116,7 +116,7 @@ int main(int argc, char* argv[]) {
   tensorflow::Status s = tensorflow::FillServerDef(cluster_spec, job_name,
                                                    task_index, &server_def);
   if (!s.ok()) {
-    std::cerr << "ERROR: " << s.error_message() << std::endl;
+    std::cerr << "ERROR: " << s.message() << std::endl;
     Usage(argv[0]);
     return -1;
   }

@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for make_template used with MirroredStrategy."""
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -36,7 +36,7 @@ class TemplateMirroredStrategyTest(test.TestCase):
       def fn():
         var1 = variable_scope.get_variable(
             "var1", shape=[], initializer=init_ops.constant_initializer(21.))
-        ds_context.get_replica_context().merge_call(lambda _: ())
+        distribute_lib.get_replica_context().merge_call(lambda _: ())
         var2 = variable_scope.get_variable(
             "var2", shape=[], initializer=init_ops.constant_initializer(2.))
         return var1 * var2

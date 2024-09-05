@@ -14,14 +14,9 @@
 # ==============================================================================
 """Functional operations for RaggedTensors."""
 
+from tensorflow.python.ops import map_fn as map_fn_lib
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import nest
-from tensorflow.python.util.lazy_loader import LazyLoader
-
-
-map_fn_lib = LazyLoader(
-    "map_fn_lib", globals(),
-    "tensorflow.python.ops.map_fn")
 
 
 def map_fn(fn,

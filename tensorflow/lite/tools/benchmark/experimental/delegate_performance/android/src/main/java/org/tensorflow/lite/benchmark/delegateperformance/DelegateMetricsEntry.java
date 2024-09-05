@@ -54,16 +54,23 @@ final class DelegateMetricsEntry {
   //    - FAIL: All regression thresholds are breached.
   private final BenchmarkResultType result;
   private final boolean isTestTarget;
+  /**
+   * The value is {@code true} when the results are generated from comparing two delegates of the
+   * same type. Otherwise, the value is {@code false}.
+   */
+  private final boolean isStrictCriteria;
 
   private DelegateMetricsEntry(
       String delegateIdentifier,
       Map<String, MetricsEntry> metrics,
       BenchmarkResultType result,
-      boolean isTestTarget) {
+      boolean isTestTarget,
+      boolean isStrictCriteria) {
     this.delegateIdentifier = delegateIdentifier;
     this.metrics = metrics;
     this.result = result;
     this.isTestTarget = isTestTarget;
+    this.isStrictCriteria = isStrictCriteria;
   }
 
   /** Returns an identifer to the delegate involved in the computation. */
@@ -85,6 +92,14 @@ final class DelegateMetricsEntry {
     return isTestTarget;
   }
 
+  /**
+   * Returns {@code true} when the results are generated from comparing two delegates of the same
+   * type. Otherwise, returns {@code false}.
+   */
+  boolean isStrictCriteria() {
+    return isStrictCriteria;
+  }
+
   JSONObject toJsonObject() throws JSONException {
     JSONObject jsonObject = new JSONObject();
     jsonObject.put("delegate_identifier", delegateIdentifier);
@@ -95,6 +110,7 @@ final class DelegateMetricsEntry {
     }
     jsonObject.put("metrics", metricsObject);
     jsonObject.put("is_test_target", isTestTarget);
+    jsonObject.put("is_strict_criteria", isStrictCriteria);
     return jsonObject;
   }
 
@@ -102,7 +118,9 @@ final class DelegateMetricsEntry {
       String delegateIdentifier,
       Map<String, MetricsEntry> metrics,
       BenchmarkResultType result,
-      boolean isTestTarget) {
-    return new DelegateMetricsEntry(delegateIdentifier, metrics, result, isTestTarget);
+      boolean isTestTarget,
+      boolean isStrictCriteria) {
+    return new DelegateMetricsEntry(
+        delegateIdentifier, metrics, result, isTestTarget, isStrictCriteria);
   }
 }

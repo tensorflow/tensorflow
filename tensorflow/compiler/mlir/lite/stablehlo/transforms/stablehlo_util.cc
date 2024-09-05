@@ -24,9 +24,15 @@ limitations under the License.
 namespace mlir {
 namespace odml {
 
-std::vector<std::string> GetAcceptedDialects() {
+std::vector<std::string> GetAcceptedStableHLODialects() {
   // It returns the default list of accepted dialects.
   std::vector<std::string> accepted_dialects({"stablehlo", "builtin", "func"});
+  return accepted_dialects;
+}
+
+std::vector<std::string> GetAcceptedTFLiteDialects() {
+  // It returns the default list of accepted dialects.
+  std::vector<std::string> accepted_dialects({"tfl", "builtin", "func"});
   return accepted_dialects;
 }
 

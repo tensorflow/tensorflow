@@ -50,7 +50,7 @@ Status ReaderBase::ResetLocked() {
   work_finished_ = 0;
   num_records_produced_ = 0;
   work_.clear();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ReaderBase::SerializeState(tstring* state) {
@@ -179,9 +179,9 @@ void ReaderBase::Read(QueueInterface* queue, tstring* key, tstring* value,
           " must set *at_end=true, *produced=true, or return an error.");
     }
     if (!status.ok() && produced) {
-      status = errors::Internal("ReadLocked() for ", name(),
-                                " set *produced=true *and* returned an error: ",
-                                status.error_message());
+      status = errors::Internal(
+          "ReadLocked() for ", name(),
+          " set *produced=true *and* returned an error: ", status.message());
     }
     if (status.ok() && at_end) {
       status = OnWorkFinishedLocked();
@@ -261,7 +261,7 @@ Status ReaderBase::RestoreBaseState(const ReaderBaseState& state) {
         "Inconsistent work started vs. finished when restoring in ", name(),
         ": ", debug_string);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

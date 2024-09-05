@@ -14,13 +14,14 @@ limitations under the License.
 ==============================================================================*/
 // Must be included first
 // clang-format off
-#include "tensorflow/tsl/python/lib/core/numpy.h" //NOLINT
+#include "xla/tsl/python/lib/core/numpy.h" //NOLINT
 // clang-format on
 
 #include "tensorflow/python/lib/core/py_seq_tensor.h"
 
 #include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
+#include "tensorflow/c/safe_ptr.h"
 #include "tensorflow/c/tensor_interface.h"
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -34,7 +35,7 @@ limitations under the License.
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
 #include "tensorflow/python/lib/core/py_util.h"
-#include "tensorflow/python/lib/core/safe_ptr.h"
+#include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 namespace tensorflow {
 namespace {
 
@@ -75,7 +76,7 @@ bool IsPyFloat(PyObject* obj) {
 
 struct ConverterState {
   // The inferred tensor shape.
-  gtl::InlinedVector<int64_t, 4> inferred_shape;
+  absl::InlinedVector<int64_t, 4UL> inferred_shape;
 
   // The inferred tensor data type.
   DataType inferred_dtype;
@@ -695,7 +696,7 @@ TFE_TensorHandle* NumpyToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj) {
     PyErr_SetString(PyExc_ValueError,
                     tensorflow::strings::StrCat(
                         "Failed to convert a NumPy array to a Tensor (",
-                        status.error_message(), ").")
+                        status.message(), ").")
                         .c_str());
     return nullptr;
   }
@@ -715,16 +716,22 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
   // These objects are efficiently handled by Numpy. We transform them into
   // Numpy arrays and handle them in the Numpy case below. Note that Tensors
   // implement the __array__ function, and will be handled in this shortcut.
-  Safe_PyObjectPtr array =
-      make_safe(PyArray_FromArrayAttr(obj, nullptr, nullptr));
-  if (array == nullptr) {
-    return nullptr;
+  // We used to call PyArray_FromArrayAttr here, but NumPy 2.0 changed its
+  // semantics such that it errors if a copy of the array is required.
+  // (Ideally no copy would be needed here, but that would be a larger change.)
+  Safe_PyObjectPtr array;
+  if (PyObject_HasAttrString(obj, "__array__")) {
+    array = make_safe(PyObject_CallMethod(obj, "__array__", nullptr));
+    if (array == nullptr) {
+      return nullptr;
+    }
+    if (!PyArray_Check(array.get())) {
+      PyErr_SetString(PyExc_ValueError,
+                      "Value returned by __array__ is not a NumPy array");
+      return nullptr;
+    }
   }
-  if (array.get() == Py_NotImplemented) {
-    // The Py_NotImplemented returned from PyArray_FromArrayAttr is not
-    // Py_INCREF'ed, so we don't want the Safe_PyObjectPtr to Py_DECREF it.
-    array.release();
-
+  if (!array) {
     // Try __array_interface__ objects (such as PIL Image).
     array = make_safe(PyArray_FromInterface(obj));
     if (array == nullptr) {
@@ -779,7 +786,7 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
   ConverterState state;
   Status status = InferShapeAndType(obj, &state);
   if (!status.ok()) {
-    PyErr_SetString(PyExc_ValueError, status.error_message().c_str());
+    PyErr_SetString(PyExc_ValueError, tsl::NullTerminatedMessage(status));
     return nullptr;
   }
   DataType requested_dtype = DT_INVALID;
@@ -908,7 +915,7 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
   }
 
   if (!status.ok()) {
-    PyErr_SetString(PyExc_ValueError, status.error_message().c_str());
+    PyErr_SetString(PyExc_ValueError, tsl::NullTerminatedMessage(status));
     return nullptr;
   }
 

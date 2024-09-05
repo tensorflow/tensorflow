@@ -13,11 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <utility>
+#include <vector>
+
 #include "absl/numeric/bits.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/arithmetic.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "xla/client/lib/arithmetic.h"
+#include "xla/client/xla_builder.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 
 namespace tensorflow {

@@ -17,9 +17,9 @@
 set -o errexit
 set -o nounset
 
-readonly benchmark_tool=third_party/tensorflow/lite/tools/benchmark/benchmark_model
-readonly external_delegate=third_party/tensorflow/lite/delegates/utils/dummy_delegate/dummy_external_delegate.so
-readonly model=third_party/tensorflow/lite/delegates/coreml/internal_test/testdata/mobilenet_v2_1.0_224_quantized_weights_fp16.tflite
+readonly benchmark_tool=tensorflow/lite/tools/benchmark/benchmark_model
+readonly external_delegate=tensorflow/lite/delegates/utils/dummy_delegate/dummy_external_delegate.so
+readonly model=external/tflite_mobilenet_float/mobilenet_v1_1.0_224.tflite
 readonly benchmark_log=/tmp/benchmark.out
 
 die() { echo "$@" >&2; exit 1; }

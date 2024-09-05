@@ -34,25 +34,35 @@ DATA_FORMATS = (
     ("_data_format_NCHW", "NCHW"),
 )
 
+CONV_CONFIGS = (
+    ("_Conv2D_data_format_NHWC", "NHWC", "Conv2D"),
+    ("_Conv2D_data_format_NCHW", "NCHW", "Conv2D"),
+    ("_Conv_data_format_NHWC", "NHWC", "Conv"),
+    ("_Conv_data_format_NCHW", "NCHW", "Conv"),
+)
+
 
 class Conv2DTest(xla_test.XLATestCase, parameterized.TestCase):
 
-  def _VerifyValues(self,
-                    input_sizes=None,
-                    filter_sizes=None,
-                    strides=None,
-                    dilations=None,
-                    padding=None,
-                    data_format_src="NHWC",
-                    data_format_dst="NHWC",
-                    expected=None):
+  def _VerifyValues(
+      self,
+      input_sizes=None,
+      filter_sizes=None,
+      strides=None,
+      dilations=None,
+      padding=None,
+      data_format_src="NHWC",
+      data_format_dst="NHWC",
+      expected=None,
+      op_name="Conv2D",
+  ):
     """Tests that tf.nn.conv2d produces the expected value.
 
     Args:
-      input_sizes: Input tensor dimensions in
-        [batch, input_rows, input_cols, input_depth].
-      filter_sizes: Filter tensor dimensions in
-        [kernel_rows, kernel_cols, input_depth, output_depth].
+      input_sizes: Input tensor dimensions in [batch, input_rows, input_cols,
+        input_depth].
+      filter_sizes: Filter tensor dimensions in [kernel_rows, kernel_cols,
+        input_depth, output_depth].
       strides: Strides.
       dilations: RHS dilations.
       padding: Padding type.
@@ -60,6 +70,7 @@ class Conv2DTest(xla_test.XLATestCase, parameterized.TestCase):
       data_format_dst: Data format verification will run and input is converted
         to.
       expected: Expected output.
+      op_name: Name of operation to test (Conv/Conv2D)
     """
 
     total_size_1 = np.prod(input_sizes)
@@ -87,19 +98,35 @@ class Conv2DTest(xla_test.XLATestCase, parameterized.TestCase):
       t1 = array_ops.placeholder(dtypes.float32, shape=input_sizes)
       t2 = array_ops.placeholder(dtypes.float32, shape=filter_sizes)
       with self.test_scope():
-        out = nn_ops.conv2d(
-            t1,
-            t2,
-            strides=strides,
-            padding=padding,
-            data_format=data_format_dst,
-            dilations=dilations)
+        if op_name == "Conv":
+          conv_format = (
+              "CHANNELS_LAST" if data_format_dst == "NHWC" else "CHANNELS_FIRST"
+          )
+          out = gen_nn_ops.conv(
+              t1,
+              t2,
+              strides=strides,
+              padding=padding,
+              data_format=conv_format,
+              dilations=dilations,
+          )
+        elif op_name == "Conv2D":
+          out = nn_ops.conv2d(
+              t1,
+              t2,
+              strides=strides,
+              padding=padding,
+              data_format=data_format_dst,
+              dilations=dilations,
+          )
+        else:
+          raise ValueError("Invalid op name: %s" % op_name)
 
       value = sess.run(out, {t1: x1, t2: x2})
       self.assertAllClose(expected, value, 1e-3)
 
-  @parameterized.named_parameters(*DATA_FORMATS)
-  def testConv2D1x1Filter(self, data_format):
+  @parameterized.named_parameters(*CONV_CONFIGS)
+  def testConv2D1x1Filter(self, data_format, op_name):
     expected_output = np.reshape([
         30.0, 36.0, 42.0, 66.0, 81.0, 96.0, 102.0, 126.0, 150.0, 138.0, 171.0,
         204.0, 174.0, 216.0, 258.0, 210.0, 261.0, 312.0
@@ -111,10 +138,12 @@ class Conv2DTest(xla_test.XLATestCase, parameterized.TestCase):
         padding="VALID",
         data_format_src="NHWC",
         data_format_dst=data_format,
-        expected=expected_output)
+        expected=expected_output,
+        op_name=op_name,
+    )
 
-  @parameterized.named_parameters(*DATA_FORMATS)
-  def testConv2D2x2Filter(self, data_format):
+  @parameterized.named_parameters(*CONV_CONFIGS)
+  def testConv2D2x2Filter(self, data_format, op_name):
     expected_output = np.reshape(
         [2271.0, 2367.0, 2463.0, 2901.0, 3033.0, 3165.0], [1, 1, 2, 3])
     self._VerifyValues(
@@ -124,10 +153,12 @@ class Conv2DTest(xla_test.XLATestCase, parameterized.TestCase):
         padding="VALID",
         data_format_src="NHWC",
         data_format_dst=data_format,
-        expected=expected_output)
+        expected=expected_output,
+        op_name=op_name,
+    )
 
-  @parameterized.named_parameters(*DATA_FORMATS)
-  def testConv2D2x2Filter2x1Dilation(self, data_format):
+  @parameterized.named_parameters(*CONV_CONFIGS)
+  def testConv2D2x2Filter2x1Dilation(self, data_format, op_name):
     expected_output = np.array([[[[72], [82], [92]], [[112], [122], [132]]]])
     self._VerifyValues(
         input_sizes=[1, 4, 4, 1],
@@ -137,10 +168,12 @@ class Conv2DTest(xla_test.XLATestCase, parameterized.TestCase):
         padding="VALID",
         data_format_src="NHWC",
         data_format_dst=data_format,
-        expected=expected_output)
+        expected=expected_output,
+        op_name=op_name,
+    )
 
-  @parameterized.named_parameters(*DATA_FORMATS)
-  def testConv2D1x2Filter(self, data_format):
+  @parameterized.named_parameters(*CONV_CONFIGS)
+  def testConv2D1x2Filter(self, data_format, op_name):
     expected_output = np.reshape([
         231.0, 252.0, 273.0, 384.0, 423.0, 462.0, 690.0, 765.0, 840.0, 843.0,
         936.0, 1029.0
@@ -152,10 +185,12 @@ class Conv2DTest(xla_test.XLATestCase, parameterized.TestCase):
         padding="VALID",
         data_format_src="NHWC",
         data_format_dst=data_format,
-        expected=expected_output)
+        expected=expected_output,
+        op_name=op_name,
+    )
 
-  @parameterized.named_parameters(*DATA_FORMATS)
-  def testConv2D2x2FilterStride2(self, data_format):
+  @parameterized.named_parameters(*CONV_CONFIGS)
+  def testConv2D2x2FilterStride2(self, data_format, op_name):
     expected_output = np.reshape([2271.0, 2367.0, 2463.0], [1, 1, 1, 3])
     self._VerifyValues(
         input_sizes=[1, 2, 3, 3],
@@ -164,10 +199,12 @@ class Conv2DTest(xla_test.XLATestCase, parameterized.TestCase):
         padding="VALID",
         data_format_src="NHWC",
         data_format_dst=data_format,
-        expected=expected_output)
+        expected=expected_output,
+        op_name=op_name,
+    )
 
-  @parameterized.named_parameters(*DATA_FORMATS)
-  def testConv2D2x2FilterStride2Same(self, data_format):
+  @parameterized.named_parameters(*CONV_CONFIGS)
+  def testConv2D2x2FilterStride2Same(self, data_format, op_name):
     expected_output = np.reshape(
         [2271.0, 2367.0, 2463.0, 1230.0, 1305.0, 1380.0], [1, 1, 2, 3])
     self._VerifyValues(
@@ -177,10 +214,12 @@ class Conv2DTest(xla_test.XLATestCase, parameterized.TestCase):
         padding="SAME",
         data_format_src="NHWC",
         data_format_dst=data_format,
-        expected=expected_output)
+        expected=expected_output,
+        op_name=op_name,
+    )
 
-  @parameterized.named_parameters(*DATA_FORMATS)
-  def testConv2DEmptyDilation(self, data_format):
+  @parameterized.named_parameters(*CONV_CONFIGS)
+  def testConv2DEmptyDilation(self, data_format, op_name):
     self._VerifyValues(
         input_sizes=[0, 2, 3, 3],
         filter_sizes=[1, 1, 3, 3],
@@ -189,10 +228,12 @@ class Conv2DTest(xla_test.XLATestCase, parameterized.TestCase):
         padding="VALID",
         data_format_src="NHWC",
         data_format_dst=data_format,
-        expected=np.zeros([0, 2, 3, 3]))
+        expected=np.zeros([0, 2, 3, 3]),
+        op_name=op_name,
+    )
 
-  @parameterized.named_parameters(*DATA_FORMATS)
-  def testConv2D2x2FilterDilation(self, data_format):
+  @parameterized.named_parameters(*CONV_CONFIGS)
+  def testConv2D2x2FilterDilation(self, data_format, op_name):
     self._VerifyValues(
         input_sizes=[1, 2, 3, 3],
         filter_sizes=[2, 2, 3, 3],
@@ -201,10 +242,12 @@ class Conv2DTest(xla_test.XLATestCase, parameterized.TestCase):
         padding="VALID",
         data_format_src="NHWC",
         data_format_dst=data_format,
-        expected=np.reshape([2667, 2781, 2895], [1, 1, 1, 3]))
+        expected=np.reshape([2667, 2781, 2895], [1, 1, 1, 3]),
+        op_name=op_name,
+    )
 
-  @parameterized.named_parameters(*DATA_FORMATS)
-  def testConv2D1x2FilterDilation(self, data_format):
+  @parameterized.named_parameters(*CONV_CONFIGS)
+  def testConv2D1x2FilterDilation(self, data_format, op_name):
     self._VerifyValues(
         input_sizes=[1, 2, 3, 3],
         filter_sizes=[1, 2, 3, 3],
@@ -213,11 +256,15 @@ class Conv2DTest(xla_test.XLATestCase, parameterized.TestCase):
         padding="VALID",
         data_format_src="NHWC",
         data_format_dst=data_format,
-        expected=np.array([[[[231, 252, 273], [384, 423, 462]],
-                            [[690, 765, 840], [843, 936, 1029]]]]))
+        expected=np.array([[
+            [[231, 252, 273], [384, 423, 462]],
+            [[690, 765, 840], [843, 936, 1029]],
+        ]]),
+        op_name=op_name,
+    )
 
-  @parameterized.named_parameters(*DATA_FORMATS)
-  def testConv2DKernelSizeMatchesInputSizeDilation(self, data_format):
+  @parameterized.named_parameters(*CONV_CONFIGS)
+  def testConv2DKernelSizeMatchesInputSizeDilation(self, data_format, op_name):
     self._VerifyValues(
         input_sizes=[1, 3, 3, 1],
         filter_sizes=[2, 2, 1, 2],
@@ -226,7 +273,46 @@ class Conv2DTest(xla_test.XLATestCase, parameterized.TestCase):
         padding="VALID",
         data_format_src="NHWC",
         data_format_dst=data_format,
-        expected=np.reshape([108, 128], [1, 1, 1, 2]))
+        expected=np.reshape([108, 128], [1, 1, 1, 2]),
+        op_name=op_name,
+    )
+
+  def testConvExpandedBatch(self):
+    tensor_in_sizes_batch = [10, 2, 3, 3]
+    tensor_in_sizes_expanded_batch = [2, 5, 2, 3, 3]
+    batch_dims = 2
+    filter_in_sizes = [1, 1, 3, 3]
+    filter_in = np.arange(
+        1, np.prod(filter_in_sizes) + 1, dtype=np.float32
+    ).reshape(filter_in_sizes)
+    x1 = np.arange(
+        1, np.prod(tensor_in_sizes_batch) + 1, dtype=np.float32
+    ).reshape(tensor_in_sizes_batch)
+    x2 = x1.reshape(tensor_in_sizes_expanded_batch)
+
+    with self.session() as sess:
+      t1 = array_ops.placeholder(dtypes.bfloat16, shape=tensor_in_sizes_batch)
+      t2 = array_ops.placeholder(
+          dtypes.bfloat16, shape=tensor_in_sizes_expanded_batch
+      )
+      filter_t = array_ops.placeholder(dtypes.bfloat16, shape=filter_in_sizes)
+
+      out1 = gen_nn_ops.conv(
+          t1, filter_t, strides=[1, 1, 1, 1], padding="VALID"
+      )
+      out2 = gen_nn_ops.conv(
+          t2,
+          filter_t,
+          strides=[1, 1, 1, 1],
+          padding="VALID",
+          batch_dims=batch_dims,
+      )
+      value1 = sess.run(out1, {t1: x1, filter_t: filter_in})
+      value2 = sess.run(out2, {t2: x2, filter_t: filter_in})
+
+      self.assertEqual(list(value1.shape), tensor_in_sizes_batch)
+      self.assertEqual(list(value2.shape), tensor_in_sizes_expanded_batch)
+      self.assertAllCloseAccordingToType(value1, value2.reshape(value1.shape))
 
 
 class Conv2DBackpropInputTest(xla_test.XLATestCase, parameterized.TestCase):

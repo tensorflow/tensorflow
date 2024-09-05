@@ -17,11 +17,17 @@ limitations under the License.
 #define TENSORFLOW_DTENSOR_MLIR_COLLECTIVES_H_
 
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 
 namespace tensorflow {
@@ -52,6 +58,11 @@ StatusOr<mlir::Value> EmitRelayout(
     mlir::Value input, const dtensor::Layout& src_layout,
     const dtensor::Layout& tgt_layout,
     llvm::SmallPtrSet<mlir::Operation*, 4>* newly_created_ops = nullptr);
+
+// Emits TransposeOp that permutes the input shape.
+mlir::Operation* EmitTransposeOp(mlir::OpBuilder& builder,
+                                 const mlir::Location& loc, mlir::Value input,
+                                 std::vector<int64_t>& perm_arr);
 
 // Emits collective ops to reduce `input` over `reduced_dims`.
 StatusOr<mlir::Operation*> EmitAllReduce(

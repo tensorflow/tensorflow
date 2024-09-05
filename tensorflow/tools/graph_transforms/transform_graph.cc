@@ -240,7 +240,7 @@ int ParseFlagsAndTransformGraph(int argc, char* argv[], bool init_main) {
       ParseTransformParameters(transforms_string, &transform_params);
   if (!parse_status.ok()) {
     LOG(ERROR) << "Failed to parse --transform argument, error was "
-               << parse_status.error_message();
+               << parse_status.message();
     return -1;
   }
   if (transform_params.empty()) {
@@ -252,7 +252,7 @@ int ParseFlagsAndTransformGraph(int argc, char* argv[], bool init_main) {
   Status load_status = LoadTextOrBinaryGraphFile(in_graph, &graph_def);
   if (!load_status.ok()) {
     LOG(ERROR) << "Loading graph '" << in_graph_string << "' failed with "
-               << load_status.error_message();
+               << load_status.message();
     LOG(ERROR) << usage;
     return -1;
   }
@@ -261,7 +261,7 @@ int ParseFlagsAndTransformGraph(int argc, char* argv[], bool init_main) {
       TransformGraph(inputs, outputs, transform_params, &graph_def);
 
   if (!transform_result.ok()) {
-    LOG(ERROR) << transform_result.error_message();
+    LOG(ERROR) << transform_result.message();
     LOG(ERROR) << usage;
     return -1;
   }
@@ -274,7 +274,7 @@ int ParseFlagsAndTransformGraph(int argc, char* argv[], bool init_main) {
   }
   if (!save_status.ok()) {
     LOG(ERROR) << "Saving graph '" << out_graph_string << "' failed with "
-               << save_status.error_message();
+               << save_status.message();
     return -1;
   }
 
@@ -331,7 +331,7 @@ Status TransformGraph(const std::vector<string>& inputs,
     if (!transform_result.ok()) {
       if (ignore_errors) {
         LOG(ERROR) << transform_name << ": Ignoring error "
-                   << transform_result.error_message();
+                   << transform_result.message();
         transformed_graph_def = *graph_def;
       } else {
         return transform_result;

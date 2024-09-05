@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 #include <mutex>  // NOLINT
 #include <string>
 #include <unordered_map>
@@ -92,7 +93,7 @@ Status MatchSignatureHelper(const DataTypeSlice expected_inputs,
         " expected: ", DataTypeSliceString(expected_inputs), "->",
         DataTypeSliceString(expected_outputs));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 const absl::flat_hash_set<std::string>* GetOpNodeDefsToLogFromEnv() {
@@ -195,7 +196,7 @@ Status OpKernel::InputRange(StringPiece input_name, int* start,
   } else {
     *start = result->second.first;
     *stop = result->second.second;
-    return OkStatus();
+    return absl::OkStatus();
   }
 }
 
@@ -207,7 +208,7 @@ Status OpKernel::OutputRange(StringPiece output_name, int* start,
   } else {
     *start = result->second.first;
     *stop = result->second.second;
-    return OkStatus();
+    return absl::OkStatus();
   }
 }
 
@@ -234,12 +235,13 @@ string OpKernel::ShapeTraceString(const OpKernelContext& ctx) const {
 }
 
 string OpKernel::TraceString(const OpKernelContext& ctx, bool verbose) const {
-  string trace_string = profiler::TraceMeOp(name_view(), type_string_view());
+  string trace_string =
+      tsl::profiler::TraceMeOp(name_view(), type_string_view());
   if (verbose) {
     string shape = ShapeTraceString(ctx);
     if (!shape.empty()) {
-      trace_string =
-          profiler::TraceMeEncode(std::move(trace_string), {{"shape", shape}});
+      trace_string = tsl::profiler::TraceMeEncode(std::move(trace_string),
+                                                  {{"shape", shape}});
     }
   }
   return trace_string;
@@ -301,7 +303,7 @@ Status OpKernelConstruction::allocate_temp(DataType type,
         def().name(), LogMemory::OP_KERNEL_CONSTRUCTION_STEP_ID, new_temp);
   }
   *out_temp = new_temp;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status OpKernelConstruction::allocate_temp(DataType type,
@@ -326,7 +328,7 @@ Status OpKernelConstruction::allocate_temp(DataType type,
         def().name(), LogMemory::OP_KERNEL_CONSTRUCTION_STEP_ID, new_temp);
   }
   *out_temp = new_temp;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // OpKernelContext -----------------------------------------------------------
@@ -341,7 +343,7 @@ OpKernelContext::OpKernelContext(Params* params)
 OpKernelContext::OpKernelContext(Params* params, int num_outputs)
     : params_(params), outputs_(num_outputs) {
   if (params_->track_allocations) {
-    tracking_state_ = absl::make_unique<TrackingState>();
+    tracking_state_ = std::make_unique<TrackingState>();
   }
 
   params_->ensure_eigen_gpu_device();
@@ -410,7 +412,7 @@ Status OpKernelContext::input(StringPiece name, const Tensor** tensor) {
                                    "' when non-ref input was expected");
   }
   *tensor = params_->inputs[index].tensor;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status OpKernelContext::input_dtype(StringPiece name, DataType* dtype) const {
@@ -418,14 +420,25 @@ Status OpKernelContext::input_dtype(StringPiece name, DataType* dtype) const {
   TF_RETURN_IF_ERROR(get_input_index(name, &index));
   const TensorValue& value(params_->inputs[index]);
   *dtype = value.dtype();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status OpKernelContext::input_ref_mutex(StringPiece name, mutex** out_mutex) {
   int index;
   TF_RETURN_IF_ERROR(get_input_index(name, &index));
   *out_mutex = input_ref_mutex(index);
-  return OkStatus();
+  return absl::OkStatus();
+}
+
+absl::StatusOr<const Tensor*> OpKernelContext::get_input(int index) const {
+  if (index < 0 || index >= num_inputs() || input_is_ref(index)) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Given index was ", index,
+                     ", but index of input must be greater than "
+                     "0, less than the number of inputs (",
+                     num_inputs(), "), and not a ref."));
+  }
+  return params_->inputs[index].tensor;
 }
 
 const Tensor& OpKernelContext::input(int index) const {
@@ -504,7 +517,7 @@ Status OpKernelContext::forward_input_to_output_with_shape(
     return errors::FailedPrecondition("OpKernel could not forward input '",
                                       input_name, "' to output '", output_name);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::unique_ptr<Tensor> OpKernelContext::forward_input(
@@ -576,7 +589,7 @@ std::unique_ptr<Tensor> OpKernelContext::forward_input(
 }
 
 Status OpKernelContext::forward_input_or_allocate_temp(
-    gtl::ArraySlice<int> candidate_input_indices, DataType type,
+    absl::Span<const int> candidate_input_indices, DataType type,
     const TensorShape& shape, const AllocatorAttributes& allocator_attr,
     Tensor* out_temp) {
   for (int input_index : candidate_input_indices) {
@@ -585,14 +598,14 @@ Status OpKernelContext::forward_input_or_allocate_temp(
                       type, shape, DEVICE_MEMORY, allocator_attr);
     if (new_tensor != nullptr) {
       *out_temp = std::move(*new_tensor);
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
   return allocate_temp(type, shape, out_temp, allocator_attr);
 }
 
 Status OpKernelContext::forward_input_or_allocate_output(
-    gtl::ArraySlice<int> candidate_input_indices, int output_index,
+    absl::Span<const int> candidate_input_indices, int output_index,
     const TensorShape& output_shape, Tensor** output, int* forwarded_input) {
   for (int input_index : candidate_input_indices) {
     if (forward_input_to_output_with_shape(input_index, output_index,
@@ -600,7 +613,7 @@ Status OpKernelContext::forward_input_or_allocate_output(
       if (forwarded_input != nullptr) {
         *forwarded_input = input_index;
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
   if (forwarded_input != nullptr) {
@@ -610,13 +623,13 @@ Status OpKernelContext::forward_input_or_allocate_output(
 }
 
 Status OpKernelContext::forward_input_or_allocate_output(
-    gtl::ArraySlice<StringPiece> candidate_input_names, StringPiece output_name,
-    const TensorShape& output_shape, Tensor** output) {
+    absl::Span<const StringPiece> candidate_input_names,
+    StringPiece output_name, const TensorShape& output_shape, Tensor** output) {
   for (const StringPiece& input_name : candidate_input_names) {
     if (forward_input_to_output_with_shape(input_name, output_name,
                                            output_shape, output)
             .ok()) {
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
   return allocate_output(output_name, output_shape, output);
@@ -650,7 +663,7 @@ Status OpKernelContext::mutable_input(StringPiece name, Tensor* tensor,
     tf_shared_lock l(*input_ref_mutex(index));
     *tensor = *params_->inputs[index].tensor;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status OpKernelContext::replace_ref_input(StringPiece name,
@@ -663,14 +676,14 @@ Status OpKernelContext::replace_ref_input(StringPiece name,
                                    "' when ref input was expected");
   }
   replace_ref_input(index, tensor, lock_held);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status OpKernelContext::input_list(StringPiece name, OpInputList* list) {
   int start, stop;
   TF_RETURN_IF_ERROR(params_->op_kernel->InputRange(name, &start, &stop));
   *list = OpInputList(this, start, stop);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status OpKernelContext::mutable_input_list(StringPiece name,
@@ -678,19 +691,19 @@ Status OpKernelContext::mutable_input_list(StringPiece name,
   int start, stop;
   TF_RETURN_IF_ERROR(params_->op_kernel->InputRange(name, &start, &stop));
   *list = OpMutableInputList(this, start, stop);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status OpKernelContext::output_list(StringPiece name, OpOutputList* list) {
   int start, stop;
   TF_RETURN_IF_ERROR(params_->op_kernel->OutputRange(name, &start, &stop));
   *list = OpOutputList(this, start, stop);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void OpKernelContext::maybe_initialize_scope_id_set() {
   if (allocated_scope_ids_ == nullptr) {
-    allocated_scope_ids_ = absl::make_unique<std::unordered_set<int32>>();
+    allocated_scope_ids_ = std::make_unique<std::unordered_set<int32>>();
   }
 }
 
@@ -767,7 +780,7 @@ Status OpKernelContext::allocate_tensor(
                                       params_->step_id, new_tensor);
   }
   *out_tensor = std::move(new_tensor);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status OpKernelContext::allocate_output(int index, const TensorShape& shape,
@@ -877,7 +890,7 @@ Status OpKernelContext::get_input_index(StringPiece name,
                                    "expected");
   }
   *out_index = start;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status OpKernelContext::get_output_index(StringPiece name,
@@ -891,21 +904,21 @@ Status OpKernelContext::get_output_index(StringPiece name,
                                    "expected");
   }
   *out_index = start;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status OpKernelContext::set_output(StringPiece name, const Tensor& tensor) {
   int index;
   TF_RETURN_IF_ERROR(get_output_index(name, &index));
   set_output(index, tensor);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status OpKernelContext::set_output(StringPiece name, Tensor&& tensor) {
   int index;
   TF_RETURN_IF_ERROR(get_output_index(name, &index));
   set_output(index, std::move(tensor));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool OpKernelContext::maybe_set_output_by_allocate_and_copy(
@@ -1013,14 +1026,14 @@ Status OpKernelContext::set_output_ref(StringPiece name, mutex* mu,
   int index;
   TF_RETURN_IF_ERROR(get_output_index(name, &index));
   set_output_ref(index, mu, tensor_for_ref);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status OpKernelContext::mutable_output(StringPiece name, Tensor** tensor) {
   int index;
   TF_RETURN_IF_ERROR(get_output_index(name, &index));
   *tensor = mutable_output(index);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool OpKernelContext::ValidateInputsAreSameShape(OpKernel* op) {
@@ -1111,7 +1124,7 @@ void OpKernelContext::clear_recorded_memory() {
 void OpKernelContext::set_record_memory_consumption(bool v) {
   record_memory_consumption_ = v;
   if (v && !tracking_state_) {
-    tracking_state_ = absl::make_unique<TrackingState>();
+    tracking_state_ = std::make_unique<TrackingState>();
   }
 }
 
@@ -1188,7 +1201,7 @@ static Status IsProbablySafeToLoad(const string& path) {
     errmsg.append(absl::StrJoin(missing_features, ", "));
     return errors::FailedPrecondition(errmsg);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void LoadDynamicKernelsInternal() {
@@ -1214,8 +1227,7 @@ void LoadDynamicKernelsInternal() {
         Status s = IsProbablySafeToLoad(fullpath);
         if (!s.ok() && override_abi_check) {
           LOG(WARNING) << "Loading UNSAFE library " << fullpath
-                       << " because ABI check override is set: "
-                       << s.error_message();
+                       << " because ABI check override is set: " << s.message();
         }
         if (s.ok() || override_abi_check) {
           // TODO(gunan): Store the handles to the opened files.
@@ -1224,7 +1236,7 @@ void LoadDynamicKernelsInternal() {
               env->LoadDynamicLibrary(fullpath.c_str(), &unused_filehandle));
         } else {
           LOG(WARNING) << "Not loading plugin library " << fullpath << ": "
-                       << s.error_message();
+                       << s.message();
         }
       }
     }
@@ -1442,7 +1454,7 @@ Status FindKernelRegistration(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status FindKernelRegistration(const DeviceType& device_type,
@@ -1506,7 +1518,7 @@ Status FindKernelDef(
   }
   if (def != nullptr) *def = &reg->def;
   if (kernel_class_name != nullptr) *kernel_class_name = reg->kernel_class_name;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status FindKernelDef(const DeviceType& device_type, const NodeDef& node_def,
@@ -1585,7 +1597,7 @@ Status SupportedDeviceTypesForNode(
       prioritized_device_types->push_back(std::make_pair(device_type, 0));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void LogAllRegisteredKernels() {
@@ -1771,7 +1783,7 @@ Status ValidateKernelRegistrations(const OpRegistryInterface& op_registry) {
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <>

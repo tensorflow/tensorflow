@@ -79,7 +79,7 @@ class OpDefBuilderTest : public ::testing::Test {
     Status status = builder.Finalize(&op_reg_data);
     EXPECT_FALSE(status.ok());
     if (!status.ok()) {
-      EXPECT_EQ(status.error_message(), error);
+      EXPECT_EQ(status.message(), error);
     }
   }
 };
@@ -617,7 +617,7 @@ TEST_F(OpDefBuilderTest, SetShapeFn) {
       "attr { name: \"dtype\" type: \"type\" allowed_values { list { } } }",
       &fn_out);
   ASSERT_TRUE(fn_out != nullptr);
-  EXPECT_EQ("ShapeFn was called", fn_out(nullptr).error_message());
+  EXPECT_EQ("ShapeFn was called", fn_out(nullptr).message());
 }
 
 TEST_F(OpDefBuilderTest, SetShapeFnCalledTwiceFailure) {

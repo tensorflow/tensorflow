@@ -28,7 +28,9 @@ ops.NotDifferentiable("SparseConcat")
 
 
 @ops.RegisterGradient("SparseReorder")
-def _SparseReorderGrad(op, unused_output_indices_grad, output_values_grad):
+def _SparseReorderGrad(
+    op: ops.Operation, unused_output_indices_grad, output_values_grad
+):
   """Gradients for the SparseReorder op.
 
   Args:
@@ -56,7 +58,7 @@ def _SparseReorderGrad(op, unused_output_indices_grad, output_values_grad):
 
 
 @ops.RegisterGradient("SparseAdd")
-def _SparseAddGrad(op, *grads):
+def _SparseAddGrad(op: ops.Operation, *grads):
   """The backward operator for the SparseAdd op.
 
   The SparseAdd op calculates A + B, where A, B, and the sum are all represented
@@ -90,14 +92,14 @@ def _SparseAddGrad(op, *grads):
 
 
 @ops.RegisterGradient("SparseTensorDenseAdd")
-def _SparseTensorDenseAddGrad(op, out_grad):
+def _SparseTensorDenseAddGrad(op: ops.Operation, out_grad):
   sp_indices = op.inputs[0]
   # (sparse_indices, sparse_values, sparse_shape, dense)
   return (None, array_ops.gather_nd(out_grad, sp_indices), None, out_grad)
 
 
 @ops.RegisterGradient("SparseReduceSum")
-def _SparseReduceSumGrad(op, out_grad):
+def _SparseReduceSumGrad(op: ops.Operation, out_grad):
   """Similar to gradient for the Sum Op (i.e. tf.reduce_sum())."""
   sp_indices = op.inputs[0]
   sp_shape = op.inputs[2]
@@ -110,7 +112,7 @@ def _SparseReduceSumGrad(op, out_grad):
 
 
 @ops.RegisterGradient("SparseSlice")
-def _SparseSliceGrad(op, *grads):
+def _SparseSliceGrad(op: ops.Operation, *grads):
   """The backward operator for the SparseSlice op.
 
   This op takes in the upstream gradient w.r.t. non-empty values of
@@ -139,7 +141,7 @@ def _SparseSliceGrad(op, *grads):
 
 
 @ops.RegisterGradient("SparseTensorDenseMatMul")
-def _SparseTensorDenseMatMulGrad(op, grad):
+def _SparseTensorDenseMatMulGrad(op: ops.Operation, grad):
   """Gradients for the dense tensor in the SparseTensorDenseMatMul op.
 
   Args:
@@ -234,7 +236,7 @@ def _SparseDenseCwiseAddGrad(unused_op, unused_grad):
       "Gradient for SparseDenseCwiseAdd is not implemented.")
 
 
-def _SparseDenseCwiseMulOrDivGrad(op, grad, is_mul):
+def _SparseDenseCwiseMulOrDivGrad(op: ops.Operation, grad, is_mul):
   """Common code for SparseDenseCwise{Mul,Div} gradients."""
   x_indices = op.inputs[0]
   x_shape = op.inputs[2]
@@ -269,19 +271,19 @@ def _SparseDenseCwiseMulOrDivGrad(op, grad, is_mul):
 
 
 @ops.RegisterGradient("SparseDenseCwiseMul")
-def _SparseDenseCwiseMulGrad(op, grad):
+def _SparseDenseCwiseMulGrad(op: ops.Operation, grad):
   """Gradients for SparseDenseCwiseMul."""
   return _SparseDenseCwiseMulOrDivGrad(op, grad, True)
 
 
 @ops.RegisterGradient("SparseDenseCwiseDiv")
-def _SparseDenseCwiseDivGrad(op, grad):
+def _SparseDenseCwiseDivGrad(op: ops.Operation, grad):
   """Gradients for SparseDenseCwiseDiv."""
   return _SparseDenseCwiseMulOrDivGrad(op, grad, False)
 
 
 @ops.RegisterGradient("SparseSoftmax")
-def _SparseSoftmaxGrad(op, grad):
+def _SparseSoftmaxGrad(op: ops.Operation, grad):
   """Gradients for SparseSoftmax.
 
   The calculation is the same as SoftmaxGrad:
@@ -315,33 +317,40 @@ def _SparseSoftmaxGrad(op, grad):
 
 
 @ops.RegisterGradient("SparseSparseMaximum")
-def _SparseSparseMaximumGrad(unused_op, unused_grad):
+def _SparseSparseMaximumGrad(unused_op: ops.Operation, unused_grad):
   raise NotImplementedError(
-      "Gradient for SparseSparseMaximum is not implemented.")
+      "Gradient for SparseSparseMaximum is not implemented."
+  )
 
 
 @ops.RegisterGradient("SparseSparseMinimum")
-def _SparseSparseMinimumGrad(unused_op, unused_grad):
+def _SparseSparseMinimumGrad(unused_op: ops.Operation, unused_grad):
   raise NotImplementedError(
-      "Gradient for SparseSparseMinimum is not implemented.")
+      "Gradient for SparseSparseMinimum is not implemented."
+  )
 
 
 @ops.RegisterGradient("SparseFillEmptyRows")
-def _SparseFillEmptyRowsGrad(op, unused_grad_output_indices, output_grad_values,
-                             unused_grad_empty_row_indicator,
-                             unused_grad_reverse_index_map):
+def _SparseFillEmptyRowsGrad(
+    op: ops.Operation,
+    unused_grad_output_indices,
+    output_grad_values,
+    unused_grad_empty_row_indicator,
+    unused_grad_reverse_index_map,
+):
   """Gradients for SparseFillEmptyRows."""
   reverse_index_map = op.outputs[3]
 
   d_values, d_default_value = gen_sparse_ops.sparse_fill_empty_rows_grad(
-      reverse_index_map=reverse_index_map, grad_values=output_grad_values)
+      reverse_index_map=reverse_index_map, grad_values=output_grad_values
+  )
 
   # d_indices, d_values, d_dense_shape, d_default_value.
   return [None, d_values, None, d_default_value]
 
 
 @ops.RegisterGradient("SparseToDense")
-def _SparseToDenseGrad(op, grad):
+def _SparseToDenseGrad(op: ops.Operation, grad):
   sparse_indices, output_shape, _, _ = op.inputs
 
   sparse_values_grad = array_ops.gather_nd(grad, sparse_indices)

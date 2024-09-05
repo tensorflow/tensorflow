@@ -19,7 +19,7 @@ py_strict_library(
     srcs = ["special_functions.py"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "//tensorflow/python/autograph/operators",
+        "//tensorflow/python/autograph/operators:data_structures",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:tensor_util",
     ],
@@ -31,12 +31,13 @@ py_strict_test(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:list_ops",
+        #internal proto upb dep
+        "//third_party/py/numpy",
         "//tensorflow/python/autograph/lang:special_functions",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor_util",
-        "//third_party/py/numpy",
+        "//tensorflow/python/ops:list_ops",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )

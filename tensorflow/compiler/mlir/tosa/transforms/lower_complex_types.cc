@@ -31,15 +31,21 @@ limitations under the License.
 // resulting graph is free of illegal complex tensors.
 
 #include <iterator>
+#include <memory>
+#include <utility>
 
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
 
 #define PASS_NAME "tosa-lower-complex-types"
@@ -55,14 +61,14 @@ namespace {
 class LowerComplexTypes
     : public impl::TosaLowerComplexTypesPassBase<LowerComplexTypes> {
  public:
-  explicit LowerComplexTypes() {}
+  explicit LowerComplexTypes() = default;
   void runOnOperation() override;
 };
 
 class ComplexTypeConverter : public TypeConverter {
  public:
   static Type convertTensor(RankedTensorType type) {
-    if (auto elementType = type.getElementType().dyn_cast<ComplexType>()) {
+    if (auto elementType = dyn_cast<ComplexType>(type.getElementType())) {
       llvm::SmallVector<int64_t> newShape;
       for (auto dim : type.getShape()) {
         newShape.push_back(dim);
@@ -100,7 +106,7 @@ class GenericTypeConvert : public ConversionPattern {
       TypeConverter::SignatureConversion result(newRegion->getNumArguments());
       (void)getTypeConverter()->convertSignatureArgs(
           newRegion->getArgumentTypes(), result);
-      rewriter.applySignatureConversion(newRegion, result);
+      rewriter.applySignatureConversion(&newRegion->front(), result);
     }
     Operation* newOp = rewriter.create(state);
     rewriter.replaceOp(op, newOp->getResults());
@@ -109,8 +115,8 @@ class GenericTypeConvert : public ConversionPattern {
 };
 
 static bool isIllegalType(Type type) {
-  if (auto shapedType = type.dyn_cast<ShapedType>()) {
-    return shapedType.getElementType().isa<ComplexType>();
+  if (auto shapedType = dyn_cast<ShapedType>(type)) {
+    return mlir::isa<ComplexType>(shapedType.getElementType());
   }
   return false;
 }
@@ -118,8 +124,6 @@ static bool isIllegalType(Type type) {
 void LowerComplexTypes::runOnOperation() {
   ComplexTypeConverter converter;
   ConversionTarget target(getContext());
-
-  target.addIllegalOp<mlir::UnrealizedConversionCastOp>();
 
   // Operations are legal if they don't contain any illegal type.
   target.markUnknownOpDynamicallyLegal([](Operation* op) {
@@ -148,6 +152,12 @@ void LowerComplexTypes::runOnOperation() {
   populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
                                                                  converter);
   if (failed(applyFullConversion(func, target, std::move(patterns)))) {
+    signalPassFailure();
+  }
+
+  // We need to run folders post rewrite to cleanup conversion casts.
+  RewritePatternSet emptyRewriters(ctx);
+  if (failed(applyPatternsAndFoldGreedily(func, std::move(emptyRewriters)))) {
     signalPassFailure();
   }
 }

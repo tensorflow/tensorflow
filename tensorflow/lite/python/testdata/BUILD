@@ -1,5 +1,4 @@
-load("//tensorflow/lite:build_def.bzl", "tf_to_tflite", "tflite_copts")
-load("//tensorflow:tensorflow.default.bzl", "pybind_extension", "tf_custom_op_py_library")
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_custom_op_library",
@@ -7,6 +6,8 @@ load(
     "tf_gen_op_wrapper_py",
     "tf_opts_nortti_if_android",
 )
+load("//tensorflow:tensorflow.default.bzl", "pybind_extension", "tf_custom_op_py_strict_library")
+load("//tensorflow/lite:build_def.bzl", "tf_to_tflite", "tflite_copts")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -80,7 +81,7 @@ cc_library(
     name = "test_delegate",
     testonly = 1,
     srcs = ["test_delegate.cc"],
-    visibility = ["//tensorflow/lite:__subpackages__"],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/lite/core/c:common",
     ],
@@ -128,10 +129,17 @@ tf_gen_op_wrapper_py(
     name = "gen_double_op_wrapper",
     testonly = 1,
     out = "double_op_wrapper.py",
+    extra_py_deps = [
+        "//tensorflow/python:pywrap_tfe",
+        "//tensorflow/python/util:dispatch",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
+    ],
+    py_lib_rule = py_strict_library,
     deps = [":double_op_and_kernels"],
 )
 
-tf_custom_op_py_library(
+tf_custom_op_py_strict_library(
     name = "double_op",
     testonly = 1,
     srcs = ["double_op.py"],
@@ -140,7 +148,9 @@ tf_custom_op_py_library(
     srcs_version = "PY3",
     deps = [
         ":gen_double_op_wrapper",
-        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:load_library",
+        "//tensorflow/python/platform:resource_loader",
     ],
 )
 
@@ -148,7 +158,7 @@ cc_library(
     name = "test_registerer",
     srcs = ["test_registerer.cc"],
     hdrs = ["test_registerer.h"],
-    visibility = ["//tensorflow/lite:__subpackages__"],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:builtin_ops",
@@ -165,7 +175,11 @@ pybind_extension(
     ],
     hdrs = ["test_registerer.h"],
     additional_exported_symbols = ["TF_TestRegisterer"],
+    enable_stub_generation = True,
     link_in_framework = True,
+    pytype_srcs = [
+        "_pywrap_test_registerer.pyi",
+    ],
     deps = [
         ":test_registerer",
         "//tensorflow/lite:framework",

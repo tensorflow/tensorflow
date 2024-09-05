@@ -52,7 +52,28 @@ std::vector<Value*> GraphFloat32::variable_inputs() const {
 }
 
 std::vector<Value*> GraphFloat32::outputs() const {
-  return FilterValues([](const ValueDef& v) { return v.consumers.empty(); });
+  std::vector<Value*> values;
+  std::vector<Value*> values_known_graph_outputs;
+  values.reserve(values_.size());
+  values_known_graph_outputs.reserve(values_.size());
+  for (auto& v : values_) {
+    auto value_ptr = v.value.get();
+    if (value_ptr == nullptr) continue;
+    // Find v which meets one of the following conditions.
+    // 1. v doesn't have a consumer.
+    // 2. v has a consumer but it's also in known_graph_outputs_.
+    if (v.consumers.empty()) {
+      values.push_back(v.value.get());
+    } else if (std::find(known_graph_outputs_.begin(),
+                         known_graph_outputs_.end(),
+                         value_ptr) != known_graph_outputs_.end()) {
+      values_known_graph_outputs.push_back(v.value.get());
+    }
+  }
+  // Add known_graph_outputs later to provide compatibility in output ordering.
+  values.insert(values.end(), values_known_graph_outputs.begin(),
+                values_known_graph_outputs.end());
+  return values;
 }
 
 std::vector<Value*> GraphFloat32::FindInputs(NodeId id) const {
@@ -79,6 +100,10 @@ bool GraphFloat32::IsGraphInput(ValueId id) const {
 bool GraphFloat32::IsGraphOutput(ValueId id) const {
   if (id >= values_.size()) {
     return false;
+  }
+  if (std::find(known_graph_outputs_.begin(), known_graph_outputs_.end(),
+                values_[id].value.get()) != known_graph_outputs_.end()) {
+    return true;
   }
   return values_[id].consumers.empty();
 }
@@ -114,7 +139,7 @@ Value* GraphFloat32::GetValue(ValueId id) const {
 Node* GraphFloat32::NewNode() {
   const NodeId new_id = nodes_.size();
   NodeDef def;
-  def.node = absl::make_unique<Node>(Node{static_cast<NodeId>(new_id), {}});
+  def.node = std::make_unique<Node>(Node{static_cast<NodeId>(new_id), {}});
   Node* node = def.node.get();
   nodes_[new_id] = std::move(def);
   execution_plan_.push_back(new_id);
@@ -136,7 +161,7 @@ absl::Status GraphFloat32::InsertNodeAfter(NodeId id, Node** new_node) {
 
   const NodeId new_id = nodes_.size();
   NodeDef def;
-  def.node = absl::make_unique<Node>(Node{static_cast<NodeId>(new_id), {}});
+  def.node = std::make_unique<Node>(Node{static_cast<NodeId>(new_id), {}});
   *new_node = def.node.get();
   nodes_[new_id] = std::move(def);
   execution_plan_.insert(execution_plan_.begin() + idx + 1, new_id);
@@ -146,7 +171,7 @@ absl::Status GraphFloat32::InsertNodeAfter(NodeId id, Node** new_node) {
 Value* GraphFloat32::NewValue() {
   ValueDef def;
   def.value =
-      absl::make_unique<Value>(Value{static_cast<ValueId>(values_.size()), {}});
+      std::make_unique<Value>(Value{static_cast<ValueId>(values_.size()), {}});
   Value* value = def.value.get();
   values_.push_back(std::move(def));
   return value;
@@ -308,10 +333,16 @@ absl::Status GraphFloat32::MakeExactCopy(GraphFloat32* model) const {
   model->nodes_.clear();
   model->execution_plan_.clear();
   model->values_.clear();
+  model->known_graph_outputs_.clear();
   for (auto& value_def : values_) {
     model->values_.push_back({});
     if (value_def.value) {
-      model->values_.back().value = absl::make_unique<Value>(*value_def.value);
+      model->values_.back().value = std::make_unique<Value>(*value_def.value);
+      if (std::find(known_graph_outputs_.begin(), known_graph_outputs_.end(),
+                    value_def.value.get()) != known_graph_outputs_.end()) {
+        model->known_graph_outputs_.push_back(
+            model->values_.back().value.get());
+      }
     }
   }
   // Add all nodes first.
@@ -320,7 +351,7 @@ absl::Status GraphFloat32::MakeExactCopy(GraphFloat32* model) const {
     model->nodes_[node_id] = {};
     auto& node_def = nodes_.at(node_id);
     if (node_def.node) {
-      model->nodes_[node_id].node = absl::make_unique<Node>(*node_def.node);
+      model->nodes_[node_id].node = std::make_unique<Node>(*node_def.node);
     }
   }
   // Wire up dependencies between nodes.

@@ -18,8 +18,14 @@ limitations under the License.
 #include <cstdlib>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_async.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/tfrt_fallback_sync.h"
@@ -69,7 +75,7 @@ TEST(CostUpdateTest, Basic) {
   }
   tensorflow::tfrt_stub::CostRecorder cost_recorder;
   for (const auto& [op_key, cost] : expected_op_cost_map) {
-    cost_recorder.RecordCostNanosecond(op_key, cost);
+    cost_recorder.RecordCost(op_key, cost);
   }
 
   // Update the TFRT MLIR with the cost recorder.

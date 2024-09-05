@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_HOST_CONSTANT_OP_H_
 #define TENSORFLOW_CORE_KERNELS_HOST_CONSTANT_OP_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/macros.h"
@@ -35,7 +35,8 @@ class _HostConstantOp : public OpKernel {
 
  private:
   Tensor tensor_;
-  TF_DISALLOW_COPY_AND_ASSIGN(_HostConstantOp);
+  _HostConstantOp(const _HostConstantOp&) = delete;
+  void operator=(const _HostConstantOp&) = delete;
 };
 
 }  // namespace tensorflow

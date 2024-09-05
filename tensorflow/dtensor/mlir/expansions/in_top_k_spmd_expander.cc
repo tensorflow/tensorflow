@@ -16,15 +16,20 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/expansions/in_top_k_spmd_expander.h"
 
 #include <string>
+#include <vector>
 
-#include "absl/types/optional.h"
+#include "llvm/ADT/DenseMap.h"
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/IRMapping.h"  // from @llvm-project
-#include "tensorflow/core/platform/errors.h"
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
+#include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/collectives.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/shape_utils.h"
-#include "tensorflow/dtensor/mlir/spmd_expander_common.h"
 #include "tensorflow/dtensor/proto/layout.pb.h"
 
 namespace tensorflow {
@@ -35,9 +40,9 @@ namespace {
 // layout, ensuring that the 2nd dimension is replicated.
 StatusOr<Layout> GetSuggestedPredictionsLayout(const Layout& layout) {
   // predictions is a rank-2 tensor (batch_size x num_classes)
-  std::vector<ShardingSpec> layout_specs(2);
-  layout_specs[0].set_sharding_spec(layout.sharding_spec(0));
-  layout_specs[1].set_sharding_spec(Layout::kUnshardedDim);
+  std::vector<std::string> layout_specs(2);
+  layout_specs[0] = layout.sharding_spec(0);
+  layout_specs[1] = Layout::kUnshardedDim;
 
   return Layout::GetLayout(layout_specs, layout.mesh());
 }
@@ -46,10 +51,10 @@ StatusOr<Layout> GetSuggestedPredictionsLayout(const Layout& layout) {
 // of "other_layout".
 StatusOr<Layout> MatchBatchDim(const Layout& layout,
                                const Layout& other_layout) {
-  std::vector<ShardingSpec> layout_specs(layout.rank());
-  layout_specs[0].set_sharding_spec(other_layout.sharding_spec(0));
+  std::vector<std::string> layout_specs(layout.rank());
+  layout_specs[0] = other_layout.sharding_spec(0);
   for (int i = 1; i < layout.rank(); ++i) {
-    layout_specs[i].set_sharding_spec(layout.sharding_spec(i));
+    layout_specs[i] = layout.sharding_spec(i);
   }
 
   return Layout::GetLayout(layout_specs, layout.mesh());

@@ -14,7 +14,7 @@ module {
     %0 = "tf.VarHandleOp"() {shared_name = "var_0"} : () -> tensor<!tf_type.resource<tensor<2xi32>>>
     %1 = "tf.BatchFunction"(%0) {
         f = @called_by_batch_func,
-        operand_segment_sizes = array<i32: 1, 0>,
+        operandSegmentSizes = array<i32: 1, 0>,
         batch_timeout_micros = 1000,
         max_batch_size = 8,
         num_batch_threads = 2
@@ -40,7 +40,7 @@ module {
     %0 = "tf.VarHandleOp"() {shared_name = "var_0"} : () -> tensor<!tf_type.resource<tensor<2xi32>>>
     %1 = "tf.BatchFunction"(%0) {
         f = @called_by_batch_func_assign,
-        operand_segment_sizes = array<i32: 1, 0>,
+        operandSegmentSizes = array<i32: 1, 0>,
         batch_timeout_micros = 1000,
         max_batch_size = 8,
         num_batch_threads = 2

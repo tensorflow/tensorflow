@@ -42,10 +42,10 @@ ReduceDatasetOp::ReduceDatasetOp(OpKernelConstruction* ctx)
 }
 
 Status ReduceDatasetOp::DoCompute(OpKernelContext* ctx) {
-  profiler::TraceMe traceme(
+  tsl::profiler::TraceMe traceme(
       [&] {
-        return profiler::TraceMeEncode("ReduceDatasetOp::DoCompute",
-                                       {{"id", ctx->step_id()}});
+        return tsl::profiler::TraceMeEncode("ReduceDatasetOp::DoCompute",
+                                            {{"id", ctx->step_id()}});
       },
       profiler::kInfo);
   tensorflow::ResourceTagger tag(kTFDataResourceTag,
@@ -125,7 +125,7 @@ Status ReduceDatasetOp::DoCompute(OpKernelContext* ctx) {
   for (size_t i = 0; i < state.size(); ++i) {
     ctx->set_output(i, state[i]);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {

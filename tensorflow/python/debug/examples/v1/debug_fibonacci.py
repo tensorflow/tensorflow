@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Demo of the tfdbg curses UI: A TF network computing Fibonacci sequence."""
+"""Demo of the tfdbg readline UI: A TF network computing Fibonacci sequence."""
 import argparse
 import sys
 
@@ -79,8 +79,8 @@ if __name__ == "__main__":
   parser.add_argument(
       "--ui_type",
       type=str,
-      default="curses",
-      help="Command-line user interface type (curses | readline)")
+      default="readline",
+      help="Command-line user interface type (only readline is supported)")
   parser.add_argument(
       "--debug",
       dest="debug",

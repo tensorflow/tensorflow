@@ -159,7 +159,8 @@ class CommonTestUtilities : public OpsTestBase {
     ASSERT_EQ(offset_backprop.shape(), mkl_offset_backprop.shape());
 
     test::ExpectClose(output, mkl_output, 1e-5);
-    test::ExpectClose(scale_backprop, mkl_scale_backprop, 1e-5);
+    test::ExpectClose(scale_backprop, mkl_scale_backprop, /*atol=*/1e-5,
+                      /*rtol=*/1e-5);
     test::ExpectClose(offset_backprop, mkl_offset_backprop, 1e-5);
   }
 

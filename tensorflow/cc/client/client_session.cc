@@ -99,7 +99,7 @@ Status ClientSession::Impl::MaybeExtendGraph() const {
     last_num_graph_nodes_ = num_nodes;
     return session_->Extend(graph_def);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ClientSession::Run(const RunOptions& run_options, const FeedType& inputs,
@@ -108,10 +108,14 @@ Status ClientSession::Run(const RunOptions& run_options, const FeedType& inputs,
                           std::vector<Tensor>* outputs,
                           RunMetadata* run_metadata) const {
   std::vector<std::pair<string, Tensor>> feeds;
+  feeds.reserve(inputs.size());
   for (auto const& feed : inputs) {
     TF_RETURN_IF_ERROR(feed.second.status);
-    feeds.emplace_back(feed.first.name(), feed.second.tensor);
+    feeds.emplace_back(std::piecewise_construct,
+                       std::forward_as_tuple(feed.first.name()),
+                       std::forward_as_tuple(feed.second.tensor));
   }
+
   std::vector<string> output_tensor_names;
   output_tensor_names.reserve(fetch_outputs.size());
   for (auto const& output : fetch_outputs) {

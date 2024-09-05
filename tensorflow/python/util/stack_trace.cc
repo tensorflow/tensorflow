@@ -15,10 +15,18 @@ limitations under the License.
 
 #include "tensorflow/python/util/stack_trace.h"
 
-#include <limits>
+#include <Python.h>
 
-#include "tensorflow/core/platform/str_util.h"
-#include "tensorflow/core/platform/stringpiece.h"
+#include <limits>
+#include <memory>
+#include <utility>
+#include <vector>
+
+#include "absl/base/attributes.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "tensorflow/core/platform/stack_frame.h"
+#include "tensorflow/core/util/managed_stack_trace.h"
 
 namespace {
 
@@ -26,25 +34,64 @@ namespace {
 // TODO(kkb): This is a generic Python utility function. factor out as a
 // utility.
 const char* GetPythonString(PyObject* o) {
-#if PY_MAJOR_VERSION >= 3
   if (PyBytes_Check(o)) {
     return PyBytes_AsString(o);
   } else {
     return PyUnicode_AsUTF8(o);
   }
-#else
-  return PyBytes_AsString(o);
-#endif
 }
 
 }  // namespace
 
 namespace tensorflow {
 
+ABSL_MUST_USE_RESULT
+ABSL_ATTRIBUTE_HOT
+std::shared_ptr<StackTrace> StackTrace::Capture(int limit) {
+  DCHECK(PyGILState_Check());
+  if (limit == -1) limit = std::numeric_limits<int>::max();
+
+  StackTrace result;
+#if PY_VERSION_HEX >= 0x030B0000
+  PyFrameObject* oldframe;
+  PyFrameObject* frame = PyThreadState_GetFrame(PyThreadState_GET());
+  for (int i = 0; i < limit && frame != nullptr; oldframe = frame,
+           frame = PyFrame_GetBack(frame), Py_DECREF(oldframe), ++i) {
+    PyCodeObject* code_obj = PyFrame_GetCode(frame);
+    DCHECK(code_obj != nullptr);
+
+    int line_number = PyFrame_GetLineNumber(const_cast<PyFrameObject*>(frame));
+    result.code_objs_.push_back(std::make_pair(code_obj, line_number));
+  }
+  Py_XDECREF(frame);
+#else
+  const PyFrameObject* frame = PyThreadState_GET()->frame;
+  for (int i = 0; i < limit && frame != nullptr; frame = frame->f_back, ++i) {
+    PyCodeObject* code_obj = frame->f_code;
+    Py_XINCREF(code_obj);
+    DCHECK(code_obj != nullptr);
+
+    int line_number = PyFrame_GetLineNumber(const_cast<PyFrameObject*>(frame));
+    result.code_objs_.push_back(std::make_pair(code_obj, line_number));
+  }
+#endif
+
+  static absl::flat_hash_map<uint64_t, std::shared_ptr<StackTrace>>* cache =
+      new absl::flat_hash_map<uint64_t, std::shared_ptr<StackTrace>>();
+
+  uint64_t hash_code = result.hash();
+  if (!cache->contains(hash_code)) {
+    cache->insert(std::make_pair(
+        hash_code, std::make_shared<StackTrace>(std::move(result))));
+  }
+
+  return cache->at(hash_code);
+}
+
 std::vector<StackFrame> StackTrace::ToStackFrames(
     const SourceMap& source_map, const StackTraceFilter& filtered,
     bool reverse_traversal, int limit) const {
-  DCheckPyGilStateForStackTrace();
+  auto gil_state = PyGILState_Ensure();
   std::vector<StackFrame> result;
   result.reserve(code_objs_.size());
 
@@ -74,16 +121,8 @@ std::vector<StackFrame> StackTrace::ToStackFrames(
     }
   }
 
+  PyGILState_Release(gil_state);
   return result;
 }
-
-StackTrace* StackTraceManager::Get(int id) {
-  DCheckPyGilStateForStackTrace();
-  if (next_id_ - id > kStackTraceCircularBufferSize) return nullptr;
-
-  return &stack_traces_[id & (kStackTraceCircularBufferSize - 1)];
-}
-
-StackTraceManager* const stack_trace_manager = new StackTraceManager();
 
 }  // namespace tensorflow

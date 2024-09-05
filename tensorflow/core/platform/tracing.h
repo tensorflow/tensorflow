@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/tracing.h"
+#include "tsl/platform/tracing.h"
 
 namespace tensorflow {
 namespace tracing {
@@ -45,9 +45,9 @@ using tsl::tracing::SetEventCollector;
 }  // namespace tensorflow
 
 #if defined(PLATFORM_GOOGLE)
-#include "tensorflow/tsl/platform/google/tracing_impl.h"
+#include "tsl/platform/google/tracing_impl.h"
 #else
-#include "tensorflow/tsl/platform/default/tracing_impl.h"
+#include "tsl/platform/default/tracing_impl.h"
 #endif
 
 #endif  // TENSORFLOW_CORE_PLATFORM_TRACING_H_

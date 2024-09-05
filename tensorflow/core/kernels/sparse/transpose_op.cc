@@ -26,8 +26,8 @@ limitations under the License.
 
 #include <numeric>
 
-#include "third_party/eigen3/Eigen/SparseCore"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "Eigen/SparseCore"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -87,7 +87,7 @@ Status ValidateTransposeInputs(const ConstCSRComponent<T>& input,
         "Input nnz should equal the output values size. Got ", nnz, " vs. ",
         output.values.size());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -205,7 +205,7 @@ Status CSRSparseMatrixTranspose<Device, T>::operator()(
     maybe_conj_inplace<Device, T>::run(d, &output_values_t);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // CPU kernel for transposing a single component of a CSR SparseMatrix.
@@ -246,7 +246,7 @@ struct CSRSparseMatrixTransposeComponent<CPUDevice, T> {
         current_col_count[col_idx] += 1;
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -280,6 +280,28 @@ struct CSRSparseMatrixTransposeComponent<GPUDevice, T> {
   }
 };
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#define DEFINE_TRANSPOSE(Device, T)                                \
+  template Status CSRSparseMatrixTranspose<Device, T>::operator()( \
+      OpKernelContext* ctx, bool conjugate,                        \
+      const CSRSparseMatrix& input_matrix, CSRSparseMatrix* output_matrix);
+
+DEFINE_TRANSPOSE(CPUDevice, float);
+DEFINE_TRANSPOSE(CPUDevice, double);
+DEFINE_TRANSPOSE(CPUDevice, complex64);
+DEFINE_TRANSPOSE(CPUDevice, complex128);
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+DEFINE_TRANSPOSE(GPUDevice, float);
+DEFINE_TRANSPOSE(GPUDevice, double);
+DEFINE_TRANSPOSE(GPUDevice, complex64);
+DEFINE_TRANSPOSE(GPUDevice, complex128);
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#undef DEFINE_TRANSPOSE
+
 }  // namespace functor
 
 }  // namespace tensorflow

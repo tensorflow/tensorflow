@@ -270,6 +270,11 @@ class TFModuleWrapper(FastModuleType):
       super(TFModuleWrapper, self).__delattr__(name)
     else:
       delattr(self._tfmw_wrapped_module, name)
+      self.__dict__.pop(name)
+      if name in self.__all__:
+        self.__all__.remove(name)
+      self._fastdict_pop(name)
+      # delattr(self._tfmw_wrapped_module, name)
 
   def __repr__(self):
     return self._tfmw_wrapped_module.__repr__()

@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,11 +22,13 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
+#include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/builtin_op_data.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
-#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
 
 namespace tflite {
@@ -53,7 +55,19 @@ int GetInputMaxDims(const OpSignature& op_sig) {
 
 int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
   switch (op_sig.op) {
-    case BuiltinOperator_CONV_2D:
+    case BuiltinOperator_CONV_2D: {
+      if (op_sig.inputs.at(0).type == kTfLiteInt16 &&
+          op_sig.inputs.at(1).type == kTfLiteInt8 &&
+          op_sig.outputs.at(0).type == kTfLiteInt16) {
+        // `quantized_bias_type` is supported at version 8.
+        auto conv_params =
+            reinterpret_cast<TfLiteConvParams*>(op_sig.builtin_data);
+        TFLITE_DCHECK(conv_params != nullptr);
+        if (conv_params->quantized_bias_type) {
+          return 8;
+        }
+      }
+
       if (op_sig.ext_options.conv_2d.is_grouped_convolution) {
         return 6;
       }
@@ -90,7 +104,7 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
         return 2;
       }
       return 1;
-
+    }
     case BuiltinOperator_DEPTHWISE_CONV_2D: {
       // If the op accepts int16, we return version 5.
       if (op_sig.inputs.at(0).type == kTfLiteInt16 &&
@@ -135,6 +149,14 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
     }
 
+    case BuiltinOperator_EMBEDDING_LOOKUP: {
+      if (op_sig.inputs.at(1).type == kTfLiteInt4 ||
+          op_sig.ext_options.embedding_lookup.is_per_channel_quantized) {
+        return 4;
+      }
+      return 1;
+    }
+
     case BuiltinOperator_FAKE_QUANT: {
       auto fake_quant_params =
           reinterpret_cast<TfLiteFakeQuantParams*>(op_sig.builtin_data);
@@ -155,6 +177,32 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       // | Quantized Int8  |                  4 |                        4 |
       // +-----------------+--------------------+--------------------------+
 
+      auto fully_connected_params =
+          reinterpret_cast<TfLiteFullyConnectedParams*>(op_sig.builtin_data);
+      TFLITE_DCHECK(fully_connected_params != nullptr);
+
+      if (op_sig.inputs.at(0).type == kTfLiteInt16 &&
+          op_sig.inputs.at(1).type == kTfLiteInt4 &&
+          op_sig.outputs.at(0).type == kTfLiteInt16) {
+        return 13;
+      }
+
+      if (op_sig.inputs.at(0).type == kTfLiteFloat32 &&
+          op_sig.inputs.at(1).type == kTfLiteInt8 &&
+          op_sig.outputs.at(0).type == kTfLiteFloat32 &&
+          op_sig.ext_options.fully_connected.is_per_channel_quantized) {
+        return 12;
+      }
+
+      if (op_sig.inputs.at(0).type == kTfLiteInt16 &&
+          op_sig.inputs.at(1).type == kTfLiteInt8 &&
+          op_sig.outputs.at(0).type == kTfLiteInt16) {
+        // `quantized_bias_type` is supported at version 11.
+        if (fully_connected_params->quantized_bias_type) {
+          return 11;
+        }
+      }
+
       // FullyConnected with sparse weight is supported at version 8.
       if (op_sig.ext_options.fully_connected.sparse_weight) {
         return 8;
@@ -172,9 +220,6 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       if (op_sig.inputs.size() == 2) {
         return 6;
       }
-      auto fully_connected_params =
-          reinterpret_cast<TfLiteFullyConnectedParams*>(op_sig.builtin_data);
-      TFLITE_DCHECK(fully_connected_params != nullptr);
       // `keep_num_dims` is supported at version 5.
       if (fully_connected_params->keep_num_dims) {
         return 5;
@@ -216,6 +261,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     }
 
     case BuiltinOperator_GATHER: {
+      if (op_sig.inputs.at(0).type == kTfLiteInt4) {
+        return 7;
+      }
       if (op_sig.inputs.at(1).type == kTfLiteInt16) {
         return 6;
       }
@@ -224,7 +272,6 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       if (gather_params && gather_params->batch_dims != 0) {
         return 5;
       }
-
       if (op_sig.inputs.at(0).type == kTfLiteInt16) {
         return 4;
       }
@@ -267,6 +314,12 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_MUL:
+      // Version 7 supports int16 and uint32 inputs
+      if ((op_sig.inputs.at(0).type == kTfLiteInt16 &&
+           !op_sig.ext_options.mul.input_quantized) ||
+          op_sig.inputs.at(0).type == kTfLiteUInt32) {
+        return 7;
+      }
       // Version 6 supports complex32 inputs
       if (op_sig.inputs.at(0).type == kTfLiteComplex64) {
         return 6;
@@ -327,6 +380,15 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_TRANSPOSE_CONV: {
       auto transpose_conv_params =
           reinterpret_cast<TfLiteTransposeConvParams*>(op_sig.builtin_data);
+      if (op_sig.inputs.at(0).type == kTfLiteInt16 &&
+          op_sig.inputs.at(1).type == kTfLiteInt8 &&
+          op_sig.outputs.at(0).type == kTfLiteInt16) {
+        // `quantized_bias_type` is supported at version 5.
+        TFLITE_DCHECK(transpose_conv_params != nullptr);
+        if (transpose_conv_params->quantized_bias_type) {
+          return 5;
+        }
+      }
 
       // TransposeConvOp has fused activation function from version 4.
       if (transpose_conv_params != nullptr &&
@@ -403,6 +465,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_SLICE:
+      if (op_sig.inputs.at(0).type == kTfLiteUInt32) {
+        return 6;
+      }
       if (op_sig.inputs.at(0).dims.size() > 4) {
         return 5;
       }
@@ -514,6 +579,12 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       auto strided_slice_params =
           reinterpret_cast<TfLiteStridedSliceParams*>(op_sig.builtin_data);
       TFLITE_DCHECK(strided_slice_params != nullptr);
+      if (strided_slice_params->offset == true) {
+        return 8;
+      }
+      if (op_sig.inputs.at(0).type == kTfLiteUInt32) {
+        return 7;
+      }
       if (strided_slice_params->ellipsis_mask != 0 ||
           strided_slice_params->new_axis_mask != 0) {
         return 6;
@@ -590,10 +661,12 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       if (op_sig.inputs.at(0).type == kTfLiteInt8) {
         return 2;
       }
-
       if (op_sig.inputs.at(0).type == kTfLiteInt16 &&
           op_sig.outputs.at(0).type == kTfLiteInt16) {
         return 3;
+      }
+      if (op_sig.inputs.at(0).type == kTfLiteUInt32) {
+        return 4;
       }
       return 1;
 
@@ -614,6 +687,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
 
     case BuiltinOperator_SPACE_TO_BATCH_ND:
     case BuiltinOperator_BATCH_TO_SPACE_ND:
+      if (op_sig.inputs.at(0).type == kTfLiteInt16) {
+        return 4;
+      }
       if (op_sig.inputs.at(0).dims.size() != 4) {
         return 3;
       }
@@ -666,6 +742,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     }
 
     case BuiltinOperator_GATHER_ND:
+      if (op_sig.inputs.at(0).type == kTfLiteBool) {
+        return 5;
+      }
       if (op_sig.inputs.at(1).type == kTfLiteInt16) {
         return 4;
       }
@@ -738,6 +817,12 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
+    case BuiltinOperator_RANGE:
+      if (op_sig.inputs.at(0).type == kTfLiteInt64) {
+        return 2;
+      }
+      return 1;
+
     case BuiltinOperator_BATCH_MATMUL: {
       // In case of int16 inputs, the version is 3.
       if (op_sig.inputs.at(0).type == kTfLiteInt16) {
@@ -774,12 +859,25 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_CONCATENATION:
+      if (op_sig.inputs.at(0).type == kTfLiteUInt32) {
+        return 4;
+      }
+      // In case of int16 inputs, the version is 3.
+      if (op_sig.inputs.at(0).type == kTfLiteInt16) {
+        return 3;
+      }
+      if (op_sig.inputs.at(0).type == kTfLiteInt8) {
+        return 2;
+      }
+      return 1;
+
     case BuiltinOperator_SOFTMAX:
     case BuiltinOperator_MEAN:
     case BuiltinOperator_MIRROR_PAD:
     case BuiltinOperator_REDUCE_MAX:
     case BuiltinOperator_REDUCE_MIN:
     case BuiltinOperator_RELU6:
+    case BuiltinOperator_RSQRT:
       // In case of int16 inputs, the version is 3.
       if (op_sig.inputs.at(0).type == kTfLiteInt16) {
         return 3;
@@ -890,6 +988,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_SELECT: {
+      if (op_sig.inputs.at(0).type == kTfLiteUInt32) {
+        return 4;
+      }
       if (op_sig.inputs.at(0).dims.size() == 5 ||
           op_sig.inputs.at(1).dims.size() == 5 ||
           op_sig.inputs.at(2).dims.size() == 5)
@@ -909,27 +1010,45 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
     }
+    case BuiltinOperator_SELECT_V2: {
+      if (op_sig.inputs.at(0).type == kTfLiteUInt32) {
+        return 2;
+      }
+      return 1;
+    }
     case BuiltinOperator_SPACE_TO_DEPTH:
     case BuiltinOperator_SPLIT_V:
     case BuiltinOperator_SUM:
     case BuiltinOperator_LOG_SOFTMAX:
-    case BuiltinOperator_TOPK_V2:
     case BuiltinOperator_GREATER:
     case BuiltinOperator_LESS_EQUAL:
-    case BuiltinOperator_RSQRT:
     case BuiltinOperator_SQUARED_DIFFERENCE:
     case BuiltinOperator_DEPTH_TO_SPACE:
       if (op_sig.inputs.at(0).type == kTfLiteInt8) {
         return 2;
       }
       return 1;
+    case BuiltinOperator_TOPK_V2:
+      if (op_sig.inputs.at(0).type == kTfLiteInt16 ||
+          op_sig.inputs.at(1).type == kTfLiteInt16 ||
+          op_sig.outputs.at(1).type == kTfLiteInt16) {
+        return 3;
+      }
+      if (op_sig.inputs.at(0).type == kTfLiteInt8) {
+        return 2;
+      }
+      return 1;
 
     case BuiltinOperator_EXP:
+    case BuiltinOperator_LOG:
     case BuiltinOperator_REDUCE_PROD:
       if (op_sig.inputs.at(0).type == kTfLiteInt8 ||
           op_sig.inputs.at(0).type == kTfLiteInt16) {
         return 2;
       }
+      return 1;
+    case BuiltinOperator_DYNAMIC_UPDATE_SLICE:
+      if (op_sig.inputs.at(2).type == kTfLiteInt64) return 2;
       return 1;
 
     // The version one of broadcast to op won't be not supported since the
@@ -943,10 +1062,16 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 2;
     case BuiltinOperator_CAST:
-      if (op_sig.inputs.at(0).type == kTfLiteFloat64 ||
-          op_sig.outputs.at(0).type == kTfLiteFloat64 ||
-          op_sig.inputs.at(0).type == kTfLiteFloat16 ||
-          op_sig.outputs.at(0).type == kTfLiteFloat16) {
+      if (op_sig.inputs.at(0).type == kTfLiteBFloat16 ||
+          op_sig.outputs.at(0).type == kTfLiteBFloat16) {
+        return 7;
+      } else if (op_sig.inputs.at(0).type == kTfLiteInt4 &&
+                 op_sig.outputs.at(0).type == kTfLiteFloat32) {
+        return 6;
+      } else if (op_sig.inputs.at(0).type == kTfLiteFloat64 ||
+                 op_sig.outputs.at(0).type == kTfLiteFloat64 ||
+                 op_sig.inputs.at(0).type == kTfLiteFloat16 ||
+                 op_sig.outputs.at(0).type == kTfLiteFloat16) {
         return 5;
       } else if (op_sig.inputs.at(0).type == kTfLiteUInt16 ||
                  op_sig.outputs.at(0).type == kTfLiteUInt16) {

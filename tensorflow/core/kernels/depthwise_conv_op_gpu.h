@@ -19,7 +19,7 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/depthwise_conv_op.h"
 #include "tensorflow/core/kernels/gpu_prim.h"
@@ -1740,7 +1740,8 @@ void LaunchDepthwiseConvBackpropFilterOp<GpuDevice, T>::operator()(
   int num_filter_backprop =
       args.filter_rows * args.filter_cols * args.out_depth;
   se::DeviceMemoryBase filter_bp_ptr(filter_backprop, num_filter_backprop);
-  stream->ThenMemZero(&filter_bp_ptr, num_filter_backprop * sizeof(T));
+  OP_REQUIRES_OK(
+      ctx, stream->MemZero(&filter_bp_ptr, num_filter_backprop * sizeof(T)));
 
   if (args.filter_rows == 3 && args.filter_cols == 3) {
     OP_REQUIRES_OK(

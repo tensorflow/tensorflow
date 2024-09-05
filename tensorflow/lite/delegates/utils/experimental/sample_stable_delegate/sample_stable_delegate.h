@@ -28,9 +28,9 @@ int CalculateNumElements(const TfLiteOpaqueTensor* opaque_tensor);
 }  // namespace helpers
 
 // LINT.IfChange
-static const char kSampleStableDelegateName[] = "SampleStableDelegate";
-static const char kSampleStableDelegateVersion[] = "1.0.0";
+static const char kSampleStableDelegateName[] = "google_sample_delegate";
 // LINT.ThenChange(Google-internal path)
+static const char kSampleStableDelegateVersion[] = "1.0.0";
 
 // A simple delegate that supports only addition and subtraction operations.
 // Implements SimpleOpaqueDelegateInterface, and therefore the delegate can be
@@ -42,10 +42,9 @@ class SampleStableDelegate : public SimpleOpaqueDelegateInterface {
   // Returns true if the inputs of 'node' are two tensors of float32 with the
   // same shape and the operation is addition or subtraction (without fused
   // activation).
-  bool IsNodeSupportedByDelegate(
-      const TfLiteRegistrationExternal* registration_external,
-      const TfLiteOpaqueNode* node,
-      TfLiteOpaqueContext* context) const override;
+  bool IsNodeSupportedByDelegate(const TfLiteOperator* registration_external,
+                                 const TfLiteOpaqueNode* node,
+                                 TfLiteOpaqueContext* context) const override;
 
   // No-op. The delegate doesn't have extra steps to perform during
   // initialization.

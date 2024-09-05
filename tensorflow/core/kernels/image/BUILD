@@ -1,4 +1,3 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -8,11 +7,12 @@ load(
     "tf_cc_tests",
     "tf_copts",
 )
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test", "tf_disable_ptxas_warning_flags", "tf_kernel_library")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
-load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test", "tf_disable_ptxas_warning_flags", "tf_kernel_library")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 # TODO(rmlarsen): Remove ASAP.
 package_group(
@@ -31,7 +31,6 @@ package(
         "//tensorflow:__subpackages__",
         "//tensorflow:internal",
     ],
-    features = ["-layering_check"],
     licenses = ["notice"],
 )
 
@@ -126,7 +125,7 @@ cc_library(
 )
 
 IMAGE_DEPS = [
-    "//third_party/eigen3",
+    "@eigen_archive//:eigen3",
     "//tensorflow/core:framework",
     "//tensorflow/core:gif_internal",
     "//tensorflow/core:jpeg_internal",
@@ -196,13 +195,19 @@ tf_kernel_library(
     deps = IMAGE_DEPS + [
         "//tensorflow/core:framework_internal",
         "//tensorflow/core/util:determinism_for_kernels",
-    ],
+    ] + if_cuda_or_rocm([
+        "//tensorflow/core/platform:stream_executor",
+        "@local_xla//xla/stream_executor/cuda:cuda_activation",
+    ]),
 )
 
 tf_kernel_library(
     name = "decode_image_op",
     prefix = "decode_image_op",
-    deps = IMAGE_DEPS + ["@com_google_absl//absl/strings"],
+    deps = IMAGE_DEPS + [
+        "@com_google_absl//absl/strings",
+        "@local_xla//xla/tsl/util:byte_swap_array",
+    ],
 )
 
 tf_kernel_library(
@@ -220,7 +225,11 @@ tf_kernel_library(
 tf_kernel_library(
     name = "encode_png_op",
     prefix = "encode_png_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + [
+        "//tensorflow/core/util:overflow",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:mutex",
+    ],
 )
 
 tf_kernel_library(
@@ -245,12 +254,13 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/kernels:eigen_helpers",
         "//tensorflow/core/kernels:ops_util",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 
 tf_kernel_library(
     name = "generate_box_proposals_op",
+    features = ["-layering_check"],
     gpu_srcs = ["generate_box_proposals_op.cu.cc"],
     deps = ["//tensorflow/core/kernels:gpu_prim_hdrs"] + if_cuda_or_rocm([
         ":non_max_suppression_op_gpu",
@@ -259,8 +269,12 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "non_max_suppression_op",
+    features = ["-layering_check"],
     prefix = "non_max_suppression_op",
-    deps = IMAGE_DEPS + ["//tensorflow/core/kernels:gpu_prim_hdrs"],
+    deps = IMAGE_DEPS + ["//tensorflow/core/kernels:gpu_prim_hdrs"] + if_cuda_or_rocm([
+        "@com_google_absl//absl/strings",
+        "@local_xla//xla/stream_executor",
+    ]),
 )
 
 tf_kernel_library(
@@ -340,8 +354,8 @@ tf_cc_tests(
     }),
     deps = [
         ":image",
-        ":sampling_kernels",
         ":mirror_pad_op",
+        ":sampling_kernels",
     ] + IMAGE_TEST_DEPS,
 )
 
@@ -393,6 +407,17 @@ tf_cuda_cc_test(
     ] + IMAGE_TEST_DEPS,
 )
 
+tf_cc_test(
+    name = "scale_and_translate_op_benchmark_test",
+    srcs = ["scale_and_translate_op_benchmark_test.cc"],
+    deps = [
+        ":scale_and_translate_op",
+        "@com_google_benchmark//:benchmark",
+        "@local_tsl//tsl/platform:test_benchmark",
+        "@local_tsl//tsl/platform:test_main",
+    ] + IMAGE_TEST_DEPS,
+)
+
 tf_cuda_cc_test(
     name = "non_max_suppression_op_gpu_test",
     srcs = ["non_max_suppression_op_gpu_test.cc"],
@@ -433,7 +458,15 @@ cc_library(
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:portable_jpeg_internal",
         "//tensorflow/core:portable_tensorflow_lib_lite",
+        "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/framework:op_requires",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/lib/core:status",
         "//tensorflow/core/lib/png:png_io",
+        "//tensorflow/core/platform:byte_order",
+        "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/strings",
+        "@local_xla//xla/tsl/util:byte_swap_array",
     ],
     alwayslink = 1,
 )

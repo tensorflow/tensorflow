@@ -17,13 +17,24 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_MLIR_GRAPH_OPTIMIZATION_PASS_H_
 
 #include <functional>
+#include <memory>
+#include <set>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/mlir/tf2xla/mlir_bridge_rollout_policy.h"
+#include "absl/log/check.h"
+#include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function_optimization_registry.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 
@@ -65,7 +76,8 @@ class MlirOptimizationPass {
       const Graph& graph,
       const FunctionLibraryDefinition& function_library) const = 0;
 
-  virtual Status Run(const ConfigProto& config_proto, mlir::ModuleOp module,
+  virtual Status Run(const std::string& function_name,
+                     const ConfigProto& config_proto, mlir::ModuleOp module,
                      const Graph& graph,
                      const FunctionLibraryDefinition& function_library) = 0;
 };
@@ -119,7 +131,7 @@ class MlirFunctionOptimizationPass : public FunctionOptimizationPass {
   // Executes all of the underlying registered MlirOptimizationPasses.
   Status Run(const std::string& function_name, const DeviceSet& device_set,
              const ConfigProto& config_proto,
-             absl::string_view xla_compile_device_type,
+             const FunctionOptimizationPass::FunctionOptions& function_options,
              std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def,
              std::vector<std::string>* control_ret_node_names,
              bool* control_rets_updated) override;
@@ -167,6 +179,10 @@ class MlirV1CompatOptimizationPassRegistry {
   MlirV1CompatOptimizationPass* pass() const {
     return pass_ ? pass_.get() : nullptr;
   }
+
+  // Free the memory allocated for the single pass.
+  // This method is used for testing mostly.
+  void ClearPass() { pass_.reset(); }
 
  private:
   std::unique_ptr<MlirV1CompatOptimizationPass> pass_{};

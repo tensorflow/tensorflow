@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package xla;
+
+// A proto used to serialize GpuTopology instances.
+message GpuTopologyProto {
+  // TODO(b/331224674): Remove this field once all uses are removed.
+  repeated int32 device_ids = 1;
+
+  reserved 2;  // Was: gpu_version
+
+  // Name for the GPU version, e.g., "NVIDIA A100-SXM4-40GB". Returned as
+  // "device_kind" of a GPU device in the PJRT client API.
+  string platform_version = 3;
+
+  // The number of slices.
+  // Devices on the same slice are connected by the fast network via NVLinks,
+  // which could be within a host or span across multiple hosts.
+  int32 num_slices = 4;
+
+  // The number of hosts for each slice.
+  int32 num_hosts_per_slice = 5;
+
+  // The number of devices for each host.
+  int32 num_devices_per_host = 6;
+
+  reserved 7;  // Was: core_count_per_chip
+}

@@ -93,7 +93,7 @@ func.func @main(%arg0: tensor<i32>,
            %arg1: tensor<2x4xf32> {tf._layout = "sharding_specs:unsharded,x, mesh:|x=2,y=2|*CPU"},
            %arg2: tensor<2xi64> {tf._layout = "sharding_specs:unsharded, mesh:|x=2,y=2|*CPU"}) -> tensor<1x4xf32> {
   // CHECK:      "tf_device.cluster"
-  // CHECK:        %[[SLICE_SIZE:.*]] = "tf.Const"() {value = dense<[1, 2]> : tensor<2xi64>} : () -> tensor<2xi64>
+  // CHECK:        %[[SLICE_SIZE:.*]] = "tf.Const"() <{value = dense<[1, 2]> : tensor<2xi64>}> : () -> tensor<2xi64>
   // CHECK-NEXT:   %[[SLICE:.*]] = "tf.Slice"(%arg1, %arg2, %[[SLICE_SIZE]])
   // CHECK-SAME:     _layout = ["sharding_specs:unsharded,x, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:CPU:0,/job:localhost/task:0/device:CPU:1,/job:localhost/task:0/device:CPU:2,/job:localhost/task:0/device:CPU:3"]
   // CHECK-SAME:     (tensor<2x2xf32>, tensor<2xi64>, tensor<2xi64>) -> tensor<1x2xf32>
@@ -114,7 +114,7 @@ func.func @main(%arg0: tensor<i32>,
 // Check SPMD expansion of strided slice op with replicated input.
 func.func @main(%arg0: tensor<i32>, %arg1: tensor<2x4xf32> {tf._layout = "sharding_specs:unsharded,unsharded, mesh:|x=2,y=2|*CPU"}) -> tensor<2x2xf32> {
   // CHECK:      "tf_device.cluster"
-  // CHECK:      %cst_2 = "tf.Const"() {value = dense<2> : tensor<2xi32>}
+  // CHECK:      %cst_2 = "tf.Const"() <{value = dense<2> : tensor<2xi32>}>
   // CHECK:        "tf.StridedSlice"(%arg1, %cst, %cst_2, %cst_1)
   // CHECK-SAME:     _layout = ["sharding_specs:unsharded,unsharded, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:CPU:0,/job:localhost/task:0/device:CPU:1,/job:localhost/task:0/device:CPU:2,/job:localhost/task:0/device:CPU:3"]
   // CHECK-SAME:     (tensor<2x4xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<2x2xf32>
