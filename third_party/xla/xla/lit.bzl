@@ -1,7 +1,7 @@
 """Helper rules for writing LIT tests."""
 
 load("@bazel_skylib//lib:paths.bzl", "paths")
-load("//xla/tsl:tsl.bzl", "if_cuda_tools", "if_oss")
+load("//xla/tsl:tsl.bzl", "if_cuda_tools", "if_google", "if_oss")
 
 def enforce_glob(files, **kwargs):
     """A utility to enforce that a list matches a glob expression.
@@ -251,14 +251,17 @@ def lit_test(
             "$(location {})".format(test_file),
         ] + args,
         data = [
-            lit_name,
-            test_file,
+                   lit_name,
+                   test_file,
 
-            # TODO(cheshire): Config is not passed properly when it's not
-            # called lit.cfg.py
-            cfg,
-            tools_on_path_target_name,
-        ] + data + if_oss(["@pypi_lit//:pkg"]),
+                   # TODO(cheshire): Config is not passed properly when it's not
+                   # called lit.cfg.py
+                   cfg,
+                   tools_on_path_target_name,
+               ] + data + if_oss(["@pypi_lit//:pkg"]) +
+               if_google([
+                   "//xla:lit_google_cfg.py",
+               ]),
         visibility = visibility,
         env = env,
         timeout = timeout,

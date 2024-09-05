@@ -25,7 +25,7 @@ package(
 
 exports_files([
     "lit.cfg.py",
-])
+] + if_google(["lit_google_cfg.py"]))
 
 xla_package_groups()
 
