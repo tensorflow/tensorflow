@@ -3711,6 +3711,56 @@ OpFoldResult SelectOp::fold(FoldAdaptor adaptor) {
 }
 
 //===----------------------------------------------------------------------===//
+// SumOp
+//===----------------------------------------------------------------------===//
+
+// TODO: b/351437662 - Expand for all reductions.
+OpFoldResult SumOp::fold(FoldAdaptor adaptor) {
+  auto input = adaptor.getInput();
+  auto axes = adaptor.getAxes();
+
+  if (!input || !axes) {
+    return {};
+  }
+
+  if (adaptor.getKeepDims()) {
+    return {};
+  }
+
+  auto input_type = getInput().getType();
+
+  if (!input_type.getElementType().isF32()) {
+    return {};
+  }
+
+  const auto input_rank = input_type.getRank();
+  auto axes_data = llvm::cast<DenseIntElementsAttr>(axes);
+  if (axes_data.getNumElements() != input_rank - 1) {
+    return {};
+  }
+
+  if (llvm::any_of(axes_data.getValues<int32_t>(),
+                   [&](int32_t i) { return i == input_rank - 1; })) {
+    return {};
+  }
+
+  llvm::SmallVector<int64_t> out_shape = {input_type.getShape().back()};
+  std::vector<float> out_data(out_shape[0], 0.0);
+
+  auto in_data = llvm::cast<DenseFPElementsAttr>(input);
+
+  size_t flat_ind = 0;
+  for (auto it = in_data.value_begin<float>(); it < in_data.value_end<float>();
+       ++it) {
+    out_data[flat_ind % out_shape[0]] += *it;
+    flat_ind++;
+  }
+
+  return DenseFPElementsAttr::get(
+      RankedTensorType::get(out_shape, input_type.getElementType()), out_data);
+}
+
+//===----------------------------------------------------------------------===//
 // RankOp
 //===----------------------------------------------------------------------===//
 

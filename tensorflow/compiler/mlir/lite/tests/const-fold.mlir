@@ -1573,6 +1573,17 @@ func.func @slice_trivial(%arg0: tensor<2x1x5x6xf32>) -> tensor<2x1x5x6xf32> {
 // CHECK-NOT: tfl.slice
 
 
+// CHECK-LABEL: sum
+func.func @sum() -> tensor<2xf32> {
+  %cst = arith.constant dense<[0, 1]> : tensor<2xi32>
+  %cst_1 = arith.constant dense<[[[0.0, 1.0], [2.0, 3.0]], [[4.0, 5.0], [6.0, 7.0]]]> : tensor<2x2x2xf32>
+  %0 = "tfl.sum"(%cst_1, %cst) <{keep_dims = false}> : (tensor<2x2x2xf32>, tensor<2xi32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+}
+
+// CHECK: arith.constant dense<[1.200000e+01, 1.600000e+01]> : tensor<2xf32>
+
+
 // CHECK-LABEL: gather
 func.func @gather() -> (tensor<2x3x4x5xi16>, tensor<2x3x4x5xi16>) {
   %params = arith.constant dense<[

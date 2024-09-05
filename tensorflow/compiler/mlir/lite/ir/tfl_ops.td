@@ -2452,6 +2452,8 @@ def TFL_SumOp: TFL_Op<"sum", [
   let hasOptions = 1;
   let customOption = "ReducerOptions";
 
+  let hasFolder = 1;
+
   // TODO(b/215655380): Re-enable this once there is 16-bit MLIR quantizer.
   //
   //let extraClassDeclaration = [{
