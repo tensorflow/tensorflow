@@ -47,6 +47,9 @@ namespace tflite {
 namespace xnnpack {
 
 FileDescriptor FileDescriptor::Duplicate() const {
+  if (!IsValid()) {
+    return FileDescriptor(-1);
+  }
   return FileDescriptor(dup(fd_));
 }
 
@@ -60,16 +63,52 @@ void FileDescriptor::Reset(int new_fd) {
   fd_ = new_fd;
 }
 
-void FileDescriptor::Close() { Reset(-1); }
-
 off_t FileDescriptor::GetPos() const { return lseek(fd_, 0, SEEK_CUR); }
 
-off_t FileDescriptor::SetPos(off_t position) {
+off_t FileDescriptor::SetPos(off_t position) const {
   return lseek(fd_, position, SEEK_SET);
 }
 
-off_t FileDescriptor::MovePos(off_t offset) {
+off_t FileDescriptor::SetPosFromEnd(off_t offset) const {
+  return lseek(fd_, offset, SEEK_END);
+}
+
+off_t FileDescriptor::MovePos(off_t offset) const {
   return lseek(fd_, offset, SEEK_CUR);
+}
+
+FileDescriptor FileDescriptor::Open(const char* path, int flags, mode_t mode) {
+  return FileDescriptor(open(path, flags, mode));
+}
+
+void FileDescriptor::Close() { Reset(-1); }
+
+bool FileDescriptor::Read(void* dst, size_t count) const {
+  char* dst_it = reinterpret_cast<char*>(dst);
+  while (count > 0) {
+    const auto bytes = read(fd_, dst_it, count);
+    if (bytes == -1) {
+      return false;
+    } else if (bytes == 0) {
+      break;
+    }
+    count -= bytes;
+    dst_it += bytes;
+  }
+  return true;
+}
+
+bool FileDescriptor::Write(const void* src, size_t count) const {
+  const char* src_it = reinterpret_cast<const char*>(src);
+  while (count > 0) {
+    const auto bytes = write(fd_, src_it, count);
+    if (bytes == -1) {
+      return false;
+    }
+    count -= bytes;
+    src_it += bytes;
+  }
+  return true;
 }
 
 bool InMemoryFileDescriptorAvailable() {

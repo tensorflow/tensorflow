@@ -17,12 +17,19 @@ limitations under the License.
 
 #include <sys/types.h>
 
+#include <cstddef>
 #include <utility>
 
 namespace tflite {
 namespace xnnpack {
 
+#if defined(_MSC_VER)
+using mode_t = int;
+#endif
+
 // Wraps a C file descriptor and closes it when destroyed.
+//
+// Note that constness of the wrapped does NOT propagate to the file operations.
 class FileDescriptor {
  public:
   explicit FileDescriptor(int fd) : fd_(fd) {}
@@ -56,24 +63,62 @@ class FileDescriptor {
 
   // Returns the cursor position in the current file.
   //
+  // Equivalent to MovePos(0).
+  //
   // WARNING: the file descriptor must be valid and the file must be opened.
   off_t GetPos() const;
 
   // Sets the absolute cursor position in the current file.
   //
+  // Returns the cursor position in the file or -1 on error.
+  //
   // WARNING: the file descriptor must be valid and the file must be opened.
-  off_t SetPos(off_t position);
+  off_t SetPos(off_t position) const;
+
+  // Sets the cursor position relative to the file end.
+  //
+  // Returns the cursor position in the file or -1 on error.
+  //
+  // WARNING: the file descriptor must be valid and the file must be opened.
+  off_t SetPosFromEnd(off_t offset) const;
 
   // Moves the cursor position by the given offset in the current file.
   //
+  // Returns the cursor position in the file or -1 on error.
+  //
   // WARNING: the file descriptor must be valid and the file must be opened.
-  off_t MovePos(off_t offset);
+  off_t MovePos(off_t offset) const;
 
   // Duplicates the current file descriptor and returns the new file descriptor.
+  //
+  // If the file descriptor is invalid, returns a new invalid FileDescriptor
+  // object.
   FileDescriptor Duplicate() const;
 
-  // Closes the current file descriptor and set it to -1.
+  // Opens a file.
+  //
+  // Directly maps to the standard C function `open`.
+  static FileDescriptor Open(const char* path, int flags, mode_t mode = 0);
+
+  // Closes the current file descriptor and sets it to -1.
   void Close();
+
+  // Reads `count` bytes from the file at the current position to `dst`.
+  //
+  // Returns true if all the data available in the file was read to the buffer
+  // (i.e. `count` bytes were read or EOF was reached).
+  //
+  // This is a convenience function wrapping the standard `read` function. If
+  // you need finer grain control use that directly.
+  [[nodiscard /*Reading from a file may fail.*/]]
+  bool Read(void* dst, size_t count) const;
+
+  // Writes `count` bytes to the file at the current position from `src`.
+  //
+  // This is a convenience function wrapping the standard `write` function. If
+  // you need finer grain control use that directly.
+  [[nodiscard /*Reading from a file may fail.*/]]
+  bool Write(const void* src, size_t count) const;
 
   // Returns the current file descriptor value and stops managing it.
   int Release() {
