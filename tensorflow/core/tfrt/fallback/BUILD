@@ -165,5 +165,4 @@ tf_cuda_cc_test(
 tf_proto_library(
     name = "op_cost_map_proto",
     srcs = ["op_cost_map.proto"],
-    cc_api_version = 2,
 )

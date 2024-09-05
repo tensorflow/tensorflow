@@ -20,6 +20,8 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <variant>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -33,10 +35,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/primitive_util.h"
+#include "xla/service/compiler.h"
 #include "xla/service/executable.h"
-#include "xla/service/gpu/autotuner_util.h"
+#include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/hlo_module_config.h"
@@ -44,8 +50,11 @@ limitations under the License.
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/service/xla_debug_info_manager.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
@@ -644,12 +653,12 @@ CHECK:       %[[AFTER_ALL:.*]] = after-all
 CHECK:       %[[RESULT_RECV:.*]] = recv(%[[AFTER_ALL]])
 CHECK-SAME:    channel_id=[[CHANNEL_ID]]
 CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0",
-CHECK-SAME{LITERAL}:                _xla_send_recv_source_target_pairs="{{0,1},{1,2},{2,3},{3,4}}"},
+CHECK-SAME{LITERAL}:                _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3},{3,4}}},
 CHECK-SAME:                         control-predecessors={%[[CUSTOM_CALL]]}
 CHECK:       %[[RESULT_SEND:.*]] = send(%[[SOME_SEND_ARG:.*]], %[[AFTER_ALL]])
 CHECK-SAME:    channel_id=1
 CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0",
-CHECK-SAME{LITERAL}:                _xla_send_recv_source_target_pairs="{{0,1},{1,2},{2,3},{3,4}}"},
+CHECK-SAME{LITERAL}:                _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3},{3,4}}},
 CHECK-SAME:                         control-predecessors={%[[RESULT_RECV]]}
 CHECK:       ROOT
 // We actually expect both RESULT_RECV and RESULT_SEND to match on this line.
@@ -663,11 +672,11 @@ CHECK:       %[[ENTRY_AFTER_ALL:.*]] = after-all
 CHECK:       %[[ENTRY_RECV:.*]] = recv(%[[ENTRY_AFTER_ALL]])
 CHECK-SAME:    channel_id=[[CHANNEL_ID]]
 CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0",
-CHECK-SAME{LITERAL}:                _xla_send_recv_source_target_pairs="{{0,1},{1,2},{2,3},{3,4}}"}
+CHECK-SAME{LITERAL}:                _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3},{3,4}}}
 CHECK:       %[[ENTRY_SEND:.*]] = send(%[[SOME_SEND_ARG:.*]], %[[ENTRY_AFTER_ALL]])
 CHECK-SAME:    channel_id=1
 CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0",
-CHECK-SAME{LITERAL}:                _xla_send_recv_source_target_pairs="{{0,1},{1,2},{2,3},{3,4}}"},
+CHECK-SAME{LITERAL}:                _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3},{3,4}}},
 CHECK-SAME:                         control-predecessors={%[[ENTRY_RECV]]}
 CHECK:       %[[WHILE_INIT:.*]] = tuple
 // Check here that the send argument is likewise passed to the while loop, as
@@ -804,6 +813,78 @@ TEST_F(KernelCacheTest, AllKernelsAreCachedBecauseSplitModuleUsesRoundRobin) {
   EXPECT_EQ(CacheEntryCount(), 4);
 }
 
+TEST_F(KernelCacheTest, CachingWorksWithLoadedExecutables) {
+  const std::string kHloAdd1 = R"(
+add1 {
+  p = s32[] parameter(0)
+  c = s32[] constant(1)
+  ROOT a = s32[] add(p, c)
+}
+
+ENTRY e {
+  p = s32[] parameter(0)
+  ROOT r = s32[] fusion(p), kind=kLoop, calls=add1
+})";
+
+  const std::string kHloAdd2 = R"(
+add2 {
+  p = s32[] parameter(0)
+  c = s32[] constant(2)
+  ROOT a = s32[] add(p, c)
+}
+
+ENTRY e {
+  p = s32[] parameter(0)
+  ROOT r = s32[] fusion(p), kind=kLoop, calls=add2
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                          se::PlatformManager::PlatformWithName("cuda"));
+  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
+                          platform->ExecutorForDevice(0));
+
+  Compiler* compiler = backend().compiler();
+  AotCompilationOptions aot_options(compiler->PlatformId());
+  aot_options.set_executor(stream_exec);
+
+  auto test = [this, &compiler, &aot_options](absl::string_view hlo, int input,
+                                              int expected_result) {
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                            ParseAndReturnVerifiedModule(hlo));
+    auto module_group = std::make_unique<HloModuleGroup>(std::move(module));
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
+        compiler->CompileAheadOfTime(std::move(module_group), aot_options));
+
+    TF_ASSERT_OK_AND_ASSIGN(std::string serialized_aot_result,
+                            aot_results[0]->SerializeAsString());
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<AotCompilationResult> aot_result,
+        compiler->LoadAotCompilationResult(serialized_aot_result));
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<Executable> executable,
+        aot_result->LoadExecutable(compiler, aot_options.executor()));
+
+    const xla::Literal literal_input =
+        xla::LiteralUtil::CreateR0<int32_t>(input);
+    const xla::Literal literal_expected_result =
+        xla::LiteralUtil::CreateR0<int32_t>(expected_result);
+
+    TF_ASSERT_OK_AND_ASSIGN(Literal result,
+                            GetHloRunner().value()->ExecuteWithExecutable(
+                                executable.get(), {&literal_input}));
+
+    EXPECT_TRUE(LiteralTestUtil::Equal(result, literal_expected_result));
+  };
+
+  test(kHloAdd1, 1, 2);
+  test(kHloAdd2, 1, 3);
+  // The test used to fail on the second execution of the second module when it
+  // was already cached.
+  test(kHloAdd2, 1, 3);
+}
+
 class KernelCacheTestSingleThreaded : public KernelCacheTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
@@ -860,10 +941,10 @@ TEST_F(GpuCompilerTest, TestFlag_xla_gpu_unsafe_pipelined_loop_annotator) {
     })";
 
   const char* kExpected = R"(
-  // CHECK: {{.+}} = send({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs="{{[{]}}{3,0}}",_xla_send_recv_validation="{{[{]}}{3,9}}"}
-  // CHECK: {{.+}} = send({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs="{{[{]}}{0,1},{1,2},{2,3}}",_xla_send_recv_validation="{{[{]}}{0,6},{1,7},{2,8}}"}
-  // CHECK: {{.+}} = recv({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs="{{[{]}}{3,0}}",_xla_send_recv_validation="{{[{]}}{3,9}}"}
-  // CHECK: {{.+}} = recv({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs="{{[{]}}{0,1},{1,2},{2,3}}",_xla_send_recv_validation="{{[{]}}{0,6},{1,7},{2,8}}"}
+  // CHECK: {{.+}} = send({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs={{[{]}}{3,0}},_xla_send_recv_validation={{[{]}}{3,9}}}
+  // CHECK: {{.+}} = send({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs={{[{]}}{0,1},{1,2},{2,3}},_xla_send_recv_validation={{[{]}}{0,6},{1,7},{2,8}}}
+  // CHECK: {{.+}} = recv({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs={{[{]}}{3,0}},_xla_send_recv_validation={{[{]}}{3,9}}}
+  // CHECK: {{.+}} = recv({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs={{[{]}}{0,1},{1,2},{2,3}},_xla_send_recv_validation={{[{]}}{0,6},{1,7},{2,8}}}
   )";
 
   DebugOptions debug_options;
@@ -883,6 +964,74 @@ TEST_F(GpuCompilerTest, TestFlag_xla_gpu_unsafe_pipelined_loop_annotator) {
       bool filecheck_matched,
       RunFileCheck(optimized_module->ToString(options), kExpected));
   EXPECT_TRUE(filecheck_matched);
+}
+
+using GpuCompilerPassTest = GpuCompilerTest;
+
+TEST_F(GpuCompilerPassTest,
+       GpuCompilerRunsTritonGemmRewriterByDefaultFromAmpere) {
+  auto cc = backend()
+                .default_stream_executor()
+                ->GetDeviceDescription()
+                .cuda_compute_capability();
+
+  bool expect_triton_gemm_rewriter_has_run = cc.IsAtLeastAmpere();
+
+  constexpr absl::string_view constant_module = R"(
+HloModule noop
+
+ENTRY main {
+  ROOT constant = f32[] constant(0)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(constant_module));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                          GetOptimizedModule(std::move(module)));
+  const HloModuleMetadataProto& module_metadata =
+      optimized_module->metadata()->proto();
+
+  bool triton_gemm_rewriter_has_run = false;
+  for (const HloPassMetadata& pass_metadata : module_metadata.pass_metadata()) {
+    triton_gemm_rewriter_has_run |=
+        pass_metadata.pass_name() == "triton-gemm-rewriter";
+  }
+
+  EXPECT_EQ(triton_gemm_rewriter_has_run, expect_triton_gemm_rewriter_has_run);
+}
+
+TEST_F(GpuCompilerPassTest,
+       GpuCompilerRunsCustomKernelFusionByDefaultFromVolta) {
+  auto cc = backend()
+                .default_stream_executor()
+                ->GetDeviceDescription()
+                .cuda_compute_capability();
+
+  bool expect_custom_kernel_fusion_rewriter_has_run =
+      cc.major == se::CudaComputeCapability::VOLTA;
+
+  constexpr absl::string_view constant_module = R"(
+HloModule noop
+
+ENTRY main {
+  ROOT constant = f32[] constant(0)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(constant_module));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                          GetOptimizedModule(std::move(module)));
+  const HloModuleMetadataProto& module_metadata =
+      optimized_module->metadata()->proto();
+
+  bool custom_kernel_fusion_rewriter_has_run = false;
+  for (const HloPassMetadata& pass_metadata : module_metadata.pass_metadata()) {
+    custom_kernel_fusion_rewriter_has_run |=
+        pass_metadata.pass_name() == "custom-kernel-fusion-rewriter";
+  }
+
+  EXPECT_EQ(custom_kernel_fusion_rewriter_has_run,
+            expect_custom_kernel_fusion_rewriter_has_run);
 }
 
 }  // namespace

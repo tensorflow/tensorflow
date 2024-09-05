@@ -1254,7 +1254,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
         err_tolerance = 1e-4
       else:
         if x_init_value is None:
-          x_init_value = np.asfarray(
+          x_init_value = np.asarray(
               np.arange(1, total_size + 1),
               dtype=np.float32).reshape(input_sizes)
         func_name = "max_pool"
@@ -1332,7 +1332,7 @@ class PoolingTest(test.TestCase, parameterized.TestCase):
         err_tolerance = 1e-3
       else:
         if x_init_value is None:
-          x_init_value = np.asfarray(
+          x_init_value = np.asarray(
               np.arange(1, total_size + 1),
               dtype=np.float32).reshape(input_sizes)
         func_name = "max_pool"

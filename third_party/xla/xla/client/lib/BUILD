@@ -204,7 +204,10 @@ cc_library(
 cc_library(
     name = "math",
     srcs = ["math.cc"],
-    hdrs = ["math.h"],
+    hdrs = [
+        "math.h",
+        "math_impl.h",
+    ],
     deps = [
         ":arithmetic",
         ":constants",
@@ -227,6 +230,7 @@ cc_library(
 
 xla_test(
     name = "math_test",
+    timeout = "long",
     srcs = ["math_test.cc"],
     backend_tags = {
         # Times out.

@@ -27,11 +27,6 @@ Example usage:
   the clang in your path. If that isn't the correct clang, you can override like
   `./configure.py --backend=cpu --clang_path=<PATH_TO_YOUR_CLANG>`.
 
-NOTE(ddunleavy): Lots of these things should probably be outside of configure.py
-but are here because of complexity in `cuda_configure.bzl` and the TF bazelrc.
-Once XLA has it's own bazelrc, and cuda_configure.bzl is replaced or refactored,
-we can probably make this file smaller.
-
 TODO(ddunleavy): add more thorough validation.
 """
 import argparse
@@ -45,18 +40,9 @@ import subprocess
 import sys
 from typing import Optional
 
-_REQUIRED_CUDA_LIBRARIES = ["cublas", "cuda", "cudnn"]
 _DEFAULT_BUILD_AND_TEST_TAG_FILTERS = ("-no_oss",)
 # Assume we are being invoked from the symlink at the root of the repo
 _XLA_SRC_ROOT = pathlib.Path(__file__).absolute().parent
-_FIND_CUDA_CONFIG = str(
-    _XLA_SRC_ROOT
-    / "third_party"
-    / "tsl"
-    / "third_party"
-    / "gpus"
-    / "find_cuda_config.py"
-)
 _XLA_BAZELRC_NAME = "xla_configure.bazelrc"
 _KW_ONLY_IF_PYTHON310 = {"kw_only": True} if sys.version_info >= (3, 10) else {}
 
@@ -224,11 +210,12 @@ class DiscoverablePathsAndVersions:
   ld_library_path: Optional[str] = None
 
   # CUDA specific
-  cublas_version: Optional[str] = None
-  cuda_toolkit_path: Optional[str] = None
+  cuda_version: Optional[str] = None
   cuda_compute_capabilities: Optional[list[str]] = None
   cudnn_version: Optional[str] = None
-  nccl_version: Optional[str] = None
+  local_cuda_path: Optional[str] = None
+  local_cudnn_path: Optional[str] = None
+  local_nccl_path: Optional[str] = None
 
   def get_relevant_paths_and_versions(self, config: "XLAConfigOptions"):
     """Gets paths and versions as needed by the config.
@@ -247,7 +234,7 @@ class DiscoverablePathsAndVersions:
       )
 
       # Notably, we don't use `_find_executable_or_die` for lld, as it changes
-      # which commands it accepts based on it's name! ld.lld is symlinked to a
+      # which commands it accepts based on its name! ld.lld is symlinked to a
       # different executable just called lld, which should not be invoked
       # directly.
       self.lld_path = self.lld_path or shutil.which("ld.lld")
@@ -260,64 +247,6 @@ class DiscoverablePathsAndVersions:
 
       if not self.cuda_compute_capabilities:
         self.cuda_compute_capabilities = _get_cuda_compute_capabilities_or_die()
-
-      self._get_cuda_libraries_paths_and_versions_if_needed(config)
-
-  def _get_cuda_libraries_paths_and_versions_if_needed(
-      self, config: "XLAConfigOptions"
-  ):
-    """Gets cuda paths and versions if user left any unspecified.
-
-    This uses `find_cuda_config.py` to find versions for all libraries in
-    `_REQUIRED_CUDA_LIBRARIES`.
-
-    Args:
-      config: config that determines which libraries should be found.
-    """
-    should_find_nccl = config.using_nccl and self.nccl_version is None
-    any_cuda_config_unset = any([
-        self.cublas_version is None,
-        self.cuda_toolkit_path is None,
-        self.cudnn_version is None,
-        should_find_nccl,
-    ])
-
-    maybe_nccl = ["nccl"] if should_find_nccl else []
-
-    if any_cuda_config_unset:
-      logging.info(
-          "Some CUDA config versions and paths were not provided, "
-          "so trying to find them using find_cuda_config.py"
-      )
-      try:
-        find_cuda_config_proc = subprocess.run(
-            [
-                sys.executable,
-                _FIND_CUDA_CONFIG,
-                *_REQUIRED_CUDA_LIBRARIES,
-                *maybe_nccl,
-            ],
-            capture_output=True,
-            check=True,
-            text=True,
-        )
-      except subprocess.CalledProcessError as e:
-        logging.info("Command %s failed. Is CUDA installed?", e.cmd)
-        logging.info("Dumping %s ouptut:\n %s", e.cmd, e.output)
-        raise e
-
-      cuda_config = dict(
-          tuple(line.split(": "))
-          for line in find_cuda_config_proc.stdout.strip().split("\n")
-      )
-
-      self.cublas_version = self.cublas_version or cuda_config["cublas_version"]
-      self.cuda_toolkit_path = (
-          self.cuda_toolkit_path or cuda_config["cuda_toolkit_path"]
-      )
-      self.cudnn_version = self.cudnn_version or cuda_config["cudnn_version"]
-      if should_find_nccl:
-        self.nccl_version = self.nccl_version or cuda_config["nccl_version"]
 
 
 @dataclasses.dataclass(frozen=True, **_KW_ONLY_IF_PYTHON310)
@@ -333,7 +262,6 @@ class XLAConfigOptions:
   # CUDA specific
   cuda_compiler: CudaCompiler
   using_nccl: bool
-  using_tensorrt: bool
 
   def to_bazelrc_lines(
       self,
@@ -392,19 +320,31 @@ class XLAConfigOptions:
         )
 
       # Lines needed for CUDA backend regardless of CUDA/host compiler
+      if dpav.cuda_version:
+        rc.append(
+            f"build:cuda --repo_env HERMETIC_CUDA_VERSION={dpav.cuda_version}"
+        )
       rc.append(
-          f"build --action_env CUDA_TOOLKIT_PATH={dpav.cuda_toolkit_path}"
+          "build:cuda --repo_env"
+          f" HERMETIC_CUDA_COMPUTE_CAPABILITIES={','.join(dpav.cuda_compute_capabilities)}"
       )
-      rc.append(f"build --action_env TF_CUBLAS_VERSION={dpav.cublas_version}")
-      rc.append(
-          "build --action_env"
-          f" TF_CUDA_COMPUTE_CAPABILITIES={','.join(dpav.cuda_compute_capabilities)}"
-      )
-      rc.append(f"build --action_env TF_CUDNN_VERSION={dpav.cudnn_version}")
-      rc.append(f"build --repo_env TF_NEED_TENSORRT={int(self.using_tensorrt)}")
-      if self.using_nccl:
-        rc.append(f"build --action_env TF_NCCL_VERSION={dpav.nccl_version}")
-      else:
+      if dpav.cudnn_version:
+        rc.append(
+            f"build:cuda --repo_env HERMETIC_CUDNN_VERSION={dpav.cudnn_version}"
+        )
+      if dpav.local_cuda_path:
+        rc.append(
+            f"build:cuda --repo_env LOCAL_CUDA_PATH={dpav.local_cuda_path}"
+        )
+      if dpav.local_cudnn_path:
+        rc.append(
+            f"build:cuda --repo_env LOCAL_CUDNN_PATH={dpav.local_cudnn_path}"
+        )
+      if dpav.local_nccl_path:
+        rc.append(
+            f"build:cuda --repo_env LOCAL_NCCL_PATH={dpav.local_nccl_path}"
+        )
+      if not self.using_nccl:
         rc.append("build --config nonccl")
     elif self.backend == Backend.ROCM:
       pass
@@ -476,7 +416,6 @@ def _parse_args():
       default="-Wno-sign-compare",
   )
   parser.add_argument("--nccl", action="store_true")
-  parser.add_argument("--tensorrt", action="store_true")
 
   # Path and version overrides
   path_help = "Optional: will be found on PATH if possible."
@@ -492,13 +431,35 @@ def _parse_args():
   parser.add_argument("--lld_path", help=path_help)
 
   # CUDA specific
-  find_cuda_config_help = (
-      "Optional: will be found using `find_cuda_config.py` if flag is not set."
+  parser.add_argument(
+      "--cuda_version",
+      help="Optional: CUDA will be downloaded by Bazel if the flag is set",
   )
-  parser.add_argument("--cublas_version", help=find_cuda_config_help)
-  parser.add_argument("--cuda_toolkit_path", help=find_cuda_config_help)
-  parser.add_argument("--cudnn_version", help=find_cuda_config_help)
-  parser.add_argument("--nccl_version", help=find_cuda_config_help)
+  parser.add_argument(
+      "--cudnn_version",
+      help="Optional: CUDNN will be downloaded by Bazel if the flag is set",
+  )
+  parser.add_argument(
+      "--local_cuda_path",
+      help=(
+          "Optional: Local CUDA dir will be used in dependencies if the flag"
+          " is set"
+      ),
+  )
+  parser.add_argument(
+      "--local_cudnn_path",
+      help=(
+          "Optional: Local CUDNN dir will be used in dependencies if the flag"
+          " is set"
+      ),
+  )
+  parser.add_argument(
+      "--local_nccl_path",
+      help=(
+          "Optional: Local NCCL dir will be used in dependencies if the flag"
+          " is set"
+      ),
+  )
 
   return parser.parse_args()
 
@@ -518,7 +479,6 @@ def main():
       python_bin_path=args.python_bin_path,
       compiler_options=args.compiler_options,
       using_nccl=args.nccl,
-      using_tensorrt=args.tensorrt,
   )
 
   bazelrc_lines = config.to_bazelrc_lines(
@@ -527,11 +487,12 @@ def main():
           gcc_path=args.gcc_path,
           lld_path=args.lld_path,
           ld_library_path=args.ld_library_path,
-          cublas_version=args.cublas_version,
-          cuda_compute_capabilities=args.cuda_compute_capabilities,
-          cuda_toolkit_path=args.cuda_toolkit_path,
+          cuda_version=args.cuda_version,
           cudnn_version=args.cudnn_version,
-          nccl_version=args.nccl_version,
+          cuda_compute_capabilities=args.cuda_compute_capabilities,
+          local_cuda_path=args.local_cuda_path,
+          local_cudnn_path=args.local_cudnn_path,
+          local_nccl_path=args.local_nccl_path,
       )
   )
 

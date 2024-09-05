@@ -34,7 +34,7 @@ cc_library(
     name = "bitmap",
     hdrs = ["bitmap.h"],
     deps = [
-        "@local_tsl//tsl/lib/core:bitmap",
+        "@local_xla//xla/tsl/lib/core:bitmap",
     ],
     alwayslink = 1,
 )
@@ -45,7 +45,7 @@ cc_library(
     deps = [
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
-        "@local_tsl//tsl/lib/core:bits",
+        "@local_xla//xla/tsl/lib/core:bits",
     ],
 )
 
@@ -130,7 +130,6 @@ cc_library(
 tf_proto_library(
     name = "error_codes_proto",
     srcs = ["error_codes.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         "@local_tsl//tsl/protobuf:error_codes_proto_impl",
@@ -188,7 +187,7 @@ filegroup(
         "threadpool.h",
         "threadpool_interface.h",
         "threadpool_options.h",
-        "@local_tsl//tsl/lib/core:legacy_lib_core_all_headers",
+        "@local_xla//xla/tsl/lib/core:legacy_lib_core_all_headers",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -225,7 +224,6 @@ filegroup(
     name = "legacy_lib_core_status_test_util_header",
     srcs = [
         "status_test_util.h",
-        "@local_tsl//tsl/lib/core:legacy_lib_core_status_test_util_header",
         "@local_xla//xla/tsl/lib/core:legacy_lib_core_status_test_util_header",
     ],
     visibility = ["//tensorflow/core:__pkg__"],

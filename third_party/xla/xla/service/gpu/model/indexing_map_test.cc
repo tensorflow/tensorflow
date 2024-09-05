@@ -62,6 +62,24 @@ std::vector<bool> ConvertToSTL(const llvm::SmallBitVector& bit_vector) {
   return result;
 }
 
+TEST_F(IndexingMapTest, VariableKind) {
+  EXPECT_EQ(ToVariableType("default"), VariableKind::kDefault);
+  EXPECT_EQ(ToVariableType("thread_x"), VariableKind::kThreadX);
+  EXPECT_EQ(ToVariableType("thread_y"), VariableKind::kThreadY);
+  EXPECT_EQ(ToVariableType("thread_z"), VariableKind::kThreadZ);
+  EXPECT_EQ(ToVariableType("block_x"), VariableKind::kBlockX);
+  EXPECT_EQ(ToVariableType("block_y"), VariableKind::kBlockY);
+  EXPECT_EQ(ToVariableType("block_z"), VariableKind::kBlockZ);
+
+  EXPECT_EQ(ToString(VariableKind::kDefault), "default");
+  EXPECT_EQ(ToString(VariableKind::kThreadX), "thread_x");
+  EXPECT_EQ(ToString(VariableKind::kThreadY), "thread_y");
+  EXPECT_EQ(ToString(VariableKind::kThreadZ), "thread_z");
+  EXPECT_EQ(ToString(VariableKind::kBlockX), "block_x");
+  EXPECT_EQ(ToString(VariableKind::kBlockY), "block_y");
+  EXPECT_EQ(ToString(VariableKind::kBlockZ), "block_z");
+}
+
 TEST_F(IndexingMapTest, RTVar) {
   auto zero_dim_map = AffineMap::get(&mlir_context_);
   std::vector<RTVar> rt_vars{RTVar{Interval{0, 2},
@@ -1374,6 +1392,7 @@ TEST_F(IndexingMapTest, ReplaceConstantRTVars_ScalarConstant) {
              AffineMap::get(0, 0, {}, &mlir_context_)}});
 
   EXPECT_TRUE(indexing_map.Simplify());
+  indexing_map.RemoveUnusedSymbols();
 
   EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
               () -> (42)
@@ -1402,6 +1421,7 @@ TEST_F(IndexingMapTest, ReplaceConstantRTVars_StaticIndexIntoTensorConstant) {
              ParseAffineMap("() -> (1,2)", &mlir_context_)}});
 
   EXPECT_TRUE(indexing_map.Simplify());
+  indexing_map.RemoveUnusedSymbols();
 
   EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
               () -> (13)
@@ -1453,6 +1473,7 @@ TEST_F(IndexingMapTest, ReplaceConstantRTVars_Iota) {
              ParseAffineMap("(d0) -> (d0, 7)", &mlir_context_)}});
 
   EXPECT_TRUE(indexing_map.Simplify());
+  indexing_map.RemoveUnusedSymbols();
 
   EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
               (d0) -> (d0, d0)
@@ -1482,6 +1503,7 @@ TEST_F(IndexingMapTest, ReplaceConstantRTVars_IotaAsConstant) {
              ParseAffineMap("(d0) -> (d0, 7)", &mlir_context_)}});
 
   EXPECT_TRUE(indexing_map.Simplify());
+  indexing_map.RemoveUnusedSymbols();
 
   EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
               (d0) -> (d0, 7)
@@ -1513,6 +1535,7 @@ TEST_F(IndexingMapTest, ReplaceConstantRTVars_ConstraintsGetUpdated) {
                              Interval{0, 0});
 
   EXPECT_TRUE(indexing_map.Simplify());
+  indexing_map.RemoveUnusedSymbols();
 
   EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
               (d0) -> (d0, d0)
@@ -1546,6 +1569,7 @@ TEST_F(IndexingMapTest, ReplaceConstantRTVars_Broadcast) {
              ParseAffineMap("(d0) -> (d0, 11)", &mlir_context_)}});
 
   EXPECT_TRUE(indexing_map.Simplify());
+  indexing_map.RemoveUnusedSymbols();
 
   EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
               (d0) -> (d0, 11)
@@ -1587,6 +1611,7 @@ TEST_F(IndexingMapTest, ReplaceConstantRTVars_ChainedNoncomputeOps) {
           ParseAffineMap("(d0) -> (d0, d0 floordiv 12, 3)", &mlir_context_)}});
 
   EXPECT_TRUE(indexing_map.Simplify());
+  indexing_map.RemoveUnusedSymbols();
 
   EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
               (d0) -> (d0, (d0 floordiv 12) * -4 + 8)
@@ -1657,6 +1682,7 @@ TEST_F(IndexingMapTest, ReplaceConstantRTVars_Add) {
              ParseAffineMap("(d0) -> (d0, 7, 2 * d0)", &mlir_context_)}});
 
   EXPECT_TRUE(indexing_map.Simplify());
+  indexing_map.RemoveUnusedSymbols();
 
   EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
               (d0) -> (d0, d0 * 2 + 42)
@@ -1696,6 +1722,7 @@ TEST_F(IndexingMapTest, ReplaceConstantRTVars_Multiply) {
              ParseAffineMap("(d0) -> (d0, d0)", &mlir_context_)}});
 
   EXPECT_TRUE(indexing_map.Simplify());
+  indexing_map.RemoveUnusedSymbols();
 
   EXPECT_THAT(indexing_map.ToString(printer_), MatchIndexingString(R"(
               (d0) -> (d0, (-d0 + 11) * d0)

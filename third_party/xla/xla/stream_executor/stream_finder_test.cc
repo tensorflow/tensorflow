@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/stream_executor/stream_finder.h"
 
+#include "absl/status/status.h"
 #include "xla/stream_executor/mock_platform.h"
 #include "xla/stream_executor/mock_stream.h"
 #include "xla/stream_executor/mock_stream_executor.h"
@@ -37,8 +38,7 @@ TEST(StreamFinderTest, FindStreamFailsWithNoMatchingStream) {
   MockStreamExecutor stream_executor;
   MockPlatform platform;
   EXPECT_CALL(platform, VisibleDeviceCount()).WillOnce(Return(1));
-  EXPECT_CALL(platform, ExecutorForDevice(0))
-      .WillOnce(Return(&stream_executor));
+  EXPECT_CALL(platform, FindExisting(0)).WillOnce(Return(&stream_executor));
   void *gpu_stream = reinterpret_cast<void *>(0x1234);
   EXPECT_CALL(stream_executor, FindAllocatedStream(gpu_stream))
       .WillOnce(Return(nullptr));
@@ -50,10 +50,8 @@ TEST(StreamFinderTest, FindStreamSucceeds) {
   MockStreamExecutor stream_executor1;
   MockPlatform platform;
   EXPECT_CALL(platform, VisibleDeviceCount()).WillOnce(Return(2));
-  EXPECT_CALL(platform, ExecutorForDevice(0))
-      .WillOnce(Return(&stream_executor0));
-  EXPECT_CALL(platform, ExecutorForDevice(1))
-      .WillOnce(Return(&stream_executor1));
+  EXPECT_CALL(platform, FindExisting(0)).WillOnce(Return(&stream_executor0));
+  EXPECT_CALL(platform, FindExisting(1)).WillOnce(Return(&stream_executor1));
   void *gpu_stream = reinterpret_cast<void *>(0x1234);
   MockStream stream;
   EXPECT_CALL(stream_executor0, FindAllocatedStream(gpu_stream))
@@ -64,5 +62,19 @@ TEST(StreamFinderTest, FindStreamSucceeds) {
   EXPECT_EQ(found_stream, &stream);
 }
 
+TEST(StreamFinderTest, OnlyExecutor1Exists) {
+  MockStreamExecutor stream_executor1;
+  MockPlatform platform;
+  EXPECT_CALL(platform, VisibleDeviceCount()).WillOnce(Return(2));
+  EXPECT_CALL(platform, FindExisting(0))
+      .WillRepeatedly(Return(absl::NotFoundError("Nope")));
+  EXPECT_CALL(platform, FindExisting(1)).WillOnce(Return(&stream_executor1));
+  void *gpu_stream = reinterpret_cast<void *>(0x1234);
+  MockStream stream;
+  EXPECT_CALL(stream_executor1, FindAllocatedStream(gpu_stream))
+      .WillOnce(Return(&stream));
+  TF_ASSERT_OK_AND_ASSIGN(auto found_stream, FindStream(&platform, gpu_stream));
+  EXPECT_EQ(found_stream, &stream);
+}
 }  // namespace
 }  // namespace stream_executor

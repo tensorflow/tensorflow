@@ -23,6 +23,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -54,6 +55,10 @@ inline constexpr int64_t kMinDimensionToTransposeTiled = 16;
 // efficient.
 inline constexpr int64_t kMinDimensionToTransposeTiled2 = 8;
 inline constexpr int64_t kMinTotalDimensionsToTransposeTiled = 64 * 128;
+// As the amount of shared memory is limited, we need to make sure that we don't
+// detect 102 transposes that would require too much bytes for the most minor
+// dimension.
+inline constexpr int64_t kMaxBytesInMostMinorDimension = 8;
 
 // Matrix multiplication before the rewrite.
 bool IsMatrixMultiplication(const HloInstruction& dot);
@@ -160,16 +165,18 @@ struct TransposeDescription {
   const HloInstruction* instr;
 
   // Normalized transpose dimensions.
-  Vector3 dimensions;
+  absl::InlinedVector<int64_t, 3> dimensions;
 
   // Permutations of normalized transpose dimensions.
-  Vector3 permutation;
+  absl::InlinedVector<int64_t, 3> permutation;
 
-  TransposeDescription(Vector3 dimensions, Vector3 permutation)
+  TransposeDescription(absl::InlinedVector<int64_t, 3> dimensions,
+                       absl::InlinedVector<int64_t, 3> permutation)
       : TransposeDescription(/*instr=*/nullptr, dimensions, permutation) {}
 
-  TransposeDescription(const HloInstruction* instr, Vector3 dimensions,
-                       Vector3 permutation)
+  TransposeDescription(const HloInstruction* instr,
+                       absl::InlinedVector<int64_t, 3> dimensions,
+                       absl::InlinedVector<int64_t, 3> permutation)
       : instr(instr), dimensions(dimensions), permutation(permutation) {}
 
   // Transpose instruction input shape.
@@ -183,7 +190,7 @@ struct TransposeDescription {
 };
 
 std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
-    const HloInstruction& root, const HloInstruction& hero);
+    const HloInstruction& hero);
 
 // Checks if the instruction is elementwise.
 bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count = 1);

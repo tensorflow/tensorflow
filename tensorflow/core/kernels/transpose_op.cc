@@ -146,7 +146,7 @@ void TransposeOp::Compute(OpKernelContext* ctx) {
   TensorShape shape;
 
   // Check whether permutation is a permutation of integers of [0 .. dims).
-  gtl::InlinedVector<bool, 8> bits(dims);
+  absl::InlinedVector<bool, 8UL> bits(dims);
   bool is_identity = true;
   for (int i = 0; i < dims; ++i) {
     int32_t d = permutation[i];

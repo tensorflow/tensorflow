@@ -92,6 +92,8 @@ DistributedRuntimeCoordinationServiceClient::
       absl::ToInt64Milliseconds(options.shutdown_timeout));
   config.set_agent_destruction_without_shutdown(
       !options.shutdown_on_destruction);
+  config.set_poll_for_error_from_service_at_startup(
+      options.poll_for_error_from_service_at_startup);
   auto error_fn = [timeout_fn = options.missed_heartbeat_callback](
                       const absl::Status& status) {
     LOG(ERROR) << "Coordination service agent in error status: " << status;
@@ -131,8 +133,18 @@ absl::Status DistributedRuntimeCoordinationServiceClient::Connect() {
   }
   if (s.ok()) {
     LOG(INFO) << "Connected to distributed JAX controller";
+  } else if (absl::IsDeadlineExceeded(s)) {
+    LOG(ERROR)
+        << "Failed to connect to distributed JAX controller: waited too "
+           "long for some tasks to show up. This may be due to 1) some "
+           "tasks crashed earlier before connecting, 2) some tasks were never "
+           "scheduled, or 3) scheduling delays. Consider setting a longer "
+           "initialization timeout if such delays are expected, the timeout is "
+           "currently set to: "
+        << absl::Milliseconds(config_.cluster_register_timeout_in_ms())
+        << ".\n\nOriginal runtime error: " << s;
   } else {
-    LOG(INFO) << "Failed to connect to distributed JAX controller: " << s;
+    LOG(ERROR) << "Failed to connect to distributed JAX controller: " << s;
   }
   return s;
 }

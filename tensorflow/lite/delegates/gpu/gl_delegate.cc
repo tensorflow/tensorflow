@@ -26,9 +26,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
-#include "tensorflow/lite/builtin_ops.h"
+#include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/verifier.h"  // from @flatbuffers
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/gpu/common/convert.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_builder.h"
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
@@ -38,18 +40,21 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/transformations/model_transformations.h"
 #include "tensorflow/lite/delegates/gpu/gl/api.h"
 #include "tensorflow/lite/delegates/gpu/gl/command_queue.h"
-#include "tensorflow/lite/delegates/gpu/gl/compiler.h"
+#include "tensorflow/lite/delegates/gpu/gl/compiler_options.h"
 #include "tensorflow/lite/delegates/gpu/gl/converters/bhwc_to_phwc4.h"
 #include "tensorflow/lite/delegates/gpu/gl/converters/phwc4_to_bhwc.h"
 #include "tensorflow/lite/delegates/gpu/gl/egl_environment.h"
-#include "tensorflow/lite/delegates/gpu/gl/gl_call.h"
+#include "tensorflow/lite/delegates/gpu/gl/gl_buffer.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/registry.h"
+#include "tensorflow/lite/delegates/gpu/gl/object.h"
+#include "tensorflow/lite/delegates/gpu/gl/object_manager.h"
 #include "tensorflow/lite/delegates/gpu/gl/request_gpu_info.h"
+#include "tensorflow/lite/delegates/gpu/gl/runtime_options.h"
 #include "tensorflow/lite/delegates/gpu/gl/workgroups/best_effort_calculator.h"
+#include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
 
 #ifndef TFLITE_GPU_BINARY_RELEASE
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/delegates/gpu/gl/metadata_generated.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #endif  // TFLITE_GPU_BINARY_RELEASE

@@ -22,27 +22,28 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <new>
+#include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
-#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/notification.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/host/host_event.h"
 #include "xla/stream_executor/host/host_kernel.h"
 #include "xla/stream_executor/host/host_stream.h"
+#include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream.h"
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/mem.h"
@@ -89,26 +90,6 @@ absl::StatusOr<std::unique_ptr<Kernel>> HostExecutor::LoadKernel(
   }
 
   return absl::InternalError("No method of loading host kernel provided");
-}
-
-absl::Status HostExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
-                                  const BlockDim& block_dims,
-                                  const Kernel& kernel,
-                                  const KernelArgs& args) {
-  const HostKernel* host_kernel = AsHostKernel(&kernel);
-
-  const KernelArgsDeviceMemoryArray* device_mem =
-      DynCast<KernelArgsDeviceMemoryArray>(&args);
-
-  absl::Status result;
-  if (device_mem != nullptr) {
-    result = host_kernel->Launch(thread_dims, device_mem->device_memory_args());
-  } else {
-    result = absl::UnimplementedError(
-        "Host kernel implements Launch method only for DeviceMemoryArray "
-        "arguments.");
-  }
-  return result;
 }
 
 bool HostExecutor::DeviceMemoryUsage(int64_t* free, int64_t* total) const {
@@ -168,22 +149,22 @@ absl::Status HostExecutor::BlockHostUntilDone(Stream* stream) {
 
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 HostExecutor::CreateDeviceDescription(int device_ordinal) {
-  internal::DeviceDescriptionBuilder builder;
+  DeviceDescription desc;
 
-  builder.set_device_address_bits(64);
+  desc.set_device_address_bits(64);
 
   // TODO(rspringer): How to report a value that's based in reality but that
   // doesn't result in thrashing or other badness? 4GiB chosen arbitrarily.
-  builder.set_device_memory_size(static_cast<uint64_t>(4) * 1024 * 1024 * 1024);
+  desc.set_device_memory_size(static_cast<uint64_t>(4) * 1024 * 1024 * 1024);
 
   float cycle_counter_frequency = static_cast<float>(
       tsl::profile_utils::CpuUtils::GetCycleCounterFrequency());
-  builder.set_clock_rate_ghz(cycle_counter_frequency / 1e9);
+  desc.set_clock_rate_ghz(cycle_counter_frequency / 1e9);
 
-  builder.set_name("Host");
-  builder.set_platform_version("Default Version");
+  desc.set_name("Host");
+  desc.set_platform_version("Default Version");
 
-  return builder.Build();
+  return std::make_unique<DeviceDescription>(std::move(desc));
 }
 
 absl::StatusOr<std::unique_ptr<Stream>> HostExecutor::CreateStream(

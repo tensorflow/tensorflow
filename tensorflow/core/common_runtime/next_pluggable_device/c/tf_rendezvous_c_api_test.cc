@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
 #include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_rendezvous_c_api_helper.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_rendezvous_c_api_internal.h"
@@ -45,7 +46,6 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
 
 namespace tensorflow {

@@ -97,11 +97,20 @@ std::vector<IndexDomain> IndexDomainsSlowPath(
   return result;
 }
 
+// Returns a canonicalized memory kind for the given devices.
+// REQUIRES: !devices.empty()
+MemoryKind CanonicalizeMemoryKindWithDevices(const MemoryKind& memory_kind,
+                                             const DeviceList& devices) {
+  CHECK(!devices.empty());
+  return CanonicalizeMemoryKind(memory_kind, devices.front());
+}
+
 }  // namespace
 
 std::unique_ptr<HloSharding> HloSharding::Create(
     DeviceList devices, MemoryKind memory_kind,
     xla::HloSharding xla_hlo_sharding) {
+  memory_kind = CanonicalizeMemoryKindWithDevices(memory_kind, devices);
   return std::unique_ptr<HloSharding>(new HloSharding(
       std::move(devices), memory_kind, std::move(xla_hlo_sharding)));
 }
@@ -340,9 +349,8 @@ absl::StatusOr<std::vector<IndexDomain>> HloSharding::IndexDomains(
 }
 
 std::string HloSharding::DebugString() const {
-  return absl::StrFormat("HloSharding(memory_kind: %s, hlo_sharding: %s)",
-                         memory_kind_.DebugString(),
-                         xla_hlo_sharding_.ToString());
+  return absl::StrFormat("HloSharding(memory_kind: %v, hlo_sharding: %s)",
+                         memory_kind_, xla_hlo_sharding_.ToString());
 }
 
 std::vector<IndexDomain> TEST_HloShardingIndexDomainsSlowPath(

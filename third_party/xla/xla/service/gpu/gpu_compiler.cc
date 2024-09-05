@@ -74,7 +74,6 @@ limitations under the License.
 #include "xla/service/all_reduce_folder.h"
 #include "xla/service/all_reduce_promotion.h"
 #include "xla/service/all_reduce_reassociate.h"
-#include "xla/service/all_reduce_splitter.h"
 #include "xla/service/async_collective_creator.h"
 #include "xla/service/batchnorm_expander.h"
 #include "xla/service/bitcast_dtypes_expander.h"
@@ -110,43 +109,20 @@ limitations under the License.
 #include "xla/service/float_support.h"
 #include "xla/service/gather_expander.h"
 #include "xla/service/gather_simplifier.h"
-#include "xla/service/gpu/algorithm_checker.h"
-#include "xla/service/gpu/all_reduce_blueconnect.h"
-#include "xla/service/gpu/autotuner_util.h"
-#include "xla/service/gpu/collective_permute_cycle_decomposer.h"
-#include "xla/service/gpu/collective_permute_valid_iteration_annotator.h"
-#include "xla/service/gpu/command_buffer_scheduling.h"
+#include "xla/service/gpu/autotuning/autotuner_util.h"
+#include "xla/service/gpu/autotuning/custom_kernel_fusion_autotuner.h"
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/conv_layout_normalization.h"
-#include "xla/service/gpu/custom_kernel_fusion_autotuner.h"
-#include "xla/service/gpu/custom_kernel_fusion_rewriter.h"
-#include "xla/service/gpu/dot_dimension_sorter.h"
-#include "xla/service/gpu/dot_operand_converter.h"
-#include "xla/service/gpu/double_buffer_loop_unrolling.h"
-#include "xla/service/gpu/dynamic_slice_fusion_rewriter.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/execution_stream_assignment.h"
 #include "xla/service/gpu/fusion_pipeline.h"
-#include "xla/service/gpu/fusion_wrapper.h"
-#include "xla/service/gpu/gemm_broadcast_folding_rewriter.h"
-#include "xla/service/gpu/gemm_fusion.h"
-#include "xla/service/gpu/gemm_rewriter.h"
-#include "xla/service/gpu/gemv_rewriter.h"
-#include "xla/service/gpu/gpu_algebraic_simplifier.h"
-#include "xla/service/gpu/gpu_all_gather_optimizer.h"
-#include "xla/service/gpu/gpu_async_collective_annotator.h"
-#include "xla/service/gpu/gpu_conv_rewriter.h"
-#include "xla/service/gpu/gpu_convert_async_collectives_to_sync.h"
+#include "xla/service/gpu/fusions/triton/triton_support.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_float_support.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
-#include "xla/service/gpu/gpu_layout_assignment.h"
 #include "xla/service/gpu/gpu_p2p_pipeliner.h"
-#include "xla/service/gpu/gpu_reduce_scatter_creator.h"
-#include "xla/service/gpu/gpu_sanitize_constant_names.h"
-#include "xla/service/gpu/gpu_scatter_expander.h"
 #include "xla/service/gpu/gpu_spmd_pipeline.h"
-#include "xla/service/gpu/gpu_windowed_einsum_handler.h"
 #include "xla/service/gpu/hlo_fusion_stats.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
@@ -156,26 +132,55 @@ limitations under the License.
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/gpu/model/gpu_cost_model_stats_collection.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
-#include "xla/service/gpu/move_copy_to_users.h"
-#include "xla/service/gpu/pipelined_p2p_rewriter.h"
 #include "xla/service/gpu/prepare_hlo_for_ir_emitting_pipeline.h"
-#include "xla/service/gpu/reduction_degenerate_dim_remover.h"
-#include "xla/service/gpu/reduction_dimension_grouper.h"
-#include "xla/service/gpu/reduction_layout_normalizer.h"
-#include "xla/service/gpu/reduction_splitter.h"
 #include "xla/service/gpu/reduction_utils.h"
-#include "xla/service/gpu/rename_fusions.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/gpu/runtime_intrinsics.h"
-#include "xla/service/gpu/scatter_slice_simplifier.h"
-#include "xla/service/gpu/softmax_rewriter_triton.h"
-#include "xla/service/gpu/stream_attribute_annotator.h"
-#include "xla/service/gpu/stream_attribute_async_wrapper.h"
 #include "xla/service/gpu/stream_executor_util.h"
-#include "xla/service/gpu/topk_specializer.h"
-#include "xla/service/gpu/topk_splitter.h"
-#include "xla/service/gpu/tree_reduction_rewriter.h"
-#include "xla/service/gpu/triton_fusion_numerics_verifier.h"
+#include "xla/service/gpu/transforms/algebraic_simplifier.h"
+#include "xla/service/gpu/transforms/algorithm_checker.h"
+#include "xla/service/gpu/transforms/all_gather_optimizer.h"
+#include "xla/service/gpu/transforms/all_reduce_blueconnect.h"
+#include "xla/service/gpu/transforms/all_reduce_splitter.h"
+#include "xla/service/gpu/transforms/async_collective_annotator.h"
+#include "xla/service/gpu/transforms/async_wrapper.h"
+#include "xla/service/gpu/transforms/collective_permute_cycle_decomposer.h"
+#include "xla/service/gpu/transforms/collective_permute_valid_iteration_annotator.h"
+#include "xla/service/gpu/transforms/command_buffer_scheduling.h"
+#include "xla/service/gpu/transforms/conv_rewriter.h"
+#include "xla/service/gpu/transforms/convert_async_collectives_to_sync.h"
+#include "xla/service/gpu/transforms/cudnn_custom_call_converter.h"
+#include "xla/service/gpu/transforms/custom_kernel_fusion_rewriter.h"
+#include "xla/service/gpu/transforms/dot_dimension_sorter.h"
+#include "xla/service/gpu/transforms/dot_operand_converter.h"
+#include "xla/service/gpu/transforms/double_buffer_loop_unrolling.h"
+#include "xla/service/gpu/transforms/dynamic_slice_fusion_rewriter.h"
+#include "xla/service/gpu/transforms/fusion_wrapper.h"
+#include "xla/service/gpu/transforms/gemm_broadcast_folding_rewriter.h"
+#include "xla/service/gpu/transforms/gemm_fusion.h"
+#include "xla/service/gpu/transforms/gemm_rewriter.h"
+#include "xla/service/gpu/transforms/gemv_rewriter.h"
+#include "xla/service/gpu/transforms/layout_assignment.h"
+#include "xla/service/gpu/transforms/move_copy_to_users.h"
+#include "xla/service/gpu/transforms/pipelined_p2p_rewriter.h"
+#include "xla/service/gpu/transforms/reduce_scatter_creator.h"
+#include "xla/service/gpu/transforms/reduction_degenerate_dim_remover.h"
+#include "xla/service/gpu/transforms/reduction_dimension_grouper.h"
+#include "xla/service/gpu/transforms/reduction_layout_normalizer.h"
+#include "xla/service/gpu/transforms/reduction_splitter.h"
+#include "xla/service/gpu/transforms/rename_fusions.h"
+#include "xla/service/gpu/transforms/sanitize_constant_names.h"
+#include "xla/service/gpu/transforms/scatter_expander.h"
+#include "xla/service/gpu/transforms/scatter_slice_simplifier.h"
+#include "xla/service/gpu/transforms/softmax_rewriter_triton.h"
+#include "xla/service/gpu/transforms/stream_attribute_annotator.h"
+#include "xla/service/gpu/transforms/stream_attribute_async_wrapper.h"
+#include "xla/service/gpu/transforms/topk_specializer.h"
+#include "xla/service/gpu/transforms/topk_splitter.h"
+#include "xla/service/gpu/transforms/transpose_dimension_grouper.h"
+#include "xla/service/gpu/transforms/tree_reduction_rewriter.h"
+#include "xla/service/gpu/transforms/triton_fusion_numerics_verifier.h"
+#include "xla/service/gpu/transforms/windowed_einsum_handler.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_computation_deduplicator.h"
 #include "xla/service/hlo_constant_folding.h"
@@ -407,6 +412,16 @@ GpuThunkAotCompilationResult::LoadExecutable(
       platform_name, gpu_device_info, mlir_context.get(), llvm_module.get(),
       /*llvm_module_constants=*/nullptr,
       /*emit_kernels=*/false);
+
+  absl::string_view cache_file_path =
+      hlo_module->config().debug_options().xla_gpu_kernel_cache_file();
+  if (!cache_file_path.empty() &&
+      hlo_module->config()
+          .debug_options()
+          .xla_gpu_enable_llvm_module_compilation_parallelism()) {
+    TF_RETURN_IF_ERROR(LoadCache(ir_emitter_context, cache_file_path));
+  }
+
   auto ir_emitter = IrEmitterUnnested::Create(&ir_emitter_context);
   TF_RETURN_IF_ERROR(
       ir_emitter->EmitHloComputation(hlo_module->entry_computation()));
@@ -494,7 +509,7 @@ AlgebraicSimplifierOptions LayoutInsensitiveAlgebraicSimplifierOptions(
   AlgebraicSimplifierOptions layout_insensitive_algsimp_opts =
       opts_from_compiler;
   layout_insensitive_algsimp_opts.set_conv_is_lowerable_callback(
-      GpuConvRewriter::ConvIsLowerable);
+      ConvRewriter::ConvIsLowerable);
   layout_insensitive_algsimp_opts.set_enable_dot_strength_reduction(
       hlo_module_config.debug_options()
           .xla_gpu_enable_dot_strength_reduction());
@@ -526,6 +541,7 @@ absl::Status RunPreSPMDPartitionerPasses(HloModule* hlo_module) {
   HloPassPipeline pre_spmd_pipeline("pre-spmd-partitioner");
   // Run some IR cleanup passes before running the SPMD partitioning
   // passes.
+  pre_spmd_pipeline.AddPass<CuDnnCustomCallConverter>();
   pre_spmd_pipeline.AddPass<ConvertMemoryPlacementToInternalAnnotations>();
   pre_spmd_pipeline.AddPass<CallInliner>();
   pre_spmd_pipeline.AddPass<ZeroSizedHloElimination>();
@@ -627,7 +643,7 @@ absl::Status RunOptimizationPasses(
   HloPassPipeline pipeline("optimization");
   AddHloVerifier(&pipeline);
   if (debug_options.xla_gpu_multi_streamed_windowed_einsum()) {
-    pipeline.AddPass<GpuWindowedEinsumHandler>();
+    pipeline.AddPass<WindowedEinsumHandler>();
   }
   pipeline.AddPass<TopKSplitter>();
   pipeline.AddPass<TopkSpecializer>();
@@ -887,7 +903,6 @@ absl::Status RunCollectiveOptimizationPasses(
   HloPassPipeline collectives_pipeline("collective-optimizations");
   collectives_pipeline.AddPass<AllReduceFolder>();
   collectives_pipeline.AddPass<AllReduceSplitter>();
-  collectives_pipeline.AddPass<ReduceScatterCreator>();
   collectives_pipeline.AddPass<AllGatherOptimizer>();
   collectives_pipeline.AddPass<AllReduceReassociate>(
       debug_options.xla_gpu_enable_reassociation_for_converted_ar());
@@ -901,6 +916,7 @@ absl::Status RunCollectiveOptimizationPasses(
     TF_RETURN_IF_ERROR(
         AddCollectivePipelinerPasses(debug_options, collectives_pipeline));
   }
+  collectives_pipeline.AddPass<ReduceScatterCreator>();
 
   collectives_pipeline.AddPass<CollectivePermuteCycleDecomposer>(
       hlo_module->config()
@@ -1121,7 +1137,7 @@ absl::Status RunPostFusionCollectiveOptimizationPasses(HloModule* hlo_module) {
         return false;
     }
   };
-  pipeline.AddPass<GpuAsyncCollectiveAnnotator>(convert_to_async);
+  pipeline.AddPass<AsyncCollectiveAnnotator>(convert_to_async);
 
   return pipeline.Run(hlo_module).status();
 }
@@ -1177,6 +1193,8 @@ absl::Status RunPostFusionVerificationPasses(
 absl::Status GpuCompiler::OptimizeHloModule(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     const CompileOptions& options, const TargetConfig& gpu_target_config) {
+  tsl::profiler::TraceMe traceme("GpuCompiler::OptimizeHloModule");
+
   CheckNotScheduled(hlo_module);
   LogDebugOptions(hlo_module);
 
@@ -1286,6 +1304,27 @@ absl::Status GpuCompiler::OptimizeHloModule(
         });
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
+
+  {
+    HloPassPipeline pipeline("async-wrapper");
+    if (debug_options.xla_gpu_async_dot()) {
+      pipeline.AddPass<AsyncWrapper>([](HloInstruction* instruction) {
+        // TODO(b/339654953): Use a better heuristic to determine whether a
+        // `dot` operation should be wrapped in an async computation.
+        if (IsCublasGemm(*instruction)) {
+          return true;
+        }
+        if (instruction->called_computations().size() == 1 &&
+            IsTritonFusedComputation(
+                *instruction->called_computations().front())) {
+          return true;
+        }
+        return false;
+      });
+    }
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  }
+
   return absl::OkStatus();
 }  // NOLINT(readability/fn_size)
 
@@ -1304,6 +1343,30 @@ absl::Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
       .Run(hlo_module)
       .status();
 }
+
+namespace {
+void AddGemmRewriterPasses(HloPassPipeline& pipeline,
+                           const DebugOptions& debug_options,
+                           const se::GpuComputeCapability gpu_version,
+                           const int32_t toolkit_version) {
+  // Adding bias to GEMMs is helpful for skipping kernel launches for `add`
+  // operations. However, the bias term can add dependencies between the GEMMs
+  // that could otherwise be parallelized. Because of this, we disable bias
+  // addition when async dot is enabled.
+  GemmRewriterOptions::BiasMode bias_mode =
+      GemmRewriterOptions::BiasMode::kBias;
+  if (debug_options.xla_gpu_async_dot()) {
+    bias_mode = GemmRewriterOptions::BiasMode::kNoBias;
+  }
+
+  pipeline.AddPass<GemmRewriter>(
+      gpu_version, toolkit_version,
+      GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only, bias_mode});
+  pipeline.AddPass<GemmRewriter>(
+      gpu_version, toolkit_version,
+      GemmRewriterOptions{GemmRewriterOptions::DType::kNonFp8Only, bias_mode});
+}
+}  // namespace
 
 absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
@@ -1372,9 +1435,8 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // Triton rewriter or a regular Gemm rewriter to be able to match compatible
     // GEMMs before they matched into Triton gemm or a cuBLAS custom call.
     //
-    // TODO(ezhulenev): This should be plugged into the cost model and fusion
-    // heuristic, so we can mix and match various Gemm implementations based
-    // on projected (measured) performance.
+    // TODO(b/361267225): Remove once we have a unified autotuner for Triton and
+    // custom kernel fusions.
     if (debug_options.xla_gpu_enable_custom_fusions()) {
       pipeline.AddPass<SimplifyFPConversions>();
       pipeline.AddPass<CustomKernelFusionRewriter>(
@@ -1395,12 +1457,19 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
          rocm_cc != nullptr)) {
       pipeline.AddPass<GemvRewriter>();
       pipeline.AddPass<GemmFusion>(gpu_version);
+    } else if (cuda_cc != nullptr &&
+               cuda_cc->major == se::CudaComputeCapability::VOLTA) {
+      // Greedy pattern matching for custom kernel fusions.
+      // TODO(b/361267225): Add Custom Kernel Fusions to GEMM Fusion Autotuner.
+      pipeline.AddPass<SimplifyFPConversions>();
+      pipeline.AddPass<CustomKernelFusionRewriter>(
+          &gpu_target_config.device_description);
+      pipeline.AddPass<CustomKernelFusionAutotuner>(autotune_config);
     }
 
-    pipeline.AddPass<GemmRewriter>(gpu_version, GetToolkitVersion(),
-                                   /*f8_rewrite=*/true);
-    pipeline.AddPass<GemmRewriter>(gpu_version, GetToolkitVersion(),
-                                   /*f8_rewrite=*/false);
+    // Rewrite GEMMs into custom calls.
+    AddGemmRewriterPasses(pipeline, debug_options, gpu_version,
+                          GetToolkitVersion());
 
     // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
     pipeline.AddPass<GemmBroadcastFoldingRewriter>();
@@ -1415,13 +1484,15 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     pipeline.AddPass<ScatterSimplifier>();
     pipeline.AddPass<BroadcastCanonicalizer>();
 
+    pipeline.AddPass<TransposeDimensionGrouper>();
     pipeline.AddPass<ReductionDegenerateDimRemover>();
     pipeline.AddPass<ReductionLayoutNormalizer>();
     // Run Softmax fusion after layout normalization. We expect a default layout
     // in the softmax codegen pipeline. However we should run before
     // ReductionDimensionGrouper, as that makes matching the softmax pattern
     // harder.
-    if (debug_options.xla_gpu_enable_triton_softmax_fusion() &&
+    if (debug_options
+            .xla_gpu_experimental_enable_triton_softmax_priority_fusion() &&
         ((cuda_cc != nullptr &&
           cuda_cc->IsAtLeast(se::CudaComputeCapability::AMPERE)) ||
          rocm_cc != nullptr)) {
@@ -1443,7 +1514,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     bool ignore_small_reduce_dims =
         !debug_options.xla_gpu_enable_priority_fusion();
     pipeline.AddPass<HloPassFix<ReductionSplitter>>(ignore_small_reduce_dims);
-    pipeline.AddPass<HloPassFix<GpuTreeReductionRewriter>>(gpu_version);
+    pipeline.AddPass<HloPassFix<TreeReductionRewriter>>(gpu_version);
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
@@ -1468,10 +1539,9 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   pipeline.AddPass<CallInliner>();
   // TODO(tdanyluk): Apply CublasPadForGemms to the cuBLAS GEMMs generated
   // here for possibly better cuBLAS performance.
-  pipeline.AddPass<GemmRewriter>(gpu_version, GetToolkitVersion(),
-                                 /*f8_rewrite=*/true);
-  pipeline.AddPass<GemmRewriter>(gpu_version, GetToolkitVersion(),
-                                 /*f8_rewrite=*/false);
+  AddGemmRewriterPasses(pipeline, debug_options, gpu_version,
+                        GetToolkitVersion());
+
   // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
   pipeline.AddPass<GemmBroadcastFoldingRewriter>();
 
@@ -2060,6 +2130,8 @@ GpuCompiler::CompileToBackendResult(
     HloModule* module, llvm::LLVMContext* llvm_context,
     se::StreamExecutor* executor, const CompileOptions& options,
     const se::DeviceDescription& gpu_device_info) {
+  tsl::profiler::TraceMe traceme("GpuCompiler::CompileToBackendResult");
+
   TF_RETURN_IF_ERROR(RunPreSchedulingPasses(module, executor));
   TF_ASSIGN_OR_RETURN(
       ScheduleMetadata schedule_metadata,
@@ -2148,8 +2220,8 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   }};
   BinaryMap dnn_compiled_graphs;
   if (stream_exec) {
-    TF_RETURN_IF_ERROR(RunCudnnFusionCompilerPass(module.get(), stream_exec,
-                                                  &dnn_compiled_graphs));
+    TF_RETURN_IF_ERROR(RunCudnnCompilerPasses(module.get(), stream_exec,
+                                              &dnn_compiled_graphs));
   }
 
   const DebugOptions& debug_opts = module->config().debug_options();
@@ -2482,11 +2554,9 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
     pipeline.AddPass<CommandBufferScheduling>(
         gpu_device_info, toolkit_version,
         driver_version.value_or(toolkit_version));
-    pipeline.AddPass<GpuSanitizeConstantNames>();
+    pipeline.AddPass<SanitizeConstantNames>();
   }
 
-  AddHloVerifier(&main_pipeline,
-                 HloVerifierOpts{}.VerifyInstructionNameUnchanged());
   return main_pipeline.Run(module).status();
 }
 

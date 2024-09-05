@@ -46,8 +46,8 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/debug/debug_options.pb.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/path.h"
 

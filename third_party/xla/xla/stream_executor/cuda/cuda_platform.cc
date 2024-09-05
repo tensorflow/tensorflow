@@ -59,20 +59,17 @@ CudaPlatform::DescriptionForDevice(int ordinal) const {
 }
 
 absl::StatusOr<StreamExecutor*> CudaPlatform::ExecutorForDevice(int ordinal) {
-  StreamExecutorConfig config;
-  config.ordinal = ordinal;
-  return GetExecutor(config);
+  return executor_cache_.GetOrCreate(
+      ordinal, [this, ordinal]() { return GetUncachedExecutor(ordinal); });
 }
 
-absl::StatusOr<StreamExecutor*> CudaPlatform::GetExecutor(
-    const StreamExecutorConfig& config) {
-  return executor_cache_.GetOrCreate(
-      config.ordinal, [this, config]() { return GetUncachedExecutor(config); });
+absl::StatusOr<StreamExecutor*> CudaPlatform::FindExisting(int ordinal) {
+  return executor_cache_.Get(ordinal);
 }
 
 absl::StatusOr<std::unique_ptr<StreamExecutor>>
-CudaPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
-  auto executor = std::make_unique<GpuExecutor>(this, config.ordinal);
+CudaPlatform::GetUncachedExecutor(int ordinal) {
+  auto executor = std::make_unique<GpuExecutor>(this, ordinal);
   TF_RETURN_IF_ERROR(executor->Init());
   return std::move(executor);
 }

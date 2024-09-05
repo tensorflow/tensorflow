@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cassert>
+#include <cerrno>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -36,6 +37,7 @@ limitations under the License.
 #include "flatbuffers/verifier.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/xnnpack/weight_cache_schema_generated.h"
+#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 
 namespace tflite::xnnpack {
 
@@ -54,7 +56,7 @@ using testing::Ge;
 class TempFileDesc {
  public:
   static constexpr struct AutoClose {
-  } kAutoCLose{};
+  } kAutoClose{};
 
 #if defined(_MSC_VER)
   TempFileDesc() : fd_() {
@@ -124,7 +126,7 @@ TEST(MMapHandleTest, DefaultConstructs) {
   EXPECT_EQ(handle.size(), 0);
 }
 
-TEST(MMapHandleTest, MapNonExitxingFileFails) {
+TEST(MMapHandleTest, MapNonExistingFileFails) {
   // I hope this path doesn't exist...
   const char* file_path = "sdbgfd";
   MMapHandle handle;
@@ -309,10 +311,35 @@ TEST(WeightCacheBuilderTest, AppendWithoutReserveWriteWorks) {
 }
 
 TEST(WeightCacheBuilderTest, NonExistingPathFails) {
-  using std::size;
   WeightCacheBuilder builder;
   EXPECT_FALSE(builder.Start(""));
   EXPECT_FALSE(builder.Start("/seldf/sedsft"));
+}
+
+TEST(WeightCacheBuilderTest, InMemoryCacheTriggeredByCorrectPrefix) {
+  TfLiteXNNPackDelegateCanUseInMemoryWeightCacheProvider();
+  if (!TfLiteXNNPackDelegateCanUseInMemoryWeightCacheProvider()) {
+    GTEST_SKIP() << "In-memory weight cache isn't enabled for this build or "
+                    "isn't supported by the current system, skipping test.";
+  }
+  {  // Exact in-memory flag used starts an in-memory build.
+    WeightCacheBuilder builder;
+    EXPECT_TRUE(builder.Start(kInMemoryCachePath));
+    EXPECT_TRUE(builder.IsStarted());
+    const FileDescriptor file_fd(open(kInMemoryCachePath, O_RDONLY));
+    EXPECT_FALSE(file_fd.IsValid());
+    EXPECT_EQ(errno, ENOENT);
+  }
+  {  // Prefixed in-memory flag used starts an in-memory build.
+    WeightCacheBuilder builder;
+    const std::string path_with_in_memory_prefix =
+        std::string(kInMemoryCachePath) + "/slkdjfsldf";
+    EXPECT_TRUE(builder.Start(path_with_in_memory_prefix.c_str()));
+    EXPECT_TRUE(builder.IsStarted());
+    const FileDescriptor file_fd(open(kInMemoryCachePath, O_RDONLY));
+    EXPECT_FALSE(file_fd.IsValid());
+    EXPECT_EQ(errno, ENOENT);
+  }
 }
 
 struct FakeContext {
@@ -516,7 +543,7 @@ TEST_F(BuildMMapWeightCacheProviderTest,
 
 TEST_F(BuildMMapWeightCacheProviderTest, FinalizeWorks) {
   enum { kWeightIndex1, kBiasIndex, kWeightIndex2 };
-  TempFileDesc tmp_file(TempFileDesc::kAutoCLose);
+  TempFileDesc tmp_file(TempFileDesc::kAutoClose);
   ASSERT_TRUE(cache_provider.StartBuild(tmp_file.GetCPath()));
 
   ctx.PackTensors(&cache_provider.GetCacheProvider(), kAlgoSeed1, kWeightIndex1,
@@ -622,7 +649,7 @@ TEST_F(LoadMMapWeightCacheProviderTest, LookUpSucceeds) {
 
 TEST(MMapWeightCacheProviderTest, XnnpackCApiJourney) {
   using std::size;
-  TempFileDesc temp_fd(TempFileDesc::kAutoCLose);
+  TempFileDesc temp_fd(TempFileDesc::kAutoClose);
   const int32_t fake_packing_algo_seed = 0xBA0BAB;
   const char packed_data_ref_1[] = "abcdefghij";
   const char packed_data_ref_2[] = "klmnopqr";

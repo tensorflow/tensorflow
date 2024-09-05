@@ -22,6 +22,7 @@ limitations under the License.
 namespace stream_executor {
 
 enum class PtxCompilationMethod {
+  kNvJitLink,
   kNvPtxCompiler,
   kPtxas,
 };
@@ -30,6 +31,9 @@ template <typename Sink>
 static void AbslStringify(Sink& sink,
                           const PtxCompilationMethod& compilation_method) {
   switch (compilation_method) {
+    case PtxCompilationMethod::kNvJitLink:
+      sink.Append("NvJitLink");
+      break;
     case PtxCompilationMethod::kNvPtxCompiler:
       sink.Append("NvPtxCompiler");
       break;

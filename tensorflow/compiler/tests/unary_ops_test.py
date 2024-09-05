@@ -773,7 +773,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
           expected=np.array([1, -4, 2.7, 0], dtype=ctypes[dtype]))
 
   def testIntOps(self):
-    for dtype in self.int_types:
+    for dtype in self.int_types - self.unsigned_int_types:
       self._assertOpOutputMatchesExpected(
           bitwise_ops.invert,
           np.array([0, -1, 1, 16, 42], dtype=dtype),
@@ -923,7 +923,10 @@ class UnaryOpsTest(xla_test.XLATestCase):
       if src_type.is_integer:
         imin = np.iinfo(src_np_dtype).min
         imax = np.iinfo(src_np_dtype).max
-        src = np.array([imin, imax, 0, 1, -1], dtype=src_np_dtype)
+        if src_type.is_unsigned:
+          src = np.array([imin, imax, 0, 1], dtype=src_np_dtype)
+        else:
+          src = np.array([imin, imax, 0, 1, -1], dtype=src_np_dtype)
       elif src_type in self.float_tf_types:
         if dst_type.is_integer:
           imin = np.iinfo(dst_np_dtype).min
@@ -936,63 +939,75 @@ class UnaryOpsTest(xla_test.XLATestCase):
           eps = np.finfo(dst_np_dtype).eps
           src = np.array(
               [fmin, fmax, np.nan, eps, -eps, tiny, -tiny, np.inf, -np.inf],
-              dtype=src_np_dtype)
+              dtype=src_np_dtype,
+          )
       dst = src.astype(dst_np_dtype)
       self._assertOpOutputMatchesExpected(
           lambda x, dst_type=dst_type: math_ops.cast(x, dst_type),
           src,
-          expected=dst)
+          expected=dst,
+      )
 
   def testBitcast(self):
     self._assertOpOutputMatchesExpected(
         lambda x: array_ops.bitcast(x, dtypes.int32),
-        np.array([1, 0x3f800000], np.int32),
-        expected=np.array([1, 0x3f800000], np.int32))
+        np.array([1, 0x3F800000], np.int32),
+        expected=np.array([1, 0x3F800000], np.int32),
+    )
     self._assertOpOutputMatchesExpected(
         lambda x: array_ops.bitcast(x, dtypes.float32),
-        np.array([1, 0x3f800000], np.int32),
-        expected=np.array([1e-45, 1.0], np.float32))
+        np.array([1, 0x3F800000], np.int32),
+        expected=np.array([1e-45, 1.0], np.float32),
+    )
     self._assertOpOutputMatchesExpected(
         lambda x: array_ops.bitcast(x, dtypes.int32),
         np.array([1e-45, 1.0], np.float32),
-        expected=np.array([1, 0x3f800000], np.int32))
+        expected=np.array([1, 0x3F800000], np.int32),
+    )
     if np.int64 in self.numeric_types:
       self._assertOpOutputMatchesExpected(
           lambda x: array_ops.bitcast(x, dtypes.int64),
-          np.array([1, 0x100000003f800000], np.uint64),
-          expected=np.array([1, 0x100000003f800000], np.int64))
+          np.array([1, 0x100000003F800000], np.uint64),
+          expected=np.array([1, 0x100000003F800000], np.int64),
+      )
       self._assertOpOutputMatchesExpected(
           lambda x: array_ops.bitcast(x, dtypes.uint64),
-          np.array([1, 0x100000003f800000], np.int64),
-          expected=np.array([1, 0x100000003f800000], np.uint64))
+          np.array([1, 0x100000003F800000], np.int64),
+          expected=np.array([1, 0x100000003F800000], np.uint64),
+      )
       self._assertOpOutputMatchesExpected(
           lambda x: array_ops.bitcast(x, dtypes.float64),
           np.array(
-              [0, 0x3FF0000000000000, 0xc3af161421c8e000, 0x4032000000000007],
+              [0, 0x3FF0000000000000, 0xC3AF161421C8E000, 0x4032000000000007],
               np.uint64,
           ),
           expected=np.array(
               [0, 1.0, -1.12e+18, 18.000000000000024869], np.float64
           ),
-          atol=0
+          atol=0,
       )
 
   def testBitcastInt8ToFloat(self):
     self._assertOpOutputMatchesExpected(
         lambda x: array_ops.bitcast(x, dtypes.float32),
-        np.array([[1, 0, 0, 0], [0xd0, 0x0f, 0x49, 0x40]], np.int8),
-        expected=np.array([1e-45, 3.14159], np.float32))
+        np.array([[1, 0, 0, 0], [0xD0, 0x0F, 0x49, 0x40]]).astype(np.int8),
+        expected=np.array([1e-45, 3.14159], np.float32),
+    )
     self._assertOpOutputMatchesExpected(
         lambda x: array_ops.bitcast(x, dtypes.np.int8),
         np.array([1e-45, 3.14159], np.float32),
-        expected=np.array([[1, 0, 0, 0], [0xd0, 0x0f, 0x49, 0x40]], np.int8))
+        expected=np.array([[1, 0, 0, 0], [0xD0, 0x0F, 0x49, 0x40]]).astype(
+            np.int8
+        ),
+    )
 
   def testInvertPermutation(self):
     for np_dtype in [np.int32, np.int64]:
       self._assertOpOutputMatchesExpected(
           array_ops.invert_permutation,
           np.array([1, 2, 0], np_dtype),
-          expected=np.array([2, 0, 1], dtype=np_dtype))
+          expected=np.array([2, 0, 1], dtype=np_dtype),
+      )
 
   def testInvertPermutationTwiceIsNoop(self):
 
@@ -1013,12 +1028,12 @@ class UnaryOpsTest(xla_test.XLATestCase):
       self._assertOpOutputMatchesExpected(
           rank_op, np.array([[], []], dtype=dtype), expected=np.int32(2))
       self._assertOpOutputMatchesExpected(
-          rank_op, np.array([-1, 1], dtype=dtype), expected=np.int32(1))
+          rank_op, np.array([0, 1], dtype=dtype), expected=np.int32(1))
       self._assertOpOutputMatchesExpected(
-          rank_op, np.array([[-1, 1]], dtype=dtype), expected=np.int32(2))
+          rank_op, np.array([[0, 1]], dtype=dtype), expected=np.int32(2))
       self._assertOpOutputMatchesExpected(
           rank_op,
-          np.array([[-1], [1], [4]], dtype=dtype),
+          np.array([[0], [1], [4]], dtype=dtype),
           expected=np.int32(2))
 
   def testShape(self):
@@ -1032,15 +1047,15 @@ class UnaryOpsTest(xla_test.XLATestCase):
           expected=np.array([2, 0], dtype=np.int32))
       self._assertOpOutputMatchesExpected(
           shape_op,
-          np.array([-1, 1], dtype=dtype),
+          np.array([0, 1], dtype=dtype),
           expected=np.array([2], dtype=np.int32))
       self._assertOpOutputMatchesExpected(
           shape_op,
-          np.array([[-1, 1]], dtype=dtype),
+          np.array([[0, 1]], dtype=dtype),
           expected=np.array([1, 2], dtype=np.int32))
       self._assertOpOutputMatchesExpected(
           shape_op,
-          np.array([[-1], [1], [4]], dtype=dtype),
+          np.array([[0], [1], [4]], dtype=dtype),
           expected=np.array([3, 1], dtype=np.int32))
 
   def testSize(self):
@@ -1051,12 +1066,12 @@ class UnaryOpsTest(xla_test.XLATestCase):
       self._assertOpOutputMatchesExpected(
           size_op, np.array([[], []], dtype=dtype), expected=np.int32(0))
       self._assertOpOutputMatchesExpected(
-          size_op, np.array([-1, 1], dtype=dtype), expected=np.int32(2))
+          size_op, np.array([0, 1], dtype=dtype), expected=np.int32(2))
       self._assertOpOutputMatchesExpected(
-          size_op, np.array([[-1, 1]], dtype=dtype), expected=np.int32(2))
+          size_op, np.array([[0, 1]], dtype=dtype), expected=np.int32(2))
       self._assertOpOutputMatchesExpected(
           size_op,
-          np.array([[-1], [1], [4]], dtype=dtype),
+          np.array([[0], [1], [4]], dtype=dtype),
           expected=np.int32(3))
 
   def testSizeWithInt64OutType(self):
@@ -1067,7 +1082,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
     for dtype in self.numeric_types:
       self._assertOpOutputMatchesExpected(
           size_op,
-          np.array([[-1], [1], [4]], dtype=dtype),
+          np.array([[0], [1], [4]], dtype=dtype),
           expected=np.int64(3))
 
   def testUnpack(self):

@@ -196,6 +196,27 @@ class MlirColumnReductionFusion : public MlirReductionFusion {
   IndexingMap GetSharedMemoryWriteMap(mlir::MLIRContext* ctx) const override;
 };
 
+// Special emitter for column reductions whose minor reduced dimension divides
+// the warp size.
+class MlirSmallColumnReductionFusion : public MlirReductionFusion {
+ public:
+  explicit MlirSmallColumnReductionFusion(const HloFusionAnalysis& analysis);
+
+ protected:
+  llvm::SmallVector<mlir::Value> EmitReduction(
+      int group_id, EmitterState& state) const override;
+  IndexingMap ComputeReductionInputIndexing(
+      mlir::MLIRContext* ctx) const override;
+  IndexingMap ComputeReductionOutputIndexing(
+      mlir::MLIRContext* ctx) const override;
+  IndexingMap GetSharedMemoryReductionReadMap(
+      mlir::MLIRContext* ctx) const override;
+  IndexingMap GetSharedMemoryWriteMap(mlir::MLIRContext* ctx) const override;
+
+  int64_t shared_rows_;
+  int64_t loop_size_;
+};
+
 std::unique_ptr<MlirReductionFusion> CreateMlirReductionFusion(
     const HloFusionAnalysis& analysis);
 

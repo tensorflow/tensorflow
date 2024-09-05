@@ -1,5 +1,3 @@
-#include "absl/functional/any_invocable.h"
-#include "absl/log/log.h"
 /* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,12 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// The StreamExecutor is a single-device abstraction for:
-//
-// * Loading/launching data-parallel-kernels
-// * Invoking pre-canned high-performance library routines (like matrix
-//   multiply)
-
 #ifndef XLA_STREAM_EXECUTOR_STREAM_EXECUTOR_H_
 #define XLA_STREAM_EXECUTOR_STREAM_EXECUTOR_H_
 
@@ -31,6 +23,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -43,7 +36,6 @@ limitations under the License.
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
@@ -67,6 +59,12 @@ inline std::string MemoryTypeString(MemoryType memory_type) {
   }
 }
 
+/// The StreamExecutor is a single-device abstraction for:
+//
+// * Loading/launching data-parallel-kernels
+// * Invoking pre-canned high-performance library routines (like matrix
+//   multiply)
+//
 // Interface which defines the method for interacting with an accelerator device
 // (e.g. GPU, TPU).
 class StreamExecutor {
@@ -135,26 +133,6 @@ class StreamExecutor {
   // Creates a shared constant using the content provided.
   virtual absl::StatusOr<std::shared_ptr<DeviceMemoryBase>>
   CreateOrShareConstant(Stream* stream, absl::Span<const uint8_t> content) {
-    return absl::UnimplementedError("Not Implemented");
-  }
-
-  // Launches a data parallel kernel with the given thread/block
-  // dimensionality and already-packed args/sizes to pass to the underlying
-  // platform driver.
-
-  virtual absl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
-                              const BlockDim& block_dims, const Kernel& k,
-                              const KernelArgs& args) {
-    return absl::UnimplementedError("Not Implemented");
-  }
-
-  // Launches a data parallel kernel with the given thread/block
-  // dimensionality and already-packed args/sizes to pass to the underlying
-  // platform driver.
-  virtual absl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
-                              const BlockDim& block_dims,
-                              const ClusterDim& cluster_dims, const Kernel& k,
-                              const KernelArgs& args) {
     return absl::UnimplementedError("Not Implemented");
   }
 

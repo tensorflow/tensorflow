@@ -386,6 +386,7 @@ TEST_F(ClientServerTest, ClientsTerminateShutdownIfAnyClientGoesAway) {
   auto thread_fn = [&](int node_id) -> absl::Status {
     DistributedRuntimeClient::Options client_options;
     client_options.shutdown_on_destruction = node_id != 0;
+    client_options.poll_for_error_from_service_at_startup = false;
     client_options.missed_heartbeat_callback =
         [&](absl::Status status, bool coordinator_initiated) {};
     auto client = GetClient(node_id, client_options);
@@ -421,6 +422,116 @@ TEST_F(ClientServerTest, ClientsTerminateShutdownIfAnyClientGoesAway) {
     // shutdown call (note: agent will still stop sending heartbeats).
     EXPECT_TRUE(absl::IsInternal(statuses[i]) ||
                 absl::IsFailedPrecondition(statuses[i]));
+  }
+}
+
+TEST_F(ClientServerTest,
+       ClientsTerminateShutdownIfAnyClientGoesAway_WithErrorPolling) {
+  int num_nodes = 3;
+  StartService(num_nodes);
+
+  auto thread_fn = [&](int node_id) -> absl::Status {
+    DistributedRuntimeClient::Options client_options;
+    client_options.shutdown_on_destruction = node_id != 0;
+    client_options.missed_heartbeat_callback =
+        [&](absl::Status status, bool coordinator_initiated) {};
+    client_options.poll_for_error_from_service_at_startup = true;
+    auto client = GetClient(node_id, client_options);
+
+    TF_RETURN_IF_ERROR(client->Connect());
+
+    if (node_id == 0) {
+      return absl::OkStatus();
+    }
+
+    // The call to Shutdown() should be interrupted if a worker stops issuing
+    // heartbeats.
+    return client->Shutdown();
+  };
+
+  std::vector<absl::Status> statuses(num_nodes);
+  {
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
+                                        num_nodes);
+    for (int i = 0; i < num_nodes; ++i) {
+      thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
+    }
+  }
+  TF_EXPECT_OK(statuses[0]);
+  for (int i = 1; i < num_nodes; ++i) {
+    // The error type depends on whether the node turns into ERROR state during
+    // or before the shutdown call.
+    EXPECT_TRUE(absl::IsInternal(statuses[i]) ||
+                absl::IsFailedPrecondition(statuses[i]));
+  }
+}
+
+TEST_F(ClientServerTest, ClientsShutdownSuccessfully_WithErrorPolling) {
+  int num_nodes = 3;
+  StartService(num_nodes);
+
+  auto thread_fn = [&](int node_id) -> absl::Status {
+    DistributedRuntimeClient::Options client_options;
+    client_options.shutdown_on_destruction = true;
+    client_options.missed_heartbeat_callback =
+        [&](absl::Status status, bool coordinator_initiated) {};
+    client_options.poll_for_error_from_service_at_startup = true;
+    auto client = GetClient(node_id, client_options);
+
+    TF_RETURN_IF_ERROR(client->Connect());
+    return client->Shutdown();
+    // The error polling request will be cancelled automatically when the
+    // client is shutting down.
+  };
+
+  std::vector<absl::Status> statuses(num_nodes);
+  {
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
+                                        num_nodes);
+    for (int i = 0; i < num_nodes; ++i) {
+      thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
+    }
+  }
+  for (int i = 0; i < num_nodes; ++i) {
+    TF_EXPECT_OK(statuses[i]);
+  }
+}
+
+TEST_F(ClientServerTest,
+       MissedHeartbeatCallbackIsExecutedIfAnyClientGoesAway_WithErrorPolling) {
+  int num_nodes = 3;
+  StartService(num_nodes);
+
+  auto thread_fn = [&](int node_id) -> absl::Status {
+    DistributedRuntimeClient::Options client_options;
+    client_options.shutdown_on_destruction = (node_id != 0);
+    absl::Notification shutdown;
+    client_options.missed_heartbeat_callback = [&](absl::Status status,
+                                                   bool coordinator_initiated) {
+      shutdown.Notify();
+    };
+    client_options.poll_for_error_from_service_at_startup = true;
+    auto client = GetClient(node_id, client_options);
+
+    TF_RETURN_IF_ERROR(client->Connect());
+
+    if (node_id == 0) {
+      return absl::OkStatus();
+    }
+    shutdown.WaitForNotification();
+    return absl::OkStatus();
+  };
+
+  std::vector<absl::Status> statuses(num_nodes);
+  {
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
+                                        num_nodes);
+    for (int i = 0; i < num_nodes; ++i) {
+      thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
+    }
+  }
+  for (int i = 0; i < num_nodes; ++i) {
+    TF_EXPECT_OK(statuses[i]);
   }
 }
 

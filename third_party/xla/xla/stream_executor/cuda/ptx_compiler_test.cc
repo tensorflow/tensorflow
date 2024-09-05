@@ -19,7 +19,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -29,6 +28,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/test.h"
 
@@ -224,8 +224,7 @@ TEST_F(PtxCompilerTest, AcceptsExtraArguments) {
 }
 
 TEST_F(PtxCompilerTest, ReturnsReasonableVersion) {
-  constexpr stream_executor::LibNvPtxCompilerVersion kMinSupportedVersion = {
-      12, 0, 0};
+  constexpr stream_executor::SemanticVersion kMinSupportedVersion = {12, 0, 0};
 
   EXPECT_THAT(stream_executor::GetLibNvPtxCompilerVersion(),
               tsl::testing::IsOkAndHolds(testing::Ge(kMinSupportedVersion)));

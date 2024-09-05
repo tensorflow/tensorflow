@@ -19,8 +19,10 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/node_hash_set.h"
-#include "xla/pjrt/pjrt_client.h"
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/python/ifrt/device.h"
 
 namespace xla {
@@ -52,7 +54,7 @@ MemoryKind::MemoryKind(std::optional<absl::string_view> memory_kind) {
   }
 }
 
-std::string MemoryKind::DebugString() const {
+std::string MemoryKind::ToString() const {
   if (memory_kind_.has_value()) {
     return std::string(*memory_kind_);
   }

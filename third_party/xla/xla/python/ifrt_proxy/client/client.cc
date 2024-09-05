@@ -82,7 +82,6 @@ absl::StatusOr<std::unique_ptr<Client>> Client::Create(
   for (const auto& d : init_response.devices()) {
     absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute>
         pjrt_device_attributes;
-    AttributeMap::Map attributes;
     if (rpc_helper->version().protocol_version() <= 3) {
       for (const auto& [key, attr] : d.deprecated_attributes()) {
         TF_ASSIGN_OR_RETURN(xla::PjRtDeviceAttribute value,

@@ -149,36 +149,7 @@ ErrorSpecBuilder::operator ErrorSpec() && { return std::move(*this).build(); }
 
 ErrorSpec ErrorSpecBuilder::build() && { return spec_; }
 
-// For f64, f32, f16, and bf16, we need 17, 9, 5, and 4 decimal places of
-// precision to be guaranteed that we're printing the full number.
-//
-// (The general formula is, given a floating-point number with S significand
-// bits, the number of decimal digits needed to print it to full precision is
-//
-//   ceil(1 + S * log_10(2)) ~= ceil(1 + S * 0.30103).
-//
-// See https://people.eecs.berkeley.edu/~wkahan/Math128/BinDecBin.pdf.)
 namespace {
-template <typename T>
-struct ComponentStringifyFormat {
-  static const absl::string_view value;
-};
-
-template <>
-constexpr absl::string_view ComponentStringifyFormat<double>::value =
-    "%0.17g (0x%16x)";
-
-template <>
-constexpr absl::string_view ComponentStringifyFormat<float>::value =
-    "%0.9g (0x%08x)";
-
-template <>
-constexpr absl::string_view ComponentStringifyFormat<Eigen::half>::value =
-    "%0.5g (0x%04x)";
-
-template <>
-constexpr absl::string_view ComponentStringifyFormat<bfloat16>::value =
-    "%0.4g (0x%04x)";
 
 template <typename Type, typename FuncPtr>
 ErrorSpec CallErrorSpec(FuncPtr* func, const std::array<Type, 1>& in) {
@@ -396,8 +367,12 @@ template <
     typename NativeT, typename IntegralType,
     typename std::enable_if<!is_complex_t<NativeT>::value>::type* = nullptr>
 std::string StringifyNum(NativeT x) {
-  return absl::StrFormat(ComponentStringifyFormat<NativeT>::value,
-                         static_cast<double>(x), BitCast<IntegralType>(x));
+  return absl::StrFormat("%0.*g (0x%0*x)",
+                         std::numeric_limits<NativeT>::max_digits10,
+                         static_cast<double>(x),
+                         // N.B.: `|bytes| * 8 / 4` multiplied by 8 for bytes to
+                         // bits and then divided by 4 for bits to hexdigits.
+                         sizeof(IntegralType) * 2, BitCast<IntegralType>(x));
 }
 
 template <
@@ -461,6 +436,19 @@ void PrintMismatch(int64_t* mismatches, const ErrorGenerator& err_generator) {
 }
 
 }  // namespace
+
+// If we are in debug mode, we fail the test execution at the first
+// comparison failure to avoid dumping too much log data and ensure the
+// relevant debugging information is the last logged data.
+//
+// If we are not in debug mode, we will continue to the next loop iteration.
+#define EXPECT_NEAR_FAIL_OR_CONTINUE() \
+  if (should_emit_debug_logging_) {    \
+    FAIL();                            \
+  } else {                             \
+    continue;                          \
+  }                                    \
+  static_assert(true, "")
 
 template <PrimitiveType T, size_t N>
 void ExhaustiveOpTestBase<T, N>::ExpectNear(
@@ -571,7 +559,7 @@ void ExhaustiveOpTestBase<T, N>::ExpectNear(
             StringifyNum<NativeT, ComponentIntegralNativeT, N>(inputs),
             StringifyNum<NativeT, ComponentIntegralNativeT>(actual));
       });
-      continue;
+      EXPECT_NEAR_FAIL_OR_CONTINUE();
     }
 
     if (IsClose(static_cast<NativeRefT>(expected),
@@ -592,7 +580,7 @@ void ExhaustiveOpTestBase<T, N>::ExpectNear(
             StringifyNum<NativeT, ComponentIntegralNativeT>(expected),
             StringifyNum<NativeT, ComponentIntegralNativeT>(actual));
       });
-      continue;
+      EXPECT_NEAR_FAIL_OR_CONTINUE();
     }
 
     // Otherwise, we need to test the additional subnormal test values.
@@ -614,7 +602,7 @@ void ExhaustiveOpTestBase<T, N>::ExpectNear(
           result = pure_subnormal_cache[cache_loc];
         }
       } else {
-        result = result = CallOperation(evaluate_op, test_value);
+        result = CallOperation(evaluate_op, test_value);
       }
 
       if (IsClose(result, static_cast<NativeRefT>(actual), error_spec)) {
@@ -653,6 +641,7 @@ void ExhaustiveOpTestBase<T, N>::ExpectNear(
             StringifyNum<NativeT, ComponentIntegralNativeT>(actual)));
 
     PrintMismatch(&mismatches, [mismatch] { return mismatch; });
+    EXPECT_NEAR_FAIL_OR_CONTINUE();
   }
   EXPECT_EQ(mismatches, 0);
 

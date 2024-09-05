@@ -14,20 +14,19 @@ limitations under the License.
 ==============================================================================*/
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <random>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
 #include "xla/client/local_client.h"
 #include "xla/client/xla_builder.h"
-#include "xla/primitive_util.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/client_library_test_base.h"
-#include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
@@ -672,6 +671,64 @@ XLA_TEST_F(ConvertTest, ConvertBF16F32) {
   }
 }
 
+XLA_TEST_F(ConvertTest, ConvertF32BF16) {
+  XlaBuilder builder(TestName());
+
+  std::vector<float> floats(100);
+  std::minstd_rand0 generator;
+  for (int i = 0; i < floats.size(); ++i) {
+    floats[i] = generator();
+
+    // Ensure the first 10 cases has rounding.
+    if (i < 10) {
+      auto val = absl::bit_cast<uint32_t>(floats[i]);
+      val |= 1 << 15;
+      floats[i] = absl::bit_cast<float>(val);
+    }
+  }
+  // Test NaN and -NaN.
+  floats.push_back(std::numeric_limits<float>::quiet_NaN());
+  floats.push_back(-std::numeric_limits<float>::quiet_NaN());
+
+  // NaNs that have the LSB of the significand set.
+  // Just truncating the significand will result in an `inf` BF16 value.
+  floats.push_back(absl::bit_cast<float>(0x7F800001));
+  floats.push_back(absl::bit_cast<float>(0xFF800001));
+
+  std::vector<bfloat16> expected(floats.size());
+  for (int i = 0; i < expected.size(); ++i) {
+    expected[i] = static_cast<bfloat16>(floats[i]);
+  }
+
+  xla::XlaOp lit_f32 = ConstantR1<float>(&builder, floats);
+  xla::XlaOp lit_bf16 = ConvertElementType(lit_f32, BF16);
+  BitcastConvertType(lit_bf16, U16);
+
+  TF_ASSERT_OK_AND_ASSIGN(const auto results, ExecuteAndTransfer(&builder, {}));
+  for (int i = 0; i < expected.size(); ++i) {
+    const auto result = results.Get<uint16_t>({i});
+    const auto correct = absl::bit_cast<uint16_t>(expected[i]);
+    if (floats[i] != 0.0f && floats[i] < std::numeric_limits<float>::min()) {
+      // Subnormals may not be preserved, zero will do.
+      const bfloat16 same_signed_zero =
+          bfloat16(std::signbit(floats[i]) ? -0.0f : 0.0f);
+      if (result != correct) {
+        EXPECT_EQ(result, absl::bit_cast<uint16_t>(same_signed_zero));
+      }
+    } else if (std::isnan(floats[i])) {
+      // NaNs may not be preserved, any NaN will do.
+      ASSERT_TRUE(std::isnan(absl::bit_cast<bfloat16>(correct)));
+      EXPECT_TRUE(std::isnan(absl::bit_cast<bfloat16>(result)));
+      if (client_->platform()->Name() == "Host") {
+        // The sign bits must match.
+        EXPECT_EQ(result >> 15, correct >> 15);
+      }
+    } else {
+      EXPECT_EQ(result, correct);
+    }
+  }
+}
+
 XLA_TEST_F(ConvertTest, ConvertF16F8e5m2Roundtrip) {
   // Convert from FP16 to FP8, then back to FP16
   XlaBuilder builder(TestName());
@@ -735,6 +792,60 @@ XLA_TEST_F(ConvertTest, ConvertF8e5m2F16RoundtripExhaustive) {
   // Round-tripping a NaN will turn it into a quiet NaN and doesn't necessarily
   // preserve the payload.
   ComputeAndCompareR1<tsl::float8_e5m2>(&builder, all_f8, {}, ErrorSpec(0.));
+}
+
+XLA_TEST_F(ConvertTest, ConvertF8e5m2F32Exhaustive) {
+  // Convert from f8e5m2 to f32.
+  XlaBuilder builder(TestName());
+
+  std::vector<tsl::float8_e5m2> all_f8;
+  std::vector<float> all_f32;
+  for (int i = 0; i < 256; i++) {
+    all_f8.push_back(
+        Eigen::numext::bit_cast<tsl::float8_e5m2>(static_cast<uint8_t>(i)));
+    all_f32.push_back(tsl::float8_e5m2::ConvertTo<float>(all_f8.back()));
+  }
+
+  xla::XlaOp all_f8_as_f8 = ConstantR1<tsl::float8_e5m2>(&builder, all_f8);
+  ConvertElementType(all_f8_as_f8, F32);
+
+  ComputeAndCompareR1<float>(&builder, all_f32, {}, ErrorSpec(0.));
+}
+
+XLA_TEST_F(ConvertTest, ConvertF8e5m2fnuzF32Exhaustive) {
+  // Convert from f8e5m2fnuz to f32.
+  XlaBuilder builder(TestName());
+
+  std::vector<tsl::float8_e5m2fnuz> all_f8;
+  std::vector<float> all_f32;
+  for (int i = 0; i < 256; i++) {
+    all_f8.push_back(
+        Eigen::numext::bit_cast<tsl::float8_e5m2fnuz>(static_cast<uint8_t>(i)));
+    all_f32.push_back(tsl::float8_e5m2fnuz::ConvertTo<float>(all_f8.back()));
+  }
+
+  xla::XlaOp all_f8_as_f8 = ConstantR1<tsl::float8_e5m2fnuz>(&builder, all_f8);
+  ConvertElementType(all_f8_as_f8, F32);
+
+  ComputeAndCompareR1<float>(&builder, all_f32, {}, ErrorSpec(0.));
+}
+
+XLA_TEST_F(ConvertTest, ConvertF8e4m3F32Exhaustive) {
+  // Convert from f8e4m3 to f32.
+  XlaBuilder builder(TestName());
+
+  std::vector<tsl::float8_e4m3fn> all_f8;
+  std::vector<float> all_f32;
+  for (int i = 0; i < 256; i++) {
+    all_f8.push_back(
+        Eigen::numext::bit_cast<tsl::float8_e4m3fn>(static_cast<uint8_t>(i)));
+    all_f32.push_back(tsl::float8_e4m3fn::ConvertTo<float>(all_f8.back()));
+  }
+
+  xla::XlaOp all_f8_as_f8 = ConstantR1<tsl::float8_e4m3fn>(&builder, all_f8);
+  ConvertElementType(all_f8_as_f8, F32);
+
+  ComputeAndCompareR1<float>(&builder, all_f32, {}, ErrorSpec(0.));
 }
 
 XLA_TEST_F(ConvertTest, ConvertF8e5m2F16RoundtripExhaustive2) {

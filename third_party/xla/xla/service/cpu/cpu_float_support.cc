@@ -27,7 +27,7 @@ bool CpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
     // oneDNN rewritable ops
     case HloOpcode::kDot:
       return LowPrecisionType() == BF16 &&
-             OneDnnContractionRewriter::ShouldRewriteDot(&hlo);
+             OneDnnContractionRewriter::ShouldRewriteDot(&hlo, true);
     case HloOpcode::kConvolution:
       return LowPrecisionType() == BF16 &&
              OneDnnContractionRewriter::ShouldRewriteConv(&hlo);

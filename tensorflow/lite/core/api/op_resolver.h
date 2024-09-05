@@ -22,6 +22,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/compiler/mlir/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/schema/schema_generated.h"

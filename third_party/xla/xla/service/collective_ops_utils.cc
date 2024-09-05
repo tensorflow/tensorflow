@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -582,7 +583,7 @@ bool ReplicaGroupsEqual(absl::Span<const ReplicaGroup> first,
   return true;
 }
 
-bool IsCollective(const HloInstruction* instruction) {
+bool IsNonFusionCollective(const HloInstruction* instruction) {
   switch (instruction->opcode()) {
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllReduceStart:
@@ -597,22 +598,28 @@ bool IsCollective(const HloInstruction* instruction) {
     case HloOpcode::kCollectivePermuteDone:
     case HloOpcode::kReduceScatter:
       return true;
-    case HloOpcode::kFusion:
-      if (instruction->IsCustomFusion()) {
-        for (const auto* inner_inst : instruction->fused_instructions()) {
-          if (IsCollective(inner_inst)) {
-            return true;
-          }
-        }
-      }
-      return false;
     case HloOpcode::kAsyncStart:
     case HloOpcode::kAsyncUpdate:
     case HloOpcode::kAsyncDone:
-      return IsCollective(instruction->async_wrapped_instruction());
+      return IsNonFusionCollective(instruction->async_wrapped_instruction());
     default:
       return false;
   }
+}
+
+bool IsCollective(const HloInstruction* instruction) {
+  if (IsNonFusionCollective(instruction)) {
+    return true;
+  }
+  if (instruction->opcode() == HloOpcode::kFusion &&
+      instruction->IsCustomFusion()) {
+    for (const auto* inner_inst : instruction->fused_instructions()) {
+      if (IsCollective(inner_inst)) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 HloInstruction* IsOrHasCollectiveWithChannelId(HloInstruction* instruction) {
@@ -645,12 +652,13 @@ using SourceTargetPair = std::pair<int64_t, int64_t>;
 using SourceTargetPairs = std::vector<SourceTargetPair>;
 
 bool IsForwardCycle(const SourceTargetPairs& pairs) {
-  int64_t num_pairs = pairs.size();
-  const SourceTargetPair& last_pair = pairs[num_pairs - 1];
-  if (last_pair.first != num_pairs - 1 || last_pair.second != 0) {
+  int64_t size = pairs.size();
+  if (size <= 1) return false;  // self reference is not a cycle.
+  const SourceTargetPair& last_pair = pairs[size - 1];
+  if (last_pair.first != size - 1 || last_pair.second != 0) {
     return false;
   }
-  for (int64_t i = 0; i < num_pairs - 1; ++i) {
+  for (int64_t i = 0; i < size - 1; ++i) {
     const SourceTargetPair& pair = pairs[i];
     if (pair.first != i || pair.second != i + 1) {
       return false;
@@ -660,12 +668,13 @@ bool IsForwardCycle(const SourceTargetPairs& pairs) {
 }
 
 bool IsBackwardCycle(const SourceTargetPairs& pairs) {
-  int64_t num_pairs = pairs.size();
+  int64_t size = pairs.size();
+  if (size <= 1) return false;  // self reference is not a cycle.
   const SourceTargetPair& first_pair = pairs[0];
-  if (first_pair.first != 0 || first_pair.second != num_pairs - 1) {
+  if (first_pair.first != 0 || first_pair.second != size - 1) {
     return false;
   }
-  for (int64_t i = 1; i < num_pairs; ++i) {
+  for (int64_t i = 1; i < size; ++i) {
     const SourceTargetPair& pair = pairs[i];
     if (pair.first != i || pair.second != i - 1) {
       return false;

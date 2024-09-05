@@ -1,5 +1,4 @@
-// RUN: odml-to-stablehlo-opt %s -prepare-hlo -split-input-file
-// | FileCheck %s --dump-input=fail 
+// RUN: odml-to-stablehlo-opt %s -prepare-hlo -split-input-file | FileCheck %s --dump-input=fail 
 
 // Just assert that pass is properly registered.
 func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
@@ -16,6 +15,79 @@ func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
 // 2D
 //=--
 
+// CHECK-LABEL: transpose_conv2d_same_padding_nchw_ihwo
+func.func @transpose_conv2d_same_padding_nchw_ihwo(%input: tensor<1x2x256x256xf32>, %filter:tensor<2x2x4x4xf32>) -> tensor<1x2x512x512xf32> {
+  %1 = mhlo.convolution(%input, %filter)
+    dim_numbers = [b, f, 0, 1]x[i, o, 0, 1]->[b, f, 0, 1],
+    window = {pad = [[2, 2], [2, 2]], lhs_dilate = [2, 2]}
+    {batch_group_count = 1 : i64, feature_group_count = 1 : i64}
+    : (tensor<1x2x256x256xf32>, tensor<2x2x4x4xf32>) -> tensor<1x2x512x512xf32>
+    func.return %1 : tensor<1x2x512x512xf32>
+}
+
+// CHECK:      %[[TRANSPOSED_INPUT:.*]] = "mhlo.transpose"(%arg0)
+// CHECK-SAME: permutation
+// CHECK-SAME: [0, 2, 3, 1]
+// CHECK:      %[[TRANSPOSED_KERNEL:.*]] = "mhlo.transpose"(%arg1)
+// CHECK-SAME: permutation
+// CHECK-SAME: [1, 2, 3, 0]
+// CHECK:      %[[CONV_OUT:.*]] = mhlo.convolution(%[[TRANSPOSED_INPUT]], %[[TRANSPOSED_KERNEL]])
+// CHECK-SAME: [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f]
+// CHECK:      "mhlo.transpose"(%[[CONV_OUT]])
+// CHECK-SAME: permutation
+// CHECK-SAME: [0, 3, 1, 2]
+
+// -----
+
+// CHECK-LABEL: transpose_conv2d_same_padding_nchw_oihw
+func.func @transpose_conv2d_same_padding_nchw_oihw(%input: tensor<1x2x256x256xf32>, %filter:tensor<2x2x4x4xf32>) -> tensor<1x2x512x512xf32> {
+  %0 = mhlo.convolution(%input, %filter)
+   dim_numbers = [b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1],
+   window = {pad = [[2, 2], [2, 2]], lhs_dilate = [2, 2]} {
+    batch_group_count = 1 : i64,
+    feature_group_count = 1 : i64
+    } : (tensor<1x2x256x256xf32>, tensor<2x2x4x4xf32>) -> tensor<1x2x512x512xf32>
+  func.return %0 : tensor<1x2x512x512xf32>
+}
+
+// CHECK:      %[[TRANSPOSED_INPUT:.*]] = "mhlo.transpose"(%arg0)
+// CHECK-SAME: permutation
+// CHECK-SAME: [0, 2, 3, 1]
+// CHECK:      %[[TRANSPOSED_KERNEL:.*]] = "mhlo.transpose"(%arg1)
+// CHECK-SAME: permutation
+// CHECK-SAME: [0, 2, 3, 1]
+// CHECK:      %[[CONV_OUT:.*]] = mhlo.convolution(%[[TRANSPOSED_INPUT]], %[[TRANSPOSED_KERNEL]])
+// CHECK-SAME: [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f]
+// CHECK:      "mhlo.transpose"(%[[CONV_OUT]])
+// CHECK-SAME: permutation
+// CHECK-SAME: [0, 3, 1, 2]
+
+// -----
+
+// CHECK-LABEL: depthwise_transpose_conv2d_same_padding_nchw_hwoi
+func.func @depthwise_transpose_conv2d_same_padding_nchw_hwoi(%input: tensor<1x2x20x20xf32>, %filter:tensor<8x8x2x1xf32>) -> tensor<1x2x80x80xf32> {
+  %1 = mhlo.convolution(%input, %filter)
+    dim_numbers = [b, f, 0, 1]x[0, 1, o, i]->[b, f, 0, 1],
+    window = {pad = [[5, 5], [5, 5]], lhs_dilate = [4, 4]}
+    {batch_group_count = 1 : i64, feature_group_count = 2 : i64}
+    : (tensor<1x2x20x20xf32>, tensor<8x8x2x1xf32>) -> tensor<1x2x80x80xf32>
+  func.return %1 : tensor<1x2x80x80xf32>
+
+  // CHECK:  %0 = "mhlo.transpose"(%arg0) <{permutation = dense<[0, 2, 3, 1]> : tensor<4xi64>}> : (tensor<1x2x20x20xf32>) -> tensor<1x20x20x2xf32>
+  // CHECK:  %1 = "mhlo.transpose"(%arg1) <{permutation = dense<[2, 0, 1, 3]> : tensor<4xi64>}> : (tensor<8x8x2x1xf32>) -> tensor<2x8x8x1xf32>
+  // CHECK:  %2 = "mhlo.slice"(%0) <{limit_indices = dense<[1, 20, 20, 1]> : tensor<4xi64>, start_indices = dense<0> : tensor<4xi64>, strides = dense<1> : tensor<4xi64>}> : (tensor<1x20x20x2xf32>) -> tensor<1x20x20x1xf32>
+  // CHECK:  %3 = "mhlo.slice"(%1) <{limit_indices = dense<[1, 8, 8, 1]> : tensor<4xi64>, start_indices = dense<0> : tensor<4xi64>, strides = dense<1> : tensor<4xi64>}> : (tensor<2x8x8x1xf32>) -> tensor<1x8x8x1xf32>
+  // CHECK:  %4 = mhlo.convolution(%2, %3) dim_numbers = [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f], window = {pad = {{\[\[}}5, 5], [5, 5]], lhs_dilate = [4, 4]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<1x20x20x1xf32>, tensor<1x8x8x1xf32>) -> tensor<1x80x80x1xf32>
+  // CHECK:  %5 = "mhlo.slice"(%0) <{limit_indices = dense<[1, 20, 20, 2]> : tensor<4xi64>, start_indices = dense<[0, 0, 0, 1]> : tensor<4xi64>, strides = dense<1> : tensor<4xi64>}> : (tensor<1x20x20x2xf32>) -> tensor<1x20x20x1xf32>
+  // CHECK:  %6 = "mhlo.slice"(%1) <{limit_indices = dense<[2, 8, 8, 1]> : tensor<4xi64>, start_indices = dense<[1, 0, 0, 0]> : tensor<4xi64>, strides = dense<1> : tensor<4xi64>}> : (tensor<2x8x8x1xf32>) -> tensor<1x8x8x1xf32>
+  // CHECK:  %7 = mhlo.convolution(%5, %6) dim_numbers = [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f], window = {pad = {{\[\[}}5, 5], [5, 5]], lhs_dilate = [4, 4]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<1x20x20x1xf32>, tensor<1x8x8x1xf32>) -> tensor<1x80x80x1xf32>
+  // CHECK:  %8 = "mhlo.concatenate"(%4, %7) <{dimension = 3 : i64}> : (tensor<1x80x80x1xf32>, tensor<1x80x80x1xf32>) -> tensor<1x80x80x2xf32>
+  // CHECK:  %9 = "mhlo.transpose"(%8) <{permutation = dense<[0, 3, 1, 2]> : tensor<4xi64>}> : (tensor<1x80x80x2xf32>) -> tensor<1x2x80x80xf32>
+  // CHECK:  return %9 : tensor<1x2x80x80xf32>
+}
+
+// -----
+
 // CHECK-LABEL: conv2d_nhwc_ohwi_nhwc
 func.func @conv2d_nhwc_ohwi_nhwc(%input: tensor<1x256x256x3xf32>, %filter: tensor<2x1x1x3xf32>) -> tensor<1x256x256x2xf32> {
   %0 = mhlo.convolution(%input, %filter)
@@ -29,6 +101,27 @@ func.func @conv2d_nhwc_ohwi_nhwc(%input: tensor<1x256x256x3xf32>, %filter: tenso
     lhs_dilation = dense<[1, 1]> : tensor<2xi64>
   } : (tensor<1x256x256x3xf32>, tensor<2x1x1x3xf32>) -> tensor<1x256x256x2xf32>
   func.return %0 : tensor<1x256x256x2xf32>
+}
+
+// CHECK-NOT: transpose
+// CHECK:     [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f]
+// CHECK-NOT: transpose
+
+// -----
+
+// CHECK-LABEL: conv2d_nhwc_ohwi_nhwc_dynamic
+func.func @conv2d_nhwc_ohwi_nhwc_dynamic(%input: tensor<?x256x256x3xf32>, %filter: tensor<2x1x1x3xf32>) -> tensor<?x256x256x2xf32> {
+  %0 = mhlo.convolution(%input, %filter)
+    dim_numbers = [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f],
+    window = {stride = [1, 1], pad = [[0, 0], [0, 0]]} {
+    batch_group_count = 1 : i64,
+    feature_group_count = 1 : i64,
+    window_strides = dense<1> : tensor<2xi64>,
+    padding = dense<0> : tensor<2x2xi64>,
+    rhs_dilation = dense<[1, 1]> : tensor<2xi64>,
+    lhs_dilation = dense<[1, 1]> : tensor<2xi64>
+  } : (tensor<?x256x256x3xf32>, tensor<2x1x1x3xf32>) -> tensor<?x256x256x2xf32>
+  func.return %0 : tensor<?x256x256x2xf32>
 }
 
 // CHECK-NOT: transpose
@@ -159,6 +252,31 @@ func.func @conv2d_nhwc_ohwi_nhwc_padded(%input: tensor<1x254x254x3xf32>, %filter
 // CHECK:      %[[PADDED_LHS:.*]] = "mhlo.pad"
 // CHECK-SAME: edge_padding_high = dense<[0, 1, 1, 0]>
 // CHECK-SAME: edge_padding_low = dense<[0, 1, 1, 0]>
+// CHECK-SAME: interior_padding = dense<0>
+// CHECK:      mhlo.convolution(%[[PADDED_LHS]]
+// CHECK-SAME: pad
+// CHECK-SAME: [0, 0], [0, 0]
+// CHECK-SAME: (tensor<1x256x256x3xf32>, tensor<2x1x1x3xf32>) -> tensor<1x256x256x2xf32>
+
+// -----
+
+// CHECK-LABEL: conv2d_nhwc_ohwi_nhwc_asymmetric_padded
+func.func @conv2d_nhwc_ohwi_nhwc_asymmetric_padded(%input: tensor<1x255x255x3xf32>, %filter: tensor<2x1x1x3xf32>) -> tensor<1x256x256x2xf32> {
+  %0 = "mhlo.convolution"(%input, %filter) {
+    dimension_numbers = #mhlo.conv<[b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f]>,
+    batch_group_count = 1 : i64,
+    feature_group_count = 1 : i64,
+    window_strides = dense<1> : tensor<2xi64>,
+    padding = dense<[[0, 1], [0, 1]]> : tensor<2x2xi64>,
+    rhs_dilation = dense<[1, 1]> : tensor<2xi64>,
+    lhs_dilation = dense<[1, 1]> : tensor<2xi64>
+  } : (tensor<1x255x255x3xf32>, tensor<2x1x1x3xf32>) -> tensor<1x256x256x2xf32>
+  func.return %0 : tensor<1x256x256x2xf32>
+}
+
+// CHECK:      %[[PADDED_LHS:.*]] = "mhlo.pad"
+// CHECK-SAME: edge_padding_high = dense<[0, 1, 1, 0]>
+// CHECK-SAME: edge_padding_low = dense<0>
 // CHECK-SAME: interior_padding = dense<0>
 // CHECK:      mhlo.convolution(%[[PADDED_LHS]]
 // CHECK-SAME: pad
@@ -418,7 +536,6 @@ func.func @conv3d_ncdhw_dhwio_ndhwc_padded(%arg0: tensor<1x207x6x6x30xf32>, %arg
 // 1D
 //=--
 
-// TODO: b/351437662 - Add support for conv1d.
 // CHECK-LABEL: conv1d_nsc_osi_nsc
 func.func @conv1d_nsc_osi_nsc(%arg0: tensor<16x32x256xf32>, %arg1: tensor<256x1x256xf32>) -> tensor<16x32x256xf32> {
 	%0 = "mhlo.convolution"(%arg0, %arg1) {
@@ -434,10 +551,10 @@ func.func @conv1d_nsc_osi_nsc(%arg0: tensor<16x32x256xf32>, %arg1: tensor<256x1x
   func.return %0 : tensor<16x32x256xf32>
 }
 
-// CHECK: %[[RESHAPED_LHS:.*]] = mhlo.reshape %arg0
+// CHECK: %[[RESHAPED_LHS:.*]] = "tfl.reshape"(%arg0
 // CHECK: %[[RESHAPED_RHS:.*]] = mhlo.reshape %arg1
 // CHECK: %[[CONV_OUT:.*]] = mhlo.convolution(%[[RESHAPED_LHS]], %[[RESHAPED_RHS]]) dim_numbers = [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f]
-// CHECK: mhlo.reshape %[[CONV_OUT]]
+// CHECK: "tfl.reshape"(%[[CONV_OUT]]
 
 // -----
 
@@ -456,14 +573,13 @@ func.func @conv1d_nsc_sio_nsc(%arg0: tensor<16x32x256xf32>, %arg1: tensor<1x256x
   func.return %0 : tensor<16x32x256xf32>
 }
 
-// CHECK: %[[RESHAPED_LHS:.*]] = mhlo.reshape %arg0
+// CHECK: %[[RESHAPED_LHS:.*]] = "tfl.reshape"(%arg0
 // CHECK: %[[RESHAPED_RHS:.*]] = mhlo.reshape %arg1
 // CHECK: %[[TPOSED_RHS:.*]] = "mhlo.transpose"(%[[RESHAPED_RHS]]) <{permutation = dense<[3, 0, 1, 2]> : tensor<4xi64>}> : (tensor<1x1x256x256xf32>) -> tensor<256x1x1x256xf32>
 // CHECK: %[[CONV_OUT:.*]] = mhlo.convolution(%[[RESHAPED_LHS]], %[[TPOSED_RHS]]) dim_numbers = [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f]
-// CHECK: mhlo.reshape %[[CONV_OUT]]
+// CHECK: "tfl.reshape"(%[[CONV_OUT]]
 
 // -----
-
 
 // CHECK-LABEL: conv1d_ncs_osi_nsc_padded
 func.func @conv1d_ncs_osi_nsc_padded(%arg0: tensor<16x256x30xf32>, %arg1: tensor<256x1x256xf32>) -> tensor<16x32x256xf32> {
@@ -476,12 +592,32 @@ func.func @conv1d_ncs_osi_nsc_padded(%arg0: tensor<16x256x30xf32>, %arg1: tensor
   func.return %0 : tensor<16x32x256xf32>
 }
 
-// CHECK: %[[RESHAPED_LHS:.*]] = mhlo.reshape %arg0 : (tensor<16x256x30xf32>) -> tensor<16x256x30x1xf32>
-// CHECK: %[[RESHAPED_RHS:.*]] = mhlo.reshape %arg1 : (tensor<256x1x256xf32>) -> tensor<256x1x1x256xf32>
-// CHECK: %[[TPOSED_LHS:.*]] = "mhlo.transpose"(%0) <{permutation = dense<[0, 2, 3, 1]> : tensor<4xi64>}> : (tensor<16x256x30x1xf32>) -> tensor<16x30x1x256xf32>
-// CHECK: %[[PADDED_LHS:.*]] = "mhlo.pad"(%[[TPOSED_LHS]], %cst) <{edge_padding_high = dense<[0, 1, 0, 0]> : tensor<4xi64>, edge_padding_low = dense<[0, 1, 0, 0]> : tensor<4xi64>, interior_padding = dense<0> : tensor<4xi64>}> : (tensor<16x30x1x256xf32>, tensor<f32>) -> tensor<16x32x1x256xf32>
+// CHECK: %[[RESHAPED_LHS:.*]] = "tfl.reshape"(%arg0{{.*}}-> tensor<16x256x30x1xf32>
+// CHECK: %[[RESHAPED_RHS:.*]] = mhlo.reshape %arg1{{.*}}(tensor<256x1x256xf32>) -> tensor<256x1x1x256xf32>
+// CHECK: %[[TPOSED_LHS:.*]] = "mhlo.transpose"(%[[RESHAPED_LHS]]) <{permutation = dense<[0, 2, 3, 1]> : tensor<4xi64>}> : (tensor<16x256x30x1xf32>) -> tensor<16x30x1x256xf32>
+// CHECK: %[[PADDED_LHS:.*]] = "mhlo.pad"(%[[TPOSED_LHS]], %cst_0) <{edge_padding_high = dense<[0, 1, 0, 0]> : tensor<4xi64>, edge_padding_low = dense<[0, 1, 0, 0]> : tensor<4xi64>, interior_padding = dense<0> : tensor<4xi64>}> : (tensor<16x30x1x256xf32>, tensor<f32>) -> tensor<16x32x1x256xf32>
 // CHECK: %[[CONV_OUT:.*]] = mhlo.convolution(%[[PADDED_LHS]], %[[RESHAPED_RHS]]) dim_numbers = [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f]
-// CHECK: mhlo.reshape %[[CONV_OUT]] : (tensor<16x32x1x256xf32>) -> tensor<16x32x256xf32>
+// CHECK: "tfl.reshape"(%[[CONV_OUT]]{{.*}}-> tensor<16x32x256xf32>
+
+// -----
+
+// CHECK-LABEL: conv1d_ncs_osi_nsc_padded_dynamic
+func.func @conv1d_ncs_osi_nsc_padded_dynamic(%arg0: tensor<?x256x30xf32>, %arg1: tensor<256x1x256xf32>) -> tensor<?x32x256xf32> {
+	%0 = "mhlo.convolution"(%arg0, %arg1) {
+    batch_group_count = 1 : i64,
+    dimension_numbers = #mhlo.conv<[b, f, 0]x[o, 0, i]->[b, 0, f]>,
+    feature_group_count = 1 : i64,
+    padding = dense<1> : tensor<1x2xi64>
+  } : (tensor<?x256x30xf32>, tensor<256x1x256xf32>) -> tensor<?x32x256xf32>
+  func.return %0 : tensor<?x32x256xf32>
+}
+
+// CHECK: %[[RESHAPED_LHS:.*]] = "tfl.reshape"(%arg0{{.*}}-> tensor<?x256x30x1xf32>
+// CHECK: %[[RESHAPED_RHS:.*]] = mhlo.reshape %arg1{{.*}}(tensor<256x1x256xf32>) -> tensor<256x1x1x256xf32>
+// CHECK: %[[TPOSED_LHS:.*]] = "mhlo.transpose"(%[[RESHAPED_LHS]]) <{permutation = dense<[0, 2, 3, 1]> : tensor<4xi64>}> : (tensor<?x256x30x1xf32>) -> tensor<?x30x1x256xf32>
+// CHECK: %[[PADDED_LHS:.*]] = "mhlo.pad"(%[[TPOSED_LHS]], %cst_0) <{edge_padding_high = dense<[0, 1, 0, 0]> : tensor<4xi64>, edge_padding_low = dense<[0, 1, 0, 0]> : tensor<4xi64>, interior_padding = dense<0> : tensor<4xi64>}> : (tensor<?x30x1x256xf32>, tensor<f32>) -> tensor<?x32x1x256xf32>
+// CHECK: %[[CONV_OUT:.*]] = mhlo.convolution(%[[PADDED_LHS]], %[[RESHAPED_RHS]]) dim_numbers = [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f]
+// CHECK: "tfl.reshape"(%[[CONV_OUT]]{{.*}}-> tensor<?x32x256xf32>
 
 // -----
 
@@ -604,3 +740,69 @@ func.func @reduce_window_same_channel_first(%arg0: tensor<4x3x16x16xf32>) -> ten
 // CHECK-SAME: window_dimensions = dense<[1, 3, 3, 1]>
 // CHECK-SAME: window_strides = dense<[1, 2, 2, 1]>
 // CHECK:      %3 = "mhlo.transpose"(%[[RW]]) <{permutation = dense<[0, 3, 1, 2]> : tensor<4xi64>}> : (tensor<4x8x8x3xf32>) -> tensor<4x3x8x8xf32>
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// mhlo.dynamic_slice
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: dynamic_slice
+func.func @dynamic_slice(%arg0: tensor<7x3xf32>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> tensor<4x2xf32> {
+  %0 = "mhlo.dynamic_slice"(%arg0, %arg1, %arg2) <{slice_sizes = dense<[4, 2]> : tensor<2xi64>}> : (tensor<7x3xf32>, tensor<i32>, tensor<i32>) -> tensor<4x2xf32>
+  func.return %0 : tensor<4x2xf32>
+}
+
+// CHECK:      mhlo.dynamic_slice
+// CHECK-SAME: (tensor<7x3xf32>, tensor<i32>, tensor<i32>) -> tensor<4x2xf32>
+
+// -----
+
+// CHECK-LABEL: dynamic_slice_ui32
+func.func @dynamic_slice_ui32(%arg0: tensor<7x3xf32>, %arg1: tensor<ui32>, %arg2: tensor<ui32>) -> tensor<4x2xf32> {
+  %0 = "mhlo.dynamic_slice"(%arg0, %arg1, %arg2) <{slice_sizes = dense<[4, 2]> : tensor<2xi64>}> : (tensor<7x3xf32>, tensor<ui32>, tensor<ui32>) -> tensor<4x2xf32>
+  func.return %0 : tensor<4x2xf32>
+}
+
+// CHECK:      mhlo.dynamic_slice
+// CHECK-SAME: (tensor<7x3xf32>, tensor<i32>, tensor<i32>) -> tensor<4x2xf32>
+
+// CHECK-LABEL: dynamic_slice_ui64
+func.func @dynamic_slice_ui64(%arg0: tensor<7x3xf32>, %arg1: tensor<ui64>, %arg2: tensor<ui64>) -> tensor<4x2xf32> {
+  %0 = "mhlo.dynamic_slice"(%arg0, %arg1, %arg2) <{slice_sizes = dense<[4, 2]> : tensor<2xi64>}> : (tensor<7x3xf32>, tensor<ui64>, tensor<ui64>) -> tensor<4x2xf32>
+  func.return %0 : tensor<4x2xf32>
+}
+
+// CHECK:      mhlo.dynamic_slice
+// CHECK-SAME: (tensor<7x3xf32>, tensor<i64>, tensor<i64>) -> tensor<4x2xf32>
+
+// -----
+
+// CHECK-LABEL: dynamic_slice_i64
+func.func @dynamic_slice_i64(%arg0: tensor<7x3xf32>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<4x2xf32> {
+  %0 = "mhlo.dynamic_slice"(%arg0, %arg1, %arg2) <{slice_sizes = dense<[4, 2]> : tensor<2xi64>}> : (tensor<7x3xf32>, tensor<i64>, tensor<i64>) -> tensor<4x2xf32>
+  func.return %0 : tensor<4x2xf32>
+}
+
+// CHECK:      mhlo.dynamic_slice
+// CHECK-SAME: (tensor<7x3xf32>, tensor<i64>, tensor<i64>) -> tensor<4x2xf32>
+
+//===----------------------------------------------------------------------===//
+// mhlo.custom_call
+//===----------------------------------------------------------------------===//
+
+// -----
+
+// CHECK-LABEL: @shape_assertion_custom_call
+func.func @shape_assertion_custom_call(%arg1: tensor<?x5xi32>) -> tensor<i32> {
+  %0 = mhlo.constant dense<3> : tensor<i32>
+  %1 = "mhlo.get_dimension_size"(%arg1) <{dimension = 0 : i64}> : (tensor<?x5xi32>) -> tensor<i32>
+  %ok = mhlo.compare  EQ, %1, %0,  SIGNED : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  mhlo.custom_call @shape_assertion(%ok) {
+    error_message = "The error message",
+    has_side_effect = true
+  } : (tensor<i1>) -> ()
+  return %1 : tensor<i32>
+}
+
+// CHECK-NOT: mhlo.custom_call

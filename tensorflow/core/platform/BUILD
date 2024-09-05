@@ -317,7 +317,7 @@ tf_cc_test(
         ":test_main",
         "//tensorflow/core:protos_all_cc",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 

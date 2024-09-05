@@ -21,7 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/cloud/curl_http_request.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/macros.h"
@@ -38,12 +38,13 @@ class FakeHttpRequest : public CurlHttpRequest {
  public:
   /// Return the response for the given request.
   FakeHttpRequest(const string& request, const string& response)
-      : FakeHttpRequest(request, response, OkStatus(), nullptr, {}, 200) {}
+      : FakeHttpRequest(request, response, absl::OkStatus(), nullptr, {}, 200) {
+  }
 
   /// Return the response with headers for the given request.
   FakeHttpRequest(const string& request, const string& response,
                   const std::map<string, string>& response_headers)
-      : FakeHttpRequest(request, response, OkStatus(), nullptr,
+      : FakeHttpRequest(request, response, absl::OkStatus(), nullptr,
                         response_headers, 200) {}
 
   /// \brief Return the response for the request and capture the POST body.
@@ -51,12 +52,12 @@ class FakeHttpRequest : public CurlHttpRequest {
   /// Post body is not expected to be a part of the 'request' parameter.
   FakeHttpRequest(const string& request, const string& response,
                   string* captured_post_body)
-      : FakeHttpRequest(request, response, OkStatus(), captured_post_body, {},
-                        200) {}
+      : FakeHttpRequest(request, response, absl::OkStatus(), captured_post_body,
+                        {}, 200) {}
 
   /// \brief Return the response and the status for the given request.
   FakeHttpRequest(const string& request, const string& response,
-                  Status response_status, uint64 response_code)
+                  absl::Status response_status, uint64 response_code)
       : FakeHttpRequest(request, response, response_status, nullptr, {},
                         response_code) {}
 
@@ -65,7 +66,7 @@ class FakeHttpRequest : public CurlHttpRequest {
   ///
   /// Post body is not expected to be a part of the 'request' parameter.
   FakeHttpRequest(const string& request, const string& response,
-                  Status response_status, string* captured_post_body,
+                  absl::Status response_status, string* captured_post_body,
                   const std::map<string, string>& response_headers,
                   uint64 response_code)
       : expected_request_(request),
@@ -88,20 +89,21 @@ class FakeHttpRequest : public CurlHttpRequest {
     actual_request_ += "Auth Token: " + auth_token + "\n";
   }
   void SetDeleteRequest() override { actual_request_ += "Delete: yes\n"; }
-  Status SetPutFromFile(const string& body_filepath, size_t offset) override {
+  absl::Status SetPutFromFile(const string& body_filepath,
+                              size_t offset) override {
     std::ifstream stream(body_filepath);
     const string& content = string(std::istreambuf_iterator<char>(stream),
                                    std::istreambuf_iterator<char>())
                                 .substr(offset);
     actual_request_ += "Put body: " + content + "\n";
-    return OkStatus();
+    return absl::OkStatus();
   }
   void SetPostFromBuffer(const char* buffer, size_t size) override {
     if (captured_post_body_) {
       *captured_post_body_ = string(buffer, size);
     } else {
       actual_request_ +=
-          strings::StrCat("Post body: ", StringPiece(buffer, size), "\n");
+          strings::StrCat("Post body: ", absl::string_view(buffer, size), "\n");
     }
   }
   void SetPutEmptyBody() override { actual_request_ += "Put: yes\n"; }
@@ -123,7 +125,7 @@ class FakeHttpRequest : public CurlHttpRequest {
   size_t GetResultBufferDirectBytesTransferred() override {
     return direct_result_bytes_transferred_;
   }
-  Status Send() override {
+  absl::Status Send() override {
     EXPECT_EQ(expected_request_, actual_request())
         << "Unexpected HTTP request.";
     if (buffer_) {
@@ -182,7 +184,7 @@ class FakeHttpRequest : public CurlHttpRequest {
   string actual_uri_;
   string actual_request_;
   string response_;
-  Status response_status_;
+  absl::Status response_status_;
   string* captured_post_body_ = nullptr;
   std::map<string, string> response_headers_;
   uint64 response_code_ = 0;

@@ -20,6 +20,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/functional/bind_front.h"
 #include "absl/status/status.h"
+#include "absl/strings/cord.h"
 #include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/client.h"
@@ -66,7 +67,7 @@ TEST_P(CustomCallProgramSerDesTest, RoundTrip) {
   CustomCallProgram orig(
       /*type=*/"test type",
       /*name=*/"test name",
-      /*serialized_program_text=*/"test\0program\0text\0",
+      /*serialized_program_text=*/absl::Cord("test\0program\0text\0"),
       /*devices=*/std::move(devices),
       /*input_specs=*/
       {
@@ -89,7 +90,7 @@ TEST_P(CustomCallProgramSerDesTest, RoundTrip) {
   EXPECT_EQ(deserialized_program->type, "test type");
   EXPECT_EQ(deserialized_program->name, "test name");
   EXPECT_EQ(deserialized_program->serialized_program_text,
-            "test\0program\0text\0");
+            absl::Cord("test\0program\0text\0").Flatten());
 
   EXPECT_EQ(deserialized_program->devices, orig.devices);
 

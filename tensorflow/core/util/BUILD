@@ -958,16 +958,15 @@ tf_proto_library(
     name = "test_log_proto",
     srcs = ["test_log.proto"],
     make_default_target_header_only = True,
-    protodeps = ["@local_tsl//tsl/protobuf:test_log_proto"],
+    protodeps = ["@local_xla//xla/tsl/protobuf:test_log_proto"],
     # Not to be used outside of tensorflow/core.
     visibility = ["//tensorflow/core:__pkg__"],
-    exports = ["@local_tsl//tsl/protobuf:test_log_proto"],
+    exports = ["@local_xla//xla/tsl/protobuf:test_log_proto"],
 )
 
 tf_proto_library(
     name = "protos_test",
     srcs = ["example_proto_fast_parsing_test.proto"],
-    cc_api_version = 2,
     protodeps = ["//tensorflow/core:protos_all"],
     visibility = ["//visibility:public"],
 )
@@ -975,7 +974,6 @@ tf_proto_library(
 tf_proto_library(
     name = "event_proto",
     srcs = ["event.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         "//tensorflow/core/framework:summary_proto",
@@ -990,7 +988,6 @@ tf_proto_library(
 tf_proto_library(
     name = "saved_tensor_slice_proto",
     srcs = ["saved_tensor_slice.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         "//tensorflow/core/framework:resource_handle_proto",
@@ -1006,14 +1003,12 @@ tf_proto_library(
 tf_proto_library(
     name = "memmapped_file_system_proto",
     srcs = ["memmapped_file_system.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     visibility = ["//visibility:public"],
 )
 
 tf_proto_library(
     name = "protos_all",
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         ":event_proto",

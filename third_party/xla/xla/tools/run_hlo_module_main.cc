@@ -122,7 +122,13 @@ int main(int argc, char** argv) {
           "other "
           "than the reference this is necessary because some HLO passes are "
           "legalization passes which must be run prior to code generation."),
-
+      tsl::Flag(
+          "force_use_cpu_thunk_runtime_for_test",
+          &opts.force_use_cpu_thunk_runtime_for_test,
+          "Use thunk runtime for the test platform. If true, thunks runtime "
+          "will be used for the test run regardless of the "
+          "xla_cpu_use_thunk_runtime flag in XLA_FLAGS. This option doesn't "
+          "impact reference run. It is ignored for platforms other than CPU."),
       tsl::Flag("random_init_input_literals", &opts.random_init_input_literals,
                 "Initialize input literals with random numbers."
                 "Leave them uninitialized otherwise."),
@@ -252,9 +258,9 @@ int main(int argc, char** argv) {
                                 &input_literals_proto);
     }
 
-    for (int i = 1; i <= iteration_count; ++i) {
+    for (int i = 0; i < iteration_count; ++i) {
       if (iteration_count != 1) {
-        std::cerr << "\n=== Iteration " << i << "\n";
+        std::cerr << "\n=== Iteration " << i + 1 << "\n";
       }
       xla::RunHloModuleIterationLiterals* iteration_literals_proto = nullptr;
       if (!opts.output_literals_file.empty() ||
@@ -276,7 +282,7 @@ int main(int argc, char** argv) {
           opts, iteration_literals_proto,
           /*reference_module_modifier_hook=*/{},
           [&](xla::HloModuleConfig* config) {
-            config->set_seed(different_random_seeds ? i : 42);
+            config->set_seed(different_random_seeds ? i + 1 : 42);
           });
 
       if (result.ok()) {

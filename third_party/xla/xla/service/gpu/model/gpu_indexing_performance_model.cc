@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
+#include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -241,16 +242,10 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForInstruction(
     const HloInstruction* producer) {
   // Stand-alone bitcast is always no-op during runtime.
   if (producer->opcode() == HloOpcode::kBitcast) {
-    return EstimateRunTimeData{/*flops=*/0,
-                               /*bytes_read=*/0,
-                               /*bytes_written=*/0,
-                               /*read_time=*/absl::ZeroDuration(),
-                               /*write_time=*/absl::ZeroDuration(),
-                               /*compute_time=*/absl::ZeroDuration(),
-                               /*exec_time=*/absl::ZeroDuration()};
+    return EstimateRunTimeData::Zero();
   }
 
-  auto fusion_analysis = AnalyzeFusion(*producer, *device_info_);
+  auto fusion_analysis = HloFusionAnalysis::Create(*producer, *device_info_);
 
   bool is_coalesced = IsReadCoalescedHeuristic(
       fusion_analysis.GetEmitterFusionKind(), producer);
@@ -261,7 +256,7 @@ EstimateRunTimeData
 GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForProducerConsumer(
     const HloInstruction* producer, const HloInstruction* consumer) {
   auto fusion_analysis =
-      AnalyzeProducerConsumerFusion(*producer, *consumer, *device_info_);
+      HloFusionAnalysis::Create(*producer, *consumer, *device_info_);
 
   bool is_coalesced = IsReadCoalescedHeuristic(
       fusion_analysis.GetEmitterFusionKind(), producer, consumer);
@@ -369,7 +364,9 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledFusion(
     absl::Span<const int64_t> tile_sizes) {
   // TODO(b/332714755): Add caching for SymbolicTileAnalysis.
   SymbolicTileAnalysisOrError analysis_or_error =
-      SymbolicTileAnalysis::AnalyzeFusion(fusion_adaptor, mlir_context_);
+      SymbolicTileAnalysis::AnalyzeFusion(
+          fusion_adaptor, mlir_context_,
+          /*emitter_specific_constraints_builder=*/nullptr);
   if (const auto* fusion_decision =
           std::get_if<FusionDecision>(&analysis_or_error)) {
     return absl::FailedPreconditionError(absl::StrCat(
@@ -429,7 +426,9 @@ absl::StatusOr<TiledRunTimeDataOrError>
 GpuPerformanceModelWithIndexingAnalysis::TryFindBestTilingForFusion(
     const HloFusionAdaptor& fusion_adaptor) {
   SymbolicTileAnalysisOrError analysis_or_error =
-      SymbolicTileAnalysis::AnalyzeFusion(fusion_adaptor, mlir_context_);
+      SymbolicTileAnalysis::AnalyzeFusion(
+          fusion_adaptor, mlir_context_,
+          TritonEmitterConstraints::GetBuilder(*device_info_));
 
   if (const auto* fusion_decision =
           std::get_if<FusionDecision>(&analysis_or_error)) {

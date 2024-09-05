@@ -18,9 +18,9 @@ limitations under the License.
 #include <assert.h>
 #include <stddef.h>
 
+#include "xla/tsl/lib/core/bits.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stringpiece.h"
-#include "tsl/lib/core/bits.h"
 
 namespace tensorflow {
 namespace strings {

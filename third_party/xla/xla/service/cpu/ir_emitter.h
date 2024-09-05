@@ -760,8 +760,14 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // result with the dereferenceable bytes required by the shape / buffer size.
   void AttachDereferenceableMetadataForLoad(llvm::LoadInst* load,
                                             const Shape& shape);
-  void AttachDereferenceableMetadataForLoad(llvm::LoadInst* load,
-                                            int64_t buffer_size);
+  static void AttachDereferenceableMetadataForLoad(llvm::LoadInst* load,
+                                                   int64_t buffer_size);
+
+  // Given a load instruction, annotate the load's result with the invariant
+  // load metadata.
+  void AttachInvariantLoadMetadataForLoad(llvm::LoadInst* load) const;
+  static void AttachInvariantLoadMetadataForLoad(llvm::LoadInst* load,
+                                                 const HloModuleConfig& config);
 
   // Calculate the alignment of a buffer allocated for a given shape.
   int MinimumAlignmentForShape(const Shape& shape);

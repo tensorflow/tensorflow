@@ -113,7 +113,9 @@ class IrEmitter::CpuElementalIrEmitter : public ElementalIrEmitter {
  public:
   CpuElementalIrEmitter(const HloModuleConfig& module_config,
                         IrEmitter* ir_emitter, llvm::Module* module)
-      : ElementalIrEmitter(module, ir_emitter->b()),
+      : ElementalIrEmitter(
+            module, ir_emitter->b(),
+            Options{/*xla_cpu_use_truncate_f32_to_bf16_conversion=*/true}),
         hlo_module_config_(module_config),
         ir_emitter_(ir_emitter) {}
 
@@ -448,6 +450,18 @@ void IrEmitter::AttachDereferenceableMetadataForLoad(llvm::LoadInst* load,
                                                      int64_t buffer_size) {
   if (buffer_size > 0) {
     llvm_ir::SetDereferenceableMetadataForLoad(load, buffer_size);
+  }
+}
+
+void IrEmitter::AttachInvariantLoadMetadataForLoad(llvm::LoadInst* load) const {
+  AttachInvariantLoadMetadataForLoad(load, hlo_module_config_);
+}
+
+/*static*/ void IrEmitter::AttachInvariantLoadMetadataForLoad(
+    llvm::LoadInst* load, const HloModuleConfig& config) {
+  if (config.debug_options().xla_llvm_enable_invariant_load_metadata()) {
+    load->setMetadata(llvm::LLVMContext::MD_invariant_load,
+                      llvm::MDNode::get(load->getContext(), /*MDs=*/{}));
   }
 }
 
@@ -4073,12 +4087,8 @@ llvm::Value* IrEmitter::EmitGlobalBufferPointer(
       GetBufferTableArgument(), b()->getPtrTy(), slice.index(), b());
   llvm::LoadInst* tempbuf_address_base =
       Load(b()->getPtrTy(), tempbuf_address_ptr);
-  if (hlo_module_config_.debug_options()
-          .xla_llvm_enable_invariant_load_metadata()) {
-    tempbuf_address_base->setMetadata(
-        llvm::LLVMContext::MD_invariant_load,
-        llvm::MDNode::get(tempbuf_address_base->getContext(), /*MDs=*/{}));
-  }
+
+  AttachInvariantLoadMetadataForLoad(tempbuf_address_base);
   AttachAlignmentMetadataForLoad(tempbuf_address_base, allocation.size());
   AttachDereferenceableMetadataForLoad(tempbuf_address_base, allocation.size());
 

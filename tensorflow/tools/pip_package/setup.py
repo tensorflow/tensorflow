@@ -81,12 +81,7 @@ REQUIRED_PACKAGES = [
     'flatbuffers >= 24.3.25',
     'gast >=0.2.1,!=0.5.0,!=0.5.1,!=0.5.2',
     'google_pasta >= 0.1.1',
-    'h5py >= 3.10.0',
     'libclang >= 13.0.0',
-    'ml_dtypes >= 0.3.1, < 0.5.0',
-    # TODO(b/304751256): Adjust the numpy pin to a single version, when ready
-    'numpy >= 1.23.5, < 2.0.0 ; python_version <= "3.11"',
-    'numpy >= 1.26.0, < 2.0.0 ; python_version >= "3.12"',
     'opt_einsum >= 2.3.2',
     'packaging',
     # pylint:disable=line-too-long
@@ -117,6 +112,26 @@ REQUIRED_PACKAGES = [
     'tb-nightly ~= 2.18.0.a',
     'keras-nightly >= 3.2.0.dev',
 ]
+
+# TODO(b/361598556) Clean up the check after TF NumPy 2 upgrade
+# Dependency versions required for different numpy versions.
+if '_numpy2' in project_name:
+  NUMPY_DEPS = [
+      'numpy >= 1.23.5, < 2.2.0 ; python_version <= "3.11"',
+      'numpy >= 1.26.0, < 2.2.0 ; python_version >= "3.12"',
+      'h5py >= 3.11.0',
+      'ml_dtypes >= 0.4.0, < 0.5.0',
+  ]
+else:
+  NUMPY_DEPS = [
+      # TODO(b/304751256): Adjust the numpy pin to a single version, when ready
+      'numpy >= 1.23.5, < 2.0.0 ; python_version <= "3.11"',
+      'numpy >= 1.26.0, < 2.0.0 ; python_version >= "3.12"',
+      'h5py >= 3.10.0',
+      'ml_dtypes >= 0.3.1, < 0.5.0',
+  ]
+REQUIRED_PACKAGES.extend(NUMPY_DEPS)
+
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
 
 FAKE_REQUIRED_PACKAGES = [

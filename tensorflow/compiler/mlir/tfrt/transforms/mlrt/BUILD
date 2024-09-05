@@ -42,6 +42,11 @@ cc_library(
 )
 
 cc_library(
+    name = "mlrt_device_constants",
+    hdrs = ["mlrt_device_constants.h"],
+)
+
+cc_library(
     name = "util",
     srcs = ["util.cc"],
     hdrs = ["util.h"],
@@ -61,6 +66,7 @@ cc_library(
     hdrs = ["tf_to_mlrt.h"],
     deps = [
         ":execute_op_registry",
+        ":mlrt_device_constants",
         ":tpu_conversion_patterns",
         ":util",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -97,6 +103,7 @@ cc_library(
         ":assign_op_key",
         ":async_while",
         ":fuse_mlrt_ops",
+        ":ifrt_set_tpu_host_allocator",
         ":parallelization",
         ":rewrite_ifrt_load_variable",
         ":tf_to_mlrt",
@@ -127,13 +134,17 @@ cc_library(
     hdrs = ["tpu_conversion_patterns.h"],
     deps = [
         ":execute_op_registry",
+        ":mlrt_device_constants",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tfrt:tfrt_pipeline_options",
         "//tensorflow/compiler/mlir/tfrt:transform_utils",
         "//tensorflow/compiler/mlir/tfrt/ir/mlrt:mlrt_ops",
         "//tensorflow/compiler/mlir/tfrt/ir/mlrt:tf_mlrt_ops",
         "//tensorflow/compiler/mlir/tfrt/ir/mlrt:tf_mlrt_tpu_ops",
+        "@com_google_absl//absl/log:check",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
     ],
 )
@@ -242,6 +253,25 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+cc_library(
+    name = "ifrt_set_tpu_host_allocator",
+    srcs = ["ifrt_set_tpu_host_allocator.cc"],
+    hdrs = ["ifrt_set_tpu_host_allocator.h"],
+    deps = [
+        ":mlrt_device_constants",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow/ir/host_runtime:tensorflow_tfrt_ops",
+        "//tensorflow/compiler/mlir/tfrt/ir/mlrt:mlrt_ops",
+        "//tensorflow/compiler/mlir/tfrt/ir/mlrt:tf_mlrt_ops",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",

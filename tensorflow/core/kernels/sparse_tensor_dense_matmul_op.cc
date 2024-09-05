@@ -352,7 +352,7 @@ struct SparseTensorDenseMatMulFunctor<CPUDevice, T, Tindices, ADJ_A, ADJ_B> {
           SparseTensorDenseMatMulImpl<T, Tsum, Tindices, ADJ_A, ADJ_B>(
               out_workaround, a_indices, a_values, b));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

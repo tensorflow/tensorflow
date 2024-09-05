@@ -104,9 +104,10 @@ class MapDefunOpTest : public DatasetOpsTestBase {
   }
 
   // Creates a new `MapDefun` op kernel context.
-  Status CreateMapDefunContext(OpKernel* const op_kernel,
-                               gtl::InlinedVector<TensorValue, 4>* const inputs,
-                               std::unique_ptr<OpKernelContext>* context) {
+  Status CreateMapDefunContext(
+      OpKernel* const op_kernel,
+      absl::InlinedVector<TensorValue, 4UL>* const inputs,
+      std::unique_ptr<OpKernelContext>* context) {
     TF_RETURN_IF_ERROR(CheckOpKernelInput(*op_kernel, *inputs));
     TF_RETURN_IF_ERROR(CreateOpKernelContext(op_kernel, inputs, context));
     return absl::OkStatus();
@@ -243,7 +244,7 @@ TEST_P(ParameterizedMapDefunOpTest, NormalTests) {
   TestCase test_case = GetParam();
   TF_ASSERT_OK(InitializeRuntime(test_case.map_defun_op_params));
   auto input_tensors = test_case.map_defun_op_params.GetInputTensors();
-  gtl::InlinedVector<TensorValue, 4> input_values;
+  absl::InlinedVector<TensorValue, 4UL> input_values;
   for (auto& input : input_tensors) {
     input_values.push_back(TensorValue(&input));
   }
@@ -272,7 +273,7 @@ TEST_F(MapDefunOpTest, InvalidArguments) {
   for (auto& test_case : test_cases) {
     TF_ASSERT_OK(InitializeRuntime(test_case.map_defun_op_params));
     auto input_tensors = test_case.map_defun_op_params.GetInputTensors();
-    gtl::InlinedVector<TensorValue, 4> input_values;
+    absl::InlinedVector<TensorValue, 4UL> input_values;
     for (auto& input : input_tensors) {
       input_values.push_back(TensorValue(&input));
     }

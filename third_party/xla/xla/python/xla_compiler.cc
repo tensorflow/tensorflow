@@ -80,10 +80,10 @@ limitations under the License.
 #include "xla/service/tuple_simplifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/strings/proto_serialization.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -1199,6 +1199,20 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
                    &DebugOptions::xla_gpu_dump_autotune_logs_to,
                    [](DebugOptions* self, std::string value) {
                      self->set_xla_gpu_dump_autotune_logs_to(value);
+                   })
+      .def_prop_rw("xla_gpu_kernel_cache_file",
+                   &DebugOptions::xla_gpu_kernel_cache_file,
+                   [](DebugOptions* self, std::string value) {
+                     self->set_xla_gpu_kernel_cache_file(value);
+                   })
+      .def_prop_rw(
+          "xla_gpu_enable_llvm_module_compilation_parallelism",
+          &DebugOptions::xla_gpu_enable_llvm_module_compilation_parallelism,
+          &DebugOptions::set_xla_gpu_enable_llvm_module_compilation_parallelism)
+      .def_prop_rw("xla_gpu_per_fusion_autotune_cache_dir",
+                   &DebugOptions::xla_gpu_per_fusion_autotune_cache_dir,
+                   [](DebugOptions* self, std::string value) {
+                     self->set_xla_gpu_per_fusion_autotune_cache_dir(value);
                    });
 
   nb::class_<ExecutableBuildOptions>(m, "ExecutableBuildOptions")

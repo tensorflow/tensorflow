@@ -32,6 +32,10 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/Value.h"
+#include "mlir/IR/ValueRange.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
@@ -169,6 +173,29 @@ static absl::StatusOr<mlir::Type> ConvertShapeToType(const Shape& shape,
   return ConvertTensorShapeToType<TypeT>(shape, builder);
 }
 
+// CreateTupleValue creates a root TupleOp of (nested) tuple-type 'type' using
+// the non-tuple-typed values in 'flatten_values'.
+//
+// e.g., Given 'flatten_values': [V1, V2, V3] &'type': tuple<T1,tuple<T1,T2>>,
+//      The function returns %t2 such that:
+//       %t1 = mhlo.tuple(V2,V3) : (T2,T3) -> tuple<T2,T3>
+//       %t2 = mhlo.tuple(V1,%t1): (T1,tuple<T2,T3>) -> tuple<T1,tuple<T1,T2>>
+//
+// Note: 1. FlattenTupleValue and CreateTupleValue is a pair of functions to
+//          resp. flatten and create tuples in the exact same order.
+//       2. `flatten_values`, initially storing the flattened values, will be
+//          mutated to a 0-length array by the end of function invocation.
+mlir::Value CreateTupleValue(mlir::OpBuilder* func_builder, mlir::Location loc,
+                             mlir::ValueRange& flatten_values, mlir::Type type);
+
+// Create a TupleOp using the results of 'op' if 'type' is a mlir::TupleType.
+// Otherwise, return 'op'.
+mlir::Operation* CreateTupleFromOpResults(mlir::OpBuilder* func_builder,
+                                          mlir::Location loc,
+                                          mlir::Operation* op, mlir::Type type);
+
+mlir::TypeRange Untuple(const mlir::Type& type);
+
 static std::pair<mlir::Attribute, mlir::ArrayAttr> GetLayoutAttribute(
     mlir::Builder& b, const Shape& shape,
     std::optional<const Layout> maybe_layout = std::nullopt) {
@@ -183,7 +210,9 @@ static std::pair<mlir::Attribute, mlir::ArrayAttr> GetLayoutAttribute(
       // users should be aware of this limitation which will use the default
       // layout for tuple subshapes.
       std::pair<mlir::Attribute, mlir::Attribute> inner =
-          GetLayoutAttribute(b, tuple_shape);
+          tuple_shape.has_layout()
+              ? GetLayoutAttribute(b, tuple_shape, tuple_shape.layout())
+              : GetLayoutAttribute(b, tuple_shape);
       element_attrs.push_back(inner.first);
       tile_attrs.push_back(inner.second);
     }

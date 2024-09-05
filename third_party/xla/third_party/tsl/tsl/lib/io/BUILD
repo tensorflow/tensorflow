@@ -17,6 +17,7 @@ package(
         "//tensorflow/core/util:__subpackages__",
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/io:__subpackages__",
+        "@local_xla//xla/tsl/profiler:__subpackages__",
         "//tsl/profiler:__subpackages__",
         "//tensorflow/core/profiler:__subpackages__",
     ]),
@@ -263,12 +264,12 @@ tsl_cc_test(
     srcs = ["buffered_file_test.cc"],
     deps = [
         ":buffered_file",
-        "//tsl/lib/core:status_test_util",
         "//tsl/platform:env",
         "//tsl/platform:env_impl",
         "//tsl/platform:test",
         "//tsl/platform:test_benchmark",
         "//tsl/platform:test_main",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -443,12 +444,12 @@ tsl_cc_test(
     deps = [
         ":buffered_inputstream",
         ":random_inputstream",
-        "//tsl/lib/core:status_test_util",
         "//tsl/platform:env",
         "//tsl/platform:env_impl",
         "//tsl/platform:test",
         "//tsl/platform:test_benchmark",
         "//tsl/platform:test_main",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -471,7 +472,6 @@ tsl_cc_test(
     srcs = ["inputbuffer_test.cc"],
     deps = [
         ":inputbuffer",
-        "//tsl/lib/core:status_test_util",
         "//tsl/platform:coding",
         "//tsl/platform:env",
         "//tsl/platform:env_impl",
@@ -482,6 +482,7 @@ tsl_cc_test(
         "//tsl/platform:strcat",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -491,10 +492,10 @@ tsl_cc_test(
     srcs = ["inputstream_interface_test.cc"],
     deps = [
         ":inputstream_interface",
-        "//tsl/lib/core:status_test_util",
         "//tsl/platform:errors",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -504,11 +505,11 @@ tsl_cc_test(
     srcs = ["random_inputstream_test.cc"],
     deps = [
         ":random_inputstream",
-        "//tsl/lib/core:status_test_util",
         "//tsl/platform:env",
         "//tsl/platform:env_impl",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -519,7 +520,6 @@ tsl_cc_test(
     deps = [
         ":record_reader",
         ":record_writer",
-        "//tsl/lib/core:status_test_util",
         "//tsl/platform:env",
         "//tsl/platform:env_impl",
         "//tsl/platform:errors",
@@ -528,6 +528,7 @@ tsl_cc_test(
         "//tsl/platform:strcat",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
         "@zlib",
     ],
 )
@@ -539,7 +540,6 @@ tsl_cc_test(
     deps = [
         ":record_reader",
         ":record_writer",
-        "//tsl/lib/core:status_test_util",
         "//tsl/lib/hash:crc32c",
         "//tsl/lib/random:philox",
         "//tsl/platform:coding",
@@ -549,6 +549,7 @@ tsl_cc_test(
         "//tsl/platform:str_util",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -580,12 +581,12 @@ tsl_cc_test(
         ":zlib_compression_options",
         ":zlib_inputstream",
         ":zlib_outputbuffer",
-        "//tsl/lib/core:status_test_util",
         "//tsl/platform:env",
         "//tsl/platform:env_impl",
         "//tsl/platform:errors",
         "//tsl/platform:strcat",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )

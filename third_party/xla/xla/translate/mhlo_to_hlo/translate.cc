@@ -16,26 +16,42 @@ limitations under the License.
 
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Block.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "mlir/IR/Value.h"
 #include "mlir/Parser/Parser.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
+#include "xla/client/xla_builder.h"
+#include "xla/client/xla_computation.h"
+#include "xla/debug_options_flags.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_proto_util.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "xla/translate/mhlo_to_hlo/type_to_shape.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 constexpr char kParameterReplicationAttr[] = "mhlo.parameter_replication";
 
@@ -123,6 +139,8 @@ absl::Status ConvertMlirHloToHloViaBuilder(
                 mlir::cast<mlir::BoolAttr>(b).getValue());
 
   auto hlo_module = computation.proto();
+  mlir::StringRef module_name = module.getName() ? *module.getName() : "main";
+  hlo_module.set_name(module_name.str());
   hlo_proto->mutable_hlo_module()->Swap(&hlo_module);
 
   return absl::OkStatus();

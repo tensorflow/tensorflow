@@ -106,7 +106,7 @@ TEST_F(CollectivePermuteDecomposerTest, TransformedExplicitChannelId) {
   EXPECT_THAT(
       recv->ToString(),
       HasSubstr(
-          "_xla_send_recv_source_target_pairs=\"{{0,1},{1,2},{2,3},{3,4}}\""));
+          "_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3},{3,4}}"));
   check_metadata(recv);
   check_not_pipelined(recv);
   HloInstruction* recv_done = FindInstruction(module.get(), "recv-done");
@@ -118,7 +118,7 @@ TEST_F(CollectivePermuteDecomposerTest, TransformedExplicitChannelId) {
   EXPECT_THAT(
       send->ToString(),
       HasSubstr(
-          "_xla_send_recv_source_target_pairs=\"{{0,1},{1,2},{2,3},{3,4}}\""));
+          "_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3},{3,4}}"));
   check_metadata(send);
   check_not_pipelined(send);
   HloInstruction* send_done = FindInstruction(module.get(), "send-done");
@@ -212,7 +212,7 @@ TEST_F(CollectivePermuteDecomposerTest, Pipeline1) {
   EXPECT_THAT(
       recv->ToString(),
       HasSubstr(
-          "_xla_send_recv_source_target_pairs=\"{{0,1},{1,2},{2,3},{3,4}}\""));
+          "_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3},{3,4}}"));
   EXPECT_THAT(recv->ToString(), HasSubstr("_xla_send_recv_pipeline=\"0\""));
   EXPECT_THAT(recv->ToString(), HasSubstr("_xla_other_attribute=\"xyz\""));
   HloInstruction* recv_done = FindInstruction(module.get(), "recv-done");
@@ -224,7 +224,7 @@ TEST_F(CollectivePermuteDecomposerTest, Pipeline1) {
   EXPECT_THAT(
       send->ToString(),
       HasSubstr(
-          "_xla_send_recv_source_target_pairs=\"{{0,1},{1,2},{2,3},{3,4}}\""));
+          "_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3},{3,4}}"));
   EXPECT_THAT(send->ToString(), HasSubstr("_xla_send_recv_pipeline=\"0\""));
   EXPECT_THAT(send->ToString(), HasSubstr("_xla_other_attribute=\"xyz\""));
   HloInstruction* send_done = FindInstruction(module.get(), "send-done");
@@ -290,18 +290,18 @@ TEST_F(CollectivePermuteDecomposerTest, ForwardPipeline2) {
   HloInstruction* recv = FindInstruction(module.get(), "recv");
   EXPECT_EQ(recv->channel_id().value(), 1);
   EXPECT_THAT(recv->ToString(),
-              HasSubstr("_xla_send_recv_source_target_pairs=\"{{3,0}}\""));
+              HasSubstr("_xla_send_recv_source_target_pairs={{3,0}}"));
   EXPECT_THAT(recv->ToString(), HasSubstr("_xla_send_recv_pipeline=\"0\""));
   HloInstruction* send = FindInstruction(module.get(), "send");
   EXPECT_THAT(send->ToString(),
-              HasSubstr("_xla_send_recv_source_target_pairs=\"{{3,0}}\""));
+              HasSubstr("_xla_send_recv_source_target_pairs={{3,0}}"));
   EXPECT_THAT(send->ToString(), HasSubstr("_xla_send_recv_pipeline=\"0\""));
 
   HloInstruction* recv1 = FindInstruction(module.get(), "recv.1");
   EXPECT_EQ(recv1->channel_id().value(), 2);
   EXPECT_THAT(
       recv1->ToString(),
-      HasSubstr("_xla_send_recv_source_target_pairs=\"{{0,1},{1,2},{2,3}}\""));
+      HasSubstr("_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}"));
   EXPECT_THAT(recv1->ToString(), HasSubstr("_xla_send_recv_pipeline=\"1\""));
   HloInstruction* recv_done1 = FindInstruction(module.get(), "recv-done.1");
   EXPECT_THAT(recv_done1->ToString(),
@@ -309,7 +309,7 @@ TEST_F(CollectivePermuteDecomposerTest, ForwardPipeline2) {
   HloInstruction* send1 = FindInstruction(module.get(), "send.1");
   EXPECT_THAT(
       send1->ToString(),
-      HasSubstr("_xla_send_recv_source_target_pairs=\"{{0,1},{1,2},{2,3}}\""));
+      HasSubstr("_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}"));
   EXPECT_THAT(send1->ToString(), HasSubstr("_xla_send_recv_pipeline=\"1\""));
   HloInstruction* send_done1 = FindInstruction(module.get(), "send-done.1");
   EXPECT_THAT(send_done1->ToString(),
@@ -489,22 +489,22 @@ TEST_F(CollectivePermuteDecomposerTest, BackwardPipeline2) {
   EXPECT_EQ(recv->channel_id().value(), 1);
   EXPECT_THAT(
       recv->ToString(),
-      HasSubstr("_xla_send_recv_source_target_pairs=\"{{1,0},{2,1},{3,2}}\""));
+      HasSubstr("_xla_send_recv_source_target_pairs={{1,0},{2,1},{3,2}}"));
   EXPECT_THAT(recv->ToString(), HasSubstr("_xla_send_recv_pipeline=\"1\""));
   HloInstruction* send = FindInstruction(module.get(), "send");
   EXPECT_THAT(
       send->ToString(),
-      HasSubstr("_xla_send_recv_source_target_pairs=\"{{1,0},{2,1},{3,2}}\""));
+      HasSubstr("_xla_send_recv_source_target_pairs={{1,0},{2,1},{3,2}}"));
   EXPECT_THAT(send->ToString(), HasSubstr("_xla_send_recv_pipeline=\"1\""));
 
   HloInstruction* recv1 = FindInstruction(module.get(), "recv.1");
   EXPECT_EQ(recv1->channel_id().value(), 2);
   EXPECT_THAT(recv1->ToString(),
-              HasSubstr("_xla_send_recv_source_target_pairs=\"{{0,3}}\""));
+              HasSubstr("_xla_send_recv_source_target_pairs={{0,3}}"));
   EXPECT_THAT(recv1->ToString(), HasSubstr("_xla_send_recv_pipeline=\"0\""));
   HloInstruction* send1 = FindInstruction(module.get(), "send.1");
   EXPECT_THAT(send1->ToString(),
-              HasSubstr("_xla_send_recv_source_target_pairs=\"{{0,3}}\""));
+              HasSubstr("_xla_send_recv_source_target_pairs={{0,3}}"));
   EXPECT_THAT(send1->ToString(), HasSubstr("_xla_send_recv_pipeline=\"0\""));
 }
 

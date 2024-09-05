@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 class TensorShapeTestHelper {

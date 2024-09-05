@@ -48,7 +48,7 @@ using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeAndType;
 using shape_inference::ShapeHandle;
-using TensorVector = gtl::InlinedVector<TensorValue, 4>;
+using TensorVector = absl::InlinedVector<TensorValue, 4UL>;
 
 // A large value for UnknownDim from Const used as a dim value in shape.
 // Some ops treat "-1" specially, different from UnknownDim:

@@ -11,8 +11,8 @@ cc_library(
     hdrs = ["traceme_recorder.h"],
     copts = tf_profiler_copts(),
     visibility = internal_visibility([
-        "//tsl/profiler:internal",
-        "//tsl/profiler:xla_profiler_backends",
+        "@local_xla//xla/tsl/profiler:internal",
+        "@local_xla//xla/tsl/profiler:xla_profiler_backends",
         "//tensorflow/lite:__pkg__",
     ]),
     deps = [
@@ -35,9 +35,9 @@ cc_library(
     visibility = internal_visibility([
         "//tensorflow/python:__pkg__",
         "//tsl/platform/cloud:__pkg__",
-        "//tsl/profiler:__pkg__",
-        "//tsl/profiler:internal",
-        "//tsl/profiler:xla_internal",
+        "@local_xla//xla/tsl/profiler:__pkg__",
+        "@local_xla//xla/tsl/profiler:internal",
+        "@local_xla//xla/tsl/profiler:xla_internal",
     ]),
     deps = [
         "//tsl/platform:env",
@@ -79,7 +79,7 @@ cc_library(
     hdrs = ["annotation_stack.h"],
     copts = tf_profiler_copts(),
     visibility = internal_visibility([
-        "//tsl/profiler:internal",
+        "@local_xla//xla/tsl/profiler:internal",
     ]),
     deps = [
         "//tsl/platform:macros",
@@ -99,7 +99,7 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = internal_visibility([
         "@local_xla//xla:__subpackages__",
-        "//tsl/profiler:internal",
+        "@local_xla//xla/tsl/profiler:internal",
     ]),
     deps = [
         "//tsl/platform:macros",
@@ -115,8 +115,8 @@ cc_library(
     hdrs = ["host_tracer_utils.h"],
     copts = tf_profiler_copts(),
     visibility = internal_visibility([
-        "//tsl/profiler:internal",
-        "//tsl/profiler:xla_internal",
+        "@local_xla//xla/tsl/profiler:internal",
+        "@local_xla//xla/tsl/profiler:xla_internal",
     ]),
     deps = [
         ":traceme_recorder",
@@ -137,9 +137,9 @@ cc_library(
     visibility = internal_visibility([
         "//tensorflow/python:__pkg__",
         "//tsl/platform/cloud:__pkg__",
-        "//tsl/profiler:__pkg__",
-        "//tsl/profiler:internal",
-        "//tsl/profiler:xla_internal",
+        "@local_xla//xla/tsl/profiler:__pkg__",
+        "@local_xla//xla/tsl/profiler:internal",
+        "@local_xla//xla/tsl/profiler:xla_internal",
     ]),
     deps = [
         ":threadpool_listener_state",

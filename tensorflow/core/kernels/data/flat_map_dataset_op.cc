@@ -141,7 +141,12 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
   }
 
   absl::Status RandomIndexingCompatible() const override {
-    return random_indexing_compatible_;
+    return absl::UnimplementedError(
+        "Please consider applying maps on each dataset, concatenating them "
+        "into "
+        "one dataset and apply global shuffle dataset op onto the "
+        "dataset to achieve the same result as flat map with global "
+        "shuffling.");
   }
 
  protected:
@@ -358,7 +363,10 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
       return absl::OkStatus();
     }
 
-    // TODO(b/325112575): Refactor and reuse this code from weighted flat map.
+    // TODO: b/355241367 - This implementation is incorrect because IndexMapper
+    // should be stateless otherwise it would not be compatible with batch
+    // dataset op.
+    // See go/tf-data-random-access-iterator-for-concatenate for more info.
     IndexMapperFn GetFlatMapIndexMapper(IndexMapperFn parent_index_mapper,
                                         size_t input_dataset_index)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {

@@ -65,8 +65,12 @@ xla_computation_to_mlir_module = (
 
 
 # pylint: disable=invalid-name
-def jax_array_convert_to_array(self):
-  return self._single_device_array_to_np_array()
+def jax_array_convert_to_array(self, dtype=None, copy=None):
+  del copy
+  out = self._single_device_array_to_np_array()
+  if dtype is not None:
+    out = out.astype(dtype)
+  return out
 
 
 def jax_array_device(self):
@@ -94,6 +98,28 @@ FLAGS = flags.FLAGS
 # pylint: disable=g-complex-comprehension
 
 _CUSTOM_CALLS_REGISTERED = False
+
+
+# Return a copy of `x` with the given alignment. Does nothing if `x` is already
+# aligned. We do this manually, because numpy doesn't support custom alignment
+# value.
+def _Aligned(x, alignment=128):
+  if (x.ctypes.data % alignment) == 0:
+    return x
+
+  # Create temporary buffer with extra space for alignment.
+  assert alignment % x.itemsize == 0
+  extra = alignment // x.itemsize
+  buf = np.empty(x.size + extra, dtype=x.dtype)
+
+  # Create a view of the temporary buffer with such an offset, that the result
+  # buffer is aligned.
+  offset = (-buf.ctypes.data % alignment) // x.itemsize
+  result = buf[offset : offset + x.size].reshape(x.shape)
+
+  # Copy the data to the result buffer and return it.
+  np.copyto(result, x)
+  return result
 
 
 def TestFactory(xla_backend,
@@ -586,7 +612,10 @@ def TestFactory(xla_backend,
     def testScalarTimesVector(self, dtype):
       c = self._NewComputation()
       arg0 = np.array(3, dtype=dtype)
-      arg1 = np.array([10, 15, -2, 7], dtype=dtype)
+      if np.issubdtype(dtype, np.unsignedinteger):
+        arg1 = np.array([10, 15, 2, 7], dtype=dtype)
+      else:
+        arg1 = np.array([10, 15, -2, 7], dtype=dtype)
       p0 = ops.Parameter(c, 0, xla_client.shape_from_pyval(arg0))
       p1 = ops.Parameter(c, 1, xla_client.shape_from_pyval(arg1))
       ops.Mul(p0, p1)
@@ -2879,15 +2908,20 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
                                     for shape in testcase_shapes)
     def testRoundTrip(self, dtype, shape):
       x = np.array(np.random.rand(*shape) * 100, dtype=dtype)
+
+      # XLA' alignment is 16 bytes at the moment, but it should match what Eigen
+      # supports, and that can go up to 128 bytes on hardware with HVX. Align
+      # the input buffer to 128 bytes to be safe.
+      x = _Aligned(x, alignment=128)
       x_ptr = x.__array_interface__["data"][0]
       buffer = self.backend.buffer_from_pyval(
           x, host_buffer_semantics=xla_client.HostBufferSemantics.ZERO_COPY)
       y = np.array(buffer, copy=False)
       y_ptr = y.__array_interface__["data"][0]
       np.testing.assert_array_equal(x, y)
-      # If the input was sufficiently aligned, the input and output should
-      # alias.
-      self.assertTrue((x_ptr & 15) != 0 or x_ptr == y_ptr)
+
+      # The input was sufficiently aligned, so input and output should alias.
+      self.assertEqual(x_ptr, y_ptr)
       self.assertEqual(y_ptr, buffer.unsafe_buffer_pointer())
 
       during_call = xla_client.HostBufferSemantics.IMMUTABLE_ONLY_DURING_CALL
@@ -3137,6 +3171,15 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       executable_build_options.num_partitions = 2
       executable_build_options.debug_options.xla_cpu_enable_fast_math = True
       executable_build_options.debug_options.xla_test_all_input_layouts = True
+      executable_build_options.debug_options.xla_gpu_kernel_cache_file = (
+          "/foo/bar"
+      )
+      executable_build_options.debug_options.xla_gpu_enable_llvm_module_compilation_parallelism = (
+          True
+      )
+      executable_build_options.debug_options.xla_gpu_per_fusion_autotune_cache_dir = (
+          "/bar/foo/"
+      )
 
       b = options.SerializeAsString()
       restored = xla_client.CompileOptions.ParseFromString(b)
@@ -3151,7 +3194,13 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
                          getattr(restored.executable_build_options, name),
                          msg=name)
 
-      for name in ("xla_cpu_enable_fast_math", "xla_test_all_input_layouts"):
+      for name in (
+          "xla_cpu_enable_fast_math",
+          "xla_test_all_input_layouts",
+          "xla_gpu_kernel_cache_file",
+          "xla_gpu_enable_llvm_module_compilation_parallelism",
+          "xla_gpu_per_fusion_autotune_cache_dir",
+      ):
         self.assertEqual(
             getattr(options.executable_build_options.debug_options, name),
             getattr(restored.executable_build_options.debug_options, name),

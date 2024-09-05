@@ -348,8 +348,8 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     with context.eager_mode():
       v = resource_variable_ops.ResourceVariable(1)
       text = "%r" % v
-      self.assertEqual(
-          "<tf.Variable 'Variable:0' shape=() dtype=int32, numpy=1>", text)
+      error_msg = "<tf.Variable 'Variable:0' shape=() dtype=int32, numpy=1>"
+      self.assertEqual(error_msg, text)
 
   def testReprUnavailable(self):
     with context.eager_mode():

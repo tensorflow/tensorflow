@@ -101,7 +101,6 @@ tf_cc_test(
 tf_proto_library(
     name = "device_type_proto",
     srcs = ["device_type.proto"],
-    cc_api_version = 2,
     visibility = [
         "//learning/serving/contrib/tfrt/mlir/saved_model_analysis:__pkg__",
     ],
@@ -168,8 +167,8 @@ tf_cc_test(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:status",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -227,7 +226,7 @@ tf_cc_test(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
-        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 

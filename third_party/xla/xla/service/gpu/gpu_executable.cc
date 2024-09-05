@@ -37,11 +37,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "llvm/ADT/APInt.h"
-#include "llvm/ADT/ArrayRef.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/Support/LLVM.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -57,11 +52,10 @@ limitations under the License.
 #include "xla/service/gpu/runtime/for_all_thunks.h"
 #include "xla/service/gpu/runtime/nccl_clique.h"
 #include "xla/service/gpu/runtime/nccl_clique_key.h"
+#include "xla/service/gpu/runtime/sequential_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/hlo_execution_profile.h"
-#include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/maybe_owning_device_memory.h"
 #include "xla/service/rendezvous.h"
@@ -84,6 +78,7 @@ limitations under the License.
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
+#include "xla/stream_executor/scoped_module_handle.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
@@ -100,16 +95,6 @@ namespace xla {
 namespace gpu {
 
 using ::tsl::profiler::ScopedAnnotation;
-
-static bool NeedsAsyncCommsStream(Thunk& thunk) {
-  switch (thunk.kind()) {
-    case Thunk::Kind::kNcclAllReduceStart:
-    case Thunk::Kind::kNcclAllReduceDone:
-      return true;
-    default:
-      return false;
-  }
-}
 
 // Returns the set of `ExecutionStreamIds` requested by all `Thunks` in the
 // `GpuExecutable`. At run time `Thunks` may use additional streams to launch
@@ -468,7 +453,8 @@ absl::Status ExecuteThunks(
         command_buffer_trace_stream,
         &collective_params,
         &collective_cliques,
-        run_options->run_options().ffi_execution_context()};
+        run_options->run_options().ffi_execution_context(),
+        run_options->local_device_count()};
 
     tsl::profiler::TraceMe trace([&] { return "Thunks::Initialize"; });
     TF_RETURN_IF_ERROR(thunk_sequence.Initialize(initialize_params));
@@ -826,7 +812,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
   std::variant<absl::ReaderMutexLock, absl::WriterMutexLock> gpu_lock(
       std::in_place_index_t<0>{}, &GetGpuMutex(executor));
 
-  // Maybe update to a writer lock to get exlcusive acess to underlying GPU.
+  // Maybe update to a writer lock to get exclusive access to underlying GPU.
   if (auto* gpu_opts = run_options->run_options().gpu_executable_run_options();
       gpu_opts && gpu_opts->requires_exclusive_lock_on_gpu()) {
     gpu_lock.emplace<1>(&GetGpuMutex(executor));
@@ -878,9 +864,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
         }
         module_allocations_[executor][i] =
             buffer_allocations.GetDeviceAddress(i);
-        VLOG(5) << "Gpu address changed for module " << module_name_
-                << ", allocation info: \n"
-                << allocations[i].ToShortString();
+        VLOG(5) << "Gpu address changed for module " << module_name_;
       }
     }
   }

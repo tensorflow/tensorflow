@@ -38,7 +38,7 @@ from tensorflow.python.platform import test
 
 def serialize(module_str: str) -> tuple[str, int]:
   target = stablehlo.get_minimum_version()
-  byte_str = stablehlo.serialize_portable_artifact(module_str, target)
+  byte_str = stablehlo.serialize_portable_artifact_str(module_str, target)
   return byte_str, xla.call_module_maximum_supported_version()
 
 

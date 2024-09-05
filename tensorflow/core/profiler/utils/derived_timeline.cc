@@ -69,7 +69,6 @@ inline std::string HloOpEventPrefix(const GpuEventStats& stats) {
 std::vector<XEventMetadata*> GetOrCreateHloOpEventsMetadata(
     XPlaneBuilder& xplane, const GpuEventStats& stats, const Symbol symbol) {
   DCHECK(stats.IsXlaOp());
-  DCHECK(!stats.hlo_module_name.empty());
   std::vector<XEventMetadata*> hlo_op_events_metadata;
   hlo_op_events_metadata.reserve(stats.hlo_op_names.size());
   // Prepend an HLO module identifier so HLO operators with the same name but in
@@ -287,8 +286,9 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
        GetSortedEvents<XEventVisitor>(plane_visitor)) {
     GpuEventStats stats(&event);
     // For HLO/TF op lines, only use kernel events (i.e. excluding memcpy or
-    // allocation events).
-    if (!stats.IsKernel()) continue;
+    // allocation events). Also CudaGraph executions are also treated as kernel
+    // events.
+    if (!stats.IsKernel() && !stats.IsCudaGraphExecution()) continue;
     tsl::profiler::Timespan event_span = event.GetTimespan();
 
     if (!stats.hlo_module_name.empty()) {

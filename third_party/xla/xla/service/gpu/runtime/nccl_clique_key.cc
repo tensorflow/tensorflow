@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/service/global_device_id.h"
 
@@ -36,12 +37,14 @@ namespace xla::gpu {
 // NcclCliqueKey
 //===----------------------------------------------------------------------===//
 
-NcclCliqueKey::NcclCliqueKey(std::vector<GlobalDeviceId> devices,
-                             NcclStreamId stream_id,
-                             AsyncStreamKind stream_kind)
+NcclCliqueKey::NcclCliqueKey(
+    std::vector<GlobalDeviceId> devices, NcclStreamId stream_id,
+    AsyncStreamKind stream_kind,
+    std::vector<std::vector<GlobalDeviceId>> participant_groups)
     : devices_(std::move(devices)),
       stream_id_(stream_id),
-      stream_kind_(stream_kind) {}
+      stream_kind_(stream_kind),
+      participant_groups_(std::move(participant_groups)) {}
 
 absl::Span<const GlobalDeviceId> NcclCliqueKey::devices() const {
   return devices_;
@@ -64,12 +67,23 @@ bool NcclCliqueKey::IsSubsetOf(const NcclCliqueKey& other) const {
 }
 
 std::string NcclCliqueKey::ToString() const {
-  return absl::StrFormat("devices=[%s]; stream=%d",
-                         GlobalDeviceIdsToString(devices_), stream_id_.value());
+  std::string group_string = "";
+  if (!participant_groups_.empty()) {
+    std::vector<std::string> values;
+    values.reserve(participant_groups_.size());
+    for (const auto& group : participant_groups_) {
+      values.push_back("[" + GlobalDeviceIdsToString(group) + "]");
+    }
+    group_string = absl::StrFormat("; groups=[%s]", absl::StrJoin(values, ","));
+  }
+  return absl::StrFormat("devices=[%s]; stream=%d%s",
+                         GlobalDeviceIdsToString(devices_), stream_id_.value(),
+                         group_string);
 }
 
 bool operator==(const NcclCliqueKey& a, const NcclCliqueKey& b) {
-  return a.devices_ == b.devices_ && a.stream_id_ == b.stream_id_;
+  return a.devices_ == b.devices_ && a.stream_id_ == b.stream_id_ &&
+         a.participant_groups_ == b.participant_groups_;
 }
 
 bool operator<(const NcclCliqueKey& a, const NcclCliqueKey& b) {

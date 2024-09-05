@@ -9,7 +9,7 @@ load(
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = internal_visibility(["//tsl/profiler:internal"]),
+    default_visibility = internal_visibility(["@local_xla//xla/tsl/profiler:internal"]),
     licenses = ["notice"],
 )
 
@@ -66,7 +66,7 @@ cc_library(
         "//tensorflow/core/profiler/rpc:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/profiler/internal:__pkg__",
-        "//tsl/profiler:internal",
+        "@local_xla//xla/tsl/profiler:internal",
         "//tsl/profiler/rpc/client:__pkg__",
     ]),
     deps = [

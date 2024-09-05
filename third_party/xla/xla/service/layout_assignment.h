@@ -378,14 +378,16 @@ class LayoutAssignment : public HloModulePass {
   absl::Status SetInstructionLayout(const Shape& shape_with_layout,
                                     const HloInstruction* instruction,
                                     bool mandatory = true, bool dfs = true,
-                                    bool allow_alias = false) {
+                                    bool allow_alias = false,
+                                    ShapeIndexView subshape_index = {}) {
     return SetInstructionLayout(shape_with_layout, instruction, mandatory, dfs,
-                                allow_alias, current_priority_);
+                                allow_alias, current_priority_, subshape_index);
   }
   absl::Status SetInstructionLayout(const Shape& shape_with_layout,
                                     const HloInstruction* instruction,
                                     bool mandatory, bool dfs, bool allow_alias,
-                                    int64_t priority);
+                                    int64_t priority,
+                                    ShapeIndexView subshape_index = {});
   // Set the same given layout across all components of the instruction output.
   // It works the same as the API above if the output is a single array.
   absl::Status SetInstructionLayout(const Layout& layout,

@@ -600,6 +600,8 @@ def build_conversion_flags(
     qdq_conversion_mode=None,
     disable_per_channel_quantization_for_dense_layers=False,
     enable_composite_direct_lowering=False,
+    model_origin_framework=lite_constants.UNSET,
+    canonicalizing_inf_as_min_max_float=True,
     **_,
 ):
   """Builds protocol buffer describing a conversion of a model.
@@ -731,6 +733,10 @@ def build_conversion_flags(
       layers. The flag works only for integer quantized model.
     enable_composite_direct_lowering: If set, attempts to lower composite ops
       directly to tflite ops.
+    model_origin_framework: A str specifying the framework of the original
+      model. Can be {TENSORFLOW, KERAS, JAX, PYTORCH}
+    canonicalizing_inf_as_min_max_float: When set to true, convert +Inf/-Inf to
+      MIN/MAX float value and output of converter only contains finite values.
 
   Returns:
     conversion_flags: protocol buffer describing the conversion process.
@@ -853,6 +859,14 @@ def build_conversion_flags(
   )
   conversion_flags.enable_composite_direct_lowering = (
       enable_composite_direct_lowering
+  )
+  conversion_flags.model_origin_framework = (
+      _conversion_flags_pb2.TocoFlags.ModelOriginFramework.Value(
+          model_origin_framework
+      )
+  )
+  conversion_flags.canonicalizing_inf_as_min_max_float = (
+      canonicalizing_inf_as_min_max_float
   )
   return conversion_flags
 

@@ -1,4 +1,4 @@
-# XLA custom calls
+# XLA Custom Calls
 
 This document describes how to write and use XLA custom calls using XLA FFI
 library. Custom call is a mechanism to describe an external "operation" in the
@@ -22,6 +22,269 @@ hides all the low level details of underlying C APIs from the end user.
 > to the functions in both the `XLA_REGISTER_CUSTOM_CALL` registration macros
 > and custom call target references or to use C-style namespacing directly in
 > the function name.
+
+## JAX + XLA Custom Calls
+
+See [JAX documentation](https://jax.readthedocs.io/en/latest/ffi.html) for
+end to end examples of integrating custom calls and XLA FFI with JAX.
+
+## XLA FFI Binding
+
+XLA FFI binding is a compile-time specification of the custom call signature:
+custom call arguments, attributes and their types, and additional parameters
+passed via the execution context (i.e., gpu stream for GPU backend). XLA FFI
+finding can be bound to any C++ callable (function pointer, lambda, etc.) with
+compatible `operator()` signature. Constructed handler decodes XLA FFI call
+frame (defined by the stable C API), type check all parameters, and forward
+decoded results to the user-defined callback.
+
+XLA FFI binding heavily relies on template metaprogramming to be be able to
+compile constructed handler to the most efficient machine code. Run time
+overheads are in order of a couple of nanoseconds for each custom call
+parameter.
+
+XLA FFI customization points implemented as template specializations, and
+users can define how to decode their custom types, i.e., it is possible
+to define custom decoding for user-defined `enum class` types.
+
+### Returning Errors From Custom Calls
+
+Custom call implementations must return `xla::ffi::Error` value to signal
+success or error to XLA runtime. It is similar to `absl::Status`, and has
+the same set of error codes. We do not use `absl::Status` because it does
+not have a stable ABI and it would be unsafe to pass it between dynamically
+loaded custom call library, and XLA itself.
+
+```c++
+// Handler that always returns an error.
+auto always_error = Ffi::Bind().To(
+    []() { return Error(ErrorCode::kInternal, "Oops!"); });
+
+// Handler that always returns a success.
+auto always_success = Ffi::Bind().To(
+    []() { return Error::Success(); });
+
+```
+
+### Buffer Arguments And Results
+
+XLA uses destination passing style for results: custom calls (or any other XLA
+operations for that matter) do not allocate memory for results, and instead
+write into destinations passed by XLA runtime. XLA uses static buffer
+assignment, and allocates buffers for all values based on their live ranges at
+compile time.
+
+Results passed to FFI handlers wrapped into a `Result<T>` template, that
+has a pointer-like semantics: `operator->` gives access to the underlying
+parameter.
+
+`AnyBuffer` arguments and results gives access to custom call buffer parameters
+of any data type. This is useful when custom call has a generic implementation
+that works for multiple data types, and custom call implementation does run time
+dispatching based on data type. `AnyBuffer` gives access to the buffer data
+type, dimensions, and a pointer to the buffer itself.
+
+```mlir
+%0 = "stablehlo.custom_call"(%arg0) {
+  call_target_name = "foo",
+  api_version = 4 : i32
+} : (tensor<2x2xf32>) -> tensor<2x2xf32>
+```
+
+
+```c++
+// Buffers of any rank and data type.
+auto handler = Ffi::Bind().Arg<AnyBuffer>().Ret<AnyBuffer>().To(
+    [](AnyBuffer arg, Result<AnyBuffer> res) -> Error {
+      void* arg_data = arg.untyped_data();
+      void* res_data = res->untyped_data();
+      return Error::Success();
+    });
+```
+
+### Constrained Buffer Arguments And Results
+
+`Buffer` allows to add constraints on the buffer data type and rank, and they
+will be automatically checked by the handler and return an error to XLA runtime,
+if run time arguments do not match the FFI handler signature.
+
+```c++
+// Buffers of any rank and F32 data type.
+auto handler = Ffi::Bind().Arg<Buffer<F32>>().Ret<Buffer<F32>>().To(
+    [](Buffer<F32> arg, Result<Buffer<F32>> res) -> Error {
+      float* arg_data = arg.typed_data();
+      float* res_data = res->typed_data();
+      return Error::Success();
+    });
+```
+
+```c++
+// Buffers of rank 2 and F32 data type.
+auto handler = Ffi::Bind().Arg<BufferR2<F32>>().Ret<BufferR2<F32>>().To(
+    [](BufferR2<F32> arg, Result<BufferR2<F32>> res) -> Error {
+      float* arg_data = arg.typed_data();
+      float* res_data = res->typed_data();
+      return Error::Success();
+    });
+```
+
+### Variadic Arguments And Results
+
+If the number of arguments and result can be different in different instances of
+a custom call, they can be decoded at run time using `RemainingArgs` and
+`RemainingRets`.
+
+```
+auto handler = Ffi::Bind().RemainingArgs().RemainingRets().To(
+    [](RemainingArgs args, RemainingRets results) -> Error {
+      ErrorOr<AnyBuffer> arg = args.get<AnyBuffer>(0);
+      ErrorOr<Result<AnyBuffer>> res = results.get<AnyBuffer>(0);
+
+      if (!arg.has_value()) {
+        return Error(ErrorCode::kInternal, arg.error());
+      }
+
+      if (!res.has_value()) {
+        return Error(ErrorCode::kInternal, res.error());
+      }
+
+      return Error::Success();
+    });
+```
+
+Variadic arguments and results can be declared after regular arguments and
+results, however binding regular arguments and results after variadic one is
+illegal.
+
+```c++
+auto handler =
+    Ffi::Bind()
+        .Arg<AnyBuffer>()
+        .RemainingArgs()
+        .Ret<AnyBuffer>()
+        .RemainingRets()
+        .To([](AnyBuffer arg, RemainingArgs args, AnyBuffer ret,
+               RemainingRets results) -> Error { return Error::Success(); });
+```
+
+### Attributes
+
+XLA FFI supports automatic decoding of `mlir::DictionaryAttr` passed as a
+`custom_call` `backend_config` into FFI handler arguments.
+
+Note: See [stablehlo RFC](https://github.com/openxla/stablehlo/blob/main/rfcs/20240312-standardize-customcallop.md)
+for details, and `stablehlo.custom_call` operation specification.
+
+```mlir
+%0 = "stablehlo.custom_call"(%arg0) {
+  call_target_name = "foo",
+  backend_config= {
+    i32 = 42 : i32,
+    str = "string"
+  },
+  api_version = 4 : i32
+} : (tensor<f32>) -> tensor<f32>
+```
+
+In this example custom call has a single buffer argument and two attributes, and
+XLA FFI can automatically decode them and pass to the user-defined callable.
+
+```c++
+auto handler = Ffi::Bind()
+  .Arg<BufferR0<F32>>()
+  .Attr<int32_t>("i32")
+  .Attr<std::string_view>("str")
+  .To([](BufferR0<F32> buffer, int32_t i32, std::string_view str) {
+    return Error::Success();
+  });
+```
+
+### User-Defined Enum Attributes
+
+XLA FFI can automatically decode integral MLIR attributes into user-defined
+enums. Enum class must have the same underlying integral type, and decoding
+has to be explicitly registered with XLA FFI.
+
+
+```mlir
+%0 = "stablehlo.custom_call"(%arg0) {
+  call_target_name = "foo",
+  backend_config= {
+    command = 0 : i32
+  },
+  api_version = 4 : i32
+} : (tensor<f32>) -> tensor<f32>
+```
+
+```c++
+enum class Command : int32_t {
+  kAdd = 0,
+  kMul = 1,
+};
+
+XLA_FFI_REGISTER_ENUM_ATTR_DECODING(Command);
+
+auto handler = Ffi::Bind().Attr<Command>("command").To(
+    [](Command command) -> Error { return Error::Success(); });
+```
+
+### Binding All Custom Call Attributes
+
+It is possible to get access to all custom call attributes as a dictionary
+and lazily decode only the attributes that are needed at run time.
+
+```c++
+auto handler = Ffi::Bind().Attrs().To([](Dictionary attrs) -> Error {
+  ErrorOr<int32_t> i32 = attrs.get<int32_t>("i32");
+  return Error::Success();
+});
+```
+
+### User-defined Struct Attributes
+
+XLA FFI can decode dictionary attributes into user-defined structs.
+
+```mlir
+%0 = "stablehlo.custom_call"(%arg0) {
+  call_target_name = "foo",
+  backend_config= {
+    range = { lo = 0 : i64, hi = 42 : i64 }
+  },
+  api_version = 4 : i32
+} : (tensor<f32>) -> tensor<f32>
+```
+
+In example above `range` is an `mlir::DictionaryAttr` attribute, and instead
+of accessing dictionary fields by name, it can be automatically decoded as
+a C++ struct. Decoding has to be explicitly registered with a
+`XLA_FFI_REGISTER_STRUCT_ATTR_DECODING` macro (behind the scene it defines
+a template specialization in `::xla::ffi` namespace, thus macro must be added to
+the global namespace).
+
+```c++
+struct Range {
+  int64_t lo;
+  int64_t hi;
+};
+
+XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(Range, StructMember<int64_t>("i64"),
+                                             StructMember<int64_t>("i64"));
+
+auto handler = Ffi::Bind().Attr<Range>("range").To([](Range range) -> Error{
+  return Error::Success();
+});
+```
+
+Custom attributes can be loaded from a dictionary, just like any other
+attribute. In example below, all custom call attributes decoded as a
+`Dictionary`, and a `range` can be accessed by name.
+
+```c++
+auto handler = Ffi::Bind().Attrs().To([](Dictionary attrs) -> Error {
+  ErrorOr<Range> range = attrs.get<Range>("range");
+  return Error::Success();
+});
+```
 
 ## Create a custom call on CPU
 

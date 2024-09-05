@@ -91,8 +91,8 @@ class DeviceDataflowAnalysis
       Device>::SparseBackwardDataFlowAnalysis;
   ~DeviceDataflowAnalysis() override = default;
 
-  void visitOperation(Operation *op, ArrayRef<Device *> operands,
-                      ArrayRef<const Device *> results) override {
+  LogicalResult visitOperation(Operation *op, ArrayRef<Device *> operands,
+                               ArrayRef<const Device *> results) override {
     if (llvm::isa<TF::TPUExecuteOp>(op) ||
         llvm::isa<TF::TPUExecuteAndUpdateVariablesOp>(op)) {
       auto device = op->getAttrOfType<StringAttr>(kDevice);
@@ -112,6 +112,7 @@ class DeviceDataflowAnalysis
       for (auto *operand : operands)
         propagateIfChanged(operand, operand->SetDevice(device));
     }
+    return mlir::success();
   }
   void visitBranchOperand(OpOperand &operand) override {}
   void visitCallOperand(OpOperand &operand) override {}

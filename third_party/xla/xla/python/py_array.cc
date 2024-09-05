@@ -87,11 +87,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/xla_data.pb.h"
-// TODO(b/324133505): remove this GOOGLE_CUDA block after JAX OSS migrates
-// to cuda plugin.
-#if GOOGLE_CUDA
-#include "xla/stream_executor/cuda/cuda_driver.h"
-#endif
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
@@ -183,9 +178,8 @@ tsl::RCReference<ifrt::Array> CreateIfRtArrayFromSingleDeviceShardedPyArrays(
       throw nb::value_error(
           absl::StrFormat(
               "Memory kind mismatch between PjRtBuffers. Got one buffer with "
-              "memory kind '%s' and another with memory_kind '%s'",
-              first_memory_kind.DebugString(),
-              ifrt_arrays.back()->sharding().memory_kind().DebugString())
+              "memory kind '%v' and another with memory_kind '%v'",
+              first_memory_kind, ifrt_arrays.back()->sharding().memory_kind())
               .c_str());
     }
   }
@@ -638,10 +632,8 @@ absl::Status PyArray::set_arrays(nb::object obj) {
       throw nb::value_error(
           absl::StrFormat(
               "Memory kind mismatch between single-device arrays. Got one "
-              "array "
-              "with memory kind '%s' and another with memory_kind '%s'",
-              first_memory_kind.DebugString(),
-              ifrt_array->sharding().memory_kind().DebugString())
+              "array with memory kind '%v' and another with memory_kind '%v'",
+              first_memory_kind, ifrt_array->sharding().memory_kind())
               .c_str());
     }
   }
@@ -864,19 +856,6 @@ absl::StatusOr<nb::object> CudaArrayInterfaceToBuffer(
   TF_ASSIGN_OR_RETURN(
       PrimitiveType element_type,
       DtypeToPrimitiveType(nb_dtype::from_args(cai["typestr"])));
-
-  // TODO(b/324133505): remove this GOOGLE_CUDA block after JAX OSS migrates
-  // to cuda plugin.
-#ifdef GOOGLE_CUDA
-  if (!device_id.has_value()) {
-    // cannot determine device_id/stream when device pointer is NULL.
-    device_id.emplace(
-        (data_value == 0
-             ? 0
-             : stream_executor::gpu::CreatedContexts::GetDeviceOrdinal(
-                   data_ptr)));
-  }
-#endif  // GOOGLE_CUDA
 
   if (!device_id.has_value()) {
     throw XlaRuntimeError(

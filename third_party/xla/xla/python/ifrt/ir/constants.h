@@ -44,6 +44,15 @@ inline constexpr llvm::StringLiteral kIfrtLocalViewAttrName = "ifrt.local_view";
 inline constexpr llvm::StringLiteral kIfrtCompileOptionsKey =
     "ifrt.compile_options_key";
 
+inline constexpr llvm::StringLiteral kIfrtDevicesAttrName = "ifrt.devices";
+inline constexpr llvm::StringLiteral kIfrtNumDevicesAttrName =
+    "ifrt.num_devices";
+inline constexpr llvm::StringLiteral kIfrtShardingAttrName = "ifrt.sharding";
+inline constexpr llvm::StringLiteral kIfrtEntryFunctionAttrName =
+    "ifrt.entry_function";
+
+inline constexpr llvm::StringLiteral kCalleeMainFuncName = "main";
+
 }  // namespace ifrt
 }  // namespace xla
 

@@ -1067,6 +1067,7 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
 
     // One argument elemenetwise operations
     case kTfLiteBuiltinAbs:
+    case kTfLiteBuiltinCeil:
     case kTfLiteBuiltinCos:
     case kTfLiteBuiltinElu:
     case kTfLiteBuiltinExp:
@@ -1085,7 +1086,8 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
                                        /*required_const_inputs=*/0,
                                        /*required_outputs=*/1));
 
-    // Two arguments elemenetwise operations
+    // Two arguments elementwise operations
+    case kTfLiteBuiltinAtan2:
     case kTfLiteBuiltinDiv:
     case kTfLiteBuiltinEqual:
     case kTfLiteBuiltinFloorDiv:
@@ -1099,6 +1101,7 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
     case kTfLiteBuiltinMinimum:
     case kTfLiteBuiltinNotEqual:
     case kTfLiteBuiltinPow:
+    case kTfLiteBuiltinStablehloRemainder:
     case kTfLiteBuiltinSquaredDifference:
     case kTfLiteBuiltinSub: {
       if (!CheckInputsConstsOutputs(op_sig, /*required_runtime_inputs=*/2,
@@ -1125,6 +1128,45 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
       return IsActivationSupported(activation);
     }
 
+    // Stable HLO ops
+    case kTfLiteBuiltinStablehloBroadcastInDim:
+      if (!CheckInputsConstsOutputs(op_sig, /*required_runtime_inputs=*/1,
+                                    /*required_const_inputs=*/1,
+                                    /*required_outputs=*/1)
+               .ok()) {
+        return absl::InvalidArgumentError(
+            "requires one runtime input, one const input, and one output");
+      }
+      if (op_sig.inputs[1].dims.size() != 1) {
+        return absl::InvalidArgumentError("Only support 1D indices");
+      }
+      if (op_sig.inputs[1].type != kTfLiteInt32) {
+        return absl::InvalidArgumentError("Only support int32 indices");
+      }
+      if (op_sig.inputs[0].dims.size() != op_sig.inputs[1].dims[0]) {
+        return absl::InvalidArgumentError(
+            "Require size(indices) = rank(operand)");
+      }
+      return absl::OkStatus();
+    case kTfLiteBuiltinStablehloClamp:
+      if ((op_sig.inputs.at(0).type != op_sig.inputs.at(1).type) ||
+          (op_sig.inputs.at(1).type != op_sig.inputs.at(2).type)) {
+        return absl::InvalidArgumentError(
+            "Clamp tensors must all be the same type");
+      }
+      if ((op_sig.inputs.at(0).dims != op_sig.inputs.at(1).dims) &&
+          (NumElements(op_sig.inputs.at(0).dims) != 1)) {
+        return absl::InvalidArgumentError(
+            "Min tensor must be the same shape as the input, or a scalar");
+      }
+      if ((op_sig.inputs.at(2).dims != op_sig.inputs.at(1).dims) &&
+          (NumElements(op_sig.inputs.at(0).dims) != 1)) {
+        return absl::InvalidArgumentError(
+            "Max tensor must be the same shape as the input, or a scalar");
+      }
+      return CheckInputsConstsOutputs(op_sig, /*required_runtime_inputs=*/3,
+                                      /*required_const_inputs=*/0,
+                                      /*required_outputs=*/1);
     case kTfLiteBuiltinCustom:
       return CheckCustomOpsGpuDelegateCompatibility(op_sig);
 

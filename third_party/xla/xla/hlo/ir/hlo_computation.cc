@@ -1103,6 +1103,19 @@ HloInstruction* HloComputation::CreateCallInstruction(
   return call_instruction;
 }
 
+HloInstruction* HloComputation::CreateCompositeCallInstruction(
+    absl::Span<HloInstruction* const> instructions_to_call,
+    const std::string& name, const std::string& attributes, int64_t version) {
+  HloInstruction* root = instructions_to_call.front();
+  HloInstruction* call_instruction =
+      AddInstruction(HloInstruction::CreateCompositeCall(
+                         root->shape(), root, name, attributes, version),
+                     root->name());
+  AppendInstructionsIntoCalledComputation(instructions_to_call,
+                                          call_instruction);
+  return call_instruction;
+}
+
 absl::StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
     HloInstruction* instruction, absl::Span<const Shape> context_shapes,
     absl::string_view async_execution_thread, bool replace,
@@ -1411,6 +1424,20 @@ absl::StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
   if (new_instruction->frontend_attributes().map().empty()) {
     new_instruction->set_frontend_attributes(
         old_instruction->frontend_attributes());
+  }
+  if (auto old_original_value = old_instruction->original_value()) {
+    // Fusions are handled separately. The original_value attribute of fused
+    // instructions is copied when they are added into the fused computation.
+    if (new_instruction->opcode() != HloOpcode::kFusion) {
+      if (ShapeUtil::Compatible(old_instruction->shape(),
+                                new_instruction->shape())) {
+        new_instruction->set_original_value(old_original_value);
+      } else {
+        LOG(WARNING)
+            << "Expect the new instruction to have the same shape with the old "
+               "instruction when copying over original_value\n";
+      }
+    }
   }
 
   // Like the metadata above, if the user didn't specify any sharding

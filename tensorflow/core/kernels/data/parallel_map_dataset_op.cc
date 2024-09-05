@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstddef>
 #include <deque>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -83,6 +84,13 @@ constexpr char kErrorMessage[] = "error_message";
 
 // Period between reporting dataset statistics.
 constexpr int kStatsReportingPeriodMillis = 1000;
+
+// Factor used to determine the autotune parallelism limit when using an
+// unbounded threadpool. The limit is determined by multiplying this factor
+// by the default threadpool size, which is typically based on the number of
+// CPU cores. Without this limit, we see autotune sometimes choose unreasonably
+// large values for the parallelism, e.g. creating 300k threads.
+constexpr int kUnboundedThreadpoolAutotuningFactor = 10;
 
 }  // namespace
 
@@ -337,11 +345,15 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
     std::shared_ptr<model::Node> CreateNode(
         IteratorContext* ctx, model::Node::Args args) const override {
       std::shared_ptr<model::Parameter> parameter;
+      double max_parallelism_value = ctx->runner_threadpool_size();
+      if (use_unbounded_threadpool_) {
+        max_parallelism_value *= kUnboundedThreadpoolAutotuningFactor;
+      }
       if (num_parallel_calls_ &&
           dataset()->num_parallel_calls_ == model::kAutotune) {
         parameter = model::MakeParameter(
             "parallelism", num_parallel_calls_, /*min=*/1,
-            /*max=*/ctx->runner_threadpool_size(),
+            /*max=*/max_parallelism_value,
             // This is to ensure before this op has seen its first element,
             // `MaximumBufferedBytes()` can use the correct `parameter->value`
             // to estimate the maximum buffer bytes.
@@ -349,7 +361,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       } else {
         parameter =
             model::MakeParameter("parallelism", num_parallel_calls_, /*min=*/1,
-                                 /*max=*/ctx->runner_threadpool_size());
+                                 /*max=*/max_parallelism_value);
       }
       std::optional<int64_t> estimated_element_size =
           dataset()->GetEstimatedElementSize();
@@ -408,10 +420,6 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
-      if (ctx->restored_element_count().has_value()) {
-        return RestoreInput(ctx, reader, input_impl_);
-      }
-
       mutex_lock l(*mu_);
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       DCHECK(invocation_results_.empty());
@@ -470,6 +478,9 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
           std::make_pair("autotune", autotune_ ? "true" : "false"));
       result.push_back(
           std::make_pair("deterministic", deterministic_ ? "true" : "false"));
+      result.push_back(
+          std::make_pair("use_unbounded_threadpool",
+                         use_unbounded_threadpool_ ? "true" : "false"));
       result.push_back(std::make_pair(
           "parallelism",
           parallelism == -1
@@ -864,11 +875,6 @@ void ParallelMapDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
     OP_REQUIRES_OK(
         ctx, ParseScalarArgument(ctx, kNumParallelCalls, &num_parallel_calls));
   }
-  OP_REQUIRES(
-      ctx, !use_unbounded_threadpool_ || num_parallel_calls != model::kAutotune,
-      errors::InvalidArgument(
-          "`num_parallel_calls` cannot yet be autotuned when "
-          "`use_unbounded_threadpool` is set to true pending b/355273582."));
   OP_REQUIRES(
       ctx, num_parallel_calls > 0 || num_parallel_calls == model::kAutotune,
       errors::InvalidArgument("num_parallel_calls must be greater than zero."));

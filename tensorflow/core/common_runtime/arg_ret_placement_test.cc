@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/cc/framework/scope.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/function.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/platform/test.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 
@@ -81,7 +81,7 @@ class FullTypeGraphUtilsTest : public ::testing::Test {
 };
 
 TEST_F(FullTypeGraphUtilsTest, MemoryTypesArgNoFT) {
-  gtl::InlinedVector<Node *, 4> nodes;
+  absl::InlinedVector<Node *, 4UL> nodes;
   DataTypeVector dtypes;
   MemoryTypeVector memory_types;
 
@@ -96,7 +96,7 @@ TEST_F(FullTypeGraphUtilsTest, MemoryTypesArgNoFT) {
 }
 
 TEST_F(FullTypeGraphUtilsTest, AllocatorAttrsArgNoFT) {
-  gtl::InlinedVector<Node *, 4> nodes;
+  absl::InlinedVector<Node *, 4UL> nodes;
   DataTypeVector dtypes;
   std::vector<AllocatorAttributes> alloc_attrs;
 
@@ -110,7 +110,7 @@ TEST_F(FullTypeGraphUtilsTest, AllocatorAttrsArgNoFT) {
 }
 
 TEST_F(FullTypeGraphUtilsTest, MemoryTypesArgWithFT) {
-  gtl::InlinedVector<Node *, 4> nodes;
+  absl::InlinedVector<Node *, 4UL> nodes;
   DataTypeVector dtypes;
   MemoryTypeVector memory_types;
 
@@ -126,7 +126,7 @@ TEST_F(FullTypeGraphUtilsTest, MemoryTypesArgWithFT) {
 }
 
 TEST_F(FullTypeGraphUtilsTest, AllocatorAttrsArgWithFT) {
-  gtl::InlinedVector<Node *, 4> nodes;
+  absl::InlinedVector<Node *, 4UL> nodes;
   DataTypeVector dtypes;
   std::vector<AllocatorAttributes> alloc_attrs;
 
@@ -142,7 +142,7 @@ TEST_F(FullTypeGraphUtilsTest, AllocatorAttrsArgWithFT) {
 }
 
 TEST_F(FullTypeGraphUtilsTest, ArgError) {
-  gtl::InlinedVector<Node *, 4> nodes;
+  absl::InlinedVector<Node *, 4UL> nodes;
   DataTypeVector dtypes;
   MemoryTypeVector memory_types;
 
@@ -157,7 +157,7 @@ TEST_F(FullTypeGraphUtilsTest, ArgError) {
 }
 
 TEST_F(FullTypeGraphUtilsTest, WeakAllocAttrsArgIgnore) {
-  gtl::InlinedVector<Node *, 4> nodes;
+  absl::InlinedVector<Node *, 4UL> nodes;
   DataTypeVector dtypes;
   std::vector<AllocatorAttributes> alloc_attrs;
 
@@ -173,7 +173,7 @@ TEST_F(FullTypeGraphUtilsTest, WeakAllocAttrsArgIgnore) {
 }
 
 TEST_F(FullTypeGraphUtilsTest, RetNoFT) {
-  gtl::InlinedVector<Node *, 4> nodes;
+  absl::InlinedVector<Node *, 4UL> nodes;
   DataTypeVector dtypes;
   MemoryTypeVector memory_types;
 
@@ -188,7 +188,7 @@ TEST_F(FullTypeGraphUtilsTest, RetNoFT) {
 }
 
 TEST_F(FullTypeGraphUtilsTest, MemoryTypeRetWithFT) {
-  gtl::InlinedVector<Node *, 4> nodes;
+  absl::InlinedVector<Node *, 4UL> nodes;
   DataTypeVector dtypes;
   MemoryTypeVector memory_types;
 
@@ -205,7 +205,7 @@ TEST_F(FullTypeGraphUtilsTest, MemoryTypeRetWithFT) {
 }
 
 TEST_F(FullTypeGraphUtilsTest, AllowAttrRetWithFT) {
-  gtl::InlinedVector<Node *, 4> nodes;
+  absl::InlinedVector<Node *, 4UL> nodes;
   DataTypeVector dtypes;
   std::vector<AllocatorAttributes> alloc_attrs;
 
@@ -222,7 +222,7 @@ TEST_F(FullTypeGraphUtilsTest, AllowAttrRetWithFT) {
 }
 
 TEST_F(FullTypeGraphUtilsTest, RetError) {
-  gtl::InlinedVector<Node *, 4> nodes;
+  absl::InlinedVector<Node *, 4UL> nodes;
   DataTypeVector dtypes;
   MemoryTypeVector memory_types;
 
@@ -235,7 +235,7 @@ TEST_F(FullTypeGraphUtilsTest, RetError) {
 }
 
 TEST_F(FullTypeGraphUtilsTest, WeakAllocAttrsRetIgnore) {
-  gtl::InlinedVector<Node *, 4> nodes;
+  absl::InlinedVector<Node *, 4UL> nodes;
   DataTypeVector dtypes;
   std::vector<AllocatorAttributes> alloc_attrs;
 

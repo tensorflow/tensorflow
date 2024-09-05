@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/memory.h"
@@ -125,10 +126,8 @@ class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
   static char ID;  // NOLINT
 
  protected:
-  Sharding(DeviceList devices, MemoryKind memory_kind, bool is_fully_replicated)
-      : devices_(devices),
-        memory_kind_(memory_kind),
-        is_fully_replicated_(is_fully_replicated) {}
+  Sharding(DeviceList devices, MemoryKind memory_kind,
+           bool is_fully_replicated);
 
   DeviceList devices_;
   MemoryKind memory_kind_;
@@ -189,6 +188,7 @@ class SingleDeviceSharding final
 class OpaqueSharding : public llvm::RTTIExtends<OpaqueSharding, Sharding> {
  public:
   // Creates an opaque sharding. `Disassemble()` will fail.
+  // REQUIRES: !devices.empty()
   static std::unique_ptr<OpaqueSharding> Create(DeviceList devices,
                                                 MemoryKind memory_kind);
 
@@ -230,6 +230,7 @@ class ConcreteSharding : public llvm::RTTIExtends<ConcreteSharding, Sharding> {
  public:
   // Creates a concrete sharding that may contain non-identical shard shapes.
   // REQUIRES: `devices`.size() == `shard_shapes`.size()
+  // REQUIRES: !devices.empty()
   static std::unique_ptr<ConcreteSharding> Create(
       DeviceList devices, MemoryKind memory_kind, Shape shape,
       std::vector<Shape> shard_shapes);
@@ -237,6 +238,7 @@ class ConcreteSharding : public llvm::RTTIExtends<ConcreteSharding, Sharding> {
   // Creates a concrete sharding that may contain non-identical shard dynamic
   // shapes.
   // REQUIRES: `devices`.size() == `shard_dynamic_shapes`.size()
+  // REQUIRES: !devices.empty()
   static std::unique_ptr<ConcreteSharding> Create(
       DeviceList devices, MemoryKind memory_kind, DynamicShape dynamic_shape,
       std::vector<DynamicShape> shard_dynamic_shapes);
@@ -321,6 +323,7 @@ class ConcreteEvenSharding
   // Creates a concrete even sharding.
   // TODO(hyeontaek): Remove the default value of `is_fully_replicated` once all
   // callers are updated to provide it explicitly.
+  // REQUIRES: !devices.empty()
   static std::unique_ptr<ConcreteEvenSharding> Create(
       DeviceList devices, MemoryKind memory_kind, Shape shape,
       Shape shard_shape, bool is_fully_replicated = false);
@@ -371,6 +374,7 @@ class ConcreteEvenSharding
 class ShardingParamSharding
     : public llvm::RTTIExtends<ShardingParamSharding, Sharding> {
  public:
+  // REQUIRES: !devices.empty()
   static absl::StatusOr<std::unique_ptr<ShardingParamSharding>> Create(
       ShardingParam sharding_param, DeviceList devices, MemoryKind memory_kind);
 

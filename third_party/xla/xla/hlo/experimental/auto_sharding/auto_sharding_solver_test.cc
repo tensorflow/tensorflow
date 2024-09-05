@@ -141,6 +141,11 @@ AutoShardingSolverRequest DefaultAutoShardingSolverRequest() {
                          1, 0, 1,
                          1, 1, 0}};
   const std::vector<std::string> instruction_names = {"A", "B", "C", "D", "E"};
+  const std::vector<std::string> metadata_source_files = {"attention.py",
+                                                          "convolution.py",
+                                                          "layers.py",
+                                                          "logits.py",
+                                                          "pipeline.py"};
 
   AutoShardingSolverRequest request;
   request.set_num_nodes(5);
@@ -159,6 +164,8 @@ AutoShardingSolverRequest DefaultAutoShardingSolverRequest() {
   AddCosts(request.mutable_value_costs(), v);
   request.mutable_instruction_names()->Add(instruction_names.begin(),
                                            instruction_names.end());
+  request.mutable_metadata_source_files()->Add(metadata_source_files.begin(),
+                                               metadata_source_files.end());
   return request;
 }
 
@@ -335,6 +342,33 @@ TEST(CallORToolsSolverTest, HandlesFollowedEdges) {
   EXPECT_EQ(result, expected_result);
 }
 
+TEST(CallORToolsSolverTest, HandlesCollapsedEdge) {
+  AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
+  AutoShardingSolverRequest_Pair edge;
+  edge.set_first(2);
+  edge.set_second(3);
+  // Both members of this edge will be collapsed into a single node.
+  *request.mutable_edges()->Add() = edge;
+  const CostMatrix r = {{9000, 5100, 5200, 5300,
+                         6000, 6100, 6200, 6300,
+                         7000, 7100, 7200, 7300,
+                         8000, 8100, 8200, 8300}};
+  AddCosts(request.mutable_resharding_costs(), r);
+  const CostMatrix t = {{50000, 51000, 52000, 53000,
+                         60000, 61000, 62000, 63000,
+                         70000, 71000, 72000, 73000,
+                         80000, 81000, 82000, 83000}};
+  AddCosts(request.mutable_duration_costs(), t);
+
+  const AutoShardingSolverResult result = CallORToolsSolver(request);
+
+  const std::vector<NodeStrategyIdx> s_val = {0, 0, 1, 1, 0};
+  const double objective_value = 13972.0;
+  const AutoShardingSolverOutput expected_output = {s_val, objective_value};
+  const AutoShardingSolverResult expected_result = {expected_output, false};
+  EXPECT_EQ(result, expected_result);
+}
+
 TEST(CallORToolsSolverTest, UsesHint) {
   AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
   const auto s_hint = {1, 0, 0, 0, 0};  // Not optimal, but close.
@@ -356,6 +390,19 @@ TEST(CallORToolsSolverTest, HonorsMaxCost) {
   const AutoShardingSolverResult result = CallORToolsSolver(request);
 
   EXPECT_TRUE(absl::IsInternal(result.status.status()));
+}
+
+TEST(CallORToolsSolverTest, HandlesExtremelyHighMaxCost) {
+  AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
+  request.mutable_max_cost()->set_coeff(1e19);
+
+  const AutoShardingSolverResult result = CallORToolsSolver(request);
+
+  const std::vector<NodeStrategyIdx> s_val = {0, 0, 0, 0, 0};
+  const double objective_value = 7650.0;
+  const AutoShardingSolverOutput expected_output = {s_val, objective_value};
+  const AutoShardingSolverResult expected_result = {expected_output, false};
+  EXPECT_EQ(result, expected_result);
 }
 
 TEST(CallORToolsSolverTest, HandlesMemoryEdgeCosts) {
@@ -436,6 +483,65 @@ TEST(CallORToolsSolverTest, HandlesReducedIntervalsAndGroups) {
 
   const std::vector<NodeStrategyIdx> s_val = {0, 0, 1, 1, 0};
   const double objective_value = 7872.0;
+  const AutoShardingSolverOutput expected_output = {s_val, objective_value};
+  const AutoShardingSolverResult expected_result = {expected_output, false};
+  EXPECT_EQ(result, expected_result);
+}
+
+TEST(CallORToolsSolverTest, HandlesReducedIntervalsAndGroupsNoMemoryEdgeCosts) {
+  AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
+  const std::vector<std::pair<int64_t, int64_t>> node_intervals =
+      {{5, -1}, {5, -1}, {2, 3}, {3, 4}, {100, -1}, {0, 4}};
+  const std::vector<std::vector<int64_t>> node_groups = {{0, 1}};
+  request.clear_live();
+  AddIntervals(request.mutable_node_intervals(), node_intervals);
+  AddGroups(request.mutable_node_groups(), node_groups);
+  request.set_enable_memory_edge_costs(false);
+
+  const AutoShardingSolverResult result = CallORToolsSolver(request);
+
+  const std::vector<NodeStrategyIdx> s_val = {0, 0, 0, 0, 0};
+  const double objective_value = 7650.0;
+  const AutoShardingSolverOutput expected_output = {s_val, objective_value};
+  const AutoShardingSolverResult expected_result = {expected_output, false};
+  EXPECT_EQ(result, expected_result);
+}
+
+TEST(CallORToolsSolverTest, HandlesGroupsWithTinyMemoryCosts) {
+  AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
+  const std::vector<std::pair<int64_t, int64_t>> node_intervals =
+      {{5, -1}, {5, -1}, {2, 3}, {3, 4}, {100, -1}, {0, 4}};
+  const std::vector<std::pair<int64_t, int64_t>> edge_intervals =
+      {{1, 2}, {2, 3}};
+  const std::vector<std::vector<int64_t>> node_groups = {{0, 1}};
+  const std::vector<std::vector<int64_t>> edge_groups = {};
+  const CostMatrix memory_costs = {{1, 1, 1, 1},  // These values are tiny and
+                                   {2, 2, 2},     // shouldn't be rounded up.
+                                   {300, 300, 300, 300, 300, 300, 300},
+                                   {4000, 4000, 4000, 4000, 4000, 4000, 4000},
+                                   {50000, 50000, 50000}};
+  const CostMatrix memory_edge_costs = {{0, 0, 0, 0,
+                                         0, 0, 0, 0,
+                                         0, 0, 0, 0,
+                                         0, 0, 0, 0},
+                                        {0, 0, 0, 0,
+                                         0, 0, 0, 0,
+                                         0, 0, 0, 0}};
+  request.clear_live();
+  request.clear_memory_costs();
+  AddIntervals(request.mutable_node_intervals(), node_intervals);
+  AddIntervals(request.mutable_edge_intervals(), edge_intervals);
+  AddGroups(request.mutable_node_groups(), node_groups);
+  AddGroups(request.mutable_edge_groups(), edge_groups);
+  AddCosts(request.mutable_memory_costs(), memory_costs);
+  AddCosts(request.mutable_memory_edge_costs(), memory_edge_costs);
+  request.set_enable_memory_edge_costs(true);
+  request.set_memory_budget(4321);
+
+  const AutoShardingSolverResult result = CallORToolsSolver(request);
+
+  const std::vector<NodeStrategyIdx> s_val = {0, 0, 0, 0, 0};
+  const double objective_value = 7650.0;
   const AutoShardingSolverOutput expected_output = {s_val, objective_value};
   const AutoShardingSolverResult expected_result = {expected_output, false};
   EXPECT_EQ(result, expected_result);

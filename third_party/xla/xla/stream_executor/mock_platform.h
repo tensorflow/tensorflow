@@ -41,8 +41,8 @@ class MockPlatform : public Platform {
               DescriptionForDevice, (int ordinal), (const, override));
   MOCK_METHOD(absl::StatusOr<StreamExecutor*>, ExecutorForDevice, (int ordinal),
               (override));
-  MOCK_METHOD(absl::StatusOr<StreamExecutor*>, GetExecutor,
-              (const StreamExecutorConfig& config), (override));
+  MOCK_METHOD(absl::StatusOr<StreamExecutor*>, FindExisting, (int ordinal),
+              (override));
 };
 
 }  // namespace stream_executor

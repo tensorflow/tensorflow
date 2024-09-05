@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/xla_data.pb.h"

@@ -142,7 +142,7 @@ struct DiagFunctor<CPUDevice, T> {
     auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
     Shard(worker_threads.num_threads, worker_threads.workers, size, 5 * size,
           subDiag);
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -163,7 +163,7 @@ struct DiagPartFunctor<CPUDevice, T> {
     auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
     Shard(worker_threads.num_threads, worker_threads.workers, size, 5,
           subDiagPart);
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 }  // namespace functor

@@ -29,8 +29,8 @@ limitations under the License.
 #include "xla/service/spmd/shardy/mhlo_round_trip/mhlo_import.h"
 #include "xla/service/spmd/shardy/mhlo_round_trip/shard_map_export.h"
 #include "xla/service/spmd/shardy/round_trip_common/convert_sharding_custom_calls.h"
-#include "xla/service/spmd/shardy/round_trip_common/identity_to_pass_through_while_args.h"
 #include "xla/service/spmd/shardy/round_trip_common/import_constants.h"
+#include "xla/service/spmd/shardy/round_trip_common/open_while_free_vars_sharding.h"
 #include "xla/service/spmd/shardy/round_trip_common/shard_map_import.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/export_ops.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/export_shardings.h"
@@ -55,7 +55,7 @@ int main(int argc, char** argv) {
   xla::sdy::registerMhloImportShardingsPass();
   xla::sdy::registerShardMapImportPass();
   xla::sdy::registerConvertShardingCustomCallsPass();
-  xla::sdy::registerAddIdentityToPassThroughWhileArgsPass();
+  xla::sdy::registerOpenWhileFreeVarsShardingPass();
   xla::sdy::registerImportConstantsPass();
 
   xla::sdy::registerMhloExportPipeline();

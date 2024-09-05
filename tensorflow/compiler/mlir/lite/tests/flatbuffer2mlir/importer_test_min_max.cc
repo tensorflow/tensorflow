@@ -16,17 +16,15 @@ limitations under the License.
 #include <iostream>
 #include <memory>
 #include <optional>
-#include <system_error>
 
-#include "absl/strings/string_view.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/raw_ostream.h"
+#include "tensorflow/compiler/mlir/lite/core/absl_error_model_builder.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
-#include "tensorflow/lite/model.h"
 
 using llvm::cl::opt;
 
@@ -52,7 +50,7 @@ namespace mlir {
 namespace {
 std::optional<std::unique_ptr<tflite::ModelT>> InjectStatsToFullyConnected(
     llvm::StringRef buffer) {
-  auto model_ptr = tflite::FlatBufferModel::VerifyAndBuildFromBuffer(
+  auto model_ptr = TFL::FlatBufferModelAbslError::VerifyAndBuildFromBuffer(
       buffer.data(), buffer.size());
   if (nullptr == model_ptr) {
     return std::nullopt;

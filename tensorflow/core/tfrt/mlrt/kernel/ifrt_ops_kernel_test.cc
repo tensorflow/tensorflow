@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/tsl/framework/test_util/mock_serving_device_selector.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_matcher.h"
@@ -43,8 +44,10 @@ limitations under the License.
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
+#include "tensorflow/core/tfrt/ifrt/checkpoint_loader.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_config.pb.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_model_context.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_model_restore_context.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
@@ -57,7 +60,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/mlrt/kernel/context.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/kernel.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/refcount.h"
 #include "tsl/platform/status.h"
@@ -403,6 +405,13 @@ class KernelTest : public ::testing::Test {
             .value();
     ifrt_model_context_->set_checkpoint_loader_queue(restore_work_queue_.get());
 
+    resource_context_
+        .CreateResource<tensorflow::ifrt_serving::IfrtModelRestoreContext>(
+            ifrt_serving::kIfrtModelRestoreContextName,
+            std::make_unique<tensorflow::ifrt_serving::CheckpointLoader>(
+                &ifrt_model_context_->GetRestoreTensorRegistry(),
+                ifrt_model_context_->checkpoint_loader_queue()));
+
     serving_device_selector_ =
         std::make_unique<tsl::test_util::MockServingDeviceSelector>();
     ifrt_core_selector_ =
@@ -737,6 +746,68 @@ TEST_F(KernelTest, IfrtRestoreVariableOp4Variables) {
   TF_ASSERT_OK(restored_tensor3.status());
   EXPECT_THAT(*restored_tensor3,
               TensorEq(AsTensor<int16_t>({10, 11, 12}, {3})));
+}
+
+TEST_F(KernelTest, IfrtRestoreVariableOpInValidInput) {
+  std::string checkpoint_prefix =
+      tensorflow::GetDataDependencyFilepath(
+          "tensorflow/core/tfrt/mlrt/kernel/testdata/"
+          "gen_checkpoint_data/variables") +
+      "/variables";
+
+  static constexpr int kNumVariables = 4;
+  auto buffer = CreateExecutableForIfrtRestoreVariableOp(kNumVariables);
+
+  mlrt::bc::Executable executable(buffer.data());
+
+  mlrt::LoadedExecutable loaded_executable(executable, registry_);
+
+  mlrt::ExecutionContext execution_context(&loaded_executable);
+  execution_context.set_work_queue(execution_work_queue_.get());
+
+  execution_context.AddUserContext(std::move(tf_context_));
+
+  xla::ifrt::Future<tensorflow::Tensor> uninitialized_entry =
+      ifrt_model_context_->GetRestoreTensorRegistry().GetRestoredTensor(
+          kVariableRuntimeName);
+  ASSERT_TRUE(uninitialized_entry.IsReady());
+  EXPECT_THAT(uninitialized_entry.Await().status(),
+              ::tsl::testing::StatusIs(absl::StatusCode::kNotFound));
+
+  std::vector<mlrt::Value> args;
+  args.resize(3);
+
+  tensorflow::Tensor prefix_tensor =
+      AsTensor<tsl::tstring>({tsl::tstring(checkpoint_prefix)});
+  args.at(0).Set(tfrt_stub::FallbackTensor(std::move(prefix_tensor)));
+
+  tensorflow::Tensor name_tensor =
+      AsTensor<tsl::tstring>({tsl::tstring("w/.ATTRIBUTES/VARIABLE_VALUE"),
+                              tsl::tstring("w1/.ATTRIBUTES/VARIABLE_VALUE"),
+                              tsl::tstring("w2/.ATTRIBUTES/VARIABLE_VALUE"),
+                              tsl::tstring("w3/.ATTRIBUTES/VARIABLE_VALUE")});
+  args.at(1).Set(tfrt_stub::FallbackTensor(std::move(name_tensor)));
+
+  // Wrong `slice_tensor` that is missing one element.
+  tensorflow::Tensor slice_tensor = AsTensor<tsl::tstring>(
+      {tsl::tstring(""), tsl::tstring(""), tsl::tstring("")});
+  args.at(2).Set(tfrt_stub::FallbackTensor(std::move(slice_tensor)));
+
+  std::vector<uint8_t> last_uses = {true, true, true};
+  std::vector<mlrt::Value> results;
+
+  absl::Notification notification;
+  execution_context.set_exit_handler(
+      [&notification]() { notification.Notify(); });
+
+  execution_context.Call(executable.functions()[0], last_uses,
+                         absl::MakeSpan(args), absl::MakeSpan(results));
+  mlrt::Execute(execution_context);
+
+  notification.WaitForNotification();
+
+  EXPECT_THAT(execution_context.status(),
+              ::tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace

@@ -422,8 +422,8 @@ TEST_F(OpKernelTest, InputDtype) {
   Tensor a(DT_FLOAT, TensorShape({}));
   Tensor b(DT_INT32, TensorShape({}));
   Tensor c(DT_UINT8, TensorShape({}));
-  gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&a), TensorValue(&b),
-                                            TensorValue(&c)};
+  absl::InlinedVector<TensorValue, 4> inputs{TensorValue(&a), TensorValue(&b),
+                                             TensorValue(&c)};
   params.inputs = inputs;
   auto ctx = std::make_unique<OpKernelContext>(&params);
 
@@ -448,7 +448,7 @@ TEST_F(OpKernelTest, InputOnly) {
   EXPECT_TRUE(status.ok());
   params.op_kernel = op.get();
   Tensor a(DT_FLOAT, TensorShape({}));
-  gtl::InlinedVector<TensorValue, 2> inputs{TensorValue(&a)};
+  absl::InlinedVector<TensorValue, 2> inputs{TensorValue(&a)};
   params.inputs = inputs;
   auto ctx = std::make_unique<OpKernelContext>(&params);
 
@@ -475,8 +475,8 @@ TEST_F(OpKernelTest, RefInputs) {
   Tensor* a = new Tensor(DT_FLOAT, TensorShape({}));
   Tensor* b = new Tensor(DT_FLOAT, TensorShape({2}));
   mutex mu_a, mu_b;
-  gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&mu_a, a),
-                                            TensorValue(&mu_b, b)};
+  absl::InlinedVector<TensorValue, 4> inputs{TensorValue(&mu_a, a),
+                                             TensorValue(&mu_b, b)};
   params.inputs = inputs;
   auto ctx = std::make_unique<OpKernelContext>(&params);
 
@@ -502,7 +502,7 @@ TEST_F(OpKernelTest, AllocateOutput) {
   params.op_kernel = op.get();
   Tensor a(DT_FLOAT, TensorShape({}));
   Tensor b(DT_INT32, TensorShape({}));
-  gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&a), TensorValue(&b)};
+  absl::InlinedVector<TensorValue, 4> inputs{TensorValue(&a), TensorValue(&b)};
   params.inputs = inputs;
   auto ctx = std::make_unique<OpKernelContext>(&params);
   Tensor* output = nullptr;
@@ -566,7 +566,7 @@ class ScopedAllocatorDevice : public DeviceBase {
                               StatusCallback done) override {
     CHECK(input_tensor->NumElements() == output_tensor->NumElements());
     tensor::DeepCopy(*input_tensor, output_tensor);
-    done(OkStatus());
+    done(absl::OkStatus());
   }
 
   // Return the count of calls to GetAllocator or GetScopedAllocator, depending
@@ -641,7 +641,7 @@ TEST_F(OpKernelTest, TraceString) {
 
   params.op_kernel = op.get();
   Tensor a(DT_FLOAT, TensorShape({4, 8}));
-  gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&a)};
+  absl::InlinedVector<TensorValue, 4> inputs{TensorValue(&a)};
   params.inputs = inputs;
 
   params.op_kernel = op.get();
@@ -1162,7 +1162,7 @@ void BM_TraceString(::testing::benchmark::State& state) {
   params.op_kernel = op.get();
   Tensor a(DT_FLOAT, TensorShape({99000, 256}));
   Tensor b(DT_FLOAT, TensorShape({256, 256}));
-  gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&a), TensorValue(&b)};
+  absl::InlinedVector<TensorValue, 4> inputs{TensorValue(&a), TensorValue(&b)};
   params.inputs = inputs;
   auto ctx = std::make_unique<OpKernelContext>(&params);
 

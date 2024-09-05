@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <cassert>
-#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <numeric>
@@ -25,17 +24,20 @@ limitations under the License.
 #include <ostream>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/base/optimization.h"
+#include "absl/numeric/int128.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/AffineExpr.h"
@@ -780,6 +782,50 @@ SmallVector<AffineExpr, 4> MapSymbolsToComposedSymbolsList(
 
 }  // namespace
 
+static constexpr std::string_view kVarKindDefault = "default";
+static constexpr std::string_view kVarKindThreadX = "thread_x";
+static constexpr std::string_view kVarKindThreadY = "thread_y";
+static constexpr std::string_view kVarKindThreadZ = "thread_z";
+static constexpr std::string_view kVarKindBlockX = "block_x";
+static constexpr std::string_view kVarKindBlockY = "block_y";
+static constexpr std::string_view kVarKindBlockZ = "block_z";
+
+std::string_view ToString(VariableKind type) {
+  switch (type) {
+    case VariableKind::kDefault:
+      return kVarKindDefault;
+    case VariableKind::kThreadX:
+      return kVarKindThreadX;
+    case VariableKind::kThreadY:
+      return kVarKindThreadY;
+    case VariableKind::kThreadZ:
+      return kVarKindThreadZ;
+    case VariableKind::kBlockX:
+      return kVarKindBlockX;
+    case VariableKind::kBlockY:
+      return kVarKindBlockY;
+    case VariableKind::kBlockZ:
+      return kVarKindBlockZ;
+  }
+  llvm_unreachable("Unknown VariableType");
+}
+
+VariableKind ToVariableType(std::string_view type_name) {
+  if (type_name == kVarKindDefault) return VariableKind::kDefault;
+  if (type_name == kVarKindThreadX) return VariableKind::kThreadX;
+  if (type_name == kVarKindThreadY) return VariableKind::kThreadY;
+  if (type_name == kVarKindThreadZ) return VariableKind::kThreadZ;
+  if (type_name == kVarKindBlockX) return VariableKind::kBlockX;
+  if (type_name == kVarKindBlockY) return VariableKind::kBlockY;
+  if (type_name == kVarKindBlockZ) return VariableKind::kBlockZ;
+  llvm_unreachable("Unknown VariableType name");
+}
+
+std::ostream& operator<<(std::ostream& out, VariableKind var_type) {
+  out << ToString(var_type);
+  return out;
+}
+
 // Returns the output-to-input indexing map of the first output of `instr`
 IndexingMap GetIndexingMapForInstruction(const HloInstruction* instr,
                                          int64_t operand_idx,
@@ -1111,6 +1157,20 @@ SmallVector<int64_t, 4> IndexingMap::Evaluate(
       dim_const_exprs, symbol_const_exprs, dim_const_exprs.size(),
       symbol_const_exprs.size());
   return eval.getConstantResults();
+}
+
+bool IndexingMap::IsSymbolConstrained(int64_t symbol_id) const {
+  for (const auto& [expr, _] : constraints_) {
+    bool result = false;
+    expr.walk([&](mlir::AffineExpr leaf) {
+      auto sym = mlir::dyn_cast<mlir::AffineSymbolExpr>(leaf);
+      if (sym && sym.getPosition() == symbol_id) {
+        result = true;
+      }
+    });
+    if (result) return true;
+  }
+  return false;
 }
 
 RangeEvaluator::RangeEvaluator(const IndexingMap& indexing_map,
@@ -2000,7 +2060,6 @@ bool IndexingMap::ReplaceConstantRTVars() {
   if (rt_vars_.empty()) return false;
 
   bool did_simplify = false;
-  std::vector<size_t> to_delete;
 
   for (auto index = 0; index < rt_vars_.size(); ++index) {
     auto& rt_var = rt_vars_[index];
@@ -2015,8 +2074,9 @@ bool IndexingMap::ReplaceConstantRTVars() {
 
     if (result.remapped_symbol != rt_var_symbol) {
       did_simplify = true;
-      affine_map_ =
-          affine_map_.replace({{rt_var_symbol, result.remapped_symbol}});
+      affine_map_ = affine_map_.replace(
+          {{rt_var_symbol, result.remapped_symbol}}, affine_map_.getNumDims(),
+          affine_map_.getNumSymbols());
 
       llvm::DenseMap<AffineExpr, AffineExpr> replacements;
 
@@ -2042,16 +2102,9 @@ bool IndexingMap::ReplaceConstantRTVars() {
         did_simplify = true;
       }
     } else {
-      // Otherwise we schedule the rt_var for removal.
-      to_delete.emplace_back(index);
       did_simplify = true;
     }
   }
-
-  for (auto index : llvm::reverse(to_delete)) {
-    rt_vars_.erase(rt_vars_.begin() + index);
-  }
-
   return did_simplify;
 }
 

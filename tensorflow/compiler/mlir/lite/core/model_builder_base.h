@@ -40,12 +40,11 @@ limitations under the License.
 #include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "flatbuffers/vector.h"  // from @flatbuffers
 #include "flatbuffers/verifier.h"  // from @flatbuffers
+#include "tensorflow/compiler/mlir/lite/allocation.h"
+#include "tensorflow/compiler/mlir/lite/core/api/error_reporter.h"
+#include "tensorflow/compiler/mlir/lite/core/api/verifier.h"
 #include "tensorflow/compiler/mlir/lite/core/macros.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
-#include "tensorflow/lite/allocation.h"
-#include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/core/api/verifier.h"
-#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 
@@ -54,6 +53,8 @@ std::unique_ptr<Allocation> GetAllocationFromFile(
 
 std::unique_ptr<Allocation> GetAllocationFromFile(
     int fd, ErrorReporter* error_reporter);
+
+namespace impl {
 
 /// An RAII object that represents a read-only tflite model, copied from disk,
 /// or mmapped. This uses flatbuffers as the serialization format.
@@ -82,8 +83,6 @@ std::unique_ptr<Allocation> GetAllocationFromFile(
 /// OpResolver must be defined to provide your kernel implementations to the
 /// interpreter. This is environment specific and may consist of just the
 /// builtin ops, or some custom operators you defined to extend tflite.
-namespace impl {
-
 template <typename T>
 class FlatBufferModelBase {
  public:
@@ -468,7 +467,8 @@ class FlatBufferModelBase {
         // '\0's in the buffer.
         for (int len = 0; len < array->size(); ++len) {
           if (array->data()[len] == '\0') {
-            return string(reinterpret_cast<const char*>(array->data()), len);
+            return std::string(reinterpret_cast<const char*>(array->data()),
+                               len);
           }
         }
         // If there is no '\0' in the buffer, this indicates that the flatbuffer
@@ -503,8 +503,8 @@ class FlatBufferModelBase {
       if (!buffer || !buffer->data()) continue;
       const flatbuffers::Vector<uint8_t>* array = buffer->data();
       if (!array) continue;
-      std::string val =
-          string(reinterpret_cast<const char*>(array->data()), array->size());
+      std::string val = std::string(
+          reinterpret_cast<const char*>(array->data()), array->size());
       // Skip if key or value of metadata is empty.
       if (!metadata->name() || val.empty()) continue;
       keys_values[metadata->name()->str()] = val;

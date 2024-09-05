@@ -125,7 +125,7 @@ struct TfrtCompileOptions {
   // For TFRT, if true, tf.While's iterations will be parallelized on a
   // best-effort basis. This is currently experimental. MLRT attempts to convert
   // tf.while to tf_mlrt.map_fn regardless of this flag. For tf.While that
-  // cannot be onverted tf_mlrt.map_fn, MLRT try to parallerize tf.while's
+  // cannot be converted tf_mlrt.map_fn, MLRT try to parallelize tf.while's
   // iterations on a best-effort basis.
   bool enable_while_parallel_iterations = false;
 

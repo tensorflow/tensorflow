@@ -71,8 +71,6 @@ bool IsRemovableWhile(HloInstruction* instruction,
 /*static*/ absl::StatusOr<bool> HloDCE::RunOnComputation(
     HloComputation* computation, bool remove_cross_partition_collective_ops) {
   bool changed = false;
-  VLOG(3) << "Before dce:";
-  XLA_VLOG_LINES(3, computation->ToString());
   // Cleanup unused tuple elements in multi-output fusion roots. We do this
   // first, because it may create dead roots which we can clean up next.
   if (auto* fusion_instruction = computation->FusionInstruction();
@@ -180,10 +178,6 @@ bool IsRemovableWhile(HloInstruction* instruction,
     TF_RETURN_IF_ERROR(
         computation->RemoveInstructionAndUnusedOperands(dead_root));
     changed = true;
-  }
-  if (changed) {
-    VLOG(3) << "After dce:";
-    XLA_VLOG_LINES(3, computation->ToString());
   }
   return changed;
 }
@@ -293,8 +287,10 @@ absl::StatusOr<bool> HloDCE::Run(
                       RecursivelyRemoveDeadComputations(module));
   changed |= module_contains_dead_code;
 
-  VLOG(2) << "After dce:";
-  XLA_VLOG_LINES(2, module->ToString());
+  if (changed) {
+    VLOG(2) << "After dce:";
+    XLA_VLOG_LINES(2, module->ToString());
+  }
 
   return changed;
 }

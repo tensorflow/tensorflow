@@ -143,7 +143,7 @@ class DispatchServer:
   >>> dataset = tf.data.Dataset.range(10)
   >>> dataset = dataset.apply(tf.data.experimental.service.distribute(
   ...     processing_mode="parallel_epochs", service=dispatcher.target))
-  >>> print(list(dataset.as_numpy_iterator()))
+  >>> [a.item() for a in dataset.as_numpy_iterator()]
   [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
   When starting a dedicated tf.data dispatch process, use join() to block
@@ -362,7 +362,7 @@ class WorkerServer:
   >>> dataset = tf.data.Dataset.range(10)
   >>> dataset = dataset.apply(tf.data.experimental.service.distribute(
   ...     processing_mode="parallel_epochs", service=dispatcher.target))
-  >>> print(list(dataset.as_numpy_iterator()))
+  >>> [a.item() for a in dataset.as_numpy_iterator()]
   [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
   When starting a dedicated tf.data worker process, use join() to block

@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/indexing_map.h"
-#include "xla/util.h"
 
 namespace xla {
 namespace gpu {
@@ -83,12 +83,13 @@ class MlirTransposeFusion : public MlirFusionEmitterBase {
       const HloFusionInstruction& fusion,
       const mlir_converter::PartitionedComputation& root_computation,
       const mlir_converter::CallTargetProvider& call_target_provider,
-      mlir::ValueRange output_args) const;
+      mlir::ValueRange output_args,
+      mlir::ValueRange thread_and_block_ids) const;
   void EmitReadFromShMemMlir(
       mlir::ImplicitLocOpBuilder& builder, mlir::func::FuncOp entry_function,
       const HloFusionInstruction& fusion,
       const mlir_converter::PartitionedComputations& computations,
-      const WriteResult& written) const;
+      const WriteResult& written, mlir::ValueRange thread_and_block_ids) const;
 
  private:
   const HloFusionAnalysis& analysis_;
@@ -97,12 +98,14 @@ class MlirTransposeFusion : public MlirFusionEmitterBase {
                           mlir::MLIRContext* ctx) const;
   IndexingMap GetSharedMemoryIndexing(bool read, mlir::MLIRContext* ctx) const;
   llvm::SmallVector<mlir::AffineExpr, 4> GetThreadOffsets(
-      mlir::MLIRContext* ctx) const;
+      bool read, mlir::MLIRContext* ctx) const;
+  bool MostMinorDimensionUnchanged() const;
 
   TransposeDescription transpose_;
-  Vector3 permutation_;
+  absl::InlinedVector<int64_t, 3> permutation_;
   std::vector<int64_t> input_shape_;
   std::vector<int64_t> block_sizes_;  // In input elements.
+  std::vector<int64_t> output_block_sizes_;
   std::vector<int64_t> block_counts_;
   int vector_size_;
   int block_size_;

@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/executable_serdes.h"
@@ -318,13 +319,28 @@ class MockLoadedHostCallback final
 
 class MockSharding : public llvm::RTTIExtends<MockSharding, Sharding> {
  public:
+  MockSharding()
+      : llvm::RTTIExtends<MockSharding, Sharding>(
+            DeviceList(), MemoryKind(), /*is_fully_replicated=*/false) {}
+
   MOCK_METHOD(
       (absl::StatusOr<
           std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>),
       Disassemble, (const Shape& shape), (const, final));
+  MOCK_METHOD((absl::StatusOr<std::vector<
+                   std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>),
+              Disassemble, (const DynamicShape& dynamic_shape), (const final));
   MOCK_METHOD(absl::StatusOr<std::vector<IndexDomain>>, IndexDomains,
               (const Shape& shape), (const, final));
   MOCK_METHOD(std::string, DebugString, (), (const, final));
+  MOCK_METHOD(absl::StatusOr<Shape>, GetShardShape, (const Shape& shape),
+              (const, final));
+  MOCK_METHOD(bool, HasSamePartitioning, (const Sharding& other),
+              (const final));
+  MOCK_METHOD(absl::StatusOr<std::unique_ptr<Sharding>>, WithDeviceAssignment,
+              (std::optional<DeviceList> devices,
+               std::optional<MemoryKind> memory_kind),
+              (const final));
 
   static char ID;  // NOLINT
 };

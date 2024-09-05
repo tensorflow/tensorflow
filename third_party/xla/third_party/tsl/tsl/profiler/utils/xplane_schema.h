@@ -41,6 +41,8 @@ TF_CONST_INIT extern const absl::string_view kGpuPlanePrefix;
 TF_CONST_INIT extern const absl::string_view kTpuPlanePrefix;
 // Regex for XPlanes that contain TensorCore planes.
 TF_CONST_INIT extern const char kTpuPlaneRegex[];
+// Regex for XPlanes that contain TPU Core planes.
+TF_CONST_INIT extern const char kSparseCorePlaneRegex[];
 // Name prefix of XPlane that contains custom device events.
 TF_CONST_INIT extern const absl::string_view kCustomPlanePrefix;
 // Name prefix of XPlane that contains TPU non-core events such as HBM, ICI etc.
@@ -321,8 +323,12 @@ enum StatType {
   kEdgeTpuMlir,
   kDroppedTraces,
   kCudaGraphId,
-  kCudaGraphDetails,
-  kLastStatType = kCudaGraphDetails,
+  // Many events have kCudaGraphId, such as graph sub events when tracing is in
+  // node level. Yet kCudaGraphExecId is used only for CudaGraphExecution events
+  // on the GPU device when tracing is in graph level.
+  kCudaGraphExecId,
+  kCudaGraphOrigId,
+  kLastStatType = kCudaGraphOrigId,
 };
 
 enum MegaScaleStatType : uint8_t {

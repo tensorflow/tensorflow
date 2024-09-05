@@ -34,7 +34,7 @@ using GemmOperation = cutlass::gemm::device::GemmUniversal<
     ElementA, cutlass::layout::RowMajor, ElementB, cutlass::layout::RowMajor,
     ElementOutput, cutlass::layout::RowMajor, ElementAccumulator,
     cutlass::arch::OpClassSimt, cutlass::arch::Sm70,
-    cutlass::gemm::GemmShape<128, 32, 8>, cutlass::gemm::GemmShape<64, 32, 8>,
+    cutlass::gemm::GemmShape<64, 128, 8>, cutlass::gemm::GemmShape<32, 64, 8>,
     cutlass::gemm::GemmShape<1, 1, 1>,
     cutlass::epilogue::thread::LinearCombination<float, 1, float, float>,
     cutlass::gemm::threadblock::GemmIdentityThreadblockSwizzle<8>,

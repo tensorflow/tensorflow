@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/raw_ostream.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
+#include "tensorflow/lite/toco/toco_flags.pb.h"
 
 namespace mlir {
 namespace TFL {
@@ -98,6 +99,14 @@ struct PassConfig {
 
   // Enables the attempt to directly lower composites into tflite ops.
   bool enable_composite_direct_lowering = true;
+
+  // Specifies the framework of the original model.
+  toco::TocoFlags::ModelOriginFramework model_origin_framework =
+      toco::TocoFlags::UNSET;
+
+  // When set to true, convert +Inf/-Inf to MIN/MAX float value and output of
+  // convert only contains finite values.
+  bool canonicalizing_inf_as_min_max_float = true;
 };
 
 inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
@@ -126,7 +135,11 @@ inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
             << pass_config.legalize_custom_tensor_list_ops
             << "\nreduce_type_precision: " << pass_config.reduce_type_precision
             << "\nconvert_qdq_format: "
-            << GetQDQQuantModeString(pass_config.qdq_conversion_mode) << "\n";
+            << GetQDQQuantModeString(pass_config.qdq_conversion_mode)
+            << "\nmodel_origin_framework: "
+            << toco::TocoFlags::ModelOriginFramework_Name(
+                   pass_config.model_origin_framework)
+            << "\n";
 }
 
 }  // namespace TFL

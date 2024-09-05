@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/stream_attribute_annotator.h"
+#include "xla/service/gpu/transforms/stream_attribute_annotator.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_memory_scheduler.h"
 #include "xla/service/hlo_rematerialization.h"
@@ -171,6 +171,20 @@ TEST_F(GpuOffloadingTest, FusedComputationOffloadingTest) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_text, ErrorSpec{1e-3}));
 }
 
+TEST_F(GpuOffloadingTest, WeightOffloadingD2HWithWaitTest) {
+  const char* hlo_offloading_d2h = R"(
+  HloModule jit__lambda_, is_scheduled=true,
+      entry_computation_layout={(s32[4,1]{1,0})->s32[4,1]{1,0:S(5)}}
+
+  ENTRY main.5_spmd {
+    param.1 = s32[4,1]{1,0} parameter(0), sharding={devices=[2,2]<=[4]}
+    copy-start.1 = (s32[4,1]{1,0:S(5)}, s32[4,1]{1,0}, u32[]) copy-start(param.1)
+    ROOT copy-done.1 = s32[4,1]{1,0:S(5)} copy-done(copy-start.1)
+  }
+)";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_offloading_d2h, ErrorSpec{1e-3}));
+}
+
 TEST_F(GpuOffloadingTest, CopyIRCreationTest) {
   const char* hlo_text = R"(
   HloModule test
@@ -247,6 +261,19 @@ TEST_F(GpuOffloadingTest, CopyIRCreationTest) {
   EXPECT_TRUE(RunAndCompareTwoModules(std::move(module), std::move(module_ref),
                                       ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6},
                                       /*run_hlo_passes=*/false));
+}
+
+// The memory management operations (allocation and deallocation) for the host
+// in unit test below mirror those employed for host offloading in this file.
+TEST_F(GpuOffloadingTest, XLAHostMemoryAllocationDeallocationTest) {
+  stream_executor::StreamExecutor* executor =
+      backend().default_stream_executor();
+  stream_executor::DeviceMemoryBase host_ptr =
+      executor->Allocate(64, (int64_t)(stream_executor::MemoryType::kHost));
+  TF_ASSERT_OK_AND_ASSIGN(auto memory_space,
+                          executor->GetPointerMemorySpace(host_ptr.opaque()));
+  EXPECT_EQ(memory_space, stream_executor::MemoryType::kHost);
+  executor->Deallocate(&host_ptr);
 }
 
 }  // namespace

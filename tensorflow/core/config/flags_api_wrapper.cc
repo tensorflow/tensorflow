@@ -55,5 +55,6 @@ PYBIND11_MODULE(flags_pybind, m) {
   TF_PY_DECLARE_FLAG(enable_colocation_key_propagation_in_while_op_lowering);
   TF_PY_DECLARE_FLAG(enable_tf2min_ici_weight)
   TF_PY_DECLARE_FLAG(enable_function_pruning_before_inlining)
+  TF_PY_DECLARE_FLAG(enable_skip_encapsulation_for_non_tpu_graphs)
   // LINT.ThenChange(//tensorflow/core/config/flag_defs.h)
 };

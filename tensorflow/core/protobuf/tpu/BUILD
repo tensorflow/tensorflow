@@ -16,7 +16,6 @@ tf_proto_library(
     srcs = [
         "tpu_embedding_configuration.proto",
     ],
-    cc_api_version = 2,
     protodeps = [
         ":optimization_parameters_proto",
     ],
@@ -28,7 +27,6 @@ tf_proto_library(
     srcs = [
         "optimization_parameters.proto",
     ],
-    cc_api_version = 2,
     protodeps = ["@local_xla//xla/service:hlo_proto"],
     visibility = ["//visibility:public"],
 )
@@ -38,7 +36,6 @@ tf_proto_library(
     srcs = [
         "topology.proto",
     ],
-    cc_api_version = 2,
     visibility = ["//visibility:public"],
 )
 
@@ -47,7 +44,6 @@ tf_proto_library(
     srcs = [
         "dynamic_padding.proto",
     ],
-    cc_api_version = 2,
     visibility = ["//visibility:public"],
 )
 
@@ -68,7 +64,6 @@ tf_proto_library(
     srcs = [
         "compile_metadata.proto",
     ],
-    cc_api_version = 2,
     protodeps = [
         ":dynamic_padding_proto",
         "@local_xla//xla:xla_data_proto",

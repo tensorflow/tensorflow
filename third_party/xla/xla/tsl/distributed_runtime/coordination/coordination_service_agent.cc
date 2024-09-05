@@ -420,10 +420,11 @@ void CoordinationServiceAgentImpl::StartPollingForError() {
   if (absl::IsCancelled(status)) {
     LOG(INFO) << "Cancelling error polling because the service or the agent is "
                  "shutting down.";
+    // Return early and there is no need to set error.
     return;
   }
-  LOG(INFO) << "Error returned from coordination service: " << status;
-
+  LOG(ERROR) << "An error is returned from coordination service (this can be "
+                "an error from this or another task).";
   SetError(status);
 }
 
@@ -437,11 +438,6 @@ absl::Status CoordinationServiceAgentImpl::PollForError() {
   n.WaitForNotification();
   CHECK(!status.ok())
       << "PollForError returned OK status. Should always return an error.";
-  if (!absl::IsCancelled(status)) {  // No need to log if cancelled.
-    LOG(ERROR) << "PollForError returned with status (this can be an error "
-                  "from this or another task): "
-               << status;
-  }
   return status;
 }
 
@@ -626,7 +622,7 @@ absl::Status CoordinationServiceAgentImpl::ShutdownInternal() {
     } else {
       LOG(ERROR)
           << "Failed to disconnect from coordination service with status: "
-          << status
+          << TrimCoordinationErrorMessage(status)
           << "\nProceeding with agent shutdown anyway. This is usually caused "
              "by an earlier error during execution. Check the logs (this task "
              "or the leader) for an earlier error to debug further.";
@@ -891,11 +887,12 @@ void CoordinationServiceAgentImpl::SetError(const absl::Status& error) {
   assert(!error.ok());
   absl::MutexLock l(&state_mu_);
   if (state_ == CoordinatedTaskState::TASKSTATE_ERROR) return;
+  absl::Status trimmed_error = TrimCoordinationErrorMessage(error);
 
-  LOG(ERROR) << "Coordination agent is set to ERROR: " << error;
+  LOG(ERROR) << "Coordination agent is set to ERROR: " << trimmed_error;
   state_ = CoordinatedTaskState::TASKSTATE_ERROR;
-  status_ = error;
-  error_fn_(error);
+  status_ = trimmed_error;
+  error_fn_(trimmed_error);
 }
 
 absl::Status CoordinationServiceAgentImpl::ActivateWatch(
@@ -947,8 +944,9 @@ void CoordinationServiceAgentImpl::WaitAtBarrierAsync(
   leader_client_->BarrierAsync(
       request.get(), response.get(),
       [request, response, done = std::move(done)](const absl::Status& s) {
-        done(s);
-        VLOG(3) << "WaitAtBarrierResponse: " << s;
+        auto status = TrimCoordinationErrorMessage(s);
+        done(status);
+        VLOG(3) << "WaitAtBarrierResponse: " << status;
       });
 }
 

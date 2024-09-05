@@ -13,9 +13,13 @@
 # limitations under the License.
 # ============================================================================
 name: Buildifier
-permissions: read-all
+permissions:
+  contents: read
 on:
   pull_request:
+  push:
+    branches:
+      - main
 
 env:
   # Have `go install` place binaries in $PATH

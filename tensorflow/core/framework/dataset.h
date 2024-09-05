@@ -91,6 +91,14 @@ using TraceMeMetadata = std::vector<std::pair<StringPiece, string>>;
 
 // Maps the index of dataset elements to a globally shuffled index. See the
 // comment for IteratorContext::Params::index_mapper for more details.
+// Notes:
+// * `absl::OutOfRangeError` indicates the input index argument exceeds
+//   the cardinality of the dataset.
+// * `absl::NotFoundError` indicates we should skip this element.
+//    This happens in the case we mix multiple datasets into one. For example,
+//    `dataset1.concatenate(dataset2)`.
+// See go/tf-data-random-access-iterator and
+// go/tf-data-random-access-iterator-for-concatenate for more info.
 using IndexMapperFn = std::function<absl::StatusOr<size_t>(size_t)>;
 
 constexpr char kTFDataFunction[] = "_tf_data_function";
@@ -223,7 +231,7 @@ class GraphDefBuilderWrapper {
     if (*output == nullptr) {
       return errors::Internal("AddScalar: Failed to build Const op.");
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Adds a Const node with vector value to the Graph.
@@ -242,7 +250,7 @@ class GraphDefBuilderWrapper {
     if (*output == nullptr) {
       return errors::Internal("AddVector: Failed to build Const op.");
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status AddVector(const std::vector<string>& val, Node** output) {
@@ -255,7 +263,7 @@ class GraphDefBuilderWrapper {
     if (*output == nullptr) {
       return errors::Internal("AddVector: Failed to build Const op.");
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Adds a `Const` node for the given tensor value to the graph.
@@ -268,7 +276,7 @@ class GraphDefBuilderWrapper {
     if (*output == nullptr) {
       return errors::Internal("AddTensor: Failed to build Const op.");
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Adds a `Placeholder` node for the given tensor value to the graph.
@@ -282,7 +290,7 @@ class GraphDefBuilderWrapper {
       return errors::Internal(
           "AddPlaceholder: Failed to build Placeholder op.");
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Adds a node for the given dataset to the `Graph`. The value of
@@ -311,13 +319,15 @@ class GraphDefBuilderWrapper {
   Status AddDataset(
       const DatasetBase* dataset,
       const std::vector<std::pair<size_t, Node*>>& inputs,
-      const std::vector<std::pair<size_t, gtl::ArraySlice<Node*>>>& list_inputs,
+      const std::vector<std::pair<size_t, absl::Span<Node* const>>>&
+          list_inputs,
       const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
       Node** output);
   Status AddDataset(
       const DatasetBase* dataset,
       const std::vector<std::pair<size_t, Node*>>& inputs,
-      const std::vector<std::pair<size_t, gtl::ArraySlice<Node*>>>& list_inputs,
+      const std::vector<std::pair<size_t, absl::Span<Node* const>>>&
+          list_inputs,
       const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
       bool use_dataset_name, Node** output);
 
@@ -370,7 +380,7 @@ class GraphDefBuilderWrapper {
         TF_RETURN_IF_ERROR(AddFunction(ctx, name_attr_list.name(), lib_def));
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   GraphDefBuilder* b_;
@@ -493,7 +503,7 @@ class MemoryCheckpoint final : public IteratorStateWriter {
   Status WriteScalar(StringPiece name, StringPiece key, int64_t val) override {
     auto id = id_registry_->Add(string(name), string(key));
     int_values_[id] = val;
-    return OkStatus();
+    return absl::OkStatus();
   }
   Status WriteScalar(StringPiece key, const tstring& val) override {
     string prefix;
@@ -504,7 +514,7 @@ class MemoryCheckpoint final : public IteratorStateWriter {
                      const tstring& val) override {
     auto id = id_registry_->Add(string(name), string(key));
     str_values_[id] = val;
-    return OkStatus();
+    return absl::OkStatus();
   }
   Status WriteTensor(StringPiece key, const Tensor& val) override {
     string prefix;
@@ -515,7 +525,7 @@ class MemoryCheckpoint final : public IteratorStateWriter {
                      const Tensor& val) override {
     auto id = id_registry_->Add(string(name), string(key));
     tensor_values_[id] = val;
-    return OkStatus();
+    return absl::OkStatus();
   }
   // END implementation of `IteratorStateWriter` interface
 
@@ -546,7 +556,7 @@ class MemoryCheckpoint final : public IteratorStateWriter {
       : is_root_(is_root), id_registry_(registry) {}
   void operator=(const MemoryCheckpoint&) = delete;
 
-  Status status_ = OkStatus();
+  Status status_ = absl::OkStatus();
   // Only set to true for the checkpoint in IteratorResource.
   // Root checkpoint does not track expired prefixes.
   const bool is_root_ = false;
@@ -571,10 +581,10 @@ class SerializationContext {
     switch (params_.external_state_policy) {
       case ExternalStatePolicy::POLICY_WARN:
         LOG(WARNING) << s.ToString();
-        return OkStatus();
+        return absl::OkStatus();
       case ExternalStatePolicy::POLICY_IGNORE:
         VLOG(2) << "Ignoring error status: " << s.ToString();
-        return OkStatus();
+        return absl::OkStatus();
       case ExternalStatePolicy::POLICY_FAIL:
         return s;
       default:
@@ -905,6 +915,10 @@ class IteratorContext {
 
   IndexMapperFn index_mapper() const { return params_.index_mapper; }
 
+  void set_restored_element_count(size_t element_count) {
+    params_.restored_element_count.emplace(element_count);
+  }
+
   std::optional<int64_t> restored_element_count() const {
     return params_.restored_element_count;
   }
@@ -1105,7 +1119,7 @@ class IteratorBase : public Checkpointable {
 
   // Performs initialization that needs to happen outside of a constructor to
   // properly propagate errors.
-  virtual Status Initialize(IteratorContext* ctx) { return OkStatus(); }
+  virtual Status Initialize(IteratorContext* ctx) { return absl::OkStatus(); }
 
   // Performs initialization of the base iterator.
   Status InitializeBase(IteratorContext* ctx, const IteratorBase* parent);
@@ -1116,7 +1130,7 @@ class IteratorBase : public Checkpointable {
     TF_RETURN_IF_ERROR(SaveInternal(ctx, writer));
     VLOG(1) << "Saved " << prefix() << " in "
             << (EnvTime::NowMicros() - start_us) << "us";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Restores the state of this iterator.
@@ -1126,7 +1140,7 @@ class IteratorBase : public Checkpointable {
     ctx->SaveCheckpoint(this);
     VLOG(1) << "Restored " << prefix() << " in "
             << (EnvTime::NowMicros() - start_us) << "us";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Returns the total number of bytes buffered by the iterator across all nodes
@@ -1146,7 +1160,7 @@ class IteratorBase : public Checkpointable {
   Status SaveInput(SerializationContext* ctx, IteratorStateWriter* writer,
                    const std::unique_ptr<IteratorBase>& input) {
     if (ctx->symbolic_checkpoint()) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     return input->Save(ctx, writer);
   }
@@ -1314,7 +1328,7 @@ class DatasetBase : public core::RefCounted {
     TF_RETURN_IF_ERROR(it->Restore(&restore_ctx, reader));
     ctx->MergeCheckpoint(restore_ctx.checkpoint());
     *iterator = std::move(it);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status MakeIteratorFromCheckpoint(
@@ -1687,7 +1701,7 @@ Status ParseScalarArgument(OpKernelContext* ctx,
     return errors::InvalidArgument(argument_name, " must be a scalar");
   }
   *output = argument_t->scalar<T>()();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename T>
@@ -1704,7 +1718,7 @@ Status ParseVectorArgument(OpKernelContext* ctx,
   for (int i = 0; i < size; ++i) {
     output->push_back(argument_t->vec<T>()(i));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Encapsulates the work required to plug a DatasetBase into the core TensorFlow

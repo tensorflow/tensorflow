@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/kernels/shape_util.h"
 #include "tensorflow/compiler/tf2xla/kernels/tensor_list_utils.h"
@@ -38,7 +39,9 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace {
@@ -405,6 +408,7 @@ class ZerosLikeOp : public XlaOpKernel {
         std::vector<xla::XlaOp> dynamic_dims;
         const xla::Shape& shape = list_shape.tuple_shapes(i);
         auto sub_element = xla::GetTupleElement(list, i);
+        dynamic_dims.reserve(shape.dimensions_size());
         for (int64_t dim = 0; dim < shape.dimensions_size(); ++dim) {
           dynamic_dims.push_back(xla::GetDimensionSize(sub_element, dim));
         }

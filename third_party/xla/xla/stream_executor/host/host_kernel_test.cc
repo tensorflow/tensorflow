@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/host/host_kernel_c_api.h"
+#include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
@@ -90,9 +91,9 @@ define ptr @LlvmAddI32(ptr noundef %0) {
 )";
 
 static absl::StatusOr<StreamExecutor*> NewStreamExecutor() {
-  StreamExecutorConfig config(/*ordinal=*/0);
   TF_ASSIGN_OR_RETURN(auto platform, PlatformManager::PlatformWithName("Host"));
-  TF_ASSIGN_OR_RETURN(auto stream_exec, platform->GetExecutor(config));
+  TF_ASSIGN_OR_RETURN(auto stream_exec,
+                      platform->ExecutorForDevice(/*ordinal=*/0));
   return stream_exec;
 }
 

@@ -23,6 +23,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <iomanip>
 #include <iterator>
 #include <limits>
 #include <string>
@@ -32,6 +33,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -333,6 +335,21 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
     // Run all HLO passes.  In particular, constant folding is disabled by
     // default for tests, but we need to run it in order to tickle some bugs.
     mutable_debug_options()->clear_xla_disable_hlo_passes();
+  }
+
+  // Enable debug logging for the invocation of the lambda.
+  //
+  // This is intended to be used to wrap a call to `Run`, which will then log
+  // extra debug information for a failure such as the calculated absolute,
+  // relative, and distance errors. In addition, in an effort to reduce output
+  // log size, this will trigger an ASSERT failure to early return from a test
+  // at the first failure.
+  template <typename Callable,
+            std::enable_if_t<std::is_invocable_r_v<void, Callable>, int> = 0>
+  void EnableDebugLoggingForScope(Callable&& work) {
+    should_emit_debug_logging_ = true;
+    work();
+    should_emit_debug_logging_ = false;
   }
 
   void Run(EnqueueOp enqueue_op, EvaluateOp evaluate_op,
@@ -657,8 +674,21 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
     // will be wildly off. We convert back to NativeT for this comparison.
     int64_t distance_err = GetDistanceErr(NativeT(expected), NativeT(actual));
 
-    return abs_err <= spec.abs_err || rel_err <= spec.rel_err ||
-           distance_err <= spec.distance_err;
+    bool passed = abs_err <= spec.abs_err || rel_err <= spec.rel_err ||
+                  distance_err <= spec.distance_err;
+    if (should_emit_debug_logging_ && !passed) {
+      LOG(INFO) << std::setprecision(
+                       std::numeric_limits<ComponentNativeT>::max_digits10)
+                << "actual: " << actual << "; expected: " << expected
+                << std::setprecision(std::numeric_limits<double>::max_digits10)
+                << "\n\tabs_err: " << abs_err
+                << "; spec.abs_err: " << spec.abs_err
+                << "\n\trel_err: " << rel_err
+                << "; spec.rel_err: " << spec.rel_err
+                << "\n\tdistance_err: " << distance_err
+                << "; spec.distance_err: " << spec.distance_err;
+    }
+    return passed;
   }
 
   // Converts part or all bits in an uint64_t to the value of the floating point
@@ -675,14 +705,6 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
     return BitCast<ComponentNativeT>(used_bits);
   }
 
-  ComponentNativeT ConvertAndReplaceKnownIncorrectValueWith(
-      uint64_t bits, int replacement_value = 0) {
-    if (known_incorrect_fn_ && known_incorrect_fn_(bits)) {
-      return static_cast<ComponentNativeT>(replacement_value);
-    }
-    return ConvertValue(bits);
-  }
-
  protected:
   // The primitive type being tested.
   const PrimitiveType ty_;
@@ -692,14 +714,6 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
 
   // Version of the EUP for a TPU target. Only relevant for TPU platforms.
   const int eup_version_;
-
-  // Testing will ignore inputs for which known_incorrect_fn_ returns true.
-  // The argument to the function is the raw bits for the data being test,
-  // zero extended to 64 bits if the data type is less than 64 bits.
-  //
-  // DEPRECATED: Please see ErrorSpec::skip_comparison for an easier framework
-  // to skip nearness checks for certain unary or binary inputs.
-  std::function<bool(int64_t)> known_incorrect_fn_;
 
   // If true, allows denormals to be flushed to non-sign-preserving 0.
   //
@@ -712,6 +726,10 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
 
   // Indicates if files of the expected and actual values should be dumped.
   bool should_dump_values_ = false;
+
+  // Indicates if additional (potentially costly) logging should be emitted to
+  // ease with debugging.
+  bool should_emit_debug_logging_ = false;
 };
 
 // Represents a set of 64 bit chunks by representing the starting bit chunk,
@@ -1242,34 +1260,28 @@ typename ErrorSpecGenWrapper<T, N>::type GetDefaultSpecGenerator() {
   return DefaultSpecGenerator<T, N>;
 }
 
-template <typename T, typename std::enable_if<
-                          std::is_same<T, float>::value ||
-                          std::is_same<T, double>::value>::type* = nullptr>
+template <typename T>
 T ReferenceMax(T x, T y) {
-  // We need to propagate NAN here because std::max may not propagate NAN.
-  if (std::fpclassify(x) == FP_NAN) {
+  if (x != x) {
     return x;
   }
-  if (std::fpclassify(y) == FP_NAN) {
+  if (y != y) {
     return y;
   }
 
-  return std::max<T>(x, y);
+  return ToSignMagnitude(x) < ToSignMagnitude(y) ? y : x;
 }
 
-template <typename T, typename std::enable_if<
-                          std::is_same<T, float>::value ||
-                          std::is_same<T, double>::value>::type* = nullptr>
+template <typename T>
 T ReferenceMin(T x, T y) {
-  // We need to propagate NAN here because std::max may not propagate NAN.
-  if (std::fpclassify(x) == FP_NAN) {
+  if (x != x) {
     return x;
   }
-  if (std::fpclassify(y) == FP_NAN) {
+  if (y != y) {
     return y;
   }
 
-  return std::min<T>(x, y);
+  return ToSignMagnitude(x) < ToSignMagnitude(y) ? x : y;
 }
 
 // Returns a wrapper of the given build method, which build an HLO operation

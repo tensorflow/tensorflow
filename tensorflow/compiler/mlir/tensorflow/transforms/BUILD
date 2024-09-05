@@ -829,6 +829,7 @@ cc_library(
         "@local_xla//xla/service:shape_inference",
         "@local_xla//xla/translate/hlo_to_mhlo:hlo_utils",
         "@local_xla//xla/translate/mhlo_to_hlo:type_to_shape",
+        "@local_xla//xla/tsl/util:env_var",
     ],
 )
 
@@ -947,7 +948,6 @@ cc_library(
         ":constant_fold_utils",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_traits",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:direct_session",
@@ -1092,5 +1092,16 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:path",
+    ],
+)
+
+tf_cc_test(
+    name = "shape_inference_test",
+    srcs = ["shape_inference_test.cc"],
+    deps = [
+        ":shape_inference_pass",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:env",
     ],
 )

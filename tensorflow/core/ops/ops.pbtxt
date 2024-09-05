@@ -4112,6 +4112,8 @@ op {
     allowed_values {
       list {
         s: "PAD_UP"
+        s: "BATCH_DOWN"
+        s: "MINIMIZE_TPU_COST_PER_REQUEST"
       }
     }
   }
@@ -7978,6 +7980,21 @@ op {
     type: "string"
   }
   is_stateful: true
+}
+op {
+  name: "CheckPinned"
+  input_arg {
+    name: "tensor"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
 }
 op {
   name: "Cholesky"

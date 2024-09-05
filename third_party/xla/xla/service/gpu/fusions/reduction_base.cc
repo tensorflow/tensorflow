@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/fusions/fusion_emitter.h"
-#include "xla/service/gpu/fusions/tiling_util.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/hlo_traversal.h"
@@ -102,11 +101,9 @@ int GetVectorSize(const HloFusionAnalysis& analysis,
   return 1;
 }
 
-int GetVectorSizeForMlir(const HloFusionAnalysis& analysis,
-                         const ReductionDimensions& reduction_dimensions,
+int GetVectorSizeForMlir(const HloFusionAnalysis& analysis, int64_t minor_dim,
                          int num_threads) {
   // If the minor dimension is not divisible by 2, we can't currently vectorize.
-  int64_t minor_dim = reduction_dimensions.dimensions.back();
   if (minor_dim % 2 != 0) {
     return 1;
   }

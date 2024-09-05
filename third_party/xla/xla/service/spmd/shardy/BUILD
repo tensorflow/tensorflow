@@ -100,12 +100,14 @@ cc_library(
     deps = [
         ":constants",
         "//xla/mlir_hlo",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@shardy//shardy/dialect/sdy/ir:register",
     ],
 )
 
@@ -142,8 +144,8 @@ xla_cc_binary(
         "//xla/service/spmd/shardy/mhlo_round_trip:mhlo_import",
         "//xla/service/spmd/shardy/mhlo_round_trip:shard_map_export",
         "//xla/service/spmd/shardy/round_trip_common:convert_sharding_custom_calls",
-        "//xla/service/spmd/shardy/round_trip_common:identity_to_pass_through_while_args",
         "//xla/service/spmd/shardy/round_trip_common:import_constants",
+        "//xla/service/spmd/shardy/round_trip_common:open_while_free_vars_sharding",
         "//xla/service/spmd/shardy/round_trip_common:shard_map_import",
         "//xla/service/spmd/shardy/sdy_round_trip:export_ops",
         "//xla/service/spmd/shardy/sdy_round_trip:export_shardings",

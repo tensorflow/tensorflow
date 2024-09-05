@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/stream_executor/gpu/gpu_activation.h"
 
+#include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -22,7 +23,7 @@ limitations under the License.
 namespace stream_executor {
 namespace gpu {
 
-GpuContext* ExtractGpuContext(GpuExecutor* gpu_exec);
+Context* ExtractGpuContext(GpuExecutor* gpu_exec);
 
 ScopedActivateExecutorContext::ScopedActivateExecutorContext(
     GpuExecutor* gpu_exec)

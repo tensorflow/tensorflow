@@ -317,7 +317,7 @@ void ApplyLayerNormFloat(const int16_t* input,
 void ApplySigmoid(const int16_t* input, int32_t n_batch, int32_t n_input,
                   int16_t* output);
 
-// Same as above but the internal calcualtion is float.
+// Same as above but the internal calculation is float.
 void ApplySigmoidFloat(const int16_t* input, int32_t n_batch, int32_t n_input,
                        int16_t* output);
 
@@ -333,7 +333,7 @@ void ApplySigmoidFloat(const int16_t* input, int32_t n_batch, int32_t n_input,
 void ApplyTanh(int32_t intger_bits, const int16_t* input, int32_t n_batch,
                int32_t n_input, int16_t* output);
 
-// Apply Tanh to a quantized vector. Tbe internal calculation is in float.
+// Apply Tanh to a quantized vector. The internal calculation is in float.
 //    - Input has 2^(integer_bits) as scale.
 //    - Output has Q0.15 as scale.
 void ApplyTanhFloat(const int16_t* input, int32_t n_batch, int32_t n_input,

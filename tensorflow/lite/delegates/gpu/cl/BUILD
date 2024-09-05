@@ -299,6 +299,7 @@ cc_library(
         ":cl_kernel",
         ":program_cache",
         ":tensor",
+        "//tensorflow/lite/delegates/gpu/common/task:compiler_options",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "@com_google_absl//absl/strings",
     ],

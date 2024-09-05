@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/batch_matmul.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
-#include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
@@ -441,7 +440,6 @@ RuntimeShape SwapRowColumnDims(const RuntimeShape& shape) {
   return swapped_shape;
 }
 
-template <KernelType kernel_type>
 TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node, OpData* data,
                         const RuntimeShape& input_shape,
                         const TfLiteTensor* input,
@@ -494,18 +492,10 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node, OpData* data,
     output_size *= output_shape.Dims(i);
   }
   std::fill_n(GetTensorData<float>(output), output_size, 0.0f);
-  if (kernel_type == kGenericOptimized) {
-    optimized_ops::BatchMatMul(
-        filter_shape, filter_data, input_shape, quant_data, scaling_factors_ptr,
-        input_offset_ptr, row_sums_ptr, GetTensorShape(output),
-        GetTensorData<int32_t>(accum_scratch), GetTensorData<float>(output),
-        &(data->compute_row_sums), CpuBackendContext::GetFromContext(context));
-  } else {
-    reference_ops::BatchMatMul(
-        filter_shape, filter_data, input_shape, quant_data, scaling_factors_ptr,
-        input_offset_ptr, row_sums_ptr, GetTensorShape(output),
-        GetTensorData<float>(output), &(data->compute_row_sums));
-  }
+  reference_ops::BatchMatMul(
+      filter_shape, filter_data, input_shape, quant_data, scaling_factors_ptr,
+      input_offset_ptr, row_sums_ptr, GetTensorShape(output),
+      GetTensorData<float>(output), &(data->compute_row_sums));
 
   return kTfLiteOk;
 }
@@ -638,9 +628,9 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
     TfLiteTensor* row_sums;
     TF_LITE_ENSURE_OK(context,
                       GetTemporarySafe(context, node, /*index=*/6, &row_sums));
-    return EvalHybrid<kernel_type>(
-        context, node, data, lhs_shape, lhs, rhs_shape, rhs, input_quantized,
-        scaling_factors, accum_scratch, row_sums, input_offsets, output);
+    return EvalHybrid(context, node, data, lhs_shape, lhs, rhs_shape, rhs,
+                      input_quantized, scaling_factors, accum_scratch, row_sums,
+                      input_offsets, output);
   } else if (lhs->type == kTfLiteInt8 && rhs->type == kTfLiteInt8) {
     if (output->type == kTfLiteInt8) {
       return EvalInt8Int8<kernel_type>(context, data, lhs_shape, lhs, rhs_shape,

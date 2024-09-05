@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/tpu_init_mode.h"
 
+#include "absl/status/status.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"

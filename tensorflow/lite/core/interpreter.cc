@@ -27,14 +27,15 @@ limitations under the License.
 #include <vector>
 
 #include "ruy/denormal.h"  // from @ruy
+#include "tensorflow/compiler/mlir/lite/allocation.h"
 #include "tensorflow/compiler/mlir/lite/experimental/remat/metadata_util.h"
-#include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/signature_runner.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
+#include "tensorflow/lite/internal/signature_def.h"
 #include "tensorflow/lite/interpreter_options.h"
 #include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
@@ -520,7 +521,13 @@ void Interpreter::AddProfiler(std::unique_ptr<Profiler> profiler) {
 }
 
 impl::SignatureRunner* Interpreter::GetSignatureRunner(
-    const char* signature_key) {
+    const char* signature_key_) {
+  auto [signature_key, empty_signature_fallback] =
+      ReplaceWithPlaceholderSignatureKeyIfNeeded(signature_key_);
+  if (!signature_key) {
+    return nullptr;
+  }
+
   auto iter = signature_runner_map_.find(signature_key);
   if (iter != signature_runner_map_.end()) {
     return &(iter->second);
@@ -533,6 +540,14 @@ impl::SignatureRunner* Interpreter::GetSignatureRunner(
     return nullptr;
   }
 
+  if (empty_signature_fallback) {
+    placeholder_signature_def_ = CreatePlaceholderSignatureDef();
+    auto status = signature_runner_map_.insert(
+        {signature_key, SignatureRunner(placeholder_signature_def_.get(),
+                                        &primary_subgraph())});
+    return &(status.first->second);
+  }
+
   for (const auto& signature : signature_defs_) {
     if (signature.signature_key == signature_key) {
       auto status = signature_runner_map_.insert(
@@ -541,7 +556,56 @@ impl::SignatureRunner* Interpreter::GetSignatureRunner(
       return &(status.first->second);
     }
   }
+
   return nullptr;
+}
+
+std::unique_ptr<internal::SignatureDef>
+Interpreter::CreatePlaceholderSignatureDef() {
+  auto placeholder_signature_def = std::make_unique<internal::SignatureDef>();
+  for (auto i = 0; i < inputs().size(); ++i) {
+    auto* name = GetInputName(i);
+    placeholder_signature_def->inputs[name] = inputs()[i];
+  }
+  for (auto i = 0; i < outputs().size(); ++i) {
+    auto* name = GetOutputName(i);
+    placeholder_signature_def->outputs[name] = outputs()[i];
+  }
+  placeholder_signature_def->signature_key = kPlaceholderSignatureDefKey;
+  placeholder_signature_def->subgraph_index = 0;
+  return placeholder_signature_def;
+}
+
+std::pair<const char*, bool>
+Interpreter::ReplaceWithPlaceholderSignatureKeyIfNeeded(
+    const char* signature_key) {
+  // Handles nullptr signature key.
+  // If the model does not have signature def, use default name as placeholder.
+  // Otherwise use the first signature key that points to primary subgraph.
+  bool empty_signature_fallback = false;
+  if (signature_key == nullptr) {
+    if (signature_defs_.empty()) {
+      signature_key = kPlaceholderSignatureDefKey;
+      empty_signature_fallback = true;
+    } else {
+      for (const auto& signature : signature_defs_) {
+        if (signature.subgraph_index == 0) {
+          signature_key = signature.signature_key.c_str();
+          break;
+        }
+      }
+    }
+  }
+
+  if (signature_key == nullptr) {
+    // The model has signature def but none of those points to primary subgraph.
+    TF_LITE_REPORT_ERROR(error_reporter_,
+                         "The model has signature def but none of those points "
+                         "to primary subgraph.");
+    return {nullptr, empty_signature_fallback};
+  } else {
+    return {signature_key, empty_signature_fallback};
+  }
 }
 
 }  // namespace tflite

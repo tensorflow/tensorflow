@@ -311,6 +311,10 @@ cc_library(
     deps = [
         ":pjrt_common",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -440,7 +444,6 @@ cc_library(
 tf_proto_library(
     name = "stream_executor_executable_proto",
     srcs = ["stream_executor_executable.proto"],
-    cc_api_version = 2,
     protodeps = [
         ":compile_options_proto",
         "//xla:xla_proto",
@@ -614,12 +617,13 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
         "@local_tsl//tsl/platform:statusor",
-        "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@shardy//shardy/dialect/sdy/ir:register",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:register",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_passes",
         "@stablehlo//:stablehlo_serialization",
+        "@stablehlo//:version",
     ],
 )
 
@@ -926,7 +930,6 @@ xla_cc_test(
 tf_proto_library(
     name = "compile_options_proto",
     srcs = ["compile_options.proto"],
-    cc_api_version = 2,
     protodeps = [
         "//xla:xla_data_proto",
         "//xla:xla_proto",

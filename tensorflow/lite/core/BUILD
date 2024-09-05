@@ -43,16 +43,12 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
-    visibility = [
-        "//tensorflow/lite:__subpackages__",
-    ],
+    visibility = ["//tensorflow/lite:__subpackages__"],
     deps = [
         ":cc_api_stable",
         ":signature_runner",
-        "//tensorflow/compiler/mlir/lite/core:macros",
         "//tensorflow/compiler/mlir/lite/core:model_builder_base",
         "//tensorflow/compiler/mlir/lite/experimental/remat:metadata_util",
-        "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/lite:allocation",
         "//tensorflow/lite:array",
         "//tensorflow/lite:external_cpu_backend_context",
@@ -67,7 +63,6 @@ cc_library(
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core/api",
-        "//tensorflow/lite/core/api:verifier",
         "//tensorflow/lite/core/async:async_signature_runner",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/experimental/resource",
@@ -371,6 +366,7 @@ cc_test(
     ],
     deps = [
         ":framework",
+        "//tensorflow/compiler/mlir/lite:allocation",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/core/api",

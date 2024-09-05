@@ -47,7 +47,8 @@ class OneDnnContractionRewriter : public HloModulePass {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
-  static bool ShouldRewriteDot(const HloInstruction* dot_instr);
+  static bool ShouldRewriteDot(const HloInstruction* dot_instr,
+                               bool before_layout_assignment = false);
   static bool ShouldRewriteConv(const HloInstruction* conv_instr);
 
  private:

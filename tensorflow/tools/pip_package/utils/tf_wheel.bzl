@@ -23,10 +23,18 @@ Should be set via --repo_env=WHEEL_NAME=tensorflow_cpu.
 6) `--xla_aot` - paths to files that should be in xla_aot directory. 
 """
 
+load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 load("@python_version_repo//:py_version.bzl", "WHEEL_COLLAB", "WHEEL_NAME")
 load("//tensorflow:tensorflow.bzl", "VERSION")
 
 def _tf_wheel_impl(ctx):
+    include_cuda_libs = ctx.attr.include_cuda_libs[BuildSettingInfo].value
+    if include_cuda_libs:
+        override_include_cuda_libs = ctx.attr.override_include_cuda_libs[BuildSettingInfo].value
+        if not override_include_cuda_libs:
+            fail("TF wheel shouldn't be built with CUDA dependencies." +
+                 " Please provide `--config=cuda_wheel` for bazel build command." +
+                 " If you absolutely need to add CUDA dependencies, provide `--@local_config_cuda//cuda:override_include_cuda_libs=true`.")
     executable = ctx.executable.wheel_binary
 
     output = ctx.actions.declare_directory("wheel_house")
@@ -70,6 +78,8 @@ tf_wheel = rule(
             executable = True,
             cfg = "exec",
         ),
+        "include_cuda_libs": attr.label(default = Label("@local_config_cuda//cuda:include_cuda_libs")),
+        "override_include_cuda_libs": attr.label(default = Label("@local_config_cuda//cuda:override_include_cuda_libs")),
     },
     implementation = _tf_wheel_impl,
 )

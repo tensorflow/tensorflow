@@ -91,6 +91,7 @@ cc_library(
         "//xla/tsl/framework:bfc_allocator",
         "//xla/tsl/framework:device_id",
         "//xla/tsl/framework:device_id_impl",
+        "//xla/tsl/lib/strings:proto_serialization",
         "//xla/tsl/util:env_var",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
@@ -108,7 +109,6 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/lib/strings:proto_serialization",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
@@ -152,6 +152,7 @@ xla_cc_test(
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:test",
+        "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/client:xla_computation",
         "//xla/ffi",
@@ -175,6 +176,7 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
@@ -225,7 +227,6 @@ xla_test(
 tf_proto_library(
     name = "gpu_topology_proto",
     srcs = ["gpu_topology.proto"],
-    cc_api_version = 2,
     visibility = ["//visibility:public"],
 )
 

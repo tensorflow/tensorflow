@@ -1823,8 +1823,75 @@ TEST_F(CoordinateTwoTasksTest, DoNotAllowPollForErrorIfTaskNotRegistered) {
   coord_service_->PollForErrorAsync(
       task_0_, [&](const absl::Status& status) { s = status; });
 
-  EXPECT_THAT(s, StatusIs(absl::StatusCode::kInvalidArgument,
+  EXPECT_THAT(s, StatusIs(absl::StatusCode::kFailedPrecondition,
                           HasSubstr("has not been registered")));
+}
+
+TEST_F(CoordinateTwoTasksTest,
+       AllowPollForErrorWithinGracePeriodIfTaskHasShutDown) {
+  EnableCoordinationService(/*has_service_to_client_connection=*/false);
+  absl::Status s;
+  ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
+  coord_service_->ShutdownTaskAsync(task_0_,
+                                    [&](const absl::Status& status) {});
+  coord_service_->ShutdownTaskAsync(task_1_,
+                                    [&](const absl::Status& status) {});
+
+  coord_service_->PollForErrorAsync(
+      task_0_, [&](const absl::Status& status) { s = status; });
+  // Stop the service.
+  coord_service_.reset();
+  // The error polling request will still proceed because of grace period. It
+  // will be cancelled.
+  EXPECT_THAT(s, StatusIs(absl::StatusCode::kCancelled));
+}
+
+TEST_F(CoordinateTwoTasksTest, DoNotAllowPollForErrorIfTaskHasShutDown) {
+  EnableCoordinationService(/*has_service_to_client_connection=*/false);
+  absl::Status s;
+  ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  ASSERT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
+  coord_service_->ShutdownTaskAsync(task_0_,
+                                    [&](const absl::Status& status) {});
+  coord_service_->ShutdownTaskAsync(task_1_,
+                                    [&](const absl::Status& status) {});
+
+  // Sleep past the grace period.
+  Env::Default()->SleepForMicroseconds(
+      absl::ToInt64Microseconds(2 * kHeartbeatTimeout));
+  coord_service_->PollForErrorAsync(
+      task_0_, [&](const absl::Status& status) { s = status; });
+  EXPECT_THAT(s, StatusIs(absl::StatusCode::kFailedPrecondition,
+                          HasSubstr("has disconnected")));
+}
+
+TEST_F(CoordinateTwoTasksTest, DoNotAllowPollForErrorAfterReset) {
+  EnableCoordinationService(/*has_service_to_client_connection=*/false);
+  absl::Status s;
+  ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  ASSERT_OK(coord_service_->ResetTask(task_0_));
+
+  // Sleep past the grace period.
+  Env::Default()->SleepForMicroseconds(
+      absl::ToInt64Microseconds(2 * kHeartbeatTimeout));
+  coord_service_->PollForErrorAsync(
+      task_0_, [&](const absl::Status& status) { s = status; });
+  EXPECT_THAT(s, StatusIs(absl::StatusCode::kFailedPrecondition,
+                          HasSubstr("has disconnected")));
+}
+
+TEST_F(CoordinateTwoTasksTest, DoNotAllowPollForErrorWhenInErrorState) {
+  EnableCoordinationService(/*has_service_to_client_connection=*/false);
+  absl::Status s;
+  ASSERT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  ASSERT_OK(coord_service_->ReportTaskError(task_0_,
+                                            absl::InternalError("test_error")));
+
+  coord_service_->PollForErrorAsync(
+      task_0_, [&](const absl::Status& status) { s = status; });
+  EXPECT_THAT(s, StatusIs(absl::StatusCode::kFailedPrecondition,
+                          HasSubstr("test_error")));
 }
 
 TEST_F(CoordinateTwoTasksTest, DoNotAllowPollForErrorIfServiceHasStopped) {

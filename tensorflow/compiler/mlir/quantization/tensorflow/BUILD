@@ -544,7 +544,6 @@ tf_proto_library(
     srcs = [
         "quantization_options.proto",
     ],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         "//tensorflow/core:protos_all",
@@ -569,7 +568,6 @@ tf_proto_library(
 tf_proto_library(
     name = "exported_model_proto",
     srcs = ["exported_model.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         "//tensorflow/core:protos_all",

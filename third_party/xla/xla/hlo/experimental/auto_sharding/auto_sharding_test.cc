@@ -23,12 +23,15 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_cost_graph.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_device_mesh.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
@@ -68,25 +71,72 @@ using ::testing::Pair;
 using ::testing::ResultOf;
 using ::testing::UnorderedElementsAre;
 
-using DummyAutoShardingTest = HloTestBase;
+TEST(DeviceMeshTest, IotaDeviceMesh2DStartsWith0) {
+  DeviceMesh device_mesh({2, 4});
+  device_mesh.FillIota(0);
+  EXPECT_TRUE(device_mesh.is_iota);
+  EXPECT_THAT(device_mesh.dimensions(), ElementsAre(2, 4));
+  EXPECT_EQ(device_mesh.num_elements(), 8);
+}
 
-TEST_F(DummyAutoShardingTest, ReplicatedShardingDummy) {
-  constexpr absl::string_view kHloString = R"(
-HloModule module
-ENTRY %elementwise {
-  %param0 = f32[5,7,11,13]{3,2,1,0} parameter(0)
-  %param1 = f32[5,7,11,13]{3,2,1,0} parameter(1)
-  %add = f32[5,7,11,13]{3,2,1,0} add(%param0, %param1)
-  ROOT %copy = f32[5,7,11,13]{3,2,1,0} copy(%add)
-})";
+TEST(DeviceMeshTest, IotaDeviceMesh3DStartsWithNonZero) {
+  DeviceMesh device_mesh({2, 4, 8});
+  device_mesh.FillIota(55);
+  EXPECT_TRUE(device_mesh.is_iota);
+  EXPECT_THAT(device_mesh.dimensions(), ElementsAre(2, 4, 8));
+  EXPECT_EQ(device_mesh.num_elements(), 64);
+}
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, DummyAutoSharding().Run(module.get()));
-  EXPECT_TRUE(changed);
-  auto* instruction = FindInstruction(module.get(), "param0");
-  ASSERT_NE(instruction, nullptr);
-  EXPECT_THAT(instruction, op::Sharding("{replicated}"));
+TEST(DeviceMeshTest, ExplicitSetValuesInferIotaIotaValues) {
+  DeviceMesh device_mesh({2, 4, 8});
+  std::vector<int64_t> device_mesh_values(64);
+  absl::c_iota(device_mesh_values, 34);
+  device_mesh.SetValues(device_mesh_values);
+  EXPECT_TRUE(device_mesh.is_iota);
+  EXPECT_THAT(device_mesh.dimensions(), ElementsAre(2, 4, 8));
+  EXPECT_EQ(device_mesh.num_elements(), 64);
+}
+
+TEST(DeviceMeshTest, ExplicitSetValuesInferIotaNonIotaValues) {
+  DeviceMesh device_mesh({2, 4, 8});
+  std::vector<int64_t> device_mesh_values(64);
+  absl::c_iota(device_mesh_values, 34);
+  device_mesh_values[54] = 54;
+  device_mesh.SetValues(device_mesh_values);
+  EXPECT_FALSE(device_mesh.is_iota);
+  EXPECT_THAT(device_mesh.dimensions(), ElementsAre(2, 4, 8));
+  EXPECT_EQ(device_mesh.num_elements(), 64);
+}
+
+TEST(DeviceMeshTest, ReshapeTestWithoutIota) {
+  DeviceMesh device_mesh({2, 4, 8});
+  std::vector<int64_t> device_mesh_values(64);
+  absl::c_iota(device_mesh_values, 34);
+  device_mesh_values[54] = 54;
+  device_mesh.SetValues(device_mesh_values);
+  EXPECT_FALSE(device_mesh.is_iota);
+  EXPECT_THAT(device_mesh.dimensions(), ElementsAre(2, 4, 8));
+  EXPECT_EQ(device_mesh.num_elements(), 64);
+
+  device_mesh.Reshape({2, 32});
+  EXPECT_FALSE(device_mesh.is_iota);
+  EXPECT_THAT(device_mesh.dimensions(), ElementsAre(2, 32));
+  EXPECT_EQ(device_mesh.num_elements(), 64);
+}
+
+TEST(DeviceMeshTest, ReshapeTestWithIota) {
+  DeviceMesh device_mesh({2, 4, 8});
+  std::vector<int64_t> device_mesh_values(64);
+  absl::c_iota(device_mesh_values, 34);
+  device_mesh.SetValues(device_mesh_values);
+  EXPECT_TRUE(device_mesh.is_iota);
+  EXPECT_THAT(device_mesh.dimensions(), ElementsAre(2, 4, 8));
+  EXPECT_EQ(device_mesh.num_elements(), 64);
+
+  device_mesh.Reshape({2, 32});
+  EXPECT_TRUE(device_mesh.is_iota);
+  EXPECT_THAT(device_mesh.dimensions(), ElementsAre(2, 32));
+  EXPECT_EQ(device_mesh.num_elements(), 64);
 }
 
 class AutoShardingTest : public HloTestBase {
@@ -266,34 +316,12 @@ ENTRY %elementwise {
   EXPECT_THAT(instruction, op::Sharding("{devices=[2,2]0,2,1,3}"));
 }
 
-TEST_F(AutoShardingTest, Unsupported3DShardingTest) {
-  constexpr absl::string_view kHloString = R"(
-HloModule module
-ENTRY %elementwise {
-  %param0 = f32[32,32,32,32] parameter(0)
-  %param1 = f32[32,32,32,32] parameter(1)
-  %add = f32[32,32,32,32] add(%param0, %param1), sharding={devices=[2,2,1,2]<=[8]}
-  ROOT %copy = f32[32,32,32,32] copy(%add)
-})";
-
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
-  AutoShardingOption option;
-  option.enable = true;
-  // The case of a fleet HLO when run with try_multiple_mesh_shapes = true
-  option.device_mesh_shape = {2, 4};
-  option.device_mesh_alpha = {1.0, 1.0};
-  option.device_mesh_beta = {0.01, 1.0};
-  EXPECT_DEATH(auto status = AutoSharding(option).Run(module.get()),
-               ".*too many axes.*");
-}
-
 TEST_F(AutoShardingTest, NDIterativeSolveTest) {
   constexpr absl::string_view kHloString = R"(
 HloModule module
 
 ENTRY %elementwise {
-  param = s32[512,3084]{1,0} parameter(0), sharding={devices=[256,1]0,1,2,3,4,5,6,7,16,17,18,19,20,21,22,23,8,9,10,11,12,13,14,15,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255}
+  param = s32[512,3084]{1,0} parameter(0), sharding={devices=[256,1]<=[16,16]T(1,0)}
   sharding_call = s32[512,3084]{1,0} custom-call(param), custom_call_target="Sharding", sharding={devices=[256,1]<=[256]}
   ROOT slice = s32[512,2048]{1,0} slice(sharding_call), slice={[0:512], [0:2048]}
 })";
@@ -344,6 +372,56 @@ ENTRY %elementwise {
       AnyOf(op::Sharding("{devices=[4,1]0,1,2,3}"),
             op::Sharding("{devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}"),
             op::Sharding("{devices=[2,1,2]0,2,1,3 last_tile_dim_replicate}")));
+}
+
+TEST_F(AutoShardingTest, SliceInvalidStrategyFollowingTest) {
+  constexpr absl::string_view kHloString = R"(
+HloModule module
+
+ENTRY %elementwise {
+  param = s32[512,2084]{1,0} parameter(0)
+  slice = s32[32,2048]{1,0} slice(param), slice={[0:32], [0:2048]}
+  ROOT copy = s32[32,2048]{1,0} copy(slice)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, AutoSharding(/* option */ {.enable = true,
+                                               .device_mesh_shape = {64, 1},
+                                               .device_mesh_alpha = {1.0, 1.0},
+                                               .device_mesh_beta = {0.01, 1.0}})
+                        .Run(module.get()));
+  VLOG(10) << module->ToString();
+  EXPECT_TRUE(changed);
+  const HloInstruction* slice = FindInstruction(module.get(), "slice");
+  ASSERT_NE(slice, nullptr);
+  EXPECT_THAT(slice, op::Sharding("{replicated}"));
+}
+
+TEST_F(AutoShardingTest, SliceForcedInvalidStrategyFollowingTest) {
+  constexpr absl::string_view kHloString = R"(
+HloModule module
+
+ENTRY %elementwise {
+  param = s32[512,2084]{1,0} parameter(0), sharding={devices=[64,1]<=[64]}
+  slice = s32[32,2048]{1,0} slice(param), slice={[0:32], [0:2048]}
+  ROOT copy = s32[32,2048]{1,0} copy(slice)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, AutoSharding(/* option */ {.enable = true,
+                                               .device_mesh_shape = {64, 1},
+                                               .device_mesh_alpha = {1.0, 1.0},
+                                               .device_mesh_beta = {0.01, 1.0}})
+                        .Run(module.get()));
+  VLOG(10) << module->ToString();
+  EXPECT_TRUE(changed);
+  const HloInstruction* slice = FindInstruction(module.get(), "slice");
+  ASSERT_NE(slice, nullptr);
+  EXPECT_THAT(slice, op::Sharding("{devices=[64,1]<=[64]}"));
 }
 
 TEST_F(AutoShardingTest, IotaPartiallyReplicatedShardingTest) {
@@ -554,7 +632,7 @@ ENTRY %RngBitGenerator (p0: u64[2]) -> (u64[2], u32[16,16]) {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
   VLOG(10) << module->ToString();
   EXPECT_TRUE(changed);
-  auto* instruction = FindInstruction(module.get(), "p0");
+  const HloInstruction* instruction = FindInstruction(module.get(), "p0");
   ASSERT_NE(instruction, nullptr);
   EXPECT_THAT(instruction, op::Sharding("{replicated}"));
 }
@@ -687,12 +765,47 @@ ENTRY %RngBitGenerator {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
   VLOG(10) << module->ToString();
   EXPECT_TRUE(changed);
-  auto* param0 = FindInstruction(module.get(), "param.0");
-  auto* param1 = FindInstruction(module.get(), "param.1");
+  const HloInstruction* param0 = FindInstruction(module.get(), "param.0");
+  const HloInstruction* param1 = FindInstruction(module.get(), "param.1");
   ASSERT_NE(param0, nullptr);
   ASSERT_NE(param0, nullptr);
   EXPECT_THAT(param0, op::Sharding("{replicated}"));
   EXPECT_THAT(param1, op::Sharding("{replicated}"));
+}
+
+TEST_F(AutoShardingTest, DotMixedMeshStrategies) {
+  constexpr absl::string_view kHloString = R"(
+HloModule module
+ENTRY %entry {
+  %param0 = f32[8192,23]{1,0} parameter(0), sharding={devices=[4,1]0,1,2,3}
+  %param1 = f32[23,23]{1,0} parameter(1)
+  %dot = f32[8192,23]{1,0} dot(%param0, %param1), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  ROOT %copy = f32[8192,23]{1,0} copy(%dot)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  AutoShardingOption option;
+  option.enable = true;
+  option.device_mesh_shape = {2, 2};
+  option.device_mesh_ids = {0, 1, 2, 3};
+  option.device_mesh_alpha = {1.0, 1.0};
+  option.device_mesh_beta = {0.01, 1.0};
+  option.solve_nd_sharding_iteratively = false;
+  option.preserve_shardings =
+      AutoShardingOption::PreserveShardingsType::kKeepAllShardings;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
+  VLOG(2) << module->ToString();
+  EXPECT_TRUE(changed);
+  const HloInstruction* param0 = FindInstruction(module.get(), "param0");
+  const HloInstruction* param1 = FindInstruction(module.get(), "param1");
+  const HloInstruction* dot = FindInstruction(module.get(), "dot");
+  ASSERT_NE(param0, nullptr);
+  ASSERT_NE(param1, nullptr);
+  ASSERT_NE(dot, nullptr);
+  EXPECT_THAT(param0, op::Sharding("{devices=[4,1]0,1,2,3}"));
+  EXPECT_THAT(param1, op::Sharding("{replicated}"));
+  EXPECT_THAT(dot, op::Sharding("{devices=[4,1]0,1,2,3}"));
 }
 
 TEST_F(AutoShardingTest, DotLHSTwoNonContractingDims) {
@@ -717,9 +830,9 @@ ENTRY %entry {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
   VLOG(2) << module->ToString();
   EXPECT_TRUE(changed);
-  auto* param0 = FindInstruction(module.get(), "param0");
-  auto* param1 = FindInstruction(module.get(), "param1");
-  auto* dot = FindInstruction(module.get(), "dot");
+  const HloInstruction* param0 = FindInstruction(module.get(), "param0");
+  const HloInstruction* param1 = FindInstruction(module.get(), "param1");
+  const HloInstruction* dot = FindInstruction(module.get(), "dot");
   ASSERT_NE(param0, nullptr);
   ASSERT_NE(param1, nullptr);
   ASSERT_NE(dot, nullptr);
@@ -770,9 +883,9 @@ ENTRY %entry {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
   VLOG(2) << module->ToString();
   EXPECT_TRUE(changed);
-  auto* param0 = FindInstruction(module.get(), "param0");
-  auto* param1 = FindInstruction(module.get(), "param1");
-  auto* dot = FindInstruction(module.get(), "dot");
+  const HloInstruction* param0 = FindInstruction(module.get(), "param0");
+  const HloInstruction* param1 = FindInstruction(module.get(), "param1");
+  const HloInstruction* dot = FindInstruction(module.get(), "dot");
   ASSERT_NE(param0, nullptr);
   ASSERT_NE(param1, nullptr);
   ASSERT_NE(dot, nullptr);
@@ -2480,6 +2593,36 @@ ENTRY entry {
       module->input_output_alias_config();
   EXPECT_EQ(input_output_alias_config_before.ToString(),
             input_output_alias_config_after.ToString());
+}
+
+TEST(NormalizeTest, NormalizeHandlesNegativeCosts) {
+  EdgeReshardingCostMatrix edge_cost(2, 2);
+  edge_cost(0, 0).communication_cost = -100;
+  edge_cost(0, 1).communication_cost = 200;
+  edge_cost(1, 0).communication_cost = 300;
+  edge_cost(1, 1).communication_cost = 400;
+
+  const EdgeReshardingCostMatrix normalized_edge_cost = Normalize(edge_cost);
+
+  EXPECT_EQ(normalized_edge_cost(0, 0).communication_cost, 0);
+  EXPECT_EQ(normalized_edge_cost(0, 1).communication_cost, 300);
+  EXPECT_EQ(normalized_edge_cost(1, 0).communication_cost, 400);
+  EXPECT_EQ(normalized_edge_cost(1, 1).communication_cost, 500);
+}
+
+TEST(NormalizeTest, NormalizeHandlesPositiveCosts) {
+  EdgeReshardingCostMatrix edge_cost(2, 2);
+  edge_cost(0, 0).communication_cost = 100;
+  edge_cost(0, 1).communication_cost = 200;
+  edge_cost(1, 0).communication_cost = 300;
+  edge_cost(1, 1).communication_cost = 400;
+
+  const EdgeReshardingCostMatrix normalized_edge_cost = Normalize(edge_cost);
+
+  EXPECT_EQ(normalized_edge_cost(0, 0).communication_cost, 100);
+  EXPECT_EQ(normalized_edge_cost(0, 1).communication_cost, 200);
+  EXPECT_EQ(normalized_edge_cost(1, 0).communication_cost, 300);
+  EXPECT_EQ(normalized_edge_cost(1, 1).communication_cost, 400);
 }
 
 }  // namespace

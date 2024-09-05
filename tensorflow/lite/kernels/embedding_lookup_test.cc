@@ -92,6 +92,19 @@ class EmbeddingLookupOpModel : public BaseEmbeddingLookupOpModel {
       }
     }
   }
+
+  template <typename T>
+  void Set2DWeightMatrix(const std::function<T(int, int)>& function) {
+    TfLiteTensor* tensor = interpreter_->tensor(weight_);
+    int64_t rows = tensor->dims->data[0];
+    int64_t columns = tensor->dims->data[1];
+    T* data = GetTensorData<T>(tensor);
+    for (int64_t i = 0; i < rows; i++) {
+      for (int64_t j = 0; j < columns; j++) {
+        data[i * columns + j] = function(i, j);
+      }
+    }
+  }
 };
 
 class HybridEmbeddingLookupOpModel : public BaseEmbeddingLookupOpModel {
@@ -143,6 +156,28 @@ TEST(EmbeddingLookupOpTest, SimpleTest) {
                   2.00, 2.01, 2.02, 2.03, 2.10, 2.11, 2.12, 2.13,  // Row 2
               })));
 }
+
+#if !defined(MEMORY_SANITIZER) && !defined(GOOGLE_UNSUPPORTED_OS_LOONIX) && \
+    defined(__LP64__)
+TEST(EmbeddingLookupOpTest, LargeTableTest) {
+  EmbeddingLookupOpModel m({1}, {256000, 9216});
+  // Choose a value specifically designed to overflow int32.max
+  m.SetInput({235248});
+  m.Set2DWeightMatrix<float>(
+      [](int i, int j) -> float { return j + i / 100.; });
+
+  // This will cause a lookup at index 235248 in a buffer where every row
+  // has 9216 entries * 4 bytes per entry, which will overflow unless
+  // the Op is using a 64-bit offset for address calculation.
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  std::vector<float> exp(9216);
+
+  for (int s = 0; s < exp.size(); s++) {
+    exp[s] = static_cast<float>(s) + 2352.48f;
+  }
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear(exp)));
+}
+#endif
 
 TEST(HybridEmbeddingLookupHybridOpTest, Simple2DTestUint8) {
   HybridEmbeddingLookupOpModel m({3}, {3, 8}, TensorType_UINT8);

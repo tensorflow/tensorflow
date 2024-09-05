@@ -112,7 +112,7 @@ class GraphConstructor {
         : allow_internal_ops(false),
           expect_device_spec(false),
           propagate_device_spec(in.propagate_device_spec),
-          prefix(in.prefix.empty() || str_util::EndsWith(in.prefix, "/")
+          prefix(in.prefix.empty() || absl::EndsWith(in.prefix, "/")
                      ? in.prefix
                      : in.prefix + "/"),
           uniquify_names(in.uniquify_names),
@@ -370,7 +370,7 @@ class GraphConstructor {
 
   // Mapping between index within node_defs_ and the index within node_defs_ of
   // all nodes it outputs to.
-  std::vector<gtl::InlinedVector<int, 4>> outputs_;
+  std::vector<absl::InlinedVector<int, 4UL>> outputs_;
 
   // Used in the conversion from node_defs_ to g_ to represent the ith input
   // of a node.

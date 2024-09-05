@@ -278,7 +278,8 @@ class HloTestBase : public ManifestCheckingTest {
       std::unique_ptr<HloModule> module,
       const absl::Span<Literal* const> arguments,
       const std::optional<ErrorSpec>& error,
-      const std::function<void(HloModule*)>& reference_preprocessor = nullptr);
+      const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
+      const std::function<void(HloModule*)>& test_preprocessor = nullptr);
 
   // Executes an hlo module with fake inputs and compares the results.
   [[nodiscard]] ::testing::AssertionResult RunAndCompare(
@@ -290,7 +291,8 @@ class HloTestBase : public ManifestCheckingTest {
   // optimization.
   [[nodiscard]] ::testing::AssertionResult RunAndCompareNoHloPasses(
       std::unique_ptr<HloModule> module, const std::optional<ErrorSpec>& error,
-      const std::function<void(HloModule*)>& reference_preprocessor = nullptr);
+      const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
+      const std::function<void(HloModule*)>& test_preprocessor = nullptr);
 
   // Executes an hlo module with fake inputs and checks that the execution is
   // successful.
@@ -384,7 +386,8 @@ class HloTestBase : public ManifestCheckingTest {
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr);
   [[nodiscard]] ::testing::AssertionResult RunAndCompareNoHloPasses(
       const absl::string_view hlo_string, const std::optional<ErrorSpec>& error,
-      const std::function<void(HloModule*)>& reference_preprocessor = nullptr);
+      const std::function<void(HloModule*)>& reference_preprocessor = nullptr,
+      const std::function<void(HloModule*)>& test_preprocessor = nullptr);
   [[nodiscard]] ::testing::AssertionResult RunAndCompareNoHloPassesFromFile(
       const std::string& filename, const std::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr);
@@ -425,7 +428,10 @@ class HloTestBase : public ManifestCheckingTest {
   }
 
   // Gets the computation/instruction from the given module with the given name.
-  //
+  // Note that it is encouraged to use these functions directly via the
+  // hlo_query.h header instead since they are independent from any test-time
+  // variables or contexts.
+
   // This is useful for tests which create HLOs from a string and then want to
   // inspect a particular computation or instruction.
   HloComputation* FindComputation(HloModule* module, absl::string_view name);
@@ -443,6 +449,8 @@ class HloTestBase : public ManifestCheckingTest {
 
   // Returns the backend owned by the test runner.
   Backend& backend();
+  const Backend& backend() const;
+
   int64_t num_devices() { return backend().device_count(); }
 
   HloRunner test_runner_;
@@ -458,6 +466,12 @@ class HloTestBase : public ManifestCheckingTest {
   HloComputation* AddEntryComputationAndUpdateEntryComputationLayout(
       HloModule*, std::unique_ptr<HloComputation> computation);
   void UpdateEntryComputationLayout(HloModule* module);
+
+  // Updates the entry computation layout to match the program shape. Useful
+  // when tiling assignment has been run to update the latter and we want those
+  // changes propagated into the former.
+  absl::Status UpdateEntryComputationLayoutToMatchProgramLayout(
+      HloModule* module);
 
   absl::StatusOr<std::unique_ptr<HloRunnerInterface>> GetHloRunner();
 
@@ -494,7 +508,8 @@ class HloTestBase : public ManifestCheckingTest {
       std::unique_ptr<HloModule> module,
       const absl::Span<Literal* const> arguments,
       const std::optional<ErrorSpec>& error, bool run_hlo_passes,
-      const std::function<void(HloModule*)>& reference_preprocessor);
+      const std::function<void(HloModule*)>& reference_preprocessor,
+      const std::function<void(HloModule*)>& test_preprocessor = nullptr);
 
   // Runs the two module with or without running hlo passes and compares
   // the results. Returns whether the results are near or equal. If any

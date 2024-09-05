@@ -22,6 +22,7 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <limits>
+#include <list>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -43,13 +44,23 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/map_util.h"
+#include "xla/service/buffer_value.h"
 #include "xla/service/heap_simulator/allocation_block.h"
+#include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_alias_analysis.h"
+#include "xla/service/hlo_buffer.h"
+#include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_value.h"
+#include "xla/service/logical_buffer.h"
 #include "xla/service/time_utils.h"
 #include "xla/util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -219,14 +230,12 @@ absl::StatusOr<int64_t> HeapSimulator::MinimumMemoryForModule(
 absl::StatusOr<int64_t> HeapSimulator::MinimumMemoryForComputation(
     const HloComputation& computation, const HloInstructionSequence& sequence,
     const HloAliasAnalysis& alias_analysis,
-    const LogicalBuffer::SizeFunction& size_function,
-    const absl::flat_hash_map<const HloComputation*, int64_t>*
-        memory_by_computation) {
+    const LogicalBuffer::SizeFunction& size_function) {
   TF_ASSIGN_OR_RETURN(
       HeapSimulator::Result<HloValue> result,
       HeapSimulator::Run(std::make_unique<NoFragmentationStatsHeap<HloValue>>(),
                          computation, sequence, alias_analysis, size_function,
-                         HeapSimulator::Options(), memory_by_computation));
+                         HeapSimulator::Options()));
   return result.heap_size;
 }
 
@@ -267,11 +276,9 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
     const HloComputation& computation,
     const HloInstructionSequence& instruction_sequence,
     const HloAliasAnalysis& alias_analysis,
-    const BufferValue::SizeFunction& size_fn, const Options& options,
-    const absl::flat_hash_map<const HloComputation*, int64_t>*
-        memory_by_computation) {
+    const BufferValue::SizeFunction& size_fn, const Options& options) {
   HeapSimulator heap(std::move(algorithm), size_fn, options,
-                     /*schedule=*/nullptr, memory_by_computation);
+                     /*schedule=*/nullptr);
   HloSchedule schedule(computation.parent());
   schedule.set_sequence(&computation, instruction_sequence);
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
@@ -291,7 +298,7 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
     const BufferValue::SizeFunction& size_fn, const HloSchedule* schedule,
     const Options& options) {
   HeapSimulator heap(std::move(algorithm), size_fn, options,
-                     /*schedule=*/schedule, nullptr);
+                     /*schedule=*/schedule);
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloLiveRange> hlo_live_range,
       HloLiveRange::Run(*schedule, alias_analysis, &computation));
@@ -492,19 +499,16 @@ absl::Status HeapSimulator::RunComputation(
   return absl::OkStatus();
 }
 
-HeapSimulator::HeapSimulator(
-    std::unique_ptr<HeapAlgorithm<HloValue>> algorithm,
-    const BufferValue::SizeFunction& size_fn, const Options& options,
-    const HloSchedule* schedule,
-    const absl::flat_hash_map<const HloComputation*, int64_t>*
-        memory_by_computation)
+HeapSimulator::HeapSimulator(std::unique_ptr<HeapAlgorithm<HloValue>> algorithm,
+                             const BufferValue::SizeFunction& size_fn,
+                             const Options& options,
+                             const HloSchedule* schedule)
     : no_fragmentation_stats_(
           std::make_unique<NoFragmentationStatsHeap<HloValue>>()),
       algorithm_(std::move(algorithm)),
       size_fn_(size_fn),
       options_(options),
-      schedule_(schedule),
-      memory_by_computation_(memory_by_computation) {
+      schedule_(schedule) {
   debug_trace_.set_whole_module_simulation(schedule_ != nullptr);
 }
 
@@ -629,21 +633,10 @@ void NoFragmentationStatsHeap<BufferType>::Alloc(const BufferType* buffer,
 
 template <typename BufferType>
 void NoFragmentationStatsHeap<BufferType>::AccountForSubcomputationMemory(
-    const HloInstruction* instruction, int64_t alloc_size_by_instruction,
-    const absl::flat_hash_map<const HloComputation*, int64_t>&
-        memory_by_computation) {
+    const HloInstruction* instruction, int64_t alloc_size_by_instruction) {
   // We only count the memory usage of the largest subcomputation, instead of
   // adding them all, because subcomputations won't execute in parallel.
   int64_t max_subcomputation_bytes = 0;
-  for (const auto* c : instruction->called_computations()) {
-    auto it = memory_by_computation.find(c);
-    if (it != memory_by_computation.end()) {
-      int64_t subcomputation_bytes = it->second;
-      if (subcomputation_bytes > max_subcomputation_bytes) {
-        max_subcomputation_bytes = subcomputation_bytes;
-      }
-    }
-  }
   if (max_subcomputation_bytes > 0 &&
       (instruction->opcode() == HloOpcode::kWhile ||
        instruction->opcode() == HloOpcode::kCall ||
@@ -1017,6 +1010,35 @@ std::string BufferIntervalTree::NodesOverlappingInTimeToAsciiArt(
       GetMemoryMap(start, end, memory_block_size, num_memory_blocks, nodes);
   return MemoryMapToString(start, end, memory_block_size, group_size,
                            memory_map);
+}
+
+std::vector<int64_t> BufferIntervalTree::MemoryUsedInInterval(
+    int64_t start, int64_t end) const {
+  int64_t total_time = end - start + 1;
+  CHECK_GE(total_time, 0);
+  std::vector<const BufferIntervalTreeNode*> nodes =
+      NodesOverlappingInTime(start, end);
+  std::vector<int64_t> memory_used_in_interval(total_time, 0);
+  for (const BufferIntervalTreeNode* node : nodes) {
+    int64_t node_start = std::max(node->start, start);
+    int64_t node_end = std::min(node->end, end);
+    for (int64_t time = node_start; time <= node_end; ++time) {
+      memory_used_in_interval[time - start] += node->chunk.size;
+    }
+  }
+  return memory_used_in_interval;
+}
+
+int64_t BufferIntervalTree::HeapSizeInInterval(const int64_t start,
+                                               const int64_t end) const {
+  CHECK_LE(start, end);
+  std::vector<const BufferIntervalTreeNode*> nodes =
+      NodesOverlappingInTime(start, end);
+  int64_t max_memory_used = 0;
+  for (const BufferIntervalTreeNode* node : nodes) {
+    max_memory_used = std::max(max_memory_used, node->chunk.chunk_end());
+  }
+  return max_memory_used;
 }
 
 template <typename BufferType>

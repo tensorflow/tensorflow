@@ -15,12 +15,12 @@ limitations under the License.
 
 #include "tensorflow/examples/speech_commands/recognize_commands.h"
 
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 

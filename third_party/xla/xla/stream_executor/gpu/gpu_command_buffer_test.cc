@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/gpu/gpu_types.h"  // IWYU pragma: keep
@@ -60,11 +61,7 @@ static Platform* GpuPlatform() {
 
 static MultiKernelLoaderSpec GetAddI32KernelSpec() {
   MultiKernelLoaderSpec spec(/*arity=*/3);
-#if defined(GOOGLE_CUDA)
-  spec.AddCudaPtxInMemory(internal::kAddI32Kernel, "add");
-#elif defined(TENSORFLOW_USE_ROCM)
-  spec.AddCudaCubinInMemory(internal::kAddI32KernelModule, "add");
-#endif
+  spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
   return spec;
 }
 
@@ -113,7 +110,7 @@ TEST(GpuCommandBufferTest, LaunchSingleKernel) {
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
   MultiKernelLoaderSpec spec(/*arity=*/3);
-  spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "add");
+  spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
   TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor, spec));
 
   int64_t length = 4;
@@ -183,7 +180,7 @@ TEST(CudaCommandBufferTest, TraceSingleKernel) {
                                                  cast(bufs[2]),
                                              });
   });
-  spec.AddInProcessSymbol(internal::GetAddI32Ptrs3Kernel(), "add");
+  spec.AddInProcessSymbol(internal::GetAddI32Ptrs3Kernel(), "AddI32Ptrs3");
 
   TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Ptrs3::Create(executor, spec));
 
@@ -701,7 +698,7 @@ TEST(GpuCommandBufferTest, ConditionalIf) {
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
   MultiKernelLoaderSpec spec(/*arity=*/3);
-  spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "add");
+  spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
   TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor, spec));
 
   int64_t length = 4;
@@ -776,6 +773,69 @@ TEST(GpuCommandBufferTest, ConditionalIf) {
   ASSERT_EQ(dst, expected);
 }
 
+TEST(GpuCommandBufferTest, ConditionalIfWithMemset) {
+#if CUDA_VERSION < 12040
+  GTEST_SKIP() << "ConditionalsWithMemset are not supported before 12.4.1.";
+#endif
+  Platform* platform = GpuPlatform();
+
+  StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+
+  int64_t length = 4;
+  int64_t byte_length = sizeof(int32_t) * length;
+
+  // Prepare arguments: a=0, pred=true
+  DeviceMemory<bool> pred = executor->AllocateArray<bool>(1, 0);
+  DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+
+  constexpr bool kTrue = true;
+  TF_ASSERT_OK(stream->Memcpy(&pred, &kTrue, 1));
+  TF_ASSERT_OK(stream->Memset32(&a, 0, byte_length));
+
+  // if (pred == true) memset(&a, ...);
+  CommandBuffer::Builder then_builder = [&](CommandBuffer* then_cmd) {
+    return then_cmd->Memset(&a, uint8_t{1}, byte_length);
+  };
+
+  // Create a command buffer with a single conditional operation.
+  TF_ASSERT_OK_AND_ASSIGN(auto cmd_buffer,
+                          executor->CreateCommandBuffer(primary));
+  TF_ASSERT_OK(cmd_buffer->If(pred, then_builder));
+  TF_ASSERT_OK(cmd_buffer->Finalize());
+
+  TF_ASSERT_OK(cmd_buffer->Submit(stream.get()));
+
+  // Copy `a` data back to host.
+  std::vector<int32_t> dst(length, 42);
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), a, byte_length));
+
+  std::vector<int32_t> expected(length, 1 << 24 | 1 << 16 | 1 << 8 | 1);
+  ASSERT_EQ(dst, expected);
+
+  // Prepare argument for graph update: b = 0
+  DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
+  TF_ASSERT_OK(stream->MemZero(&a, byte_length));
+
+  // if (pred == true) memset(&b, ...);
+  then_builder = [&](CommandBuffer* then_cmd) {
+    return then_cmd->Memset(&b, uint8_t{1}, byte_length);
+  };
+
+  // Update command buffer with a conditional to use new builder.
+  TF_ASSERT_OK(cmd_buffer->Update());
+  TF_ASSERT_OK(cmd_buffer->If(pred, then_builder));
+  TF_ASSERT_OK(cmd_buffer->Finalize());
+
+  TF_ASSERT_OK(cmd_buffer->Submit(stream.get()));
+
+  // Copy `b` data back to host.
+  std::fill(dst.begin(), dst.end(), 42);
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), b, byte_length));
+  ASSERT_EQ(dst, expected);
+}
+
 TEST(GpuCommandBufferTest, ConditionalIfElse) {
   if (!IsAtLeastCuda12300()) {
     GTEST_SKIP() << "CUDA graph conditionals are not supported";
@@ -788,12 +848,12 @@ TEST(GpuCommandBufferTest, ConditionalIfElse) {
 
   // Load addition kernel.
   MultiKernelLoaderSpec add_spec(/*arity=*/3);
-  add_spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "add");
+  add_spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
   TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor, add_spec));
 
   // Load multiplication kernel.
   MultiKernelLoaderSpec mul_spec(/*arity=*/3);
-  mul_spec.AddInProcessSymbol(internal::GetMulI32Kernel(), "mul");
+  mul_spec.AddInProcessSymbol(internal::GetMulI32Kernel(), "MulI32");
   TF_ASSERT_OK_AND_ASSIGN(auto mul, MulI32Kernel::Create(executor, mul_spec));
 
   int64_t length = 4;
@@ -872,6 +932,91 @@ TEST(GpuCommandBufferTest, ConditionalIfElse) {
   ASSERT_EQ(dst, expected_mul);
 }
 
+TEST(GpuCommandBufferTest, ConditionalCaseEmptyGraph) {
+  // See b/362769658.
+  if (!IsAtLeastCuda12300()) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
+
+  Platform* platform = GpuPlatform();
+  StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+
+  // Load addition kernel.
+  MultiKernelLoaderSpec add_spec(/*arity=*/3);
+  add_spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
+  TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor, add_spec));
+
+  int64_t length = 4;
+  int64_t byte_length = sizeof(int32_t) * length;
+
+  // Prepare arguments: a=2, b=3, c=0, index=0
+  DeviceMemory<int32_t> index = executor->AllocateArray<int32_t>(1, 0);
+  DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+  DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
+  DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
+
+  TF_ASSERT_OK(stream->Memset32(&index, 0, sizeof(int32_t)));
+  TF_ASSERT_OK(stream->Memset32(&a, 2, byte_length));
+  TF_ASSERT_OK(stream->Memset32(&b, 3, byte_length));
+  TF_ASSERT_OK(stream->MemZero(&c, byte_length));
+
+  // if (index == 0) c = a + b
+  CommandBuffer::Builder branch0 = [&](CommandBuffer* branch0_cmd) {
+    return branch0_cmd->Launch(add, ThreadDim(), BlockDim(4), a, b, c);
+  };
+
+  // if (index == 1) c = a * b
+  CommandBuffer::Builder branch1 = [&](CommandBuffer* branch1_cmd) {
+    return absl::OkStatus();
+  };
+
+  // Create a command buffer with a single conditional operation.
+  auto cmd_buffer = executor->CreateCommandBuffer(primary).value();
+  TF_ASSERT_OK(cmd_buffer->Case(index, {branch0, branch1}));
+  TF_ASSERT_OK(cmd_buffer->Finalize());
+
+  TF_ASSERT_OK(cmd_buffer->Submit(stream.get()));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
+
+  // Copy `c` data back to host.
+  std::vector<int32_t> dst(4, 42);
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), c, byte_length));
+
+  std::vector<int32_t> expected_add = {5, 5, 5, 5};
+  ASSERT_EQ(dst, expected_add);
+
+  // Set index to `1`
+  TF_ASSERT_OK(stream->Memset32(&index, 1, sizeof(int32_t)));
+
+  // Submit the same command buffer, but this time it should take the empty path
+  // and do nothing.
+  TF_ASSERT_OK(cmd_buffer->Submit(stream.get()));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
+
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), c, byte_length));
+  ASSERT_EQ(dst, expected_add);
+
+  // Set index to `-1` (out of bound index value).
+  TF_ASSERT_OK(stream->Memset32(&index, -1, sizeof(int32_t)));
+
+  TF_ASSERT_OK(cmd_buffer->Submit(stream.get()));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
+
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), c, byte_length));
+  ASSERT_EQ(dst, expected_add);
+
+  // Set index to `2` (out of bound index value).
+  TF_ASSERT_OK(stream->Memset32(&index, 2, sizeof(int32_t)));
+
+  TF_ASSERT_OK(cmd_buffer->Submit(stream.get()));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
+
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), c, byte_length));
+  ASSERT_EQ(dst, expected_add);
+}
+
 TEST(GpuCommandBufferTest, ConditionalCase) {
   if (!IsAtLeastCuda12300()) {
     GTEST_SKIP() << "CUDA graph conditionals are not supported";
@@ -884,12 +1029,12 @@ TEST(GpuCommandBufferTest, ConditionalCase) {
 
   // Load addition kernel.
   MultiKernelLoaderSpec add_spec(/*arity=*/3);
-  add_spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "add");
+  add_spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
   TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor, add_spec));
 
   // Load multiplication kernel.
   MultiKernelLoaderSpec mul_spec(/*arity=*/3);
-  mul_spec.AddInProcessSymbol(internal::GetMulI32Kernel(), "mul");
+  mul_spec.AddInProcessSymbol(internal::GetMulI32Kernel(), "MulI32");
   TF_ASSERT_OK_AND_ASSIGN(auto mul, MulI32Kernel::Create(executor, mul_spec));
 
   int64_t length = 4;
@@ -972,7 +1117,7 @@ TEST(GpuCommandBufferTest, ConditionalFor) {
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
   MultiKernelLoaderSpec spec(/*arity=*/3);
-  spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "add");
+  spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
   TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor, spec));
 
   int64_t length = 4;
@@ -1022,12 +1167,12 @@ TEST(GpuCommandBufferTest, ConditionalWhile) {
 
   // Load addition kernel.
   MultiKernelLoaderSpec add_spec(/*arity=*/3);
-  add_spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "add");
+  add_spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
   TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor, add_spec));
 
   // Load inc_and_cmp kernel.
   MultiKernelLoaderSpec icmp_spec(/*arity=*/3);
-  icmp_spec.AddInProcessSymbol(internal::GetIncAndCmpKernel(), "inc_and_cmp");
+  icmp_spec.AddInProcessSymbol(internal::GetIncAndCmpKernel(), "IncAndCmp");
   TF_ASSERT_OK_AND_ASSIGN(auto inc_and_cmp,
                           IncAndCmpKernel::Create(executor, icmp_spec));
 
@@ -1060,6 +1205,89 @@ TEST(GpuCommandBufferTest, ConditionalWhile) {
   // Loop body: b = a + b
   CommandBuffer::Builder body_builder = [&](CommandBuffer* body_cmd) {
     return body_cmd->Launch(add, ThreadDim(), BlockDim(length), a, b, b);
+  };
+
+  // Create a command buffer with a single conditional operation.
+  auto cmd_buffer = executor->CreateCommandBuffer(primary).value();
+  TF_ASSERT_OK(cmd_buffer->While(pred, cond_builder, body_builder));
+  TF_ASSERT_OK(cmd_buffer->Finalize());
+
+  TF_ASSERT_OK(cmd_buffer->Submit(stream.get()));
+
+  // Copy `b` data back to host.
+  std::vector<int32_t> dst(4, 42);
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), b, byte_length));
+
+  std::vector<int32_t> expected = {10, 10, 10, 10};
+  ASSERT_EQ(dst, expected);
+}
+
+// TODO(b/339653343): Re-enable when not failing.
+TEST(GpuCommandBufferTest, DISABLED_WhileNestedConditional) {
+  if (!IsAtLeastCuda12300()) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
+
+  Platform* platform = GpuPlatform();
+  StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+
+  // Load addition kernel.
+  MultiKernelLoaderSpec add_spec(/*arity=*/3);
+  add_spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
+  TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor, add_spec));
+
+  // Load inc_and_cmp kernel.
+  MultiKernelLoaderSpec icmp_spec(/*arity=*/3);
+  icmp_spec.AddInProcessSymbol(internal::GetIncAndCmpKernel(), "IncAndCmp");
+  TF_ASSERT_OK_AND_ASSIGN(auto inc_and_cmp,
+                          IncAndCmpKernel::Create(executor, icmp_spec));
+
+  int64_t length = 4;
+  int64_t byte_length = sizeof(int32_t) * length;
+
+  // Prepare arguments: a=1, b=0, loop_counter=0, pred=false
+  // Value of `pred` is not important, as it will be updated by `cond_builder`
+  // below.
+  DeviceMemory<bool> pred = executor->AllocateArray<bool>(1, 0);
+  DeviceMemory<bool> pred_then = executor->AllocateArray<bool>(1, 0);
+  DeviceMemory<int32_t> loop_counter = executor->AllocateArray<int32_t>(1, 0);
+  DeviceMemory<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+  DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
+
+  static constexpr bool kFalse = false;
+  static constexpr bool kTrue = true;
+  TF_ASSERT_OK(stream->Memcpy(&pred, &kFalse, 1));
+  TF_ASSERT_OK(stream->Memcpy(&pred_then, &kTrue, 1));
+  TF_ASSERT_OK(stream->Memset32(&loop_counter, 0, sizeof(int32_t)));
+  TF_ASSERT_OK(stream->Memset32(&a, 1, byte_length));
+  TF_ASSERT_OK(stream->MemZero(&b, byte_length));
+
+  int32_t num_iters = 10;
+
+  CommandBuffer::Builder then_builder =
+      // Then body: b = a + b
+      [&](CommandBuffer* then_cmd) {
+        return then_cmd->Launch(add, ThreadDim(), BlockDim(length), a, b, b);
+      };
+
+  auto nested_cmd = executor->CreateCommandBuffer(nested).value();
+  // TODO(b/339653343): Adding this If condition causes AddNestedCommandBuffer
+  // to fail.
+  TF_ASSERT_OK(nested_cmd->If(pred_then, then_builder));
+
+  // Loop cond: loop_counter++ < num_iters;
+  CommandBuffer::ExecutionScopeBuilder cond_builder =
+      [&](ExecutionScopeId id, CommandBuffer* cond_cmd) {
+        return cond_cmd->Launch(inc_and_cmp, id, ThreadDim(), BlockDim(length),
+                                loop_counter, pred, num_iters);
+      };
+
+  CommandBuffer::Builder body_builder =
+      [&](CommandBuffer* body_cmd) -> absl::Status {
+    CHECK_OK(body_cmd->AddNestedCommandBuffer(*nested_cmd));
+    return absl::OkStatus();
   };
 
   // Create a command buffer with a single conditional operation.
@@ -1187,12 +1415,12 @@ TEST(GpuCommandBufferTest, ConditionalWhileInExecutionScope) {
 
   // Load addition kernel.
   MultiKernelLoaderSpec add_spec(/*arity=*/3);
-  add_spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "add");
+  add_spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
   TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor, add_spec));
 
   // Load inc_and_cmp kernel.
   MultiKernelLoaderSpec icmp_spec(/*arity=*/3);
-  icmp_spec.AddInProcessSymbol(internal::GetIncAndCmpKernel(), "inc_and_cmp");
+  icmp_spec.AddInProcessSymbol(internal::GetIncAndCmpKernel(), "IncAndCmp");
   TF_ASSERT_OK_AND_ASSIGN(auto inc_and_cmp,
                           IncAndCmpKernel::Create(executor, icmp_spec));
 
@@ -1289,7 +1517,7 @@ static void BM_CreateCommandBuffer(benchmark::State& state) {
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   MultiKernelLoaderSpec spec(/*arity=*/3);
-  spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "add");
+  spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
   TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor, spec));
 
   DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(1, 0);
@@ -1312,7 +1540,7 @@ static void BM_TraceCommandBuffer(benchmark::State& state) {
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
   MultiKernelLoaderSpec spec(/*arity=*/3);
-  spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "add");
+  spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
   TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor, spec));
 
   DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(1, 0);
@@ -1337,7 +1565,7 @@ static void BM_UpdateCommandBuffer(benchmark::State& state) {
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
   MultiKernelLoaderSpec spec(/*arity=*/3);
-  spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "add");
+  spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
   TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor, spec));
 
   DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(1, 0);

@@ -458,11 +458,9 @@ AllocateDestinationBuffer(
   // callback.
   auto memory_space_shape_fn = [is_pinned_host_memory,
                                 transfer_manager](const Shape& shape) {
-    Shape result = shape;
+    Shape result = transfer_manager->HostShapeToDeviceShape(shape);
     if (is_pinned_host_memory) {
       result.mutable_layout()->set_memory_space(Layout::kHostMemorySpace);
-    } else {
-      result = transfer_manager->HostShapeToDeviceShape(result);
     }
     return result;
   };
@@ -2861,6 +2859,8 @@ PjRtStreamExecutorLoadedExecutable::EnqueueExecution(
   ExecutableRunOptions run_options;
   run_options.set_stream(device_state->compute_stream());
   run_options.set_device_ordinal(device_state->local_device_id().value());
+  run_options.set_local_device_count(client_->client()->device_count());
+
   run_options.set_physical_device_ordinal(
       device_state->local_hardware_id().value());
   run_options.set_host_to_device_stream(device_state->host_to_device_stream());

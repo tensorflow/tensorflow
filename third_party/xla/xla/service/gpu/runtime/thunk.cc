@@ -235,7 +235,7 @@ Thunk::ExecuteParams::ExecuteParams(
   case Thunk::x: \
     return #x
   switch (kind) {
-    CASE(kAddressComputation);
+    CASE(kDynamicSlice);
     CASE(kCholesky);
     CASE(kCommandBuffer);
     CASE(kConditional);
@@ -286,8 +286,6 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kSequential);
     CASE(kTriangularSolve);
     CASE(kWhile);
-    CASE(kFusedMHA);
-    CASE(kFusedMHABackward);
     CASE(kWaitForStreams);
     CASE(kCuDnn);
   }

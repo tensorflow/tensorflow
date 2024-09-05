@@ -55,43 +55,18 @@ limitations under the License.
 
 namespace xla {
 
-// Represents a parsed static while loop. We normalize the loop representation
-// so that it starts from the induction_var_init_value and increments by
-// step_size until it exceeds or goes below loop_bound.
-struct ParsedStaticWhileLoop {
-  // The number of iterations to be executed.
-  int64_t trip_count = -1;
-  // The tuple index of the induction variable in the while argument tuple.
-  int64_t induction_var_index = -1;
-  // The induction variable's initial value.
-  int64_t induction_var_init_value = -1;
-  // The induction variable is incremented by this number (could be negative)
-  // in each iteration.
-  int64_t step_size = -1;
-  int64_t loop_bound = -1;
-};
-
-// Indicates whether a parsed while loop is static or dynamic. If the loop is
-// static, it contains a value for StaticLoopInfo; otherwise the loop is
-// dynamic. We consider a loop dynamic if its induction variable's initial
-// value or the loop bound's value depends on the while's parent computation's
-// parameter.
-struct ParsedWhileLoop {
-  std::optional<ParsedStaticWhileLoop> static_while_loop;
-  bool is_dynamic() const { return !static_while_loop.has_value(); }
-};
-constexpr ParsedWhileLoop kParsedDynamicWhileLoop = ParsedWhileLoop();
-
-// Tries to parse a while loop using a set of predefined patterns.
-// Returns the parsing result.
-std::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
-    const HloInstruction* while_op);
-
 // Responsible for evaluating HLO and obtain literal as the evaluation results.
 //
 // This class is not thread-safe.
 class HloEvaluator : public ConstDfsHloVisitorWithDefault {
  public:
+  // Precomputed analyses that can be passed to Evaluate functions to avoid
+  // recomputation during evaluation.
+  struct PrecomputedAnalyses {
+    TuplePointsToAnalysis* tuple_points_to;
+    CallGraph* call_graph;
+  };
+
   // Only evaluate up to max_loop_iterations per while-loop execution if
   // specified.
   explicit HloEvaluator(int64_t max_loop_iterations = -1);
@@ -167,8 +142,12 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
   // within its parent computation until it encounters something that cannot be
   // evaluated, such as an Infeed or a Parameter instruction.
   // It makes best effort to partially evaluate a dependency if possible.
+  // The caller may pass in non-null `precomputed_analyses` to avoid
+  // recomputation during evaluation; the caller must ensure that any
+  // precomputed analyses were performed on the module containing `instruction`.
   absl::StatusOr<Literal> Evaluate(
       const HloInstruction* instruction,
+      PrecomputedAnalyses precomputed_analyses = {},
       bool recursively_evaluate_nonconstant_operands = false);
 
   // Same as Evaluate, except returning false on error and accepts an output
@@ -183,7 +162,7 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
   // {A = x, C = y}, this evaluates op(x, B, y).
   absl::StatusOr<Literal> EvaluateWithSubstitutions(
       const HloInstruction* instruction,
-      const absl::flat_hash_map<const HloInstruction*, const Literal*>&
+      const absl::flat_hash_map<const HloInstruction*, const LiteralBase*>&
           substitutions);
 
   absl::StatusOr<Literal> EvaluateElementwiseBinaryOp(HloOpcode opcode,
@@ -270,13 +249,20 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
   // marked as undetermined unless it has been previously evaluated using
   // EvaluateInternal. Such partial evaluation reduces the computation and
   // memory overhead in cases where we need only one tuple element by avoiding
-  // the evaluation of a full tuple.
+  // the evaluation of a full tuple. Any non-null `precomputed_analyses` will be
+  // used instead of recomputing.
   absl::Status EvaluateInternal(
-      const HloInstruction* instruction, const ShapeIndex& shape_index = {},
+      const HloInstruction* instruction,
+      PrecomputedAnalyses precomputed_analyses,
+      const ShapeIndex& shape_index = {},
       bool recursively_evaluate_nonconstant_operands = false);
 
+  // Evaluates the result of a `parameter` instruction by traversing the call
+  // graph as given in `analyses`. `shape_index` has the same effect as in
+  // EvaluateInternal above.
   absl::Status EvaluateParameterFromCallerArgument(
-      const HloInstruction* parameter, const ShapeIndex& shape_index);
+      const HloInstruction* parameter, const ShapeIndex& shape_index,
+      PrecomputedAnalyses analyses);
 
   // Helper method to extract a list of int64_t from evaluated instruction for
   // start_indices for DynamicSlice and DynamicUpdateSlice.
@@ -518,6 +504,41 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
 std::unique_ptr<Array2D<float>> MatmulArray2D(const Array2D<float>& lhs,
                                               const Array2D<float>& rhs);
 
+// Represents a parsed static while loop. We normalize the loop representation
+// so that it starts from the induction_var_init_value and increments by
+// step_size until it exceeds or goes below loop_bound.
+struct ParsedStaticWhileLoop {
+  // The number of iterations to be executed.
+  int64_t trip_count = -1;
+  // The tuple index of the induction variable in the while argument tuple.
+  int64_t induction_var_index = -1;
+  // The induction variable's initial value.
+  int64_t induction_var_init_value = -1;
+  // The induction variable is incremented by this number (could be negative)
+  // in each iteration.
+  int64_t step_size = -1;
+  int64_t loop_bound = -1;
+};
+
+// Indicates whether a parsed while loop is static or dynamic. If the loop is
+// static, it contains a value for StaticLoopInfo; otherwise the loop is
+// dynamic. We consider a loop dynamic if its induction variable's initial
+// value or the loop bound's value depends on the while's parent computation's
+// parameter.
+struct ParsedWhileLoop {
+  std::optional<ParsedStaticWhileLoop> static_while_loop;
+  bool is_dynamic() const { return !static_while_loop.has_value(); }
+};
+constexpr ParsedWhileLoop kParsedDynamicWhileLoop = ParsedWhileLoop();
+
+// Tries to parse a while loop using a set of predefined patterns.
+// Returns the parsing result. Any non-null `precompute_analyses` will be used
+// instead of recomputing, and it is the caller's responsibility to ensure that
+// the analyses are valid for the module that contains `while_op`.
+std::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
+    const HloInstruction* while_op,
+    HloEvaluator::PrecomputedAnalyses precomputed_analyses = {});
+
 // Functionality exposed for testing. Do not rely on anything in this namespace
 // outside this file.
 namespace internal {
@@ -530,11 +551,7 @@ enum class EvalErrorDetail : uint32_t {
   kDynamicValueDependence = 0,
 };
 
-#if defined(_MSC_VER)
-extern const absl::string_view kEvalErrorDetailUrl = "EvalErrorDetailUrl";
-#else
 extern const absl::string_view kEvalErrorDetailUrl;
-#endif
 
 std::optional<EvalErrorDetail> ParseEvalErrorDetail(const absl::Status& error);
 

@@ -22,9 +22,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/SymbolTable.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -49,9 +47,6 @@ class HloModuleImporter {
   absl::Status Import(const xla::HloModuleProto& module);
 
  private:
-  void ImportFrontendAttributes(const xla::HloModule& hlo_module,
-                                mlir::ModuleOp module);
-
   bool import_all_computation_;
   bool flatten_computation_args_result_;
   mlir::SymbolTable symbol_table_;

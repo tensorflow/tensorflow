@@ -21,8 +21,6 @@ limitations under the License.
 
 namespace mlir::odml {
 
-llvm::SmallVector<int64_t> UnrollSplat(DenseElementsAttr data);
-
 // Gets elements corresponding to slice starts from negative padding
 // values.
 DenseIntElementsAttr SliceStartFromNegPadLows(mhlo::PadOp op);

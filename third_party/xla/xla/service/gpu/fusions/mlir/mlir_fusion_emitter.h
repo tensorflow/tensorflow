@@ -96,21 +96,6 @@ class MlirFusionEmitterBase : public KernelFusionInterface {
       mlir::ValueRange output_indices,
       mlir::ImplicitLocOpBuilder& builder) const;
 
-  // Emit a loop nest for the symbols in the output map. The map should have
-  // the dimensions specified in KernelFusionInterface. Loops are nested with
-  // the symbol 0 as the outermost loop. The indices of the map's dimensions and
-  // symbols are passed to the lambda separately. The return values of the
-  // function are the updated outputs.
-  // For the meaning of `vectorize`, see the documentation of `EmitLoopNest` in
-  // elemental_hlo_to_mlir.h.
-  llvm::SmallVector<mlir::Value> EmitThreadLoopNest(
-      mlir::ImplicitLocOpBuilder& b, mlir::ValueRange outputs,
-      const IndexingMap& indexing_map,
-      const std::function<llvm::SmallVector<mlir::Value>(
-          mlir::ValueRange outputs, mlir::ValueRange dim_values,
-          mlir::ValueRange symbol_values)>& create_body,
-      bool vectorize = false) const;
-
   mlir::Value EmitBlockId(mlir::ImplicitLocOpBuilder& builder, int dim) const;
   mlir::Value EmitThreadId(mlir::ImplicitLocOpBuilder& builder, int dim) const;
   llvm::SmallVector<mlir::Value> EmitThreadAndBlockIds(
@@ -127,6 +112,17 @@ class MlirFusionEmitterBase : public KernelFusionInterface {
       mlir::ModuleOp module, mlir::PassManager& pm,
       mlir::interpreter::MlirCompilationTrace* trace) const;
 };
+
+// Adds passes that simplify arithmetic operations and remove dead code.
+void AddXlaGpuOpsOptimizationPasses(mlir::OpPassManager& pm);
+
+// Adds passes that transform XLA_GPU and SCF loops, e.g. peel, pipeline,
+// vectorize.
+void AddLoopTransformationPasses(mlir::OpPassManager& pm);
+
+// Adds passes that lower transformed loops to LLVM.
+void AddLoweringPasses(mlir::OpPassManager& pm,
+                       const se::DeviceDescription& device);
 
 }  // namespace gpu
 }  // namespace xla

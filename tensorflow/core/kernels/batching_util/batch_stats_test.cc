@@ -126,6 +126,28 @@ TEST(BatchStatsTest, BatchSizesAreCorrect) {
   ASSERT_THAT(stats.BatchSizes(), UnorderedElementsAre(1, 2, 4));
 }
 
+TEST(BatchStatsTest, BatchTimeoutIsCorrect) {
+  ModelBatchStats stats;
+
+  // Originally the batch timeout is -1 if unassigned.
+  ASSERT_EQ(stats.batch_timeout_micros(), -1);
+
+  // Assign a batch timeout of 100 microseconds.
+  stats.SetBatchTimeoutMicros(100);
+  ASSERT_EQ(stats.batch_timeout_micros(), 100);
+}
+
+TEST(BatchStatsTest, NumBatchThreadsIsCorrect) {
+  ModelBatchStats stats;
+
+  // Originally the number of batch threads is -1 if unassigned.
+  ASSERT_EQ(stats.num_batch_threads(), -1);
+
+  // Assign a number of per-model batch threads.
+  stats.SetNumBatchThreads(16);
+  ASSERT_EQ(stats.num_batch_threads(), 16);
+}
+
 }  // namespace
 
 }  // namespace tensorflow::serving

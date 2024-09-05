@@ -196,6 +196,8 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
     expected_pb.optimization_options.CopyFrom(
         dataset_options_pb2.OptimizationOptions())
     expected_pb.warm_start = True
+    expected_pb.service_options.CopyFrom(
+        dataset_options_pb2.ServiceOptions())
     expected_pb.threading_options.CopyFrom(
         dataset_options_pb2.ThreadingOptions())
     self.assertProtoEquals(expected_pb, result)

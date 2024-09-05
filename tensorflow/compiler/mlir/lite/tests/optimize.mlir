@@ -1,11 +1,11 @@
 // Run optimize pass only and check the results.
-// RUN: tf-opt %s -tfl-optimize | FileCheck %s
+// RUN: tf-opt %s -tfl-optimize='enable-canonicalization=false' | FileCheck %s
 // Run optimize pass and then canonicalize pass, and make sure some folding is applied.
-// RUN: tf-opt %s -tfl-optimize='enable-canonicalization=true' | FileCheck --check-prefix=FOLD %s
+// RUN: tf-opt %s -tfl-optimize | FileCheck --check-prefix=FOLD %s
 // Run legalize pass and then optimize pass, and make sure some fusing is applied.
-// RUN: tf-opt %s -tfl-legalize-tf -tfl-optimize | FileCheck --check-prefix=Fusing %s
+// RUN: tf-opt %s -tfl-legalize-tf -tfl-optimize='enable-canonicalization=false' | FileCheck --check-prefix=Fusing %s
 // Run legalize pass and then optimize pass, and make sure some fusing is applied, but no mul->fc.
-// RUN: tf-opt %s -tfl-legalize-tf -tfl-optimize='disable-fuse-mul-and-fc=true' | FileCheck --check-prefix=NoFusing %s
+// RUN: tf-opt %s -tfl-legalize-tf -tfl-optimize='enable-canonicalization=false disable-fuse-mul-and-fc=true'  | FileCheck --check-prefix=NoFusing %s
 
 // CHECK-LABEL: fusedConv2dRelu
 func.func @fusedConv2dRelu(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<16x3x3x3xf32>, %arg2: tensor<16xf32>) -> tensor<256x32x32x16xf32> {
@@ -152,6 +152,24 @@ func.func @fuseAddIntoTransposeConvNoBias(%arg0: tensor<1x32x42x128xf32>) -> ten
   // CHECK-DAG: %[[SHAPE:.*]] = arith.constant dense<[1, 64, 84, 32]> : tensor<4xi32>
   // CHECK-DAG: %[[WEIGHTS:.*]] = arith.constant dense<1.000000e+00> : tensor<32x4x4x128xf32>
   // CHECK-DAG: %[[BIAS:.*]] = arith.constant dense<1.500000e+00> : tensor<32xf32>
+  // CHECK: %[[RESULT:.*]] = "tfl.transpose_conv"(%[[SHAPE]], %[[WEIGHTS]], %arg0, %[[BIAS]])
+  // CHECK: return %[[RESULT]]
+}
+
+// CHECK-LABEL: fuseSubIntoTransposeConvNoBias
+func.func @fuseSubIntoTransposeConvNoBias(%arg0: tensor<1x32x42x128xf32>) -> tensor<1x64x84x32xf32> {
+  %cst = arith.constant dense<1.5> : tensor<32xf32>
+  %cst_0 = arith.constant dense<[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0]> : tensor<16xf32>
+  %cst_1 = arith.constant dense<[1, 64, 84, 32]> : tensor<4xi32>
+  %cst_2 = arith.constant dense<1.0> : tensor<32x4x4x128xf32>
+  %cst_3 = "tfl.no_value"() {value} : () -> none
+  %0 = "tfl.transpose_conv"(%cst_1, %cst_2, %arg0, %cst_3) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32, fused_activation_function = "NONE"} : (tensor<4xi32>, tensor<32x4x4x128xf32>, tensor<1x32x42x128xf32>, none) -> tensor<1x64x84x32xf32>
+  %1 = "tfl.sub"(%0, %cst) {fused_activation_function = "NONE"} : (tensor<1x64x84x32xf32>, tensor<32xf32>) -> tensor<1x64x84x32xf32>
+  func.return %1 : tensor<1x64x84x32xf32>
+
+  // CHECK-DAG: %[[SHAPE:.*]] = arith.constant dense<[1, 64, 84, 32]> : tensor<4xi32>
+  // CHECK-DAG: %[[WEIGHTS:.*]] = arith.constant dense<1.000000e+00> : tensor<32x4x4x128xf32>
+  // CHECK-DAG: %[[BIAS:.*]] = arith.constant dense<-1.500000e+00> : tensor<32xf32>
   // CHECK: %[[RESULT:.*]] = "tfl.transpose_conv"(%[[SHAPE]], %[[WEIGHTS]], %arg0, %[[BIAS]])
   // CHECK: return %[[RESULT]]
 }
@@ -4187,3 +4205,13 @@ func.func @depthwise_conv_external_same_padding(%arg0: tensor<1x8x8x64xf32>, %ar
 }
 
 // CHECK: %0 = "tfl.depthwise_conv_2d"(%arg0, %arg1, %cst) <{depth_multiplier = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32}> : (tensor<1x8x8x64xf32>, tensor<1x3x3x64xf32>, tensor<64xf32>) -> tensor<1x8x8x64xf32>
+
+// CHECK-LABEL: reorder_gather_cast
+func.func @reorder_gather_cast(%arg0: tensor<2x3x5xi8>, %arg1: tensor<2x7xi32>) -> tensor<2x7x5xf32> {
+  %0 = "tfl.cast"(%arg0) : (tensor<2x3x5xi8>) -> tensor<2x3x5xf32>
+  %1 = "tfl.gather"(%0, %arg1) {axis = 1 : i32, batch_dims = 1 : i32}: (tensor<2x3x5xf32>, tensor<2x7xi32>) -> tensor<2x7x5xf32>
+  func.return %1 : tensor<2x7x5xf32>
+}
+
+// CHECK: %0 = "tfl.gather"(%arg0, %arg1) <{axis = 1 : i32, batch_dims = 1 : i32}> : (tensor<2x3x5xi8>, tensor<2x7xi32>) -> tensor<2x7x5xi8>
+// CHECK: %1 = "tfl.cast"(%0) : (tensor<2x7x5xi8>) -> tensor<2x7x5xf32>

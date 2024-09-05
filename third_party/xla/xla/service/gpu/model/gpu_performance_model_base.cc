@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -88,8 +89,6 @@ float AdjustBandwidth(const se::DeviceDescription& gpu_device_info,
 
 std::optional<EstimateRunTimeData> GpuPerformanceModelCache::Get(
     const HloInstruction& instruction) {
-  absl::MutexLock lock(&mutex_);
-
   auto it = instruction_runtime_data_.find(&instruction);
   if (it != instruction_runtime_data_.end()) {
     return it->second;
@@ -111,10 +110,18 @@ std::optional<absl::Duration> GpuPerformanceModelCache::Get(
   return std::nullopt;
 }
 
+const absl::flat_hash_map<const HloInstruction*, absl::Duration>&
+GpuPerformanceModelCache::GetAllConsumers(const HloInstruction& producer) {
+  return fusion_runtime_data_[&producer];
+}
+
+bool GpuPerformanceModelCache::ContainsConsumers(
+    const HloInstruction& producer) {
+  return fusion_runtime_data_.contains(&producer);
+}
+
 void GpuPerformanceModelCache::Set(const HloInstruction& instruction,
                                    const EstimateRunTimeData& runtime_data) {
-  absl::MutexLock lock(&mutex_);
-
   instruction_runtime_data_[&instruction] = runtime_data;
 }
 
@@ -126,8 +133,6 @@ void GpuPerformanceModelCache::Set(const HloInstruction& producer,
 }
 
 void GpuPerformanceModelCache::Invalidate(const HloInstruction& instruction) {
-  absl::MutexLock lock(&mutex_);
-
   // Remove runtime data for the instruction.
   instruction_runtime_data_.erase(&instruction);
 

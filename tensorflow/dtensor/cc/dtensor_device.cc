@@ -1716,7 +1716,7 @@ void DTensorDevice::ModuleToExecutionFunctions(
   absl::flat_hash_set<Node*> control_ret_nodes;
   GraphExportConfig export_config;
   RETURN_C_STATUS_IF_NOT_OK(
-      tensorflow::tf2xla::v2::ConvertMlirToGraph(
+      tensorflow::tf2xla::v2::ConvertTfExecutorToGraph(
           *lowering_context.module, export_config, &(lowering_context.graph),
           flib_def, &control_ret_nodes),
       status);

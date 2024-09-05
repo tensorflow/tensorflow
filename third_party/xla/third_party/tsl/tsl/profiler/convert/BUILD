@@ -8,7 +8,7 @@ load("//tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = internal_visibility(["//tsl/profiler:internal"]),
+    default_visibility = internal_visibility(["@local_xla//xla/tsl/profiler:internal"]),
     licenses = ["notice"],
 )
 
@@ -18,7 +18,7 @@ cc_library(
     hdrs = ["trace_container.h"],
     copts = tf_profiler_copts(),
     visibility = [
-        "//tsl/profiler:internal",
+        "@local_xla//xla/tsl/profiler:internal",
     ],
     deps = [
         "//tsl/platform:protobuf",
@@ -30,8 +30,8 @@ cc_library(
     name = "xla_op_utils",
     hdrs = ["xla_op_utils.h"],
     visibility = internal_visibility([
-        "//tsl/profiler:internal",
-        "//tsl/profiler:xla_profiler_backends",
+        "@local_xla//xla/tsl/profiler:internal",
+        "@local_xla//xla/tsl/profiler:xla_profiler_backends",
         "@local_xla//xla/python:__pkg__",
     ]),
     deps = ["@com_google_absl//absl/strings"],
@@ -53,7 +53,7 @@ cc_library(
     srcs = ["post_process_single_host_xplane.cc"],
     hdrs = ["post_process_single_host_xplane.h"],
     copts = tf_profiler_copts(),
-    visibility = internal_visibility(["//tsl/profiler:internal"]),
+    visibility = internal_visibility(["@local_xla//xla/tsl/profiler:internal"]),
     deps = [
         "//tsl/platform:types",
         "//tsl/profiler/protobuf:xplane_proto_cc",
@@ -69,7 +69,7 @@ cc_library(
     hdrs = ["trace_events_to_json.h"],
     copts = tf_profiler_copts(),
     visibility = internal_visibility([
-        "//tsl/profiler:internal",
+        "@local_xla//xla/tsl/profiler:internal",
     ]),
     deps = [
         ":trace_container",
@@ -116,7 +116,7 @@ cc_library(
     hdrs = ["xplane_to_trace_events.h"],
     copts = tf_profiler_copts(),
     visibility = internal_visibility([
-        "//tsl/profiler:internal",
+        "@local_xla//xla/tsl/profiler:internal",
     ]),
     deps = [
         ":trace_container",

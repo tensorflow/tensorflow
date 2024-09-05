@@ -82,14 +82,12 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
   }
 
   absl::StatusOr<::stream_executor::StreamExecutor*> ExecutorForDevice(
-      int ordinal) override {
-    stream_executor::StreamExecutorConfig config;
-    config.ordinal = ordinal;
-    return GetExecutor(config);
-  }
+      int ordinal) override;
 
-  absl::StatusOr<::stream_executor::StreamExecutor*> GetExecutor(
-      const ::stream_executor::StreamExecutorConfig& config) override;
+  absl::StatusOr<::stream_executor::StreamExecutor*> FindExisting(
+      int ordinal) override {
+    return executor_cache_.Get(ordinal);
+  }
 
   StreamMap* stream_map() { return &stream_map_; }
 
@@ -114,11 +112,11 @@ class TpuPlatform : public ::tensorflow::tpu::TpuPlatformInterface {
   absl::Mutex& mutex() { return event_map_mu_; }
 
  private:
-  // Returns a device constructed with the options specified in "config" without
+  // Returns a device constructed with the ordinal without
   // looking in or storing to the Platform's executor cache.
   // Ownership IS transferred to the caller.
   absl::StatusOr<std::unique_ptr<::stream_executor::StreamExecutor>>
-  GetUncachedExecutor(const ::stream_executor::StreamExecutorConfig& config);
+  GetUncachedExecutor(int ordinal);
 
   mutable SE_Platform* platform_;
   std::string name_;

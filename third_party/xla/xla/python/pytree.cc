@@ -1249,7 +1249,7 @@ nb_class_ptr<PyTreeDef> PyTreeDef::MakeFromNodeDataAndChildren(
         nb::cast<std::string_view>(nb::repr(node_data->first))));
   }
   node.kind = registration->kind;
-  if (node.kind == PyTreeKind::kCustom) {
+  if (node.kind == PyTreeKind::kCustom || node.kind == PyTreeKind::kDataclass) {
     node.custom = registration;
     node.node_data = node_data->second;
   } else if (node.kind == PyTreeKind::kNamedTuple) {

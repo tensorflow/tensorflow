@@ -71,13 +71,13 @@ class ExpiringLRUCache {
     return LookupLocked(key, value);
   }
 
-  typedef std::function<Status(const string&, T*)> ComputeFunc;
+  typedef std::function<absl::Status(const string&, T*)> ComputeFunc;
 
   /// Look up the entry with key `key` and copy it to `value` if found. If not
   /// found, call `compute_func`. If `compute_func` returns successfully, store
   /// a copy of the output parameter in the cache, and another copy in `value`.
-  Status LookupOrCompute(const string& key, T* value,
-                         const ComputeFunc& compute_func) {
+  absl::Status LookupOrCompute(const string& key, T* value,
+                               const ComputeFunc& compute_func) {
     if (max_age_ == 0) {
       return compute_func(key, value);
     }
@@ -88,9 +88,9 @@ class ExpiringLRUCache {
     // key if this proves to be a significant performance bottleneck.
     mutex_lock lock(mu_);
     if (LookupLocked(key, value)) {
-      return OkStatus();
+      return absl::OkStatus();
     }
-    Status s = compute_func(key, value);
+    absl::Status s = compute_func(key, value);
     if (s.ok()) {
       InsertLocked(key, *value);
     }

@@ -179,6 +179,11 @@ std::optional<double> GetConstantValue(const HloInstruction* inst) {
           using NativeT = NativeTypeOf<primitive_type_constant>;
           return static_cast<double>(
               inst->literal().GetFirstElement<NativeT>());
+        } else if constexpr (primitive_util::IsIntegralType(
+                                 primitive_type_constant)) {
+          using NativeT = NativeTypeOf<primitive_type_constant>;
+          return static_cast<int64_t>(
+              inst->literal().GetFirstElement<NativeT>());
         }
         return std::nullopt;
       },
@@ -605,6 +610,11 @@ std::unique_ptr<HloInstruction> MakeScalarInstruction(HloInstruction* target,
       [&](auto primitive_type_constant) -> std::unique_ptr<HloInstruction> {
         if constexpr (primitive_util::IsFloatingPointType(
                           primitive_type_constant)) {
+          using NativeT = NativeTypeOf<primitive_type_constant>;
+          return HloInstruction::CreateConstant(
+              LiteralUtil::CreateR0<NativeT>(static_cast<NativeT>(multiplier)));
+        } else if constexpr (primitive_util::IsIntegralType(
+                                 primitive_type_constant)) {
           using NativeT = NativeTypeOf<primitive_type_constant>;
           return HloInstruction::CreateConstant(
               LiteralUtil::CreateR0<NativeT>(static_cast<NativeT>(multiplier)));
@@ -3331,12 +3341,11 @@ AlgebraicSimplifierVisitor::AssociativeReorderDotOperator(
     } else if (opcode == HloOpcode::kBroadcast) {
       // Broadcasts of dot contracting dimensions can be reordered to reduces
       // of the corresponding contracting dimensions in the other dot operand
-      DimensionVector reduce_dims, broadcast_dim_sizes;
+      DimensionVector reduce_dims;
       const int64_t pre_broadcast_rank =
           reorder_from->mutable_operand(0)->shape().rank();
       int64_t post_broadcast_rank = reorder_from->shape().rank();
       Shape new_broadcast_shape = reorder_from->shape();
-      DimensionVector contracting_reordered;
 
       // Construct map from broadcasted shape to its original shape. Broadcast
       // dimensions are mapped to -1 since they were not present
@@ -3554,48 +3563,28 @@ absl::Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
           other_index = outer_dnums.lhs_batch_dimensions(i);
         }
 
-        // Once we have the inner_index, we determine whether this index
-        // corresponds to a dimension coming from the lhs or rhs of inner
-        bool from_inner_lhs = map_inner_rhs[inner_index] == -1;
+        auto add_batch_dims = [](DotDimensionNumbers& dnums, int64_t lhs_ix,
+                                 int64_t rhs_ix) {
+          dnums.add_lhs_batch_dimensions(lhs_ix);
+          dnums.add_rhs_batch_dimensions(rhs_ix);
+        };
 
-        // The map we use depends on which operand of inner this dim comes from
-        std::vector<int64_t> map;
-        if (from_inner_lhs) {
-          map = map_inner_lhs;
-        } else {
-          map = map_inner_rhs;
-        }
-
-        // Whether the mapped value goes into the lhs or rhs of the new dnums
-        // depends on whether inner was the lhs or rhs operand of outer
-        int64_t lhs_index, rhs_index;
-        if (outer_lhs_dot) {
-          lhs_index = map[inner_index];
-          rhs_index = other_index;
-        } else {
-          lhs_index = other_index;
-          rhs_index = map[inner_index];
-        }
-
-        // Finally, we have to determine which dnums to add to
-        DotDimensionNumbers* dnums;
-        if (outer_lhs_dot) {
-          if (from_inner_lhs) {
-            dnums = &ac_dnums;
-          } else {
-            dnums = &bc_dnums;
-          }
-        } else {
-          if (from_inner_lhs) {
-            dnums = &ab_dnums;
-          } else {
-            dnums = &ac_dnums;
+        for (auto& map : {map_inner_lhs, map_inner_rhs}) {
+          int64_t mapped_index = map[inner_index];
+          if (mapped_index != -1) {
+            // Whether the mapped value is the lhs or rhs of the new dnums
+            // depends on whether inner is the lhs or rhs operand of outer. The
+            // dnums itself depends on this and also on which map we are
+            // iterating through
+            if (outer_lhs_dot) {
+              add_batch_dims(map == map_inner_lhs ? ac_dnums : bc_dnums,
+                             mapped_index, other_index);
+            } else {
+              add_batch_dims(map == map_inner_lhs ? ab_dnums : ac_dnums,
+                             other_index, mapped_index);
+            }
           }
         }
-
-        // Add the batch dimensions
-        dnums->add_lhs_batch_dimensions(lhs_index);
-        dnums->add_rhs_batch_dimensions(rhs_index);
       }
 
       // We now do the same thing for the contracting dimensions of outer
@@ -3614,7 +3603,14 @@ absl::Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
 
         // Once we have the inner_index, we determine whether this index
         // corresponds to a dimension coming from the lhs or rhs of inner
-        bool from_inner_lhs = map_inner_rhs[inner_index] == -1;
+        bool from_inner_lhs = map_inner_lhs[inner_index] != -1;
+        bool from_inner_rhs = map_inner_rhs[inner_index] != -1;
+
+        // If a dimension of inner is the result of batching and it is
+        // contracted in outer, we stop trying to reorder
+        if (from_inner_lhs && from_inner_rhs) {
+          return absl::OkStatus();
+        }
 
         // The map we use depends on which operand of inner this dim comes from
         std::vector<int64_t> map;
@@ -3714,8 +3710,11 @@ absl::Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
             rhs_index = other_index;
           }
 
-          new_outer_dnums.add_lhs_batch_dimensions(lhs_index);
-          new_outer_dnums.add_rhs_batch_dimensions(rhs_index);
+          if (!absl::c_linear_search(new_outer_dnums.lhs_batch_dimensions(),
+                                     lhs_index)) {
+            new_outer_dnums.add_lhs_batch_dimensions(lhs_index);
+            new_outer_dnums.add_rhs_batch_dimensions(rhs_index);
+          }
         }
         for (int64_t i = 0; i < dnums.lhs_contracting_dimensions_size(); ++i) {
           int64_t new_inner_index, other_index;
@@ -6959,7 +6958,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
   // Convert a dynamic slice into a slice if all offsets are constant, the
   // operand is not constant, and the input and output memory spaces are the
   // same.
-  if (operand->opcode() != HloOpcode::kConstant &&
+  if (!options_.disable_dynamic_slice_to_slice_conversion() &&
+      operand->opcode() != HloOpcode::kConstant &&
       absl::c_all_of(absl::MakeSpan(dynamic_slice->operands().begin() + 1,
                                     dynamic_slice->operands().end()),
                      [](HloInstruction* operand) {
@@ -7879,27 +7879,6 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
     }
   }
 
-  // Replace Reduce(Broadcast(x), dims, Sum()) with Broadcast(x * prod(dims)).
-  if (HloInstruction * broadcast_arg;
-      Match(arg, m::Broadcast(m::ConstantScalar(&broadcast_arg))) &&
-      Match(function->root_instruction(),
-            m::AddAnyOrder(m::Parameter(0), m::Parameter(1)))) {
-    if (auto broadcast_value = GetConstantValue(broadcast_arg);
-        broadcast_value.has_value() &&
-        // Skip float64, where product is too accurate compared to repeated-sum.
-        broadcast_arg->shape().element_type() != PrimitiveType::F64) {
-      auto result_value = broadcast_value.value() *
-                          ShapeUtil::ElementsIn(arg->shape()) /
-                          ShapeUtil::ElementsIn(reduce_result_shape);
-      return ReplaceWithNewInstruction(
-          reduce, HloInstruction::CreateBroadcast(
-                      reduce_result_shape,
-                      reduce->AddInstruction(
-                          MakeScalarInstruction(reduce, result_value)),
-                      {}));
-    }
-  }
-
   // For Computation equal to Min, Max, And or Or, replace Reduce(Broadcast(x),
   // a, Computation()) with Computation(x, a) when x is a scalar and the
   // broadcast is reduced to a scalar.
@@ -7923,26 +7902,52 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
     }
   }
 
-  // Replace Reduce(Broadcast(Scalar)) with Broadcast(Multiply(Scalar)) when the
-  // reduction operation is addition
+  // Replace Reduce(Broadcast(x), +, init_value) with Broadcast(Add(Multiply(x),
+  // init_value))) if all reduction dimensions were introduced by Broadcast
   if (arg->opcode() == HloOpcode::kBroadcast &&
-      ShapeUtil::IsScalar(arg->operand(0)->shape())) {
-    if (Match(reduce->to_apply()->root_instruction(),
-              m::AddAnyOrder(m::Parameter(0), m::Parameter(1))) &&
-        IsScalarConstantZero(init_value)) {
-      int64_t reduction_dims_prod = 1;
-      for (auto i : reduce->dimensions()) {
-        reduction_dims_prod *= arg->shape().dimensions(i);
-      }
+      Match(reduce->to_apply()->root_instruction(),
+            m::AddAnyOrder(m::Parameter(0), m::Parameter(1)))) {
+    bool only_reduce_dims_from_broadcast = true;
+    int64_t common_dims_prod = 1;
+    int64_t num_common_dims = 0;
+    Shape new_broadcast_shape = arg->shape();
+    std::vector<int64_t> new_broadcast_dims;
 
+    // Now we build up the new broadcast shape and dims vector
+    for (int64_t i = 0; i < arg->shape().rank(); ++i) {
+      bool added_by_broadcast = !absl::c_linear_search(arg->dimensions(), i);
+      bool removed_by_reduce = absl::c_linear_search(reduce->dimensions(), i);
+
+      if (removed_by_reduce && !added_by_broadcast) {
+        only_reduce_dims_from_broadcast = false;
+        break;
+      } else if (removed_by_reduce && added_by_broadcast) {
+        new_broadcast_shape.DeleteDimension(i - num_common_dims);
+        common_dims_prod *= arg->shape().dimensions(i);
+        num_common_dims++;
+      } else if (!removed_by_reduce && !added_by_broadcast) {
+        new_broadcast_dims.push_back(i - num_common_dims);
+      }
+    }
+
+    if (only_reduce_dims_from_broadcast) {
+      // HloConstantFolding will later remove any unnecessary multiply and add
+      // instructions.
       HloInstruction* multiplier =
-          MakeScalarLike(arg->mutable_operand(0), reduction_dims_prod);
+          MakeScalarLike(arg->mutable_operand(0), common_dims_prod);
       TF_ASSIGN_OR_RETURN(HloInstruction * multiplied_scalar,
                           MakeBinaryHlo(HloOpcode::kMultiply,
                                         arg->mutable_operand(0), multiplier));
+      TF_ASSIGN_OR_RETURN(
+          HloInstruction * add,
+          MakeBinaryHlo(
+              HloOpcode::kAdd,
+              MakeBroadcastHlo(init_value, {}, multiplied_scalar->shape()),
+              multiplied_scalar));
+      VLOG(10) << "Converting common reduce(broadcast) dimensions to multiply";
       return ReplaceWithNewInstruction(
-          reduce, HloInstruction::CreateBroadcast(reduce->shape(),
-                                                  multiplied_scalar, {}));
+          reduce, HloInstruction::CreateBroadcast(new_broadcast_shape, add,
+                                                  new_broadcast_dims));
     }
   }
 

@@ -25,7 +25,6 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/gpu/fusions/loop.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 #include "xla/service/gpu/fusions/mlir/mlir_fusion_emitter.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"

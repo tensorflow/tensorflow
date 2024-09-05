@@ -152,7 +152,7 @@ TEST(SharedMemoryUseTest, ArrayReversalWorks) {
   VLOG(1) << "Using " << buffer_size_bytes << " bytes of shared memory";
 
   std::vector<uint8_t> compiled_ptx =
-      se::CompileGpuAsm(executor->device_ordinal(), kPTX.data(),
+      se::CompileGpuAsm(executor, kPTX.data(),
                         PtxOptsFromDebugOptions(DebugOptions{}))
           .value();
   std::unique_ptr<stream_executor::Kernel> kernel =

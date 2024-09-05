@@ -25,7 +25,7 @@ flatbuffer_py_library(
 
 flatbuffer_py_library(
     name = "conversion_metadata_schema_py",
-    srcs = ["//tensorflow/lite/schema:conversion_metadata.fbs"],
+    srcs = ["//tensorflow/compiler/mlir/lite/schema:conversion_metadata.fbs"],
 )
 
 py_strict_library(
@@ -200,6 +200,7 @@ py_strict_library(
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:representative_dataset",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/lite/experimental/microfrontend:audio_microfrontend_py",
+        "//tensorflow/lite/profiling/proto:model_runtime_info_py",
         "//tensorflow/lite/profiling/proto:profiling_info_py",
         "//tensorflow/lite/python/metrics",
         "//tensorflow/lite/python/optimize:calibrator",

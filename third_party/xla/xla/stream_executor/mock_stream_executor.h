@@ -1,3 +1,6 @@
+#include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/fft.h"
 /* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,7 +25,6 @@ limitations under the License.
 #include <string>
 #include <variant>
 
-#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -33,7 +35,6 @@ limitations under the License.
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
@@ -42,16 +43,6 @@ limitations under the License.
 #include "xla/test.h"
 
 namespace stream_executor {
-
-namespace fft {
-class FftSupport;
-}
-namespace dnn {
-class DnnSupport;
-}
-namespace blas {
-class BlasSupport;
-}
 
 // Implements StreamExecutor for testing.
 class MockStreamExecutor : public StreamExecutor {
@@ -68,16 +59,6 @@ class MockStreamExecutor : public StreamExecutor {
   MOCK_METHOD(absl::StatusOr<std::shared_ptr<DeviceMemoryBase>>,
               CreateOrShareConstant,
               (Stream * stream, absl::Span<const uint8_t> content), (override));
-  MOCK_METHOD(absl::Status, Launch,
-              (Stream * stream, const ThreadDim& thread_dims,
-               const BlockDim& block_dims, const Kernel& k,
-               const KernelArgs& args),
-              (override));
-  MOCK_METHOD(absl::Status, Launch,
-              (Stream * stream, const ThreadDim& thread_dims,
-               const BlockDim& block_dims, const ClusterDim& cluster_dims,
-               const Kernel& k, const KernelArgs& args),
-              (override));
   MOCK_METHOD(DeviceMemoryBase, Allocate, (uint64_t size, int64_t memory_space),
               (override));
   MOCK_METHOD(void, Deallocate, (DeviceMemoryBase * mem), (override));

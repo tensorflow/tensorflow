@@ -99,7 +99,8 @@ Traceback::~Traceback() {
   }
 }
 
-Traceback::Traceback(Traceback&& other) : frames_(std::move(other.frames_)) {
+Traceback::Traceback(Traceback&& other) noexcept
+    : frames_(std::move(other.frames_)) {
   // absl::InlinedVector does not always clear itself if moved. Since we rely on
   // its empty() method to destroy Traceback differently, we explicitly clear
   // here.

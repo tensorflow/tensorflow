@@ -81,7 +81,7 @@ absl::StatusOr<bool> ProcessScatter(HloInstruction* hlo,
     int64_t index_vector_dim = dnums.index_vector_dim();
     const auto& index_map = dnums.scatter_dims_to_operand_dims();
     return hlo_sharding_util::GetGatherScatterBatchParallelDims(
-        indices, slice_sizes, index_vector_dim, index_map, call_graph);
+        operand, indices, slice_sizes, index_vector_dim, index_map, call_graph);
   };
   // Parallel dim already detected. Assume everything is good.
   if (get_parallel_dims_for_scatter(operand, indices, updates).has_value()) {

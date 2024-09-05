@@ -380,7 +380,7 @@ def ConvertDotGeneralOp : NativeCodeCall<"ConvertDotGeneralOp($_builder, "
 def : Pat<(MHLO_DotGeneralOp:$old_value
                RankedTensorOf<[TF_ElementType]>:$lhs,
                RankedTensorOf<[TF_ElementType]>:$rhs,
-               $dot_dimension_numbers, $precision_config),
+               $dot_dimension_numbers, $precision_config, $algorithm),
           (ConvertDotGeneralOp $old_value)>;
 
 

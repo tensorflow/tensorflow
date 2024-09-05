@@ -474,7 +474,7 @@ Status MasterSession::ReffedClientGraph::DoRegisterPartitions(
     Status status;
   };
   const int num = partitions_.size();
-  gtl::InlinedVector<Call, 4> calls(num);
+  absl::InlinedVector<Call, 4UL> calls(num);
   BlockingCounter done(num);
   for (int i = 0; i < num; ++i) {
     const Part& part = partitions_[i];
@@ -588,7 +588,7 @@ class RunManyGraphs {
   }
 
  private:
-  gtl::InlinedVector<Call, 4> calls_;
+  absl::InlinedVector<Call, 4UL> calls_;
 
   BlockingCounter pending_;
   mutable mutex mu_;
@@ -911,7 +911,7 @@ class CleanupBroadcastHelper {
   // A single request shared between all workers.
   CleanupGraphRequest req_;
   // One response buffer for each worker.
-  gtl::InlinedVector<CleanupGraphResponse, 4> resps_;
+  absl::InlinedVector<CleanupGraphResponse, 4UL> resps_;
 
   mutex mu_;
   // Number of requests remaining to be collected.

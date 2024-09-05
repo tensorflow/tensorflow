@@ -59,6 +59,19 @@ def parse_args() -> argparse.Namespace:
   return parser.parse_args()
 
 
+def _copy_cuda_tree(
+    srcs_dir: str, repo_relative_path: str, destination_relative_path: str
+) -> None:
+  source_path = os.path.join(srcs_dir, repo_relative_path)
+  if os.path.exists(source_path):
+    destination_path = os.path.join(srcs_dir, destination_relative_path)
+    shutil.copytree(
+        source_path,
+        destination_path,
+        dirs_exist_ok=True,
+    )
+
+
 def prepare_headers(headers: list[str], srcs_dir: str) -> None:
   """Copy and rearrange header files in the target directory.
 
@@ -69,6 +82,21 @@ def prepare_headers(headers: list[str], srcs_dir: str) -> None:
     srcs_dir: target directory where headers are copied to.
   """
   path_to_exclude = [
+      "cuda_cccl/_virtual_includes",
+      "cuda_cublas/_virtual_includes",
+      "cuda_cudart/_virtual_includes",
+      "cuda_cudnn/_virtual_includes",
+      "cuda_cufft/_virtual_includes",
+      "cuda_cupti/_virtual_includes",
+      "cuda_curand/_virtual_includes",
+      "cuda_cusolver/_virtual_includes",
+      "cuda_cusparse/_virtual_includes",
+      "cuda_nccl/_virtual_includes",
+      "cuda_nvcc/_virtual_includes",
+      "cuda_nvjitlink/_virtual_includes",
+      "cuda_nvml/_virtual_includes",
+      "cuda_nvrtc/_virtual_includes",
+      "cuda_nvtx/_virtual_includes",
       "external/pypi",
       "external/jsoncpp_git/src",
       "local_config_cuda/cuda/_virtual_includes",
@@ -106,6 +134,23 @@ def prepare_headers(headers: list[str], srcs_dir: str) -> None:
 
   shutil.copytree(os.path.join(srcs_dir, "external/local_config_cuda/cuda"),
                   os.path.join(srcs_dir, "third_party/gpus"))
+  _copy_cuda_tree(srcs_dir, "external/cuda_cccl", "third_party/gpus/cuda")
+  _copy_cuda_tree(srcs_dir, "external/cuda_cublas", "third_party/gpus/cuda")
+  _copy_cuda_tree(srcs_dir, "external/cuda_cudart", "third_party/gpus/cuda")
+  _copy_cuda_tree(srcs_dir, "external/cuda_cudnn", "third_party/gpus/cudnn")
+  _copy_cuda_tree(srcs_dir, "external/cuda_cufft", "third_party/gpus/cuda")
+  _copy_cuda_tree(
+      srcs_dir, "external/cuda_cupti", "third_party/gpus/cuda/extras/CUPTI"
+  )
+  _copy_cuda_tree(srcs_dir, "external/cuda_curand", "third_party/gpus/cuda")
+  _copy_cuda_tree(srcs_dir, "external/cuda_cusolver", "third_party/gpus/cuda")
+  _copy_cuda_tree(srcs_dir, "external/cuda_cusparse", "third_party/gpus/cuda")
+  _copy_cuda_tree(srcs_dir, "external/cuda_nvcc", "third_party/gpus/cuda")
+  _copy_cuda_tree(srcs_dir, "external/cuda_nvjitlink", "third_party/gpus/cuda")
+  _copy_cuda_tree(srcs_dir, "external/cuda_nvml", "third_party/gpus/cuda/nvml")
+  _copy_cuda_tree(srcs_dir, "external/cuda_nvrtc", "third_party/gpus/cuda")
+  _copy_cuda_tree(srcs_dir, "external/cuda_nvtx", "third_party/gpus/cuda")
+
   shutil.copytree(os.path.join(srcs_dir, "tensorflow/compiler/xla"),
                   os.path.join(srcs_dir, "xla"))
   shutil.copytree(os.path.join(srcs_dir, "tensorflow/tsl"),
@@ -291,8 +336,11 @@ def rename_libtensorflow(srcs_dir: str, version: str):
 
 def create_local_config_python(dst_dir: str) -> None:
   """Copy python and numpy header files to the destination directory."""
+  numpy_include_dir = "external/pypi_numpy/site-packages/numpy/_core/include"
+  if not os.path.exists(numpy_include_dir):
+    numpy_include_dir = "external/pypi_numpy/site-packages/numpy/core/include"
   shutil.copytree(
-      "external/pypi_numpy/site-packages/numpy/core/include",
+      numpy_include_dir,
       os.path.join(dst_dir, "numpy_include"),
   )
   if is_windows():

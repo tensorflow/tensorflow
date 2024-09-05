@@ -20,6 +20,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 
 namespace mlir::odml {
@@ -111,6 +112,14 @@ class DimPadding {
   int64_t hi_;
 };
 
+inline llvm::SmallVector<int64_t> UnrollI64Splat(DenseElementsAttr data) {
+  if (!data.isSplat()) {
+    return llvm::SmallVector<int64_t>(data.getValues<int64_t>());
+  }
+  return llvm::SmallVector<int64_t>(data.getType().getNumElements(),
+                                    data.getSplatValue<int64_t>());
+}
+
 // Resolves optional strides or dilations attributes. If not present,
 // will return trivial 1's vector.
 llvm::SmallVector<int64_t, 4> ResolveStridesOrDilations(
@@ -125,6 +134,12 @@ llvm::SmallVector<DimPadding, 2> ResolvePadding(
 // Assumes given dimension configuration is well formed.
 bool IsSamePaddingOnDim(int64_t in, int64_t dilate, int64_t stride, int64_t k,
                         const DimPadding& pad);
+
+template <typename T>
+inline DenseElementsAttr BuildScalarDense(Type e_type, T val) {
+  auto type = RankedTensorType::get({}, e_type);
+  return DenseElementsAttr::get(type, val);
+}
 
 }  // namespace mlir::odml
 

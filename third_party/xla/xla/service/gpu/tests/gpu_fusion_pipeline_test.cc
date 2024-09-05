@@ -18,11 +18,11 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/string_view.h"
-#include "xla/service/gpu/fusion_merger.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/service/gpu/instruction_fusion.h"
-#include "xla/service/gpu/multi_output_fusion.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/service/gpu/transforms/fusion_merger.h"
+#include "xla/service/gpu/transforms/instruction_fusion.h"
+#include "xla/service/gpu/transforms/multi_output_fusion.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/shape.h"
@@ -51,8 +51,7 @@ class GpuFusionPipelineTest : public GpuCodegenTest {
                                            device_info);
     pipeline.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true, device_info);
     pipeline.AddPass<FusionMerger>(device_info, ShapeSizeBytesFunction());
-    pipeline.AddPass<GpuMultiOutputFusion>(device_info,
-                                           ShapeSizeBytesFunction());
+    pipeline.AddPass<MultiOutputFusion>(device_info, ShapeSizeBytesFunction());
 
     RunAndFilecheckHloRewrite(hlo, std::move(pipeline), expected);
   }
@@ -65,15 +64,17 @@ HloModule module
 ENTRY computation {
     p = f32[5000,6000]{1,0} parameter(0)
     e = f32[5000,6000]{1,0} sqrt(p)
-    c = f32[6000,5000] transpose(p), dimensions={1,0}
+    b = f32[1,5000,6000] reshape(p)
+    c = f32[1,6000,5000] transpose(b), dimensions={0,2,1}
     r = f32[300,20,5000] reshape(c)
     ROOT out = (f32[5000,6000], f32[300,20,5000]) tuple(e,r)
 }
 )";
   CheckGpuFusionPipeline(hlo, R"(
-// CHECK: %fused_computation (param_0.1: f32[5000,6000]) -> (f32[300,20,5000], f32[5000,6000]) {
+// CHECK: %fused_computation ({{[^:]+}}: f32[5000,6000]) -> (f32[300,20,5000], f32[5000,6000]) {
 // CHECK-NEXT:   [[param_0_1_0:%[^ ]+]] = f32[5000,6000]{1,0} parameter(0)
-// CHECK-NEXT:   [[c_1_1:%[^ ]+]] = f32[6000,5000]{1,0} transpose([[param_0_1_0]]), dimensions={1,0}
+// CHECK-NEXT:   [[bc:%[^ ]+]] = f32[1,5000,6000]{2,1,0} reshape([[param_0_1_0]])
+// CHECK-NEXT:   [[c_1_1:%[^ ]+]] = f32[1,6000,5000]{2,1,0} transpose([[bc]]), dimensions={0,2,1}
 // CHECK-NEXT:   [[r_1_2:%[^ ]+]] = f32[300,20,5000]{2,1,0} reshape([[c_1_1]])
 // CHECK-NEXT:   [[e_1_3:%[^ ]+]] = f32[5000,6000]{1,0} sqrt([[param_0_1_0]])
 // CHECK-NEXT:   ROOT [[tuple_4:%[^ ]+]] = (f32[300,20,5000]{2,1,0}, f32[5000,6000]{1,0}) tuple([[r_1_2]], [[e_1_3]])

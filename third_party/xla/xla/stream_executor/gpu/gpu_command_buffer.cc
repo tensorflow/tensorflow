@@ -42,7 +42,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_kernel.h"
-#include "xla/stream_executor/gpu/gpu_kernels.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/kernel.h"
@@ -57,6 +56,21 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 
 namespace stream_executor::gpu {
+
+//===----------------------------------------------------------------------===//
+// Implementation details device kernels required by GpuCommandBuffer.
+//===----------------------------------------------------------------------===//
+
+// See device specific implementations. These are
+// various kernels that update Gpu conditionals based on the device memory
+// values, and allow implementing on-device control flow via conditional command
+// buffers.
+absl::StatusOr<MultiKernelLoaderSpec> GetSetIfConditionKernelLoaderSpec();
+absl::StatusOr<MultiKernelLoaderSpec> GetSetIfElseConditionKernelLoaderSpec();
+absl::StatusOr<MultiKernelLoaderSpec> GetSetCaseConditionKernelLoaderSpec();
+absl::StatusOr<MultiKernelLoaderSpec> GetSetForConditionKernelLoaderSpec();
+absl::StatusOr<MultiKernelLoaderSpec> GetSetWhileConditionKernelLoaderSpec();
+absl::StatusOr<MultiKernelLoaderSpec> GetNoOpKernelLoaderSpec();
 
 using Mode = CommandBuffer::Mode;
 using State = CommandBuffer::State;
@@ -215,8 +229,7 @@ GpuCommandBuffer::Dependencies GpuCommandBuffer::GetBarrier(
 absl::StatusOr<GpuCommandBuffer::SetIfConditionKernel*>
 GpuCommandBuffer::GetSetIfConditionKernel() {
   if (!set_if_condition_kernel_) {
-    MultiKernelLoaderSpec spec(/*arity=*/2);
-    spec.AddCudaPtxInMemory(gpu::GetSetIfConditionKernel(), "set_if_condition");
+    TF_ASSIGN_OR_RETURN(auto spec, GetSetIfConditionKernelLoaderSpec());
     TF_ASSIGN_OR_RETURN(
         set_if_condition_kernel_,
         SetIfConditionKernel::FactoryType::Create(parent_, spec));
@@ -227,9 +240,7 @@ GpuCommandBuffer::GetSetIfConditionKernel() {
 absl::StatusOr<GpuCommandBuffer::SetIfElseConditionKernel*>
 GpuCommandBuffer::GetSetIfElseConditionKernel() {
   if (!set_if_else_condition_kernel_) {
-    MultiKernelLoaderSpec spec(/*arity=*/3);
-    spec.AddCudaPtxInMemory(gpu::GetSetIfElseConditionKernel(),
-                            "set_if_else_condition");
+    TF_ASSIGN_OR_RETURN(auto spec, GetSetIfElseConditionKernelLoaderSpec());
     TF_ASSIGN_OR_RETURN(
         set_if_else_condition_kernel_,
         SetIfElseConditionKernel::FactoryType::Create(parent_, spec));
@@ -240,9 +251,7 @@ GpuCommandBuffer::GetSetIfElseConditionKernel() {
 absl::StatusOr<GpuCommandBuffer::SetCaseConditionKernel*>
 GpuCommandBuffer::GetSetCaseConditionKernel() {
   if (!set_case_condition_kernel_) {
-    MultiKernelLoaderSpec spec(/*arity=*/10);
-    spec.AddCudaPtxInMemory(gpu::GetSetCaseConditionKernel(),
-                            "set_case_condition");
+    TF_ASSIGN_OR_RETURN(auto spec, GetSetCaseConditionKernelLoaderSpec());
     TF_ASSIGN_OR_RETURN(
         set_case_condition_kernel_,
         SetCaseConditionKernel::FactoryType::Create(parent_, spec));
@@ -253,9 +262,7 @@ GpuCommandBuffer::GetSetCaseConditionKernel() {
 absl::StatusOr<GpuCommandBuffer::SetForConditionKernel*>
 GpuCommandBuffer::GetSetForConditionKernel() {
   if (!set_for_condition_kernel_) {
-    MultiKernelLoaderSpec spec(/*arity=*/3);
-    spec.AddCudaPtxInMemory(gpu::GetSetForConditionKernel(),
-                            "set_for_condition");
+    TF_ASSIGN_OR_RETURN(auto spec, GetSetForConditionKernelLoaderSpec());
     TF_ASSIGN_OR_RETURN(
         set_for_condition_kernel_,
         SetForConditionKernel::FactoryType::Create(parent_, spec));
@@ -266,9 +273,7 @@ GpuCommandBuffer::GetSetForConditionKernel() {
 absl::StatusOr<GpuCommandBuffer::SetWhileConditionKernel*>
 GpuCommandBuffer::GetSetWhileConditionKernel() {
   if (!set_while_condition_kernel_) {
-    MultiKernelLoaderSpec spec(/*arity=*/2);
-    spec.AddCudaPtxInMemory(gpu::GetSetWhileConditionKernel(),
-                            "set_while_condition");
+    TF_ASSIGN_OR_RETURN(auto spec, GetSetWhileConditionKernelLoaderSpec());
     TF_ASSIGN_OR_RETURN(
         set_while_condition_kernel_,
         SetWhileConditionKernel::FactoryType::Create(parent_, spec));
@@ -278,18 +283,12 @@ GpuCommandBuffer::GetSetWhileConditionKernel() {
 
 absl::StatusOr<GpuCommandBuffer::NoOpKernel*>
 GpuCommandBuffer::GetNoOpKernel() {
-#if !defined(TENSORFLOW_USE_ROCM)
   if (!noop_kernel_) {
-    MultiKernelLoaderSpec spec(/*arity=*/0);
-    spec.AddCudaPtxInMemory(gpu::kNoOpKernel, "noop");
+    TF_ASSIGN_OR_RETURN(auto spec, GetNoOpKernelLoaderSpec());
     TF_ASSIGN_OR_RETURN(noop_kernel_,
                         NoOpKernel::FactoryType::Create(parent_, spec));
   }
   return &noop_kernel_;
-#else
-  return absl::UnimplementedError(
-      "GpuCommandBuffer::GetNoOpKernel is not implemented.");
-#endif  // TENSORFLOW_USE_ROCM
 }
 
 absl::Status GpuCommandBuffer::DisableBarriersExecution(
@@ -956,6 +955,27 @@ absl::Status GpuCommandBuffer::While(ExecutionScopeId execution_scope_id,
 absl::Status GpuCommandBuffer::Finalize() {
   TF_RETURN_IF_ERROR(CheckNotFinalized());
 
+  // Collect number of nodes and conditionals for logging below.
+  size_t num_nodes = 0, num_cond_cmd_buffers = 0;
+  for (auto& [_, execution_scope] : execution_scopes_) {
+    num_nodes += execution_scope.nodes.size();
+    num_cond_cmd_buffers += execution_scope.conditional_command_buffers.size();
+  }
+
+  // TODO(b/362769658): Remove this workaround when cuda supports conditionals
+  // with empty graphs.
+#if !defined(TENSORFLOW_USE_ROCM)
+  if (num_nodes == 0) {
+    GpuGraphNodeHandle empty_node_handle = nullptr;
+    TF_ASSIGN_OR_RETURN(NoOpKernel * noop, GetNoOpKernel());
+
+    TF_RETURN_IF_ERROR(GpuDriver::GraphAddKernelNode(
+        &empty_node_handle, graph_, /*deps=*/{}, "noop",
+        AsGpuKernel(&**noop)->gpu_function(), 1, 1, 1, 1, 1, 1, 0,
+        /*kernel_params=*/nullptr, /*extra=*/nullptr));
+  }
+#endif
+
   // Maybe dump created CUDA graph to a dot file for debugging.
   if (state_ == State::kCreate && VLOG_IS_ON(10)) {
     std::string path = tsl::io::GetTempFilename(/*extension=*/"dot");
@@ -965,13 +985,6 @@ absl::Status GpuCommandBuffer::Finalize() {
       VLOG(100) << "Printed Gpu graph " << graph_ << " to: " << path << "\n"
                 << *printed;
     }
-  }
-
-  // Collect number of nodes and conditionals for logging below.
-  size_t num_nodes = 0, num_cond_cmd_buffers = 0;
-  for (auto& [_, execution_scope] : execution_scopes_) {
-    num_nodes += execution_scope.nodes.size();
-    num_cond_cmd_buffers += execution_scope.conditional_command_buffers.size();
   }
 
   if (mode_ == Mode::kPrimary && state_ == State::kCreate) {
@@ -999,13 +1012,15 @@ absl::Status GpuCommandBuffer::Finalize() {
             "CUDA driver ran out of memory trying to instantiate CUDA graph "
             "with %d nodes and %d conditionals (total of %d alive CUDA graphs "
             "in the process). You can try to (a) Give more memory to CUDA "
-            "driver by reducing XLA_PYTHON_CLIENT_MEM_FRACTION (b) Disable "
+            "driver by reducing XLA_CLIENT_MEM_FRACTION (b) Disable "
             "CUDA graph with 'XLA_FLAGS=--xla_gpu_enable_command_buffer=' "
             "(empty set). Original error: %s",
             num_nodes, num_cond_cmd_buffers, AliveExecs(), retry.message()));
       } else {
         TF_RETURN_IF_ERROR(retry);
       }
+    } else {
+      TF_RETURN_IF_ERROR(instantiated);
     }
 
     uint64_t end_nanos = tsl::Env::Default()->NowNanos();

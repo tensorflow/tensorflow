@@ -32,9 +32,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/lite/test_util.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "tensorflow/lite/core/model_builder.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/path.h"
 

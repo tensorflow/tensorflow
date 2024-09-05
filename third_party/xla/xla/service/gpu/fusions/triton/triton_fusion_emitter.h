@@ -17,13 +17,13 @@ limitations under the License.
 #define XLA_SERVICE_GPU_FUSIONS_TRITON_TRITON_FUSION_EMITTER_H_
 
 #include <cstdint>
-#include <functional>
 #include <optional>
 #include <string>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Module.h"
 #include "mlir/IR/Builders.h"
@@ -87,19 +87,6 @@ absl::Status EmitMatMul(mlir::OpBuilder b, absl::string_view libdevice_path,
                         mlir::triton::FuncOp fn,
                         const BlockLevelParameters& block_level_parameters);
 
-// Generate Softmax in Triton IR inside 'fn'.
-// Use execution parameters from 'block_level_parameters'.
-absl::Status EmitSoftMax(mlir::OpBuilder b, absl::string_view libdevice_path,
-                         const se::DeviceDescription& device_info,
-                         const HloFusionInstruction* fusion,
-                         mlir::triton::FuncOp fn,
-                         const BlockLevelParameters& block_level_parameters);
-
-using TritonIrEmitter = std::function<absl::Status(
-    mlir::OpBuilder, absl::string_view, const se::DeviceDescription&,
-    const HloFusionInstruction*, mlir::triton::FuncOp,
-    const BlockLevelParameters&)>;
-
 // Load the MLIR dialects required for Triton IR generation.
 void LoadMlirDialectsForTriton(mlir::MLIRContext& mlir_context);
 
@@ -155,7 +142,7 @@ namespace ir_emitter_triton_internal {
 // Computes the transformation from a 1-d program_id to a tile multi-index.
 llvm::SmallVector<mlir::Value, 3> ComputeDelinearizedTileIndex(
     mlir::ImplicitLocOpBuilder& b,
-    const TiledHloComputation& tiled_hlo_computation);
+    absl::Span<const int64_t> num_output_tiles_per_dim);
 
 // Used for creating Triton Load and Store ops.
 struct MakeTensorPtrOpAndBoundaryChecks {

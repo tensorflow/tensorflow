@@ -10,7 +10,6 @@ load(
 tf_proto_library(
     name = "debug_options_proto",
     srcs = ["debug_options.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     visibility = ["//visibility:public"],
 )
@@ -59,8 +58,8 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:path",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )

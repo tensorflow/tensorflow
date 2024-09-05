@@ -58,7 +58,7 @@ cc_library(
     srcs = ["profiler_controller.cc"],
     hdrs = ["profiler_controller.h"],
     visibility = internal_visibility([
-        "//tsl/profiler:internal",
+        "@local_xla//xla/tsl/profiler:internal",
     ]),
     deps = [
         ":profiler_interface",
@@ -74,8 +74,8 @@ cc_library(
     name = "profiler_factory",
     hdrs = ["profiler_factory.h"],
     visibility = internal_visibility([
-        "//tsl/profiler:internal",
-        "//tsl/profiler:xla_profiler_backends",
+        "@local_xla//xla/tsl/profiler:internal",
+        "@local_xla//xla/tsl/profiler:xla_profiler_backends",
         "@local_xla//xla/python:__pkg__",
         "//learning/brain/tfrc/executor/stream_executor:__pkg__",
     ]),
@@ -95,7 +95,7 @@ cc_library(
     ],
     copts = tf_profiler_copts(),
     visibility = internal_visibility([
-        "//tsl/profiler:internal",
+        "@local_xla//xla/tsl/profiler:internal",
         "//learning/brain/tfrc/executor/stream_executor:__pkg__",
     ]),
     deps = [
@@ -130,8 +130,8 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = internal_visibility([
         "@local_xla//xla/tsl:internal",
-        "//tsl/profiler:internal",
-        "//tsl/profiler:xla_profiler_backends",
+        "@local_xla//xla/tsl/profiler:internal",
+        "@local_xla//xla/tsl/profiler:xla_profiler_backends",
     ]),
     deps = [
         "//tsl/platform:status",
@@ -145,8 +145,8 @@ cc_library(
     hdrs = ["profiler_lock.h"],
     copts = tf_profiler_copts(),
     visibility = internal_visibility([
-        "//tsl/profiler:internal",
-        "//tsl/profiler:xla_internal",
+        "@local_xla//xla/tsl/profiler:internal",
+        "@local_xla//xla/tsl/profiler:xla_internal",
     ]),
     deps = [
         "//tsl/platform:errors",
@@ -200,7 +200,7 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = internal_visibility([
         "//tensorflow/python:__pkg__",
-        "//tsl/profiler:internal",
+        "@local_xla//xla/tsl/profiler:internal",
     ]),
     deps = [
         "//tsl/platform:errors",
@@ -255,7 +255,7 @@ tsl_cc_test(
 tf_profiler_pybind_cc_library_wrapper(
     name = "traceme_for_pybind",
     actual = ":traceme",
-    visibility = internal_visibility(["//tsl/profiler:xla_internal"]),
+    visibility = internal_visibility(["@local_xla//xla/tsl/profiler:xla_internal"]),
 )
 
 cc_library(
@@ -319,6 +319,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":nvtx_utils",
+        "//tsl/platform",
         "//tsl/platform:macros",
         "//tsl/platform:types",
         "@com_google_absl//absl/strings",
@@ -350,6 +351,7 @@ cc_library(
         ":context_types_hdrs",
         ":traceme",
         ":traceme_encode",
+        "//tsl/platform:types",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],

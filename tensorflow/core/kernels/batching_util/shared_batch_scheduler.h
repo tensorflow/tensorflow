@@ -29,13 +29,13 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/time/clock.h"
 #include "tensorflow/core/kernels/batching_util/batch_input_task.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler_utils.h"
+#include "tensorflow/core/kernels/batching_util/batch_stats.h"
 #include "tensorflow/core/kernels/batching_util/periodic_function.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -149,7 +150,7 @@ class SharedBatchScheduler
       const Options& options,
       std::shared_ptr<SharedBatchScheduler<TaskType>>* scheduler);
 
-  ~SharedBatchScheduler();
+  virtual ~SharedBatchScheduler();
 
   // Adds a queue to which tasks may be submitted. The returned queue implements
   // the BatchScheduler API. Each queue has its own set of scheduling options,
@@ -240,6 +241,18 @@ class SharedBatchScheduler
     // If true, the padding will not be appended.
     bool disable_padding = false;
 
+    // The padding policy to use.
+    //
+    // See the documentation for kPadUpPolicy for details.
+    string batch_padding_policy = string(kPadUpPolicy);
+
+    // A pointer to a ModelBatchStats instance for this model. To be used for
+    // cost-based padding policy selection.
+    //
+    // If null, some other padding policy will be used if a cost-based one is
+    // requested.
+    ModelBatchStats* model_batch_stats = nullptr;
+
     // If true, queue implementation would split high priority and low priority
     // inputs into two sub queues.
     bool enable_priority_queue = false;
@@ -270,13 +283,15 @@ class SharedBatchScheduler
     MixedPriorityBatchingPolicy mixed_priority_batching_policy =
         MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize;
   };
-  Status AddQueue(const QueueOptions& options,
-                  ProcessBatchCallback process_batch_callback,
-                  std::unique_ptr<BatchScheduler<TaskType>>* queue);
+  // This method is marked virtual for testing purposes only.
+  virtual Status AddQueue(const QueueOptions& options,
+                          ProcessBatchCallback process_batch_callback,
+                          std::unique_ptr<BatchScheduler<TaskType>>* queue);
 
- private:
+ protected:
   explicit SharedBatchScheduler(const Options& options);
 
+ private:
   void GetNextWorkItem_Locked(internal::Queue<TaskType>** queue_for_batch_out,
                               BatchUniquePtr* batch_to_process_out)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -588,6 +603,9 @@ class Queue {
   // The time at which the first task was added to the open (back-most) batch
   // in 'high_priority_batches_'. Valid iff that batch contains at least one
   // task.
+  //
+  // Note that when using a batch padding policy other than PAD_UP, this field
+  // might contain an approximate value (see ScheduleBatchWithEagerSplit).
   uint64 open_batch_start_time_micros_ TF_GUARDED_BY(mu_);
 
   // Whether this queue contains a batch that is eligible to be scheduled.
@@ -920,7 +938,7 @@ Status Queue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
 
 template <typename TaskType>
 Status Queue<TaskType>::ScheduleWithLazySplit(std::unique_ptr<TaskType>* task) {
-  profiler::TraceMe trace_me([task] {
+  tsl::profiler::TraceMe trace_me([task] {
     return profiler::TraceMeEncode(
         "ScheduleWithLazySplit",
         {{"batching_input_task_size", (*task)->size()}});
@@ -1055,7 +1073,7 @@ template <typename TaskType>
 Status Queue<TaskType>::ScheduleWithoutOrEagerSplit(
     std::unique_ptr<TaskType>* task) {
   const bool large_batch_splitting = options_.enable_large_batch_splitting;
-  profiler::TraceMe trace_me([task, large_batch_splitting] {
+  tsl::profiler::TraceMe trace_me([task, large_batch_splitting] {
     return profiler::TraceMeEncode(
         large_batch_splitting ? "ScheduleWithEagerSplit"
                               : "ScheduleWithoutSplit",
@@ -1223,7 +1241,37 @@ Queue<TaskType>::ScheduleBatchWithEagerSplit() {
     std::deque<std::unique_ptr<Batch<TaskType>>>& batches = GetBatches();
     // Consider closing the open batch at this time, to schedule it.
     if (batches.size() == 1 && IsOpenBatchSchedulable()) {
+      // Support BatchPaddingPolicy::kBatchDown and
+      // BatchPaddingPolicy::kMinimizeTpuCostPerRequest. We do this before
+      // starting a new batch because starting a new batch will close the old
+      // batch, making it read-only.
+      std::vector<std::unique_ptr<TaskType>> trimmed_tasks;
+      MaybeBatchDown(
+          /* batch= */ *batches[0],
+          /* allowed_batch_sizes= */ options_.allowed_batch_sizes,
+          /* disable_padding= */ options_.disable_padding,
+          /* batch_padding_policy= */ options_.batch_padding_policy,
+          /* model_batch_stats= */ options_.model_batch_stats,
+          /* out_trimmed_tasks= */ trimmed_tasks);
+
       StartNewBatch();
+
+      // Move the trimmed tasks, if any, into the new batch.
+      Batch<TaskType>& new_batch = *batches[1];
+      for (std::unique_ptr<TaskType>& task : trimmed_tasks) {
+        new_batch.AddTask(std::move(task));
+      }
+      if (!new_batch.empty()) {
+        // TODO - b/325954758: Reconsider the starting time of a trimmed batch.
+        //
+        // Ideally, we'd set open_batch_start_time_micros_ to time we received
+        // the first task, but we don't have this information here, so we're
+        // using NOW as the timestamp. An alternative solution that doesn't
+        // require adding time to each task would be to assume that requests
+        // arrived at a steady rate and therefore use a point between the old
+        // value of open_batch_start_time_micros_ and NOW.
+        open_batch_start_time_micros_ = env_->NowMicros();
+      }
     }
 
     if (batches.size() >= 2) {

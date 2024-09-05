@@ -15,7 +15,7 @@ load(
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = internal_visibility([
-        "//tsl/profiler:internal",
+        "@local_xla//xla/tsl/profiler:internal",
     ]),
     licenses = ["notice"],
 )
@@ -29,7 +29,6 @@ cc_library(
         "@local_xla//xla/python:__pkg__",
         "//tensorflow/core/profiler/rpc/client:__pkg__",
         "//tensorflow/python/profiler/internal:__pkg__",
-        "//learning/pathways/data_parallel:__pkg__",
     ]),
     deps = [
         ":profiler_client_for_pybind",
@@ -60,8 +59,9 @@ cc_library(
     visibility = internal_visibility([
         "//tensorflow/core/profiler/rpc/client:__pkg__",
         "@local_xla//xla/python:__pkg__",
-        "//tsl/profiler:internal",
+        "@local_xla//xla/tsl/profiler:internal",
         "//tsl/profiler/rpc:__pkg__",
+        "//learning/pathways/data_parallel:__pkg__",
     ]),
     deps = [
         "//tsl/lib/io:zlib_compression_options",

@@ -36,6 +36,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/index.h"
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
@@ -49,6 +50,14 @@ namespace xla {
 namespace ifrt {
 
 namespace {
+
+// Returns a canonicalized memory kind for the given devices.
+// REQUIRES: !devices.empty()
+MemoryKind CanonicalizeMemoryKindWithDevices(const MemoryKind& memory_kind,
+                                             const DeviceList& devices) {
+  CHECK(!devices.empty());
+  return CanonicalizeMemoryKind(memory_kind, devices.front());
+}
 
 // Returns if `sharding_param` indicates a fully replicated sharding.
 bool ComputeIsFullyReplicated(const ShardingParam& sharding_param) {
@@ -155,6 +164,12 @@ char ShardingParamSharding::ID = 0;
 
 char DeserializeShardingOptions::ID = 0;
 
+Sharding::Sharding(DeviceList devices, MemoryKind memory_kind,
+                   bool is_fully_replicated)
+    : devices_(std::move(devices)),
+      memory_kind_(memory_kind),
+      is_fully_replicated_(is_fully_replicated) {}
+
 bool Sharding::operator==(const Sharding& other) const {
   if (this == &other) {
     return true;
@@ -184,6 +199,7 @@ std::ostream& operator<<(std::ostream& os, const Sharding& sharding) {
 
 std::unique_ptr<SingleDeviceSharding> SingleDeviceSharding::Create(
     Device* device, MemoryKind memory_kind) {
+  memory_kind = CanonicalizeMemoryKind(memory_kind, device);
   return std::unique_ptr<SingleDeviceSharding>(
       new SingleDeviceSharding(device, memory_kind));
 }
@@ -240,13 +256,13 @@ absl::StatusOr<std::vector<IndexDomain>> SingleDeviceSharding::IndexDomains(
 
 std::string SingleDeviceSharding::DebugString() const {
   DCHECK(this);
-  return absl::StrFormat("SingleDeviceSharding(%s, memory_kind: %s)",
-                         devices_.front()->ToString(),
-                         memory_kind_.DebugString());
+  return absl::StrFormat("SingleDeviceSharding(%s, memory_kind: %v)",
+                         devices_.front()->ToString(), memory_kind_);
 }
 
 std::unique_ptr<OpaqueSharding> OpaqueSharding::Create(DeviceList devices,
                                                        MemoryKind memory_kind) {
+  memory_kind = CanonicalizeMemoryKindWithDevices(memory_kind, devices);
   return std::unique_ptr<OpaqueSharding>(
       new OpaqueSharding(std::move(devices), memory_kind));
 }
@@ -306,18 +322,19 @@ absl::StatusOr<std::vector<IndexDomain>> OpaqueSharding::IndexDomains(
 std::string OpaqueSharding::DebugString() const {
   DCHECK(this);
   return absl::StrFormat(
-      "OpaqueSharding(devices: %s, memory_kind: %s)",
+      "OpaqueSharding(devices: %s, memory_kind: %v)",
       absl::StrJoin(devices_, ",",
                     [](std::string* out, const Device* device) {
                       absl::StrAppend(out, device->ToString());
                     }),
-      memory_kind_.DebugString());
+      memory_kind_);
 }
 
 std::unique_ptr<ConcreteSharding> ConcreteSharding::Create(
     DeviceList devices, MemoryKind memory_kind, Shape shape,
     std::vector<Shape> shard_shapes) {
   CHECK_EQ(devices.size(), shard_shapes.size());
+  memory_kind = CanonicalizeMemoryKindWithDevices(memory_kind, devices);
   return std::unique_ptr<ConcreteSharding>(
       new ConcreteSharding(std::move(devices), memory_kind, std::move(shape),
                            std::move(shard_shapes)));
@@ -327,6 +344,7 @@ std::unique_ptr<ConcreteSharding> ConcreteSharding::Create(
     DeviceList devices, MemoryKind memory_kind, DynamicShape dynamic_shape,
     std::vector<DynamicShape> shard_dynamic_shapes) {
   CHECK_EQ(devices.size(), shard_dynamic_shapes.size());
+  memory_kind = CanonicalizeMemoryKindWithDevices(memory_kind, devices);
   return std::unique_ptr<ConcreteSharding>(new ConcreteSharding(
       std::move(devices), memory_kind, std::move(dynamic_shape),
       std::move(shard_dynamic_shapes)));
@@ -454,7 +472,7 @@ std::string ConcreteSharding::DebugString() const {
       [this](const auto& shape, const auto& shard_shapes) {
         return absl::StrFormat(
             "ConcreteSharding(devices: %s, shape: %s, shard_shapes: %s, "
-            "memory_kind: %s)",
+            "memory_kind: %v)",
             absl::StrJoin(devices_, ",",
                           [](std::string* out, const Device* device) {
                             absl::StrAppend(out, device->ToString());
@@ -464,7 +482,7 @@ std::string ConcreteSharding::DebugString() const {
                           [](std::string* out, const auto& shard_shape) {
                             absl::StrAppend(out, shard_shape.DebugString());
                           }),
-            memory_kind_.DebugString());
+            memory_kind_);
       },
       shape_, shard_shapes_);
 }
@@ -472,6 +490,7 @@ std::string ConcreteSharding::DebugString() const {
 std::unique_ptr<ConcreteEvenSharding> ConcreteEvenSharding::Create(
     DeviceList devices, MemoryKind memory_kind, Shape shape, Shape shard_shape,
     bool is_fully_replicated) {
+  memory_kind = CanonicalizeMemoryKindWithDevices(memory_kind, devices);
   return std::unique_ptr<ConcreteEvenSharding>(new ConcreteEvenSharding(
       std::move(devices), memory_kind, std::move(shape), std::move(shard_shape),
       is_fully_replicated));
@@ -565,13 +584,12 @@ std::string ConcreteEvenSharding::DebugString() const {
   DCHECK(this);
   return absl::StrFormat(
       "ConcreteEvenSharding(devices: %s, shape: %s, shard_shape: %s, "
-      "memory_kind: %s)",
+      "memory_kind: %v)",
       absl::StrJoin(devices_, ",",
                     [](std::string* out, const Device* device) {
                       absl::StrAppend(out, device->ToString());
                     }),
-      shape_.DebugString(), shard_shape_.DebugString(),
-      memory_kind_.DebugString());
+      shape_.DebugString(), shard_shape_.DebugString(), memory_kind_);
 }
 
 absl::StatusOr<std::unique_ptr<ShardingParamSharding>>
@@ -586,6 +604,7 @@ ShardingParamSharding::Create(ShardingParam sharding_param, DeviceList devices,
         "%d",
         device_count, devices.size());
   }
+  memory_kind = CanonicalizeMemoryKindWithDevices(memory_kind, devices);
   return std::unique_ptr<ShardingParamSharding>(new ShardingParamSharding(
       std::move(sharding_param), std::move(devices), memory_kind));
 }
@@ -595,7 +614,8 @@ ShardingParamSharding::ShardingParamSharding(ShardingParam sharding_param,
                                              DeviceList devices,
                                              MemoryKind memory_kind)
     : llvm::RTTIExtends<ShardingParamSharding, Sharding>(
-          devices, memory_kind, ComputeIsFullyReplicated(sharding_param)),
+          std::move(devices), memory_kind,
+          ComputeIsFullyReplicated(sharding_param)),
       sharding_param_(sharding_param) {}
 
 absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
@@ -710,13 +730,13 @@ absl::StatusOr<std::vector<IndexDomain>> ShardingParamSharding::IndexDomains(
 std::string ShardingParamSharding::DebugString() const {
   DCHECK(this);
   return absl::StrFormat(
-      "ShardingParamSharding(%s, devices: %s, memory_kind: %s)",
+      "ShardingParamSharding(%s, devices: %s, memory_kind: %v)",
       sharding_param_.DebugString(),
       absl::StrJoin(devices_, ",",
                     [](std::string* out, const Device* device) {
                       absl::StrAppend(out, device->ToString());
                     }),
-      memory_kind_.DebugString());
+      memory_kind_);
 }
 
 }  // namespace ifrt

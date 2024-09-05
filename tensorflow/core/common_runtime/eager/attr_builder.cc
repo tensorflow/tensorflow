@@ -173,7 +173,7 @@ Status AttrBuilder::Get(StringPiece attr_name,
   for (size_t i = 0; i < attr_tmp_.list().type_size(); i++) {
     value->push_back(attr_tmp_.list().type(i));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 AttrBuilder& AttrBuilder::NumInputs(int n) {

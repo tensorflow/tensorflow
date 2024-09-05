@@ -10,6 +10,7 @@ load(
 load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
+    "if_cuda_newer_than",
 )
 load(
     "//xla:xla.bzl",
@@ -28,7 +29,14 @@ load(
     "tf_additional_gpu_compilation_copts",
 )
 load("//xla/tests:build_defs.bzl", "xla_test")
-load("//xla/tsl:tsl.bzl", "if_google", "if_nccl", "internal_visibility", "tsl_copts")
+load(
+    "//xla/tsl:tsl.bzl",
+    "if_cuda_tools",
+    "if_google",
+    "if_nccl",
+    "internal_visibility",
+    "tsl_copts",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -133,9 +141,21 @@ cuda_only_cc_library(
 
 # Buildozer can not remove dependencies inside select guards, so we have to use
 # an intermediate target.
-cc_library(name = "ptxas_wrapper")
+cc_library(
+    name = "ptxas_wrapper",
+    data = if_cuda_tools(
+        ["@cuda_nvcc//:ptxas"],
+        [],
+    ),
+)
 
-cc_library(name = "nvlink_wrapper")
+cc_library(
+    name = "nvlink_wrapper",
+    data = if_cuda_tools(
+        ["@cuda_nvcc//:nvlink"],
+        [],
+    ),
+)
 
 cuda_only_cc_library(
     name = "cuda_driver",
@@ -145,13 +165,15 @@ cuda_only_cc_library(
         ":cuda_diagnostics",  # buildcleaner: keep
         ":cuda_status",
         "//xla/stream_executor",
+        "//xla/stream_executor/gpu:context",
+        "//xla/stream_executor/gpu:context_map",
         "//xla/stream_executor/gpu:gpu_diagnostics_header",
         "//xla/stream_executor/gpu:gpu_driver_header",
         "//xla/stream_executor/gpu:gpu_types_header",
+        "//xla/stream_executor/gpu:scoped_activate_context",
         "//xla/tsl/cuda",
         "//xla/tsl/cuda:cudart",
         "@com_google_absl//absl/base",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/debugging:leak_check",
@@ -164,6 +186,7 @@ cuda_only_cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@local_config_cuda//cuda:cuda_headers",
+        "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
@@ -209,8 +232,9 @@ cuda_only_cc_library(
     defines = if_nccl(["STREAM_EXECUTOR_GPU_ENABLE_XCCL"]),
     deps = [
         ":cuda_driver",
+        "//xla/stream_executor/gpu:context",
         "//xla/stream_executor/gpu:gpu_collectives_header",
-        "//xla/stream_executor/gpu:gpu_driver_header",
+        "//xla/stream_executor/gpu:scoped_activate_context",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -225,15 +249,13 @@ xla_test(
     name = "cuda_driver_test",
     srcs = ["cuda_driver_test.cc"],
     backends = ["gpu"],
-    tags = [
-        # TODO(b/317293391) Remove once Bazel test_suite handles tags correctly
-        "gpu",
-        "no_rocm",
-    ],
+    tags = ["no_rocm"],
     deps = [
+        ":cuda_diagnostics",
         ":cuda_driver",
         ":cuda_status",
         "//xla/stream_executor/gpu:gpu_driver_header",
+        "//xla/stream_executor/gpu:scoped_activate_context",
         "@com_google_absl//absl/log",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_tsl//tsl/platform:status",
@@ -428,7 +450,6 @@ gpu_kernel_library(
         "//xla/stream_executor/gpu:gpu_driver_header",
         "//xla/stream_executor/gpu:gpu_executor_header",
         "//xla/stream_executor/gpu:gpu_semaphore",
-        "//xla/stream_executor/gpu:gpu_stream",
         "@com_google_absl//absl/status:statusor",
     ],
 )
@@ -493,23 +514,22 @@ cuda_only_cc_library(
 cuda_only_cc_library(
     name = "cuda_kernel",
     srcs = ["cuda_kernel.cc"],
-    hdrs = ["cuda_kernel.h"],
     deps = [
-        ":cuda_driver",
         "//xla/stream_executor",
         "//xla/stream_executor/gpu:gpu_driver_header",
         "//xla/stream_executor/gpu:gpu_kernel_header",
-        "//xla/stream_executor/platform",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
-        "@local_config_cuda//cuda:cuda_headers",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
 cc_library(
-    name = "cuda_conditional_kernels",
-    srcs = ["cuda_conditional_kernels.cc"],
+    name = "command_buffer_kernels",
+    srcs = ["command_buffer_kernels.cc"],
+    deps = [
+        "//xla/stream_executor:kernel_spec",
+        "@com_google_absl//absl/status:statusor",
+    ],
 )
 
 # TODO(leary) we likely need to canonicalize/eliminate this.
@@ -532,8 +552,7 @@ cuda_only_cc_library(
         ":cuda_driver",
         "//xla/stream_executor:event",
         "//xla/stream_executor/gpu:gpu_event",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status:statusor",
+        "//xla/stream_executor/gpu:scoped_activate_context",
         "@local_config_cuda//cuda:cuda_headers",
     ],
 )
@@ -559,6 +578,7 @@ cc_library(
         "ptx_compiler_stub.cc",
     ],
     deps = [
+        "//xla/stream_executor:semantic_version",
         "//xla/stream_executor/gpu:gpu_asm_opts",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -573,6 +593,7 @@ cc_library(
     ],
     tags = ["manual"],
     deps = [
+        "//xla/stream_executor:semantic_version",
         "//xla/stream_executor/gpu:gpu_asm_opts",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
@@ -590,24 +611,47 @@ cc_library(
 cc_library(
     name = "ptx_compiler",
     hdrs = ["ptx_compiler.h"],
+    tags = ["no_rocm"],
     deps = select({
         ":libnvptxcompiler_support_enabled": [":ptx_compiler_impl"],
         "//conditions:default": [":ptx_compiler_stub"],
     }) + [
+        "//xla/stream_executor:semantic_version",
         "//xla/stream_executor/gpu:gpu_asm_opts",
         "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+xla_test(
+    name = "cuda_platform_test",
+    srcs = ["cuda_platform_test.cc"],
+    backends = ["gpu"],
+    tags = ["no_rocm"],
+    deps = [
+        ":cuda_platform",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
 xla_cc_test(
     name = "ptx_compiler_test",
     srcs = ["ptx_compiler_test.cc"],
-    # TODO(b/343996893): Figure out whether msan reports a false positive or not.
-    tags = ["nomsan"],
+    tags = [
+        "no_rocm",
+        # TODO(b/343996893): Figure out whether msan reports a false positive or not.
+        "nomsan",
+    ],
     deps = [
         ":ptx_compiler",
         ":ptx_compiler_support",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor:semantic_version",
         "//xla/stream_executor/gpu:gpu_asm_opts",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -629,7 +673,11 @@ cc_library(
         "//conditions:default": [
             "LIBNVJITLINK_SUPPORT=false",
         ],
-    }),
+    }) + if_cuda_newer_than(
+        "12_0",
+        ["CUDA_SUPPORTS_NVJITLINK=true"],
+        ["CUDA_SUPPORTS_NVJITLINK=false"],
+    ),
 )
 
 cc_library(
@@ -672,13 +720,25 @@ cc_library(
     ],
 )
 
+# Since select() can't be nested, we need to wrap the cuda_newer_than check in a separate
+# library target.
+cc_library(
+    name = "nvjitlink_cuda_supported",
+    # Even though the macro is called `*_newer_than`, it does a greater-than-or-equal-to comparison.
+    deps = if_cuda_newer_than(
+        "12_0",
+        [":nvjitlink_impl"],
+        [":nvjitlink_stub"],
+    ),
+)
+
 cc_library(
     name = "nvjitlink",
     hdrs = [
         "nvjitlink.h",
     ],
     deps = select({
-        ":libnvjitlink_support_enabled": [":nvjitlink_impl"],
+        ":libnvjitlink_support_enabled": [":nvjitlink_cuda_supported"],
         "//conditions:default": [":nvjitlink_stub"],
     }) + [
         "//xla/stream_executor/gpu:gpu_asm_opts",
@@ -691,7 +751,7 @@ xla_cc_test(
     name = "nvjitlink_test",
     srcs = ["nvjitlink_test.cc"],
     args = if_google([
-        # nvjitlink allocates memory and only keeps a pointer past the usual offest of 1024 bytes;
+        # nvjitlink allocates memory and only keeps a pointer past the usual offset of 1024 bytes;
         # so we need to increase the max pointer offset. -1 means no limit.
         # This is only relevant for Google's HeapLeakChecker. The newer Leak sanitizer doesn't
         # have this issue.
@@ -729,6 +789,13 @@ cuda_only_cc_library(
     # "@local_config_cuda//cuda:runtime_ptxas",
     # ],
     # copybara:uncomment_end
+    # copybara:comment_begin
+    data = if_cuda_tools([
+        "@cuda_nvcc//:fatbinary",
+        "@cuda_nvcc//:nvlink",
+        "@cuda_nvcc//:ptxas",
+    ]),
+    # copybara:comment_end
     visibility = internal_visibility([
         "//third_party/py/jax:__subpackages__",
         "//tensorflow/compiler/mlir/tools/kernel_gen:__subpackages__",
@@ -737,16 +804,18 @@ cuda_only_cc_library(
         "//tensorflow/core/kernels:__subpackages__",
     ]),
     deps = [
-        ":cuda_driver",
+        ":cuda_driver",  # buildcleaner: keep
         ":cuda_status",
         ":ptx_compiler",
         ":ptx_compiler_support",
         "//xla:status_macros",
         "//xla:util",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor:semantic_version",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/gpu:context",
         "//xla/stream_executor/gpu:gpu_asm_opts",
-        "//xla/stream_executor/gpu:gpu_driver_header",
-        "//xla/stream_executor/gpu:gpu_types_header",
+        "//xla/stream_executor/gpu:scoped_activate_context",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/cleanup",
@@ -797,6 +866,7 @@ cuda_only_cc_library(
         "//xla/stream_executor:module_spec",
         "//xla/stream_executor:plugin_registry",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/gpu:context",
         "//xla/stream_executor/gpu:gpu_collectives_header",
         "//xla/stream_executor/gpu:gpu_command_buffer",
         "//xla/stream_executor/gpu:gpu_diagnostics_header",
@@ -824,6 +894,7 @@ cuda_only_cc_library(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:fingerprint",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:statusor",
     ] + if_cuda_is_configured([":delay_kernel_cuda"]),
     alwayslink = True,

@@ -6411,6 +6411,94 @@ TEST_F(AlgebraicSimplifierTest, DotAssociativeReorder) {
                                 m::Dot(m::Parameter(1), m::Parameter(2)))));
 }
 
+TEST_F(AlgebraicSimplifierTest, DotLeftDotSharedBatchReorder) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+        a = f32[5,150,5] parameter(0)
+        b = f32[5,5,5] parameter(1)
+        c = f32[5,5,5] parameter(2)
+
+        inner = f32[5,150,5] dot(a,b),
+                lhs_batch_dims={0}, lhs_contracting_dims={2},
+                rhs_batch_dims={0}, rhs_contracting_dims={2}
+        ROOT outer = f32[5,150,5] dot(inner,c),
+                lhs_batch_dims={0}, lhs_contracting_dims={2},
+                rhs_batch_dims={0}, rhs_contracting_dims={2}
+      }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  options.set_use_associative_reordering(true);
+  options.set_associative_reordering_threshold(1.5);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Dot(m::Parameter(0),
+                                m::Dot(m::Parameter(1), m::Parameter(2)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, DotRightDotSharedBatchReorder) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+        a = f32[2,3,3] parameter(0)
+        b = f32[2,3,3] parameter(1)
+        c = f32[2,3,16] parameter(2)
+
+        inner = f32[2,3,16] dot(b,c),
+                lhs_batch_dims={0}, lhs_contracting_dims={2},
+                rhs_batch_dims={0}, rhs_contracting_dims={1}
+        ROOT outer = f32[2,3,16] dot(a,inner),
+                lhs_batch_dims={0}, lhs_contracting_dims={2},
+                rhs_batch_dims={0}, rhs_contracting_dims={1}
+      }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  options.set_use_associative_reordering(true);
+  options.set_associative_reordering_threshold(1.5);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Dot(m::Dot(m::Parameter(0), m::Parameter(1)),
+                                m::Parameter(2))));
+}
+
+TEST_F(AlgebraicSimplifierTest, DotRightDotContractBatchReorder) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+      a = f32[80,38,1536] parameter(0)
+      b = f32[80,38,4] parameter(1)
+      c = f32[80,4,1536] parameter(2)
+      inner = f32[80,38,1536] dot(b, c),
+              lhs_batch_dims={0},
+              lhs_contracting_dims={2},
+              rhs_batch_dims={0},
+              rhs_contracting_dims={1}
+      ROOT outer = f32[1536,1536] dot(a, inner),
+                  lhs_contracting_dims={0,1},
+                  rhs_contracting_dims={0,1}
+      }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  options.set_use_associative_reordering(true);
+  options.set_associative_reordering_threshold(1.5);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_FALSE(simplifier.Run(module.get()).value());
+}
+
 TEST_F(AlgebraicSimplifierTest, DotReverseLeftReorder) {
   const char* hlo_string = R"(
     HloModule module
@@ -10075,24 +10163,25 @@ TEST_F(AlgebraicSimplifierTest, UnaryVariadicReduce) {
 
 TEST_F(AlgebraicSimplifierTest, ReplaceReduceSumOfConstantBroadcast) {
   const char* kModuleStr = R"(
-HloModule ReplaceReduceSumOfConstantBroadcast
+  HloModule ReplaceReduceSumOfConstantBroadcast
 
-add_f32 {
-  p0 = f32[] parameter(0)
-  p1 = f32[] parameter(1)
-  ROOT r = f32[] add(p0, p1)
-}
+  add_f32 {
+    p0 = f32[] parameter(0)
+    p1 = f32[] parameter(1)
+    ROOT r = f32[] add(p0, p1)
+  }
 
-ENTRY main {
-  init_value = f32[] constant(0)
-  const_value = f32[] constant(1)
-  const_bcast = f32[8, 128] broadcast(f32[] const_value), dimensions={}
-  ROOT reduce = f32[8] reduce(f32[8, 128] const_bcast, f32[] init_value), dimensions={1}, to_apply=add_f32
-}
-)";
+  ENTRY main {
+    init_value = f32[] constant(0)
+    const_value = f32[] constant(1)
+    const_bcast = f32[8, 128] broadcast(f32[] const_value), dimensions={}
+    ROOT reduce = f32[8] reduce(f32[8, 128] const_bcast, f32[] init_value), dimensions={1}, to_apply=add_f32
+  }
+  )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
+  EXPECT_TRUE(simplifier.Run(m.get()).value());
   int64_t reduce_count =
       absl::c_count_if(m->entry_computation()->instructions(),
                        HloPredicateIsOp<HloOpcode::kReduce>);
@@ -11714,6 +11803,88 @@ ENTRY main.1 {
             HloOpcode::kParameter);
 }
 
+TEST_F(AlgebraicSimplifierTest, ReduceOfConstantBroadcastS32) {
+  const std::string hlo_string = R"(
+  HloModule test
+    add_s32 {
+      p0 = s32[] parameter(0)
+      p1 = s32[] parameter(1)
+      ROOT r = s32[] add(p0, p1)
+    }
+    ENTRY test.1 {
+      one = s32[] constant(2)
+      init = s32[] constant(10)
+      bcast = s32[1,7,7,1] broadcast(one), dimensions={}
+      ROOT out = s32[1,7,1] reduce(bcast, init), dimensions={1}, to_apply=add_s32
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  auto clone = m->Clone();
+  HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
+  EXPECT_TRUE(simplifier.Run(m.get()).value());
+  std::cout << m->ToString() << std::endl;
+  int64_t reduce_count =
+      absl::c_count_if(m->entry_computation()->instructions(),
+                       HloPredicateIsOp<HloOpcode::kReduce>);
+  // Expect no Reduce operation after simplification.
+  EXPECT_EQ(0, reduce_count);
+}
+
+TEST_F(AlgebraicSimplifierTest, ReduceOfConstantBroadcastBF16) {
+  const std::string hlo_string = R"(
+  HloModule test
+    add_bf16 {
+      p0 = bf16[] parameter(0)
+      p1 = bf16[] parameter(1)
+      ROOT r = bf16[] add(p0, p1)
+    }
+    ENTRY test.1 {
+      one = bf16[] constant(2.12)
+      init = bf16[] constant(10.34)
+      bcast = bf16[1,7,7,1] broadcast(one), dimensions={}
+      ROOT out = bf16[1,7,1] reduce(bcast, init), dimensions={1}, to_apply=add_bf16
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  auto clone = m->Clone();
+  HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
+  EXPECT_TRUE(simplifier.Run(m.get()).value());
+  int64_t reduce_count =
+      absl::c_count_if(m->entry_computation()->instructions(),
+                       HloPredicateIsOp<HloOpcode::kReduce>);
+  // Expect no Reduce operation after simplification.
+  EXPECT_EQ(0, reduce_count);
+}
+
+TEST_F(AlgebraicSimplifierTest, ReduceOfNonScalarBroadcast) {
+  const std::string hlo_string = R"(
+    HloModule module
+    add {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT sum = f32[] add(a, b)
+    }
+
+    ENTRY test {
+        a = f32[64,1001] parameter(0)
+        broadcast = f32[64,7,7,1001] broadcast(a), dimensions={0,3}
+        zero = f32[] constant(0)
+        ROOT reduce = f32[64,7,1001] reduce(broadcast, zero), dimensions={2},
+                  to_apply=add
+      }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
+  EXPECT_TRUE(simplifier.Run(m.get()).value());
+  HloInstruction* root = m->entry_computation()->root_instruction();
+  int64_t reduce_count =
+      absl::c_count_if(m->entry_computation()->instructions(),
+                       HloPredicateIsOp<HloOpcode::kReduce>);
+  // Expect no Reduce operation after simplification.
+  EXPECT_EQ(0, reduce_count);
+  EXPECT_THAT(root, GmockMatch(m::Broadcast(m::Multiply())));
+}
+
 TEST_F(AlgebraicSimplifierTest, RemoveConvertConstant) {
   const std::string hlo_string = R"(
     HloModule module
@@ -11773,7 +11944,8 @@ TEST_F(AlgebraicSimplifierTest, ReduceBroadcastScalarToBroadcastMultiply) {
       }
     )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
-  EXPECT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
+  EXPECT_TRUE(simplifier.Run(m.get()).value());
   HloInstruction* root = m->entry_computation()->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kBroadcast);
   EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kMultiply);
@@ -11796,6 +11968,61 @@ TEST_F(AlgebraicSimplifierTest, SinkCbrtThroughMax) {
   HloInstruction* root = m->entry_computation()->root_instruction();
   EXPECT_THAT(
       root, GmockMatch(m::Cbrt(m::Maximum(m::Parameter(0), m::Parameter(1)))));
+}
+
+TEST_F(AlgebraicSimplifierTest,
+       DynamicSlicePreservedWithTrivialConstantIndices) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY f {
+      %operand = s32[2,2] parameter(0)
+      %constant = u32[] constant(0)
+      ROOT %dynamic-slice = s32[2,1] dynamic-slice(%operand, %constant, %constant),
+        dynamic_slice_sizes={2,1}
+    }
+    )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  // Disable dynamic-slice to slice conversion
+  default_options_.set_disable_dynamic_slice_to_slice_conversion(true);
+
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_FALSE(simplifier.Run(module.get()).value());
+
+  // Expect the dynamic-slice to be preserved
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::DynamicSlice(m::Parameter(0), m::Constant(),
+                                         m::Constant())));
+}
+
+TEST_F(AlgebraicSimplifierTest,
+       DynamicSliceConvertedToConstantSliceWithConstantIndices) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY f {
+      %operand = s32[2,2] parameter(0)
+      %constant = u32[] constant(0)
+      ROOT %dynamic-slice = s32[2,1] dynamic-slice(%operand, %constant, %constant),
+        dynamic_slice_sizes={2,1}
+    }
+    )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  // Enable dynamic-slice to slice conversion (default behavior)
+  ASSERT_FALSE(default_options_.disable_dynamic_slice_to_slice_conversion());
+
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
+
+  // Expect the dynamic-slice to be converted to a constant slice
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Slice(m::Parameter(0))));
 }
 
 }  // namespace

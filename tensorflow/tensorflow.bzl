@@ -76,6 +76,7 @@ load(
     _cc_header_only_library = "cc_header_only_library",
     _custom_op_cc_header_only_library = "custom_op_cc_header_only_library",
     _if_cuda_or_rocm = "if_cuda_or_rocm",
+    _if_cuda_tools = "if_cuda_tools",
     _if_nccl = "if_nccl",
     _transitive_hdrs = "transitive_hdrs",
 )
@@ -828,7 +829,7 @@ def tf_cc_shared_object(
     testonly = kwargs.pop("testonly", False)
 
     for name_os, name_os_major, name_os_full in names:
-        # Windows DLLs cant be versioned
+        # Windows DLLs can't be versioned
         if name_os.endswith(".dll"):
             name_os_major = name_os
             name_os_full = name_os
@@ -1113,7 +1114,8 @@ def tf_cc_binary(
                 ],
             ),
             tags = tags,
-            data = depset(data + added_data_deps),
+            data = depset(data + added_data_deps).to_list() +
+                   tf_binary_additional_srcs(fullversion = True),
             linkopts = linkopts + _rpath_linkopts(name_os),
             visibility = visibility,
             **kwargs
@@ -1606,7 +1608,7 @@ def tf_cc_test(
         ),
         data = data +
                tf_binary_dynamic_kernel_dsos() +
-               tf_binary_additional_srcs(),
+               tf_binary_additional_srcs(fullversion = True),
         exec_properties = tf_exec_properties(kwargs),
         **kwargs
     )
@@ -1771,6 +1773,7 @@ def tf_gpu_only_cc_test(
     tf_gpu_kernel_library(
         name = gpu_lib_name,
         srcs = srcs + tf_binary_additional_srcs(),
+        data = tf_binary_additional_srcs(fullversion = True),
         deps = deps,
         testonly = 1,
         features = features,
@@ -3689,6 +3692,9 @@ def replace_with_portable_tf_lib_when_required(non_portable_tf_deps, use_lib_wit
 
 def tf_python_framework_friends():
     return ["//tensorflow:__subpackages__"]
+
+def if_cuda_tools(if_true, if_false = []):
+    return _if_cuda_tools(if_true, if_false)
 
 # TODO(b/356020232): remove completely after migration is done
 def pywrap_aware_tf_cc_shared_object(name, **kwargs):

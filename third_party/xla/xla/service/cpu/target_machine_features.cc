@@ -17,6 +17,9 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "llvm/Analysis/TargetTransformInfo.h"
+#include "llvm/IR/Function.h"
+#include "llvm/Support/MathExtras.h"
 #include "xla/cpu_function_runtime.h"
 #include "tsl/platform/logging.h"
 

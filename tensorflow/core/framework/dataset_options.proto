@@ -168,6 +168,19 @@ message OptimizationOptions {
   }
 }
 
+// next: 2
+message ServiceOptions {
+  // If true, the tf.data service client allocates data to pinned memory, which
+  // faciliates more efficient copying from host memory to GPU memory
+  // downstream.
+  // - For gRPC, compression must be disabled for this to take effect.
+  // - For alternative data transfer protocols, this may or may not take effect,
+  // depending on the implementation.
+  oneof optional_pinned {
+    bool pinned = 1;
+  }
+}
+
 // next: 3
 message ThreadingOptions {
   // If set, it overrides the maximum degree of intra-op parallelism.
@@ -190,7 +203,7 @@ enum ExternalStatePolicy {
 // Message stored with Dataset objects to control how datasets are processed and
 // optimized.
 //
-// next: 12
+// next: 13
 message Options {
   // Optional name for the dataset.
   oneof optional_dataset_name {
@@ -208,6 +221,8 @@ message Options {
   DistributeOptions distribute_options = 2;
   // The optimization options associated with the dataset.
   OptimizationOptions optimization_options = 3;
+  // The tf.data service options associated with the dataset.
+  ServiceOptions service_options = 12;
   // Whether to introduce 'slack' in the last `prefetch` of the input pipeline,
   // if it exists. This may reduce CPU contention with accelerator host-side
   // activity at the start of a step. The slack frequency is determined by the

@@ -33,6 +33,9 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/host/host_event.h"
+#include "xla/stream_executor/host/host_kernel.h"
+#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_common.h"
 #include "tsl/platform/denormal.h"
@@ -192,6 +195,21 @@ absl::Status HostStream::BlockUntilDone() {
   return status;
 }
 
-}  // namespace host
+absl::Status HostStream::Launch(const ThreadDim& thread_dims,
+                                const BlockDim& block_dims,
+                                const Kernel& kernel, const KernelArgs& args) {
+  const HostKernel* host_kernel = AsHostKernel(&kernel);
 
+  const KernelArgsDeviceMemoryArray* device_mem =
+      DynCast<KernelArgsDeviceMemoryArray>(&args);
+
+  if (device_mem != nullptr) {
+    return host_kernel->Launch(thread_dims, device_mem->device_memory_args());
+  }
+  return absl::UnimplementedError(
+      "Host kernel implements Launch method only for DeviceMemoryArray "
+      "arguments.");
+}
+
+}  // namespace host
 }  // namespace stream_executor

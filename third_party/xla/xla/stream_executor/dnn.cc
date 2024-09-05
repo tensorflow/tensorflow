@@ -41,7 +41,7 @@ limitations under the License.
 #include "xla/stream_executor/data_type.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/numeric_options.h"
-#include "tsl/lib/strings/proto_serialization.h"
+#include "xla/tsl/lib/strings/proto_serialization.h"
 #include "tsl/platform/ml_dtypes.h"
 #include "tsl/protobuf/dnn.pb.h"
 
@@ -247,42 +247,6 @@ DnnSupport::NormRunnerFromDesc(
     std::optional<dnn::TensorDescriptor> dscale_descriptor,
     std::optional<dnn::TensorDescriptor> dbias_descriptor) {
   return absl::UnimplementedError("NormRunnerFromDesc not implemented.");
-}
-
-absl::StatusOr<std::unique_ptr<const dnn::FusedMHARunner>>
-DnnSupport::FusedMHARunnerFromDesc(
-    Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
-    const dnn::MatmulTensorDescriptor& bmm1_lhs_descriptor,
-    const dnn::MatmulTensorDescriptor& bmm1_rhs_descriptor,
-    const dnn::MatmulTensorDescriptor& bmm2_rhs_descriptor,
-    const dnn::MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
-    const dnn::TensorDescriptor& output_descriptor,
-    std::optional<dnn::TensorDescriptor> activation_descriptor,
-    std::optional<dnn::TensorDescriptor> bias_descriptor, double scale,
-    std::optional<double> dropout_rate, std::optional<int64_t> seed,
-    dnn::FMHAMaskKind mask_type) {
-  return absl::UnimplementedError("FusedMHARunnerFromDesc not implemented.");
-}
-
-absl::StatusOr<std::unique_ptr<const dnn::FusedMHABackwardRunner>>
-DnnSupport::FusedMHABackwardRunnerFromDesc(
-    Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
-    const MatmulTensorDescriptor& bmm1_grad_gemm1_rhs_descriptor,
-    const MatmulTensorDescriptor& bmm1_grad_gemm2_rhs_descriptor,
-    const MatmulTensorDescriptor& bmm2_grad_gemm1_lhs_descriptor,
-    const MatmulTensorDescriptor& bmm2_grad_gemm2_rhs_descriptor,
-    const MatmulTensorDescriptor& d_output_descriptor,
-    const TensorDescriptor& d_bmm1_lhs_descriptor,
-    const TensorDescriptor& d_bmm1_rhs_descriptor,
-    const TensorDescriptor& d_bmm2_rhs_descriptor,
-    std::optional<dnn::TensorDescriptor> d_s_descriptor,
-    std::optional<dnn::TensorDescriptor> d_bias_descriptor,
-    std::optional<dnn::TensorDescriptor> fwd_output_descriptor,
-    std::optional<dnn::TensorDescriptor> bias_descriptor, double scale,
-    std::optional<double> dropout_rate, std::optional<int64_t> seed,
-    dnn::FMHAMaskKind mask_type, bool force_deterministic) {
-  return absl::UnimplementedError(
-      "FusedMHABackwardRunnerFromDesc not implemented.");
 }
 
 bool DnnSupport::GetMIOpenConvolveAlgorithms(

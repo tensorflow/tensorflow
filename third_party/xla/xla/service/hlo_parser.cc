@@ -80,6 +80,7 @@ limitations under the License.
 #include "tsl/lib/gtl/map_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/status.h"
 
 namespace xla {
 
@@ -1915,6 +1916,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           std::vector<HloInstruction*> async_wrapped_operands;
           std::vector<Shape> async_wrapped_operand_shapes;
           Shape async_wrapped_root_shape;
+          async_wrapped_operand_shapes.reserve(operands.size());
           for (const HloInstruction* operand : operands) {
             async_wrapped_operand_shapes.push_back(operand->shape());
           }
@@ -2249,8 +2251,11 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     }
     case HloOpcode::kCall: {
       optional<HloComputation*> to_apply;
+      optional<bool> is_composite = false;
       attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
                            &to_apply};
+      attrs["is_composite"] = {/*required=*/false, AttrTy::kBool,
+                               &is_composite};
       if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes, shape)) {
         return nullptr;
@@ -2266,8 +2271,10 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           })) {
         return nullptr;
       }
-      return builder->AddInstruction(
-          HloInstruction::CreateCall(*shape, operands, *to_apply));
+
+      auto call_op = HloInstruction::CreateCall(*shape, operands, *to_apply);
+      call_op->set_is_composite(is_composite.value());
+      return builder->AddInstruction(std::move(call_op));
     }
     case HloOpcode::kReduceWindow: {
       optional<HloComputation*> reduce_computation;
@@ -3178,6 +3185,13 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       optional<bool> indices_are_sorted = false;
       attrs["indices_are_sorted"] = {/*required=*/false, AttrTy::kBool,
                                      &indices_are_sorted};
+      optional<std::vector<int64_t>> operand_batching_dims;
+      attrs["operand_batching_dims"] = {
+          /*required=*/false, AttrTy::kBracedInt64List, &operand_batching_dims};
+      optional<std::vector<int64_t>> start_indices_batching_dims;
+      attrs["start_indices_batching_dims"] = {/*required=*/false,
+                                              AttrTy::kBracedInt64List,
+                                              &start_indices_batching_dims};
 
       if ((!preset_operands &&
            !ParseOperands(&operands, builder, /*expected_size=*/2)) ||
@@ -3190,7 +3204,13 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
               /*offset_dims=*/*offset_dims,
               /*collapsed_slice_dims=*/*collapsed_slice_dims,
               /*start_index_map=*/*start_index_map,
-              /*index_vector_dim=*/*index_vector_dim);
+              /*index_vector_dim=*/*index_vector_dim,
+              /*operand_batching_dims=*/
+              operand_batching_dims ? *operand_batching_dims
+                                    : std::vector<int64_t>(),
+              /*start_indices_batching_dims=*/
+              start_indices_batching_dims ? *start_indices_batching_dims
+                                          : std::vector<int64_t>());
       if (!maybe_infer_shape([&] {
             return ShapeInference::InferGatherShape(operands[0]->shape(),
                                                     operands[1]->shape(),
@@ -3226,6 +3246,13 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       optional<bool> unique_indices = false;
       attrs["unique_indices"] = {/*required=*/false, AttrTy::kBool,
                                  &unique_indices};
+      optional<std::vector<int64_t>> input_batching_dims;
+      attrs["input_batching_dims"] = {
+          /*required=*/false, AttrTy::kBracedInt64List, &input_batching_dims};
+      optional<std::vector<int64_t>> scatter_indices_batching_dims;
+      attrs["scatter_indices_batching_dims"] = {/*required=*/false,
+                                                AttrTy::kBracedInt64List,
+                                                &scatter_indices_batching_dims};
 
       if ((!preset_operands && !ParseOperands(&operands, builder)) ||
           !ParseAttributes(attrs, allow_attributes, shape)) {
@@ -3243,7 +3270,13 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
               /*update_window_dims=*/*update_window_dims,
               /*inserted_window_dims=*/*inserted_window_dims,
               /*scatter_dims_to_operand_dims=*/*scatter_dims_to_operand_dims,
-              /*index_vector_dim=*/*index_vector_dim);
+              /*index_vector_dim=*/*index_vector_dim,
+              /*input_batching_dims=*/
+              input_batching_dims ? *input_batching_dims
+                                  : std::vector<int64_t>(),
+              /*scatter_indices_batching_dims=*/
+              scatter_indices_batching_dims ? *scatter_indices_batching_dims
+                                            : std::vector<int64_t>());
 
       if (!maybe_infer_shape([&] {
             absl::InlinedVector<const Shape*, 3> arg_shapes;
@@ -3421,11 +3454,21 @@ bool HloParserImpl::ParseFrontendAttributes(
       if (!ParseAttributeName(&attribute)) {
         return false;
       }
-      if (lexer_.GetKind() != TokKind::kString) {
+
+      std::string result;
+      if (lexer_.GetKind() == TokKind::kString) {
+        if (!ParseString(&result)) {
+          return false;
+        }
+      } else if (lexer_.GetKind() == TokKind::kLbrace) {
+        if (!ParseJsonDict(&result)) {
+          return false;
+        }
+      } else {
         return false;
       }
-      (*frontend_attributes->mutable_map())[attribute] = lexer_.GetStrVal();
-      lexer_.Lex();
+
+      (*frontend_attributes->mutable_map())[attribute] = result;
     } while (EatIfPresent(TokKind::kComma));
   }
   return ParseToken(TokKind::kRbrace,

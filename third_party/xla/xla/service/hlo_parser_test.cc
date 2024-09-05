@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/hlo_parser.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -22,16 +23,25 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/array.h"
 #include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
-#include "xla/hlo/ir/hlo_frontend_attributes.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/layout.h"
+#include "xla/layout_util.h"
+#include "xla/service/hlo_lexer.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape.h"
@@ -40,6 +50,7 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -68,7 +79,7 @@ std::string TestDataToString(const ::testing::TestParamInfo<TestData>& data) {
 //
 // In general we want to avoid these because we want HLO text to be
 // round-trippable!  But nested instructions, e.g. add(sqrt(x), y), cannot be
-// round-triped without modification.
+// round-tripped without modification.
 struct NonRoundtripTestData {
   std::string test_name;
   std::string input_module_string;
@@ -459,6 +470,96 @@ R"(HloModule CallR0F32IdentityScalar_module, entry_computation_layout={()->f32[]
 ENTRY %CallR0F32IdentityScalar.v2 () -> f32[] {
   %constant = f32[] constant(42)
   ROOT %call = f32[] call(f32[] %constant), to_apply=%Identity.v1
+}
+
+)"
+},
+// composite call
+{
+"CompositeCall",
+R"(HloModule CompositeCall, entry_computation_layout={()->f32[]}
+
+%add (x: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  %constant = f32[] constant(2)
+  ROOT %z = f32[] add(f32[] %x, f32[] %constant)
+}
+
+ENTRY %CompositeCall.v2 () -> f32[] {
+  %constant.1 = f32[] constant(42)
+  ROOT %call = f32[] call(f32[] %constant.1), to_apply=%add, is_composite=true, frontend_attributes={composite.attributes={n = 1 : i32, tensor = dense<1> : tensor<i32>},composite.name="foo.bar",composite.version="1"}
+}
+
+)"
+},
+// composite call with extra frontend attributes
+{
+"CompositeCallWithExtraFrontendAttributes",
+R"(HloModule CompositeCall, entry_computation_layout={()->f32[]}
+
+%add (x: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  %constant = f32[] constant(2)
+  ROOT %z = f32[] add(f32[] %x, f32[] %constant)
+}
+
+ENTRY %CompositeCall.v2 () -> f32[] {
+  %constant.1 = f32[] constant(42)
+  ROOT %call = f32[] call(f32[] %constant.1), to_apply=%add, is_composite=true, frontend_attributes={composite.attributes={n = 1 : i32, tensor = dense<1> : tensor<i32>},composite.name="foo.bar",composite.version="1",foo="bar"}
+}
+
+)"
+},
+// composite call optional composite.attributes and composite.version
+{
+"CompositeCallOptionalAttributesAndVersion",
+R"(HloModule CompositeCall, entry_computation_layout={()->f32[]}
+
+%add (x: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  %constant = f32[] constant(2)
+  ROOT %z = f32[] add(f32[] %x, f32[] %constant)
+}
+
+ENTRY %CompositeCall.v2 () -> f32[] {
+  %constant.1 = f32[] constant(42)
+  ROOT %call = f32[] call(f32[] %constant.1), to_apply=%add, is_composite=true, frontend_attributes={composite.name="foo.bar"}
+}
+
+)"
+},
+// composite call optional composite.attributes
+{
+"CompositeCallOptionalAttributes",
+R"(HloModule CompositeCall, entry_computation_layout={()->f32[]}
+
+%add (x: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  %constant = f32[] constant(2)
+  ROOT %z = f32[] add(f32[] %x, f32[] %constant)
+}
+
+ENTRY %CompositeCall.v2 () -> f32[] {
+  %constant.1 = f32[] constant(42)
+  ROOT %call = f32[] call(f32[] %constant.1), to_apply=%add, is_composite=true, frontend_attributes={composite.name="foo.bar",composite.version="1"}
+}
+
+)"
+},
+// composite call optional composite.version
+{
+"CompositeCallOptionalVersion",
+R"(HloModule CompositeCall, entry_computation_layout={()->f32[]}
+
+%add (x: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  %constant = f32[] constant(2)
+  ROOT %z = f32[] add(f32[] %x, f32[] %constant)
+}
+
+ENTRY %CompositeCall.v2 () -> f32[] {
+  %constant.1 = f32[] constant(42)
+  ROOT %call = f32[] call(f32[] %constant.1), to_apply=%add, is_composite=true, frontend_attributes={composite.attributes={n = 1 : i32, tensor = dense<1> : tensor<i32>},composite.name="foo.bar"}
 }
 
 )"
@@ -1062,6 +1163,18 @@ ENTRY %Gather (input_tensor: f32[50,49,48,47,46], start_indices: s64[10,9,8,7,5]
 )"
 },
 {
+"BatchGather",
+R"(HloModule StringifyGather, entry_computation_layout={(f32[50,49,48,47,46,512]{5,4,3,2,1,0}, s64[10,9,8,7,5,512]{5,4,3,2,1,0})->f32[10,9,8,7,30,29,28,27,26,512]{9,8,7,6,5,4,3,2,1,0}}
+
+ENTRY %Gather (input_tensor: f32[50,49,48,47,46,512], start_indices: s64[10,9,8,7,5,512]) -> f32[10,9,8,7,30,29,28,27,26,512] {
+  %input_tensor = f32[50,49,48,47,46,512]{5,4,3,2,1,0} parameter(0)
+  %start_indices = s64[10,9,8,7,5,512]{5,4,3,2,1,0} parameter(1)
+  ROOT %gather = f32[10,9,8,7,30,29,28,27,26,512]{9,8,7,6,5,4,3,2,1,0} gather(f32[50,49,48,47,46,512]{5,4,3,2,1,0} %input_tensor, s64[10,9,8,7,5,512]{5,4,3,2,1,0} %start_indices), offset_dims={4,5,6,7,8}, collapsed_slice_dims={}, start_index_map={0,1,2,3,4}, operand_batching_dims={5}, start_indices_batching_dims={5}, index_vector_dim=4, slice_sizes={30,29,28,27,26,1}
+}
+
+)"
+},
+{
 "Scatter",
 R"(HloModule StringifyScatter, entry_computation_layout={(f32[50,49,48,47,46]{4,3,2,1,0}, s64[10,9,8,7,5]{4,3,2,1,0}, f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0})->f32[50,49,48,47,46]{4,3,2,1,0}}
 
@@ -1076,6 +1189,25 @@ ENTRY %Scatter (input_tensor: f32[50,49,48,47,46], scatter_indices: s64[10,9,8,7
   %scatter_indices = s64[10,9,8,7,5]{4,3,2,1,0} parameter(1)
   %updates = f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0} parameter(2)
   ROOT %scatter = f32[50,49,48,47,46]{4,3,2,1,0} scatter(f32[50,49,48,47,46]{4,3,2,1,0} %input_tensor, s64[10,9,8,7,5]{4,3,2,1,0} %scatter_indices, f32[10,9,8,7,30,29,28,27,26]{8,7,6,5,4,3,2,1,0} %updates), update_window_dims={4,5,6,7,8}, inserted_window_dims={}, scatter_dims_to_operand_dims={0,1,2,3,4}, index_vector_dim=4, to_apply=%add_F32.v3
+}
+
+)"
+},
+{
+"BatchScatter",
+R"(HloModule StringifyScatter, entry_computation_layout={(f32[50,49,48,47,46,512]{5,4,3,2,1,0}, s64[10,9,8,7,5,512]{5,4,3,2,1,0}, f32[10,9,8,7,30,29,28,27,26,512]{9,8,7,6,5,4,3,2,1,0})->f32[50,49,48,47,46,512]{5,4,3,2,1,0}}
+
+%add_F32.v3 (lhs: f32[], rhs: f32[]) -> f32[] {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %add = f32[] add(f32[] %lhs, f32[] %rhs)
+}
+
+ENTRY %Scatter (input_tensor: f32[50,49,48,47,46,512], scatter_indices: s64[10,9,8,7,5,512], updates: f32[10,9,8,7,30,29,28,27,26,512]) -> f32[50,49,48,47,46,512] {
+  %input_tensor = f32[50,49,48,47,46,512]{5,4,3,2,1,0} parameter(0)
+  %scatter_indices = s64[10,9,8,7,5,512]{5,4,3,2,1,0} parameter(1)
+  %updates = f32[10,9,8,7,30,29,28,27,26,512]{9,8,7,6,5,4,3,2,1,0} parameter(2)
+  ROOT %scatter = f32[50,49,48,47,46,512]{5,4,3,2,1,0} scatter(f32[50,49,48,47,46,512]{5,4,3,2,1,0} %input_tensor, s64[10,9,8,7,5,512]{5,4,3,2,1,0} %scatter_indices, f32[10,9,8,7,30,29,28,27,26,512]{9,8,7,6,5,4,3,2,1,0} %updates), update_window_dims={4,5,6,7,8}, inserted_window_dims={}, scatter_dims_to_operand_dims={0,1,2,3,4}, input_batching_dims={5}, scatter_indices_batching_dims={5}, index_vector_dim=4, to_apply=%add_F32.v3
 }
 
 )"

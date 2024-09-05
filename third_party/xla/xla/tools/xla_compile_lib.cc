@@ -68,7 +68,7 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "xla/service/gpu/autotuner_util.h"
+#include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/executable.pb.h"
 #include "xla/service/gpu/gpu_symbol_repository.h"
 #include "xla/stream_executor/gpu/gpu_init.h"

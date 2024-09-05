@@ -300,13 +300,16 @@ void SortTiledHloInstructionsInPostOrder(
 }  // namespace
 
 /*static*/ SymbolicTileAnalysisOrError SymbolicTileAnalysis::AnalyzeComputation(
-    const HloComputation& computation, MLIRContext* ctx) {
+    const HloComputation& computation, MLIRContext* ctx,
+    EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder) {
   auto fusion = HloFusionAdaptor::ForComputation(&computation);
-  return SymbolicTileAnalysis::AnalyzeFusion(*fusion, ctx);
+  return SymbolicTileAnalysis::AnalyzeFusion(
+      *fusion, ctx, emitter_specific_constraints_builder);
 }
 
 /*static*/ SymbolicTileAnalysisOrError SymbolicTileAnalysis::AnalyzeFusion(
-    const HloFusionAdaptor& fusion, MLIRContext* ctx) {
+    const HloFusionAdaptor& fusion, MLIRContext* ctx,
+    EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder) {
   OrderedUniquePtrValueHashSet<SymbolicTiledHloInstruction>
       tiled_hlo_instructions_set;
 
@@ -326,15 +329,6 @@ void SortTiledHloInstructionsInPostOrder(
   while (!worklist.empty()) {
     auto tiled_hlo_instruction = worklist.back();
     worklist.pop_back();
-    std::optional<HloInstructionIndexing> operands_indexing =
-        ComputeOutputToInputIndexing(tiled_hlo_instruction->hlo(),
-                                     /*output_id=*/0, ctx);
-
-    if (!operands_indexing.has_value()) {
-      return FusionDecision{} << "Failed to compute operands indexing for "
-                              << tiled_hlo_instruction->hlo()->ToString();
-    }
-
     HloInstructionAdaptor instruction_adaptor(*tiled_hlo_instruction->hlo(),
                                               &fusion);
 
@@ -342,9 +336,13 @@ void SortTiledHloInstructionsInPostOrder(
       continue;
     }
 
+    HloInstructionIndexing operands_indexing =
+        ComputeOutputToInputIndexing(tiled_hlo_instruction->hlo(),
+                                     /*output_id=*/0, ctx);
+
     for (auto [operand, operand_indexing_map_set] :
          llvm::zip(instruction_adaptor.GetOperands(),
-                   operands_indexing->indexing_maps)) {
+                   operands_indexing.indexing_maps)) {
       CHECK_EQ(operand_indexing_map_set.size(), 1);  // Crash OK
 
       IndexingMap operand_indexing_map =
@@ -375,6 +373,9 @@ void SortTiledHloInstructionsInPostOrder(
   std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>
       tiled_hlo_instructions = tiled_hlo_instructions_set.ExtractData();
 
+  // Order instructions in def-before-use order.
+  SortTiledHloInstructionsInPostOrder(tiled_hlo_instructions, root_tiled_hlo);
+
   // Set symbolic tiles for each tiled hlo instruction and compute combined
   // constraints.
   std::variant<ConstraintExpression, FusionDecision> constraints_or =
@@ -383,12 +384,17 @@ void SortTiledHloInstructionsInPostOrder(
     return std::get<FusionDecision>(constraints_or);
   }
 
-  // Order instructions in def-before-use order.
-  SortTiledHloInstructionsInPostOrder(tiled_hlo_instructions, root_tiled_hlo);
+  // Create emitter-specific constraints if a builder was provided.
+  std::unique_ptr<EmitterSpecificConstraints> emitter_specific_constraints;
+  if (emitter_specific_constraints_builder != nullptr) {
+    emitter_specific_constraints =
+        emitter_specific_constraints_builder(tiled_hlo_instructions);
+  }
 
   return SymbolicTileAnalysis(
       std::move(tiled_hlo_instructions),
-      std::get<ConstraintExpression>(std::move(constraints_or)), ctx);
+      std::get<ConstraintExpression>(std::move(constraints_or)),
+      std::move(emitter_specific_constraints), ctx);
 }
 
 absl::StatusOr<bool> SymbolicTileAnalysis::ParametersSatisfyConstraints(
@@ -399,17 +405,27 @@ absl::StatusOr<bool> SymbolicTileAnalysis::ParametersSatisfyConstraints(
         "This should never happen.");
   }
 
-  // Handle the unconstrained case.
-  if (constraints_.IsAlwaysSatisfied()) {
-    return true;
-  }
-
   if (tile_parameters.size() != num_tile_parameters()) {
     return absl::InvalidArgumentError(absl::StrFormat(
         "Failed to check if tile parameters satisfy constraints. Number of "
         "provided parameters doesn't match number of expected parameters "
         "(%d != %d)",
         tile_parameters.size(), num_tile_parameters()));
+  }
+
+  if (emitter_specific_constraints_ != nullptr) {
+    TF_ASSIGN_OR_RETURN(
+        bool constraints_are_satisfied,
+        emitter_specific_constraints_->ParametersSatisfyConstraints(
+            tile_parameters));
+    if (!constraints_are_satisfied) {
+      return false;
+    }
+  }
+
+  // Handle the unconstrained case.
+  if (constraints_.IsAlwaysSatisfied()) {
+    return true;
   }
 
   // TODO(bchetioui): replace with convenience methods in
@@ -443,9 +459,9 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
     TF_ASSIGN_OR_RETURN(bool constraints_are_satisfied,
                         ParametersSatisfyConstraints(tile_parameters));
     if (!constraints_are_satisfied) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Tile parameters ", absl::StrJoin(tile_parameters, ", "),
-          " do not satisfy the SymbolicTileAnalysis's constraints."));
+      return absl::InvalidArgumentError(
+          absl::StrCat("Tile parameters ", absl::StrJoin(tile_parameters, ", "),
+                       " do not satisfy constraints."));
     }
   }
 

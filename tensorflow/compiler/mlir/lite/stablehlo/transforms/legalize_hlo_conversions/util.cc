@@ -29,7 +29,6 @@ limitations under the License.
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/Region.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -212,6 +211,18 @@ Value CreateCastToInt32(Value val, Location loc, PatternRewriter& rewriter) {
   }
   return rewriter.create<TFL::CastOp>(
       loc, UnrankedTensorType::get(new_ele_type), val);
+}
+
+// Replaces `region`'s terminator to TFL::Yield.
+void ReplaceTerminatorWithYield(Region& region, PatternRewriter& rewriter) {
+  OpBuilder::InsertionGuard guard(rewriter);
+
+  for (auto& block : region.getBlocks()) {
+    auto* terminator = block.getTerminator();
+    rewriter.setInsertionPoint(terminator);
+    rewriter.replaceOpWithNewOp<TFL::YieldOp>(terminator,
+                                              terminator->getOperands());
+  }
 }
 
 }  // namespace odml

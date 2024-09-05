@@ -18,12 +18,9 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
-#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/fusions/tiling_util.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
-#include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -2564,32 +2561,6 @@ TEST_F(IndexingAnalysisTest, FusionWithUnsupportedOp) {
                   ElementsAre(UndefinedMap()), ElementsAre(UndefinedMap())));
 }
 
-TEST_F(IndexingAnalysisTest, TilingIndexing) {
-  Tiling tiling{/*shape=*/{1022, 256, 16},
-                /*tile_sizes=*/{8, 1, 4},
-                /*num_threads=*/{1, 4, 4}};
-  auto indexing_map = GetIndexingMapForTiling(tiling, &mlir_context_);
-  indexing_map.Simplify();
-  EXPECT_THAT(indexing_map.ToString(), MatchIndexingString(R"(
-        (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
-          (d3 floordiv 64) * 8 + s0,
-          (d3 mod 64) * 4 + d0 floordiv 4,
-          d0 mod 4 + s2 * 4
-        )
-        domain:
-        d0 in [0, 15]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 8191]
-        d4 in [0, 0]
-        d5 in [0, 0]
-        s0 in [0, 7]
-        s1 in [0, 0]
-        s2 in [0, 3]
-        (d3 floordiv 64) * 8 + s0 in [0, 1021]
-      )"));
-}
-
 TEST_F(IndexingAnalysisTest, EpilogueIndexing) {
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule m
@@ -2681,6 +2652,44 @@ TEST_F(IndexingAnalysisTest, BroadcastingElementwise) {
                     d0 in [0, 999]
                     d1 in [0, 999]
               )"));
+}
+
+TEST_F(IndexingAnalysisTest, FusionOpWithDUS) {
+  auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"hlo(
+      HloModule m
+      fused_computation {
+        bitcast = s32[1,4096]{1,0} parameter(0)
+        constant = s32[] constant(0)
+        pad = s32[1,8192]{1,0} pad(bitcast, constant), padding=0_0x4096_0
+        slice = s32[1]{0} parameter(1)
+        bitcast.4 = s32[] bitcast(slice)
+        ROOT dynamic-slice = s32[1,4096]{1,0}
+          dynamic-slice(pad, constant, bitcast.4), dynamic_slice_sizes={1,4096}
+      }
+      ENTRY main {
+        param_0 = s32[1,4096]{1,0} parameter(0)
+        param_1 = s32[1]{0} parameter(1)
+        ROOT fusion = s32[1,4096]{1,0} fusion(param_0, param_1), kind=kInput,
+          calls=fused_computation
+      }
+    )hlo"));
+  EXPECT_THAT(input_indexing.indexing_maps,
+              ElementsAre(ElementsAre(MatchIndexingMap(R"(
+                            (d0, d1)[s0] -> (0, d1 + s0 - 4096)
+                            domain:
+                            d0 in [0, 0]
+                            d1 in [0, 4095]
+                            s0 in [0, 4096]
+                              hlo: %slice = s32[1]{0} parameter(1)
+                              (d0, d1) -> (0)
+                            d1 + s0 in [4096, 8191]
+                          )")),
+                          ElementsAre(MatchIndexingMap(R"(
+                            (d0, d1) -> (0)
+                            domain:
+                            d0 in [0, 0]
+                            d1 in [0, 4095]
+                          )"))));
 }
 
 }  // namespace

@@ -111,6 +111,7 @@ class NcclCollectivePermuteStartThunk : public NcclCollectiveThunk {
   const Buffer buffer_;
   RecvPtrMap recv_ptr_map_;
   bool p2p_memcpy_enabled_ = false;
+  int64_t device_count_;
 };
 
 absl::Status RunCollectivePermute(

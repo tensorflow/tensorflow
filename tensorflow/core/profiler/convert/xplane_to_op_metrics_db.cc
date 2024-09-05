@@ -227,8 +227,6 @@ OpMetricsDb ConvertTpuDeviceTraceXPlaneToOpMetricsDb(
   XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(&device_trace);
   using OpMetricBySymbol =
       absl::flat_hash_map</*symbol_id=*/uint64_t, OpMetrics>;
-  absl::flat_hash_map</*program_id=*/uint64_t, OpMetricBySymbol> flat_op_metric;
-
   XEventsOpMetricsDbBuilder builder;
 
   plane.ForEachLine([&](const XLineVisitor& line) {

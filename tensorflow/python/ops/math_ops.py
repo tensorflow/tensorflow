@@ -1092,12 +1092,28 @@ def saturate_cast(value, dtype, name=None):
       # can do in order to avoid UB without introducing a separate SaturateCast
       # op.
       np_dtype = in_dtype.as_numpy_dtype
+
+      # We promote types *before* comparison in order to not lose precision.
+      # The Try/Except block is mostly to work around bfloat16 types which are
+      # not numpy dtypes.
+      try:
+        promoted_type = np.promote_types(
+            np_dtype, out_real_dtype.as_numpy_dtype
+        )
+      except TypeError:
+        # On newer numpy versions this is DTypePromotionError.
+        # Fall back to just floats. This should be sufficient in most cases
+        # since we only expect to hit this error in cases of bloat16.
+        promoted_type = float
+
       min_limit = np_dtype(np.maximum(in_dtype.min, out_real_dtype.min))
-      if min_limit < out_real_dtype.min:
+      promoted = np.array([min_limit, out_real_dtype.min], dtype=promoted_type)
+      if promoted[0] < promoted[1]:
         min_limit = np.nextafter(min_limit, np_dtype(0), dtype=np_dtype)
 
       max_limit = np_dtype(np.minimum(in_dtype.max, out_real_dtype.max))
-      if max_limit > out_real_dtype.max:
+      promoted = np.array([max_limit, out_real_dtype.max], dtype=promoted_type)
+      if promoted[0] > promoted[1]:
         max_limit = np.nextafter(max_limit, np_dtype(0), dtype=np_dtype)
 
       value = gen_math_ops._clip_by_value(
@@ -2010,7 +2026,12 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):  # pylint: disa
     # infer dtype if not explicitly provided
     if dtype is None:
       dtype_hierarchy = [
-          dtypes.int32, dtypes.int64, dtypes.float32, dtypes.float64
+          dtypes.int32,
+          dtypes.int64,
+          dtypes.float16,
+          dtypes.bfloat16,
+          dtypes.float32,
+          dtypes.float64,
       ]
       assert all(arg.dtype in dtype_hierarchy for arg in [start, limit, delta])
       inferred_dtype = max([arg.dtype for arg in [start, limit, delta]],
@@ -2101,7 +2122,7 @@ def reduce_sum_v1(input_tensor,
            [1, 1, 1]], dtype=int32)
     >>> # sum all the elements
     >>> # 1 + 1 + 1 + 1 + 1+ 1 = 6
-    >>> tf.reduce_sum(x).numpy()
+    >>> tf.reduce_sum(x).numpy().item()
     6
     >>> # reduce along the first dimension
     >>> # the result is [1, 1, 1] + [1, 1, 1] = [2, 2, 2]
@@ -2120,7 +2141,7 @@ def reduce_sum_v1(input_tensor,
     >>> # or, equivalently, reduce along rows, then reduce the resultant array
     >>> # [1, 1, 1] + [1, 1, 1] = [2, 2, 2]
     >>> # 2 + 2 + 2 = 6
-    >>> tf.reduce_sum(x, [0, 1]).numpy()
+    >>> tf.reduce_sum(x, [0, 1]).numpy().item()
     6
 
   Args:
@@ -2173,7 +2194,7 @@ def reduce_sum(input_tensor, axis=None, keepdims=False, name=None):
            [1, 1, 1]], dtype=int32)
     >>> # sum all the elements
     >>> # 1 + 1 + 1 + 1 + 1+ 1 = 6
-    >>> tf.reduce_sum(x).numpy()
+    >>> tf.reduce_sum(x).numpy().item()
     6
     >>> # reduce along the first dimension
     >>> # the result is [1, 1, 1] + [1, 1, 1] = [2, 2, 2]
@@ -2192,7 +2213,7 @@ def reduce_sum(input_tensor, axis=None, keepdims=False, name=None):
     >>> # or, equivalently, reduce along rows, then reduce the resultant array
     >>> # [1, 1, 1] + [1, 1, 1] = [2, 2, 2]
     >>> # 2 + 2 + 2 = 6
-    >>> tf.reduce_sum(x, [0, 1]).numpy()
+    >>> tf.reduce_sum(x, [0, 1]).numpy().item()
     6
 
   Args:

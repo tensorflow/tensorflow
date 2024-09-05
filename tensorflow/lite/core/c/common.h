@@ -100,7 +100,9 @@ typedef struct TfLiteExternalContext {
   TfLiteStatus (*Refresh)(struct TfLiteContext* context);
 } TfLiteExternalContext;
 
+// LINT.IfChange(optional_tensor)
 #define kTfLiteOptionalTensor (-1)
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/flatbuffer_export.cc:optional_tensor)
 
 /// Fixed size list of integers. Used for dimensions and inputs/outputs tensor
 /// indices
@@ -280,6 +282,17 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
       return s;                            \
     }                                      \
   } while (0)
+
+// `std::unreachable` not available until CC23.
+#ifdef __GNUC__  // GCC, Clang, ICC
+
+#define unreachable() (__builtin_unreachable())
+
+#elif defined(_MSC_VER)  // MSVC
+
+#define unreachable() (__assume(false))
+
+#endif
 
 /// Single-precision complex data type compatible with the C99 definition.
 typedef struct TfLiteComplex64 {

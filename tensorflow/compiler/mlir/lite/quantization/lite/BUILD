@@ -168,16 +168,16 @@ tf_cc_test(
     deps = [
         ":quantize_model",
         ":test_util",
+        "//tensorflow/compiler/mlir/lite/core:absl_error_model_builder",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/compiler/mlir/lite/schema:schema_utils",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
-        "//tensorflow/lite:framework",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
-        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -205,11 +205,11 @@ tf_cc_test(
     deps = [
         ":quantize_weights",
         ":test_util",
+        "//tensorflow/compiler/mlir/lite/core:absl_error_model_builder",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/compiler/mlir/lite/schema:schema_utils",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
-        "//tensorflow/lite:framework",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
@@ -223,9 +223,7 @@ cc_library(
     srcs = ["test_util.cc"],
     hdrs = ["test_util.h"],
     deps = [
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite/core/api",
+        "//tensorflow/compiler/mlir/lite/core/api:error_reporter",
         "@com_google_googletest//:gtest",
-        "@flatbuffers",
     ],
 )

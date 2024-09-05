@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
-#include "xla/service/gpu/fusions/triton/triton_support.h"
+#include "xla/service/gpu/fusions/triton/triton_support_legacy.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
@@ -52,13 +52,6 @@ struct MixTypeParams {
 class MixedTypeTest : public GpuCodegenTest,
                       public ::testing::WithParamInterface<MixTypeParams> {
  public:
-  se::CudaComputeCapability GetCudaComputeCapability() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .cuda_compute_capability();
-  }
-
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     // We are testing Triton, remove cuBLAS fallback for these tests.
@@ -797,18 +790,12 @@ class TritonSoftmaxTest : public GpuCodegenTest,
  public:
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_enable_triton_softmax_fusion(true);
+    debug_options
+        .set_xla_gpu_experimental_enable_triton_softmax_priority_fusion(true);
     // TODO(b/38354253): Remove once HloTestBase does not remove constant
     // folding.
     debug_options.clear_xla_disable_hlo_passes();
     return debug_options;
-  }
-
-  se::CudaComputeCapability GetCudaComputeCapability() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .cuda_compute_capability();
   }
 };
 
@@ -2229,12 +2216,10 @@ ENTRY main {
 ; CHECK:      ENTRY
 ; CHECK-DAG:    %[[P0:.*]] = f32[125,127]{1,0} parameter(0)
 ; CHECK-DAG:    %[[P1:.*]] = f32[10,125,127]{2,1,0} parameter(1)
-; CHECK:        %[[FUSION:.*]] = f32[125,127]{1,0} fusion(%[[P0]], %[[P1]])
-; CHECK:        kind=kLoop
-; CHECK:      ROOT
-; CHECK-SAME:   f32[125,127]{1,0} fusion(%[[FUSION]])
-; CHECK-SAME:   kind=kCustom
-; CHECK-SAME:   triton_softmax
+; CHECK-DAG:    %[[C0:.*]] = f32[] constant(0)
+; CHECK:        ROOT %[[FUSION:.*]] = f32[125,127]{1,0} fusion(%[[P0]], %[[P1]], %[[C0]])
+; CHECK-SAME:       kind=kCustom
+; CHECK-SAME:       __triton
 )";
   MatchOptimizedHlo(hlo_text, hlo_ref);
 

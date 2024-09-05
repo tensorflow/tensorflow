@@ -44,8 +44,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/lib/core/bitmap.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/bitmap.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 
@@ -533,7 +533,7 @@ template <typename NativeT>
 template <typename NativeT>
 /* static */ Literal LiteralUtil::MakeScalarMatrixR2(int64_t size,
                                                      NativeT scalar) {
-  Array2D<NativeT> array(size, size, 0);
+  Array2D<NativeT> array(size, size, NativeT(0));
   for (int64_t i = 0; i < size; ++i) {
     array(i, i) = scalar;
   }
@@ -542,7 +542,7 @@ template <typename NativeT>
 
 template <typename NativeT>
 /* static */ Literal LiteralUtil::MakeIdentityR2(int64_t size) {
-  return MakeScalarMatrixR2<NativeT>(size, 1);
+  return MakeScalarMatrixR2<NativeT>(size, NativeT(1));
 }
 
 template <typename NativeT>
@@ -550,7 +550,7 @@ template <typename NativeT>
                                                            NativeT scale) {
   NativeT row_factor = log10(m) + 1;
   NativeT col_factor = log10(n) + 1;
-  Array2D<NativeT> array(m, n, 0);
+  Array2D<NativeT> array(m, n, NativeT(0));
   for (int64_t i = 0; i < m; ++i) {
     for (int64_t j = 0; j < n; ++j) {
       array(i, i) = scale * (row_factor * i + col_factor * j);

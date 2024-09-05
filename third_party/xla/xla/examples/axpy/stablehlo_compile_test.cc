@@ -62,10 +62,8 @@ TEST(StableHloAxpyTest, LoadAndRunCpuExecutable) {
   //   PlatformUtil::GetPlatform("CUDA"));
   TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
                           PlatformUtil::GetPlatform("cpu"));
-  se::StreamExecutorConfig config;
-  config.ordinal = 0;
   TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor,
-                          platform->GetExecutor(config));
+                          platform->ExecutorForDevice(/*ordinal=*/0));
 
   // LocalDeviceState and PjRtStreamExecutorDevice describes the state of a
   // device which can do computation or transfer buffers. This could represent a

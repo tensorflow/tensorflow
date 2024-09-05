@@ -719,7 +719,6 @@ tf_cc_test(
 tf_proto_library(
     name = "quantization_options_proto",
     srcs = ["quantization_options.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     visibility = ["//visibility:public"],
 )
@@ -740,7 +739,6 @@ tf_proto_library(
 tf_proto_library(
     name = "quantization_config_proto",
     srcs = ["quantization_config.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     visibility = ["//visibility:public"],
 )

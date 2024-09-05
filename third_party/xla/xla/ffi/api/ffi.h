@@ -36,6 +36,7 @@ limitations under the License.
 #include <string_view>
 #include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "xla/ffi/api/c_api.h"
@@ -74,6 +75,30 @@ enum class DataType : uint8_t {
   F8E5M2FNUZ = XLA_FFI_DataType_F8E5M2FNUZ,
   F8E4M3FNUZ = XLA_FFI_DataType_F8E4M3FNUZ,
 };
+
+// Create aliases in ::xla::ffi namespace for all DataTypes, for consistency
+// with xla that defines PrimitiveType enums in ::xla namespace.
+inline constexpr DataType PRED = DataType::PRED;
+inline constexpr DataType S8 = DataType::S8;
+inline constexpr DataType S16 = DataType::S16;
+inline constexpr DataType S32 = DataType::S32;
+inline constexpr DataType S64 = DataType::S64;
+inline constexpr DataType U8 = DataType::U8;
+inline constexpr DataType U16 = DataType::U16;
+inline constexpr DataType U32 = DataType::U32;
+inline constexpr DataType U64 = DataType::U64;
+inline constexpr DataType F16 = DataType::F16;
+inline constexpr DataType F32 = DataType::F32;
+inline constexpr DataType F64 = DataType::F64;
+inline constexpr DataType BF16 = DataType::BF16;
+inline constexpr DataType C64 = DataType::C64;
+inline constexpr DataType C128 = DataType::C128;
+inline constexpr DataType TOKEN = DataType::TOKEN;
+inline constexpr DataType F8E5M2 = DataType::F8E5M2;
+inline constexpr DataType F8E4M3FN = DataType::F8E4M3FN;
+inline constexpr DataType F8E4M3B11FNUZ = DataType::F8E4M3B11FNUZ;
+inline constexpr DataType F8E5M2FNUZ = DataType::F8E5M2FNUZ;
+inline constexpr DataType F8E4M3FNUZ = DataType::F8E4M3FNUZ;
 
 inline std::ostream& operator<<(std::ostream& os, const DataType dtype) {
   return os << static_cast<XLA_FFI_DataType>(dtype);
@@ -149,7 +174,7 @@ class Span {
 };
 
 //===----------------------------------------------------------------------===//
-// Error and ErrorOr
+// Error
 //===----------------------------------------------------------------------===//
 
 enum class ErrorCode : uint8_t {
@@ -182,18 +207,88 @@ class Error {
   Error(XLA_FFI_Error_Code errc, std::string message)
       : Error(static_cast<ErrorCode>(errc), std::move(message)) {}
 
-  static Error Success() { return Error(); }
-
   bool success() const { return errc_ == ErrorCode::kOk; }
   bool failure() const { return !success(); }
 
   std::optional<ErrorCode> errc() const { return errc_; }
   const std::string& message() const { return message_; }
 
+  static Error Success() { return Error(); }
+
+  static Error Internal(std::string message) {
+    return Error(ErrorCode::kInternal, std::move(message));
+  }
+
+  static Error InvalidArgument(std::string message) {
+    return Error(ErrorCode::kInvalidArgument, std::move(message));
+  }
+
  private:
   ErrorCode errc_ = ErrorCode::kOk;
   std::string message_;
 };
+
+//===----------------------------------------------------------------------===//
+// Expected<T, E> and ErrorOr<T>
+//===----------------------------------------------------------------------===//
+
+// Forward declare.
+template <typename E>
+class Unexpected;
+
+// TODO(slebedev): Replace with `std::expected` when C++23 is available.
+template <typename T, typename E>
+class Expected {
+ public:
+  constexpr Expected(T value) : data_(std::move(value)) {}  // NOLINT
+  constexpr Expected(Unexpected<E> u);                      // NOLINT
+
+  constexpr operator bool() const {  // NOLINT
+    return has_value();
+  }
+
+  constexpr T& operator*() & { return value(); }
+  constexpr const T& operator*() const& { return value(); }
+  constexpr T&& operator*() && { return std::move(value()); }
+  constexpr const T& operator*() const&& { return std::move(value()); }
+
+  constexpr T* operator->() { return &value(); }
+  constexpr const T* operator->() const { return &value(); }
+
+  constexpr bool has_value() const { return std::holds_alternative<T>(data_); }
+  constexpr bool has_error() const { return std::holds_alternative<E>(data_); }
+
+  constexpr T& value() & { return std::get<T>(data_); }
+  constexpr const T& value() const& { return std::get<T>(data_); }
+  constexpr T&& value() && { return std::get<T>(std::move(data_)); }
+  constexpr const T& value() const&& { return std::get<T>(std::move(data_)); }
+
+  constexpr E& error() & { return std::get<E>(data_); }
+  constexpr const E& error() const& { return std::get<E>(data_); }
+  constexpr E&& error() && { return std::get<E>(std::move(data_)); }
+  constexpr const E&& error() const&& { return std::get<E>(std::move(data_)); }
+
+ private:
+  std::variant<T, E> data_;
+};
+
+template <typename E>
+class Unexpected {
+ public:
+  constexpr Unexpected(E error) : error_(std::move(error)) {}  // NOLINT
+
+ private:
+  template <typename, typename>
+  friend class Expected;
+
+  E error_;
+};
+
+Unexpected(const char*) -> Unexpected<std::string>;
+
+template <typename T, typename E>
+constexpr Expected<T, E>::Expected(Unexpected<E> u)
+    : data_(std::move(u.error_)) {}
 
 template <typename T>
 class ErrorOr : public Expected<T, Error> {
@@ -484,6 +579,42 @@ struct ArgDecoding<Buffer<dtype, rank>> {
 };
 
 //===----------------------------------------------------------------------===//
+// Type-safe wrapper for accessing a variable number of arguments.
+//===----------------------------------------------------------------------===//
+
+class RemainingArgs : public internal::RemainingArgsBase {
+ public:
+  using internal::RemainingArgsBase::RemainingArgsBase;
+
+  template <typename T>
+  ErrorOr<T> get(size_t index) const {
+    size_t idx = offset() + index;
+    if (XLA_FFI_PREDICT_FALSE(idx >= args()->size)) {
+      return Unexpected(
+          Error(ErrorCode::kInvalidArgument, "Index out of range"));
+    }
+
+    DiagnosticEngine diagnostic;
+    std::optional<T> value = ArgDecoding<T>::Decode(
+        args()->types[idx], args()->args[idx], diagnostic);
+    if (XLA_FFI_PREDICT_FALSE(!value.has_value())) {
+      return Unexpected(Error::Internal(diagnostic.Result()));
+    }
+
+    return *value;
+  }
+};
+
+template <>
+struct internal::Decode<internal::RemainingArgsTag> {
+  static std::optional<RemainingArgs> call(DecodingOffsets& offsets,
+                                           DecodingContext& ctx,
+                                           DiagnosticEngine& diagnostic) {
+    return RemainingArgs(&ctx.call_frame->args, offsets.args);
+  }
+};
+
+//===----------------------------------------------------------------------===//
 // Results decoding
 //===----------------------------------------------------------------------===//
 
@@ -524,6 +655,42 @@ struct RetDecoding<Buffer<dtype, rank>> {
 };
 
 //===----------------------------------------------------------------------===//
+// Type-safe wrapper for accessing a variable number of results.
+//===----------------------------------------------------------------------===//
+
+class RemainingRets : public internal::RemainingRetsBase {
+ public:
+  using internal::RemainingRetsBase::RemainingRetsBase;
+
+  template <typename T>
+  ErrorOr<Result<T>> get(size_t index) const {
+    size_t idx = offset() + index;
+    if (XLA_FFI_PREDICT_FALSE(idx >= rets()->size)) {
+      return Unexpected(
+          Error(ErrorCode::kInvalidArgument, "Index out of range"));
+    }
+
+    DiagnosticEngine diagnostic;
+    std::optional<Result<T>> value = RetDecoding<T>::Decode(
+        rets()->types[idx], rets()->rets[idx], diagnostic);
+    if (XLA_FFI_PREDICT_FALSE(!value.has_value())) {
+      return Unexpected(Error::Internal(diagnostic.Result()));
+    }
+
+    return *value;
+  }
+};
+
+template <>
+struct internal::Decode<internal::RemainingRetsTag> {
+  static std::optional<RemainingRets> call(DecodingOffsets& offsets,
+                                           DecodingContext& ctx,
+                                           DiagnosticEngine& diagnostic) {
+    return RemainingRets(&ctx.call_frame->rets, offsets.rets);
+  }
+};
+
+//===----------------------------------------------------------------------===//
 // Attributes decoding
 //===----------------------------------------------------------------------===//
 
@@ -552,6 +719,10 @@ XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(int8_t, XLA_FFI_DataType_S8);
 XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(int16_t, XLA_FFI_DataType_S16);
 XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(int32_t, XLA_FFI_DataType_S32);
 XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(int64_t, XLA_FFI_DataType_S64);
+XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(uint8_t, XLA_FFI_DataType_U8);
+XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(uint16_t, XLA_FFI_DataType_U16);
+XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(uint32_t, XLA_FFI_DataType_U32);
+XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(uint64_t, XLA_FFI_DataType_U64);
 XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(float, XLA_FFI_DataType_F32);
 XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(double, XLA_FFI_DataType_F64);
 
@@ -581,6 +752,49 @@ struct AttrDecoding<Pointer<T>> {
 };
 
 //===----------------------------------------------------------------------===//
+// Type-safe wrapper for accessing dictionary attributes.
+//===----------------------------------------------------------------------===//
+
+class Dictionary : public internal::DictionaryBase {
+ public:
+  using internal::DictionaryBase::DictionaryBase;
+
+  template <typename T>
+  ErrorOr<T> get(std::string_view name) const {
+    DiagnosticEngine diagnostic;
+    std::optional<T> value = internal::DictionaryBase::get<T>(name, diagnostic);
+    if (!value.has_value()) {
+      return Unexpected(Error::Internal(diagnostic.Result()));
+    }
+    return *value;
+  }
+};
+
+// Decode `AttrsTag` (all attributes) into a `Dictionary`.
+template <>
+struct internal::Decode<internal::AttrsTag<Dictionary>> {
+  static std::optional<Dictionary> call(DecodingOffsets& offsets,
+                                        DecodingContext& ctx,
+                                        DiagnosticEngine& diagnostic) {
+    return Dictionary(&ctx.call_frame->attrs);
+  }
+};
+
+// Decode individual attribute into `Dictionary` type.
+template <>
+struct AttrDecoding<Dictionary> {
+  using Type = Dictionary;
+  static std::optional<Dictionary> Decode(XLA_FFI_AttrType type, void* attr,
+                                          DiagnosticEngine& diagnostic) {
+    if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_AttrType_DICTIONARY)) {
+      return diagnostic.Emit("Wrong attribute type: expected ")
+             << XLA_FFI_AttrType_DICTIONARY << " but got " << type;
+    }
+    return Dictionary(reinterpret_cast<XLA_FFI_Attrs*>(attr));
+  }
+};
+
+//===----------------------------------------------------------------------===//
 // Error helpers
 //===----------------------------------------------------------------------===//
 
@@ -589,7 +803,7 @@ namespace internal {
 inline XLA_FFI_Error* CreateError(const XLA_FFI_Api* api, const Error& error) {
   XLA_FFI_Error_Create_Args args;
   args.struct_size = XLA_FFI_Error_Create_Args_STRUCT_SIZE;
-  args.priv = nullptr;
+  args.extension_start = nullptr;
   args.errc = static_cast<XLA_FFI_Error_Code>(*error.errc());
   args.message = error.message().c_str();
   return api->XLA_FFI_Error_Create(&args);
@@ -598,7 +812,7 @@ inline XLA_FFI_Error* CreateError(const XLA_FFI_Api* api, const Error& error) {
 inline void DestroyError(const XLA_FFI_Api* api, XLA_FFI_Error* error) {
   XLA_FFI_Error_Destroy_Args args;
   args.struct_size = XLA_FFI_Error_Destroy_Args_STRUCT_SIZE;
-  args.priv = nullptr;
+  args.extension_start = nullptr;
   args.error = error;
   api->XLA_FFI_Error_Destroy(&args);
 }
@@ -607,7 +821,7 @@ inline const char* GetErrorMessage(const XLA_FFI_Api* api,
                                    XLA_FFI_Error* error) {
   XLA_FFI_Error_GetMessage_Args args;
   args.struct_size = XLA_FFI_Error_GetMessage_Args_STRUCT_SIZE;
-  args.priv = nullptr;
+  args.extension_start = nullptr;
   args.error = error;
   api->XLA_FFI_Error_GetMessage(&args);
   return args.message;
@@ -645,7 +859,7 @@ struct ResultEncoding<ExecutionStage::kInstantiate,
     if (XLA_FFI_PREDICT_TRUE(state.has_value())) {
       XLA_FFI_State_Set_Args args;
       args.struct_size = XLA_FFI_State_Set_Args_STRUCT_SIZE;
-      args.priv = nullptr;
+      args.extension_start = nullptr;
       args.ctx = ctx;
       args.type_id = &T::id;
       args.state = state.value().release();
@@ -679,7 +893,7 @@ struct CtxDecoding<PlatformStream<T>> {
                                     DiagnosticEngine& diagnostic) {
     XLA_FFI_Stream_Get_Args args;
     args.struct_size = XLA_FFI_Stream_Get_Args_STRUCT_SIZE;
-    args.priv = nullptr;
+    args.extension_start = nullptr;
     args.ctx = ctx;
     args.stream = nullptr;
 
@@ -706,8 +920,6 @@ struct CtxDecoding<PlatformStream<T>> {
 // the particular call to FFI handler.
 class ScratchAllocator {
  public:
-  ScratchAllocator(const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx,
-                   DiagnosticEngine& diagnostic);
   ~ScratchAllocator();
 
   ScratchAllocator(ScratchAllocator&&) = default;
@@ -716,6 +928,11 @@ class ScratchAllocator {
   std::optional<void*> Allocate(size_t size, size_t alignment = 1);
 
  private:
+  friend struct CtxDecoding<ScratchAllocator>;
+
+  ScratchAllocator(const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx,
+                   DiagnosticEngine& diagnostic);
+
   struct Allocation {
     size_t size;
     void* data;
@@ -747,7 +964,7 @@ inline std::optional<void*> ScratchAllocator::Allocate(size_t size,
                                                        size_t alignment) {
   XLA_FFI_DeviceMemory_Allocate_Args args;
   args.struct_size = XLA_FFI_DeviceMemory_Allocate_Args_STRUCT_SIZE;
-  args.priv = nullptr;
+  args.extension_start = nullptr;
   args.ctx = ctx_;
   args.size = size;
   args.alignment = alignment;
@@ -758,6 +975,7 @@ inline std::optional<void*> ScratchAllocator::Allocate(size_t size,
     internal::DestroyError(api_, error);
     return std::nullopt;
   }
+  allocations_.push_back({size, args.data});
   return args.data;
 }
 
@@ -770,7 +988,7 @@ inline ScratchAllocator::~ScratchAllocator() {
   for (Allocation& alloc : allocations_) {
     XLA_FFI_DeviceMemory_Free_Args args;
     args.struct_size = XLA_FFI_DeviceMemory_Free_Args_STRUCT_SIZE;
-    args.priv = nullptr;
+    args.extension_start = nullptr;
     args.ctx = ctx_;
     args.size = alloc.size;
     args.data = alloc.data;
@@ -783,6 +1001,73 @@ inline ScratchAllocator::~ScratchAllocator() {
 }
 
 //===----------------------------------------------------------------------===//
+// ThreadPool
+//===----------------------------------------------------------------------===//
+
+class ThreadPool {
+ public:
+  template <typename F>
+  void Schedule(F&& f) {
+    XLA_FFI_Task* task = +[](void* data) {
+      auto* f = reinterpret_cast<F*>(data);
+      (*f)();
+      delete f;
+    };
+
+    F* data = new F(std::forward<F>(f));
+
+    XLA_FFI_ThreadPool_Schedule_Args args;
+    args.struct_size = XLA_FFI_ThreadPool_Schedule_Args_STRUCT_SIZE;
+    args.extension_start = nullptr;
+    args.ctx = ctx_;
+    args.task = task;
+    args.data = data;
+
+    if (XLA_FFI_Error* error = api_->XLA_FFI_ThreadPool_Schedule(&args)) {
+      diagnostic_.Emit("Failed to schedule task on a thread pool: ")
+          << internal::GetErrorMessage(api_, error);
+      internal::DestroyError(api_, error);
+
+      // If thread pool is not available, we execute the task in the caller
+      // thread. We choose not to return error from `Schedule` for consistency
+      // with Eigen thread pool implementation, and because it would make
+      // recursive work scheduling more difficult.
+      task(data);
+    }
+  }
+
+ private:
+  friend struct CtxDecoding<ThreadPool>;
+
+  ThreadPool(const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx,
+             DiagnosticEngine& diagnostic);
+
+  const XLA_FFI_Api* api_;
+  XLA_FFI_ExecutionContext* ctx_;
+  DiagnosticEngine& diagnostic_;
+};
+
+// Context decoding for thread pool.
+//
+// Example: Ffi::Bind().Ctx<ThreadPool>()
+//                     .To([](ThreadPool thread_pool) { ... });
+template <>
+struct CtxDecoding<ThreadPool> {
+  using Type = ThreadPool;
+
+  static std::optional<Type> Decode(const XLA_FFI_Api* api,
+                                    XLA_FFI_ExecutionContext* ctx,
+                                    DiagnosticEngine& diagnostic) {
+    return ThreadPool(api, ctx, diagnostic);
+  }
+};
+
+inline ThreadPool::ThreadPool(const XLA_FFI_Api* api,
+                              XLA_FFI_ExecutionContext* ctx,
+                              DiagnosticEngine& diagnostic)
+    : api_(api), ctx_(ctx), diagnostic_(diagnostic) {}
+
+//===----------------------------------------------------------------------===//
 // Type Registration
 //===----------------------------------------------------------------------===//
 
@@ -793,7 +1078,7 @@ inline XLA_FFI_Error* RegisterType(const XLA_FFI_Api* api,
                                    XLA_FFI_TypeId* type_id) {
   XLA_FFI_TypeId_Register_Args args;
   args.struct_size = XLA_FFI_TypeId_Register_Args_STRUCT_SIZE;
-  args.priv = nullptr;
+  args.extension_start = nullptr;
   args.name = XLA_FFI_ByteSpan{name.data(), name.size()};
   args.type_id = type_id;
   return api->XLA_FFI_TypeId_Register(&args);
@@ -836,7 +1121,7 @@ struct CtxDecoding<UserData<T>> {
                                     DiagnosticEngine& diagnostic) {
     XLA_FFI_ExecutionContext_Get_Args args;
     args.struct_size = XLA_FFI_ExecutionContext_Get_Args_STRUCT_SIZE;
-    args.priv = nullptr;
+    args.extension_start = nullptr;
     args.ctx = ctx;
     args.type_id = &T::id;
     args.data = nullptr;
@@ -879,7 +1164,7 @@ struct CtxDecoding<State<T>> {
                                     DiagnosticEngine& diagnostic) {
     XLA_FFI_State_Get_Args args;
     args.struct_size = XLA_FFI_State_Get_Args_STRUCT_SIZE;
-    args.priv = nullptr;
+    args.extension_start = nullptr;
     args.ctx = ctx;
     args.type_id = &T::id;
     args.state = nullptr;

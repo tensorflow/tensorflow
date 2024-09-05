@@ -52,9 +52,9 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/lib/core/bitmap.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/bitmap.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/stacktrace.h"
 
@@ -731,6 +731,12 @@ class XlaBuilder {
   XlaOp Call(const XlaComputation& computation,
              absl::Span<const XlaOp> operands);
 
+  XlaOp CompositeCall(
+      const XlaComputation& computation, absl::Span<const XlaOp> operands,
+      const std::string& name,
+      std::optional<absl::string_view> attributes = std::nullopt,
+      std::optional<int64_t> version = std::nullopt);
+
   XlaOp CustomCall(
       const std::string& call_target_name, absl::Span<const XlaOp> operands,
       const Shape& shape_with_layout, const std::string& opaque,
@@ -1378,6 +1384,14 @@ class XlaBuilder {
                       const std::string& outfeed_config);
   friend XlaOp Call(XlaBuilder* builder, const XlaComputation& computation,
                     absl::Span<const XlaOp> operands);
+
+  friend XlaOp CompositeCall(XlaBuilder* builder,
+                             const XlaComputation& computation,
+                             absl::Span<const XlaOp> operands,
+                             const std::string& name,
+                             std::optional<absl::string_view> attributes,
+                             std::optional<int64_t> version);
+
   friend XlaOp CustomCall(
       XlaBuilder* builder, const std::string& call_target_name,
       absl::Span<const XlaOp> operands, const Shape& shape,
@@ -2304,6 +2318,12 @@ XlaOp OutfeedWithToken(XlaOp operand, XlaOp token,
 // Enqueues a call instruction onto the computation.
 XlaOp Call(XlaBuilder* builder, const XlaComputation& computation,
            absl::Span<const XlaOp> operands);
+
+// Enqueues a composite call instruction onto the computation.
+XlaOp CompositeCall(XlaBuilder* builder, const XlaComputation& computation,
+                    absl::Span<const XlaOp> operands, const std::string& name,
+                    std::optional<absl::string_view> attributes = std::nullopt,
+                    std::optional<int64_t> version = std::nullopt);
 
 // Enqueues a custom call instruction onto the computation. A custom call
 // invokes code external to XLA. The |operands| are passed to the external code,

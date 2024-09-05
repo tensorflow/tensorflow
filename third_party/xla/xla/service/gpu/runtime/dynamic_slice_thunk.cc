@@ -54,7 +54,7 @@ DynamicSliceThunk::DynamicSliceThunk(
     std::vector<std::optional<Shape>> orig_shapes,
     std::vector<std::optional<Shape>> sliced_shapes,
     std::vector<std::optional<uint64_t>> offset_byte_sizes)
-    : Thunk(Kind::kAddressComputation, thunk_info),
+    : Thunk(Kind::kDynamicSlice, thunk_info),
       embedded_thunk_(std::make_unique<SequentialThunk>(
           ThunkInfo(), std::move(*embedded_thunk))),
       fake_allocations_(std::move(fake_allocations)) {
@@ -77,6 +77,34 @@ DynamicSliceThunk::DynamicSliceThunk(
     offsets_allocs_base_.push_back(offsets_allocs_size_);
     if (slice.sliced_shape.has_value()) {
       offsets_allocs_size_ += slice.sliced_shape->rank() * sizeof(int64_t);
+    }
+  }
+}
+
+DynamicSliceThunk::OffsetArray::OffsetArray(const Literal& l) {
+  CHECK(l.shape().IsArray()) << "Expected array literal, got " << l.ToString();
+  for (int i = 0; i < l.element_count(); i++) {
+    switch (l.shape().element_type()) {
+      case S32:
+        values.push_back(l.data<int32_t>()[i]);
+        break;
+      case S64:
+        values.push_back(l.data<int64_t>()[i]);
+        break;
+      case U32:
+        values.push_back(l.data<uint32_t>()[i]);
+        break;
+      case U64:
+        CHECK(l.data<uint64_t>()[i] <
+              static_cast<uint64_t>(std::numeric_limits<int64_t>::max()))
+            << "Offset value: " << l.data<uint64_t>()[i]
+            << " cannot fit in int64_t";
+        values.push_back(l.data<uint64_t>()[i]);
+        break;
+      default:
+        CHECK(false) << "Offset array must be of a supported integer type "
+                        "(S32, S64, U32, U64), found: "
+                     << l.shape().element_type();
     }
   }
 }
@@ -182,6 +210,13 @@ absl::Status DynamicSliceThunk::ExecuteOnStream(const ExecuteParams& params) {
         VLOG(2) << "  - arg " << argument_idx << "[" << offset_idx
                 << "]: loop iteration offset = " << iter;
         offset_value(argument_idx, offset_idx) = iter;
+
+      } else if (OffsetArray* offset_array =
+                     std::get_if<OffsetArray>(&offset)) {
+        TF_ASSIGN_OR_RETURN(int64_t iter, WhileThunk::CurrentLoopIteration());
+        VLOG(2) << "  - arg " << argument_idx << "[" << offset_idx
+                << "]: offset array offset = " << offset_array->values[iter];
+        offset_value(argument_idx, offset_idx) = offset_array->values[iter];
 
       } else {
         // Transfer slice offset value from device to host.

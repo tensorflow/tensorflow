@@ -57,7 +57,7 @@ diff --git a/lib/Dialect/TritonGPU/IR/Dialect.cpp b/lib/Dialect/TritonGPU/IR/Dia
 index 012786dae..6043b764a 100644
 --- a/lib/Dialect/TritonGPU/IR/Dialect.cpp
 +++ b/lib/Dialect/TritonGPU/IR/Dialect.cpp
-@@ -498,6 +498,119 @@ getDefaultBlockedEncoding(MLIRContext *context, ArrayRef<int64_t> shape,
+@@ -498,6 +498,123 @@ getDefaultBlockedEncoding(MLIRContext *context, ArrayRef<int64_t> shape,
    return encoding;
  }
  
@@ -173,6 +173,10 @@ index 012786dae..6043b764a 100644
 +    ArrayRef<int64_t> tensorShape) const {
 +  return ::getShapePerCTATile(getParent(), tensorShape);
 +}
++std::optional<LinearLayout> SparseDotMetaEncodingAttr::toLinearLayout(
++    ArrayRef<int64_t> shape) const {
++  return ::toLinearLayout(shape, getParent());
++}
 +
  } // namespace gpu
  } // namespace triton
@@ -273,9 +277,9 @@ index d74e0a224..4e45f7c4c 100644
 +  return op->hasTrait<OpTrait::DotLike>() || isa<ttg::SparseDotOp>(op);
 +}
 +
- // Replace the ForOp's yield with a new one with the given operands appended.
- static void appendToYield(scf::ForOp forOp, ArrayRef<Value> newOperands) {
-   // Fix up the yield op.
+ static void createAsyncCopy(scf::ForOp &forOp, tt::LoadOp loadOp, Value alloc,
+                             Value insertIdx, Value extractIdx,
+                             tt::CoarseSchedule &schedule,
 @@ -248,19 +252,28 @@ getSharedEncIfAllUsersAreDotEnc(Value val, bool &incompatible) {
      } else {
        if (!isa<ttg::LocalLoadOp, ttg::ConvertLayoutOp>(user))

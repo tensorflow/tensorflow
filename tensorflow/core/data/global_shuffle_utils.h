@@ -75,9 +75,13 @@ class GlobalShuffleIterator {
   absl::Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                        bool* end_of_sequence);
 
+  absl::Status Save(const std::string& parent_iterator_prefix,
+                    SerializationContext* ctx, IteratorStateWriter* writer);
+
   // Restores the element count.
   // REQUIRES: ctx->restored_element_count() != nullopt.
-  absl::Status Restore(IteratorContext* ctx);
+  absl::Status Restore(const std::string& parent_iterator_prefix,
+                       IteratorContext* ctx, IteratorStateReader* reader);
 
  private:
   const DatasetBase* const dataset_;

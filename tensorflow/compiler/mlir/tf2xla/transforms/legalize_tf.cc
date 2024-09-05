@@ -3145,7 +3145,8 @@ class ConvertBatchMatMulV2Op : public OpRewritePattern<TF::BatchMatMulV2Op> {
     // (The batch dimensions are checked by the broadcasting logic)
     rewriter.replaceOpWithNewOp<DotGeneralOp>(
         op, op.getType(), lhs, rhs, dimension_numbers,
-        /*precision_config=*/GetPrecisionConfig(&rewriter));
+        /*precision_config=*/GetPrecisionConfig(&rewriter),
+        /*algorithm=*/DotAlgorithmAttr{});
     return success();
   }
 };

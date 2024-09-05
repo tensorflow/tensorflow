@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/client/lib/arithmetic.h"
 #include "xla/client/lib/constants.h"
 #include "xla/client/lib/loops.h"
+#include "xla/client/lib/math_impl.h"
 #include "xla/client/xla_builder.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
@@ -1188,8 +1189,31 @@ XlaOp Acos(XlaOp x) {
 
 // asin(x) = 2 * atan(x / (1 + sqrt(1 - x^2)))
 XlaOp Asin(XlaOp x) {
-  return ScalarLike(x, 2.0) *
-         Atan2(x, ScalarLike(x, 1.0) + Sqrt(ScalarLike(x, 1.0) - x * x));
+  XlaBuilder* b = x.builder();
+  auto do_it = [&](XlaOp z) -> absl::StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(z));
+    auto elem_ty = shape.element_type();
+    switch (elem_ty) {
+      case C128:
+        return math_impl::AsinComplex<double>(z);
+      case C64:
+        return math_impl::AsinComplex<float>(z);
+      case F64:
+        return math_impl::AsinReal<double>(z);
+      case F32:
+        return math_impl::AsinReal<float>(z);
+        // todo(pearu): add implementations for BF16 and F16 to avoid
+        // the upcast below
+      default:
+        return InvalidArgument("Asin got unsupported element type %s",
+                               PrimitiveType_Name(elem_ty));
+    }
+  };
+  // These upcasts are not strictly necessary on all platforms to get within our
+  // error tolerances, so we could relax this if it ever mattered.
+  return DoWithUpcastToF32(x, {F8E4M3FN, F8E5M2, BF16, F16}, [&](XlaOp x) {
+    return b->ReportErrorOrReturn(do_it(x));
+  });
 }
 
 XlaOp Atan(XlaOp x) { return Atan2(x, ScalarLike(x, 1.0)); }
@@ -1256,11 +1280,23 @@ XlaOp Asinh(XlaOp x) {
     //
     //   y * sign(x).
     //
-    // TODO(jlebar): For now, we ignore the question of overflow if x is a
-    // complex type, because we don't yet have exhaustive tests for complex trig
-    // functions.
     if (primitive_util::IsComplexType(shape.element_type())) {
-      return Log(x + Sqrt(x * x + one));
+      // Asinh(x) = I * Asin(-I * x)
+      //
+      // We use mixed-mode arithmetic instead of complex arithemtic to
+      // ensure that multiplication of I and complex infinities will
+      // not produce superficial nan's:
+      auto x_re = Real(x);
+      auto x_im = Imag(x);
+      auto z = Asin(Complex(x_im, -x_re));
+      auto z_im = Imag(z);
+      // when abs(x.imag) > 1 and x.real == 0, select correct branch
+      // from Asin(Complex(x.imag, -0)) result (assuming x.real is +0,
+      // the imaginary part of the argument to Asin approaches 0 from
+      // the negative side):
+      auto on_branch_cut = And(Eq(x_re, ScalarLike(x_re, 0)),
+                               Gt(Abs(x_im), ScalarLike(x_im, 1)));
+      return Complex(Select(on_branch_cut, z_im, -z_im), Real(z));
     }
     // For small x, sqrt(x**2 + 1) will evaluate to 1 due to floating point
     // arithmetic. However, we would like to retain the low order term of this,

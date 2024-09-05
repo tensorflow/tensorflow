@@ -58,8 +58,17 @@ class HloFusionAnalysis {
   static HloFusionAnalysis Create(FusionBackendConfig backend_config,
                                   std::unique_ptr<HloFusionAdaptor> fusion,
                                   const se::DeviceDescription* device_info);
-  static HloFusionAnalysis Create(const HloFusionInstruction* fusion,
-                                  const se::DeviceDescription* device_info);
+
+  // Creates a HloFusionAnalysis that analyzes just instruction as a standalone
+  // fusion.
+  static HloFusionAnalysis Create(const HloInstruction& instruction,
+                                  const se::DeviceDescription& device_info);
+
+  // Creates a HloFusionAnalysis that analyzes a hypothetical fusion of producer
+  // into consumer.
+  static HloFusionAnalysis Create(const HloInstruction& producer,
+                                  const HloInstruction& consumer,
+                                  const se::DeviceDescription& device_info);
 
   const HloFusionAdaptor& fusion() const { return *fusion_; }
 
@@ -130,17 +139,6 @@ class HloFusionAnalysis {
   std::optional<TransposeDescription> tiled_transpose_;
   InputOutputInfo input_output_info_;
 };
-
-// Creates a HloFusionAnalysis that analyzes a hypothetical fusion of producer
-// into consumer.
-HloFusionAnalysis AnalyzeProducerConsumerFusion(
-    const HloInstruction& producer, const HloInstruction& consumer,
-    const se::DeviceDescription& device_info);
-
-// Creates a HloFusionAnalysis that analyzes just consumer as a standalone
-// fusion.
-HloFusionAnalysis AnalyzeFusion(const HloInstruction& consumer,
-                                const se::DeviceDescription& device_info);
 
 }  // namespace gpu
 }  // namespace xla

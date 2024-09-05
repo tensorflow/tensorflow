@@ -11,7 +11,16 @@ package(
 )
 
 exports_files(
-    srcs = ["schema.fbs"],
+    srcs = [
+        "conversion_metadata.fbs",
+        "schema.fbs",
+        "schema_v0.fbs",
+        "schema_v1.fbs",
+        "schema_v2.fbs",
+        "schema_v3.fbs",
+        "schema_v3a.fbs",
+        "schema_v3b.fbs",
+    ],
 )
 
 filegroup(

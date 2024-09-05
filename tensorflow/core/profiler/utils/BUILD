@@ -237,6 +237,7 @@ cc_library(
     srcs = ["derived_timeline.cc"],
     hdrs = ["derived_timeline.h"],
     copts = tf_profiler_copts(),
+    visibility = [":friends"],
     deps = [
         ":gpu_event_stats",
         ":hlo_module_map",

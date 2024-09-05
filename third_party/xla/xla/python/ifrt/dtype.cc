@@ -28,9 +28,21 @@ namespace ifrt {
 
 std::optional<int> DType::byte_size() const {
   switch (kind_) {
+    case kS2:
+    case kU2:
+    case kS4:
+    case kU4:
+      // Smaller than a byte.
+      return std::nullopt;
     case kPred:
     case kS8:
     case kU8:
+    // The following types are https://arxiv.org/abs/2209.05433
+    case kF8E4M3FN:
+    case kF8E4M3B11FNUZ:
+    case kF8E4M3FNUZ:
+    case kF8E5M2:
+    case kF8E5M2FNUZ:
       return 1;
     case kS16:
     case kU16:
@@ -48,16 +60,30 @@ std::optional<int> DType::byte_size() const {
       return 8;
     case kC128:
       return 16;
-    default:
+    case kToken:
+    case kInvalid:
+    case kString:
       return std::nullopt;
   }
 }
 
 std::optional<int> DType::bit_size() const {
   switch (kind_) {
+    case kS2:
+    case kU2:
+      return 2;
+    case kS4:
+    case kU4:
+      return 4;
     case kPred:
     case kS8:
     case kU8:
+    // The following types are https://arxiv.org/abs/2209.05433
+    case kF8E4M3FN:
+    case kF8E4M3B11FNUZ:
+    case kF8E4M3FNUZ:
+    case kF8E5M2:
+    case kF8E5M2FNUZ:
       return 8;
     case kS16:
     case kU16:
@@ -75,7 +101,9 @@ std::optional<int> DType::bit_size() const {
       return 64;
     case kC128:
       return 128;
-    default:
+    case kToken:
+    case kInvalid:
+    case kString:
       return std::nullopt;
   }
 }

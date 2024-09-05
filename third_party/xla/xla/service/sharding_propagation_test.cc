@@ -9748,8 +9748,8 @@ ENTRY %module {
   %parameter.1 = bf16[2,4819,4]{2,1,0} parameter(1)
   %iota = s32[2,1000,1]{1,0,2} iota(), iota_dimension=0
   %operand = bf16[2,4819,4]{2,1,0} copy(%parameter.1)
-  %index = s32[2,1000,2]{2,1,0} concatenate(s32[2,1000,1]{1,0,2} %parameter.0,
-    s32[2,1000,1]{2,1,0} %iota), dimensions={2},
+  %index = s32[2,1000,2]{2,1,0} concatenate(s32[2,1000,1]{1,0,2} %iota,
+    s32[2,1000,1]{2,1,0} %parameter.0), dimensions={2},
     sharding={devices=[1,4,1]0,1,2,3}
   ROOT %gather = bf16[2,1000,4]{2,1,0} gather(bf16[2,4819,4]{2,1,0} %operand,
     s32[2,1000,2]{2,1,0} %index), offset_dims={2},
@@ -10925,10 +10925,9 @@ ENTRY entry {
           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   EXPECT_TRUE(changed);
-  auto* zero = FindInstruction(module.get(), "zero");
-  EXPECT_THAT(
-      zero,
-      op::Sharding("{devices=[2,4]<=[8] last_tile_dims={manual, replicated}}"));
+  auto* tuple = FindInstruction(module.get(), "tuple.13");
+  EXPECT_THAT(tuple, op::Sharding("{{replicated}, {devices=[1,1,1,2,4]<=[8] "
+                                  "last_tile_dims={manual, replicated}}}"));
 }
 
 TEST_F(ShardingPropagationTest, PropagateToOutput) {

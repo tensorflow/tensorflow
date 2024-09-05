@@ -21,12 +21,12 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/tools/proto_splitter/cc/test_util.h"
 #include "tensorflow/tools/proto_splitter/chunk.pb.h"
 #include "tensorflow/tools/proto_splitter/testdata/test_message.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/status_matchers.h"

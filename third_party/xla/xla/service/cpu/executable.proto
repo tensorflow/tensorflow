@@ -17,7 +17,6 @@ syntax = "proto3";
 
 package xla.cpu;
 
-import "xla/service/cpu/xla_framework.proto";
 import "xla/service/hlo.proto";
 import "xla/xla.proto";
 
@@ -38,6 +37,6 @@ message CompilationResultProto {
   HloModuleProtoWithConfig hlo_module = 1;
   BufferAssignmentProto buffer_assignment = 2;
   string entry_function_name = 3;
-  bytes obj_file = 4;
-  ObjFileKind obj_file_kind = 5;
+  repeated bytes obj_files = 4;
+  ObjFileKind obj_files_kind = 5;
 }

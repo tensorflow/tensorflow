@@ -993,30 +993,6 @@ using FusedMatmulRunner = OpRunner<FusedMatmulSignature>;
 using NormSignature = void(std::vector<DeviceMemoryBase>);
 using NormRunner = OpRunner<NormSignature>;
 
-using FusedMHASignature = void(DeviceMemoryBase /*BMM1_inputA_data*/,
-                               DeviceMemoryBase /* BMM1_inputB_data */,
-                               DeviceMemoryBase /* BMM2_inputA_data */,
-                               DeviceMemoryBase /* output_data */,
-                               DeviceMemoryBase /* bias_data */,
-                               DeviceMemoryBase /* activation_data */,
-                               DeviceMemoryBase /* seqlen_q_data */,
-                               DeviceMemoryBase /* seqlen_k_data */);
-using FusedMHARunner = OpRunner<FusedMHASignature>;
-
-using FusedMHABackwardSignature = void(
-    DeviceMemoryBase /* BMM1_GRAD_GEMM1_inputA_data */,
-    DeviceMemoryBase /* BMM1_GRAD_GEMM2_inputB_data */,
-    DeviceMemoryBase /* BMM2_GRAD_GEMM1_inputA_data */,
-    DeviceMemoryBase /* BMM2_GRAD_GEMM2_inputB_data */,
-    DeviceMemoryBase /* d_output_data */,
-    DeviceMemoryBase /* d_BMM1_inputA_data */,
-    DeviceMemoryBase /* d_BMM1_inputB_data */,
-    DeviceMemoryBase /* d_BMM2_inputB_data */, DeviceMemoryBase /* d_S_data */,
-    DeviceMemoryBase /* d_bias_data */, DeviceMemoryBase /* fwd_output_data */,
-    DeviceMemoryBase /* bias_data */, DeviceMemoryBase /* seqlen_q_data */,
-    DeviceMemoryBase /* seqlen_k_data */);
-using FusedMHABackwardRunner = OpRunner<FusedMHABackwardSignature>;
-
 // Describes the configuration for the algorithms that will used.
 //
 // Arguments:
@@ -1257,11 +1233,7 @@ class DnnGraph {
   DnnGraph() = default;
   virtual ~DnnGraph() = default;
 
-  // Returns non-OK status on hard failures (incorrectly constructed graph,
-  // anything else unexpected),
-  // false on expected ones (graph is valid but not supported),
-  // true on success.
-  virtual absl::Status Prepare(DnnSupport&) = 0;
+  virtual absl::Status Prepare(DnnSupport&, const NumericOptions&) = 0;
   virtual absl::Status Build(DnnSupport&, std::optional<int64_t> plan_id) = 0;
   virtual absl::Status Execute(Stream& stream,
                                absl::Span<DeviceMemoryBase> operands) const = 0;
@@ -1734,37 +1706,6 @@ class DnnSupport {
       absl::string_view) const {
     return absl::UnimplementedError("Graph support requires cuDNN >= 8.1.");
   };
-
-  virtual absl::StatusOr<std::unique_ptr<const FusedMHARunner>>
-  FusedMHARunnerFromDesc(
-      Stream* stream, const AlgorithmDesc& algorithm_desc,
-      const MatmulTensorDescriptor& bmm1_lhs_descriptor,
-      const MatmulTensorDescriptor& bmm1_rhs_descriptor,
-      const MatmulTensorDescriptor& bmm2_rhs_descriptor,
-      const MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor,
-      const TensorDescriptor& output_descriptor,
-      std::optional<TensorDescriptor> activation_descriptor,
-      std::optional<TensorDescriptor> bias_descriptor, double scale,
-      std::optional<double> dropout_rate, std::optional<int64_t> seed,
-      dnn::FMHAMaskKind mask_type);
-
-  virtual absl::StatusOr<std::unique_ptr<const FusedMHABackwardRunner>>
-  FusedMHABackwardRunnerFromDesc(
-      Stream* stream, const AlgorithmDesc& algorithm_desc,
-      const MatmulTensorDescriptor& bmm1_grad_gemm1_rhs_descriptor,
-      const MatmulTensorDescriptor& bmm1_grad_gemm2_rhs_descriptor,
-      const MatmulTensorDescriptor& bmm2_grad_gemm1_lhs_descriptor,
-      const MatmulTensorDescriptor& bmm2_grad_gemm2_rhs_descriptor,
-      const MatmulTensorDescriptor& d_output_descriptor,
-      const TensorDescriptor& d_bmm1_lhs_descriptor,
-      const TensorDescriptor& d_bmm1_rhs_descriptor,
-      const TensorDescriptor& d_bmm2_rhs_descriptor,
-      std::optional<TensorDescriptor> d_s_descriptor,
-      std::optional<TensorDescriptor> d_bias_descriptor,
-      std::optional<TensorDescriptor> fwd_output_descriptor,
-      std::optional<TensorDescriptor> bias_descriptor, double scale,
-      std::optional<double> dropout_rate, std::optional<int64_t> seed,
-      dnn::FMHAMaskKind mask_type, bool force_deterministic);
 
   virtual bool GetMIOpenConvolveAlgorithms(
       ConvolutionKind kind, DataType element_type, DataType output_type,

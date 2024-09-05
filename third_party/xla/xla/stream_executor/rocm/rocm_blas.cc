@@ -18,6 +18,7 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocblas_wrapper.h"
 
 #define EIGEN_USE_GPU
+#define EIGEN_USE_HIP
 #include <assert.h>
 
 #include <complex>
@@ -355,23 +356,29 @@ absl::Status ROCMBlas::DoBlasInternalImpl(FuncT rocblas_func, Stream *stream,
   }
 
   gpu::ScopedActivateExecutorContext sac{parent_};
-
+  rocblas_status ret;
   // set the atomics mode, leaving default to library
   bool allow_atomics = !OpDeterminismRequired();
-  rocblas_status ret;
   if (!allow_atomics) {
     ret = wrap::rocblas_set_atomics_mode(blas_, rocblas_atomics_not_allowed);
     if (err_on_failure && ret != rocblas_status_success) {
-      LOG(ERROR) << "failed to to set atomics mode before " << FuncT::kName
-                 << ": " << ToString(ret);
+      LOG(ERROR) << "failed to set atomics mode before " << FuncT::kName << ": "
+                 << ToString(ret);
     }
   }
-#if TF_ROCM_VERSION >= 60000
-  if (auto *workspace = GetWorkspace(); workspace != nullptr &&
-                                        workspace->opaque() != nullptr &&
-                                        workspace->size() > 0) {
-    (void)wrap::rocblas_set_workspace(blas_, workspace->opaque(),
-                                      workspace->size());
+#if 0
+// pemeliya: the feature is disabled since rocblas does not perform well under
+// graph capture. rocblas_set_workspace seems to use blocking memory functions
+// like hipFree/hipMalloc which result in HIP_ERROR_StreamCaptureUnsupported
+  {
+    auto *workspace = GetWorkspace();
+    auto *wptr = workspace != nullptr ? workspace->opaque() : nullptr;
+    size_t wsize = workspace != nullptr ? workspace->size() : 0;
+    ret = wrap::rocblas_set_workspace(blas_, wptr, wsize);
+    if (err_on_failure && ret != rocblas_status_success) {
+      LOG(ERROR) << "failed to set workspace before " << FuncT::kName
+                 << ": " << ToString(ret);
+    }
   }
 #endif
 

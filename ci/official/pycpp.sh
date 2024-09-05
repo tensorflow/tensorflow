@@ -15,12 +15,19 @@
 # ==============================================================================
 source "${BASH_SOURCE%/*}/utilities/setup.sh"
 
-if [[ $TFCI_PYCPP_SWAP_TO_BUILD_ENABLE == 1 ]]; then
-   tfrun bazel build $TFCI_BAZEL_COMMON_ARGS --profile "$TFCI_OUTPUT_DIR/profile.json.gz" --config="${TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX}_pycpp_test"
+if [[ `uname -s | grep -P '^MSYS_NT'` ]]; then
+  PROFILE_JSON_PATH=$(replace_drive_letter_with_c "$TFCI_OUTPUT_DIR")
+  PROFILE_JSON_PATH="$PROFILE_JSON_PATH/profile.json.gz"
 else
-   tfrun bazel test $TFCI_BAZEL_COMMON_ARGS --profile "$TFCI_OUTPUT_DIR/profile.json.gz" --config="${TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX}_pycpp_test"
+  PROFILE_JSON_PATH="$TFCI_OUTPUT_DIR/profile.json.gz"
+fi
+
+if [[ $TFCI_PYCPP_SWAP_TO_BUILD_ENABLE == 1 ]]; then
+   tfrun bazel build $TFCI_BAZEL_COMMON_ARGS --profile "$PROFILE_JSON_PATH" --config="${TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX}_pycpp_test"
+else
+   tfrun bazel test $TFCI_BAZEL_COMMON_ARGS --profile "$PROFILE_JSON_PATH"  --config="${TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX}_pycpp_test"
 fi
 
 # Note: the profile can be viewed by visiting chrome://tracing in a Chrome browser.
 # See https://docs.bazel.build/versions/main/skylark/performance.html#performance-profiling
-tfrun bazel analyze-profile "$TFCI_OUTPUT_DIR/profile.json.gz"
+tfrun bazel analyze-profile "$PROFILE_JSON_PATH"

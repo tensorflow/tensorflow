@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -31,12 +32,13 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/bits.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -275,6 +277,7 @@ absl::StatusOr<XlaOp> CompileWhereWithPrefixSum(XlaOpKernelContext* ctx) {
   // and then scatter iotas[out_idxs] into the output.
   std::vector<XlaOp> iotas_to_concat;
   auto iota_shape = xla::ShapeUtil::MakeShape(S32, input_shape.dimensions());
+  iotas_to_concat.reserve(iota_shape.rank());
   for (int64_t axis = 0; axis < iota_shape.rank(); ++axis) {
     iotas_to_concat.push_back(
         xla::Reshape(xla::Iota(b, iota_shape, axis), {flattened_size, 1}));

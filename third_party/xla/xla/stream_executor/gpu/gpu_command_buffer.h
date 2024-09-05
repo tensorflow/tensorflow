@@ -353,20 +353,6 @@ class GpuCommandBuffer : public CommandBuffer {
   NoOpKernel noop_kernel_;
 };
 
-//===----------------------------------------------------------------------===//
-// Implementation details device kernels required by GpuCommandBuffer.
-//===----------------------------------------------------------------------===//
-
-// See `cuda_conditional_kernels.cc` for CUDA implementation. These are
-// various kernels that update Gpu conditionals based on the device memory
-// values, and allow implementing on-device control flow via conditional command
-// buffers.
-std::string_view GetSetIfConditionKernel();
-std::string_view GetSetIfElseConditionKernel();
-std::string_view GetSetCaseConditionKernel();
-std::string_view GetSetForConditionKernel();
-std::string_view GetSetWhileConditionKernel();
-
 }  // namespace stream_executor::gpu
 
 #endif  // XLA_STREAM_EXECUTOR_GPU_GPU_COMMAND_BUFFER_H_

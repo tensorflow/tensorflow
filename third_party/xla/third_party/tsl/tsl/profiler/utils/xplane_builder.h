@@ -370,6 +370,7 @@ class XPlaneBuilder : public XStatsBuilder<XPlane> {
   // was unused.
   // WARNING: If calling this function, don't call the string overloads below
   // on the same instance.
+  // TODO(b/363276932): deprecate this method and add GetEventMetadata(int64_t)
   XEventMetadata* GetOrCreateEventMetadata(int64_t metadata_id);
 
   // Returns event metadata with the given name. The id is internally assigned.

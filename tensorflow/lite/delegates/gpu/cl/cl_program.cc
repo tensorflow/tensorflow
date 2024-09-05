@@ -107,10 +107,12 @@ std::string CompilerOptionToString(const GpuInfo& gpu_info,
         return "unsupported";
       }
     case CompilerOptions::kClFastRelaxedMath:
-      if (gpu_info.IsMali() && gpu_info.mali_info.IsValhall()) {
-        return "-cl-fast-relaxed-math -fregister-allocation=64";
+      return "-cl-fast-relaxed-math";
+    case CompilerOptions::kClRegisterAllocation64:
+      if (gpu_info.opencl_info.supports_register_allocation_arm) {
+        return "-fregister-allocation=64";
       } else {
-        return "-cl-fast-relaxed-math";
+        return "";
       }
     case CompilerOptions::kClDisableOptimizations:
       return "-cl-opt-disable";

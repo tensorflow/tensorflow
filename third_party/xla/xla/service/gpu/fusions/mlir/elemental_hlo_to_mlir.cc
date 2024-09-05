@@ -20,7 +20,6 @@ limitations under the License.
 #include <iterator>
 #include <queue>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -67,24 +66,18 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/mlir/utils/type_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/map_mhlo_to_scalar_op.h"
-#include "xla/mlir_hlo/mhlo/utils/type_conversion.h"
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
+#include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
-#include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/fusions/mlir/type_util.h"
-#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
-#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/translate/hlo_to_mhlo/hlo_utils.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -1179,57 +1172,6 @@ absl::StatusOr<SmallVector<Value, 1>> HloToMlir(
 
 }  // namespace
 
-bool IsHloOpSupported(const HloInstruction* instr,
-                      se::CudaComputeCapability compute_capability) {
-  return !(kUnsupportedOps.contains(instr->opcode()) ||
-           IsUnsupportedGather(instr));
-}
-
-bool IsHloConversionSupported(const HloComputation* computation,
-                              se::GpuComputeCapability compute_capability) {
-  if (!std::holds_alternative<se::CudaComputeCapability>(compute_capability)) {
-    // ROCM is not tested.
-    return false;
-  }
-  auto cuda_compute_capability =
-      std::get<se::CudaComputeCapability>(compute_capability);
-
-  return absl::c_all_of(
-             computation->instructions(),
-             [=](const HloInstruction* instr) {
-               return absl::c_all_of(instr->called_computations(),
-                                     [&](const HloComputation* called) {
-                                       return IsHloConversionSupported(
-                                           called, compute_capability);
-                                     }) &&
-                      IsHloOpSupported(instr, cuda_compute_capability);
-             }) &&
-         (computation->IsFusionComputation() ||
-          (absl::c_all_of(
-              computation->parameter_instructions(), [](auto* param) {
-                return param->shape().IsArray() && param->shape().rank() == 0;
-              })));
-}
-
-bool IsHloConversionSupported(const HloFusionAdaptor& fusion,
-                              se::GpuComputeCapability compute_capability) {
-  if (!std::holds_alternative<se::CudaComputeCapability>(compute_capability)) {
-    // ROCM is not tested.
-    return false;
-  }
-  auto cuda_compute_capability =
-      std::get<se::CudaComputeCapability>(compute_capability);
-
-  return !HloAnyOf(fusion, [=](HloInstructionAdaptor instr) {
-    return !absl::c_all_of(instr.instruction().called_computations(),
-                           [&](const HloComputation* called) {
-                             return IsHloConversionSupported(
-                                 called, compute_capability);
-                           }) ||
-           !IsHloOpSupported(&instr.instruction(), cuda_compute_capability);
-  });
-}
-
 ValueRange ProvideParameter(const PartitionedComputation& computation,
                             const HloInstruction* instr, int operand_index,
                             ValueRange indices,
@@ -1468,6 +1410,8 @@ absl::StatusOr<SmallVector<Value>> SubgraphToMlir(
       .Convert();
 }
 
+}  // namespace
+
 void GetLoopBoundsFromIndexingMap(ImplicitLocOpBuilder& b,
                                   const IndexingMap& indexing_map,
                                   SmallVectorImpl<Value>* lbs,
@@ -1481,8 +1425,6 @@ void GetLoopBoundsFromIndexingMap(ImplicitLocOpBuilder& b,
     steps->push_back(c1);
   }
 }
-
-}  // namespace
 
 absl::Status SubgraphToMlirFunction(
     const PartitionedComputation& computation,
@@ -1515,20 +1457,6 @@ absl::Status SubgraphToMlirFunction(
 }
 
 namespace {
-
-bool IsSymbolConstrained(const IndexingMap& map, int symbol_id) {
-  for (const auto& [expr, _] : map.GetConstraints()) {
-    bool result = false;
-    expr.walk([&](mlir::AffineExpr leaf) {
-      auto sym = mlir::dyn_cast<mlir::AffineSymbolExpr>(leaf);
-      if (sym && sym.getPosition() == symbol_id) {
-        result = true;
-      }
-    });
-    if (result) return true;
-  }
-  return false;
-}
 
 ValueRange EmitLoopNestImpl(
     ImplicitLocOpBuilder& b, ValueRange dim_values, ValueRange iter_args_inits,
@@ -1609,6 +1537,57 @@ ValueRange EmitLoopNestImpl(
 
 }  // namespace
 
+ValueRange EmitXlaLoopOp(ImplicitLocOpBuilder& b, ValueRange dim_values,
+                         ValueRange iter_args_inits,
+                         const IndexingMap& indexing_map,
+                         mlir::function_ref<SmallVector<Value>(
+                             ValueRange /*ivs*/, ValueRange /*map_results*/,
+                             ValueRange /*iter_args*/)>
+                             create_body,
+                         bool vectorize) {
+  SmallVector<Value, 4> vector_inits;
+  if (vectorize) {
+    CHECK_EQ(indexing_map.GetSymbolBounds().back().lower, 0);
+    int vector_size = indexing_map.GetSymbolBounds().back().upper + 1;
+    vector_inits = iter_args_inits;
+    for (auto& init : vector_inits) {
+      if (!mlir::isa<mlir::ShapedType>(init.getType())) {
+        auto vector_ty = mlir::VectorType::get({vector_size}, init.getType());
+        init = b.create<mlir::vector::SplatOp>(vector_ty, init);
+      }
+    }
+    iter_args_inits = vector_inits;
+  }
+  auto bb = [&](OpBuilder& nested_builder, Location loc, ValueRange ivs,
+                ValueRange map_results, ValueRange iter_args) {
+    SmallVector<Value, 4> results;
+    if (vectorize) {
+      SmallVector<Value, 4> vector_args;
+      vector_args = iter_args;
+      // Extract the vector elements.
+      for (auto& init : vector_args) {
+        if (mlir::isa<mlir::VectorType>(init.getType())) {
+          init = nested_builder.create<mlir::vector::ExtractOp>(loc, init,
+                                                                ivs.back());
+        }
+      }
+      results = create_body(ivs, map_results, vector_args);
+      // Insert the results.
+      for (auto [index, init] : llvm::enumerate(iter_args)) {
+        if (mlir::isa<mlir::VectorType>(init.getType())) {
+          results[index] = nested_builder.create<mlir::vector::InsertOp>(
+              loc, results[index], iter_args[index], ivs.back());
+        }
+      }
+    } else {
+      results = create_body(ivs, map_results, iter_args);
+    }
+    nested_builder.create<xla::gpu::YieldOp>(loc, results);
+  };
+  return b.create<LoopOp>(indexing_map, dim_values, iter_args_inits, bb)
+      .getResults();
+}
+
 ValueRange EmitLoopNest(ImplicitLocOpBuilder& b, ValueRange dim_values,
                         ValueRange iter_args_inits,
                         const IndexingMap& indexing_map,
@@ -1626,7 +1605,7 @@ ValueRange EmitLoopNest(ImplicitLocOpBuilder& b, ValueRange dim_values,
        sym_index >= 0 && cumulative_loop_size < 64; --sym_index) {
     auto& bound = indexing_map.GetSymbolBound(sym_index);
     cumulative_loop_size *= bound.GetLoopTripCount();
-    if (!IsSymbolConstrained(indexing_map, sym_index)) continue;
+    if (!indexing_map.IsSymbolConstrained(sym_index)) continue;
 
     IndexingMap peeled_map = indexing_map;
     if (bound.upper == bound.lower) continue;
@@ -1635,7 +1614,7 @@ ValueRange EmitLoopNest(ImplicitLocOpBuilder& b, ValueRange dim_values,
     peeled_map.Simplify();
 
     // If the symbol is still constrained, peeling does not help.
-    if (IsSymbolConstrained(peeled_map, sym_index)) continue;
+    if (peeled_map.IsSymbolConstrained(sym_index)) continue;
 
     auto first_results = EmitLoopNestImpl(b, dim_values, iter_args_inits,
                                           peeled_map, create_body, vectorize);
@@ -1650,7 +1629,6 @@ ValueRange EmitLoopNest(ImplicitLocOpBuilder& b, ValueRange dim_values,
     return EmitLoopNestImpl(b, dim_values, first_results, remainder,
                             create_body, vectorize);
   }
-
   return EmitLoopNestImpl(b, dim_values, iter_args_inits, indexing_map,
                           create_body, vectorize);
 }

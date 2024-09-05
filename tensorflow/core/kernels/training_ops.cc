@@ -172,7 +172,7 @@ struct SparseApplyAdagrad<CPUDevice, T, Tindex, has_epsilon> {
                     typename TTypes<Tindex>::ConstVec indices,
                     int64_t inner_dim, bool update_slots) {
     const Tindex N = static_cast<Tindex>(indices.dimension(0));
-    if (N == 0) return OkStatus();
+    if (N == 0) return absl::OkStatus();
     const Tindex first_dim_size = static_cast<Tindex>(var.dimension(0));
     const T lr_scalar = lr();
     const int in_bytes = inner_dim * sizeof(T) * 3;
@@ -238,7 +238,7 @@ struct SparseApplyAdagrad<CPUDevice, T, Tindex, has_epsilon> {
       d.parallelFor(N, cost, shard);
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -281,7 +281,7 @@ struct SparseApplyProximalAdagrad<CPUDevice, T, Tindex> {
                     typename TTypes<Tindex>::ConstVec indices,
                     int64_t inner_dim) {
     const Tindex N = static_cast<Tindex>(indices.dimension(0));
-    if (N == 0) return OkStatus();
+    if (N == 0) return absl::OkStatus();
     const Tindex first_dim_size = static_cast<Tindex>(var.dimension(0));
     const T lr_scalar = lr();
     const T l1_scalar = l1();
@@ -338,7 +338,7 @@ struct SparseApplyProximalAdagrad<CPUDevice, T, Tindex> {
         }
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -679,7 +679,7 @@ struct SparseApplyFtrl<CPUDevice, T, Tindex, has_l2_shrinkage> {
         }
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

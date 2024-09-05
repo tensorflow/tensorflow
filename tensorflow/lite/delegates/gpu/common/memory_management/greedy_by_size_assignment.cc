@@ -75,6 +75,7 @@ absl::Status GreedyBySizeAssignment(
 
   // Ordered records are to be sorted by size of corresponding tensor.
   std::vector<TensorUsageWithIndex<size_t>> ordered_records;
+  ordered_records.reserve(num_tensors);
   for (size_t i = 0; i < num_tensors; ++i) {
     ordered_records.emplace_back(&usage_records[i], i);
   }

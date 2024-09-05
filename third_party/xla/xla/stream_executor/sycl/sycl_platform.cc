@@ -64,20 +64,13 @@ SyclPlatform::DescriptionForDevice(int ordinal) const {
 }
 
 absl::StatusOr<StreamExecutor*> SyclPlatform::ExecutorForDevice(int ordinal) {
-  StreamExecutorConfig config;
-  config.ordinal = ordinal;
-  return GetExecutor(config);
-}
-
-absl::StatusOr<StreamExecutor*> SyclPlatform::GetExecutor(
-    const StreamExecutorConfig& config) {
   return executor_cache_.GetOrCreate(
-      config.ordinal, [this, config]() { return GetUncachedExecutor(config); });
+      ordinal, [this, ordinal]() { return GetUncachedExecutor(ordinal); });
 }
 
 absl::StatusOr<std::unique_ptr<StreamExecutor>>
-SyclPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
-  auto executor = std::make_unique<GpuExecutor>(this, config.ordinal);
+SyclPlatform::GetUncachedExecutor(int ordinal {
+  auto executor = std::make_unique<GpuExecutor>(this, ordinal);
   TF_RETURN_IF_ERROR(executor->Init());
   return std::move(executor);
 }

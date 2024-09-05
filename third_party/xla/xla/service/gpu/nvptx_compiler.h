@@ -32,7 +32,7 @@ limitations under the License.
 #include "xla/autotune_results.pb.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
-#include "xla/service/gpu/autotuner_util.h"
+#include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/hlo_dataflow_analysis.h"
@@ -84,9 +84,9 @@ class NVPTXCompiler : public GpuCompiler {
   absl::Status AddCustomKernelReplacementPasses(
       HloPassPipeline* pipeline, const DebugOptions& debug_options) override;
 
-  absl::Status RunCudnnFusionCompilerPass(
-      HloModule* module, se::StreamExecutor* stream_exec,
-      BinaryMap* dnn_compiled_graphs) override;
+  absl::Status RunCudnnCompilerPasses(HloModule* module,
+                                      se::StreamExecutor* stream_exec,
+                                      BinaryMap* dnn_compiled_graphs) override;
 
   HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() const override;
 
@@ -100,7 +100,8 @@ class NVPTXCompiler : public GpuCompiler {
 
  private:
   absl::StatusOr<std::vector<uint8_t>> LinkModules(
-      se::GpuComputeCapability cc, se::StreamExecutor* stream_exec,
+      se::GpuComputeCapability gpu_compute_capability,
+      se::StreamExecutor* stream_exec,
       std::vector<std::vector<uint8_t>> modules,
       const DebugOptions& debug_options) override;
 

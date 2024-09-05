@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "Eigen/Core"
+#include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -57,12 +58,13 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/typed_kernel_factory.h"
-#include "xla/tsl/util/env_var.h"
 #include "xla/tsl/util/proto/proto_utils.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/protobuf/dnn.pb.h"
 
 namespace xla {
 namespace gpu {

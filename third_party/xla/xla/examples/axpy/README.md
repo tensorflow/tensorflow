@@ -72,10 +72,8 @@ LocalClient* local_client = xla::ClientLibrary::LocalClientOrDie();
 //   PlatformUtil::GetPlatform("CUDA"));
 TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
                         PlatformUtil::GetPlatform("cpu"));
-se::StreamExecutorConfig config;
-config.ordinal = 0;
 TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor,
-                        platform->GetExecutor(config));
+                        platform->ExecutorForDevice(0));
 
 // LocalDeviceState and PjRtStreamExecutorDevice describes the state of a
 // device which can do computation or transfer buffers. Could represent a GPU

@@ -86,7 +86,8 @@ class CurlHttpRequest : public HttpRequest {
   ///
   /// The request body will be taken from the specified file starting from
   /// the given offset.
-  Status SetPutFromFile(const string& body_filepath, size_t offset) override;
+  absl::Status SetPutFromFile(const string& body_filepath,
+                              size_t offset) override;
 
   /// Makes the request a PUT request with an empty body.
   void SetPutEmptyBody() override;
@@ -140,7 +141,7 @@ class CurlHttpRequest : public HttpRequest {
   ///
   /// If the result buffer was defined, the response will be written there.
   /// The object is not designed to be re-used after Send() is executed.
-  Status Send() override;
+  absl::Status Send() override;
 
   // Url encodes str and returns a new string.
   string EscapeString(const string& str) override;
@@ -167,18 +168,18 @@ class CurlHttpRequest : public HttpRequest {
                               curl_off_t ulnow);
   void CheckMethodNotSet() const;
   void CheckNotSent() const;
-  StringPiece GetResponse() const;
+  absl::string_view GetResponse() const;
 
   /// Helper to convert the given CURLcode and error buffer, representing the
   /// result of performing a transfer, into a Status with an error message.
-  Status CURLcodeToStatus(CURLcode code, const char* error_buffer);
+  absl::Status CURLcodeToStatus(CURLcode code, const char* error_buffer);
 
   LibCurl* libcurl_;
   Env* env_;
 
   FILE* put_body_ = nullptr;
 
-  StringPiece post_body_buffer_;
+  absl::string_view post_body_buffer_;
   size_t post_body_read_ = 0;
 
   std::vector<char>* response_buffer_ = nullptr;

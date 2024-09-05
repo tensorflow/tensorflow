@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/transformations/add_bias.h"
 
+#include <any>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/types/any.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
@@ -59,12 +59,12 @@ class AddBias : public NodeTransformation {
                 "runtime input."};
       }
       auto& attr =
-          absl::any_cast<Convolution2DAttributes&>(node->operation.attributes);
+          std::any_cast<Convolution2DAttributes&>(node->operation.attributes);
       return FillBias(attr.weights.shape.o, &attr.bias);
     }
     if (node->operation.type ==
         ToString(OperationType::CONVOLUTION_TRANSPOSED)) {
-      auto& attr = absl::any_cast<ConvolutionTransposedAttributes&>(
+      auto& attr = std::any_cast<ConvolutionTransposedAttributes&>(
           node->operation.attributes);
       return FillBias(attr.weights.shape.o, &attr.bias);
     }
@@ -76,17 +76,17 @@ class AddBias : public NodeTransformation {
                 "with one "
                 "runtime input."};
       }
-      auto& attr = absl::any_cast<DepthwiseConvolution2DAttributes&>(
+      auto& attr = std::any_cast<DepthwiseConvolution2DAttributes&>(
           node->operation.attributes);
       return FillBias(attr.weights.shape.o * attr.weights.shape.i, &attr.bias);
     }
     if (node->operation.type == ToString(OperationType::FULLY_CONNECTED)) {
       auto& attr =
-          absl::any_cast<FullyConnectedAttributes&>(node->operation.attributes);
+          std::any_cast<FullyConnectedAttributes&>(node->operation.attributes);
       return FillBias(attr.weights.shape.o, &attr.bias);
     }
     if (node->operation.type == ToString(OperationType::FULLY_CONNECTED_INT8)) {
-      auto& attr = absl::any_cast<FullyConnectedInt8Attributes&>(
+      auto& attr = std::any_cast<FullyConnectedInt8Attributes&>(
           node->operation.attributes);
       return FillBias(attr.weights.shape.o, &attr.bias);
     }
@@ -97,7 +97,7 @@ class AddBias : public NodeTransformation {
 }  // namespace
 
 std::unique_ptr<NodeTransformation> NewAddBias() {
-  return absl::make_unique<AddBias>();
+  return std::make_unique<AddBias>();
 }
 
 }  // namespace gpu

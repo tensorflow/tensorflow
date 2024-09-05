@@ -37,11 +37,11 @@ namespace v2 {
 // The "main" function of the module is stored in the graph and the rest of
 // functions are stored in the library. Control ret nodes are stored separately
 // in `control_ret_nodes`.
-Status ConvertMlirToGraph(mlir::ModuleOp module,
-                          const GraphExportConfig& configs,
-                          std::unique_ptr<Graph>* graph,
-                          FunctionLibraryDefinition* flib_def,
-                          absl::flat_hash_set<Node*>* control_ret_nodes);
+Status ConvertTfExecutorToGraph(mlir::ModuleOp module,
+                                const GraphExportConfig& configs,
+                                std::unique_ptr<Graph>* graph,
+                                FunctionLibraryDefinition* flib_def,
+                                absl::flat_hash_set<Node*>* control_ret_nodes);
 
 // Converts an MLIR function and adds it to a FunctionLibraryDefinition.
 Status ConvertMlirFunctionToFunctionLibraryDef(mlir::func::FuncOp func,

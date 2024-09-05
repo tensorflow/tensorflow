@@ -21,10 +21,10 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <unordered_map>
-#include <vector>
 
 #include "xnnpack.h"  // from @XNNPACK
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/delegates/xnnpack/file_util.h"
 #include "tensorflow/lite/delegates/xnnpack/weight_cache_schema_generated.h"
 
 // WARNING: the interface in this file is still under experimentation and WILL
@@ -34,6 +34,14 @@ limitations under the License.
 
 namespace tflite {
 namespace xnnpack {
+
+// Reserved value to request the delegate to use an in-memory cache instead of
+// saving it to disk.
+//
+// This is useful when disk space is not available or when having to manage the
+// cache file freshness is too complicated and still provides the deduplication
+// mechanism for constant buffers that are reused accross graph signatures.
+inline constexpr char kInMemoryCachePath[] = ":memory";
 
 // This structure is written at the start of every cache file.
 //
@@ -75,6 +83,13 @@ struct PackIdentifier {
 struct BufferLocation {
   uint64_t offset;
   uint64_t size;
+
+  static constexpr BufferLocation Invalid() { return {SIZE_MAX, SIZE_MAX}; }
+
+  constexpr bool IsInvalid() const {
+    constexpr BufferLocation invalid = Invalid();
+    return offset == invalid.offset && size == invalid.size;
+  }
 };
 
 // Handles MMap allocations lifetime.
@@ -97,6 +112,9 @@ class MMapHandle {
   // Maps the file at the given path.
   [[nodiscard /*Mapping a file can fail.*/]]
   bool Map(const char* path);
+
+  [[nodiscard /*Mapping a file can fail.*/]]
+  bool Map(int fd, const char* debug_path = "unspecified");
 
   // Unmaps an existing mapping.
   void UnMap();
@@ -150,7 +168,7 @@ class WeightCacheBuilder {
 
   [[nodiscard]]
   bool IsStarted() const {
-    return fd_ != -1;
+    return fd_.IsValid();
   }
 
   // Resets the builder, discarding any data that hasn't been written.
@@ -180,6 +198,9 @@ class WeightCacheBuilder {
   [[nodiscard /*Writing the weight cache can fail.*/]]
   bool Finalize();
 
+  // Returns the file descriptor.
+  const FileDescriptor& GetFileDescriptor() const { return fd_; }
+
   // Returns the capacity of the underlying reserved buffer.
   //
   // WARNING: this exposes class implementation details for testing purposes and
@@ -201,7 +222,7 @@ class WeightCacheBuilder {
   cache::schema::BufferListT schema_;
   size_t capacity_ = 0;
   // Temporary file descriptor to write the weights to disk immediately.
-  int fd_ = -1;
+  FileDescriptor fd_;
   std::string file_path_;
 };
 
@@ -253,6 +274,10 @@ class MMapWeightCacheProvider {
   void MapTensorIdentifiers(
       const TfLiteTensor* tensors, size_t size,
       const std::unordered_map<size_t, size_t>& tensor_index_to_identifier);
+
+  // In case a constant buffer data needs to be moved for some reason, this will
+  // map the new buffer data to its identifier.
+  void RemapDataBuffer(const void* buffer, const void* new_buffer);
 
   // Returns the offset of the buffer identified by `cache_key`.
   //
@@ -347,6 +372,8 @@ class MMapWeightCacheProvider {
   // Maps buffer addresses to buffer identifiers.
   std::unordered_map<const void*, uint64_t> buffer_address_to_identifier_;
 
+  std::unordered_map<const void*, const void*> buffer_remaps_;
+
   // Maps cache request hashes to the buffer identifier.
   std::unordered_multimap<PackIdentifier, BufferLocation, PackIdentifier::Hash>
       cache_key_to_offset_;
@@ -356,6 +383,10 @@ class MMapWeightCacheProvider {
 
   // The offset to the first buffer data in the MMap allocation.
   size_t mmap_buffer_base_offset_;
+
+  // Can hold a file descriptor when building a temporary cache to prevent it
+  // from being deleted.
+  FileDescriptor temporary_file_descriptor_;
 
   // Used to build the cache.
   WeightCacheBuilder builder_;

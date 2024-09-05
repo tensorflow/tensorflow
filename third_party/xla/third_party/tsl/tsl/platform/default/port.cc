@@ -411,6 +411,13 @@ void* AlignedMalloc(size_t size, int minimum_alignment) {
 
 void AlignedFree(void* aligned_memory) { Free(aligned_memory); }
 
+void AlignedSizedFree(void* aligned_memory, size_t alignment, size_t size) {
+  (void)alignment;
+  (void)size;
+
+  Free(aligned_memory);
+}
+
 void* Malloc(size_t size) { return malloc(size); }
 
 void* Realloc(void* ptr, size_t size) { return realloc(ptr, size); }

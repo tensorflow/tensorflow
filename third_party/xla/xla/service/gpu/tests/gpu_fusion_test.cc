@@ -17,14 +17,15 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/gpu_fusible.h"
-#include "xla/service/gpu/instruction_fusion.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/service/gpu/transforms/instruction_fusion.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 
@@ -109,24 +110,24 @@ class TransposeFusionTest : public GpuFusionTest {
   }
 };
 
-TEST_F(TransposeFusionTest, Elementary) {
+TEST_F(TransposeFusionTest, ElementaryWithTranspose) {
   const char* hlo = R"(
 HloModule module
 
 ENTRY main {
   p = f32[16,32]{1,0} parameter(0)
   s = sqrt(p)
-  ROOT c = f32[16,32]{0,1} copy(s)
+  ROOT t = f32[32,16]{1,0} transpose(s), dimensions={1,0}
 }
   )";
 
   CheckGpuFusion(hlo, R"(
-// CHECK: %fused_computation (param_0.1: f32[16,32]) -> f32[16,32] {
+// CHECK: %fused_computation (param_0.1: f32[16,32]) -> f32[32,16] {
 // CHECK-NEXT:   [[param_0_1_0:%[^ ]+]] = f32[16,32]{1,0} parameter(0)
 // CHECK-NEXT:   [[s_1_1:%[^ ]+]] = f32[16,32]{1,0} sqrt([[param_0_1_0]])
-// CHECK-NEXT:   ROOT [[c_1_2:%[^ ]+]] = f32[16,32]{0,1} copy([[s_1_1]])
+// CHECK-NEXT:   ROOT [[c_1_2:%[^ ]+]] = f32[32,16]{1,0} transpose([[s_1_1]]), dimensions={1,0}
 // CHECK-NEXT: }
-// CHECK: ROOT [[fusion_0:%[^ ]+]] = f32[16,32]{0,1} fusion([[p_1:%[^ ]+]]), kind=kInput, calls=[[fused_computation_2:%[^ ]+]]
+// CHECK: ROOT [[fusion_0:%[^ ]+]] = f32[32,16]{1,0} fusion([[p_1:%[^ ]+]]), kind=kInput, calls=[[fused_computation_2:%[^ ]+]]
 )");
 }
 
@@ -161,7 +162,7 @@ ENTRY main {
   p = f32[256,16]{1,0} parameter(0)
   r = f32[16,16,16]{2,1,0} reshape(p)
   s = sqrt(r)
-  ROOT c = f32[16,16,16]{1,2,0} copy(s)
+  ROOT t = f32[16,16,16]{2,1,0} transpose(s), dimensions={0,2,1}
 }
   )";
 
@@ -170,9 +171,9 @@ ENTRY main {
 // CHECK-NEXT:   [[param_0_2_0:%[^ ]+]] = f32[256,16]{1,0} parameter(0)
 // CHECK-NEXT:   [[r_1_1:%[^ ]+]] = f32[16,16,16]{2,1,0} reshape([[param_0_2_0]])
 // CHECK-NEXT:   [[s_1_2:%[^ ]+]] = f32[16,16,16]{2,1,0} sqrt([[r_1_1]])
-// CHECK-NEXT:   ROOT [[c_1_3:%[^ ]+]] = f32[16,16,16]{1,2,0} copy([[s_1_2]])
+// CHECK-NEXT:   ROOT [[c_1_3:%[^ ]+]] = f32[16,16,16]{2,1,0} transpose([[s_1_2]]), dimensions={0,2,1}
 // CHECK-NEXT: }
-// CHECK:   ROOT [[fusion_0:%[^ ]+]] = f32[16,16,16]{1,2,0} fusion([[p_1:%[^ ]+]]), kind=kInput, calls=[[fused_computation_2:%[^ ]+]]
+// CHECK:   ROOT [[fusion_0:%[^ ]+]] = f32[16,16,16]{2,1,0} fusion([[p_1:%[^ ]+]]), kind=kInput, calls=[[fused_computation_2:%[^ ]+]]
 )");
 }
 
@@ -181,18 +182,18 @@ TEST_F(TransposeFusionTest, ElementaryLogical) {
 HloModule module
 
 ENTRY main {
-  p = f32[16,32]{1,0} parameter(0)
-  s = sqrt(p)
-  ROOT c = f32[32,16]{1,0} transpose(s), dimensions={1,0}
+  p = f32[1,16,32]{2,1,0} parameter(0)
+  s = f32[1,16,32]{2,1,0} sqrt(p)
+  ROOT c = f32[1,32,16]{2,1,0} transpose(s), dimensions={0,2,1}
 }
   )";
 
   CheckGpuFusion(hlo, R"(
-// CHECK: %fused_computation (param_0.1: f32[16,32]) -> f32[32,16] {
-// CHECK-NEXT:   [[param_0_1_0:%[^ ]+]] = f32[16,32]{1,0} parameter(0)
-// CHECK-NEXT:   [[s_1_1:%[^ ]+]] = f32[16,32]{1,0} sqrt([[param_0_1_0]])
-// CHECK-NEXT:   ROOT [[c_1_2:%[^ ]+]] = f32[32,16]{1,0} transpose([[s_1_1]]), dimensions={1,0}
-// CHECK: ROOT [[fusion_3:%[^ ]+]] = f32[32,16]{1,0} fusion([[p_4:%[^ ]+]]), kind=kInput, calls=[[fused_computation_5:%[^ ]+]]
+// CHECK: %fused_computation ({{[^:]+}}: f32[1,16,32]) -> f32[1,32,16] {
+// CHECK-NEXT:   [[param_0_1_0:%[^ ]+]] = f32[1,16,32]{2,1,0} parameter(0)
+// CHECK-NEXT:   [[s_1_1:%[^ ]+]] = f32[1,16,32]{2,1,0} sqrt([[param_0_1_0]])
+// CHECK-NEXT:   ROOT [[c_1_2:%[^ ]+]] = f32[1,32,16]{2,1,0} transpose([[s_1_1]]), dimensions={0,2,1}
+// CHECK: ROOT [[fusion_3:%[^ ]+]] = f32[1,32,16]{2,1,0} fusion([[p_4:%[^ ]+]]), kind=kInput, calls=[[fused_computation_5:%[^ ]+]]
 )");
 }
 
