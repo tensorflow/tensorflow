@@ -10,13 +10,6 @@ filegroup(
     visibility = ["@local_config_cuda//cuda:__pkg__"],
 )
 %{multiline_comment}
-# TODO: Replace system provided library with hermetic NVIDIA driver library.
-cc_import(
-    name = "cuda_driver_shared_library",
-    interface_library = "lib/stubs/libcuda.so",
-    system_provided = 1,
-)
-
 cc_import(
     name = "cudart_shared_library",
     hdrs = [":headers"],
@@ -24,15 +17,9 @@ cc_import(
 )
 %{multiline_comment}
 cc_library(
-    name = "cuda_driver",
-    %{comment}deps = [":cuda_driver_shared_library"],
-    visibility = ["//visibility:public"],
-)
-
-cc_library(
     name = "cudart",
     %{comment}deps = [
-        %{comment}":cuda_driver",
+        %{comment}"@cuda_driver//:nvidia_driver",
         %{comment}":cudart_shared_library",
     %{comment}],
     visibility = ["//visibility:public"],
