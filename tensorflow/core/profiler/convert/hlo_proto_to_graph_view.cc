@@ -28,6 +28,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #ifdef PLATFORM_GOOGLE
 #include "tensorflow/compiler/mlir/lite/experimental/google/tooling/google/direct_hlo_to_json_graph_convert.h"
 #endif  // PLATFORM_GOOGLE
@@ -89,7 +91,6 @@ absl::StatusOr<std::string> PlotMe(std::unique_ptr<HloModule> module,
   }
   // Generate the graph and print the resulting string.
   absl::StatusOr<std::string> graph_handle;
-
 // b/360874576: Enable when the adapter is open sourced.
 #ifdef PLATFORM_GOOGLE
   if (comp) {
@@ -155,6 +156,92 @@ static constexpr int kDefaultShowMetadata = 0;
 static constexpr int kDefaultMergeFusion = 0;
 
 }  // namespace
+
+absl::StatusOr<std::string> GetNodeStyles() {
+  std::vector<xla::HloOpcode> async_op_codes = {xla::HloOpcode::kAsyncStart,
+                                                xla::HloOpcode::kAsyncUpdate,
+                                                xla::HloOpcode::kAsyncDone};
+  std::vector<xla::HloOpcode> brown_op_codes = {
+      xla::HloOpcode::kAllGather,
+      xla::HloOpcode::kAllGatherStart,
+      xla::HloOpcode::kAllGatherDone,
+      xla::HloOpcode::kAllReduce,
+      xla::HloOpcode::kReduceScatter,
+      xla::HloOpcode::kAllReduceStart,
+      xla::HloOpcode::kAllReduceDone,
+      xla::HloOpcode::kAllToAll,
+      xla::HloOpcode::kCollectiveBroadcast,
+      xla::HloOpcode::kCollectivePermute,
+      xla::HloOpcode::kCollectivePermuteStart,
+      xla::HloOpcode::kCollectivePermuteDone,
+      xla::HloOpcode::kInfeed,
+      xla::HloOpcode::kOutfeed,
+      xla::HloOpcode::kPartitionId,
+      xla::HloOpcode::kRecv,
+      xla::HloOpcode::kRecvDone,
+      xla::HloOpcode::kSend,
+      xla::HloOpcode::kSendDone,
+      xla::HloOpcode::kReplicaId};
+  std::vector<xla::HloOpcode> dark_blue_op_codes = {
+      xla::HloOpcode::kConvolution, xla::HloOpcode::kDot, xla::HloOpcode::kFft,
+      xla::HloOpcode::kTriangularSolve, xla::HloOpcode::kCholesky};
+  std::vector<xla::HloOpcode> dark_green_op_codes = {
+      xla::HloOpcode::kCall, xla::HloOpcode::kConditional,
+      xla::HloOpcode::kCustomCall, xla::HloOpcode::kWhile};
+  std::vector<xla::HloOpcode> gray_op_codes = {
+      xla::HloOpcode::kDomain, xla::HloOpcode::kFusion, xla::HloOpcode::kMap,
+      xla::HloOpcode::kGetDimensionSize, xla::HloOpcode::kSetDimensionSize};
+  std::vector<xla::HloOpcode> green_op_codes = {
+      xla::HloOpcode::kConcatenate, xla::HloOpcode::kDynamicSlice,
+      xla::HloOpcode::kReshape,     xla::HloOpcode::kDynamicReshape,
+      xla::HloOpcode::kReverse,     xla::HloOpcode::kTranspose,
+      xla::HloOpcode::kCopy,        xla::HloOpcode::kCopyStart,
+      xla::HloOpcode::kCopyDone};
+  std::vector<xla::HloOpcode> orange_op_codes = {xla::HloOpcode::kParameter};
+  std::vector<xla::HloOpcode> purple_op_codes = {
+      xla::HloOpcode::kBatchNormGrad,     xla::HloOpcode::kBatchNormInference,
+      xla::HloOpcode::kBatchNormTraining, xla::HloOpcode::kReduce,
+      xla::HloOpcode::kReduceWindow,      xla::HloOpcode::kScatter,
+      xla::HloOpcode::kSelectAndScatter,  xla::HloOpcode::kGather};
+  std::vector<xla::HloOpcode> yellow_op_codes = {
+      xla::HloOpcode::kBroadcast, xla::HloOpcode::kDynamicUpdateSlice};
+
+  auto OpCodesToNames =
+      [&](std::vector<xla::HloOpcode> op_codes) -> std::string {
+    std::string op_names = "";
+    for (const auto& op_code : op_codes) {
+      if (!op_names.empty()) {
+        op_names += ",";
+      }
+      op_names += std::string(xla::HloOpcodeString(op_code));
+    }
+    return op_names;
+  };
+
+  return absl::StrReplaceAll(
+      R"json({
+      "kBlue": "$asyncOpNames",
+      "kBrown": "$brownOpNames",
+      "kDarkBlue": "$darkBlueOpNames",
+      "kDarkGreen": "$darkGreenOpNames",
+      "kGray": "$grayOpNames",
+      "kGreen": "$greenOpNames",
+      "kOrange": "$orangeOpNames",
+      "kPurple": "$purpleOpNames",
+      "kYellow": "$yellowOpNames"
+    })json",
+      {
+          {"$asyncOpNames", OpCodesToNames(async_op_codes)},
+          {"$brownOpNames", OpCodesToNames(brown_op_codes)},
+          {"$darkBlueOpNames", OpCodesToNames(dark_blue_op_codes)},
+          {"$darkGreenOpNames", OpCodesToNames(dark_green_op_codes)},
+          {"$grayOpNames", OpCodesToNames(gray_op_codes)},
+          {"$greenOpNames", OpCodesToNames(green_op_codes)},
+          {"$orangeOpNames", OpCodesToNames(orange_op_codes)},
+          {"$purpleOpNames", OpCodesToNames(purple_op_codes)},
+          {"$yellowOpNames", OpCodesToNames(yellow_op_codes)},
+      });
+}
 
 absl::StatusOr<GraphViewerParams> ParseGraphViewerParams(
     const ToolOptions& options) {
