@@ -112,8 +112,12 @@ class CallFrameBuilder {
   void AddBufferArg(se::DeviceMemoryBase memory, PrimitiveType type,
                     absl::Span<const int64_t> dims);
 
+  void AddTokenArg();
+
   void AddBufferRet(se::DeviceMemoryBase memory, PrimitiveType type,
                     absl::Span<const int64_t> dims);
+
+  void AddTokenRet();
 
   void AddAttributes(AttributesMap attrs);
 
