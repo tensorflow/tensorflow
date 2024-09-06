@@ -1234,6 +1234,18 @@ func.func @MinimumOfReluAnd6ToRelu6(%arg0: tensor<40x40xf32>) -> tensor<40x40xf3
   // CHECK: return %[[rs1]]
 }
 
+// CHECK-LABEL: @MinimumOfReluAnd6ToRelu6_2
+func.func @MinimumOfReluAnd6ToRelu6_2(%arg0: tensor<40x40xf32>) -> tensor<40x40xf32> {
+  %cst = arith.constant dense<6.0> : tensor<f32>
+  %2 = "tfl.minimum"(%arg0, %cst) : (tensor<40x40xf32>, tensor<f32>) -> tensor<40x40xf32>
+  %3 = "tfl.relu"(%2) : (tensor<40x40xf32>) -> tensor<40x40xf32>
+
+  func.return %3 : tensor<40x40xf32>
+
+  // CHECK: %[[rs1:.*]] = "tfl.relu6"(%arg0
+  // CHECK: return %[[rs1]]
+}
+
 // CHECK-LABEL: @NotReorderElementwiseValueOpAndMoveOp
 func.func @NotReorderElementwiseValueOpAndMoveOp(%arg0: tensor<40x40x1xf32>) -> (tensor<40x40xf32>, tensor<40x40xf32>) {
   %shape = arith.constant dense<[40, 40]> : tensor<2xi32>

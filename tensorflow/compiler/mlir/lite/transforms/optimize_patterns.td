@@ -826,6 +826,13 @@ def MinimumOfReluAnd6ToRelu6 :
       (TFL_Relu6Op $x),
       [(IsConstantValueOf<6> $y)]>;
 
+def MinimumOfReluAnd6ToRelu62 :
+  Pat<(TFL_ReluOp
+        (TFL_MinimumOp $x,
+          (Arith_ConstantOp $y))),
+      (TFL_Relu6Op $x),
+      [(IsConstantValueOf<6> $y)]>;
+
 // For both relu1 and relu_0_to_1, the min/max operators commute,
 // so there are two possible orderings we need to rewrite.
 // Concretely, `m < n -> max(m, min(n, x)) = min(m, max(m, x))`.
