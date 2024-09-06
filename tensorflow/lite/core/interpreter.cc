@@ -521,7 +521,7 @@ void Interpreter::AddProfiler(std::unique_ptr<Profiler> profiler) {
 }
 
 impl::SignatureRunner* Interpreter::GetSignatureRunner(
-    const char* signature_key_) {
+    const char* signature_key_, bool apply_default_delegates) {
   auto [signature_key, empty_signature_fallback] =
       ReplaceWithPlaceholderSignatureKeyIfNeeded(signature_key_);
   if (!signature_key) {
@@ -533,11 +533,13 @@ impl::SignatureRunner* Interpreter::GetSignatureRunner(
     return &(iter->second);
   }
 
-  // Default delegates are applied once for all subgraphs. Only returns error
-  // when the status is kTfLiteError. For other statuses, it will fall back to
-  // the default implementation.
-  if (ApplyLazyDelegateProviders() == kTfLiteError) {
-    return nullptr;
+  if (apply_default_delegates) {
+    // Default delegates are applied once for all subgraphs. Only returns error
+    // when the status is kTfLiteError. For other statuses, it will fall back to
+    // the default implementation.
+    if (ApplyLazyDelegateProviders() == kTfLiteError) {
+      return nullptr;
+    }
   }
 
   if (empty_signature_fallback) {
