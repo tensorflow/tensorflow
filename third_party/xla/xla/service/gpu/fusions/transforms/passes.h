@@ -37,7 +37,7 @@ std::optional<Interval> GetRange(mlir::Value value);
 std::optional<Interval> GetIVRange(mlir::Value iv);
 
 std::unique_ptr<mlir::Pass> CreateEraseDeadFunctionsPass();
-std::unique_ptr<mlir::Pass> CreateExpandFloatOpsPass(bool pre_ampere);
+std::unique_ptr<mlir::Pass> CreateExpandFloatOpsPass();
 std::unique_ptr<mlir::Pass> CreateConvertPureCallOpsPass();
 std::unique_ptr<mlir::Pass> CreateFlattenTensorsPass();
 std::unique_ptr<mlir::Pass> CreateLowerTensorsPass(

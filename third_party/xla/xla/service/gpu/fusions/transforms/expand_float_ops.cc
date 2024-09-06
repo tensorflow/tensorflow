@@ -643,8 +643,8 @@ class ExpandFloatOpsPass
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> CreateExpandFloatOpsPass(bool pre_ampere) {
-  return createExpandFloatOpsPass(ExpandFloatOpsPassOptions{pre_ampere});
+std::unique_ptr<mlir::Pass> CreateExpandFloatOpsPass() {
+  return std::make_unique<ExpandFloatOpsPass>();
 }
 
 }  // namespace gpu

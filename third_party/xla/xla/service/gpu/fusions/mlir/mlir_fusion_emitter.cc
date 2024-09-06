@@ -590,8 +590,7 @@ void AddLoweringPasses(mlir::OpPassManager& pm,
   pm.addPass(mlir::createLoopInvariantCodeMotionPass());
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(mlir::createCSEPass());
-  pm.addPass(CreateExpandFloatOpsPass(
-      !device.cuda_compute_capability().IsAtLeastAmpere()));
+  pm.addPass(CreateExpandFloatOpsPass());
   pm.addPass(mlir::createLowerAffinePass());
   pm.addPass(mlir::createConvertSCFToCFPass());
   pm.addPass(CreateLowerToLLVMPass(is_amd));

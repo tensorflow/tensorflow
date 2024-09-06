@@ -155,10 +155,7 @@ def ExpandFloatOpsPass : Pass<"xla-gpu-expand-float-ops", "mlir::ModuleOp"> {
     "mlir::mhlo::MhloDialect"
   ];
 
-  let options = [
-    Option<"pre_ampere_", "pre-ampere", "bool", /*default=*/"false",
-           "Rewrite ops that are not supported on architectures before Ampere">,
-  ];
+  let constructor = "CreateExpandFloatOpsPass()";
 }
 
 def LowerXlaGpuToScfPass :
