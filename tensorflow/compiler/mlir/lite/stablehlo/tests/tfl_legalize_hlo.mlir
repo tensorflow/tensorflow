@@ -58,6 +58,78 @@ func.func @transpose_dynamic_2d(%arg0: tensor<?x4xf32>) -> tensor<4x?xf32> {
 // mhlo.dot_general
 //===----------------------------------------------------------------------===//
 
+// CHECK-LABEL: dot_general_transposed_contracting_dims_3d
+func.func @dot_general_transposed_contracting_dims_3d(%arg0: tensor<2x8x256x1792xf32>, %arg1: tensor<1x2x128x8x256xf32>) -> (tensor<1x128x1792xf32>){
+  %4 = "mhlo.dot_general"(%arg1, %arg0)
+    <{dot_dimension_numbers = #mhlo.dot<lhs_contracting_dimensions = [4, 3, 1],
+    rhs_contracting_dimensions = [2, 1, 0]>}>: (tensor<1x2x128x8x256xf32>,
+    tensor<2x8x256x1792xf32>) -> tensor<1x128x1792xf32>
+  return %4 : tensor<1x128x1792xf32>
+  // CHECK  %0 = "tfl.pseudo_const"() <{value = dense<[0, 2, 1, 3, 4]> : tensor<5xi64>}> : () -> tensor<5xi64>
+  // CHECK  %1 = "tfl.cast"(%0) : (tensor<5xi64>) -> tensor<5xi32>
+  // CHECK  %2 = "tfl.transpose"(%arg1, %1) : (tensor<1x2x128x8x256xf32>, tensor<5xi32>) -> tensor<1x128x2x8x256xf32>
+  // CHECK  %cst = arith.constant dense<[128, 4096]> : tensor<2xi64>
+  // CHECK  %3 = "tfl.cast"(%cst) : (tensor<2xi64>) -> tensor<2xi32>
+  // CHECK  %4 = "tfl.reshape"(%2, %3) : (tensor<1x128x2x8x256xf32>, tensor<2xi32>) -> tensor<128x4096xf32>
+  // CHECK  %cst_0 = arith.constant dense<[4096, 1792]> : tensor<2xi64>
+  // CHECK  %5 = "tfl.cast"(%cst_0) : (tensor<2xi64>) -> tensor<2xi32>
+  // CHECK  %6 = "tfl.reshape"(%arg0, %5) : (tensor<2x8x256x1792xf32>, tensor<2xi32>) -> tensor<4096x1792xf32>
+  // CHECK  %7 = "tfl.batch_matmul"(%4, %6) <{adj_x = false, adj_y = false, asymmetric_quantize_inputs = false}> : (tensor<128x4096xf32>, tensor<4096x1792xf32>) -> tensor<128x1792xf32>
+  // CHECK  %cst_1 = arith.constant dense<[1, 128, 1792]> : tensor<3xi64>
+  // CHECK  %8 = "tfl.cast"(%cst_1) : (tensor<3xi64>) -> tensor<3xi32>
+  // CHECK  %9 = "tfl.reshape"(%7, %8) : (tensor<128x1792xf32>, tensor<3xi32>) -> tensor<1x128x1792xf32>
+  // CHECK  return %9 : tensor<1x128x1792xf32>
+}
+
+// -----
+
+// CHECK-LABEL: dot_general_transposed_contracting_dims
+func.func @dot_general_transposed_contracting_dims(%arg0: tensor<64x8x8xf32>, %arg1: tensor<1x10x8x8xf32>) -> (tensor<1x10x64xf32>){
+  %4 = "mhlo.dot_general"(%arg1, %arg0)
+    <{dot_dimension_numbers = #mhlo.dot<lhs_contracting_dimensions = [3, 2],
+    rhs_contracting_dimensions = [2, 1]>}>
+    : (tensor<1x10x8x8xf32>, tensor<64x8x8xf32>) -> tensor<1x10x64xf32>
+  return %4 : tensor<1x10x64xf32>
+  // CHECK  %0 = "tfl.pseudo_const"() <{value = dense<[1, 2, 0]> : tensor<3xi64>}> : () -> tensor<3xi64>
+  // CHECK  %1 = "tfl.cast"(%0) : (tensor<3xi64>) -> tensor<3xi32>
+  // CHECK  %2 = "tfl.transpose"(%arg0, %1) : (tensor<64x8x8xf32>, tensor<3xi32>) -> tensor<8x8x64xf32>
+  // CHECK  %cst = arith.constant dense<[10, 64]> : tensor<2xi64>
+  // CHECK  %3 = "tfl.cast"(%cst) : (tensor<2xi64>) -> tensor<2xi32>
+  // CHECK  %4 = "tfl.reshape"(%arg1, %3) : (tensor<1x10x8x8xf32>, tensor<2xi32>) -> tensor<10x64xf32>
+  // CHECK  %cst_0 = arith.constant dense<64> : tensor<2xi64>
+  // CHECK  %5 = "tfl.cast"(%cst_0) : (tensor<2xi64>) -> tensor<2xi32>
+  // CHECK  %6 = "tfl.reshape"(%2, %5) : (tensor<8x8x64xf32>, tensor<2xi32>) -> tensor<64x64xf32>
+  // CHECK  %7 = "tfl.batch_matmul"(%4, %6) <{adj_x = false, adj_y = false, asymmetric_quantize_inputs = false}> : (tensor<10x64xf32>, tensor<64x64xf32>) -> tensor<10x64xf32>
+  // CHECK  %cst_1 = arith.constant dense<[1, 10, 64]> : tensor<3xi64>
+  // CHECK  %8 = "tfl.cast"(%cst_1) : (tensor<3xi64>) -> tensor<3xi32>
+  // CHECK  %9 = "tfl.reshape"(%7, %8) : (tensor<10x64xf32>, tensor<3xi32>) -> tensor<1x10x64xf32>
+  // CHECK  return %9 : tensor<1x10x64xf32>
+}
+
+// -----
+
+// CHECK-LABEL: dot_general_non_transposed_contracting_dims
+func.func @dot_general_non_transposed_contracting_dims(%arg0: tensor<8x256x1792xf32>, %arg1: tensor<1x128x8x256xf32>) -> (tensor<1x128x1792xf32>){
+  %4 = "mhlo.dot_general"(%arg1, %arg0)
+    <{dot_dimension_numbers = #mhlo.dot<lhs_contracting_dimensions = [3, 2],
+    rhs_contracting_dimensions = [1, 0]>}>
+    : (tensor<1x128x8x256xf32>, tensor<8x256x1792xf32>) -> tensor<1x128x1792xf32>
+  return %4 : tensor<1x128x1792xf32>
+  // CHECK  %cst = arith.constant dense<[128, 2048]> : tensor<2xi64>
+  // CHECK  %0 = "tfl.cast"(%cst) : (tensor<2xi64>) -> tensor<2xi32>
+  // CHECK  %1 = "tfl.reshape"(%arg1, %0) : (tensor<1x128x8x256xf32>, tensor<2xi32>) -> tensor<128x2048xf32>
+  // CHECK  %cst_0 = arith.constant dense<[2048, 1792]> : tensor<2xi64>
+  // CHECK  %2 = "tfl.cast"(%cst_0) : (tensor<2xi64>) -> tensor<2xi32>
+  // CHECK  %3 = "tfl.reshape"(%arg0, %2) : (tensor<8x256x1792xf32>, tensor<2xi32>) -> tensor<2048x1792xf32>
+  // CHECK  %4 = "tfl.batch_matmul"(%1, %3) <{adj_x = false, adj_y = false, asymmetric_quantize_inputs = false}> : (tensor<128x2048xf32>, tensor<2048x1792xf32>) -> tensor<128x1792xf32>
+  // CHECK  %cst_1 = arith.constant dense<[1, 128, 1792]> : tensor<3xi64>
+  // CHECK  %5 = "tfl.cast"(%cst_1) : (tensor<3xi64>) -> tensor<3xi32>
+  // CHECK  %6 = "tfl.reshape"(%4, %5) : (tensor<128x1792xf32>, tensor<3xi32>) -> tensor<1x128x1792xf32>
+  // CHECK  return %6 : tensor<1x128x1792xf32>
+}
+
+// -----
+
 // CHECK-LABEL: dot_general
 func.func @dot_general(%arg0: tensor<3x2x6x5x1xf32>, %arg1: tensor<3x2x4x6xf32>) -> tensor<3x5x1x4xf32> {
   %0 = "mhlo.dot_general"(%arg0, %arg1) {

@@ -339,8 +339,7 @@ void StallStreamOnError(LocalDeviceState* local_device, se::Stream* stream) {
 // stream is complete.
 //
 //   device_buffer:              the buffer that was enqueued.
-//   buffer_local_device:        the device the buffer was allocated on.
-//   stream_local_device:        the device that manages usage_stream.
+//   local_device:        the device the buffer was allocated on.
 //   event:                      an event that was recorded on usage_stream
 //                               after the usage of device_buffer was enqueued.
 //   usage_stream:               the stream the operation using device_buffer
@@ -367,29 +366,22 @@ void StallStreamOnError(LocalDeviceState* local_device, se::Stream* stream) {
 // stream behind the copy. It is often better to retain a reference since while
 // that keeps memory alive longer, it avoids stalling the compute stream.
 void RecordUsage(PjRtStreamExecutorBuffer::ScopedHold device_buffer,
-                 LocalDeviceState* buffer_local_device,
-                 LocalDeviceState* stream_local_device,
+                 LocalDeviceState* local_device,
                  std::shared_ptr<BufferSequencingEvent> event,
-                 se::Stream* usage_stream, bool prefer_to_retain_reference,
+                 se::Stream* usage_stream,
                  std::vector<std::shared_ptr<TrackedDeviceBuffer>>*
                      buffers_to_release = nullptr) {
   tsl::profiler::TraceMe traceme("RecordUsage");
   bool retain_buffer_until_completion =
       // If the buffer wasn't allocated on the same device as the stream, always
       // retain a reference.
-      (stream_local_device != buffer_local_device) ||
       // In the synchronous allocation model, always retain a reference.
-      (stream_local_device->allocation_model() ==
-       LocalDeviceState::kSynchronous) ||
-      // In the compute synchronous model, use the caller's heuristic.
-      (stream_local_device->allocation_model() ==
-           LocalDeviceState::kComputeSynchronized &&
-       prefer_to_retain_reference);
+      (local_device->allocation_model() == LocalDeviceState::kSynchronous);
   if (retain_buffer_until_completion) {
     if (buffers_to_release) {
       buffers_to_release->push_back(device_buffer.buffer());
     } else {
-      buffer_local_device->ThenRelease(usage_stream, device_buffer.buffer())
+      local_device->ThenRelease(usage_stream, device_buffer.buffer())
           .IgnoreError();
     }
   }
@@ -419,9 +411,8 @@ absl::Status AddDestinationBufferSynchronization(
   // destination buffers will be used on the compute stream and therefore don't
   // require any synchronization before being freed. If the buffer is allocated
   // and never used, the free will take longer and this is assumed to be ok.
-  RecordUsage(std::move(device_buffer), local_device, local_device,
-              definition_event, copy_stream,
-              /*prefer_to_retain_reference=*/false);
+  RecordUsage(std::move(device_buffer), local_device, definition_event,
+              copy_stream);
   return absl::OkStatus();
 }
 
@@ -567,9 +558,8 @@ AllocateDestinationBuffer(
     // compute stream and therefore don't require any synchronization before
     // being freed. If the buffer is allocated and never used, the free will
     // take longer and this is assumed to be ok.
-    RecordUsage(py_buffer->GetBufferWithUsageHold(), local_device, local_device,
-                definition_events.back(), tuple_table_stream,
-                /*prefer_to_retain_reference=*/false);
+    RecordUsage(py_buffer->GetBufferWithUsageHold(), local_device,
+                definition_events.back(), tuple_table_stream);
   }
 
   return py_buffer;
@@ -1236,50 +1226,7 @@ PjRtStreamExecutorClient::MakeCrossHostReceiveBuffers(
   }
 
   TF_RETURN_IF_ERROR(EnqueueCrossHostReceive(
-      buffers, std::move(definition_event), std::move(notifier), std::nullopt));
-  return buffers;
-}
-
-absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-PjRtStreamExecutorClient::MakeCrossHostReceiveBuffersForGather(
-    absl::Span<const Shape> shapes, std::vector<GatherDetails> gather_details,
-    PjRtDevice* device, PjRtCrossHostRecvNotifier notifier) {
-  VLOG(2) << "Making " << gather_details.size()
-          << " cross host receive buffers for gather";
-  if (gather_details.empty()) {
-    return InvalidArgument(
-        "gather_details parameter empty in "
-        "MakeCrossHostReceiveBuffersForGather");
-  }
-
-  if (shapes.size() != gather_details.size()) {
-    return InvalidArgument(
-        "gather_details parameter has length %lld but shapes "
-        "parameter has length %lld in "
-        "MakeCrossHostReceiveBuffersForGather",
-        gather_details.size(), shapes.size());
-  }
-
-  TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                      tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
-                          ->GetLocalDeviceState());
-  std::shared_ptr<BufferSequencingEvent> definition_event =
-      std::make_shared<BufferSequencingEvent>(this->thread_pool());
-  std::vector<std::unique_ptr<PjRtBuffer>> buffers;
-  buffers.reserve(shapes.size());
-  for (int i = 0; i < shapes.size(); ++i) {
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<PjRtBuffer> buffer,
-        AllocateDestinationBuffer(shapes[i], device, local_device,
-                                  /*copy_stream=*/nullptr,
-                                  /*is_uninitialized_create=*/false, this,
-                                  definition_event));
-    buffers.push_back(std::move(buffer));
-  }
-
-  TF_RETURN_IF_ERROR(
-      EnqueueCrossHostReceive(buffers, std::move(definition_event),
-                              std::move(notifier), gather_details));
+      buffers, std::move(definition_event), std::move(notifier)));
   return buffers;
 }
 
@@ -1935,9 +1882,8 @@ PjRtStreamExecutorBuffer::CopyToDeviceHelper(
                       dst_device_buffer.buffer().get()),
       std::move(async_copy_to_device));
 
-  RecordUsage(std::move(dst_device_buffer), transfer_local_device,
-              transfer_local_device, copy_event, transfer_stream,
-              /*prefer_to_retain_reference=*/false);
+  RecordUsage(std::move(dst_device_buffer), transfer_local_device, copy_event,
+              transfer_stream);
 
   return std::pair<std::unique_ptr<PjRtBuffer>,
                    std::shared_ptr<BufferSequencingEvent>>(
@@ -2317,9 +2263,9 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> OutputBufferHelper(
   auto pjrt_buffer = std::make_unique<PjRtStreamExecutorBuffer>(
       result_buffer->on_device_shape(), std::move(out_buffer), client, device,
       memory_space);
-  RecordUsage(pjrt_buffer->GetBufferWithUsageHold(), local_device, local_device,
+  RecordUsage(pjrt_buffer->GetBufferWithUsageHold(), local_device,
               definition_event, local_device->compute_stream(),
-              /*prefer_to_retain_reference=*/false, &buffers_to_release);
+              &buffers_to_release);
   return std::unique_ptr<PjRtBuffer>(std::move(pjrt_buffer));
 }
 
@@ -3102,9 +3048,8 @@ PjRtStreamExecutorLoadedExecutable::ExecuteHelper(
     // to the device_buffer during execution because by definition the compute
     // stream is synchronized past the execution.
     if (b.type() == PjRtStreamExecutorBuffer::ScopedHold::kUsage) {
-      RecordUsage(std::move(b), device_state, device_state, definition_event,
-                  stream,
-                  /*prefer_to_retain_reference=*/false, &buffers_to_release);
+      RecordUsage(std::move(b), device_state, definition_event, stream,
+                  &buffers_to_release);
     } else {
       CHECK(b.type() == PjRtStreamExecutorBuffer::ScopedHold::kDonation);
       b.ConfirmDonation();
