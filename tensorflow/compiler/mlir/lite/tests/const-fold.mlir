@@ -1434,6 +1434,18 @@ func.func @greater_equal_int() -> tensor<4xi1> {
 
 // CHECK: %cst = arith.constant dense<[true, true, true, false]> : tensor<4xi1>
 
+// CHECK-LABEL: @greater_equal_int64
+func.func @greater_equal_int64() -> tensor<4xi1> {
+  %0 = arith.constant dense<[11, 2, 0, 2]> : tensor<4xi64>
+  %1 = arith.constant dense<[10, 2, -1, 3]> : tensor<4xi64>
+
+  %2 = "tfl.greater_equal"(%0, %1) : (tensor<4xi64>, tensor<4xi64>) -> tensor<4xi1>
+
+  func.return %2 : tensor<4xi1>
+}
+
+// CHECK: %cst = arith.constant dense<[true, true, true, false]> : tensor<4xi1>
+
 // CHECK-LABEL: @greater_equal_float
 func.func @greater_equal_float() -> tensor<4xi1> {
   %0 = arith.constant dense<[11.0, 2.0, 0.0, 2.0]> : tensor<4xf32>
