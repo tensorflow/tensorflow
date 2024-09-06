@@ -348,6 +348,42 @@ func.func @min_with_f64_max_val(%arg0 : tensor<f64>) -> (tensor<f64>, tensor<f64
   // CHECK: return %[[ARG0]], %[[ARG0]]
 }
 
+// CHECK-LABEL: @min_dense_splat_int
+func.func @min_dense_splat_int() -> tensor<4xi32> {
+  %0 = arith.constant dense<[-10, -1, 42, 100]> : tensor<4xi32>
+  %1 = arith.constant dense<5> : tensor<4xi32>
+
+  %2 = "tfl.minimum"(%0, %1) {fused_activation_function = "NONE"} : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+
+  func.return %2 : tensor<4xi32>
+}
+
+// CHECK:  arith.constant dense<[-10, -1, 5, 5]> : tensor<4xi32>
+
+// CHECK-LABEL: @min_dense_splat_float
+func.func @min_dense_splat_float() -> tensor<4xf32> {
+  %0 = arith.constant dense<[-10.0, -1.0, 42.0, 100.0]> : tensor<4xf32>
+  %1 = arith.constant dense<5.0> : tensor<4xf32>
+
+  %2 = "tfl.minimum"(%0, %1) {fused_activation_function = "NONE"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+
+  func.return %2 : tensor<4xf32>
+}
+
+// CHECK: arith.constant dense<[-1.000000e+01, -1.000000e+00, 5.000000e+00, 5.000000e+00]> : tensor<4xf32>
+
+// CHECK-LABEL: @min_dense_float
+func.func @min_dense_float() -> tensor<2xf32> {
+  %0 = arith.constant dense<[-10.0, 10.0]> : tensor<2xf32>
+  %1 = arith.constant dense<[5.0, 5.0]> : tensor<2xf32>
+
+  %2 = "tfl.minimum"(%0, %1) {fused_activation_function = "NONE"} : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+
+  func.return %2 : tensor<2xf32>
+}
+
+// CHECK: arith.constant dense<[-1.000000e+01, 5.000000e+00]> : tensor<2xf32>
+
 // CHECK-LABEL: @max_dense_splat_int
 func.func @max_dense_splat_int() -> tensor<4xi32> {
   %0 = arith.constant dense<[-10, -1, 42, 100]> : tensor<4xi32>

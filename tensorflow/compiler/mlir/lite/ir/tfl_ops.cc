@@ -3535,11 +3535,18 @@ OpFoldResult MaximumOp::fold(FoldAdaptor adaptor) {
 OpFoldResult MinimumOp::fold(FoldAdaptor adaptor) {
   auto lhs_type = getLhs().getType();
   auto rhs_type = getRhs().getType();
-  // Only constant fold for float tensors of the same type is implemented.
-  if (lhs_type != rhs_type || !IsFloatShapedType(lhs_type)) return nullptr;
 
   auto lhs = mlir::dyn_cast_or_null<DenseElementsAttr>(adaptor.getLhs());
   auto rhs = mlir::dyn_cast_or_null<DenseElementsAttr>(adaptor.getRhs());
+  if (lhs && rhs) {
+    return ConstFoldBinaryOp(
+        getType(), adaptor.getOperands(),
+        [](APFloat a, APFloat b) { return llvm::minimum(a, b); },
+        [](APInt a, APInt b) { return a.slt(b) ? a : b; });
+  }
+
+  if (lhs_type != rhs_type || !IsFloatShapedType(lhs_type)) return nullptr;
+
   if (lhs && lhs.isSplat()) {
     auto splat = lhs.getSplatValue<APFloat>();
     if (splat.isLargest() || splat.isInfinity()) return getRhs();
