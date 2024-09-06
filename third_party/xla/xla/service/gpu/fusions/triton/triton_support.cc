@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/instruction_fusion.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
@@ -260,7 +261,7 @@ CodegenDecision CanTritonHandleReduce(
   if (reduce.shape().element_type() == PrimitiveType::F8E4M3FN) {
     if (auto cc = std::get_if<se::CudaComputeCapability>(&gpu_version)) {
       if (!cc->IsAtLeastHopper()) {
-        return "F8E4M3FN is not supported before Hopper.";
+        return Decline("F8E4M3FN is not supported before Hopper.", &reduce);
       }
     }
   }
@@ -273,13 +274,14 @@ CodegenDecision CanTritonHandleReduce(
             .CanFuse();
       });
   if (!is_triton_supported_reduction_computation) {
-    return "Unsupported reduction computation by Triton.";
+    return Decline("Unsupported reduction computation by Triton.", &reduce);
   }
 
   if (reduce.dimensions().size() == 1 && reduce.operand_count() == 2) {
-    return CodegenDecision{};
+    return Accept();
   }
-  return "Reduction is not a row-reduction of a single operand.";
+  return Decline("Reduction is not a row-reduction of a single operand.",
+                 &reduce);
 }
 
 // Filters Slices which can be handled using Triton.
@@ -288,16 +290,16 @@ CodegenDecision CanTritonHandleSlice(
     const se::GpuComputeCapability& gpu_version) {
   // Only contiguous slices are supported for now.
   if (IsSliceWithUnitStrides(&slice)) {
-    return CodegenDecision{};
+    return Accept();
   }
-  return "Only contiguous Slice operations are supported.";
+  return Decline("Only contiguous Slice operations are supported.", &slice);
 }
 
 CodegenDecision IsTritonSupportedInstructionImpl(
     const HloInstruction& instr, const se::GpuComputeCapability& gpu_version,
     bool is_within_reduction_computation) {
   if (internal::IsTritonUnsupportedOpcode(instr.opcode())) {
-    return "Unsupported opcode.";
+    return Decline("Unsupported opcode.", &instr);
   }
 
   // Special handling for the kConvert instruction, which has a non-standard
@@ -312,7 +314,7 @@ CodegenDecision IsTritonSupportedInstructionImpl(
   bool output_type_is_supported = IsTritonSupportedDataType(type, gpu_version);
 
   if (!output_type_is_supported) {
-    return "Unsupported output data type.";
+    return Decline("Unsupported output data type.", &instr);
   }
 
   bool input_types_are_supported =
@@ -322,16 +324,16 @@ CodegenDecision IsTritonSupportedInstructionImpl(
       });
 
   if (!input_types_are_supported) {
-    return "Unsupported input data type.";
+    return Decline("Unsupported input data type.", &instr);
   }
 
   // Const is technically an elementwise op, so this check must be before the
   // elementwise check.
   if (instr.opcode() == HloOpcode::kConstant) {
     return ShapeUtil::IsScalar(instr.shape())
-               ? CodegenDecision{}
-               : CodegenDecision{
-                     "Only scalar constants are supported in Triton."};
+               ? Accept()
+               : Decline("Only scalar constants are supported in Triton.",
+                         &instr);
   }
 
   if (instr.IsElementwise()) {
@@ -342,9 +344,9 @@ CodegenDecision IsTritonSupportedInstructionImpl(
             // operand.
             instr.operand(instr.operand_count() - 1)->shape().element_type(),
             gpu_version, is_within_reduction_computation)) {
-      return "Unsupported elementwise operation.";
+      return Decline("Unsupported elementwise operation.", &instr);
     }
-    return CodegenDecision{};
+    return Accept();
   }
 
   // TODO(bchetioui): support kDot, kPad, and kDynamicSlice.
@@ -362,12 +364,12 @@ CodegenDecision IsTritonSupportedInstructionImpl(
     case HloOpcode::kBroadcast:
     case HloOpcode::kBitcast:
     case HloOpcode::kReshape:
-      return CodegenDecision{};
+      return Accept();
     default:
       VLOG(2) << "Unsupported instruction: " << instr.ToString();
       break;
   }
-  return "Unsupported opcode.";
+  return Decline("Unsupported opcode.", &instr);
 }
 
 }  // namespace

@@ -315,8 +315,8 @@ void SortTiledHloInstructionsInPostOrder(
 
   auto roots = fusion.GetRoots();
   if (roots.size() > 1) {
-    return FusionDecision{} << "Multi-output fusions are not supported. "
-                            << fusion.ToString();
+    return Decline("Multi-output fusions are not supported. ")
+           << fusion.ToString();
   }
   auto& root = roots[0];
 
@@ -349,8 +349,7 @@ void SortTiledHloInstructionsInPostOrder(
           ComposeIndexingMaps(tiled_hlo_instruction->indexing_map(),
                               *operand_indexing_map_set.begin());
       if (operand_indexing_map.IsUndefined()) {
-        return FusionDecision{}
-               << "Couldn't derive indexing map for instruction "
+        return Decline("Couldn't derive indexing map for instruction ")
                << tiled_hlo_instruction->hlo()->ToString() << " and operand "
                << operand.instruction().ToString();
       }

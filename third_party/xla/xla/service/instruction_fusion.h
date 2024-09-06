@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -125,6 +126,36 @@ class FusionDecision {
   std::optional<std::string> explanation_;
 };
 
+inline FusionDecision Accept() { return {}; }
+
+#if defined(PLATFORM_GOOGLE)
+inline FusionDecision Decline(
+    absl::string_view explanation, const HloInstruction* instruction = nullptr,
+    absl::SourceLocation source_location = absl::SourceLocation::current()) {
+  VLOG(1) << "Decline reason: " << explanation << " at " << source_location;
+  if (instruction != nullptr) {
+    VLOG(3) << "Declined Instruction: " << instruction->ToString();
+  }
+  return FusionDecision(explanation);
+}
+#else   // PLATFORM_GOOGLE
+inline FusionDecision Decline(absl::string_view explanation,
+                              const HloInstruction* instruction = nullptr) {
+  VLOG(1) << "Decline reason: " << explanation;
+  if (instruction != nullptr) {
+    VLOG(3) << "Declined Instruction: " << instruction->ToString();
+  }
+  return FusionDecision(explanation);
+}
+#endif  // PLATFORM_GOOGLE
+
+// Accepts std::variant with FusionDecision as an alternative.
+// Returns the result if it is a FusionDecision.
+#define RETURN_IF_DECLINED(result)                      \
+  if (std::holds_alternative<FusionDecision>(result)) { \
+    return std::get<FusionDecision>(result);            \
+  }
+
 #define RETURN_IF_NOT_FUSIBLE(...)                   \
   do {                                               \
     ::xla::FusionDecision _decision = (__VA_ARGS__); \
@@ -203,7 +234,7 @@ class InstructionFusion : public HloModulePass {
   // duplicated by multi-output fusion.
   virtual FusionDecision ShouldFuseIntoMultiOutput(HloInstruction* consumer,
                                                    int64_t operand_index) {
-    return "multi-output fusion not supported by this pass";
+    return Decline("multi-output fusion not supported by this pass", consumer);
   }
 
   // Chooses a fusion kind for `producer` and `consumer`.

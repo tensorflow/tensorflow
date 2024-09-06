@@ -485,9 +485,10 @@ FusionDecision ShouldFuseReduction(const HloInstruction& reduce,
 
   if (reduce.dimensions().size() != 1 ||
       reduce.dimensions(0) != reduce.operand(0)->shape().rank() - 1) {
-    return FusionDecision(
+    return Decline(
         "The reductions in the diamond must reduce 1 dimension and that "
-        "dimension must be the last dimension of the operand.");
+        "dimension must be the last dimension of the operand.",
+        &reduce);
   }
 
   // Ensure that the reduction's identity is either a constant or a supported
@@ -499,21 +500,23 @@ FusionDecision ShouldFuseReduction(const HloInstruction& reduce,
        identity->operand(0)->opcode() == HloOpcode::kConstant &&
        IsTritonSupportedInstruction(*identity, cc));
   if (!should_fuse_identity) {
-    return "Reduction identity is not a constant or a supported convert of a "
-           "constant.";
+    return Decline(
+        "Reduction identity is not a constant or a supported convert of a "
+        "constant.",
+        identity);
   }
 
-  return {};
+  return Accept();
 }
 
 DiamondMatchingDecision MatchesTritonCompatibleClosedReductionDiamondImpl(
     HloInstruction* instr, const se::GpuComputeCapability& cc) {
   if (!instr->IsElementwiseBinary()) {
-    return "Root is not elementwise binary.";
+    return Decline("Root is not elementwise binary.", instr);
   }
 
   if (!IsTritonSupportedInstruction(*instr, cc)) {
-    return "Root is not supported for Triton instruction.";
+    return Decline("Root is not supported for Triton instruction.", instr);
   }
 
   HloInstruction* producer;

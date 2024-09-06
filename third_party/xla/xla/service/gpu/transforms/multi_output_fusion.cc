@@ -86,14 +86,14 @@ const HloSliceInstruction* FindUniqueSlice(const HloInstruction* parent,
 FusionDecision ParameterSlicesAreNonOverlapping(const HloInstruction& instr1,
                                                 const HloInstruction& instr2,
                                                 const HloInstruction* parent) {
-  if (parent->shape().IsTuple()) return {};
+  if (parent->shape().IsTuple()) return Accept();
   // Allow MOF if the parameter is small, even if there's no overlap. 1024 bytes
   // were arbitrarily chosen as the threshold.
-  if (ShapeUtil::ByteSizeOfElements(parent->shape()) < 1024) return {};
+  if (ShapeUtil::ByteSizeOfElements(parent->shape()) < 1024) return Accept();
 
   const HloSliceInstruction* slice1 = FindUniqueSlice(parent, &instr1);
   const HloSliceInstruction* slice2 = FindUniqueSlice(parent, &instr2);
-  if (!slice1 || !slice2) return {};
+  if (!slice1 || !slice2) return Accept();
 
   // TODO(jreiffers): Check strides as well.
   auto& starts1 = slice1->slice_starts();
@@ -104,10 +104,10 @@ FusionDecision ParameterSlicesAreNonOverlapping(const HloInstruction& instr1,
   for (int64_t dim = 0; dim < parent->shape().rank(); ++dim) {
     bool overlap = starts1[dim] < limits2[dim] && starts2[dim] < limits1[dim];
     if (!overlap) {
-      return "slices are non-overlapping";
+      return Decline("slices are non-overlapping", parent);
     }
   }
-  return {};
+  return Accept();
 }
 
 FusionDecision LegalToFuse(const HloInstruction& instr1,
@@ -125,7 +125,7 @@ FusionDecision LegalToFuse(const HloInstruction& instr1,
       (instr2.opcode() == HloOpcode::kFusion &&
        instr2.fused_expression_root()->opcode() ==
            HloOpcode::kDynamicUpdateSlice)) {
-    return "can't fuse multiple DUSs";
+    return Decline("can't fuse multiple DUSs", &instr1);
   }
 
   // Do this check last, as it may be expensive.
@@ -179,7 +179,7 @@ FusionDecision OperandReachableFromProducer(
           absl::StrCat(producer.name(), " would introduce a cycle when fused")};
     }
   }
-  return {};
+  return Accept();
 }
 
 FusionDecision ProducerCandidateIsFusible(
@@ -188,7 +188,8 @@ FusionDecision ProducerCandidateIsFusible(
     const se::DeviceDescription& device_info,
     GpuHloCostAnalysis* cost_analysis) {
   if (!IsFusibleAsMultiOutputFusionRoot(consumer)) {
-    return "consumer not eligible as multi-output fusion root.";
+    return Decline("consumer not eligible as multi-output fusion root.",
+                   &consumer);
   }
 
   RETURN_IF_NOT_FUSIBLE(
@@ -202,7 +203,7 @@ FusionDecision ProducerCandidateIsFusible(
       /*is_consumer_producer_fusion=*/false, fusion_info_cache));
 
   if (cost_analysis->ProducerConsumerMergedTooLarge(producer, consumer)) {
-    return "will generate too large IR";
+    return Decline("will generate too large IR", &producer);
   }
 
   GpuPerformanceModel::RunTimes t = GpuPerformanceModel::EstimateRunTimes(
@@ -211,10 +212,10 @@ FusionDecision ProducerCandidateIsFusible(
       /*fused_consumers=*/{&consumer},
       /*multi_output=*/true);
   if (t.time_fused > t.time_unfused) {
-    return "will execute slower if fused";
+    return Decline("will execute slower if fused");
   }
 
-  return {};
+  return Accept();
 }
 
 std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
@@ -302,7 +303,7 @@ FusionDecision CanFuseSiblings(const HloInstruction& sibling_consumer_1,
   // This check should be last, as it may be expensive.
   RETURN_IF_NOT_FUSIBLE(LegalToFuse(sibling_consumer_1, sibling_consumer_2,
                                     device_info, fusion_info_cache));
-  return {};
+  return Accept();
 }
 
 }  // namespace

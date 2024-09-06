@@ -555,7 +555,7 @@ class PriorityFusionQueue {
       }
     }
 
-    return {};
+    return Accept();
   }
 
   TiledRunTimeDataOrError GetTiledRunTimeDataCached(
@@ -608,12 +608,12 @@ class PriorityFusionQueue {
   FusionDecision CanFuseTriton(HloInstruction* producer,
                                HloInstruction* consumer) {
     if (!triton_softmax_priority_fusion_enabled_) {
-      return "triton softmax fusion is not enabled";
+      return Decline("triton softmax fusion is not enabled");
     }
 
     if (IsGenericTritonFusion(*producer)) {
       if (!IsFusible(*consumer)) {
-        return "the consumer is not fusible";
+        return Decline("the consumer is not fusible");
       }
 
       if (auto fusion_decision = IsTritonSupported(*consumer);
@@ -622,7 +622,7 @@ class PriorityFusionQueue {
       }
     } else {
       if (!IsFusible(*producer)) {
-        return "the producer is not fusible";
+        return Decline("the producer is not fusible");
       }
 
       if (auto fusion_decision = IsTritonSupported(*producer);
@@ -651,7 +651,7 @@ class PriorityFusionQueue {
           tiled_run_time_data.block_level_parameters;
     }
 
-    return {};
+    return Accept();
   }
 
   FusionDecision CanFuse(HloInstruction* producer, HloInstruction* consumer) {
@@ -660,15 +660,15 @@ class PriorityFusionQueue {
     }
 
     if (!IsFusible(*producer)) {
-      return "the producer is not fusible";
+      return Decline("the producer is not fusible");
     }
 
     if (!IsFusible(*consumer)) {
-      return "the consumer is not fusible";
+      return Decline("the consumer is not fusible");
     }
 
     if (consumer->opcode() == HloOpcode::kBitcast) {
-      return "not fusing into a single bitcast as consumer";
+      return Decline("not fusing into a single bitcast as consumer");
     }
 
     // Scatter is special as it has no elemental version but is still input
@@ -698,7 +698,7 @@ class PriorityFusionQueue {
     };
     if (contains_significant_reduce(producer) &&
         contains_significant_reduce(consumer)) {
-      return "both the producer and the consumer contain a reduce";
+      return Decline("both the producer and the consumer contain a reduce");
     }
 
     // Avoid doing fusions into the output of an "input" fusion when it would
@@ -712,8 +712,8 @@ class PriorityFusionQueue {
           fusion_analysis_cache_.Get(*producer, *consumer);
       if (analysis_fused.GetEmitterFusionKind() ==
           HloFusionAnalysis::EmitterFusionKind::kLoop) {
-        return "fusion into output of a reduce fusion would create a loop "
-               "fusion";
+        return Decline(
+            "fusion into output of a reduce fusion would create a loop fusion");
       }
     }
 
@@ -731,7 +731,8 @@ class PriorityFusionQueue {
     // kernels, in which case we don't want to fuse.
     // TODO(b/119692968): Remove this once we have fixed our fusion emitter.
     if (cost_analysis_.ProducerConsumerMergedTooLarge(*producer, *consumer)) {
-      return "the fusion would result in an overly large code duplication";
+      return Decline(
+          "the fusion would result in an overly large code duplication");
     }
 
     // Don't fuse across a root instruction. There are situation when a root
@@ -739,7 +740,7 @@ class PriorityFusionQueue {
     // root are not necessary dead. They can be inputs to instructions with side
     // effects, like outfeed.
     if (producer == producer->parent()->root_instruction()) {
-      return "not fusing into the output of the root instruction";
+      return Decline("not fusing into the output of the root instruction");
     }
 
     return InstructionFusion::ShouldFuseInPlaceOp(producer, consumer);
@@ -772,7 +773,7 @@ class PriorityFusionQueue {
 
   FusionDecision CanFuseWithAllNonBitcastUsers(HloInstruction* producer) {
     if (producer->users().empty()) {
-      return "No users to fuse";
+      return Decline("No users to fuse");
     }
 
     FusionDecision result;
@@ -790,9 +791,9 @@ class PriorityFusionQueue {
       }
     }
     if (!has_non_bitcast_user) {
-      return "not fusing because there are only bitcast users";
+      return Decline("not fusing because there are only bitcast users");
     }
-    return {};
+    return Accept();
   }
 
   // Store computation for cost analysis.
