@@ -29,7 +29,7 @@ py_strict_test(
             "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.dylib"],
             "//tensorflow:windows": [],
             "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION_MAJOR],
-        })
+        }),
     ),
     python_version = "PY3",
     srcs_version = "PY3",
@@ -55,7 +55,7 @@ py_strict_test(
             "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.dylib"],
             "//tensorflow:windows": [],
             "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION_MAJOR],
-        })
+        }),
     ),
     python_version = "PY3",
     srcs_version = "PY3",

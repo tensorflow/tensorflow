@@ -4,7 +4,7 @@ load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "tf_py_strict_test", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")  # @unused
-load("//tensorflow/core/platform:build_config_root.bzl", "if_static", "if_pywrap")
+load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap", "if_static")
 
 visibility = [
     "//engedu/ml/tf_from_scratch:__pkg__",
@@ -73,6 +73,10 @@ tf_python_pybind_extension(
         "_pywrap_tfprof.pyi",
     ],
     deps = if_pywrap(
+        if_false = [
+            "//tensorflow/core/profiler/internal:print_model_analysis_hdr",
+            "@pybind11",
+        ],
         if_true = [
             "//tensorflow/core:framework",
             "//tensorflow/core/framework:reader_base",
@@ -81,10 +85,6 @@ tf_python_pybind_extension(
             "//third_party/python_runtime:headers",
             "@com_google_absl//absl/strings",
             "@eigen_archive//:eigen3",
-            "@pybind11",
-        ],
-        if_false = [
-            "//tensorflow/core/profiler/internal:print_model_analysis_hdr",
             "@pybind11",
         ],
     ),
@@ -539,7 +539,7 @@ cc_library(
 
 tf_python_pybind_extension(
     name = "_function_parameter_canonicalizer_binding_for_test",
-#    testonly = True,
+    #    testonly = True,
     srcs = ["function_parameter_canonicalizer_binding_for_test.cc"],
     hdrs = [
         "function_parameter_canonicalizer.h",
@@ -1262,7 +1262,7 @@ tf_python_pybind_extension(
         if_true = [
             "//tensorflow/compiler/tf2xla:tf2xla_opset",
             "//tensorflow/python/lib/core:pybind11_lib",
-        ]
+        ],
     ),
 )
 

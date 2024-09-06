@@ -2,11 +2,11 @@
 
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_python_pybind_extension")
+load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")
 load(
     "//tensorflow/tools/test:performance.bzl",
     "cuda_py_benchmark_test",
 )
-load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -21,6 +21,9 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_unified_api.pyi",
     ],
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ],
     deps = [
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core:lib",
@@ -30,15 +33,15 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_lib",
         "@pybind11",
     ],
-    visibility = [
-        "//tensorflow/python:__pkg__",
-    ]
 )
 
 tf_python_pybind_extension(
     name = "_tape",
     srcs = ["tape.cc"],
     features = ["-layering_check"],
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ],
     deps = [
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core:lib",
@@ -52,11 +55,8 @@ tf_python_pybind_extension(
             "//tensorflow/c/experimental/gradients/tape:tape_context",
             "//tensorflow/c/experimental/gradients:math_grad",
             "//tensorflow/c/experimental/gradients:nn_grad",
-        ]
+        ],
     ),
-    visibility = [
-        "//tensorflow/python:__pkg__",
-    ]
 )
 
 tf_python_pybind_extension(
@@ -65,6 +65,9 @@ tf_python_pybind_extension(
     enable_stub_generation = True,
     pytype_srcs = [
         "_math_ops.pyi",
+    ],
+    visibility = [
+        "//tensorflow/python:__pkg__",
     ],
     deps = [
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
@@ -79,11 +82,8 @@ tf_python_pybind_extension(
     ] + if_pywrap(
         if_true = [
             "//tensorflow/c/experimental/ops:math_ops",
-        ]
+        ],
     ),
-    visibility = [
-        "//tensorflow/python:__pkg__",
-    ]
 )
 
 tf_python_pybind_extension(
@@ -92,6 +92,9 @@ tf_python_pybind_extension(
     enable_stub_generation = True,
     pytype_srcs = [
         "_nn_ops.pyi",
+    ],
+    visibility = [
+        "//tensorflow/python:__pkg__",
     ],
     deps = [
         "//tensorflow/c/eager:tfe_tensorhandle_internal",
@@ -106,11 +109,8 @@ tf_python_pybind_extension(
     ] + if_pywrap(
         if_true = [
             "//tensorflow/c/experimental/ops:nn_ops",
-        ]
+        ],
     ),
-    visibility = [
-        "//tensorflow/python:__pkg__",
-    ]
 )
 
 py_strict_library(

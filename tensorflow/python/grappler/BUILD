@@ -208,7 +208,7 @@ tf_python_pybind_extension(
             "//tensorflow/core/grappler/clusters:pywrap_required_hdrs",
             "//tensorflow/core/grappler/costs:pywrap_required_hdrs",
             "//tensorflow/core/grappler/utils:pywrap_required_hdrs",
-        ]
+        ],
     ),
     enable_stub_generation = True,
     pytype_srcs = [
@@ -224,10 +224,10 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/types:span",
         "@pybind11",
     ] + if_pywrap(
-       if_true = [
-           "//tensorflow/core/grappler/costs:measuring_cost_estimator",
-           "//tensorflow/core/grappler/clusters:single_machine",
-       ]
+        if_true = [
+            "//tensorflow/core/grappler/costs:measuring_cost_estimator",
+            "//tensorflow/core/grappler/clusters:single_machine",
+        ],
     ),
 )
 
@@ -282,7 +282,7 @@ tf_python_pybind_extension(
             "//tensorflow/core/grappler/costs:pywrap_required_hdrs",
             "//tensorflow/core/grappler/optimizers:pywrap_required_hdrs",
             "//tensorflow/core/grappler/verifiers:pywrap_required_hdrs",
-        ]
+        ],
     ),
     enable_stub_generation = True,
     pytype_srcs = [
@@ -312,7 +312,7 @@ tf_python_pybind_extension(
             "//tensorflow/core/grappler/optimizers:meta_optimizer",
             "//tensorflow/core/grappler/optimizers:graph_optimizer",
             "//tensorflow/core/grappler/verifiers:graph_verifier",
-        ]
+        ],
     ),
 )
 

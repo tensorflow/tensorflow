@@ -90,12 +90,12 @@ load(
 load(
     "//tensorflow:tensorflow.default.bzl",
     "cc_header_only_library",
-     "custom_op_cc_header_only_library",
+    "custom_op_cc_header_only_library",
     "filegroup",
     "get_compatible_with_portable",
     "tensorflow_opensource_extra_deps",
     "tf_monitoring_framework_deps",
-    "tf_selective_registration_deps"
+    "tf_selective_registration_deps",
 )
 
 # For platform specific build config

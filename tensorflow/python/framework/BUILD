@@ -16,9 +16,9 @@ load(
     "tf_gen_op_wrapper_py",
     "tf_kernel_library",
 )
-load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test", "tf_python_framework_friends", "tf_python_pybind_extension", "stripped_cc_info")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "stripped_cc_info", "tf_py_strict_test", "tf_python_framework_friends", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_lib_deps", "tf_proto_library", "tf_protos_grappler")  # @unused
-load("//tensorflow/core/platform:build_config_root.bzl", "if_static", "if_pywrap", "tf_additional_xla_deps_py")
+load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap", "if_static", "tf_additional_xla_deps_py")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_strict_test")
 load(
     "//tensorflow/tools/test:performance.bzl",
@@ -48,7 +48,6 @@ cc_library(
         "//tensorflow/core:framework_headers_lib",
         "@com_google_protobuf//:protobuf_headers",
         "@eigen_archive//:eigen3",
-
     ],
 )
 
@@ -60,13 +59,13 @@ stripped_cc_info(
 tf_cc_shared_object(
     name = "test_file_system.so",
     deps = if_pywrap(
-        if_true = [
-            ":test_file_system_stripped",
-            "//tensorflow/python:_pywrap_tensorflow_common"
-        ],
         if_false = [
             ":test_file_system",
-        ]
+        ],
+        if_true = [
+            ":test_file_system_stripped",
+            "//tensorflow/python:_pywrap_tensorflow_common",
+        ],
     ),
 )
 
@@ -675,7 +674,10 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_op_def_library_pybind.pyi",
     ],
-    deps = if_pywrap([":op_def_util_cc"], [":op_def_util_headers"]) + [
+    deps = if_pywrap(
+        [":op_def_util_cc"],
+        [":op_def_util_headers"],
+    ) + [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:lib_proto_parsing",
@@ -814,7 +816,10 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "_op_def_util.pyi",
     ],
-    deps = if_pywrap([":op_def_util_cc"], [":op_def_util_headers"]) + [
+    deps = if_pywrap(
+        [":op_def_util_cc"],
+        [":op_def_util_headers"],
+    ) + [
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/python/lib/core:pybind11_lib",
@@ -887,7 +892,7 @@ tf_python_pybind_extension(
             "python_api_info.h",
             "python_api_parameter_converter.h",
             "python_tensor_converter.h",
-        ]
+        ],
     ),
     enable_stub_generation = True,
     pytype_srcs = [
@@ -916,7 +921,7 @@ tf_python_pybind_extension(
             ":python_api_info",
             ":op_def_util_cc",
             ":python_tensor_converter",
-        ]
+        ],
     ) + if_static(
         extra_deps = [
             "//tensorflow/core/protobuf:eager_service_proto_cc",
@@ -997,7 +1002,7 @@ tf_python_pybind_extension(
             "op_def_util.h",
             "python_api_info.h",
             "python_tensor_converter.h",
-        ]
+        ],
     ),
     enable_stub_generation = True,
     pytype_srcs = [
@@ -1025,7 +1030,7 @@ tf_python_pybind_extension(
             ":python_api_info",
             ":op_def_util_cc",
             ":python_tensor_converter",
-        ]
+        ],
     ) + if_static(
         extra_deps = [
             "@local_tsl//tsl/protobuf:coordination_service_proto_cc",

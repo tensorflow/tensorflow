@@ -2,7 +2,7 @@
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test", "tf_python_pybind_extension")
-load("//tensorflow/core/platform:build_config_root.bzl", "if_static", "if_pywrap")
+load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap", "if_static")
 load(
     "//tensorflow/tools/test:performance.bzl",
     "cuda_py_benchmark_test",
@@ -34,7 +34,6 @@ tf_python_pybind_extension(
     hdrs = [
         "tf_session_helper.h",
     ] + if_pywrap(
-        if_true = [],
         if_false = [
             "//tensorflow/c:headers",
             "//tensorflow/c:safe_ptr_hdr",
@@ -49,8 +48,14 @@ tf_python_pybind_extension(
             "@local_xla//xla/tsl/distributed_runtime:pywrap_required_hdrs",
             "@local_xla//xla/tsl/distributed_runtime/coordination:pywrap_required_hdrs",
             "@local_xla//xla/tsl/python/lib/core:numpy_hdr",
-        ]
+        ],
+        if_true = [],
     ),
+    additional_exported_symbols = [
+        "_TF_SetTarget",
+        "_TF_SetConfig",
+        "_TF_NewSessionOptions",
+    ],
     enable_stub_generation = True,
     pytype_srcs = [
         "_pywrap_tf_session.pyi",
@@ -97,11 +102,6 @@ tf_python_pybind_extension(
             "@local_tsl//tsl/protobuf:coordination_service_proto_cc_headers_only",
         ],
     ),
-    additional_exported_symbols = [
-        "_TF_SetTarget",
-        "_TF_SetConfig",
-        "_TF_NewSessionOptions"
-    ],
 )
 
 tf_python_pybind_extension(

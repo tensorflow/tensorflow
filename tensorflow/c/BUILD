@@ -16,11 +16,11 @@ load(
     "tf_kernel_library",
 )
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test")
+load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")
 load(
     "//tensorflow/core/tpu:build_defs.bzl",
     "if_libtpu_tf_status",
 )
-load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -937,6 +937,10 @@ tf_cuda_cc_test(
         ":test_op1.so",
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     ],
+    extra_copts = if_pywrap(
+        ["-DTENSORFLOW_NO_SHARED_OBJECTS"],
+        [],
+    ),
     linkopts = select({
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
@@ -982,7 +986,6 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:math",
         "//tensorflow/core/platform:resource_loader",
     ],
-    extra_copts = if_pywrap(["-DTENSORFLOW_NO_SHARED_OBJECTS"], [])
 )
 
 tf_cc_test(
@@ -1138,8 +1141,8 @@ tf_cuda_library(
     srcs = ["python_api.cc"],
     hdrs = ["python_api.h"],
     visibility = [
-        "//tensorflow/python:__pkg__",
         "//tensorflow:internal",
+        "//tensorflow/python:__pkg__",
     ],
     deps = [
         ":c_api",

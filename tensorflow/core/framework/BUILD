@@ -1800,8 +1800,8 @@ tf_proto_library(
         ":types_proto",
     ],
     visibility = [
-        "//tensorflow/python:__pkg__",
         "//tensorflow/core:__subpackages__",
+        "//tensorflow/python:__pkg__",
     ],
 )
 

@@ -3,8 +3,8 @@
 
 load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
 load("//tensorflow:tensorflow.bzl", "if_google", "if_xla_available", "tf_cc_test")
-load("//tensorflow/python/tools:tools.bzl", "saved_model_compile_aot")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")
+load("//tensorflow/python/tools:tools.bzl", "saved_model_compile_aot")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -99,7 +99,7 @@ py_strict_binary(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [":freeze_graph_lib"] + if_pywrap(
-        if_true = ["//tensorflow/python:_pywrap_tensorflow"]
+        if_true = ["//tensorflow/python:_pywrap_tensorflow"],
     ),
 )
 
@@ -360,7 +360,7 @@ py_strict_binary(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [":saved_model_cli_lib"] + if_pywrap(
-        if_true = ["//tensorflow/python:_pywrap_tensorflow"]
+        if_true = ["//tensorflow/python:_pywrap_tensorflow"],
     ),
 )
 
