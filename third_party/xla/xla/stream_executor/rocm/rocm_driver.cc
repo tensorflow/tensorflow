@@ -1548,27 +1548,25 @@ void GpuDriver::DestroyStream(Context* context, GpuStreamHandle stream) {
   return true;
 }
 
-/* static */ bool GpuDriver::AsynchronousMemcpyH2D(Context* context,
-                                                   hipDeviceptr_t gpu_dst,
-                                                   const void* host_src,
-                                                   uint64_t size,
-                                                   GpuStreamHandle stream) {
+absl::Status GpuDriver::AsynchronousMemcpyH2D(Context* context,
+                                              hipDeviceptr_t gpu_dst,
+                                              const void* host_src,
+                                              uint64_t size,
+                                              GpuStreamHandle stream) {
   ScopedActivateContext activation{context};
-  hipError_t res = wrap::hipMemcpyHtoDAsync(
-      gpu_dst, const_cast<void*>(host_src), size, stream);
-  if (res != hipSuccess) {
-    LOG(ERROR) << absl::StrFormat(
-        "failed to enqueue async memcpy from host to device: %s; Gpu dst: %p; "
-        "host src: %p; size: %llu=0x%llx",
-        ToString(res).c_str(), absl::bit_cast<void*>(gpu_dst), host_src, size,
-        size);
-    return false;
-  }
+  RETURN_IF_ROCM_ERROR(
+      wrap::hipMemcpyHtoDAsync(gpu_dst, const_cast<void*>(host_src), size,
+                               stream),
+      absl::StrFormat(
+          "failed to enqueue async memcpy from host to device: Gpu dst: %p; "
+          "host src: %p; size: %llu=0x%llx",
+          absl::bit_cast<void*>(gpu_dst), host_src, size, size));
+
   VLOG(2) << "successfully enqueued async memcpy h2d of " << size
           << " bytes from " << host_src << " to "
           << absl::bit_cast<void*>(gpu_dst) << " on stream " << stream
           << " device: " << context->device_ordinal();
-  return true;
+  return absl::OkStatus();
 }
 
 absl::Status GpuDriver::AsynchronousMemcpyD2D(Context* context,

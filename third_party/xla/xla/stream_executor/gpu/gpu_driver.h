@@ -589,9 +589,10 @@ class GpuDriver {
   static bool AsynchronousMemcpyD2H(Context* context, void* host_dst,
                                     GpuDevicePtr gpu_src, uint64_t size,
                                     GpuStreamHandle stream);
-  static bool AsynchronousMemcpyH2D(Context* context, GpuDevicePtr gpu_dst,
-                                    const void* host_src, uint64_t size,
-                                    GpuStreamHandle stream);
+  static absl::Status AsynchronousMemcpyH2D(Context* context,
+                                            GpuDevicePtr gpu_dst,
+                                            const void* host_src, uint64_t size,
+                                            GpuStreamHandle stream);
   static absl::Status AsynchronousMemcpyD2D(Context* context,
                                             GpuDevicePtr gpu_dst,
                                             GpuDevicePtr gpu_src, uint64_t size,
