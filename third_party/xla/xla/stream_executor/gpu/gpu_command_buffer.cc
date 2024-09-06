@@ -513,6 +513,11 @@ absl::Status GpuCommandBuffer::Barrier(ExecutionScopeId from_execution_scope_id,
   return UnsupportedStateError(state_);
 }
 
+absl::Status GpuCommandBuffer::LaunchNoopKernel() {
+  TF_ASSIGN_OR_RETURN(NoOpKernel * noop, GetNoOpKernel());
+  return CommandBuffer::Launch(*noop, ThreadDim(), BlockDim());
+}
+
 absl::Status GpuCommandBuffer::LaunchWithPackedArgs(
     ExecutionScopeId execution_scope_id, const ThreadDim& threads,
     const BlockDim& blocks, const Kernel& kernel,
@@ -966,13 +971,7 @@ absl::Status GpuCommandBuffer::Finalize() {
   // with empty graphs.
 #if !defined(TENSORFLOW_USE_ROCM)
   if (num_nodes == 0) {
-    GpuGraphNodeHandle empty_node_handle = nullptr;
-    TF_ASSIGN_OR_RETURN(NoOpKernel * noop, GetNoOpKernel());
-
-    TF_RETURN_IF_ERROR(GpuDriver::GraphAddKernelNode(
-        &empty_node_handle, graph_, /*deps=*/{}, "noop",
-        AsGpuKernel(&**noop)->gpu_function(), 1, 1, 1, 1, 1, 1, 0,
-        /*kernel_params=*/nullptr, /*extra=*/nullptr));
+    TF_RETURN_IF_ERROR(LaunchNoopKernel());
   }
 #endif
 

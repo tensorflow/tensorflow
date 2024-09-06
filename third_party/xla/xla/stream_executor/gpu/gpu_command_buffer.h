@@ -161,7 +161,6 @@ class GpuCommandBuffer : public CommandBuffer {
   // we have a higher risk of OOM errors.
   static int64_t AliveExecs();
 
- private:
   using Dependencies = absl::InlinedVector<GpuGraphNodeHandle, 1>;
 
   using NoOpKernel = TypedKernel<>;
@@ -285,6 +284,9 @@ class GpuCommandBuffer : public CommandBuffer {
 
   // Collects a set of dependencies for a new barrier.
   Dependencies GetBarrierDependencies(ExecutionScopeId execution_scope_id);
+
+  // Launches a Noop kernel on the graph.
+  absl::Status LaunchNoopKernel();
 
   static_assert(std::is_pointer_v<GpuGraphHandle>,
                 "GpuGraphHandle must be a pointer");
