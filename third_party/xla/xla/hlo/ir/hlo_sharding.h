@@ -138,6 +138,11 @@ class HloSharding {
   static HloSharding Tuple(const Shape& tuple_shape,
                            absl::Span<const HloSharding> shardings);
 
+  // Creates a new sharding for a flat tuple type.
+  static HloSharding FlatTuple(std::vector<HloSharding> sub_shardings) {
+    return HloSharding(std::move(sub_shardings));
+  }
+
   // Creates a new sharding for a tuple type, with a single input sharding
   // repeated on each leaf.
   static HloSharding SingleTuple(const Shape& tuple_shape,

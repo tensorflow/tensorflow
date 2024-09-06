@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include "tensorflow/core/debug/debug_graph_utils.h"
 #include "tensorflow/core/debug/debug_grpc_testlib.h"
 #include "tensorflow/core/debug/debug_io_utils.h"
@@ -47,10 +49,10 @@ class GrpcDebugTest : public ::testing::Test {
                             int64_t server_start_delay_micros) {
     server_data->port = testing::PickUnusedPortOrDie();
     server_data->url = strings::StrCat("grpc://localhost:", server_data->port);
-    server_data->server.reset(new test::TestEventListenerImpl());
+    server_data->server = std::make_unique<test::TestEventListenerImpl>();
 
-    server_data->thread_pool.reset(
-        new thread::ThreadPool(Env::Default(), "test_server", 1));
+    server_data->thread_pool =
+        std::make_unique<thread::ThreadPool>(Env::Default(), "test_server", 1);
     server_data->thread_pool->Schedule(
         [server_data, server_start_delay_micros]() {
           Env::Default()->SleepForMicroseconds(server_start_delay_micros);

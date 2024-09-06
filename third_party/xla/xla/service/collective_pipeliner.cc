@@ -50,10 +50,12 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/map_util.h"
 #include "xla/primitive_util.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/constant_value.h"
 #include "xla/service/hlo_dce.h"
 #include "xla/service/hlo_parser.h"
+#include "xla/service/tuple_points_to_analysis.h"
 #include "xla/service/value_range.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -445,7 +447,6 @@ std::vector<HloInstruction*> CollectDependenciesToPipeline(
                                                             ops.end());
   formatting_set.insert(source_ops.begin(), source_ops.end());
   std::vector<HloInstruction*> to_return;
-  absl::flat_hash_set<HloInstruction*> already_inserted;
   for (const HloInstruction* op : ops) {
     for (HloInstruction* operand : op->operands()) {
       if (!formatting_set.count(operand)) {
@@ -697,10 +698,13 @@ class WhileLoopAnalysis {
   explicit WhileLoopAnalysis(
       HloInstruction* while_instr, int64_t max_pipelining_per_loop,
       bool pipeline_use_tree, bool process_different_sized_options,
+      TuplePointsToAnalysis* tuple_points_to_analysis, CallGraph* call_graph,
       std::optional<ConstantValue> known_start = std::nullopt)
       : while_(while_instr),
         loop_start_(known_start),
         max_pipelining_per_loop_(max_pipelining_per_loop),
+        tuple_points_to_analysis_(tuple_points_to_analysis),
+        call_graph_(call_graph),
         pipeline_use_tree_(pipeline_use_tree),
         process_different_sized_options_(process_different_sized_options) {}
   std::optional<ConstantValue> GetLoopIterationCount() const;
@@ -796,6 +800,14 @@ class WhileLoopAnalysis {
   absl::flat_hash_set<const HloInstruction*> invariant_loop_parameters_;
   absl::flat_hash_set<const HloInstruction*> invariant_loop_instructions_;
   int64_t max_pipelining_per_loop_;
+
+  // Precomputed TuplePointsToAnalysis for the HLO module containing `while_`.
+  // May be null, in which case the analysis will be performed from scratch.
+  TuplePointsToAnalysis* tuple_points_to_analysis_;
+  // Precomputed CallGraph analysis for the HLO module containing `while_`.
+  // May be null, in which case the analysis will be performed from scratch.
+  CallGraph* call_graph_;
+
   bool pipeline_use_tree_;
   bool process_different_sized_options_;
 };
@@ -834,8 +846,8 @@ bool WhileLoopAnalysis::ComputeLoopStatistics() {
   if (loop_iteration_count_) {
     return true;
   }
-  std::optional<ParsedWhileLoop> parsed_loop =
-      PatternMatchParseWhileLoop(while_);
+  std::optional<ParsedWhileLoop> parsed_loop = PatternMatchParseWhileLoop(
+      while_, {tuple_points_to_analysis_, call_graph_});
   if (!parsed_loop || !parsed_loop->static_while_loop) {
     return false;
   }
@@ -1380,7 +1392,6 @@ bool IsLoopInvariant(
   // to still visit before visiting the HLO itself.
   std::vector<std::pair<const HloInstruction*, int>> stack(
       1, std::make_pair(instr, 0));
-  absl::flat_hash_set<const HloInstruction*> visited;
   while (!stack.empty()) {
     auto& current = stack.back();
     invariant_cache[std::get<0>(current)] = true;
@@ -1796,6 +1807,8 @@ absl::Status TransformLoopForward(
   WhileLoopAnalysis new_loop_analysis(
       new_while_loop, loop_analysis.GetMaxPipeliningPerLoop(),
       pipeline_use_tree, process_different_sized_ops,
+      /*tuple_points_to_analysis=*/nullptr,
+      /*call_graph=*/nullptr,
       loop_analysis.GetLoopStart()->add(*loop_analysis.GetLoopIncrement()));
   new_loop_analysis.ComputeLoopStatistics();
   new_loop_analysis.CollectCollectivesToMove(
@@ -2035,6 +2048,17 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
       << "Expected only one parameter";
   HloInstruction* loop_parameter = while_body->parameter_instructions()[0];
   HloInstruction* loop_init = while_loop->mutable_operand(0);
+
+  // Clean up the SunkByPreviousStep custom calls that were inserted before.
+  for (HloInstruction* inst : while_body->root_instruction()->operands()) {
+    if (inst->opcode() == HloOpcode::kDynamicUpdateSlice &&
+        inst->operand(1)->IsCustomCall(
+            CollectivePipeliner::kSunkByPreviousStep)) {
+      HloInstruction* cc = inst->mutable_operand(1);
+      TF_RETURN_IF_ERROR(inst->ReplaceOperandWith(1, cc->mutable_operand(0)));
+      TF_RETURN_IF_ERROR(cc->parent()->RemoveInstruction(cc));
+    }
+  }
   CHECK_EQ(while_body->root_instruction()->opcode(), HloOpcode::kTuple);
   for (int i = 0; i < while_body->root_instruction()->operand_count(); ++i) {
     is_output_instruction[while_body->root_instruction()->mutable_operand(i)] =
@@ -2125,7 +2149,6 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
       new_parameter_shapes.push_back(expanded_shape);
       new_init_operands.push_back(CreateZero(loop_computation, expanded_shape,
                                              expanded_shape.element_type()));
-      indices_to_insert.insert(new_root_operands.size());
       Shape extra_trivial_dim_shape =
           ShapeUtil::PrependMajorDimension(1, pipelined->shape());
       HloInstruction* reshaped = body_computation->AddInstruction(
@@ -2255,8 +2278,7 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
     TF_RETURN_IF_ERROR(output->ReplaceOperandWith(0, new_param));
     TF_RETURN_IF_ERROR(
         old_operand_param->parent()->RemoveInstruction(old_operand_param));
-    // TODO(sacer): Consider relaxing this to all inserted operands.
-    if (insert_non_alias_custom_call && original_to_move_indices.contains(i)) {
+    if (insert_non_alias_custom_call && indices_to_insert.contains(i)) {
       auto* old_operand = output->mutable_operand(1);
       auto* custom_call =
           cloned_body->AddInstruction(HloInstruction::CreateCustomCall(
@@ -2489,17 +2511,6 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
                 ComputeFullOutputShape(to_move, formatting_op->shape()),
                 collect_operands(formatting_op)[0], new_dims));
         pipelined_map[formatting_op] = expanded_transpose;
-        continue;
-      }
-      if (formatting_op->IsCustomCall(
-              CollectivePipeliner::kSunkByPreviousStep)) {
-        HloInstruction* expanded_custom_call =
-            loop_computation->AddInstruction(HloInstruction::CreateCustomCall(
-                ComputeFullOutputShape(to_move, formatting_op->shape()),
-                collect_operands(formatting_op),
-                /*custom_call_target=*/
-                CollectivePipeliner::kSunkByPreviousStep));
-        pipelined_map[formatting_op] = expanded_custom_call;
         continue;
       }
       CHECK(false) << "Unsupported instruction " << formatting_op->ToString();
@@ -2775,8 +2786,6 @@ static absl::Status TransformLoopBackward(
         instruction, false, CollectivePipeliner::PipeliningDirection::kBackward,
         loop_analysis));
   }
-  absl::flat_hash_map<const HloInstruction*, HloInstruction*>
-      loop_cond_replacements;
   auto cond_builder =
       HloComputation::Builder(while_loop->while_condition()->name());
   HloInstruction* new_cond_param =
@@ -2878,12 +2887,38 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  std::vector<HloInstruction*> while_loop_instructions;
+
+  // Precompute module-scoped analyses. Because we are running a while-loop
+  // analysis over all while instructions in the module, computing them here and
+  // passing them in avoids recomputing them once for each while instruction.
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<TuplePointsToAnalysis> tuple_points_to_analysis,
+      TuplePointsToAnalysis::Run(module));
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
+
+  std::vector<std::pair<HloInstruction*, std::unique_ptr<WhileLoopAnalysis>>>
+      loop_analyses;
   for (HloComputation* computation : module->MakeComputationPostOrder()) {
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
-      if (instruction->opcode() == HloOpcode::kWhile) {
-        while_loop_instructions.push_back(instruction);
+      if (instruction->opcode() != HloOpcode::kWhile) {
+        continue;
+      }
+      if (std::none_of(instruction->while_body()->instructions().begin(),
+                       instruction->while_body()->instructions().end(),
+                       config_.should_process)) {
+        continue;
+      }
+      VLOG(1) << "Pipelinable while: " << instruction->name();
+      auto loop_analysis = std::make_unique<WhileLoopAnalysis>(
+          instruction, config_.max_pipelining_per_loop,
+          config_.pipeline_use_tree, config_.process_different_sized_ops,
+          tuple_points_to_analysis.get(), call_graph.get());
+      loop_analysis->ComputeLoopStatistics();
+      if (loop_analysis->GetLoopIterationCount() &&
+          loop_analysis->GetLoopIterationCount()->GetUnsignedValue() > 0) {
+        loop_analyses.push_back(
+            std::make_pair(instruction, std::move(loop_analysis)));
       }
     }
   }
@@ -2892,32 +2927,23 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
   int64_t next_channel_id = hlo_query::NextChannelId(*module);
   VLOG(1) << "Pipelining on direction: "
           << GetPipelineDirectionString(config_.pipelining_direction);
-  for (HloInstruction* instruction : while_loop_instructions) {
-    VLOG(1) << "While: " << instruction->name();
-    WhileLoopAnalysis loop_analysis(
-        instruction, config_.max_pipelining_per_loop, config_.pipeline_use_tree,
-        config_.process_different_sized_ops);
-    loop_analysis.ComputeLoopStatistics();
-    if (!loop_analysis.GetLoopIterationCount() ||
-        loop_analysis.GetLoopIterationCount()->GetUnsignedValue() == 0) {
-      continue;
-    }
+  for (auto& [instruction, loop_analysis] : loop_analyses) {
     VLOG(1) << "While iterations: "
-            << loop_analysis.GetLoopIterationCount()->ToString();
-    loop_analysis.CollectCollectivesToMove(
+            << loop_analysis->GetLoopIterationCount()->ToString();
+    loop_analysis->CollectCollectivesToMove(
         config_.level_to_operate_on, config_.pipelining_direction,
         config_.should_process, config_.acceptable_formatting,
         config_.should_allow_loop_variant_parameter_in_chain,
         config_.should_allow_control_dependencies,
         config_.should_add_loop_invariant_op_in_chain);
-    if (loop_analysis.GetMoveInfos().empty()) {
+    if (loop_analysis->GetMoveInfos().empty()) {
       continue;
     }
-    transformed_instructions += loop_analysis.GetMoveInfos().size();
+    transformed_instructions += loop_analysis->GetMoveInfos().size();
     VLOG(1) << "Found Collectives to optimize";
     if (VLOG_IS_ON(1)) {
       int64_t id = 0;
-      for (auto& to_move : loop_analysis.GetMoveInfos()) {
+      for (auto& to_move : loop_analysis->GetMoveInfos()) {
         VLOG(1) << "Move info id: " << id++ << " with "
                 << to_move.collectives_to_move.size() << " collectives "
                 << to_move.dynamic_update_slices.size()
@@ -2937,20 +2963,20 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
     if (config_.pipelining_direction == PipeliningDirection::kForward) {
       CHECK(config_.reuse_pipelined_op_buffer);
       TF_RETURN_IF_ERROR(TransformLoopForward(
-          loop_analysis, !config_.last_run, config_.level_to_operate_on,
+          *loop_analysis, !config_.last_run, config_.level_to_operate_on,
           config_.pipeline_use_tree, config_.process_different_sized_ops,
           config_.should_process, config_.acceptable_formatting,
           config_.reuse_pipelined_op_buffer, next_channel_id));
     } else if (config_.pipelining_direction ==
                PipeliningDirection::kForwardSink) {
       TF_RETURN_IF_ERROR(TransformLoopForwardSink(
-          loop_analysis, !config_.last_run, config_.level_to_operate_on,
+          *loop_analysis, !config_.last_run, config_.level_to_operate_on,
           config_.pipeline_use_tree, config_.process_different_sized_ops,
           config_.should_process, next_channel_id));
     } else {
       CHECK_EQ(config_.pipelining_direction, PipeliningDirection::kBackward);
       TF_RETURN_IF_ERROR(TransformLoopBackward(
-          loop_analysis, !config_.last_run, config_.level_to_operate_on,
+          *loop_analysis, !config_.last_run, config_.level_to_operate_on,
           config_.process_different_sized_ops, config_.should_process,
           config_.acceptable_formatting, config_.postprocess_backward_peeled_op,
           config_.postprocess_backward_rotated_op, next_channel_id));

@@ -162,6 +162,7 @@ cc_library(
         ":benchmark_model_lib",
         ":benchmark_utils",
         ":profiling_listener",
+        "//tensorflow/core/example:example_protos_cc_impl",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:simple_memory_arena_debug_dump",
         "//tensorflow/lite:string_util",
@@ -180,6 +181,7 @@ cc_library(
         "//tensorflow/lite/tools/delegates:tflite_execution_providers",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@ruy//ruy/profiler",
     ],
 )

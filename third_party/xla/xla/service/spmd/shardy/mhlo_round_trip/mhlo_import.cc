@@ -246,10 +246,10 @@ SmallVector<SubDimInfo> getOrderedSubDimsFromIotaTileAssignment(
       tileDimIndex--;
     }
     subDims.push_back(SubDimInfo{
-        .tileDimIndex = tileDimIndex,
-        .tileSubDimIndex = subDim++,
-        .reshapeDimIndex = iota.transpose_perm()[transPermIndex],
-        .size = axisSize,
+        /* .tileDimIndex = */ tileDimIndex,
+        /* .tileSubDimIndex = */ subDim++,
+        /* .reshapeDimIndex = */ iota.transpose_perm()[transPermIndex],
+        /* .size = */ axisSize,
     });
     accTileSize *= axisSize;
     accDeviceSize *= axisSize;
@@ -296,8 +296,10 @@ AnalyzeTileAssignmentResult analyzeTileAssignment(
   for (SubDimInfo subDimInfo : subDims) {
     mesh.push_back(subDimInfo.size);
   }
-  return AnalyzeTileAssignmentResult{.subDims = std::move(subDims),
-                                     .localMesh = std::move(mesh)};
+  return AnalyzeTileAssignmentResult{
+      /* .subDims = */ std::move(subDims),
+      /* .localMesh = */ std::move(mesh),
+  };
 }
 
 // Collect shardings with the attr name kXlaShardingAttr in the `moduleOp`.

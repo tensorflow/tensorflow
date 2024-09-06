@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/lite/delegates/gpu/common/task/compiler_options.h"
+
 namespace tflite {
 namespace gpu {
 namespace cl {
@@ -165,6 +167,10 @@ absl::Status ClOperation::Compile(const CreationContext& creation_context) {
                                 creation_context.context, &operation_->args_,
                                 &operation_->code_));
   operation_->args_.ReleaseCPURepresentation();
+  if (creation_context.device->info_.opencl_info.IsCLVK()) {
+    operation_->compiler_options_.push_back(
+        CompilerOptions::kClFastRelaxedMath);
+  }
   RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
       operation_->code_, "main_function", operation_->compiler_options_,
       *creation_context.context, *creation_context.device, &kernel_,

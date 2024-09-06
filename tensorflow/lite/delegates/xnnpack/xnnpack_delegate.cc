@@ -34,6 +34,7 @@ limitations under the License.
 
 #include "xnnpack.h"  // from @XNNPACK
 #include "Eigen/Core"  // from @eigen_archive
+#include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "pthreadpool.h"  // from @pthreadpool
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api_types.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/delegates/xnnpack/flexbuffers_util.h"
 #include "tensorflow/lite/delegates/xnnpack/quantization_util.h"
 #include "tensorflow/lite/delegates/xnnpack/weight_cache.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
@@ -6701,22 +6703,14 @@ class Subgraph {
       const TfLiteTensor* tensors, const uint8_t* buffer,
       const size_t buffer_size,
       const std::unordered_map<int, uint32_t>& input_output_tensors) {
-    const float* scale_val = nullptr;
-    // ensure 28 bytes as we expect
-    // TODO(b/339106680): this reading method may not work for every case.
-    if (buffer_size == 28 && sizeof(float) == 4) {
-      // Custom data here is a flexbuffer map.
-      // byte_width is 4 for our map.
-      // First 5 values are "scale", then is the float value, and last is
-      // flexbuffer metadata.
-      if (strcmp("scale", reinterpret_cast<const char*>(buffer)) == 0) {
-        constexpr size_t kScaleValOffset = 20;
-        scale_val = reinterpret_cast<const float*>(buffer + kScaleValOffset);
-      }
-    }
-
+    flexbuffers::Map flexbuffer_map =
+        flexbuffers::GetRoot(buffer, buffer_size).AsMap();
+    const float* const scale_ptr =
+        flexbuffer_map["scale"].As<FloatPointer>().ptr;
+    const float* const cap_ptr =
+        flexbuffer_map["logit_cap"].As<FloatPointer>().ptr;
     return VisitDotAttentionNode(subgraph, delegate, logging_context,
-                                 node_index, node, tensors, scale_val,
+                                 node_index, node, tensors, scale_ptr, cap_ptr,
                                  input_output_tensors);
   }
 
@@ -6724,6 +6718,7 @@ class Subgraph {
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors, const float* scale_param,
+      const float* cap_param,
       const std::unordered_map<int, uint32_t>& input_output_tensors) {
     const TfLiteTensor& query_proj = tensors[node->inputs->data[0]];
     TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
@@ -6946,7 +6941,45 @@ class Subgraph {
                               permute_q_out_id, reshape_dims_k_out_id,
                               XNN_INVALID_VALUE_ID, fc_out_id, /*flags=*/0));
       }
-      // TODO(b/323195341): add CapTanh support.
+      if (cap_param != nullptr) {
+        uint32_t cap_val_id = XNN_INVALID_VALUE_ID;
+        TF_LITE_ENSURE_EQ(
+            logging_context, xnn_status_success,
+            xnn_define_tensor_value(subgraph, xnn_datatype_fp32, /*num_dims=*/0,
+                                    /*dims=*/nullptr, cap_param,
+                                    XNN_INVALID_VALUE_ID, 0, &cap_val_id));
+        uint32_t cap_div_out_id = XNN_INVALID_VALUE_ID;
+        TF_LITE_ENSURE_EQ(
+            logging_context, xnn_status_success,
+            xnn_define_tensor_value(subgraph, xnn_datatype_fp32, /*num_dims=*/0,
+                                    /*dims=*/nullptr, nullptr,
+                                    XNN_INVALID_VALUE_ID, 0, &cap_div_out_id));
+        TF_LITE_ENSURE_EQ(
+            logging_context, xnn_status_success,
+            xnn_define_divide(subgraph, default_out_min, default_out_max,
+                              fc_out_id, cap_val_id, cap_div_out_id,
+                              /*flags=*/0));
+        uint32_t cap_tanh_out_id = XNN_INVALID_VALUE_ID;
+        TF_LITE_ENSURE_EQ(
+            logging_context, xnn_status_success,
+            xnn_define_tensor_value(subgraph, xnn_datatype_fp32, /*num_dims=*/0,
+                                    /*dims=*/nullptr, nullptr,
+                                    XNN_INVALID_VALUE_ID, 0, &cap_tanh_out_id));
+        TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
+                          xnn_define_tanh(subgraph, cap_div_out_id,
+                                          cap_tanh_out_id, /*flags=*/0));
+        uint32_t cap_logits_id = XNN_INVALID_VALUE_ID;
+        TF_LITE_ENSURE_EQ(
+            logging_context, xnn_status_success,
+            xnn_define_tensor_value(subgraph, xnn_datatype_fp32, /*num_dims=*/0,
+                                    /*dims=*/nullptr, nullptr,
+                                    XNN_INVALID_VALUE_ID, 0, &cap_logits_id));
+        TF_LITE_ENSURE_EQ(logging_context, xnn_status_success,
+                          xnn_define_multiply2(subgraph, default_out_min,
+                                               default_out_max, cap_tanh_out_id,
+                                               cap_val_id, cap_logits_id, 0));
+        fc_out_id = cap_logits_id;
+      }
       // element_add atten_mask and matmul_out
       uint32_t padded_logits_id = XNN_INVALID_VALUE_ID;
       TF_LITE_ENSURE_EQ(

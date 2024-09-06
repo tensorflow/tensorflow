@@ -1,0 +1,17 @@
+// RUN: fusion_to_mlir %s | mlir_fusions_opt -cse -xla-gpu-simplify-arith -canonicalize | FileCheck %s
+// RUN: test_correctness %s --bijection_inputs=reduce:0 --bijection_outputs=reduce
+
+add {
+  lhs = s16[] parameter(0)
+  rhs = s16[] parameter(1)
+  ROOT add = s16[] add(lhs, rhs)
+}
+
+fused_computation {
+  param_0 = s16[256,128] parameter(0)
+  c0 = s16[] constant(0)
+  ROOT reduce = s16[128] reduce(param_0, c0), dimensions={0},
+    to_apply=add
+}
+
+// CHECK: vector<4xi16>

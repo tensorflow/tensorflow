@@ -175,6 +175,7 @@ cc_library(
         ":model_utils",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/internal:cppmath",
@@ -182,7 +183,6 @@ cc_library(
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_absl//absl/memory",
         "@eigen_archive//:eigen3",
     ],
 )

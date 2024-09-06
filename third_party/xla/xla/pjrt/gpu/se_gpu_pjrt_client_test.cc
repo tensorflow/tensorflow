@@ -35,9 +35,11 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "xla/client/xla_computation.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
+#include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
@@ -57,8 +59,9 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/test.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
@@ -403,6 +406,54 @@ TEST(StreamExecutorGpuClientTest, ToLiteralAsync) {
   ASSERT_TRUE(ShapeUtil::Compatible(src_literal.shape(), literal->shape()));
   ASSERT_EQ(src_literal.data<float>(),
             literal->Relayout(src_literal.shape().layout()).data<float>());
+}
+
+TEST(StreamExecutorGpuClientTest, ToLiteralAsyncWithNonCompactLayout) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  ASSERT_GE(client->addressable_devices().size(), 1);
+
+  xla::Shape transposed_shape = xla::ShapeUtil::MakeShapeWithDenseLayout(
+      xla::S32, {2, 3}, /*minor_to_major=*/{0, 1});
+  xla::Literal src_literal = xla::LiteralUtil::CreateR2WithLayout<int32_t>(
+      {{3, 14, 25}, {36, 47, 58}}, transposed_shape.layout());
+
+  PjRtClient::ShapeSpec spec;
+  spec.element_type = src_literal.shape().element_type();
+  spec.dims = DimensionVector(src_literal.shape().dimensions().begin(),
+                              src_literal.shape().dimensions().end());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto transfer_manager,
+      client->CreateBuffersForAsyncHostToDevice(
+          {spec},
+          std::make_optional<absl::Span<const Layout>>(
+              {transposed_shape.layout()}),
+          client->addressable_devices()[0]->memory_spaces()[0]));
+  auto buffer = transfer_manager->RetrieveBuffer(0);
+
+  absl::Mutex mu;
+  auto literal = std::make_shared<Literal>(
+      ShapeUtil::DeviceShapeToHostShape(buffer->on_device_shape()));
+  bool got_literal = false;
+
+  TF_ASSERT_OK(
+      transfer_manager->TransferLiteralToBuffer(0, src_literal, [&]() {}));
+
+  buffer->ToLiteral(literal.get()).OnReady([&](absl::Status s) {
+    absl::MutexLock l(&mu);
+    TF_ASSERT_OK(s);
+    got_literal = true;
+  });
+  buffer.reset();
+
+  {
+    absl::MutexLock l(&mu);
+    mu.Await(absl::Condition(&got_literal));
+  }
+
+  ASSERT_TRUE(ShapeUtil::Compatible(src_literal.shape(), literal->shape()));
+  ASSERT_EQ(src_literal.data<int32_t>(),
+            literal->Relayout(src_literal.shape().layout()).data<int32_t>());
 }
 
 TEST(StreamExecutorGpuClientTest, ToLiteralAsyncBeforeBufferReady) {

@@ -255,7 +255,7 @@ Status SetAllocAttrsForArgs(const gtl::InlinedVector<Node*, 4>& nodes,
                              /*weak_flag=*/false, nullptr, &alloc_attrs);
 }
 
-Status WeakSetAllocAttrsForArgs(const gtl::InlinedVector<Node*, 4>& nodes,
+Status WeakSetAllocAttrsForArgs(const absl::InlinedVector<Node*, 4UL>& nodes,
                                 const DataTypeVector& dtypes,
                                 std::vector<AllocatorAttributes>& alloc_attrs) {
   return SetMemoryTypeHelper(nodes, dtypes, /*is_arg=*/true,

@@ -28,7 +28,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
-#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -36,8 +35,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/fft.h"
-#include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -84,11 +81,6 @@ class StreamCommon : public Stream {
   std::variant<StreamPriority, int> priority() const override {
     return StreamPriority::Default;
   }
-  absl::Status Launch(const ThreadDim &thread_dims, const BlockDim &block_dims,
-                      const Kernel &k, const KernelArgs &args) override;
-  absl::Status Launch(const ThreadDim &thread_dims, const BlockDim &block_dims,
-                      const ClusterDim &cluster_dims, const Kernel &k,
-                      const KernelArgs &args) override;
 
   // Doesn't do anything interesting by default; GpuStream connects this to NVTX
   absl::string_view name() const override { return name_; }
@@ -106,8 +98,6 @@ class StreamCommon : public Stream {
 
   // Checks the status and logs the error message, if any.
   void CheckStatus(absl::Status status) TF_LOCKS_EXCLUDED(mu_);
-
-  void SetError() { CheckError(false /* = operation_retcode */); }
 
   std::string name_;
 

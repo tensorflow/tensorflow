@@ -67,6 +67,10 @@ using ::operations_research::MPVariable;
 // solver cannot guarantee exact numerical precision.
 constexpr double kMaxCostEpsilon = 1.0001;
 
+// Memory contributions in the Mixed ILP are converted to units in this range;
+// beware that significantly larger / smaller values can cause numerical issues.
+constexpr double kMemoryMultiplier = 1e6;
+
 bool AutoShardingSolverOutput::operator==(
     const AutoShardingSolverOutput& other) const {
   return s_val == other.s_val && cost == other.cost &&
@@ -261,7 +265,7 @@ std::optional<std::pair<int64_t, int64_t>> ReduceMemoryTerms(
       reduced_groups.push_back({group.prims().begin(), group.prims().end()});
     }
   }
-  solver.MakeIntVarArray(reduced_groups.size(), 0.0, MPSolver::infinity(),
+  solver.MakeNumVarArray(reduced_groups.size(), 0.0, MPSolver::infinity(),
                          absl::StrCat("group_", prim_type), &group_vars);
   for (int64_t group_idx = 0; group_idx < group_vars.size(); ++group_idx) {
     MPConstraint* constraint = solver.MakeRowConstraint(
@@ -271,7 +275,7 @@ std::optional<std::pair<int64_t, int64_t>> ReduceMemoryTerms(
     for (const int64_t prim_idx : reduced_groups[group_idx]) {
       for (int64_t j = 0; j < prim_vars[prim_idx].size(); ++j) {
         double memory_cost = memory_costs.at(prim_idx).costs(j);
-        memory_cost /= request.memory_budget() / 100.0;
+        memory_cost /= request.memory_budget() / kMemoryMultiplier;
         const double accumulated_coefficient =
             constraint->GetCoefficient(prim_vars[prim_idx][j]);
         constraint->SetCoefficient(prim_vars[prim_idx][j],
@@ -302,9 +306,12 @@ void AddMemoryTerms(
          time_idx <= intervals[prim_idx].second; ++time_idx) {
       if (!reduced_times.contains(time_idx)) continue;
       if (!constraints.contains(time_idx)) {
-        MPConstraint* constraint = solver.MakeRowConstraint(
-            -MPSolver::infinity(), 100.0, absl::StrCat("mem[", time_idx, "]"));
-        if (overbudget_var) constraint->SetCoefficient(overbudget_var, -100.0);
+        MPConstraint* constraint =
+            solver.MakeRowConstraint(-MPSolver::infinity(), kMemoryMultiplier,
+                                     absl::StrCat("mem[", time_idx, "]"));
+        if (overbudget_var) {
+          constraint->SetCoefficient(overbudget_var, -kMemoryMultiplier);
+        }
         constraints[time_idx] = constraint;
       }
       MPConstraint* constraint = constraints[time_idx];
@@ -314,7 +321,7 @@ void AddMemoryTerms(
       }
       for (int64_t j = 0; j < prim_vars[prim_idx].size(); ++j) {
         double memory_cost = memory_costs.at(prim_idx).costs(j);
-        memory_cost /= request.memory_budget() / 100.0;
+        memory_cost /= request.memory_budget() / kMemoryMultiplier;
         const double accumulated_coefficient =
             constraint->GetCoefficient(prim_vars[prim_idx][j]);
         constraint->SetCoefficient(prim_vars[prim_idx][j],

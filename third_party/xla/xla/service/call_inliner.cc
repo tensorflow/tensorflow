@@ -139,6 +139,16 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
 CallInliner::Inline(HloInstruction* call) {
   TF_RET_CHECK(call->opcode() == HloOpcode::kCall)
       << "Instruction was not a call op: " << call->opcode();
+  if (call->is_composite()) {
+    // Remove composite FE attrs before inlining, else they will appear on the
+    // inlined instructions.
+    FrontendAttributes frontend_attributes = call->frontend_attributes();
+    frontend_attributes.mutable_map()->erase("composite.name");
+    frontend_attributes.mutable_map()->erase("composite.attributes");
+    frontend_attributes.mutable_map()->erase("composite.version");
+    call->set_frontend_attributes(frontend_attributes);
+  }
+
   const auto& callees = call->called_computations();
   TF_RET_CHECK(callees.size() == 1);
   HloComputation* callee = callees[0];

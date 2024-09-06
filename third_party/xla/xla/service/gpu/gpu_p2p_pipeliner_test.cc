@@ -146,7 +146,7 @@ TEST_F(GpuP2PPipelinerTest,
   EXPECT_EQ(send1->channel_id(), send2->channel_id());
 
   const char* kPeeledAttr = "_xla_send_recv_validation=\"invalid\"";
-  const char* kRotatedAttr = "_xla_send_recv_validation=\"{{0,6}}\"";
+  const char* kRotatedAttr = "_xla_send_recv_validation={{0,6}}";
   EXPECT_THAT(send1->ToString(), ::testing::HasSubstr(kPeeledAttr));
   EXPECT_THAT(recv1->ToString(), ::testing::HasSubstr(kPeeledAttr));
   EXPECT_THAT(send2->ToString(), ::testing::HasSubstr(kRotatedAttr));

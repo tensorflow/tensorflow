@@ -256,7 +256,7 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
                           {"num_executions", cmd_buffer->num_executions}});
   });
 
-  return executor->Submit(params.stream, *cmd_buffer->command_buffer);
+  return cmd_buffer->command_buffer->Submit(params.stream);
 }
 
 absl::StatusOr<std::shared_ptr<CommandBufferThunk::ExecutorCommandBuffer>>

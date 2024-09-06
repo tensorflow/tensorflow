@@ -124,7 +124,7 @@ class RCReference {
  public:
   RCReference() : pointer_(nullptr) {}
 
-  RCReference(RCReference&& other) : pointer_(other.pointer_) {
+  RCReference(RCReference&& other) noexcept : pointer_(other.pointer_) {
     other.pointer_ = nullptr;
   }
 
@@ -132,7 +132,7 @@ class RCReference {
     if (pointer_) pointer_->AddRef();
   }
 
-  RCReference& operator=(RCReference&& other) {
+  RCReference& operator=(RCReference&& other) noexcept {
     reset(other.pointer_);
     other.pointer_ = nullptr;
     return *this;
@@ -187,7 +187,7 @@ class RCReference {
 
   explicit operator bool() const { return pointer_ != nullptr; }
 
-  void swap(RCReference& other) {
+  void swap(RCReference& other) noexcept {
     using std::swap;
     swap(pointer_, other.pointer_);
   }
@@ -256,7 +256,7 @@ RCReference<T> MakeRef(Args&&... args) {
 }
 // For ADL style swap.
 template <typename T>
-void swap(RCReference<T>& a, RCReference<T>& b) {
+void swap(RCReference<T>& a, RCReference<T>& b) noexcept {
   a.swap(b);
 }
 

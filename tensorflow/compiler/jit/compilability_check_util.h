@@ -333,6 +333,9 @@ tensorflow::MemoryTypeVector GetOutputMemoryTypes(
 // Check whether graph can trigger XLA compilation.
 bool CanTriggerXlaCompilation(const GraphDef& graph);
 
+// Returns true iff the node can trigger XLA compilation.
+bool NodeCanTriggerXlaCompilation(const NodeDef& node);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_COMPILABILITY_CHECK_UTIL_H_

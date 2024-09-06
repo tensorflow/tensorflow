@@ -275,6 +275,7 @@ absl::StatusOr<XlaOp> CompileWhereWithPrefixSum(XlaOpKernelContext* ctx) {
   // and then scatter iotas[out_idxs] into the output.
   std::vector<XlaOp> iotas_to_concat;
   auto iota_shape = xla::ShapeUtil::MakeShape(S32, input_shape.dimensions());
+  iotas_to_concat.reserve(iota_shape.rank());
   for (int64_t axis = 0; axis < iota_shape.rank(); ++axis) {
     iotas_to_concat.push_back(
         xla::Reshape(xla::Iota(b, iota_shape, axis), {flattened_size, 1}));

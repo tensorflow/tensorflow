@@ -162,7 +162,7 @@ bool RemoveIdentityNodes(Graph* g) {
 
 bool RemoveListArrayConverter(Graph* g) {
   VLOG(2) << "Removing list array converter";
-  gtl::InlinedVector<Node*, 8> matches;
+  absl::InlinedVector<Node*, 8UL> matches;
   for (Node* n : g->nodes()) {
     if ((n->type_string() == "_ListToArray") ||
         (n->type_string() == "_ArrayToList")) {

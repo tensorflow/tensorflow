@@ -16,23 +16,31 @@ limitations under the License.
 #ifndef XLA_TRANSLATE_HLO_TO_MHLO_HLO_FUNCTION_IMPORTER_H_
 #define XLA_TRANSLATE_HLO_TO_MHLO_HLO_FUNCTION_IMPORTER_H_
 
-#include <string>
+#include <cstdint>
 #include <unordered_map>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/optional.h"
+#include "absl/types/span.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/Block.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/Region.h"
+#include "mlir/IR/SymbolTable.h"
+#include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/hlo.pb.h"
@@ -89,29 +97,11 @@ class HloFunctionImporter {
   static void SetLayoutForMlir(mlir::Operation* op, const Shape& shape,
                                llvm::StringRef attr_name);
 
-  // TODO(b/179166199): move this to attribute_importer.h.
-  // Converts XLA instruction source target pairs to MLIR attribute.
-  static mlir::NamedAttribute ConvertSourceTargetPairs(
-      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
-      mlir::Builder* builder);
-
-  // TODO(b/179166199): move this to attribute_importer.h.
-  // Converts replica groups to attribute
-  static mlir::NamedAttribute ConvertReplicaGroups(
-      absl::Span<const ReplicaGroup> replica_groups, mlir::Builder* builder);
-
   // For mlir::IfOp or mlir::CaseOp, replace the uses of their region's block
   // arguments with 'implicit_operands'. Here | implicit_operands | == sum of
   // the number of arguments in all the regions in IfOp or CaseOp.
   void ReplaceBlockArgumentsWithImplicitOperands(
       mlir::Operation* op, llvm::ArrayRef<mlir::Value> implicit_operands);
-
-  // Create a TupleOp using the results of 'op' if 'type' is a mlir::TupleType.
-  // Otherwise, return 'op'.
-  mlir::Operation* CreateTupleFromOpResults(mlir::OpBuilder* func_builder,
-                                            mlir::Location loc,
-                                            mlir::Operation* op,
-                                            mlir::Type type);
 
   // FlattenTupleType flattens the types in (nested) tuple-type 'type' and
   // stores them in 'flattened_types'.
@@ -129,23 +119,6 @@ class HloFunctionImporter {
   static llvm::SmallVector<mlir::Value> FlattenTupleValues(
       mlir::OpBuilder* func_builder, mlir::Location loc,
       mlir::ValueRange values, std::optional<int> reserve_size = std::nullopt);
-
-  // CreateTupleValue creates a root TupleOp of (nested) tuple-type 'type' using
-  // the non-tuple-typed values in 'flatten_values'.
-  //
-  // e.g., Given 'flatten_values': [V1, V2, V3] &'type': tuple<T1,tuple<T1,T2>>,
-  //      The function returns %t2 such that:
-  //       %t1 = mhlo.tuple(V2,V3) : (T2,T3) -> tuple<T2,T3>
-  //       %t2 = mhlo.tuple(V1,%t1): (T1,tuple<T2,T3>) -> tuple<T1,tuple<T1,T2>>
-  //
-  // Note: 1. FlattenTupleValue and CreateTupleValue is a pair of functions to
-  //          resp. flatten and create tuples in the exact same order.
-  //       2. `flatten_values`, initially storing the flattened values, will be
-  //          mutated to a 0-length array by the end of function invocation.
-  static mlir::Value CreateTupleValue(mlir::OpBuilder* func_builder,
-                                      mlir::Location loc,
-                                      mlir::ValueRange& flatten_values,
-                                      mlir::Type type);
 
  private:
   HloFunctionImporter(mlir::SymbolTable& symbol_table,
@@ -220,6 +193,7 @@ class HloFunctionImporter {
   // Returns the Mlir Value for the corresponding HloInstruction.
   absl::StatusOr<mlir::Value> GetMlirValue(const HloInstruction* instruction);
 
+  // TODO(b/179166199): Move attribute converters to attribute_importer.
   // Converts an XLA ComparisonDirection to the corresponding MLIR attribute.
   mlir::NamedAttribute ConvertComparisonDirection(
       ComparisonDirection direction);
@@ -244,43 +218,6 @@ class HloFunctionImporter {
   // padding low and padding high for each of the spatial dimensions.
   mlir::NamedAttribute ConvertPadding(llvm::ArrayRef<int64_t> padding);
 
-  // Converts channel id to attribute
-  mlir::NamedAttribute ConvertChannelHandle(std::optional<int64_t> channel_id);
-
-  // Convert use global device ids flag to attribute
-  mlir::NamedAttribute ConvertUseGlobalDeviceIds();
-
-  // Converts channel handle to attribute
-  mlir::NamedAttribute ConvertChannelHandle(const ChannelHandle& channel);
-
-  // ============
-  // Imports an old-style async start op. E.g. an HLO all-gather-start
-  // instruction is imported as an async-start associated with an all-gather
-  // computation.
-  //
-  // Eventually, old-style async ops (e.g. all-gather-start) and new-style async
-  // ops (i.e. async-start, async-update and async-done) will converge on the
-  // HLO side, so we decided to not introduce new MHLO ops for all-gather-start
-  // and friends.
-  //
-  // In the end, there may be new ops added in the old-style because they're not
-  // compatible with the new-style async semantics, but those should be handled
-  // on their own, rather than this function which "upgrades" ops to the
-  // new-style async API.
-  // ============
-  template <typename SyncOp>
-  absl::StatusOr<mlir::Operation*> ImportOldStyleAsyncStart(
-      llvm::SmallVectorImpl<mlir::NamedAttribute>& attributes,
-      const llvm::SmallVectorImpl<mlir::Value>& operands, mlir::Location loc,
-      mlir::Type result_type, mlir::OpBuilder* func_builder,
-      std::string func_name, std::function<absl::Status(SyncOp)> mutate_op);
-
-  // Imports an old-style async done op
-  absl::StatusOr<mlir::Operation*> ImportOldStyleAsyncDone(
-      llvm::SmallVectorImpl<mlir::NamedAttribute>& attributes,
-      const llvm::SmallVectorImpl<mlir::Value>& operands, mlir::Location loc,
-      mlir::Type result_type, mlir::OpBuilder* func_builder);
-
   mlir::MLIRContext* context_;
 
   // SymbolTable to which new functions should be inserted.
@@ -296,6 +233,12 @@ class HloFunctionImporter {
 
   bool flatten_computation_args_result_;
 };
+
+// Returns a StringAttr that carries a prettyprinted representation of the
+// given HLO C++ input_output_alias_config.
+// Always succeeds and returns a non-empty attribute.
+mlir::Attribute ConvertInputOutputAlias(const HloInputOutputAliasConfig& alias,
+                                        mlir::Builder* builder);
 
 // Returns a StringAttr that carries a prettyprinted representation of the
 // given HLO C++ sharding.

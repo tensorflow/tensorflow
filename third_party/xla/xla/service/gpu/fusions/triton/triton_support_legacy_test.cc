@@ -15,6 +15,8 @@ limitations under the License.
 
 // TODO(b/343158720): Simplify the tests in this file after a generic emitter
 // has landed.
+#include "xla/service/gpu/fusions/triton/triton_support_legacy.h"
+
 #include <memory>
 #include <string>
 #include <tuple>
@@ -34,15 +36,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/fusions/triton/triton_fusion_emitter.h"
-#include "xla/service/gpu/fusions/triton/triton_support.h"
 #include "xla/service/gpu/fusions/triton/triton_test_utils.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 

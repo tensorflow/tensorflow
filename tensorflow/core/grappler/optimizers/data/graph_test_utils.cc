@@ -178,7 +178,8 @@ NodeDef MakeParallelMapNode(StringPiece name, StringPiece input_node_name,
 NodeDef MakeParallelMapV2Node(StringPiece name, StringPiece input_node_name,
                               StringPiece num_parallel_calls_node_name,
                               StringPiece function_name,
-                              StringPiece deterministic) {
+                              StringPiece deterministic,
+                              bool use_unbounded_threadpool) {
   return test::function::NDef(
       name, "ParallelMapDatasetV2",
       {string(input_node_name), string(num_parallel_calls_node_name)},
@@ -188,6 +189,7 @@ NodeDef MakeParallelMapV2Node(StringPiece name, StringPiece input_node_name,
           {"output_shapes", absl::Span<const TensorShape>{}},
           {"output_types", absl::Span<const DataType>{}},
           {"deterministic", string(deterministic)},
+          {"use_unbounded_threadpool", use_unbounded_threadpool},
       });
 }
 

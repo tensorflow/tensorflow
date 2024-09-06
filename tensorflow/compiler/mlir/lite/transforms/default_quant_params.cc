@@ -63,6 +63,13 @@ class DefaultQuantParamsPass
     this->is_signed_ = is_signed;
   }
 
+  explicit DefaultQuantParamsPass(
+      const DefaultQuantParamsPassOptions &options) {
+    this->default_min_ = options.default_min_;
+    this->default_max_ = options.default_max_;
+    this->is_signed_ = options.is_signed_;
+  }
+
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(DefaultQuantParamsPass)
   void runOnOperation() override;
 
@@ -235,6 +242,11 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateDefaultQuantParamsPass(
     double default_min, double default_max, bool is_signed) {
   return std::make_unique<DefaultQuantParamsPass>(default_min, default_max,
                                                   is_signed);
+}
+
+std::unique_ptr<OperationPass<func::FuncOp>> CreateDefaultQuantParamsPass(
+    const DefaultQuantParamsPassOptions &options) {
+  return std::make_unique<DefaultQuantParamsPass>(options);
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>> CreateDefaultQuantParamsPass() {

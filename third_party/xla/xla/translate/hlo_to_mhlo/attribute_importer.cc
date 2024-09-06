@@ -17,13 +17,24 @@ limitations under the License.
 
 #include <sys/types.h>
 
+#include <algorithm>
+#include <cstdint>
 #include <optional>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/Builders.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -193,6 +204,62 @@ absl::StatusOr<mlir::mhlo::CustomCallApiVersion> ConvertCustomCallApiVersion(
                              api_version,
                              xla::CustomCallApiVersion_Name(api_version));
   }
+}
+
+mlir::NamedAttribute ConvertChannelHandle(const ChannelHandle& channel,
+                                          mlir::Builder* builder) {
+  return builder->getNamedAttr(
+      "channel_handle",
+      mlir::mhlo::ChannelHandleAttr::get(builder->getContext(),
+                                         channel.handle(), channel.type()));
+}
+mlir::NamedAttribute ConvertChannelHandle(std::optional<int64_t> channel_id,
+                                          mlir::Builder* builder) {
+  ChannelHandle channel_handle;
+  if (channel_id) channel_handle.set_handle(*channel_id);
+  return ConvertChannelHandle(channel_handle, builder);
+}
+
+mlir::NamedAttribute ConvertReplicaGroups(
+    absl::Span<const ReplicaGroup> replica_groups, mlir::Builder* builder) {
+  const int64_t num_groups = replica_groups.size();
+  // Replica groups in HLO can be non-uniform in size, for example:
+  // replica_groups={{0},{1,2},{3}}. Since we are representing them as a 2D
+  // tensor, pad the smaller sized replica groups with -1.
+  const int64_t group_size = absl::c_accumulate(
+      replica_groups, static_cast<int64_t>(0),
+      [](int64_t current, const ReplicaGroup& g) {
+        return std::max<int64_t>(current, g.replica_ids_size());
+      });
+  // Initialize all elements to -1 to support non-uniform replica groups.
+  std::vector<int64_t> attr(num_groups * group_size, -1);
+  for (int i = 0; i < num_groups; ++i) {
+    int index = i * group_size;
+    for (const int64_t& id : replica_groups[i].replica_ids())
+      attr[index++] = id;
+  }
+  auto type = mlir::RankedTensorType::get({num_groups, group_size},
+                                          builder->getIntegerType(64));
+  return builder->getNamedAttr("replica_groups",
+                               mlir::DenseIntElementsAttr::get(type, attr));
+}
+
+mlir::NamedAttribute ConvertSourceTargetPairs(
+    const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+    mlir::Builder* builder) {
+  std::vector<int64_t> attr(source_target_pairs.size() * 2);
+  for (const auto& p : llvm::enumerate(source_target_pairs)) {
+    attr[2 * p.index()] = p.value().first;
+    attr[2 * p.index() + 1] = p.value().second;
+  }
+  auto type = mlir::RankedTensorType::get(
+      {static_cast<int64_t>(attr.size() / 2), 2}, builder->getIntegerType(64));
+  return builder->getNamedAttr("source_target_pairs",
+                               mlir::DenseIntElementsAttr::get(type, attr));
+}
+
+mlir::NamedAttribute ConvertUseGlobalDeviceIds(mlir::Builder* builder) {
+  return builder->getNamedAttr("use_global_device_ids", builder->getUnitAttr());
 }
 
 absl::StatusOr<mlir::ArrayAttr> ExtractLayoutsFromShapes(

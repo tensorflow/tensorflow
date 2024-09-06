@@ -337,6 +337,7 @@ Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module,
   kernelPm.addPass(::mlir::createConvertSCFToCFPass());
 #if TENSORFLOW_USE_ROCM
   kernelPm.addPass(mlir::createGpuKernelToRocdlPass());
+  kernelPm.addPass(mlir::createReconcileUnrealizedCastsPass());
 #elif GOOGLE_CUDA
   kernelPm.addPass(mlir::createGpuKernelToNvvmPass());
   kernelPm.addPass(mlir::NVVM::createOptimizeForTargetPass());

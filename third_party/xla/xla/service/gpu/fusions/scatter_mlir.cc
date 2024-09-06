@@ -39,9 +39,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/primitive_util.h"
+#include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 #include "xla/service/gpu/fusions/mlir/elemental_hlo_to_mlir.h"
-#include "xla/service/gpu/fusions/mlir/ir/xla_gpu_ops.h"
+#include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/indexing_map.h"
@@ -62,7 +63,6 @@ using mlir::OpBuilder;
 using mlir::Value;
 using mlir::ValueRange;
 using mlir::func::ReturnOp;
-using mlir::tensor::InsertOp;
 using mlir_converter::CallTargetProvider;
 using mlir_converter::PartitionedComputations;
 using mlir_converter::ProvideParameter;
@@ -174,7 +174,8 @@ mlir::Value EmitScatterComputation(
     auto reduced_val = mlir_converter::InlineBlock(
         b, reducer.getBody().front(), {operand_elem, update_elem})[0];
 
-    return b.create<InsertOp>(reduced_val, output_tensor, indices);
+    return b.create<mlir::tensor::InsertOp>(reduced_val, output_tensor,
+                                            indices);
   }
   auto atomic_rmw = b.create<AtomicRMWOp>(output_tensor, indices);
   mlir::OpBuilder body_builder = atomic_rmw.getBodyBuilder();

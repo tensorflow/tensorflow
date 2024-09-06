@@ -12,6 +12,7 @@ glob_lit_tests(
         "gpu",
     ],
     driver = "//tensorflow/compiler/mlir:run_lit.sh",
+    hermetic_cuda_data_dir = "%S/../../../../../../../../cuda_nvcc",
     test_file_exts = ["mlir"],
 )
 

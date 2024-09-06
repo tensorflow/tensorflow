@@ -35,13 +35,14 @@ limitations under the License.
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
 #include "xla/service/gpu/model/symbolic_tile.h"
+#include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/model/tiled_hlo_instruction.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/verified_hlo_module.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/util.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -78,15 +79,44 @@ Matcher<const TiledHloInstruction> MatchTiledHloInstruction(
                                       tile_offsets_indexing);
 }
 
+// Fake emitter-specific constraints for testing. Requires that the tile size
+// along the first dimension is exactly half the size of the axis.
+class FakeEmitterSpecificConstraints : public EmitterSpecificConstraints {
+ public:
+  absl::StatusOr<bool> ParametersSatisfyConstraints(
+      absl::Span<const int64_t> tile_parameters) const override {
+    return tile_parameters[0] == dim0_tile_size_;
+  }
+
+  static EmitterSpecificConstraintsBuilder GetBuilder() {
+    return [](const std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>&
+                  instructions) {
+      const SymbolicTiledHloInstruction* root = instructions[0].get();
+      int64_t dim0_size = root->hlo()->shape().dimensions(0);
+      return std::make_unique<FakeEmitterSpecificConstraints>(
+          /*dim0_tile_size=*/dim0_size / 2);
+    };
+  }
+
+  explicit FakeEmitterSpecificConstraints(int64_t dim0_tile_size)
+      : dim0_tile_size_(dim0_tile_size) {}
+
+ private:
+  int64_t dim0_tile_size_;
+};
+
 class SymbolicTileAnalysisTest : public HloTestBase {
  public:
-  std::optional<SymbolicTileAnalysis> TryAnalyzeModule(HloModule* module) {
+  std::optional<SymbolicTileAnalysis> TryAnalyzeModule(
+      HloModule* module,
+      EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder =
+          nullptr) {
     SymbolicTileAnalysisOrError analysis_or_error =
         SymbolicTileAnalysis::AnalyzeComputation(
             *module->entry_computation()
                  ->root_instruction()
                  ->fused_instructions_computation(),
-            &mlir_context_);
+            &mlir_context_, emitter_specific_constraints_builder);
 
     if (std::holds_alternative<SymbolicTileAnalysis>(analysis_or_error)) {
       return std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
@@ -505,6 +535,35 @@ ENTRY main {
   // ... unless we pinky-promise (lie) that they satisfy the constraints ;)
   TF_EXPECT_OK(analysis->ComputeTiledHloInstructions(
       impossible_tile_parameters, /*constraints_are_known_satisfied=*/true));
+}
+
+TEST_F(SymbolicTileAnalysisTest, EmitterSpecificConstraintsAreUsedCorrectly) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+  fusion {
+    p0 = f32[16,32] parameter(0)
+    ROOT add = f32[16,32] add(p0, p0)
+  }
+
+  ENTRY main {
+    p0 = f32[16,32] parameter(0)
+    ROOT fusion = f32[16,32] fusion(p0), kind=kLoop, calls=fusion
+  })"));
+
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(
+      module.get(), FakeEmitterSpecificConstraints::GetBuilder());
+
+  ASSERT_TRUE(analysis.has_value());
+
+  // FakeEmitterSpecificConstraints require that the tile size along the first
+  // dimension is exactly half the size of the axis. Tile sizes {5, 32} do not
+  // satisfy emitter-specific constraints.
+  EXPECT_THAT(analysis->ParametersSatisfyConstraints({5, 32}),
+              IsOkAndHolds(false));
+
+  // However, tile sizes {8, 32} do satisfy emitter-specific constraints.
+  EXPECT_THAT(analysis->ParametersSatisfyConstraints({8, 32}),
+              IsOkAndHolds(true));
 }
 
 TEST_F(SymbolicTileAnalysisTest, ConstraintsAreAggregatedCorrectly) {

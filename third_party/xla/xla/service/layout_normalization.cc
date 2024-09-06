@@ -742,21 +742,31 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     Shape s = hlo->shape();
     HloOpcode opcode = hlo->opcode();
     TF_RET_CHECK(opcode == HloOpcode::kClamp || opcode == HloOpcode::kSelect);
-    HloInstruction* p = hlo->mutable_operand(0);
-    HloInstruction* i1 = hlo->mutable_operand(1);
-    HloInstruction* i2 = hlo->mutable_operand(2);
-    TF_RET_CHECK(p->shape().layout() == s.layout());
-    TF_RET_CHECK(i1->shape().layout() == s.layout());
-    TF_RET_CHECK(i2->shape().layout() == s.layout());
+    HloInstruction* arg0 = hlo->mutable_operand(0);
+    HloInstruction* arg1 = hlo->mutable_operand(1);
+    HloInstruction* arg2 = hlo->mutable_operand(2);
+    if (opcode == HloOpcode::kClamp) {
+      TF_RET_CHECK(arg1->shape().layout() == s.layout());
+    } else if (opcode == HloOpcode::kSelect) {
+      TF_RET_CHECK(arg1->shape().layout() == s.layout());
+      TF_RET_CHECK(arg2->shape().layout() == s.layout());
+    } else {
+      TF_RET_CHECK(false);
+    }
 
-    TF_ASSIGN_OR_RETURN(HloInstruction * p_0, GetNormalizedInput(p));
-    TF_ASSIGN_OR_RETURN(HloInstruction * i1_0, GetNormalizedInput(i1));
-    TF_ASSIGN_OR_RETURN(HloInstruction * i2_0, GetNormalizedInput(i2));
+    TF_ASSIGN_OR_RETURN(HloInstruction * normalized_arg0,
+                        GetNormalizedInput(arg0));
+    TF_ASSIGN_OR_RETURN(HloInstruction * normalized_arg1,
+                        GetNormalizedInput(arg1));
+    TF_ASSIGN_OR_RETURN(HloInstruction * normalized_arg2,
+                        GetNormalizedInput(arg2));
 
     TF_ASSIGN_OR_RETURN(Shape new_shape, ShapeInference::InferTernaryOpShape(
-                                             opcode, p_0, i1_0, i2_0));
+                                             opcode, normalized_arg0,
+                                             normalized_arg1, normalized_arg2));
     HloInstruction* normalized = hlo->parent()->AddInstruction(
-        HloInstruction::CreateTernary(new_shape, opcode, p_0, i1_0, i2_0));
+        HloInstruction::CreateTernary(new_shape, opcode, normalized_arg0,
+                                      normalized_arg1, normalized_arg2));
     hlo->SetupDerivedInstruction(normalized);
     SetVisited(*normalized);
 

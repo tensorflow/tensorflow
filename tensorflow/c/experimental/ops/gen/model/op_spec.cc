@@ -17,6 +17,11 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/c/experimental/ops/gen/model/arg_spec.h"
+#include "tensorflow/c/experimental/ops/gen/model/attr_spec.h"
+#include "tensorflow/core/framework/api_def.pb.h"
+#include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace generator {

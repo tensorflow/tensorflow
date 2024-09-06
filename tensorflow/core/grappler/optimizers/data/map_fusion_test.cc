@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/errors.h"
 
 namespace tensorflow {
@@ -88,9 +88,11 @@ TEST_P(AutotuneSetting, MapFusionTest) {
        NDef("range", "RangeDataset", {"start", "stop", "step"}, {}),
        num_parallel_calls_node,
        MakeParallelMapV2Node("map1", "range", num_parallel_calls_node.name(),
-                             "XTimesTwo", "default"),
+                             "XTimesTwo", "default",
+                             /*use_unbounded_threadpool=*/false),
        MakeParallelMapV2Node("map2", "map1", num_parallel_calls_node.name(),
-                             "XTimesTwo", "default")},
+                             "XTimesTwo", "default",
+                             /*use_unbounded_threadpool=*/false)},
       // FunctionLib
       {
           test::function::XTimesTwo(),
@@ -171,9 +173,11 @@ TEST(MapFusionTest, FuseTwoParallelMapNodesIntoOne) {
        NDef("range", "RangeDataset", {"start", "stop", "step"}, {}),
        num_parallel_calls_node,
        MakeParallelMapV2Node("map1", "range", num_parallel_calls_node.name(),
-                             "XTimesTwo", "default"),
+                             "XTimesTwo", "default",
+                             /*use_unbounded_threadpool=*/false),
        MakeParallelMapV2Node("map2", "map1", num_parallel_calls_node.name(),
-                             "XTimesTwo", "default")},
+                             "XTimesTwo", "default",
+                             /*use_unbounded_threadpool=*/false)},
       // FunctionLib
       {
           test::function::XTimesTwo(),
@@ -185,6 +189,36 @@ TEST(MapFusionTest, FuseTwoParallelMapNodesIntoOne) {
   EXPECT_TRUE(graph_utils::ContainsNodeWithOp("ParallelMapDatasetV2", output));
   EXPECT_FALSE(graph_utils::ContainsGraphNodeWithName("map1", output));
   EXPECT_FALSE(graph_utils::ContainsGraphNodeWithName("map2", output));
+}
+
+TEST(MapFusionTest, NoChange_UnboundedThreadpoolParallelMap) {
+  using test::function::NDef;
+  GrapplerItem item;
+  NodeDef num_parallel_calls_node = CreateScalarConstNodeHelper(
+      "num_parallel_calls", DT_INT64,
+      [](TensorProto* proto) { proto->add_int64_val(-1); });
+  item.graph = test::function::GDef(
+      {NDef("start", "Const", {}, {{"value", 0}, {"dtype", DT_INT32}}),
+       NDef("stop", "Const", {}, {{"value", 10}, {"dtype", DT_INT32}}),
+       NDef("step", "Const", {}, {{"value", 1}, {"dtype", DT_INT32}}),
+       NDef("range", "RangeDataset", {"start", "stop", "step"}, {}),
+       num_parallel_calls_node,
+       MakeParallelMapV2Node("map1", "range", num_parallel_calls_node.name(),
+                             "XTimesTwo", "default",
+                             /*use_unbounded_threadpool=*/true),
+       MakeParallelMapV2Node("map2", "map1", num_parallel_calls_node.name(),
+                             "XTimesTwo", "default",
+                             /*use_unbounded_threadpool=*/false)},
+      // FunctionLib
+      {
+          test::function::XTimesTwo(),
+      });
+
+  MapFusion optimizer;
+  GraphDef output;
+  TF_ASSERT_OK(OptimizeWithMapFusion(item, &output, true));
+  EXPECT_TRUE(graph_utils::ContainsGraphNodeWithName("map1", output));
+  EXPECT_TRUE(graph_utils::ContainsGraphNodeWithName("map2", output));
 }
 
 TEST(MapFusionTest, FusedNodesAndFunctionsAreNamedAfterOldNodesAndFunctions) {
@@ -209,10 +243,11 @@ TEST(MapFusionTest, FusedNodesAndFunctionsAreNamedAfterOldNodesAndFunctions) {
          num_parallel_calls_node,
          MakeParallelMapV2Node(parent_map_node_name, "range",
                                num_parallel_calls_node.name(),
-                               parent_function_name, "default"),
+                               parent_function_name, "default",
+                               /*use_unbounded_threadpool=*/false),
          MakeParallelMapV2Node(map_node_name, parent_map_node_name,
                                num_parallel_calls_node.name(), function_name,
-                               "default")},
+                               "default", /*use_unbounded_threadpool=*/false)},
         // FunctionLib
         {parent_fn, fn});
   };

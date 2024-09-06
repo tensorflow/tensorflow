@@ -17,24 +17,19 @@ limitations under the License.
 
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir::odml {
 
-// Legalizes mhlo.convolutions to the corresponding tfl op.
-//
-// Only considers convolutions with tfl-native layout and trivial (no)
-// padding. It is expected that convolutions will re-layouted in upstream
-// prepare pass. Additionally it is expected that padding will be pulled out
-// into an explicit mhlo.pad op in said prepare pass.
+// Prepares mhlo.convolutions and legalizes to the corresponding tfl op.
 //
 // Note: "tfl-native" layouts are as follows:
-// 2D : [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f]
-// 3D : [b, 0, 1, 2, f]x[0, 1, 2, i, o]->[b, 0, 1, 2, f]
+// 2D             : [b, 0, 1, f]x[o, 0, 1, i]->[b, 0, 1, f]
+// 3D             : [b, 0, 1, 2, f]x[0, 1, 2, i, o]->[b, 0, 1, 2, f]
+// 2D (depthwise) : [b, 0, 1, f]x[i, 0, 1, o]->[b, 0, 1, f]
 //
 // Matches: mhlo.convolution
-//   layout:        tfl-native
-//   padding:       trivial (all 0)
+//   layout:        any (will transpose to tfl-native)
+//   padding:       any (will pull into explicit pad_op)
 //   lhs_dilations: trivial (all 1)
 //   rhs_dilations: any
 //   strides:       any
@@ -54,8 +49,10 @@ namespace mlir::odml {
 //      if rank == 4: tfl.conv_2D
 // else:
 //   tfl.transpose_conv TODO: b/352954597 - Add support.
-void PopulateConvPatterns(MLIRContext* ctx, RewritePatternSet& patterns,
-                          ConversionTarget& target);
+void PopulateLegalizeConvPatterns(MLIRContext* ctx, RewritePatternSet& patterns,
+                                  ConversionTarget& target);
+
+void PopulatePrepareConvPatterns(MLIRContext* ctx, RewritePatternSet& patterns);
 
 }  // namespace mlir::odml
 

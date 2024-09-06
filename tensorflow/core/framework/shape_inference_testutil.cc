@@ -138,7 +138,7 @@ Status ShapeInferenceTestutil::InferShapes(ShapeInferenceTestOp op,
     }
 
     // Verify the dimensions.
-    CHECK(absl::StartsWith(expected, "[") && str_util::EndsWith(expected, "]"))
+    CHECK(absl::StartsWith(expected, "[") && absl::EndsWith(expected, "]"))
         << expected;
     expected.remove_prefix(1);
     expected.remove_suffix(1);

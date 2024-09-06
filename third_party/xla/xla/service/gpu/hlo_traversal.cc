@@ -500,13 +500,17 @@ bool operator==(const HloInstructionAdaptor& lhs,
          lhs.instruction_->unique_id() == rhs.instruction_->unique_id();
 }
 
+bool operator!=(const HloInstructionAdaptor& lhs,
+                const HloInstructionAdaptor& rhs) {
+  return !(lhs == rhs);
+}
+
 namespace {
 void HloBfsTraversal(
     absl::Span<const HloInstructionAdaptor> roots,
     const HloFusionAdaptor& fusion,
     const std::function<TraversalResult(HloInstructionAdaptor node)>&
         visit_node,
-    const std::function<void(HloInstructionAdaptor producer)>& visit_arg,
     bool visit_operands) {
   absl::flat_hash_set<HloInstructionAdaptor> visited;
   std::queue<HloInstructionAdaptor> q;
@@ -514,12 +518,8 @@ void HloBfsTraversal(
     const auto& adjacent_nodes =
         visit_operands ? node.GetOperands() : node.GetUsers();
     for (const auto& node : adjacent_nodes) {
-      if (visited.insert(node).second) {
-        if (fusion.ContainsInstruction(node)) {
-          q.push(node);
-        } else {
-          visit_arg(node);
-        }
+      if (fusion.ContainsInstruction(node) && visited.insert(node).second) {
+        q.push(node);
       }
     }
   };
@@ -548,9 +548,8 @@ void HloBfsConsumersFirstTraversal(
     absl::Span<const HloInstructionAdaptor> roots,
     const HloFusionAdaptor& fusion,
     const std::function<TraversalResult(HloInstructionAdaptor node)>&
-        visit_node,
-    const std::function<void(HloInstructionAdaptor producer)>& visit_arg) {
-  HloBfsTraversal(roots, fusion, visit_node, visit_arg,
+        visit_node) {
+  HloBfsTraversal(roots, fusion, visit_node,
                   /*visit_operands=*/true);
 }
 
@@ -559,9 +558,8 @@ void HloBfsProducersFirstTraversal(
     const HloFusionAdaptor& fusion,
     const std::function<TraversalResult(HloInstructionAdaptor node)>&
         visit_node) {
-  HloBfsTraversal(
-      producers, fusion, visit_node, [](HloInstructionAdaptor) {},
-      /*visit_operands=*/false);
+  HloBfsTraversal(producers, fusion, visit_node,
+                  /*visit_operands=*/false);
 }
 
 bool HloBfsAnyOf(absl::Span<const HloInstructionAdaptor> roots,
@@ -592,7 +590,7 @@ std::optional<HloInstructionAdaptor> HloBfsFindIf(
         }
         return TraversalResult::kAdvance;
       },
-      [](HloInstructionAdaptor) {}, visit_operands);
+      visit_operands);
   return result;
 }
 

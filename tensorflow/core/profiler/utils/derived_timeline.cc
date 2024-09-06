@@ -69,7 +69,6 @@ inline std::string HloOpEventPrefix(const GpuEventStats& stats) {
 std::vector<XEventMetadata*> GetOrCreateHloOpEventsMetadata(
     XPlaneBuilder& xplane, const GpuEventStats& stats, const Symbol symbol) {
   DCHECK(stats.IsXlaOp());
-  DCHECK(!stats.hlo_module_name.empty());
   std::vector<XEventMetadata*> hlo_op_events_metadata;
   hlo_op_events_metadata.reserve(stats.hlo_op_names.size());
   // Prepend an HLO module identifier so HLO operators with the same name but in

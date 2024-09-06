@@ -456,7 +456,11 @@ bool IsTf32Allowed(PrecisionConfig::Algorithm algorithm,
     const HloInstruction* gemm) {
   TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                       gemm->backend_config<GpuBackendConfig>());
-  const GemmBackendConfig& config = gpu_config.gemm_backend_config();
+  return For(gemm, gpu_config.gemm_backend_config());
+}
+
+/*static*/ absl::StatusOr<GemmConfig> GemmConfig::For(
+    const HloInstruction* gemm, const GemmBackendConfig& config) {
   std::optional<int64_t> algorithm;
   if (config.algorithm_case() != GemmBackendConfig::ALGORITHM_NOT_SET) {
     algorithm = config.selected_algorithm();

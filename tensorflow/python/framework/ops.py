@@ -213,7 +213,15 @@ def numpy_text(tensor, is_repr=False) -> str:
   """Human readable representation of a tensor's numpy value."""
   if tensor.dtype.is_numpy_compatible:
     # pylint: disable=protected-access
-    text = repr(tensor._numpy()) if is_repr else str(tensor._numpy())
+    tensor_numpy = tensor._numpy()
+    if is_repr:
+      if np.isscalar(tensor_numpy) and not isinstance(tensor_numpy, bytes):
+        # .item() converts the numpy scalars to python items.
+        text = repr(tensor_numpy.item())
+      else:
+        text = repr(tensor_numpy)
+    else:
+      text = str(tensor_numpy)
     # pylint: enable=protected-access
   else:
     text = "<unprintable>"

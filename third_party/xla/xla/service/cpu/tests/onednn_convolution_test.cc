@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal.h"
-#include "xla/service/cpu/onednn_matmul_rewriter.h"
+#include "xla/service/cpu/onednn_contraction_rewriter.h"
 #include "xla/service/cpu/onednn_util.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
@@ -34,6 +34,12 @@ namespace cpu {
 
 class ConvolutionTest : public HloTestBase {
  protected:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_cpu_use_thunk_runtime(false);
+    return debug_options;
+  }
+
   const char* conv_rewrite_str_ = R"(
     ; CHECK:     custom_call_target="__onednn$convolution",
     ; CHECK:       backend_config={

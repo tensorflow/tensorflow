@@ -36,6 +36,10 @@ std::vector<tensorflow::profiler::XPlane*> FindMutableTensorCorePlanes(
 // TensorCore plane name.
 std::optional<int> GetTensorCoreId(absl::string_view plane_name);
 
+// Get Sparsecore Id from SparseCore plane name if plane name is a valid
+// SparseCore plane name.
+std::optional<int> GetSparseCoreId(absl::string_view plane_name);
+
 }  // namespace profiler
 }  // namespace tsl
 

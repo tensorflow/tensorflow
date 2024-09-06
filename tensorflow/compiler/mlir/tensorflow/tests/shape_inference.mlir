@@ -974,7 +974,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
   // CHECK-LABEL: func @call_in_graph_1
   func.func @call_in_graph_1(%arg0: tensor<?x?x?x?xbf16>, %arg1: tensor<5x5x1x32xbf16>) -> tensor<*xbf16> {
-    // CHECK: tf_executor.fetch %outputs : tensor<?x?x?x32xbf16>
+    // CHECK: tf_executor.fetch %outputs : tensor<?x28x28x32xbf16>
     %0 = tf_executor.graph {
       %1:2 = tf_executor.island wraps "tf.PartitionedCall"(%arg0, %arg1) {
         config = "", config_proto = "", executor_type = "", f = @call_in_graph_func_1} : (tensor<?x?x?x?xbf16>, tensor<5x5x1x32xbf16>) -> tensor<*xbf16>
@@ -985,7 +985,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
   // CHECK-LABEL: func @call_in_graph_func_1
   func.func @call_in_graph_func_1(%arg0: tensor<?x28x28x1xbf16>, %arg1: tensor<5x5x1x32xbf16>) -> tensor<?x28x28x?xbf16> {
-    // CHECK: tf_executor.fetch %outputs : tensor<?x?x?x32xbf16>
+    // CHECK: tf_executor.fetch %outputs : tensor<?x28x28x32xbf16>
     %0 = tf_executor.graph {
       %1:2 = tf_executor.island wraps "tf.Conv2D"(%arg0, %arg1) {data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 1, 1], use_cudnn_on_gpu = true}: (tensor<?x28x28x1xbf16>, tensor<5x5x1x32xbf16>) -> tensor<?x28x28x?xbf16>
       tf_executor.fetch %1#0 : tensor<?x28x28x?xbf16>
@@ -2265,4 +2265,14 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     return %3#1, %3#2, %4, %5 : tensor<1x1120x?xi32>, tensor<1x1120x?xi32>, tensor<1120x?xi32>, tensor<2xi32>
   }
 
+  // CHCK-LABEL: func @infer_return_type_static_out
+  func.func @infer_return_type_static_out(%arg0: tensor<?x?x?x?xf32>, %arg1: tensor<?x?x?x?xf32>) -> tensor<1x28x28x3xf32> {
+    %0 = "tf.Conv2D"(%arg0, %arg1) {data_format = "NHWC", device = "", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 1, 1], use_cudnn_on_gpu = true}: (tensor<?x?x?x?xf32>, tensor<?x?x?x?xf32>) -> tensor<1x28x28x3xf32>
+    func.return %0 : tensor<1x28x28x3xf32>
+  }
+
+  // CHCK: %0 = "tf.Conv2D"(%arg0, %arg1) <{data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 1, 1, 1], use_cudnn_on_gpu = true}> {device = ""} : (tensor<?x?x?x?xf32>, tensor<?x?x?x?xf32>) -> tensor<1x28x28x3xf32>
+
+
 }
+

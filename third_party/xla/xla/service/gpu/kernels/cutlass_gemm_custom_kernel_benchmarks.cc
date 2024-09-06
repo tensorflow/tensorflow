@@ -21,7 +21,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/kernel_factory.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
@@ -55,13 +54,13 @@ static void BM_RowMajorGemm(benchmark::State& state) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto custom_kernels,
-      GetCutlassGemmKernels("cutlass_gemm", PrimitiveType::BF16, m, n, k,
+      GetCutlassGemmKernels("cutlass_gemm", PrimitiveType::BF16,
+                            PrimitiveType::BF16, PrimitiveType::BF16, m, n, k,
                             /*indices=*/{0, 1, 2}, /*slices=*/{}, device));
   const auto& custom_kernel = custom_kernels[0];
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto gemm,
-      se::KernelFactory::Create(executor, custom_kernel.kernel_spec()));
+  TF_ASSERT_OK_AND_ASSIGN(auto gemm,
+                          executor->LoadKernel(custom_kernel.kernel_spec()));
 
   // Prepare arguments: a=1.1, b=1.2, c=0.0
   se::DeviceMemory<float> a = executor->AllocateArray<float>(m * k, 0);

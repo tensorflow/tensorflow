@@ -15,9 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_STATEFUL_ERROR_REPORTER_H_
 #define TENSORFLOW_LITE_STATEFUL_ERROR_REPORTER_H_
 
+// LINT.IfChange
 #include <string>
 
-#include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/compiler/mlir/lite/core/api/error_reporter.h"
 
 namespace tflite {
 
@@ -30,5 +31,6 @@ class StatefulErrorReporter : public ErrorReporter {
 };
 
 }  // namespace tflite
+// LINT.ThenChange(//tensorflow/compiler/mlir/lite/stateful_error_reporter.h)
 
 #endif  // TENSORFLOW_LITE_STATEFUL_ERROR_REPORTER_H_

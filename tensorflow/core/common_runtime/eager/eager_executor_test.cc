@@ -17,10 +17,10 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
 #include "tsl/protobuf/error_codes.pb.h"
 

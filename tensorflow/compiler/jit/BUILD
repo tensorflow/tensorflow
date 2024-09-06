@@ -518,7 +518,6 @@ cc_library(
         ":internal",
         # We reuse VariableInfo in TFRT's implementation of TpuExecuteOp.
         "//learning/brain/tfrt/tf_tpu:__pkg__",
-        "//learning/brain/tfrt/tpu_plugin:__pkg__",
         "//learning/brain/tfrt/tpu_common:__pkg__",
         "//tensorflow/core/common_runtime/next_pluggable_device:__pkg__",
     ],
@@ -539,9 +538,6 @@ cc_library(
         ":internal",
         # We reuse VariableInfo in TFRT's implementation of TpuExecuteOp.
         "//learning/brain/tfrt/tf_tpu:__pkg__",
-        "//learning/brain/tfrt/tpu_plugin:__pkg__",
-        "//learning/brain/tfrt/tpu_common:__pkg__",
-        "//tensorflow/core/common_runtime/next_pluggable_device:__pkg__",
     ],
     deps = [
         ":variable_info",
@@ -612,8 +608,6 @@ cc_library(
         # We reuse VariableInfo in TFRT's implementation of TpuExecuteOp.
         "//learning/brain/tfrt/tf_tpu:__pkg__",
         "//learning/brain/tfrt/tpu_plugin:__pkg__",
-        "//learning/brain/tfrt/tpu_common:__pkg__",
-        "//tensorflow/core/common_runtime/next_pluggable_device:__pkg__",
         "//tensorflow/core/tfrt/gpu/kernel:__pkg__",
     ],
     deps = [
@@ -678,7 +672,6 @@ tf_cc_test(
         "//tensorflow/core/tfrt/common:pjrt_util",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/pjrt:pjrt_client",
@@ -686,6 +679,7 @@ tf_cc_test(
         "@local_xla//xla/pjrt:tfrt_cpu_pjrt_client",
         "@local_xla//xla/tests:literal_test_util",
         "@local_xla//xla/tsl/framework:device_id_utils",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -712,11 +706,11 @@ tf_cuda_only_cc_test(
         "//tensorflow/core/tfrt/common:pjrt_util",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/pjrt:pjrt_client",
         "@local_xla//xla/tests:literal_test_util",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -726,7 +720,6 @@ cc_library(
     hdrs = ["xla_compile_util.h"],
     visibility = [
         ":internal",
-        "//tensorflow/core/common_runtime/next_pluggable_device:__pkg__",
         "//tensorflow/core/tfrt/gpu/kernel:__pkg__",
     ],
     deps = [
@@ -770,10 +763,7 @@ cc_library(
     name = "device_compiler",
     hdrs = ["device_compiler.h"],
     copts = tf_copts(),
-    visibility = [
-        ":internal",
-        "//tensorflow/core/common_runtime/next_pluggable_device:__pkg__",
-    ],
+    visibility = [":internal"],
     deps = [
         ":device_compilation_cache",
         ":device_compilation_cluster_signature",
@@ -1118,7 +1108,6 @@ cc_library(
     ],
     visibility = [
         ":internal",
-        "//tensorflow/core/tfrt/utils:__pkg__",
         "//third_party/cloud_tpu/inference_converter:__pkg__",
         "//waymo/onboard/ml/chauffeur_net:__pkg__",
     ],
@@ -1564,10 +1553,7 @@ cc_library(
     name = "device_compiler_client",
     srcs = ["device_compiler_client.cc"],
     hdrs = ["device_compiler_client.h"],
-    visibility = [
-        ":internal",
-        "//tensorflow/core/common_runtime/next_pluggable_device:__pkg__",
-    ],
+    visibility = [":internal"],
     deps = [
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/core/util:determinism",
@@ -1596,6 +1582,7 @@ cc_library(
 
 cc_library(
     name = "device_executable_persistor",
+    srcs = ["device_executable_persistor.cc"],
     hdrs = ["device_executable_persistor.h"],
     deps = [
         ":xla_compilation_cache_proto_cc",
@@ -1608,6 +1595,8 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla:util",
         "@local_xla//xla/pjrt:pjrt_client",

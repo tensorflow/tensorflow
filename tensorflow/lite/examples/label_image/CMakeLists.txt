@@ -61,6 +61,11 @@ if(TFLITE_ENABLE_EXTERNAL_DELEGATE)
           ${TFLITE_SOURCE_DIR}/tools/delegates/external_delegate_provider.cc)
 endif()
 
+include_directories(label_image
+  PUBLIC
+  ${CMAKE_BINARY_DIR}
+)
+
 add_executable(label_image
   ${TFLITE_LABEL_IMAGE_SRCS}
 )
@@ -78,4 +83,6 @@ target_compile_options(label_image
 )
 target_link_libraries(label_image
   tensorflow-lite
+  profiling_info_proto
+  protobuf
 )

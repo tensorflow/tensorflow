@@ -79,7 +79,7 @@ std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
   // first, i.e. before processing other outputs (that may overwrite the input).
   stream_executor::GpuDeviceInfoProto device_info;
   stream_executor::DeviceDescription device_description(device_info);
-  auto analysis = HloFusionAnalysis::Create(fusion, &device_description);
+  auto analysis = HloFusionAnalysis::Create(*user, device_description);
   bool is_reduction_emitter = analysis.GetEmitterFusionKind() ==
                               HloFusionAnalysis::EmitterFusionKind::kReduction;
   const HloInstruction* reduction_hero =

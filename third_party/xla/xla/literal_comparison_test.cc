@@ -19,7 +19,7 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/literal_util.h"
 #include "xla/test_helpers.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/ml_dtypes.h"
 
 namespace xla {

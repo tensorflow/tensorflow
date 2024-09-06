@@ -99,7 +99,8 @@ Traceback::~Traceback() {
   }
 }
 
-Traceback::Traceback(Traceback&& other) : frames_(std::move(other.frames_)) {
+Traceback::Traceback(Traceback&& other) noexcept
+    : frames_(std::move(other.frames_)) {
   // absl::InlinedVector does not always clear itself if moved. Since we rely on
   // its empty() method to destroy Traceback differently, we explicitly clear
   // here.
@@ -222,6 +223,7 @@ PyType_Slot traceback_slots_[] = {
 
 void BuildTracebackSubmodule(nb::module_& m) {
   nb::class_<Traceback::Frame>(m, "Frame")
+      .def(nb::init<const nb::str&, const nb::str&, int, int>())
       .def_ro("file_name", &Traceback::Frame::file_name)
       .def_ro("function_name", &Traceback::Frame::function_name)
       .def_ro("function_start_line", &Traceback::Frame::function_start_line)
@@ -270,6 +272,33 @@ void BuildTracebackSubmodule(nb::module_& m) {
   });
   traceback.def("__str__", &Traceback::ToString);
   traceback.def("as_python_traceback", &Traceback::AsPythonTraceback);
+
+  traceback.def_static(
+      "traceback_from_frames",
+      [](std::vector<Traceback::Frame> frames) {
+        nb::object traceback = nb::none();
+        nb::dict globals;
+        nb::handle traceback_type(
+            reinterpret_cast<PyObject*>(&PyTraceBack_Type));
+        for (const Traceback::Frame& frame : frames) {
+          PyCodeObject* py_code =
+              PyCode_NewEmpty(frame.file_name.c_str(),
+                              frame.function_name.c_str(), frame.line_num);
+          PyFrameObject* py_frame = PyFrame_New(PyThreadState_Get(), py_code,
+                                                globals.ptr(), /*locals=*/
+                                                nullptr);
+          Py_DECREF(py_code);
+          traceback = traceback_type(
+              /*tb_next=*/std::move(traceback),
+              /*tb_frame=*/
+              nb::steal<nb::object>(reinterpret_cast<PyObject*>(py_frame)),
+              /*tb_lasti=*/0,
+              /*tb_lineno=*/
+              frame.line_num);
+        }
+        return traceback;
+      },
+      "Creates a traceback from a list of frames.");
 
   traceback.def_static(
       "code_addr2line",

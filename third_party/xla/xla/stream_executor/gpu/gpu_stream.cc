@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <variant>
 
@@ -31,10 +32,14 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
+#include "xla/stream_executor/gpu/gpu_kernel.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
+#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/nvtx_utils.h"
 
 namespace stream_executor {
@@ -48,7 +53,7 @@ void InternalHostCallback(void* data) {
 }
 }  // namespace
 
-bool GpuStream::Init() {
+absl::Status GpuStream::Init() {
   int priority = [&]() {
     if (std::holds_alternative<int>(stream_priority_)) {
       return std::get<int>(stream_priority_);
@@ -58,11 +63,9 @@ bool GpuStream::Init() {
   }();
   if (!GpuDriver::CreateStream(parent_->gpu_context(), &gpu_stream_,
                                priority)) {
-    return false;
+    return absl::InternalError("Failed to CreateStream");
   }
-  return GpuDriver::InitEvent(parent_->gpu_context(), &completed_event_,
-                              GpuDriver::EventFlags::kDisableTiming)
-      .ok();
+  return absl::OkStatus();
 }
 
 Stream::PlatformSpecificHandle GpuStream::platform_specific_handle() const {
@@ -86,7 +89,10 @@ absl::Status GpuStream::MemZero(DeviceMemoryBase* location, uint64_t size) {
       size % 4 == 0) {
     return Memset32(location, 0x0, size);
   } else {
-    return parent_->Memset(this, location, 0x0, size);
+    return GpuDriver::AsynchronousMemsetUint8(
+        parent_->gpu_context(),
+        reinterpret_cast<GpuDevicePtr>(location->opaque()), 0x0, size,
+        gpu_stream());
   }
 }
 
@@ -130,14 +136,12 @@ absl::Status GpuStream::Memcpy(void* host_dst, const DeviceMemoryBase& gpu_src,
 
 absl::Status GpuStream::WaitFor(Stream* other) {
   GpuStream* other_gpu = AsGpuStream(other);
-  GpuEventHandle other_completed_event = *(other_gpu->completed_event());
-  TF_RETURN_IF_ERROR(GpuDriver::RecordEvent(parent_->gpu_context(),
-                                            other_completed_event,
-                                            AsGpuStreamValue(other_gpu)));
 
-  if (GpuDriver::WaitStreamOnEvent(parent_->gpu_context(),
-                                   AsGpuStreamValue(this),
-                                   other_completed_event)) {
+  GpuEvent* other_completed_event = other_gpu->completed_event();
+  TF_RETURN_IF_ERROR(other_completed_event->Record(other_gpu->gpu_stream()));
+
+  if (GpuDriver::WaitStreamOnEvent(parent_->gpu_context(), gpu_stream(),
+                                   other_completed_event->gpu_event())) {
     return absl::OkStatus();
   }
   return absl::InternalError("Couldn't wait for stream.");
@@ -173,20 +177,16 @@ absl::Status GpuStream::DoHostCallbackWithStatus(
   return absl::InternalError("Failed to host callback.");
 }
 
-void GpuStream::Destroy() {
-  if (completed_event_ != nullptr) {
-    absl::Status status =
-        GpuDriver::DestroyEvent(parent_->gpu_context(), &completed_event_);
-    if (!status.ok()) {
-      LOG(ERROR) << status.message();
-    }
+GpuStream::~GpuStream() {
+  BlockHostUntilDone().IgnoreError();
+  parent()->DeallocateStream(this);
+
+  if (!GpuDriver::IsStreamIdle(parent_->gpu_context(), gpu_stream_)) {
+    LOG(ERROR) << "Deallocating stream with pending work";
   }
 
+  completed_event_.reset();
   GpuDriver::DestroyStream(parent_->gpu_context(), &gpu_stream_);
-}
-
-bool GpuStream::IsIdle() const {
-  return GpuDriver::IsStreamIdle(parent_->gpu_context(), gpu_stream_);
 }
 
 void GpuStream::set_name(absl::string_view name) {
@@ -198,6 +198,83 @@ void GpuStream::set_name(absl::string_view name) {
 absl::StatusOr<std::unique_ptr<EventBasedTimer>>
 GpuStream::CreateEventBasedTimer(bool use_delay_kernel) {
   return parent_->CreateEventBasedTimer(this, use_delay_kernel);
+}
+
+absl::Status GpuStream::Launch(const ThreadDim& thread_dims,
+                               const BlockDim& block_dims, const Kernel& kernel,
+                               const KernelArgs& args) {
+  return Launch(thread_dims, block_dims, std::nullopt, kernel, args);
+}
+
+absl::Status GpuStream::Launch(const ThreadDim& thread_dims,
+                               const BlockDim& block_dims,
+                               const ClusterDim& cluster_dims,
+                               const Kernel& kernel, const KernelArgs& args) {
+  return Launch(thread_dims, block_dims, std::make_optional(cluster_dims),
+                kernel, args);
+}
+
+absl::Status GpuStream::Launch(const ThreadDim& thread_dims,
+                               const BlockDim& block_dims,
+                               const std::optional<ClusterDim>& cluster_dims,
+                               const Kernel& kernel, const KernelArgs& args) {
+  const GpuKernel* gpu_kernel = AsGpuKernel(&kernel);
+  GpuFunctionHandle function = gpu_kernel->gpu_function();
+
+  if (gpu_kernel->cache_config() != KernelCacheConfig::kNoPreference) {
+    TF_RETURN_IF_ERROR(GpuDriver::FuncSetCacheConfig(
+        function, gpu_kernel->GetGpuCacheConfig()));
+  }
+
+  // Launch kernels with packed arguments.
+  auto launch = [this, &kernel, &cluster_dims, &thread_dims, &block_dims,
+                 &function](const KernelArgsPackedArrayBase& packed) {
+    int32_t expected_number_of_arguments =
+        kernel.Arity() + (packed.number_of_shared_bytes() > 0);
+
+    CHECK_EQ(expected_number_of_arguments, packed.number_of_arguments())
+        << "Kernel " << kernel.name() << " has " << packed.number_of_arguments()
+        << " arguments, but expected " << expected_number_of_arguments
+        << "; arity=" << kernel.Arity()
+        << "; number_of_shared_bytes=" << packed.number_of_shared_bytes();
+
+    void** params = const_cast<void**>(packed.argument_addresses().data());
+
+    if (cluster_dims.has_value()) {
+      return GpuDriver::LaunchKernel(
+          parent_->gpu_context(), kernel.name(), function, cluster_dims->x,
+          cluster_dims->y, cluster_dims->z, block_dims.x, block_dims.y,
+          block_dims.z, thread_dims.x, thread_dims.y, thread_dims.z,
+          packed.number_of_shared_bytes(), gpu_stream(), params,
+          /*extra=*/nullptr);
+    } else {
+      return GpuDriver::LaunchKernel(
+          parent_->gpu_context(), kernel.name(), function, block_dims.x,
+          block_dims.y, block_dims.z, thread_dims.x, thread_dims.y,
+          thread_dims.z, packed.number_of_shared_bytes(), gpu_stream(), params,
+          /*extra=*/nullptr);
+    }
+  };
+
+  // If arguments are already packed we can just launch the kernel.
+  if (auto* packed = DynCast<KernelArgsPackedArrayBase>(&args)) {
+    return launch(*packed);
+  }
+
+  // For device memory array we rely on a custom kernel arguments packing.
+  if (auto* device_mem = DynCast<KernelArgsDeviceMemoryArray>(&args)) {
+    auto& pack = kernel.args_packing();
+    if (!pack) {
+      return absl::InternalError(
+          "Kernel is missing a custom arguments packing function for device "
+          "memory arguments array");
+    }
+
+    TF_ASSIGN_OR_RETURN(auto packed, pack(kernel, *device_mem));
+    return launch(*packed);
+  }
+
+  return absl::InternalError("Unsupported kernel arguments type");
 }
 
 GpuStream* AsGpuStream(Stream* stream) {

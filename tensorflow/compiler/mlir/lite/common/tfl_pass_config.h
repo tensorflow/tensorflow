@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/raw_ostream.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
+#include "tensorflow/lite/toco/toco_flags.pb.h"
 
 namespace mlir {
 namespace TFL {
@@ -57,10 +58,6 @@ struct PassConfig {
   // Whether to enable TFLite variables or not, this will allow
   // mutable variables and produce ReadVariable/AssignVariable ops in TFLite.
   bool enable_tflite_variables = false;
-  // Whether to disable the variable freezing pass or not.
-  // By default we freeze all variables and disallow mutable variables. When
-  // 'enable_tflite_variables' is true then we allow mutable variable only.
-  bool disable_variable_freezing = false;
   // Whether to unfold large splat constant tensors and replace them with
   // fill operation.
   bool unfold_large_splat_constant = false;
@@ -102,6 +99,10 @@ struct PassConfig {
 
   // Enables the attempt to directly lower composites into tflite ops.
   bool enable_composite_direct_lowering = true;
+
+  // Specifies the framework of the original model.
+  toco::TocoFlags::ModelOriginFramework model_origin_framework =
+      toco::TocoFlags::UNSET;
 };
 
 inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
@@ -118,8 +119,6 @@ inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
             << "\nruntime_verification: " << pass_config.runtime_verification
             << "\nenable_tflite_variables: "
             << pass_config.enable_tflite_variables
-            << "\ndisable_variable_freezing: "
-            << pass_config.disable_variable_freezing
             << "\nunfold_large_splat_constant: "
             << pass_config.unfold_large_splat_constant
             << "\nguarantee_all_funcs_one_use: "
@@ -132,7 +131,11 @@ inline llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
             << pass_config.legalize_custom_tensor_list_ops
             << "\nreduce_type_precision: " << pass_config.reduce_type_precision
             << "\nconvert_qdq_format: "
-            << GetQDQQuantModeString(pass_config.qdq_conversion_mode) << "\n";
+            << GetQDQQuantModeString(pass_config.qdq_conversion_mode)
+            << "\nmodel_origin_framework: "
+            << toco::TocoFlags::ModelOriginFramework_Name(
+                   pass_config.model_origin_framework)
+            << "\n";
 }
 
 }  // namespace TFL

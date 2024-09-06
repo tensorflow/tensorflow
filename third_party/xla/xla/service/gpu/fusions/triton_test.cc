@@ -64,7 +64,7 @@ ENTRY entry_computation {
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
 
   auto* root = module->entry_computation()->root_instruction();
-  HloFusionAnalysis analysis = AnalyzeFusion(*root, device_info);
+  HloFusionAnalysis analysis = HloFusionAnalysis::Create(*root, device_info);
 
   std::unique_ptr<FusionInterface> emitter =
       GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis});
@@ -100,7 +100,7 @@ ENTRY entry_computation {
       TestGpuDeviceInfo::RTXA6000DeviceInfo();
 
   auto* root = module->entry_computation()->root_instruction();
-  HloFusionAnalysis analysis = AnalyzeFusion(*root, device_info);
+  HloFusionAnalysis analysis = HloFusionAnalysis::Create(*root, device_info);
 
   std::unique_ptr<FusionInterface> emitter =
       GetFusionEmitter(PreBufferAssignmentFusionInfo{analysis});

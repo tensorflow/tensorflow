@@ -22,8 +22,10 @@ limitations under the License.
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
@@ -303,15 +305,6 @@ class CStreamExecutor : public StreamExecutorCommon {
                                        size, c_status.get());
     return StatusFromTF_Status(c_status.get());
   }
-  absl::Status Memset(Stream* stream, DeviceMemoryBase* location, uint8 pattern,
-                      uint64 size) override {
-    OwnedTFStatus c_status(TF_NewStatus());
-    SP_Stream stream_handle = static_cast<CStream*>(stream)->Handle();
-    SP_DeviceMemoryBase device_mem = DeviceMemoryBaseToC(location);
-    stream_executor_->memset(&device_, stream_handle, &device_mem, pattern,
-                             size, c_status.get());
-    return StatusFromTF_Status(c_status.get());
-  }
   void DeallocateStream(Stream* stream) override {
     static_cast<CStream*>(stream)->Destroy();
   }
@@ -405,8 +398,7 @@ class CStreamExecutor : public StreamExecutorCommon {
   }
 
   absl::StatusOr<std::unique_ptr<Stream>> CreateStream(
-      std::optional<std::variant<StreamPriority, int>> priority =
-          std::nullopt) override {
+      std::optional<std::variant<StreamPriority, int>> priority) override {
     auto stream = std::make_unique<CStream>(&device_, stream_executor_, this);
     TF_RETURN_IF_ERROR(stream->Create());
     return std::move(stream);
@@ -440,7 +432,6 @@ CPlatform::CPlatform(SP_Platform platform,
       name_(platform.name) {}
 
 CPlatform::~CPlatform() {
-  executor_cache_.DestroyAllExecutors();
   platform_fns_.destroy_device_fns(&platform_, &device_fns_);
   platform_fns_.destroy_stream_executor(&platform_, &stream_executor_);
   platform_fns_.destroy_timer_fns(&platform_, &timer_fns_);
@@ -457,24 +448,21 @@ CPlatform::DescriptionForDevice(int ordinal) const {
   builder.set_name(name_);
   return builder.Build();
 }
-absl::StatusOr<StreamExecutor*> CPlatform::ExecutorForDevice(int ordinal) {
-  stream_executor::StreamExecutorConfig config;
-  config.ordinal = ordinal;
-  return GetExecutor(config);
+absl::StatusOr<StreamExecutor*> CPlatform::FindExisting(int ordinal) {
+  return executor_cache_.Get(ordinal);
 }
-absl::StatusOr<StreamExecutor*> CPlatform::GetExecutor(
-    const StreamExecutorConfig& config) {
+absl::StatusOr<StreamExecutor*> CPlatform::ExecutorForDevice(int ordinal) {
   return executor_cache_.GetOrCreate(
-      config, [&]() { return GetUncachedExecutor(config); });
+      ordinal, [this, ordinal]() { return GetUncachedExecutor(ordinal); });
 }
 absl::StatusOr<std::unique_ptr<StreamExecutor>> CPlatform::GetUncachedExecutor(
-    const StreamExecutorConfig& config) {
+    int ordinal) {
   // Fill device creation params
   SE_CreateDeviceParams device_params{SE_CREATE_DEVICE_PARAMS_STRUCT_SIZE};
   SP_Device device{SP_DEVICE_STRUCT_SIZE};
   device_params.device = &device;
   device_params.ext = nullptr;
-  device_params.ordinal = config.ordinal;
+  device_params.ordinal = ordinal;
   OwnedTFStatus c_status(TF_NewStatus());
 
   // Create Device

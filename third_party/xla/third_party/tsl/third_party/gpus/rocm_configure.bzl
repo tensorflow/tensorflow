@@ -23,11 +23,14 @@ load(
     "which",
 )
 load(
+    ":compiler_common_tools.bzl",
+    "to_list_of_strings",
+)
+load(
     ":cuda_configure.bzl",
     "enable_cuda",
     "make_copy_dir_rule",
     "make_copy_files_rule",
-    "to_list_of_strings",
 )
 load(
     ":sycl_configure.bzl",
@@ -205,6 +208,8 @@ def _rocm_include_path(repository_ctx, rocm_config, bash_bin):
     inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/17.0.0/include")
     inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/17/include")
     inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/18/include")
+    if int(rocm_config.rocm_version_number) >= 60200:
+        inc_dirs.append(rocm_toolkit_path + "/lib/llvm/lib/clang/18/include")
 
     # Support hcc based off clang 10.0.0 (for ROCm 3.3)
     inc_dirs.append(rocm_toolkit_path + "/hcc/compiler/lib/clang/10.0.0/include/")

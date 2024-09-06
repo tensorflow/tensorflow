@@ -110,16 +110,16 @@ void DepthwiseConv(const float* input_data, const Dims<4>& input_dims,
                     depth_multiplier, output_data, output_dims);
 }
 
-inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
-                          int32 input_offset, const uint8* filter_data,
-                          const Dims<4>& filter_dims, int32 filter_offset,
-                          const int32* bias_data, const Dims<4>& bias_dims,
+inline void DepthwiseConv(const uint8_t* input_data, const Dims<4>& input_dims,
+                          int32_t input_offset, const uint8_t* filter_data,
+                          const Dims<4>& filter_dims, int32_t filter_offset,
+                          const int32_t* bias_data, const Dims<4>& bias_dims,
                           int stride_width, int stride_height,
                           int dilation_width_factor, int dilation_height_factor,
                           int pad_width, int pad_height, int depth_multiplier,
-                          int32 output_offset, int32 output_multiplier,
-                          int output_shift, int32 output_activation_min,
-                          int32 output_activation_max, uint8* output_data,
+                          int32_t output_offset, int32_t output_multiplier,
+                          int output_shift, int32_t output_activation_min,
+                          int32_t output_activation_max, uint8_t* output_data,
                           const Dims<4>& output_dims) {
   tflite::DepthwiseParams op_params;
   // Padding type is ignored, but still set.
@@ -145,15 +145,15 @@ inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
                 bias_data, DimsToShape(output_dims), output_data);
 }
 
-inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
-                          int32 input_offset, const uint8* filter_data,
-                          const Dims<4>& filter_dims, int32 filter_offset,
-                          const int32* bias_data, const Dims<4>& bias_dims,
+inline void DepthwiseConv(const uint8_t* input_data, const Dims<4>& input_dims,
+                          int32_t input_offset, const uint8_t* filter_data,
+                          const Dims<4>& filter_dims, int32_t filter_offset,
+                          const int32_t* bias_data, const Dims<4>& bias_dims,
                           int stride_width, int stride_height, int pad_width,
                           int pad_height, int depth_multiplier,
-                          int32 output_offset, int32 output_multiplier,
-                          int output_shift, int32 output_activation_min,
-                          int32 output_activation_max, uint8* output_data,
+                          int32_t output_offset, int32_t output_multiplier,
+                          int output_shift, int32_t output_activation_min,
+                          int32_t output_activation_max, uint8_t* output_data,
                           const Dims<4>& output_dims) {
   DepthwiseConv(input_data, input_dims, input_offset, filter_data, filter_dims,
                 filter_offset, bias_data, bias_dims, stride_width,
@@ -165,15 +165,15 @@ inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
 
 // Legacy, for compatibility with old checked-in code.
 template <FusedActivationFunctionType Ac>
-void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
-                   int32 input_offset, const uint8* filter_data,
-                   const Dims<4>& filter_dims, int32 filter_offset,
-                   const int32* bias_data, const Dims<4>& bias_dims,
+void DepthwiseConv(const uint8_t* input_data, const Dims<4>& input_dims,
+                   int32_t input_offset, const uint8_t* filter_data,
+                   const Dims<4>& filter_dims, int32_t filter_offset,
+                   const int32_t* bias_data, const Dims<4>& bias_dims,
                    int stride_width, int stride_height, int pad_width,
-                   int pad_height, int depth_multiplier, int32 output_offset,
-                   int32 output_multiplier, int output_shift,
-                   int32 output_activation_min, int32 output_activation_max,
-                   uint8* output_data, const Dims<4>& output_dims) {
+                   int pad_height, int depth_multiplier, int32_t output_offset,
+                   int32_t output_multiplier, int output_shift,
+                   int32_t output_activation_min, int32_t output_activation_max,
+                   uint8_t* output_data, const Dims<4>& output_dims) {
   if (Ac == FusedActivationFunctionType::kNone) {
     TFLITE_DCHECK_EQ(output_activation_min, 0);
     TFLITE_DCHECK_EQ(output_activation_max, 255);
@@ -188,15 +188,15 @@ void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
 
 // Legacy, for compatibility with old checked-in code.
 template <FusedActivationFunctionType Ac>
-void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
-                   int32 input_offset, const uint8* filter_data,
-                   const Dims<4>& filter_dims, int32 filter_offset,
-                   const int32* bias_data, const Dims<4>& bias_dims, int stride,
-                   int pad_width, int pad_height, int depth_multiplier,
-                   int32 output_offset, int32 output_multiplier,
-                   int output_shift, int32 output_activation_min,
-                   int32 output_activation_max, uint8* output_data,
-                   const Dims<4>& output_dims) {
+void DepthwiseConv(const uint8_t* input_data, const Dims<4>& input_dims,
+                   int32_t input_offset, const uint8_t* filter_data,
+                   const Dims<4>& filter_dims, int32_t filter_offset,
+                   const int32_t* bias_data, const Dims<4>& bias_dims,
+                   int stride, int pad_width, int pad_height,
+                   int depth_multiplier, int32_t output_offset,
+                   int32_t output_multiplier, int output_shift,
+                   int32_t output_activation_min, int32_t output_activation_max,
+                   uint8_t* output_data, const Dims<4>& output_dims) {
   DepthwiseConv<Ac>(input_data, input_dims, input_offset, filter_data,
                     filter_dims, filter_offset, bias_data, bias_dims, stride,
                     stride, pad_width, pad_height, depth_multiplier,
@@ -276,16 +276,17 @@ void Conv(const float* input_data, const Dims<4>& input_dims,
            output_dims, im2col_data, im2col_dims);
 }
 
-inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
-                 int32 input_offset, const uint8* filter_data,
-                 const Dims<4>& filter_dims, int32 filter_offset,
-                 const int32* bias_data, const Dims<4>& bias_dims,
+inline void Conv(const uint8_t* input_data, const Dims<4>& input_dims,
+                 int32_t input_offset, const uint8_t* filter_data,
+                 const Dims<4>& filter_dims, int32_t filter_offset,
+                 const int32_t* bias_data, const Dims<4>& bias_dims,
                  int stride_width, int stride_height, int dilation_width_factor,
                  int dilation_height_factor, int pad_width, int pad_height,
-                 int32 output_offset, int32 output_multiplier, int output_shift,
-                 int32 output_activation_min, int32 output_activation_max,
-                 uint8* output_data, const Dims<4>& output_dims,
-                 uint8* im2col_data, const Dims<4>& im2col_dims,
+                 int32_t output_offset, int32_t output_multiplier,
+                 int output_shift, int32_t output_activation_min,
+                 int32_t output_activation_max, uint8_t* output_data,
+                 const Dims<4>& output_dims, uint8_t* im2col_data,
+                 const Dims<4>& im2col_dims,
                  gemmlowp::GemmContext* gemmlowp_context) {
   tflite::ConvParams op_params;
   // Padding type is ignored, but still set.
@@ -310,16 +311,16 @@ inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
        output_data, DimsToShape(im2col_dims), im2col_data, gemmlowp_context);
 }
 
-inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
-                 int32 input_offset, const uint8* filter_data,
-                 const Dims<4>& filter_dims, int32 filter_offset,
-                 const int32* bias_data, const Dims<4>& bias_dims,
+inline void Conv(const uint8_t* input_data, const Dims<4>& input_dims,
+                 int32_t input_offset, const uint8_t* filter_data,
+                 const Dims<4>& filter_dims, int32_t filter_offset,
+                 const int32_t* bias_data, const Dims<4>& bias_dims,
                  int stride_width, int stride_height, int pad_width,
-                 int pad_height, int32 output_offset, int32 output_multiplier,
-                 int output_shift, int32 output_activation_min,
-                 int32 output_activation_max, uint8* output_data,
-                 const Dims<4>& output_dims, uint8* im2col_data,
-                 const Dims<4>& im2col_dims,
+                 int pad_height, int32_t output_offset,
+                 int32_t output_multiplier, int output_shift,
+                 int32_t output_activation_min, int32_t output_activation_max,
+                 uint8_t* output_data, const Dims<4>& output_dims,
+                 uint8_t* im2col_data, const Dims<4>& im2col_dims,
                  gemmlowp::GemmContext* gemmlowp_context) {
   Conv(input_data, input_dims, input_offset, filter_data, filter_dims,
        filter_offset, bias_data, bias_dims, stride_width, stride_height, 1, 1,
@@ -330,16 +331,16 @@ inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
 
 // legacy, for compatibility with old checked-in code
 template <FusedActivationFunctionType Ac>
-inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
-                 int32 input_offset, const uint8* filter_data,
-                 const Dims<4>& filter_dims, int32 filter_offset,
-                 const int32* bias_data, const Dims<4>& bias_dims,
+inline void Conv(const uint8_t* input_data, const Dims<4>& input_dims,
+                 int32_t input_offset, const uint8_t* filter_data,
+                 const Dims<4>& filter_dims, int32_t filter_offset,
+                 const int32_t* bias_data, const Dims<4>& bias_dims,
                  int stride_width, int stride_height, int pad_width,
-                 int pad_height, int32 output_offset, int32 output_multiplier,
-                 int output_shift, int32 output_activation_min,
-                 int32 output_activation_max, uint8* output_data,
-                 const Dims<4>& output_dims, uint8* im2col_data,
-                 const Dims<4>& im2col_dims,
+                 int pad_height, int32_t output_offset,
+                 int32_t output_multiplier, int output_shift,
+                 int32_t output_activation_min, int32_t output_activation_max,
+                 uint8_t* output_data, const Dims<4>& output_dims,
+                 uint8_t* im2col_data, const Dims<4>& im2col_dims,
                  gemmlowp::GemmContext* gemmlowp_context) {
   static_assert(Ac == FusedActivationFunctionType::kNone ||
                     Ac == FusedActivationFunctionType::kRelu ||
@@ -359,15 +360,16 @@ inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
 
 // legacy, for compatibility with old checked-in code
 template <FusedActivationFunctionType Ac>
-void Conv(const uint8* input_data, const Dims<4>& input_dims,
-          int32 input_offset, const uint8* filter_data,
-          const Dims<4>& filter_dims, int32 filter_offset,
-          const int32* bias_data, const Dims<4>& bias_dims, int stride,
-          int pad_width, int pad_height, int32 output_offset,
-          int32 output_multiplier, int output_shift,
-          int32 output_activation_min, int32 output_activation_max,
-          uint8* output_data, const Dims<4>& output_dims, uint8* im2col_data,
-          const Dims<4>& im2col_dims, gemmlowp::GemmContext* gemmlowp_context) {
+void Conv(const uint8_t* input_data, const Dims<4>& input_dims,
+          int32_t input_offset, const uint8_t* filter_data,
+          const Dims<4>& filter_dims, int32_t filter_offset,
+          const int32_t* bias_data, const Dims<4>& bias_dims, int stride,
+          int pad_width, int pad_height, int32_t output_offset,
+          int32_t output_multiplier, int output_shift,
+          int32_t output_activation_min, int32_t output_activation_max,
+          uint8_t* output_data, const Dims<4>& output_dims,
+          uint8_t* im2col_data, const Dims<4>& im2col_dims,
+          gemmlowp::GemmContext* gemmlowp_context) {
   Conv<Ac>(input_data, input_dims, input_offset, filter_data, filter_dims,
            filter_offset, bias_data, bias_dims, stride, stride, pad_width,
            pad_height, output_offset, output_multiplier, output_shift,
@@ -442,31 +444,31 @@ void FullyConnected(const float* input_data, const Dims<4>& input_dims,
 
 inline void FullyConnected(
     const FullyConnectedParams& params, const RuntimeShape& input_shape,
-    const uint8* input_data, const RuntimeShape& filter_shape,
-    const uint8* filter_data, const RuntimeShape& bias_shape,
-    const int32* bias_data, const RuntimeShape& output_shape,
-    uint8* output_data, gemmlowp::GemmContext*) {
+    const uint8_t* input_data, const RuntimeShape& filter_shape,
+    const uint8_t* filter_data, const RuntimeShape& bias_shape,
+    const int32_t* bias_data, const RuntimeShape& output_shape,
+    uint8_t* output_data, gemmlowp::GemmContext*) {
   FullyConnected(params, input_shape, input_data, filter_shape, filter_data,
                  bias_shape, bias_data, output_shape, output_data);
 }
 
 inline void FullyConnected(
     const FullyConnectedParams& params, const RuntimeShape& input_shape,
-    const uint8* input_data, const RuntimeShape& filter_shape,
-    const uint8* filter_data, const RuntimeShape& bias_shape,
-    const int32* bias_data, const RuntimeShape& output_shape,
-    int16* output_data, gemmlowp::GemmContext*) {
+    const uint8_t* input_data, const RuntimeShape& filter_shape,
+    const uint8_t* filter_data, const RuntimeShape& bias_shape,
+    const int32_t* bias_data, const RuntimeShape& output_shape,
+    int16_t* output_data, gemmlowp::GemmContext*) {
   FullyConnected(params, input_shape, input_data, filter_shape, filter_data,
                  bias_shape, bias_data, output_shape, output_data);
 }
 
-inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
-                           int32 input_offset, const uint8* filter_data,
-                           const Dims<4>& filter_dims, int32 filter_offset,
-                           const int32* bias_data, const Dims<4>& bias_dims,
-                           int32 output_offset, int32 output_multiplier,
-                           int output_shift, int32 output_activation_min,
-                           int32 output_activation_max, uint8* output_data,
+inline void FullyConnected(const uint8_t* input_data, const Dims<4>& input_dims,
+                           int32_t input_offset, const uint8_t* filter_data,
+                           const Dims<4>& filter_dims, int32_t filter_offset,
+                           const int32_t* bias_data, const Dims<4>& bias_dims,
+                           int32_t output_offset, int32_t output_multiplier,
+                           int output_shift, int32_t output_activation_min,
+                           int32_t output_activation_max, uint8_t* output_data,
                            const Dims<4>& output_dims,
                            gemmlowp::GemmContext* gemmlowp_context) {
   tflite::FullyConnectedParams op_params;
@@ -485,13 +487,13 @@ inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
                  gemmlowp_context);
 }
 
-inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
-                           int32 input_offset, const uint8* filter_data,
-                           const Dims<4>& filter_dims, int32 filter_offset,
-                           const int32* bias_data, const Dims<4>& bias_dims,
-                           int32 output_offset, int32 output_multiplier,
-                           int output_shift, int32 output_activation_min,
-                           int32 output_activation_max, int16* output_data,
+inline void FullyConnected(const uint8_t* input_data, const Dims<4>& input_dims,
+                           int32_t input_offset, const uint8_t* filter_data,
+                           const Dims<4>& filter_dims, int32_t filter_offset,
+                           const int32_t* bias_data, const Dims<4>& bias_dims,
+                           int32_t output_offset, int32_t output_multiplier,
+                           int output_shift, int32_t output_activation_min,
+                           int32_t output_activation_max, int16_t* output_data,
                            const Dims<4>& output_dims,
                            gemmlowp::GemmContext* gemmlowp_context) {
   tflite::FullyConnectedParams op_params;
@@ -512,10 +514,10 @@ inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
 
 inline void ShuffledFullyConnected(
     const FullyConnectedParams& params, const RuntimeShape& input_shape,
-    const uint8* input_data, const RuntimeShape& weights_shape,
-    const uint8* shuffled_weights_data, const RuntimeShape& bias_shape,
-    const int32* bias_data, const RuntimeShape& output_shape,
-    int16* output_data, uint8* shuffled_input_workspace_data,
+    const uint8_t* input_data, const RuntimeShape& weights_shape,
+    const uint8_t* shuffled_weights_data, const RuntimeShape& bias_shape,
+    const int32_t* bias_data, const RuntimeShape& output_shape,
+    int16_t* output_data, uint8_t* shuffled_input_workspace_data,
     gemmlowp::GemmContext*) {
   ShuffledFullyConnected(params, input_shape, input_data, weights_shape,
                          shuffled_weights_data, bias_shape, bias_data,
@@ -524,12 +526,12 @@ inline void ShuffledFullyConnected(
 }
 
 inline void ShuffledFullyConnected(
-    const uint8* input_data, const Dims<4>& input_dims,
-    const uint8* shuffled_weights_data, const Dims<4>& weights_dims,
-    const int32* bias_data, const Dims<4>& bias_dims, int32 output_multiplier,
-    int output_shift, int32 output_activation_min, int32 output_activation_max,
-    int16* output_data, const Dims<4>& output_dims,
-    uint8* shuffled_input_workspace_data,
+    const uint8_t* input_data, const Dims<4>& input_dims,
+    const uint8_t* shuffled_weights_data, const Dims<4>& weights_dims,
+    const int32_t* bias_data, const Dims<4>& bias_dims,
+    int32_t output_multiplier, int output_shift, int32_t output_activation_min,
+    int32_t output_activation_max, int16_t* output_data,
+    const Dims<4>& output_dims, uint8_t* shuffled_input_workspace_data,
     gemmlowp::GemmContext* gemmlowp_context) {
   tflite::FullyConnectedParams op_params;
   op_params.output_multiplier = output_multiplier;
@@ -547,13 +549,13 @@ inline void ShuffledFullyConnected(
 
 // legacy, for compatibility with old checked-in code
 template <FusedActivationFunctionType Ac>
-void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
-                    int32 input_offset, const uint8* filter_data,
-                    const Dims<4>& filter_dims, int32 filter_offset,
-                    const int32* bias_data, const Dims<4>& bias_dims,
-                    int32 output_offset, int32 output_multiplier,
-                    int output_shift, int32 output_activation_min,
-                    int32 output_activation_max, uint8* output_data,
+void FullyConnected(const uint8_t* input_data, const Dims<4>& input_dims,
+                    int32_t input_offset, const uint8_t* filter_data,
+                    const Dims<4>& filter_dims, int32_t filter_offset,
+                    const int32_t* bias_data, const Dims<4>& bias_dims,
+                    int32_t output_offset, int32_t output_multiplier,
+                    int output_shift, int32_t output_activation_min,
+                    int32_t output_activation_max, uint8_t* output_data,
                     const Dims<4>& output_dims,
                     gemmlowp::GemmContext* gemmlowp_context) {
   static_assert(Ac == FusedActivationFunctionType::kNone ||
@@ -596,17 +598,18 @@ inline void LstmCell(const float* input_data, const Dims<4>& input_dims,
 }
 
 template <int StateIntegerBits>
-void LstmCell(const uint8* input_data_uint8, const Dims<4>& input_dims,
-              const uint8* prev_activ_data_uint8,
-              const Dims<4>& prev_activ_dims, const uint8* weights_data_uint8,
-              const Dims<4>& weights_dims, const int32* bias_data_int32,
-              const Dims<4>& bias_dims, const int16* prev_state_data_int16,
-              const Dims<4>& prev_state_dims, int16* output_state_data_int16,
-              const Dims<4>& output_state_dims, uint8* output_activ_data_uint8,
-              const Dims<4>& output_activ_dims, uint8* concat_temp_data_uint8,
-              const Dims<4>& concat_temp_dims, int16* activ_temp_data_int16,
-              const Dims<4>& activ_temp_dims, int32 weights_zero_point,
-              int32 accum_multiplier, int accum_shift,
+void LstmCell(const uint8_t* input_data_uint8, const Dims<4>& input_dims,
+              const uint8_t* prev_activ_data_uint8,
+              const Dims<4>& prev_activ_dims, const uint8_t* weights_data_uint8,
+              const Dims<4>& weights_dims, const int32_t* bias_data_int32,
+              const Dims<4>& bias_dims, const int16_t* prev_state_data_int16,
+              const Dims<4>& prev_state_dims, int16_t* output_state_data_int16,
+              const Dims<4>& output_state_dims,
+              uint8_t* output_activ_data_uint8,
+              const Dims<4>& output_activ_dims, uint8_t* concat_temp_data_uint8,
+              const Dims<4>& concat_temp_dims, int16_t* activ_temp_data_int16,
+              const Dims<4>& activ_temp_dims, int32_t weights_zero_point,
+              int32_t accum_multiplier, int accum_shift,
               gemmlowp::GemmContext* gemmlowp_context) {
   tflite::LstmCellParams op_params;
   op_params.weights_zero_point = weights_zero_point;
@@ -671,12 +674,12 @@ inline void Concatenation(int concat_dim, const Scalar* const* input_data,
                 DimsToShape(output_dims), output_data);
 }
 
-inline void Concatenation(int concat_dim, const uint8* const* input_data,
+inline void Concatenation(int concat_dim, const uint8_t* const* input_data,
                           const Dims<4>* const* input_dims,
-                          const int32* input_zeropoint,
+                          const int32_t* input_zeropoint,
                           const float* input_scale, int inputs_count,
-                          uint8* output_data, const Dims<4>& output_dims,
-                          const int32 output_zeropoint,
+                          uint8_t* output_data, const Dims<4>& output_dims,
+                          const int32_t output_zeropoint,
                           const float output_scale) {
   std::vector<RuntimeShape> input_shapes(inputs_count);
   std::vector<const RuntimeShape*> input_shapes_indirect(inputs_count);
@@ -759,10 +762,10 @@ inline void Softmax(const float* input_data, const RuntimeShape& input_shape,
   Softmax(params, input_shape, input_data, output_shape, output_data);
 }
 
-inline void Softmax(const uint8* input_data, const RuntimeShape& input_shape,
-                    int32 input_beta_multiplier, int32 input_beta_left_shift,
-                    int diff_min, uint8* output_data,
-                    const RuntimeShape& output_shape) {
+inline void Softmax(const uint8_t* input_data, const RuntimeShape& input_shape,
+                    int32_t input_beta_multiplier,
+                    int32_t input_beta_left_shift, int diff_min,
+                    uint8_t* output_data, const RuntimeShape& output_shape) {
   SoftmaxParams params;
   params.input_multiplier = input_beta_multiplier;
   params.input_left_shift = input_beta_left_shift;
@@ -777,11 +780,12 @@ inline void LogSoftmax(const float* input_data, const RuntimeShape& input_shape,
   LogSoftmax(params, input_shape, input_data, output_shape, output_data);
 }
 
-inline void LogSoftmax(const uint8* input_data, const RuntimeShape& input_shape,
-                       int32 input_multiplier, int32 input_left_shift,
-                       int32 reverse_scaling_divisor,
-                       int32 reverse_scaling_right_shift, int diff_min,
-                       uint8* output_data, const RuntimeShape& output_shape) {
+inline void LogSoftmax(const uint8_t* input_data,
+                       const RuntimeShape& input_shape,
+                       int32_t input_multiplier, int32_t input_left_shift,
+                       int32_t reverse_scaling_divisor,
+                       int32_t reverse_scaling_right_shift, int diff_min,
+                       uint8_t* output_data, const RuntimeShape& output_shape) {
   SoftmaxParams params;
   params.input_multiplier = input_multiplier;
   params.input_left_shift = input_left_shift;
@@ -792,50 +796,50 @@ inline void LogSoftmax(const uint8* input_data, const RuntimeShape& input_shape,
 }
 
 inline void Logistic(const LogisticParams& params,
-                     const RuntimeShape& input_shape, const uint8* input_data,
-                     const RuntimeShape& output_shape, uint8* output_data) {
-  const int32 input_zero_point = params.input_zero_point;
-  const int32 input_range_radius = params.input_range_radius;
-  const int32 input_multiplier = params.input_multiplier;
+                     const RuntimeShape& input_shape, const uint8_t* input_data,
+                     const RuntimeShape& output_shape, uint8_t* output_data) {
+  const int32_t input_zero_point = params.input_zero_point;
+  const int32_t input_range_radius = params.input_range_radius;
+  const int32_t input_multiplier = params.input_multiplier;
   const int input_left_shift = params.input_left_shift;
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
 
   for (int i = 0; i < flat_size; i++) {
-    const uint8 input_val_u8 = input_data[i];
-    const int32 input_val_centered =
-        static_cast<int32>(input_val_u8) - input_zero_point;
-    uint8 output_val;
+    const uint8_t input_val_u8 = input_data[i];
+    const int32_t input_val_centered =
+        static_cast<int32_t>(input_val_u8) - input_zero_point;
+    uint8_t output_val;
     if (input_val_centered <= -input_range_radius) {
       output_val = 0;
     } else if (input_val_centered >= input_range_radius) {
       output_val = 255;
     } else {
-      const int32 input_val_rescaled =
+      const int32_t input_val_rescaled =
           MultiplyByQuantizedMultiplierGreaterThanOne(
               input_val_centered, input_multiplier, input_left_shift);
-      using FixedPoint4 = gemmlowp::FixedPoint<int32, 4>;
-      using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
+      using FixedPoint4 = gemmlowp::FixedPoint<int32_t, 4>;
+      using FixedPoint0 = gemmlowp::FixedPoint<int32_t, 0>;
       const FixedPoint4 input_val_f4 = FixedPoint4::FromRaw(input_val_rescaled);
       const FixedPoint0 output_val_f0 = gemmlowp::logistic(input_val_f4);
       // Convert from Q0.31 to Q23.8.
       using gemmlowp::RoundingDivideByPOT;
-      int32 output_val_s32 = RoundingDivideByPOT(output_val_f0.raw(), 23);
+      int32_t output_val_s32 = RoundingDivideByPOT(output_val_f0.raw(), 23);
       if (output_val_s32 == 256) {
         output_val_s32 = 255;
       }
       // Reinterpret as U0.8.
       TFLITE_DCHECK_GE(output_val_s32, 0);
       TFLITE_DCHECK_LE(output_val_s32, 255);
-      output_val = static_cast<uint8>(output_val_s32);
+      output_val = static_cast<uint8_t>(output_val_s32);
     }
     output_data[i] = output_val;
   }
 }
 
-inline void Logistic(const uint8* input_data, const RuntimeShape& input_shape,
-                     int32 input_zero_point, int32 input_range_radius,
-                     int32 input_multiplier, int input_left_shift,
-                     uint8* output_data, const RuntimeShape& output_shape) {
+inline void Logistic(const uint8_t* input_data, const RuntimeShape& input_shape,
+                     int32_t input_zero_point, int32_t input_range_radius,
+                     int32_t input_multiplier, int input_left_shift,
+                     uint8_t* output_data, const RuntimeShape& output_shape) {
   LogisticParams params;
   params.input_zero_point = input_zero_point;
   params.input_range_radius = input_range_radius;
@@ -844,17 +848,17 @@ inline void Logistic(const uint8* input_data, const RuntimeShape& input_shape,
   Logistic(params, input_shape, input_data, output_shape, output_data);
 }
 
-inline void Logistic(const RuntimeShape& input_shape, const int16* input_data,
-                     const RuntimeShape& output_shape, int16* output_data) {
+inline void Logistic(const RuntimeShape& input_shape, const int16_t* input_data,
+                     const RuntimeShape& output_shape, int16_t* output_data) {
   LogisticParams params;
   // No params currently needed by int16 Logistic.
   Logistic(params, input_shape, input_data, output_shape, output_data);
 }
 
-inline void Tanh(const uint8* input_data, const RuntimeShape& input_shape,
-                 int32 input_zero_point, int32 input_range_radius,
-                 int32 input_multiplier, int input_left_shift,
-                 uint8* output_data, const RuntimeShape& output_shape) {
+inline void Tanh(const uint8_t* input_data, const RuntimeShape& input_shape,
+                 int32_t input_zero_point, int32_t input_range_radius,
+                 int32_t input_multiplier, int input_left_shift,
+                 uint8_t* output_data, const RuntimeShape& output_shape) {
   TanhParams params;
   params.input_zero_point = input_zero_point;
   params.input_range_radius = input_range_radius;
@@ -863,16 +867,16 @@ inline void Tanh(const uint8* input_data, const RuntimeShape& input_shape,
   Tanh(params, input_shape, input_data, output_shape, output_data);
 }
 
-inline void Tanh(const int16* input_data, const RuntimeShape& input_shape,
-                 int input_left_shift, int16* output_data,
+inline void Tanh(const int16_t* input_data, const RuntimeShape& input_shape,
+                 int input_left_shift, int16_t* output_data,
                  const RuntimeShape& output_shape) {
   TanhParams params;
   params.input_left_shift = input_left_shift;
   Tanh(params, input_shape, input_data, output_shape, output_data);
 }
 
-inline void Dequantize(const uint8* input_data, const Dims<4>& input_dims,
-                       int32 zero_point, double scale, float* output_data,
+inline void Dequantize(const uint8_t* input_data, const Dims<4>& input_dims,
+                       int32_t zero_point, double scale, float* output_data,
                        const Dims<4>& output_dims) {
   tflite::DequantizationParams op_params;
   op_params.zero_point = zero_point;
@@ -896,7 +900,7 @@ inline void FakeQuant(const float* input_data, const Dims<4>& input_dims,
 
 template <typename T>
 inline void Gather(const T* input_data, const Dims<4>& input_dims,
-                   int input_rank, const int32* coords_data,
+                   int input_rank, const int32_t* coords_data,
                    const Dims<4>& coords_dims, T* output_data,
                    const Dims<4>& output_dims) {
   tflite::GatherParams op_params;
@@ -908,7 +912,7 @@ inline void Gather(const T* input_data, const Dims<4>& input_dims,
          output_data);
 }
 
-inline uint32 LegacyReverseBits32(uint32 n) {
+inline uint32_t LegacyReverseBits32(uint32_t n) {
   n = ((n >> 1) & 0x55555555) | ((n & 0x55555555) << 1);
   n = ((n >> 2) & 0x33333333) | ((n & 0x33333333) << 2);
   n = ((n >> 4) & 0x0F0F0F0F) | ((n & 0x0F0F0F0F) << 4);
@@ -924,18 +928,18 @@ inline void StridedSliceReverseIndices(tflite::StridedSliceParams* p) {
   std::reverse(p->stop_indices, p->stop_indices + p->stop_indices_count);
   std::reverse(p->strides, p->strides + p->strides_count);
 
-  p->begin_mask = LegacyReverseBits32(static_cast<uint32>(p->begin_mask)) >>
+  p->begin_mask = LegacyReverseBits32(static_cast<uint32_t>(p->begin_mask)) >>
                   (32 - p->start_indices_count);
   p->ellipsis_mask =
-      LegacyReverseBits32(static_cast<uint32>(p->ellipsis_mask)) >>
+      LegacyReverseBits32(static_cast<uint32_t>(p->ellipsis_mask)) >>
       (32 - p->start_indices_count);
-  p->end_mask = LegacyReverseBits32(static_cast<uint32>(p->end_mask)) >>
+  p->end_mask = LegacyReverseBits32(static_cast<uint32_t>(p->end_mask)) >>
                 (32 - p->start_indices_count);
   p->new_axis_mask =
-      LegacyReverseBits32(static_cast<uint32>(p->new_axis_mask)) >>
+      LegacyReverseBits32(static_cast<uint32_t>(p->new_axis_mask)) >>
       (32 - p->start_indices_count);
   p->shrink_axis_mask =
-      LegacyReverseBits32(static_cast<uint32>(p->shrink_axis_mask)) >>
+      LegacyReverseBits32(static_cast<uint32_t>(p->shrink_axis_mask)) >>
       (32 - p->start_indices_count);
 }
 
@@ -993,12 +997,12 @@ inline void Comparison(const T* input1_data, const Dims<4>& input1_dims,
                        DimsToShape(output_dims), output_data);
 }
 
-template <typename T, ComparisonFn<int32> F>
+template <typename T, ComparisonFn<int32_t> F>
 inline void Comparison(int left_shift, const T* input1_data,
-                       const Dims<4>& input1_dims, int32 input1_offset,
-                       int32 input1_multiplier, int input1_shift,
+                       const Dims<4>& input1_dims, int32_t input1_offset,
+                       int32_t input1_multiplier, int input1_shift,
                        const T* input2_data, const Dims<4>& input2_dims,
-                       int32 input2_offset, int32 input2_multiplier,
+                       int32_t input2_offset, int32_t input2_multiplier,
                        int input2_shift, bool* output_data,
                        const Dims<4>& output_dims) {
   tflite::ComparisonParams op_params;
@@ -1031,14 +1035,13 @@ inline void BroadcastComparison(const T* input1_data,
                                       output_data);
 }
 
-template <typename T, ComparisonFn<int32> F>
-inline void BroadcastComparison(int left_shift, const T* input1_data,
-                                const Dims<4>& input1_dims, int32 input1_offset,
-                                int32 input1_multiplier, int input1_shift,
-                                const T* input2_data,
-                                const Dims<4>& input2_dims, int32 input2_offset,
-                                int32 input2_multiplier, int input2_shift,
-                                bool* output_data, const Dims<4>& output_dims) {
+template <typename T, ComparisonFn<int32_t> F>
+inline void BroadcastComparison(
+    int left_shift, const T* input1_data, const Dims<4>& input1_dims,
+    int32_t input1_offset, int32_t input1_multiplier, int input1_shift,
+    const T* input2_data, const Dims<4>& input2_dims, int32_t input2_offset,
+    int32_t input2_multiplier, int input2_shift, bool* output_data,
+    const Dims<4>& output_dims) {
   ComparisonParams op_params;
 
   op_params.left_shift = left_shift;
@@ -1174,9 +1177,9 @@ void Unpack(int axis, const Scalar* input_data, const Dims<4>& input_dims,
 
 template <typename Scalar>
 void Pack(int dim, const Scalar* const* input_data,
-          const Dims<4>* const* input_dims, const int32* input_zeropoint,
+          const Dims<4>* const* input_dims, const int32_t* input_zeropoint,
           const float* input_scale, int inputs_count, Scalar* output_data,
-          const Dims<4>& output_dims, const int32 output_zeropoint,
+          const Dims<4>& output_dims, const int32_t output_zeropoint,
           const float output_scale) {
   std::vector<RuntimeShape> input_shapes(inputs_count);
   std::vector<const RuntimeShape*> input_shapes_indirect(inputs_count);
@@ -1207,9 +1210,9 @@ void L2Normalization(const float* input_data, const RuntimeShape& input_shape,
                   output_data);
 }
 
-inline void L2Normalization(const uint8* input_data,
+inline void L2Normalization(const uint8_t* input_data,
                             const RuntimeShape& input_shape,
-                            int32 input_zero_point, uint8* output_data,
+                            int32_t input_zero_point, uint8_t* output_data,
                             const RuntimeShape& output_shape) {
   tflite::L2NormalizationParams op_params;
   op_params.input_zero_point = input_zero_point;
@@ -1225,9 +1228,9 @@ void L2Normalization(const float* input_data, const Dims<4>& input_dims,
                       DimsToShape(output_dims));
 }
 
-inline void L2Normalization(const uint8* input_data, const Dims<4>& input_dims,
-                            int32 input_zero_point, uint8* output_data,
-                            const Dims<4>& output_dims) {
+inline void L2Normalization(const uint8_t* input_data,
+                            const Dims<4>& input_dims, int32_t input_zero_point,
+                            uint8_t* output_data, const Dims<4>& output_dims) {
   L2Normalization(input_data, DimsToShape(input_dims), input_zero_point,
                   output_data, DimsToShape(output_dims));
 }
@@ -1250,9 +1253,9 @@ inline void Relu6(const float* input_data, const Dims<4>& input_dims,
         output_data);
 }
 
-inline void ReluX(uint8 min_value, uint8 max_value, const uint8* input_data,
-                  const RuntimeShape& input_shape, uint8* output_data,
-                  const RuntimeShape& output_shape) {
+inline void ReluX(uint8_t min_value, uint8_t max_value,
+                  const uint8_t* input_data, const RuntimeShape& input_shape,
+                  uint8_t* output_data, const RuntimeShape& output_shape) {
   tflite::ActivationParams params;
   params.quantized_activation_max = max_value;
   params.quantized_activation_min = min_value;
@@ -1260,14 +1263,15 @@ inline void ReluX(uint8 min_value, uint8 max_value, const uint8* input_data,
 }
 
 template <FusedActivationFunctionType Ac>
-inline void Add(int left_shift, const uint8* input1_data,
-                const Dims<4>& input1_dims, int32 input1_offset,
-                int32 input1_multiplier, int input1_shift,
-                const uint8* input2_data, const Dims<4>& input2_dims,
-                int32 input2_offset, int32 input2_multiplier, int input2_shift,
-                int32 output_offset, int32 output_multiplier, int output_shift,
-                int32 output_activation_min, int32 output_activation_max,
-                uint8* output_data, const Dims<4>& output_dims) {
+inline void Add(int left_shift, const uint8_t* input1_data,
+                const Dims<4>& input1_dims, int32_t input1_offset,
+                int32_t input1_multiplier, int input1_shift,
+                const uint8_t* input2_data, const Dims<4>& input2_dims,
+                int32_t input2_offset, int32_t input2_multiplier,
+                int input2_shift, int32_t output_offset,
+                int32_t output_multiplier, int output_shift,
+                int32_t output_activation_min, int32_t output_activation_max,
+                uint8_t* output_data, const Dims<4>& output_dims) {
   constexpr int kReverseShift = -1;
   static_assert(Ac == FusedActivationFunctionType::kNone ||
                     Ac == FusedActivationFunctionType::kRelu ||
@@ -1299,30 +1303,30 @@ inline void Add(int left_shift, const uint8* input1_data,
 }
 
 template <FusedActivationFunctionType Ac>
-void Add(const int32* input1_data, const Dims<4>& input1_dims,
-         const int32* input2_data, const Dims<4>& input2_dims,
-         int32* output_data, const Dims<4>& output_dims) {
+void Add(const int32_t* input1_data, const Dims<4>& input1_dims,
+         const int32_t* input2_data, const Dims<4>& input2_dims,
+         int32_t* output_data, const Dims<4>& output_dims) {
   ruy::profiler::ScopeLabel label("Add/int32");
   TFLITE_DCHECK(Ac == FusedActivationFunctionType::kNone);
 
   tflite::ArithmeticParams op_params;
-  op_params.quantized_activation_min = std::numeric_limits<int32>::min();
-  op_params.quantized_activation_max = std::numeric_limits<int32>::max();
+  op_params.quantized_activation_min = std::numeric_limits<int32_t>::min();
+  op_params.quantized_activation_max = std::numeric_limits<int32_t>::max();
   Add(op_params, DimsToShape(input1_dims), input1_data,
       DimsToShape(input2_dims), input2_data, DimsToShape(output_dims),
       output_data);
 }
 
 template <FusedActivationFunctionType Ac>
-inline void BroadcastAdd(int left_shift, const uint8* input1_data,
-                         const Dims<4>& input1_dims, int32 input1_offset,
-                         int32 input1_multiplier, int input1_shift,
-                         const uint8* input2_data, const Dims<4>& input2_dims,
-                         int32 input2_offset, int32 input2_multiplier,
-                         int input2_shift, int32 output_offset,
-                         int32 output_multiplier, int output_shift,
-                         int32 output_activation_min,
-                         int32 output_activation_max, uint8* output_data,
+inline void BroadcastAdd(int left_shift, const uint8_t* input1_data,
+                         const Dims<4>& input1_dims, int32_t input1_offset,
+                         int32_t input1_multiplier, int input1_shift,
+                         const uint8_t* input2_data, const Dims<4>& input2_dims,
+                         int32_t input2_offset, int32_t input2_multiplier,
+                         int input2_shift, int32_t output_offset,
+                         int32_t output_multiplier, int output_shift,
+                         int32_t output_activation_min,
+                         int32_t output_activation_max, uint8_t* output_data,
                          const Dims<4>& output_dims) {
   constexpr int kReverseShift = -1;
   static_assert(Ac == FusedActivationFunctionType::kNone ||
@@ -1385,12 +1389,13 @@ void BroadcastAdd(const T* input1_data, const Dims<4>& input1_dims,
 template <FusedActivationFunctionType Ac>
 inline void BroadcastAddFivefold(
     int y0, int y1, int y2, int y3, int y4, int left_shift,
-    const uint8* input1_data, const Dims<4>& input1_dims, int32 input1_offset,
-    int32 input1_multiplier, int input1_shift, const uint8* input2_data,
-    const Dims<4>& input2_dims, int32 input2_offset, int32 input2_multiplier,
-    int input2_shift, int32 output_offset, int32 output_multiplier,
-    int output_shift, int32 output_activation_min, int32 output_activation_max,
-    uint8* output_data, const Dims<4>& output_dims) {
+    const uint8_t* input1_data, const Dims<4>& input1_dims,
+    int32_t input1_offset, int32_t input1_multiplier, int input1_shift,
+    const uint8_t* input2_data, const Dims<4>& input2_dims,
+    int32_t input2_offset, int32_t input2_multiplier, int input2_shift,
+    int32_t output_offset, int32_t output_multiplier, int output_shift,
+    int32_t output_activation_min, int32_t output_activation_max,
+    uint8_t* output_data, const Dims<4>& output_dims) {
   constexpr int kReverseShift = -1;
   static_assert(Ac == FusedActivationFunctionType::kNone ||
                     Ac == FusedActivationFunctionType::kRelu ||
@@ -1441,11 +1446,11 @@ void BroadcastAdd(const T* input1_data, const Dims<4>& input1_dims,
 }
 
 template <FusedActivationFunctionType Ac>
-inline void Add(const int16* input1_data, const Dims<4>& input1_dims,
-                int input1_shift, const int16* input2_data,
+inline void Add(const int16_t* input1_data, const Dims<4>& input1_dims,
+                int input1_shift, const int16_t* input2_data,
                 const Dims<4>& input2_dims, int input2_shift,
-                int16 output_activation_min, int16 output_activation_max,
-                int16* output_data, const Dims<4>& output_dims) {
+                int16_t output_activation_min, int16_t output_activation_max,
+                int16_t* output_data, const Dims<4>& output_dims) {
   static_assert(Ac == FusedActivationFunctionType::kNone ||
                     Ac == FusedActivationFunctionType::kRelu ||
                     Ac == FusedActivationFunctionType::kRelu6 ||
@@ -1514,14 +1519,13 @@ inline bool AveragePool(const float* input_data, const Dims<4>& input_dims,
 
 // Transitional version that will be moved shortly to legacy_reference_ops, as
 // part of RuntimeShape revisions.
-inline void BroadcastMul4DSlow(const uint8* input1_data,
-                               const Dims<4>& input1_dims, int32 input1_offset,
-                               const uint8* input2_data,
-                               const Dims<4>& input2_dims, int32 input2_offset,
-                               int32 output_offset, int32 output_multiplier,
-                               int output_shift, int32 output_activation_min,
-                               int32 output_activation_max, uint8* output_data,
-                               const Dims<4>& output_dims) {
+inline void BroadcastMul4DSlow(
+    const uint8_t* input1_data, const Dims<4>& input1_dims,
+    int32_t input1_offset, const uint8_t* input2_data,
+    const Dims<4>& input2_dims, int32_t input2_offset, int32_t output_offset,
+    int32_t output_multiplier, int output_shift, int32_t output_activation_min,
+    int32_t output_activation_max, uint8_t* output_data,
+    const Dims<4>& output_dims) {
   tflite::ArithmeticParams op_params;
   SetActivationParams(output_activation_min, output_activation_max, &op_params);
   op_params.input1_offset = input1_offset;
@@ -1535,12 +1539,12 @@ inline void BroadcastMul4DSlow(const uint8* input1_data,
                      DimsToShape(output_dims), output_data);
 }
 
-inline void BroadcastMul(const uint8* input1_data, const Dims<4>& input1_dims,
-                         int32 input1_offset, const uint8* input2_data,
-                         const Dims<4>& input2_dims, int32 input2_offset,
-                         int32 output_offset, int32 output_multiplier,
-                         int output_shift, int32 output_activation_min,
-                         int32 output_activation_max, uint8* output_data,
+inline void BroadcastMul(const uint8_t* input1_data, const Dims<4>& input1_dims,
+                         int32_t input1_offset, const uint8_t* input2_data,
+                         const Dims<4>& input2_dims, int32_t input2_offset,
+                         int32_t output_offset, int32_t output_multiplier,
+                         int output_shift, int32_t output_activation_min,
+                         int32_t output_activation_max, uint8_t* output_data,
                          const Dims<4>& output_dims) {
   BroadcastMul4DSlow(
       input1_data, input1_dims, input1_offset, input2_data, input2_dims,
@@ -1553,12 +1557,12 @@ inline void BroadcastMul(const uint8* input1_data, const Dims<4>& input1_dims,
 
 // legacy, for compatibility with old checked-in code
 template <FusedActivationFunctionType Ac>
-inline void BroadcastMul(const uint8* input1_data, const Dims<4>& input1_dims,
-                         int32 input1_offset, const uint8* input2_data,
-                         const Dims<4>& input2_dims, int32 input2_offset,
-                         int32 output_offset, int32 output_multiplier,
-                         int output_shift, int32 output_activation_min,
-                         int32 output_activation_max, uint8* output_data,
+inline void BroadcastMul(const uint8_t* input1_data, const Dims<4>& input1_dims,
+                         int32_t input1_offset, const uint8_t* input2_data,
+                         const Dims<4>& input2_dims, int32_t input2_offset,
+                         int32_t output_offset, int32_t output_multiplier,
+                         int output_shift, int32_t output_activation_min,
+                         int32_t output_activation_max, uint8_t* output_data,
                          const Dims<4>& output_dims) {
   BroadcastMul(input1_data, input1_dims, input1_offset, input2_data,
                input2_dims, input2_offset, output_offset, output_multiplier,
@@ -1592,11 +1596,11 @@ bool AveragePool(const float* input_data, const Dims<4>& input_dims, int stride,
                          output_dims);
 }
 
-inline bool AveragePool(const uint8* input_data, const Dims<4>& input_dims,
+inline bool AveragePool(const uint8_t* input_data, const Dims<4>& input_dims,
                         int stride_width, int stride_height, int pad_width,
                         int pad_height, int filter_width, int filter_height,
-                        int32 output_activation_min,
-                        int32 output_activation_max, uint8* output_data,
+                        int32_t output_activation_min,
+                        int32_t output_activation_max, uint8_t* output_data,
                         const Dims<4>& output_dims) {
   tflite::PoolParams params;
   params.stride_height = stride_height;
@@ -1613,11 +1617,11 @@ inline bool AveragePool(const uint8* input_data, const Dims<4>& input_dims,
 
 // legacy, for compatibility with old checked-in code
 template <FusedActivationFunctionType Ac>
-bool AveragePool(const uint8* input_data, const Dims<4>& input_dims,
+bool AveragePool(const uint8_t* input_data, const Dims<4>& input_dims,
                  int stride_width, int stride_height, int pad_width,
                  int pad_height, int filter_width, int filter_height,
-                 int32 output_activation_min, int32 output_activation_max,
-                 uint8* output_data, const Dims<4>& output_dims) {
+                 int32_t output_activation_min, int32_t output_activation_max,
+                 uint8_t* output_data, const Dims<4>& output_dims) {
   static_assert(Ac == FusedActivationFunctionType::kNone ||
                     Ac == FusedActivationFunctionType::kRelu ||
                     Ac == FusedActivationFunctionType::kRelu6 ||
@@ -1635,10 +1639,10 @@ bool AveragePool(const uint8* input_data, const Dims<4>& input_dims,
 
 // legacy, for compatibility with old checked-in code
 template <FusedActivationFunctionType Ac>
-bool AveragePool(const uint8* input_data, const Dims<4>& input_dims, int stride,
-                 int pad_width, int pad_height, int filter_width,
-                 int filter_height, int32 output_activation_min,
-                 int32 output_activation_max, uint8* output_data,
+bool AveragePool(const uint8_t* input_data, const Dims<4>& input_dims,
+                 int stride, int pad_width, int pad_height, int filter_width,
+                 int filter_height, int32_t output_activation_min,
+                 int32_t output_activation_max, uint8_t* output_data,
                  const Dims<4>& output_dims) {
   return AveragePool<Ac>(input_data, input_dims, stride, stride, pad_width,
                          pad_height, filter_width, filter_height,
@@ -1686,11 +1690,12 @@ void MaxPool(const float* input_data, const Dims<4>& input_dims, int stride,
               filter_width, filter_height, output_data, output_dims);
 }
 
-inline void MaxPool(const uint8* input_data, const Dims<4>& input_dims,
+inline void MaxPool(const uint8_t* input_data, const Dims<4>& input_dims,
                     int stride_width, int stride_height, int pad_width,
                     int pad_height, int filter_width, int filter_height,
-                    int32 output_activation_min, int32 output_activation_max,
-                    uint8* output_data, const Dims<4>& output_dims) {
+                    int32_t output_activation_min,
+                    int32_t output_activation_max, uint8_t* output_data,
+                    const Dims<4>& output_dims) {
   PoolParams params;
   params.stride_height = stride_height;
   params.stride_width = stride_width;
@@ -1706,10 +1711,10 @@ inline void MaxPool(const uint8* input_data, const Dims<4>& input_dims,
 
 // legacy, for compatibility with old checked-in code
 template <FusedActivationFunctionType Ac>
-void MaxPool(const uint8* input_data, const Dims<4>& input_dims,
+void MaxPool(const uint8_t* input_data, const Dims<4>& input_dims,
              int stride_width, int stride_height, int pad_width, int pad_height,
-             int filter_width, int filter_height, int32 output_activation_min,
-             int32 output_activation_max, uint8* output_data,
+             int filter_width, int filter_height, int32_t output_activation_min,
+             int32_t output_activation_max, uint8_t* output_data,
              const Dims<4>& output_dims) {
   static_assert(Ac == FusedActivationFunctionType::kNone ||
                     Ac == FusedActivationFunctionType::kRelu ||
@@ -1727,10 +1732,10 @@ void MaxPool(const uint8* input_data, const Dims<4>& input_dims,
 
 // legacy, for compatibility with old checked-in code
 template <FusedActivationFunctionType Ac>
-void MaxPool(const uint8* input_data, const Dims<4>& input_dims, int stride,
+void MaxPool(const uint8_t* input_data, const Dims<4>& input_dims, int stride,
              int pad_width, int pad_height, int filter_width, int filter_height,
-             int32 output_activation_min, int32 output_activation_max,
-             uint8* output_data, const Dims<4>& output_dims) {
+             int32_t output_activation_min, int32_t output_activation_max,
+             uint8_t* output_data, const Dims<4>& output_dims) {
   MaxPool<Ac>(input_data, input_dims, stride, stride, pad_width, pad_height,
               filter_width, filter_height, output_activation_min,
               output_activation_max, output_data, output_dims);
@@ -1783,10 +1788,10 @@ inline void Softmax(const float* input_data, const Dims<4>& input_dims,
           DimsToShape(output_dims));
 }
 
-inline void Softmax(const uint8* input_data, const Dims<4>& input_dims,
-                    int32 input_beta_multiplier, int32 input_beta_left_shift,
-                    int diff_min, uint8* output_data,
-                    const Dims<4>& output_dims) {
+inline void Softmax(const uint8_t* input_data, const Dims<4>& input_dims,
+                    int32_t input_beta_multiplier,
+                    int32_t input_beta_left_shift, int diff_min,
+                    uint8_t* output_data, const Dims<4>& output_dims) {
   Softmax(input_data, DimsToShape(input_dims), input_beta_multiplier,
           input_beta_left_shift, diff_min, output_data,
           DimsToShape(output_dims));
@@ -1798,11 +1803,11 @@ inline void LogSoftmax(const float* input_data, const Dims<4>& input_dims,
              DimsToShape(output_dims));
 }
 
-inline void LogSoftmax(const uint8* input_data, const Dims<4>& input_dims,
-                       int32 input_multiplier, int32 input_left_shift,
-                       int32 reverse_scaling_divisor,
-                       int32 reverse_scaling_right_shift, int diff_min,
-                       uint8* output_data, const Dims<4>& output_dims) {
+inline void LogSoftmax(const uint8_t* input_data, const Dims<4>& input_dims,
+                       int32_t input_multiplier, int32_t input_left_shift,
+                       int32_t reverse_scaling_divisor,
+                       int32_t reverse_scaling_right_shift, int diff_min,
+                       uint8_t* output_data, const Dims<4>& output_dims) {
   LogSoftmax(input_data, DimsToShape(input_dims), input_multiplier,
              input_left_shift, reverse_scaling_divisor,
              reverse_scaling_right_shift, diff_min, output_data,
@@ -1815,17 +1820,17 @@ inline void Logistic(const float* input_data, const Dims<4>& input_dims,
            output_data);
 }
 
-inline void Logistic(const uint8* input_data, const Dims<4>& input_dims,
-                     int32 input_zero_point, int32 input_range_radius,
-                     int32 input_multiplier, int input_left_shift,
-                     uint8* output_data, const Dims<4>& output_dims) {
+inline void Logistic(const uint8_t* input_data, const Dims<4>& input_dims,
+                     int32_t input_zero_point, int32_t input_range_radius,
+                     int32_t input_multiplier, int input_left_shift,
+                     uint8_t* output_data, const Dims<4>& output_dims) {
   Logistic(input_data, DimsToShape(input_dims), input_zero_point,
            input_range_radius, input_multiplier, input_left_shift, output_data,
            DimsToShape(output_dims));
 }
 
-inline void Logistic(const int16* input_data, const Dims<4>& input_dims,
-                     int16* output_data, const Dims<4>& output_dims) {
+inline void Logistic(const int16_t* input_data, const Dims<4>& input_dims,
+                     int16_t* output_data, const Dims<4>& output_dims) {
   Logistic(DimsToShape(input_dims), input_data, DimsToShape(output_dims),
            output_data);
 }
@@ -1836,17 +1841,17 @@ inline void Tanh(const float* input_data, const Dims<4>& input_dims,
        output_data);
 }
 
-inline void Tanh(const uint8* input_data, const Dims<4>& input_dims,
-                 int32 input_zero_point, int32 input_range_radius,
-                 int32 input_multiplier, int input_left_shift,
-                 uint8* output_data, const Dims<4>& output_dims) {
+inline void Tanh(const uint8_t* input_data, const Dims<4>& input_dims,
+                 int32_t input_zero_point, int32_t input_range_radius,
+                 int32_t input_multiplier, int input_left_shift,
+                 uint8_t* output_data, const Dims<4>& output_dims) {
   Tanh(input_data, DimsToShape(input_dims), input_zero_point,
        input_range_radius, input_multiplier, input_left_shift, output_data,
        DimsToShape(output_dims));
 }
 
-inline void Tanh(const int16* input_data, const Dims<4>& input_dims,
-                 int input_left_shift, int16* output_data,
+inline void Tanh(const int16_t* input_data, const Dims<4>& input_dims,
+                 int input_left_shift, int16_t* output_data,
                  const Dims<4>& output_dims) {
   Tanh(input_data, DimsToShape(input_dims), input_left_shift, output_data,
        DimsToShape(output_dims));
@@ -1932,9 +1937,9 @@ void BroadcastMul(const T* input1_data, const Dims<4>& input1_dims,
                      DimsToShape(output_dims), output_data);
 }
 
-inline void Mul(const int16* input1_data, const Dims<4>& input1_dims,
-                const int16* input2_data, const Dims<4>& input2_dims,
-                int16* output_data, const Dims<4>& output_dims) {
+inline void Mul(const int16_t* input1_data, const Dims<4>& input1_dims,
+                const int16_t* input2_data, const Dims<4>& input2_dims,
+                int16_t* output_data, const Dims<4>& output_dims) {
   tflite::ArithmeticParams op_params;
   // No params in this version.
 
@@ -1943,10 +1948,10 @@ inline void Mul(const int16* input1_data, const Dims<4>& input1_dims,
       output_data);
 }
 
-inline void Mul(const int16* input1_data, const Dims<4>& input1_dims,
-                const int16* input2_data, const Dims<4>& input2_dims,
-                int32 output_offset, int32 output_activation_min,
-                int32 output_activation_max, uint8* output_data,
+inline void Mul(const int16_t* input1_data, const Dims<4>& input1_dims,
+                const int16_t* input2_data, const Dims<4>& input2_dims,
+                int32_t output_offset, int32_t output_activation_min,
+                int32_t output_activation_max, uint8_t* output_data,
                 const Dims<4>& output_dims) {
   tflite::ArithmeticParams op_params;
   op_params.quantized_activation_min = output_activation_min;
@@ -1988,7 +1993,7 @@ inline void Floor(const float* input_data, const Dims<4>& input_dims,
 
 template <typename T>
 inline void ResizeBilinear(const T* input_data, const Dims<4>& input_dims,
-                           const int32* output_size_data,
+                           const int32_t* output_size_data,
                            const Dims<4>& output_size_dims, T* output_data,
                            const Dims<4>& output_dims, bool align_corners) {
   tflite::ResizeBilinearParams op_params;
@@ -2001,7 +2006,7 @@ inline void ResizeBilinear(const T* input_data, const Dims<4>& input_dims,
 
 // legacy, for compatibility with old checked-in code
 inline void ResizeBilinear(const float* input_data, const Dims<4>& input_dims,
-                           const int32* output_size_data,
+                           const int32_t* output_size_data,
                            const Dims<4>& output_size_dims, float* output_data,
                            const Dims<4>& output_dims) {
   ResizeBilinear<float>(input_data, input_dims, output_size_data,
@@ -2009,20 +2014,20 @@ inline void ResizeBilinear(const float* input_data, const Dims<4>& input_dims,
                         /*align_corners=*/false);
 }
 
-inline void ResizeBilinear(const uint8* input_data, const Dims<4>& input_dims,
-                           const int32* output_size_data,
-                           const Dims<4>& output_size_dims, uint8* output_data,
-                           const Dims<4>& output_dims) {
-  ResizeBilinear<uint8>(input_data, input_dims, output_size_data,
-                        output_size_dims, output_data, output_dims,
-                        /*align_corners=*/false);
+inline void ResizeBilinear(const uint8_t* input_data, const Dims<4>& input_dims,
+                           const int32_t* output_size_data,
+                           const Dims<4>& output_size_dims,
+                           uint8_t* output_data, const Dims<4>& output_dims) {
+  ResizeBilinear<uint8_t>(input_data, input_dims, output_size_data,
+                          output_size_dims, output_data, output_dims,
+                          /*align_corners=*/false);
 }
 
 template <typename T>
 inline void SpaceToBatchND(const T* input_data, const Dims<4>& input_dims,
-                           const int32* block_shape_data,
+                           const int32_t* block_shape_data,
                            const Dims<4>& block_shape_dims,
-                           const int32* paddings_data,
+                           const int32_t* paddings_data,
                            const Dims<4>& paddings_dims, T* output_data,
                            const Dims<4>& output_dims,
                            const int32_t pad_value) {
@@ -2037,9 +2042,9 @@ inline void SpaceToBatchND(const T* input_data, const Dims<4>& input_dims,
 
 template <typename T>
 inline void SpaceToBatchND(const T* input_data, const Dims<4>& input_dims,
-                           const int32* block_shape_data,
+                           const int32_t* block_shape_data,
                            const Dims<4>& block_shape_dims,
-                           const int32* paddings_data,
+                           const int32_t* paddings_data,
                            const Dims<4>& paddings_dims, T* output_data,
                            const Dims<4>& output_dims) {
   tflite::SpaceToBatchParams op_params;
@@ -2053,9 +2058,9 @@ inline void SpaceToBatchND(const T* input_data, const Dims<4>& input_dims,
 
 template <typename T>
 inline void BatchToSpaceND(const T* input_data, const Dims<4>& input_dims,
-                           const int32* block_shape_data,
+                           const int32_t* block_shape_data,
                            const Dims<4>& block_shape_dims,
-                           const int32* crops_data, const Dims<4>& crops_dims,
+                           const int32_t* crops_data, const Dims<4>& crops_dims,
                            T* output_data, const Dims<4>& output_dims) {
   BatchToSpaceND(DimsToShape(input_dims), input_data,
                  DimsToShape(block_shape_dims), block_shape_data,

@@ -16,7 +16,7 @@ load(
     "@local_tsl//tsl/platform:rules_cc.bzl",
     "cc_library",
 )
-load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl:tsl.bzl", "if_windows", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 
 package(
@@ -194,6 +194,7 @@ cc_library(
         ":allocator",
         ":metrics",
         ":shared_counter",
+        "//xla/tsl/protobuf:bfc_memory_map_proto_cc",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
@@ -210,7 +211,6 @@ cc_library(
         "@local_tsl//tsl/platform:types",
         "@local_tsl//tsl/profiler/lib:scoped_memory_debug_annotation",
         "@local_tsl//tsl/profiler/lib:traceme",
-        "@local_tsl//tsl/protobuf:bfc_memory_map_proto_cc",
     ],
 )
 
@@ -358,7 +358,10 @@ cc_library(
     hdrs = [
         "cancellation.h",
     ],
-    copts = ["-Wno-thread-safety-precise"],
+    copts = if_windows(
+        [],
+        ["-Wno-thread-safety-precise"],
+    ),
     visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/memory",
@@ -462,8 +465,8 @@ tsl_cc_test(
     deps = [
         ":device_id_impl",
         ":device_id_utils",
+        "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/util:device_name_utils",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:test_main",
         "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",

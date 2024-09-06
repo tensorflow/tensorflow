@@ -2129,7 +2129,7 @@ PJRT_Error* PJRT_Layouts_MemoryLayout_Serialize(
       PJRT_Layouts_MemoryLayout_Serialize_Args_STRUCT_SIZE, args->struct_size));
 
   PJRT_Layouts_SerializedLayout* s_layout = new PJRT_Layouts_SerializedLayout{
-      .serialized = args->layout->layout->Serialize()};
+      /* .serialized = */ args->layout->layout->Serialize()};
   args->serialized_layout = s_layout;
   args->serialized_bytes = s_layout->serialized.data();
   args->serialized_bytes_size = s_layout->serialized.size();

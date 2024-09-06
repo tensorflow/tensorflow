@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "xla/tests/hlo_test_base.h"
 
+#include <cstdint>
 #include <functional>
+#include <iterator>
 #include <memory>
 #include <set>
 #include <string>
@@ -27,6 +29,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/layout_util.h"
 #include "xla/service/hlo_module_util.h"
 #include "xla/service/hlo_parser.h"
@@ -42,8 +47,8 @@ limitations under the License.
 #include "xla/tests/pjrt_client_registry.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tests/verified_hlo_module.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/types.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/test.h"
 
@@ -532,8 +537,22 @@ absl::StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
       fake_arguments, std::back_inserter(fake_argument_ptrs),
       [](const Literal& literal) { return const_cast<Literal*>(&literal); });
 
-  return RunAndCompareNoHloPasses(std::move(module), fake_argument_ptrs, error,
-                                  reference_preprocessor);
+  auto assertion_result = RunAndCompareNoHloPasses(
+      std::move(module), fake_argument_ptrs, error, reference_preprocessor);
+  if (!assertion_result) {
+    for (const auto& literal : fake_arguments) {
+      uint64_t total_elements = 1;
+      absl::c_for_each(literal.shape().dimensions(),
+                       [&](int64_t dim) { total_elements *= dim; });
+      if (total_elements > 1000) {
+        LOG(ERROR) << "argument literal is too large to print: "
+                   << literal.shape().ToString();
+        continue;
+      }
+      LOG(ERROR) << "argument literal: " << literal.ToString();
+    }
+  }
+  return assertion_result;
 }
 
 ::testing::AssertionResult HloTestBase::Run(std::unique_ptr<HloModule> module,
@@ -1010,23 +1029,15 @@ HloTestBase::RunAndCompareTwoModulesInternal(
 
 HloComputation* HloTestBase::FindComputation(HloModule* module,
                                              absl::string_view name) {
-  auto computations = module->computations();
-  auto it = absl::c_find_if(
-      computations, [&](HloComputation* c) { return c->name() == name; });
-  if (it == computations.end()) {
-    return nullptr;
-  }
-  return *it;
+  return hlo_query::FindComputation(module, name);
 }
 
 HloInstruction* HloTestBase::FindInstruction(HloModule* module,
                                              absl::string_view name) {
-  for (const HloComputation* c : module->computations()) {
-    auto instructions = c->instructions();
-    auto it = absl::c_find_if(
-        instructions, [&](HloInstruction* i) { return i->name() == name; });
-    if (it != instructions.end()) {
-      return *it;
+  for (const HloComputation* computation : module->computations()) {
+    if (auto instruction = hlo_query::FindFirstInstruction(computation, name);
+        instruction.first != nullptr) {
+      return instruction.first;
     }
   }
   return nullptr;
@@ -1034,15 +1045,23 @@ HloInstruction* HloTestBase::FindInstruction(HloModule* module,
 
 HloInstruction* HloTestBase::FindInstruction(HloModule* module,
                                              HloOpcode opcode) {
-  for (const HloComputation* c : module->computations()) {
-    auto instructions = c->instructions();
-    auto it = absl::c_find_if(
-        instructions, [&](HloInstruction* i) { return i->opcode() == opcode; });
-    if (it != instructions.end()) {
-      return *it;
+  for (const HloComputation* computation : module->computations()) {
+    if (auto instruction = hlo_query::FindFirstInstruction(computation, opcode);
+        instruction.first != nullptr) {
+      return instruction.first;
     }
   }
   return nullptr;
+}
+
+std::vector<HloInstruction*> HloTestBase::FindInstructions(HloModule* module,
+                                                           HloOpcode opcode) {
+  std::vector<HloInstruction*> instructions;
+  for (const HloComputation* c : module->computations()) {
+    absl::c_copy_if(c->instructions(), std::back_inserter(instructions),
+                    [&](HloInstruction* i) { return i->opcode() == opcode; });
+  }
+  return instructions;
 }
 
 se::DeviceMemoryAllocator* HloTestBase::GetAllocator() {

@@ -340,7 +340,7 @@ absl::StatusOr<GpuGraphNodeHandle> GpuCommandBuffer::CreateBarrierNode(
 
   TF_RETURN_IF_ERROR(GpuDriver::GraphAddKernelNode(
       &barrier_handle, graph_, dependencies, "noop",
-      AsGpuKernel(&**noop)->AsGpuFunctionHandle(), 1, 1, 1, 1, 1, 1, 0,
+      AsGpuKernel(&**noop)->gpu_function(), 1, 1, 1, 1, 1, 1, 0,
       /*kernel_params=*/nullptr, /*extra=*/nullptr));
 #else
   TF_RETURN_IF_ERROR(
@@ -524,7 +524,7 @@ absl::Status GpuCommandBuffer::LaunchWithPackedArgs(
            packed_args.number_of_arguments());
 
   const GpuKernel* gpu_kernel = AsGpuKernel(&kernel);
-  GpuFunctionHandle gpu_func = gpu_kernel->AsGpuFunctionHandle();
+  GpuFunctionHandle gpu_func = gpu_kernel->gpu_function();
 
   void** kernel_params =
       const_cast<void**>(packed_args.argument_addresses().data());
@@ -1006,6 +1006,8 @@ absl::Status GpuCommandBuffer::Finalize() {
       } else {
         TF_RETURN_IF_ERROR(retry);
       }
+    } else {
+      TF_RETURN_IF_ERROR(instantiated);
     }
 
     uint64_t end_nanos = tsl::Env::Default()->NowNanos();
@@ -1071,6 +1073,17 @@ GpuCommandBuffer::barriers(ExecutionScopeId id) const {
   if (auto it = execution_scopes_.find(id); it != execution_scopes_.end())
     return it->second.barriers;
   return {};
+}
+
+absl::Status GpuCommandBuffer::Submit(Stream* stream) {
+  if (mode_ != CommandBuffer::Mode::kPrimary) {
+    return absl::InvalidArgumentError(
+        "Can't submit non-primary command buffer for execution");
+  }
+
+  VLOG(3) << "Launch command buffer executable graph " << exec_
+          << " on a stream: " << stream;
+  return GpuDriver::GraphLaunch(exec_, AsGpuStreamValue(stream));
 }
 
 }  // namespace stream_executor::gpu

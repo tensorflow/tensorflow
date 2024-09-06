@@ -1,6 +1,10 @@
+# NB: DEPRECATED! This file is a part of the deprecated `cuda_configure` rule.
+# Please use `hermetic/cuda_configure` instead.
+
 load(":build_defs.bzl", "cuda_header_library")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@bazel_skylib//lib:selects.bzl", "selects")
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
 
 licenses(["restricted"])  # MPL2, portions GPL v3, LGPL v3, BSD-like
 
@@ -144,7 +148,6 @@ cc_library(
     name = "cusolver",
     srcs = ["cuda/lib/%{cusolver_lib}"],
     data = ["cuda/lib/%{cusolver_lib}"],
-    linkopts = ["-lgomp"],
     linkstatic = 1,
 )
 
@@ -220,7 +223,6 @@ cc_library(
     name = "cusparse",
     srcs = ["cuda/lib/%{cusparse_lib}"],
     data = ["cuda/lib/%{cusparse_lib}"],
-    linkopts = ["-lgomp"],
     linkstatic = 1,
 )
 
@@ -242,10 +244,51 @@ py_library(
     srcs = ["cuda/cuda_config.py"],
 )
 
+# Build setting that is always true (i.e. it can not be changed on the
+# command line). It is used to create the config settings below that are
+# always or never satisfied.
+bool_setting(
+    name = "true_setting",
+    visibility = ["//visibility:private"],
+    build_setting_default = True,
+)
+
+# Config settings whether TensorFlow is built with hermetic CUDA.
+# These configs are never satisfied.
+config_setting(
+    name = "hermetic_cuda_tools",
+    flag_values = {":true_setting": "False"},
+)
+
+# Flag indicating if we should include hermetic CUDA libs.
+bool_flag(
+    name = "include_hermetic_cuda_libs",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "hermetic_cuda_libs",
+    flag_values = {":true_setting": "False"},
+)
+
+selects.config_setting_group(
+    name = "hermetic_cuda_tools_and_libs",
+    match_all = [
+        ":hermetic_cuda_libs",
+        ":hermetic_cuda_tools"
+    ],
+)
+
 %{copy_rules}
 
 cc_library(
     # This is not yet fully supported, but we need the rule
     # to make bazel query happy.
     name = "nvptxcompiler",
+)
+
+cc_library(
+    # This is not yet fully supported, but we need the rule
+    # to make bazel query happy.
+    name = "nvjitlink",
 )

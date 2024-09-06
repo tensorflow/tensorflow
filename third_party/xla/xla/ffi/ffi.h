@@ -27,6 +27,8 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <optional>
+#include <string>
+#include <string_view>
 
 // IWYU pragma: begin_exports
 #include "xla/ffi/api/api.h"
@@ -38,6 +40,7 @@ limitations under the License.
 #include "absl/base/optimization.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "xla/executable_run_options.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
 #include "xla/ffi/execution_context.h"
@@ -49,6 +52,7 @@ limitations under the License.
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/types.h"  // IWYU pragma: keep
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 
@@ -60,6 +64,7 @@ struct DeviceOrdinal {};      // binds `int32_t` with device ordinal
 struct Allocator {};          // binds `se::DeviceMemoryAllocator*`
 struct ScratchAllocator {};   // binds `se::OwningScratchAllocator`
 struct CalledComputation {};  // binds `HloComputation*`
+struct IntraOpThreadPool {};  // binds `const Eigen::ThreadPoolDevice*`
 
 //===----------------------------------------------------------------------===//
 // Arguments
@@ -239,6 +244,41 @@ struct ArgDecoding<Buffer<dtype, rank>> {
 };
 
 //===----------------------------------------------------------------------===//
+// Type-safe wrapper for accessing a variable number of arguments.
+//===----------------------------------------------------------------------===//
+
+class RemainingArgs : public internal::RemainingArgsBase {
+ public:
+  using internal::RemainingArgsBase::RemainingArgsBase;
+
+  template <typename T>
+  absl::StatusOr<T> get(size_t index) const {
+    size_t idx = offset() + index;
+    if (ABSL_PREDICT_FALSE(idx >= args()->size)) {
+      return InvalidArgument("Index out of range.");
+    }
+
+    DiagnosticEngine diagnostic;
+    std::optional<T> value = ArgDecoding<T>::Decode(
+        args()->types[idx], args()->args[idx], diagnostic);
+    if (ABSL_PREDICT_FALSE(!value.has_value())) {
+      return Internal("%s", diagnostic.Result());
+    }
+
+    return *value;
+  }
+};
+
+template <>
+struct internal::Decode<internal::RemainingArgsTag> {
+  static std::optional<RemainingArgs> call(DecodingOffsets& offsets,
+                                           DecodingContext& ctx,
+                                           DiagnosticEngine& diagnostic) {
+    return RemainingArgs(&ctx.call_frame->args, offsets.args);
+  }
+};
+
+//===----------------------------------------------------------------------===//
 // Results decoding
 //===----------------------------------------------------------------------===//
 
@@ -268,6 +308,41 @@ struct RetDecoding<Buffer<dtype, rank>> {
 
     return internal::DecodeBuffer<dtype, rank>(
         reinterpret_cast<XLA_FFI_Buffer*>(arg), diagnostic);
+  }
+};
+
+//===----------------------------------------------------------------------===//
+// Type-safe wrapper for accessing a variable number of results.
+//===----------------------------------------------------------------------===//
+
+class RemainingRets : public internal::RemainingRetsBase {
+ public:
+  using internal::RemainingRetsBase::RemainingRetsBase;
+
+  template <typename T>
+  absl::StatusOr<Result<T>> get(size_t index) const {
+    size_t idx = offset() + index;
+    if (ABSL_PREDICT_FALSE(idx >= rets()->size)) {
+      return InvalidArgument("Index out of range.");
+    }
+
+    DiagnosticEngine diagnostic;
+    std::optional<Result<T>> value = RetDecoding<T>::Decode(
+        rets()->types[idx], rets()->rets[idx], diagnostic);
+    if (ABSL_PREDICT_FALSE(!value.has_value())) {
+      return Internal("%s", diagnostic.Result());
+    }
+
+    return *value;
+  }
+};
+
+template <>
+struct internal::Decode<internal::RemainingRetsTag> {
+  static std::optional<RemainingRets> call(DecodingOffsets& offsets,
+                                           DecodingContext& ctx,
+                                           DiagnosticEngine& diagnostic) {
+    return RemainingRets(&ctx.call_frame->rets, offsets.rets);
   }
 };
 
@@ -330,6 +405,49 @@ struct AttrDecoding<Pointer<T>> {
 };
 
 //===----------------------------------------------------------------------===//
+// Type-safe wrapper for accessing dictionary attributes.
+//===----------------------------------------------------------------------===//
+
+class Dictionary : public internal::DictionaryBase {
+ public:
+  using internal::DictionaryBase::DictionaryBase;
+
+  template <typename T>
+  absl::StatusOr<T> get(std::string_view name) const {
+    DiagnosticEngine diagnostic;
+    std::optional<T> value = internal::DictionaryBase::get<T>(name, diagnostic);
+    if (!value.has_value()) {
+      return Internal("%s", diagnostic.Result());
+    }
+    return *value;
+  }
+};
+
+// Decode `AttrsTag` (all attributes) into a `Dictionary`.
+template <>
+struct internal::Decode<internal::AttrsTag<Dictionary>> {
+  static std::optional<Dictionary> call(DecodingOffsets& offsets,
+                                        DecodingContext& ctx,
+                                        DiagnosticEngine& diagnostic) {
+    return Dictionary(&ctx.call_frame->attrs);
+  }
+};
+
+// Decode individual attribute into `Dictionary` type.
+template <>
+struct AttrDecoding<Dictionary> {
+  using Type = Dictionary;
+  static std::optional<Dictionary> Decode(XLA_FFI_AttrType type, void* attr,
+                                          DiagnosticEngine& diagnostic) {
+    if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_AttrType_DICTIONARY)) {
+      return diagnostic.Emit("Wrong attribute type: expected ")
+             << XLA_FFI_AttrType_DICTIONARY << " but got " << type;
+    }
+    return Dictionary(reinterpret_cast<XLA_FFI_Attrs*>(attr));
+  }
+};
+
+//===----------------------------------------------------------------------===//
 // Context decoding
 //===----------------------------------------------------------------------===//
 
@@ -365,7 +483,7 @@ struct CtxDecoding<Allocator> {
                                     DiagnosticEngine&) {
     void* device_allocator =
         api->internal_api->XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get(ctx);
-    return reinterpret_cast<se::DeviceMemoryAllocator*>(device_allocator);
+    return reinterpret_cast<Type>(device_allocator);
   }
 };
 
@@ -396,6 +514,19 @@ struct CtxDecoding<CalledComputation> {
                                     DiagnosticEngine&) {
     void* ptr = api->internal_api->XLA_FFI_INTERNAL_CalledComputation_Get(ctx);
     return reinterpret_cast<Type>(ptr);
+  }
+};
+
+template <>
+struct CtxDecoding<IntraOpThreadPool> {
+  using Type = const Eigen::ThreadPoolDevice*;
+
+  static std::optional<Type> Decode(const XLA_FFI_Api* api,
+                                    XLA_FFI_ExecutionContext* ctx,
+                                    DiagnosticEngine&) {
+    void* intra_op_thread_pool =
+        api->internal_api->XLA_FFI_INTERNAL_IntraOpThreadPool_Get(ctx);
+    return reinterpret_cast<Type>(intra_op_thread_pool);
   }
 };
 

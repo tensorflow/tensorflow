@@ -54,6 +54,7 @@ namespace {
 // TODO: b/352400145 - Unify the patterns, handlers and their type into a class
 // or struct.
 enum class PatternType {
+  DSFusionNoBitcastPattern,
   DSFusionPattern,
   NestedDSFusionPattern,
   Other,
@@ -61,6 +62,8 @@ enum class PatternType {
 
 static std::string PatternTypeToString(PatternType pattern_type) {
   switch (pattern_type) {
+    case PatternType::DSFusionNoBitcastPattern:
+      return "DSFusionNoBitcastPattern";
     case PatternType::DSFusionPattern:
       return "DSFusionPattern";
     case PatternType::NestedDSFusionPattern:
@@ -97,7 +100,8 @@ struct PatternInfo {
 // information for unstacking that is fixed across different unstacker
 // instastances.
 struct UnstackerMetadata {
-  static absl::StatusOr<UnstackerMetadata> Create(HloModule* module) {
+  static absl::StatusOr<UnstackerMetadata> Create(
+      HloModule* module, std::function<bool(HloInstruction*)> unfuse_slice) {
     UnstackerMetadata metadata;
     TF_ASSIGN_OR_RETURN(
         bool prepared,
@@ -111,6 +115,7 @@ struct UnstackerMetadata {
       metadata.unrollable_loop_bodies[instr->while_body()] = while_loop_config;
       metadata.bodies[instr->while_body()] = instr;
     }
+    metadata.unfuse_slice = unfuse_slice;
     return metadata;
   }
   absl::flat_hash_map<HloComputation*, WhileLoopConfig> unrollable_loop_bodies;
@@ -123,6 +128,7 @@ struct UnstackerMetadata {
                     const UnstackerMetadata&, const HloInstruction*, int64_t)>,
                 std::function<absl::Status(HloInstruction*, const Shape&)>>>
       custom_handlers;
+  std::function<bool(HloInstruction*)> unfuse_slice;
 };
 
 // Performs the two-step unstacking. Each instance of this class is responsible
@@ -198,7 +204,7 @@ class UnstackerTransformer {
     return {};
   }
 
-  const UnstackerMetadata& GetMetadata() { return metadata_; }
+  const UnstackerMetadata& GetMetadata() const { return metadata_; }
 
   std::vector<const HloInstruction*>& GetUnstackedInstructions() {
     return unstacked_instrs_;
@@ -440,9 +446,18 @@ void UnstackWhileInput(const UnstackerTransformer& unstacker,
       // later prefetched using async-slice by MSA. For other patterns, we
       // resort to the original unstacking computation until we find benefit in
       // doing otherwise.
+      HloInstruction* slice = nullptr;
       if (unstacker.GetPatternType() == PatternType::DSFusionPattern ||
-          unstacker.GetPatternType() == PatternType::NestedDSFusionPattern) {
-        HloInstruction* dynamic_slice = root_instr->mutable_operand(0);
+          unstacker.GetPatternType() == PatternType::NestedDSFusionPattern ||
+          unstacker.GetPatternType() == PatternType::DSFusionNoBitcastPattern) {
+        HloInstruction* dynamic_slice = nullptr;
+        if (unstacker.GetPatternType() == PatternType::DSFusionPattern ||
+            unstacker.GetPatternType() == PatternType::NestedDSFusionPattern) {
+          dynamic_slice = root_instr->mutable_operand(0);
+        } else if (unstacker.GetPatternType() ==
+                   PatternType::DSFusionNoBitcastPattern) {
+          dynamic_slice = root_instr;
+        }
         std::vector<int64_t> new_start_indices;
         new_start_indices.reserve(dynamic_slice->shape().rank());
         std::vector<int64_t> new_limit_indices;
@@ -458,25 +473,22 @@ void UnstackWhileInput(const UnstackerTransformer& unstacker,
               dynamic_slice->mutable_operand(0)->shape().dimensions(j));
           new_strides.push_back(1);
         }
-        HloInstruction* slice =
-            while_instr->AddInstruction(HloInstruction::CreateSlice(
-                dynamic_slice->shape(), old_while_input, new_start_indices,
-                new_limit_indices, new_strides));
-
-        slices.push_back(slice);
-      } else {
+        slice = while_instr->AddInstruction(HloInstruction::CreateSlice(
+            dynamic_slice->shape(), old_while_input, new_start_indices,
+            new_limit_indices, new_strides));
+      }
+      if (slice == nullptr || !unstacker.GetMetadata().unfuse_slice(slice)) {
         std::vector<HloInstruction*> operands = {
             old_while_input,
             while_instr->AddInstruction(MakeScalarConstantWithShape(
                 unstacking_computation->parameter_instruction(1)->shape(), i))};
-        HloInstruction* slice =
-            while_instr->AddInstruction(HloInstruction::CreateFusion(
-                slice_shape, HloInstruction::FusionKind::kLoop, operands,
-                while_instr->GetModule()->AddEmbeddedComputation(
-                    unstacking_computation->Clone()),
-                "hoisted"));
-        slices.push_back(slice);
+        slice = while_instr->AddInstruction(HloInstruction::CreateFusion(
+            slice_shape, HloInstruction::FusionKind::kLoop, operands,
+            while_instr->GetModule()->AddEmbeddedComputation(
+                unstacking_computation->Clone()),
+            "hoisted"));
       }
+      slices.push_back(slice);
     }
   }
   HloInstruction* new_operand_element =
@@ -778,14 +790,58 @@ absl::Status UnstackDSFusionPattern(
   HloInstruction* bitcast = mutable_dynamic_slicing_fusion->AddInstruction(
       HloInstruction::CreateBitcast(mutable_dynamic_slicing_fusion->shape(),
                                     new_operand));
-  HloInstruction* bitcast_fusion =
-      mutable_dynamic_slicing_fusion->AddInstruction(
-          HloInstruction::CreateFusion(mutable_dynamic_slicing_fusion->shape(),
-                                       HloInstruction::FusionKind::kLoop,
-                                       bitcast));
+  return mutable_dynamic_slicing_fusion->ReplaceAllUsesWithDifferentShape(
+      bitcast);
+}
+
+// This function recognizes fusions with the following pattern:
+// fusion(stacked, f(loop_iteration_var))
+// computation {
+//   p0 = parameter(0)
+//   p1 = parameter(1)
+//   ROOT slice = dynamic_slice(p0, p1, zero, ...)
+// }
+// where f is a function of loop_iteration_var. It indicates that the slicing
+// offset is effectively static after unrolling.
+std::optional<PatternInfo> GetDSFusionNoBitcastPattern(
+    const UnstackerMetadata& metadata, const HloInstruction* instr,
+    int64_t stacked_operand_idx) {
+  VLOG(3) << "Checking DSFusionNoBitcast";
+  HloInstruction* shape_covering_instr =
+      GetMostMajorEffectivelyStaticDynamicSliceInFusion(metadata, instr, 2,
+                                                        stacked_operand_idx);
+  if (shape_covering_instr == nullptr) {
+    return std::nullopt;
+  }
+  if (instr->fused_instructions_computation()->root_instruction() !=
+      shape_covering_instr) {
+    return std::nullopt;
+  }
+  PatternInfo pattern_info;
+  pattern_info.type = PatternType::DSFusionNoBitcastPattern;
+  pattern_info.instr = instr;
+  const Shape& slice_shape = shape_covering_instr->shape();
+  const int64_t num_layers = instr->operand(0)->shape().dimensions(0);
+  pattern_info.unstacked_shape =
+      MakeUnstackedShapeFromSlice(slice_shape, num_layers);
+  pattern_info.unstacking_computation = instr->fused_instructions_computation();
+  pattern_info.unstacked_instrs.push_back(instr);
+  return pattern_info;
+}
+
+absl::Status UnstackDSFusionNoBitcastPattern(
+    HloInstruction* mutable_dynamic_slicing_fusion, const Shape& slice_shape) {
+  HloComputation* parent_loop = mutable_dynamic_slicing_fusion->parent();
+
+  HloInstruction* stacked = mutable_dynamic_slicing_fusion->mutable_operand(0);
+  HloInstruction* offset = mutable_dynamic_slicing_fusion->mutable_operand(1);
+
+  HloInstruction* new_operand =
+      parent_loop->AddInstruction(HloInstruction::CreateCustomCall(
+          slice_shape, {stacked, offset}, "DynamicGte"));
 
   return mutable_dynamic_slicing_fusion->ReplaceAllUsesWithDifferentShape(
-      bitcast_fusion);
+      new_operand);
 }
 
 // This function recognizes fusions with the following pattern:
@@ -1290,7 +1346,8 @@ absl::Status UnstackReduceFusionPattern(HloInstruction* mutable_reduce_fusion,
 absl::StatusOr<bool> HloUnstacker::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  TF_ASSIGN_OR_RETURN(auto metadata, UnstackerMetadata::Create(module));
+  TF_ASSIGN_OR_RETURN(auto metadata,
+                      UnstackerMetadata::Create(module, unfuse_slice_));
   // The order of the patterns below is important, as it determines the order
   // in which the unstacking custom handlers are called. For example, applying
   // GetDSAndDUSPattern after GetDSFusionPattern would result in patterns of
@@ -1310,6 +1367,8 @@ absl::StatusOr<bool> HloUnstacker::Run(
       std::make_pair(GetReduceFusionPattern, UnstackReduceFusionPattern));
   metadata.custom_handlers.push_back(
       std::make_pair(GetNestedDSFusionPattern, UnstackNestedDSFusionPattern));
+  metadata.custom_handlers.push_back(std::make_pair(
+      GetDSFusionNoBitcastPattern, UnstackDSFusionNoBitcastPattern));
 
   std::vector<HloInstruction*> entry_loops;
   for (HloInstruction* instr :
@@ -1365,6 +1424,7 @@ absl::StatusOr<bool> HloUnstacker::Run(
                                   /*force_unroll=*/true, /*prepare=*/false));
     CHECK(unrolled);
   }
+  VLOG(3) << "after unstacking \n" << module->ToString();
   return true;
 }
 

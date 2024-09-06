@@ -57,7 +57,7 @@ class PythonRefManager {
     ManagedPyObjects(const ManagedPyObjects& other) = delete;
     ManagedPyObjects(ManagedPyObjects&& other) = default;
     ManagedPyObjects& operator=(const ManagedPyObjects& other) = delete;
-    ManagedPyObjects& operator=(ManagedPyObjects&& other) = default;
+    ManagedPyObjects& operator=(ManagedPyObjects&& other) noexcept = default;
 
    private:
     PythonRefManager* manager_ = nullptr;

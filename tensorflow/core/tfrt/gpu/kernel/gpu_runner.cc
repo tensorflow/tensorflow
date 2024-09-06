@@ -41,15 +41,18 @@ limitations under the License.
 #include "xla/tsl/framework/device_id_manager.h"
 #include "xla/tsl/framework/serving_device_selector.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/tfrt/common/global_state.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
@@ -231,7 +234,7 @@ TransferVariablesAndInputs(
     int device_idx, const llvm::SmallVector<tfrt_stub::FallbackTensor>& args,
     tfrt::ArrayRef<int64_t> resource_indices, Device* cpu_device,
     absl::flat_hash_map<int, Device*> gpu_devices,
-    tfrt::gpu::GpuVariablesTable& vars_table,
+    tfrt::gpu::GpuVariablesTable& vars_table, bool variables_are_shared,
     const tfrt::ExecutionContext& exec_ctx) {
   llvm::SmallVector<tfrt::AsyncValueRef<tfrt_stub::FallbackTensor>> results;
 
@@ -244,35 +247,51 @@ TransferVariablesAndInputs(
   TF_ASSIGN_OR_RETURN(const std::vector<tsl::TfDeviceId> devices_on_platform,
                       tsl::DeviceIdManager::GetTfDevicesOnPlatform(
                           device_type, platform_device_id));
-  const int platform_idx = platform_device_id.value();
   absl::flat_hash_set<int64_t> resource_indices_set(resource_indices.begin(),
                                                     resource_indices.end());
+
+  // If variables are shared, there is only one copy of variables for all
+  // logical devices on the same physical GPU device; otherwise, each logical
+  // device has its own copy of variables.
+  const int cache_copy_idx =
+      variables_are_shared ? platform_device_id.value() : device_idx;
 
   for (int i = 0, resource_idx = 0; i < args.size(); ++i) {
     if (resource_indices_set.contains(i)) {
       // Transfer resources.
+      VLOG(2) << "Transfer resource arg[" << i << "].";
       tfrt::AsyncValueRef<tfrt_stub::FallbackTensor> device_tensor;
       auto cached_device_variable =
-          vars_table.GetDeviceVariable(args[i], platform_idx);
+          vars_table.GetDeviceVariable(args[i], cache_copy_idx);
       if (cached_device_variable) {
-        VLOG(2) << "Cache hit for resource arg[" << i << "]";
+        VLOG(2) << "Cache hit for resource arg[" << i << "].";
         device_tensor = cached_device_variable.CopyRef();
       } else {
-        VLOG(2) << "Cache miss for resource arg[" << i << "]";
-        // Distribute variables on virtual devices on the same GPU.
-        const int idx = resource_idx % devices_on_platform.size();
-        const int gpu_device_idx = devices_on_platform[idx].value();
+        VLOG(2) << "Cache miss for resource arg[" << i << "].";
+
+        int gpu_device_idx;
+        if (variables_are_shared) {
+          // Distribute variables on logical devices on the same GPU.
+          const int idx = resource_idx % devices_on_platform.size();
+          gpu_device_idx = devices_on_platform[idx].value();
+        } else {
+          gpu_device_idx = device_idx;
+        }
+
+        VLOG(2) << "Transfer the resource arg[" << i << "] to device "
+                << gpu_device_idx << ".";
         device_tensor = TransferTensorToDevice(exec_ctx, args[i],
                                                gpu_devices.at(gpu_device_idx));
-        vars_table.AddOrUpdateDeviceVariable(args[i], platform_idx,
+        vars_table.AddOrUpdateDeviceVariable(args[i], cache_copy_idx,
                                              std::move(device_tensor));
         device_tensor =
-            vars_table.GetDeviceVariable(args[i], platform_idx).CopyRef();
+            vars_table.GetDeviceVariable(args[i], cache_copy_idx).CopyRef();
       }
       results.push_back(device_tensor);
       ++resource_idx;
     } else {
       // Transfer inputs.
+      VLOG(2) << "Transfer input arg[" << i << "].";
       tfrt::AsyncValueRef<tfrt_stub::FallbackTensor> device_tensor =
           TransferTensorToDevice(exec_ctx, args[i], gpu_devices.at(device_idx));
       results.push_back(device_tensor);
@@ -356,6 +375,7 @@ GpuRunner::Run(const GpuRunInputs& run_inputs) {
   tsl::DeviceReservation device_reservation =
       serving_device_selector_->ReserveDevice(absl::StrCat(fingerprint));
   const int device_idx = device_reservation.device_index();
+  VLOG(1) << "GpuRunner selected device " << device_idx << ".";
 
   // Compile the program.
   const XlaCompiler::CompilationResult* compilation_result;
@@ -368,10 +388,10 @@ GpuRunner::Run(const GpuRunInputs& run_inputs) {
   TF_ASSIGN_OR_RETURN(
       llvm::SmallVector<tfrt::AsyncValueRef<tfrt_stub::FallbackTensor>>
           transferred_args,
-      TransferVariablesAndInputs(device_idx, *run_inputs.args,
-                                 run_inputs.resource_indices,
-                                 run_inputs.cpu_device, *run_inputs.gpu_devices,
-                                 vars_table_, *run_inputs.exec_ctx));
+      TransferVariablesAndInputs(
+          device_idx, *run_inputs.args, run_inputs.resource_indices,
+          run_inputs.cpu_device, *run_inputs.gpu_devices, vars_table_,
+          /*variables_are_shared=*/false, *run_inputs.exec_ctx));
 
   llvm::SmallVector<tfrt::RCReference<tfrt::AsyncValue>, 4>
       transferred_args_to_wait;

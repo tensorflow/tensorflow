@@ -84,6 +84,7 @@ HloInstruction* CreateConstantBase(const Shape& shape, Literal value, T* b,
                                                               PrimitiveType)) {
   if (shape.IsTuple()) {
     std::vector<HloInstruction*> elements;
+    elements.reserve(ShapeUtil::TupleElementCount(shape));
     for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
       elements.push_back(
           CreateConstantBase(ShapeUtil::GetTupleElementShape(shape, i),

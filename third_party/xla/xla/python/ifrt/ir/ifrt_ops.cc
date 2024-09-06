@@ -182,6 +182,46 @@ struct IoAlias {
   int output_index;
 };
 
+mlir::LogicalResult VerifyElementTypeAndPerShardShapeAreEqual(
+    mlir::Operation* op, IfrtArrayType in, int in_index, IfrtArrayType out,
+    int out_index) {
+  if (in.getShape().getElementType() != out.getShape().getElementType()) {
+    return op->emitOpError()
+           << "can't alias input #" << in_index << " to output #" << out_index
+           << " with different element types: " << in << " vs " << out;
+  }
+
+  absl::StatusOr<llvm::SmallVector<int64_t>> in_per_shard_shape =
+      in.getShardingAttr().LocalShapeFromGlobalShape(in.getShape().getShape());
+  if (!in_per_shard_shape.ok()) {
+    return op->emitOpError()
+           << "unable to get per-shard shape of aliased input #" << in_index
+           << ": " << in_per_shard_shape.status().message();
+  }
+  absl::StatusOr<llvm::SmallVector<int64_t>> out_per_shard_shape =
+      out.getShardingAttr().LocalShapeFromGlobalShape(
+          out.getShape().getShape());
+  if (!out_per_shard_shape.ok()) {
+    return op->emitOpError()
+           << "unable to get per-shard shape of aliased output #" << out_index
+           << ": " << out_per_shard_shape.status().message();
+  }
+  if (in_per_shard_shape->size() != out_per_shard_shape->size()) {
+    return op->emitOpError()
+           << "can't alias input #" << in_index << " to output #" << out_index
+           << " with different per-shard shapes: " << in << " vs " << out;
+  }
+  for (const auto& [in_dim, out_dim] :
+       llvm::zip(*in_per_shard_shape, *out_per_shard_shape)) {
+    if (in_dim != out_dim) {
+      return op->emitOpError()
+             << "can't alias input #" << in_index << " to output #" << out_index
+             << " with different per-shard shapes: " << in << " vs " << out;
+    }
+  }
+  return mlir::success();
+}
+
 mlir::LogicalResult VerifyIoAlias(mlir::Operation* op, IoAlias io_alias,
                                   llvm::ArrayRef<IfrtArrayType> inputs,
                                   llvm::ArrayRef<IfrtArrayType> outputs) {
@@ -198,11 +238,12 @@ mlir::LogicalResult VerifyIoAlias(mlir::Operation* op, IoAlias io_alias,
            << " outputs";
   }
   if (inputs[io_alias.input_index] != outputs[io_alias.output_index]) {
-    return op->emitOpError()
-           << "can't alias input #" << io_alias.input_index << " to output #"
-           << io_alias.output_index
-           << " with different types: " << inputs[io_alias.input_index]
-           << " vs " << outputs[io_alias.output_index];
+    // TODO(icgog): Relax this aliasing check to allow for different per-shard
+    // shapes as long as the byte size is the same. We cannot do this now
+    // because we do not have layout information.
+    return VerifyElementTypeAndPerShardShapeAreEqual(
+        op, inputs[io_alias.input_index], io_alias.input_index,
+        outputs[io_alias.output_index], io_alias.output_index);
   }
   return mlir::success();
 }

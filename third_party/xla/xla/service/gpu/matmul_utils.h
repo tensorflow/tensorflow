@@ -108,6 +108,11 @@ struct GemmConfig : public se::gpu::GemmConfig {
 
   static absl::StatusOr<GemmConfig> For(const HloInstruction* gemm);
 
+  // Gets the GemmConfig of the `gemm` instruction with overridden
+  // GemmBackendConfig.
+  static absl::StatusOr<GemmConfig> For(const HloInstruction* gemm,
+                                        const GemmBackendConfig& config);
+
   static absl::StatusOr<GemmConfig> For(
       const Shape& lhs_shape, absl::Span<const int64_t> lhs_batch_dims,
       absl::Span<const int64_t> lhs_contracting_dims, const Shape& rhs_shape,

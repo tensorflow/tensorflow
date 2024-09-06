@@ -18,9 +18,9 @@ limitations under the License.
 #include <utility>
 
 #include "xla/pjrt/cpu/cpu_client.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/tfrt/common/pjrt_state.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"

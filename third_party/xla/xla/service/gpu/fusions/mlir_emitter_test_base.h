@@ -72,7 +72,7 @@ class MlirEmitterTestBase : public MlirEmitterTestBaseImpl {
     auto& module =
         modules_.emplace_back(ParseAndReturnVerifiedModule(hlo_string).value());
     auto* root = module->entry_computation()->root_instruction();
-    analyses_.push_back(AnalyzeFusion(*root, device_info_));
+    analyses_.push_back(HloFusionAnalysis::Create(*root, device_info_));
     return GetEmitter(analyses_.back());
   }
 

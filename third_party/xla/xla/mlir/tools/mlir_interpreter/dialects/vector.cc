@@ -230,7 +230,7 @@ InterpreterValue MaskImpl(mlir::Operation* op, ArrayRef<int64_t> mask_sizes) {
 }
 
 InterpreterValue ConstantMask(InterpreterState&, vector::ConstantMaskOp mask) {
-  return MaskImpl(mask, ExtractVector<int64_t>(mask.getMaskDimSizes()));
+  return MaskImpl(mask, mask.getMaskDimSizes());
 }
 
 // TODO(jreiffers): Support masked contractions.
@@ -553,7 +553,7 @@ InterpreterValue MultiReduction(InterpreterState& state,
                                 const InterpreterValue& acc) {
   auto element_ty = getElementTypeOrSelf(reduction->getResultTypes()[0]);
   return {ReductionImpl(state, source, &acc, reduction.getKind(),
-                        ExtractVector<int64_t>(reduction.getReductionDims()),
+                        SmallVector<int64_t>(reduction.getReductionDims()),
                         element_ty)};
 }
 
@@ -634,7 +634,7 @@ InterpreterValue Shuffle(InterpreterState& state, vector::ShuffleOp shuffle,
   auto& result_view = result.View();
   result_view.is_vector = true;
 
-  auto mask = ExtractVector<int64_t>(shuffle.getMask());
+  auto mask = shuffle.getMask();
   bool is_zero_dim = v0.View().Rank() == 0;
   int64_t size0 = is_zero_dim ? 1 : v0.View().sizes[0];
   for (auto [dst_index, src_index] : llvm::enumerate(mask)) {

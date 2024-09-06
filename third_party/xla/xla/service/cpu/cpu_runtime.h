@@ -103,6 +103,8 @@ extern const char* const kXlaCpuRuntimeSymbolNamePrefix;
 // `device_ordinal`.  Note the device ordinal does not name a CPU
 XfeedManager* GetXfeedManager(int device_ordinal);
 
+int GetDeviceOrdinal(const xla::ExecutableRunOptions* run_options);
+
 }  // namespace runtime
 }  // namespace cpu
 }  // namespace xla

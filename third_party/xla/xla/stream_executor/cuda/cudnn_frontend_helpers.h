@@ -29,6 +29,11 @@ namespace gpu {
     }                                                                       \
   } while (false)
 
+// UIDs for cuDNN are unique identifiers of tensors within a graph. They are
+// assigned during graph construction; then graph execution takes a {uid:
+// buffer pointer} map defining the correspondance of buffers to tensors.
+// UID assignment scheme can be arbitrary; at the moment for simplicity XLA uses
+// a scheme UID = (HLO operand number + 1).
 int CuDnnTensorUID(int offset);
 
 }  // namespace gpu

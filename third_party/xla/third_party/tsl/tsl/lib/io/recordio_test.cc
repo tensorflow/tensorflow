@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/lib/hash/crc32c.h"
 #include "tsl/lib/io/record_reader.h"
 #include "tsl/lib/io/record_writer.h"

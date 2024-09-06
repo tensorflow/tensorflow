@@ -76,7 +76,7 @@ class MlirInPlaceDynamicUpdateSliceFusion : public MlirFusionEmitterBase {
 
  private:
   const HloFusionAnalysis& analysis_;
-  std::vector<const HloInstruction*> dus_ops_;
+  std::vector<HloInstructionAdaptor> dus_ops_;
 };
 
 }  // namespace gpu

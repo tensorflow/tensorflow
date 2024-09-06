@@ -20,7 +20,11 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "tensorflow/tools/proto_splitter/cc/composable_splitter.h"
+#include "tensorflow/tools/proto_splitter/cc/composable_splitter_base.h"
+#include "tensorflow/tools/proto_splitter/cc/max_size.h"
 #include "tensorflow/tools/proto_splitter/cc/size_splitter.h"
+#include "tensorflow/tools/proto_splitter/cc/util.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace tools::proto_splitter {
@@ -41,6 +45,19 @@ class LargeNodeSplitter : public SizeSplitter {
 };
 
 template <typename MessageType>
+absl::StatusOr<int> LargeNodeSplitter<MessageType>::BuildChunksReturnSize() {
+  MessageType* msg =
+      tsl::protobuf::DynamicCastToGenerated<MessageType>(message());
+  int initial_size = GetInitialSize();
+  std::shared_ptr<MessageType> new_msg = std::make_shared<MessageType>();
+  msg->Swap(new_msg.get());
+  std::vector<FieldType> fields = {};
+  auto x = std::make_unique<MessageBytes>(new_msg);
+  TF_RETURN_IF_ERROR(AddChunk(std::move(x), &fields, index_));
+  return initial_size;
+}
+
+template <typename MessageType>
 class LargeNodeSplitterFactory : public SizeSplitterFactory {
  public:
   using SizeSplitterFactory::SizeSplitterFactory;
@@ -49,6 +66,17 @@ class LargeNodeSplitterFactory : public SizeSplitterFactory {
       tsl::protobuf::Message* message, ComposableSplitterBase* parent_splitter,
       std::vector<FieldType>* fields_in_parent, int size) override;
 };
+
+template <typename MessageType>
+absl::StatusOr<std::unique_ptr<SizeSplitter>>
+LargeNodeSplitterFactory<MessageType>::CreateSplitter(
+    tsl::protobuf::Message* message, ComposableSplitterBase* parent_splitter,
+    std::vector<FieldType>* fields_in_parent, int size) {
+  if (!(LARGE_SIZE_CHECK(size, GetMaxSize()))) return nullptr;
+  LargeNodeSplitter<MessageType>* splitter = new LargeNodeSplitter<MessageType>(
+      message, parent_splitter, fields_in_parent);
+  return absl::WrapUnique(splitter);
+}
 
 }  // namespace tools::proto_splitter
 }  // namespace tensorflow

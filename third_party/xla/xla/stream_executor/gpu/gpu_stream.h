@@ -21,6 +21,8 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
+#include <utility>
 #include <variant>
 
 #include "absl/functional/any_invocable.h"
@@ -29,8 +31,11 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/event_based_timer.h"
+#include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
+#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_common.h"
@@ -46,47 +51,32 @@ class GpuExecutor;
 // Thread-safe post-initialization.
 class GpuStream : public StreamCommon {
  public:
-  explicit GpuStream(GpuExecutor* parent)
+  GpuStream(GpuExecutor* parent, std::unique_ptr<GpuEvent> completed_event,
+            std::optional<std::variant<StreamPriority, int>> priority)
       : StreamCommon(parent),
         parent_(parent),
         gpu_stream_(nullptr),
-        completed_event_(nullptr) {}
-
-  // Note: teardown is handled by a parent's call to DeallocateStream.
-  ~GpuStream() override {
-    BlockHostUntilDone().IgnoreError();
-    parent()->DeallocateStream(this);
+        completed_event_(std::move(completed_event)) {
+    if (priority.has_value()) {
+      stream_priority_ = priority.value();
+    }
   }
 
-  // Returns a pointer to a platform specific stream associated with this object
-  // if it exists, or nullptr otherwise. This is available via Stream public API
-  // as Stream::PlatformSpecificHandle, and should not be accessed directly
-  // outside of a StreamExecutor package.
-  void* platform_specific_stream() const { return gpu_stream_; }
+  // Note: teardown is handled by a parent's call to DeallocateStream.
+  ~GpuStream() override;
 
   // Explicitly initialize the CUDA resources associated with this stream.
-  bool Init();
-
-  // Sets the priority of this stream.
-  void SetPriority(StreamPriority priority) { stream_priority_ = priority; }
-  void SetPriority(int priority) { stream_priority_ = priority; }
+  absl::Status Init();
 
   std::variant<StreamPriority, int> priority() const override {
     return stream_priority_;
   }
   PlatformSpecificHandle platform_specific_handle() const override;
 
-  // Explicitly destroy the CUDA resources associated with this stream, used by
-  // StreamExecutor::DeallocateStream().
-  void Destroy();
-
-  // Returns true if no work is pending or executing on the stream.
-  bool IsIdle() const;
-
   // Retrieves an event which indicates that all work enqueued into the stream
   // has completed. Ownership of the event is not transferred to the caller, the
   // event is owned by this stream.
-  GpuEventHandle* completed_event() { return &completed_event_; }
+  GpuEvent* completed_event() { return completed_event_.get(); }
 
   // Returns the GpuStreamHandle value for passing to the CUDA API.
   //
@@ -115,14 +105,22 @@ class GpuStream : public StreamCommon {
   void set_name(absl::string_view name) override;
   absl::StatusOr<std::unique_ptr<EventBasedTimer>> CreateEventBasedTimer(
       bool use_delay_kernel) override;
+  absl::Status Launch(const ThreadDim& thread_dims, const BlockDim& block_dims,
+                      const Kernel& k, const KernelArgs& args) override;
+  absl::Status Launch(const ThreadDim& thread_dims, const BlockDim& block_dims,
+                      const ClusterDim& cluster_dims, const Kernel& k,
+                      const KernelArgs& args) override;
 
  private:
+  // Helper method to launch a kernel with optional cluster dimensions.
+  absl::Status Launch(const ThreadDim& thread_dims, const BlockDim& block_dims,
+                      const std::optional<ClusterDim>& cluster_dims,
+                      const Kernel& kernel, const KernelArgs& args);
+
   GpuExecutor* parent_;         // Executor that spawned this stream.
   GpuStreamHandle gpu_stream_;  // Wrapped CUDA stream handle.
   std::variant<StreamPriority, int> stream_priority_;
-
-  // Event that indicates this stream has completed.
-  GpuEventHandle completed_event_ = nullptr;
+  std::unique_ptr<GpuEvent> completed_event_;
 };
 
 // Helper functions to simplify extremely common flows.

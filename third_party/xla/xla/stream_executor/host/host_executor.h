@@ -13,20 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Declares the HostExecutor class, which is a CPU-only implementation of
-// the StreamExecutor interface. For now, this is used for testing and to
-// examine the performance of host-based StreamExecutor code.
 #ifndef XLA_STREAM_EXECUTOR_HOST_HOST_EXECUTOR_H_
 #define XLA_STREAM_EXECUTOR_HOST_HOST_EXECUTOR_H_
 
-#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <variant>
 
-#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/device_description.h"
@@ -36,24 +31,21 @@ limitations under the License.
 #include "xla/stream_executor/host_memory_allocation.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_common.h"
 #include "tsl/platform/threadpool.h"
 
 namespace stream_executor {
 namespace host {
 
-// An implementation of StreamExecutor that does no communication or interaction
-// with a device, but DOES perform memory operations backed by the host.
-// Kernel invocations will fail, but host callbacks may be enqueued on this
-// executor and its associated stream, and should follow standard ordering
-// semantics.
+// Declares the HostExecutor class, which is a CPU-only implementation of
+// the StreamExecutor interface. For now, this is used for testing and to
+// examine the performance of host-based StreamExecutor code.
 //
 // This is useful for evaluating the performance of host-based or fallback
 // routines executed under the context of a GPU executor.
-// See stream_executor.h for description of the below operations.
 class HostExecutor : public StreamExecutorCommon {
  public:
   // A function that loads a kernel function from a given spec. If spec is not
@@ -70,14 +62,8 @@ class HostExecutor : public StreamExecutorCommon {
 
   absl::Status Init() override;
 
-  absl::Status GetKernel(const MultiKernelLoaderSpec& spec,
-                         Kernel* kernel) override;
-
-  absl::StatusOr<std::unique_ptr<Kernel>> CreateKernel() override;
-
-  absl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
-                      const BlockDim& block_dims, const Kernel& kernel,
-                      const KernelArgs& args) override;
+  absl::StatusOr<std::unique_ptr<Kernel>> LoadKernel(
+      const MultiKernelLoaderSpec& spec) override;
 
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
   void Deallocate(DeviceMemoryBase* mem) override;
@@ -90,10 +76,6 @@ class HostExecutor : public StreamExecutorCommon {
     delete[] static_cast<char*>(mem);
   }
 
-  absl::Status Memset(Stream* stream, DeviceMemoryBase* location,
-                      uint8_t pattern, uint64_t size) override;
-
-  // No "synchronize all activity" implemented for this platform at the moment.
   bool SynchronizeAllActivity() override { return true; }
   absl::Status SynchronousMemZero(DeviceMemoryBase* location,
                                   uint64_t size) override;

@@ -715,17 +715,6 @@ std::map<int, llvm::MDNode*> MergeMetadata(
   return result;
 }
 
-static absl::Status CreateAndWriteStringToFile(
-    const std::string& directory_name, const std::string& file_name,
-    const std::string& text) {
-  std::unique_ptr<tsl::WritableFile> f;
-  TF_RETURN_IF_ERROR(tsl::Env::Default()->RecursivelyCreateDir(directory_name));
-  TF_RETURN_IF_ERROR(tsl::Env::Default()->NewWritableFile(file_name, &f));
-  TF_RETURN_IF_ERROR(f->Append(text));
-  TF_RETURN_IF_ERROR(f->Close());
-  return absl::OkStatus();
-}
-
 void DumpIrIfEnabled(const HloModule& hlo_module,
                      const llvm::Module& llvm_module, bool optimized,
                      absl::string_view filename_suffix) {

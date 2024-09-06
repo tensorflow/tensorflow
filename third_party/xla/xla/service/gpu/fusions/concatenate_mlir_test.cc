@@ -21,7 +21,7 @@ limitations under the License.
 #include "xla/service/gpu/fusions/mlir_emitter_test_base.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/model/indexing_test_utils.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -52,7 +52,7 @@ TEST_F(MlirConcatenateFusionTest, ThreadIdIndexing) {
   thread_id_printer_.SetSymbolName(1, "unroll_id");
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info_);
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_);
   MlirConcatenateFusion fusion(analysis);
 
   constexpr auto kIndexing = R"(
@@ -102,9 +102,9 @@ TEST_F(MlirConcatenateFusionTest, StandAloneConcatenate) {
     }
   )";
   TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
-    // CHECK-DAG: #[[MAP_1:.*]] = affine_map<(d0, d1) -> (d1 * 128 + d0)>
-    // CHECK-DAG: #[[MAP_2:.*]] = affine_map<(d0, d1) -> (d1 * 128 + d0 + 200)>
-    // CHECK-DAG: #[[MAP_3:.*]] = affine_map<(d0, d1) -> (d1 * 128 + d0 + 600)>
+    // CHECK-DAG: #[[MAP_1:.*]] = #xla_gpu.indexing_map<(d0, d1) -> (d1 * 128 + d0)
+    // CHECK-DAG: #[[MAP_2:.*]] = #xla_gpu.indexing_map<(d0, d1) -> (d1 * 128 + d0 + 200)
+    // CHECK-DAG: #[[MAP_3:.*]] = #xla_gpu.indexing_map<(d0, d1) -> (d1 * 128 + d0 + 600)
 
     // CHECK-LABEL: fused_computation
     // CHECK-SAME:    %[[ARG_0:[a-zA-Z0-9]*]]: {{[^,]*}},
@@ -152,7 +152,7 @@ TEST_F(MlirConcatenateFusionTest, PrologueEpilogue) {
     }
   )";
   TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
-    // CHECK: #[[MAP:.*]] = affine_map<(d0) -> (d0 + 64)>
+    // CHECK: #[[MAP:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 + 64)
 
     // CHECK-LABEL: fused_computation
     // CHECK-DAG: %[[C_63:.*]] = arith.constant 63
@@ -254,9 +254,9 @@ TEST_F(MlirConcatenateFusionTest, Vectorization) {
     }
   )";
   TF_ASSERT_OK(EmitAndCheckIR(kHloString, R"(
-    // CHECK-DAG: affine_map<(d0, d1) -> (d1 * 128 + d0)>
-    // CHECK-DAG: affine_map<(d0, d1)[s0] -> (d0 * 2 + d1 * 256 + s0)>
-    // CHECK-DAG: affine_map<(d0, d1)[s0] -> (d0 * 2 + d1 * 256 + s0 + 640002)>
+    // CHECK-DAG: #xla_gpu.indexing_map<(d0, d1) -> (d1 * 128 + d0)
+    // CHECK-DAG: #xla_gpu.indexing_map<(d0, d1)[s0] -> (d0 * 2 + d1 * 256 + s0)
+    // CHECK-DAG: #xla_gpu.indexing_map<(d0, d1)[s0] -> (d0 * 2 + d1 * 256 + s0 + 640002)
 
     // CHECK-LABEL: fused_computation
     // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index

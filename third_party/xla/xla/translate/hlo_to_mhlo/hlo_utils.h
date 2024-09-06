@@ -18,17 +18,31 @@ limitations under the License.
 #ifndef XLA_TRANSLATE_HLO_TO_MHLO_HLO_UTILS_H_
 #define XLA_TRANSLATE_HLO_TO_MHLO_HLO_UTILS_H_
 
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <utility>
+
+#include "absl/status/statusor.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/SparseTensor/IR/Enums.h"
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "xla/hlo/ir/hlo_instruction.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/Value.h"
+#include "mlir/IR/ValueRange.h"
+#include "xla/layout.h"
+#include "xla/layout_util.h"
+#include "xla/literal.h"
 #include "xla/mlir/utils/type_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "xla/mlir_hlo/utils/convert_op_folder.h"
 #include "xla/util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -157,6 +171,75 @@ static absl::StatusOr<mlir::Type> ConvertShapeToType(const Shape& shape,
     return mlir::mhlo::TokenType::get(builder.getContext());
   }
   return ConvertTensorShapeToType<TypeT>(shape, builder);
+}
+
+// CreateTupleValue creates a root TupleOp of (nested) tuple-type 'type' using
+// the non-tuple-typed values in 'flatten_values'.
+//
+// e.g., Given 'flatten_values': [V1, V2, V3] &'type': tuple<T1,tuple<T1,T2>>,
+//      The function returns %t2 such that:
+//       %t1 = mhlo.tuple(V2,V3) : (T2,T3) -> tuple<T2,T3>
+//       %t2 = mhlo.tuple(V1,%t1): (T1,tuple<T2,T3>) -> tuple<T1,tuple<T1,T2>>
+//
+// Note: 1. FlattenTupleValue and CreateTupleValue is a pair of functions to
+//          resp. flatten and create tuples in the exact same order.
+//       2. `flatten_values`, initially storing the flattened values, will be
+//          mutated to a 0-length array by the end of function invocation.
+mlir::Value CreateTupleValue(mlir::OpBuilder* func_builder, mlir::Location loc,
+                             mlir::ValueRange& flatten_values, mlir::Type type);
+
+// Create a TupleOp using the results of 'op' if 'type' is a mlir::TupleType.
+// Otherwise, return 'op'.
+mlir::Operation* CreateTupleFromOpResults(mlir::OpBuilder* func_builder,
+                                          mlir::Location loc,
+                                          mlir::Operation* op, mlir::Type type);
+
+mlir::TypeRange Untuple(const mlir::Type& type);
+
+static std::pair<mlir::Attribute, mlir::ArrayAttr> GetLayoutAttribute(
+    mlir::Builder& b, const Shape& shape,
+    std::optional<const Layout> maybe_layout = std::nullopt) {
+  if (shape.IsTuple()) {
+    llvm::SmallVector<mlir::Attribute> element_attrs;
+    llvm::SmallVector<mlir::Attribute> tile_attrs;
+    for (const auto& tuple_shape : shape.tuple_shapes()) {
+      // TODO here we do not dissect the layout of a tuple into sublayouts.
+      // Presently ShapeLayout cannot represent an explicit layout for a tuple
+      // type so this should never occur. However, if this function were to
+      // be used in another context where this assumption were to be lifted.
+      // users should be aware of this limitation which will use the default
+      // layout for tuple subshapes.
+      std::pair<mlir::Attribute, mlir::Attribute> inner =
+          GetLayoutAttribute(b, tuple_shape);
+      element_attrs.push_back(inner.first);
+      tile_attrs.push_back(inner.second);
+    }
+    return std::make_pair((mlir::Attribute)b.getArrayAttr(element_attrs),
+                          b.getArrayAttr(tile_attrs));
+  }
+
+  Layout layout = maybe_layout.value_or(
+      shape.has_layout() ? shape.layout()
+                         : LayoutUtil::GetDefaultLayoutForShape(shape));
+
+  llvm::SmallVector<mlir::Attribute> vec_of_tiles;
+  for (const Tile& tile : layout.tiles()) {
+    llvm::SmallVector<int64_t> tile_vec = {tile.dimensions().begin(),
+                                           tile.dimensions().end()};
+    vec_of_tiles.push_back(b.getIndexTensorAttr(tile_vec));
+  }
+  llvm::SmallVector<int64_t> layout_vec = {layout.minor_to_major().begin(),
+                                           layout.minor_to_major().end()};
+  return std::make_pair(b.getIndexTensorAttr(layout_vec),
+                        b.getArrayAttr(vec_of_tiles));
+}
+
+static bool HasCustomLayout(const Shape& shape) {
+  if (shape.IsTuple()) {
+    return llvm::any_of(shape.tuple_shapes(), HasCustomLayout);
+  }
+  return shape.has_layout() && !shape.layout().minor_to_major().empty() &&
+         shape.layout() != LayoutUtil::GetDefaultLayoutForShape(shape);
 }
 
 }  // namespace xla

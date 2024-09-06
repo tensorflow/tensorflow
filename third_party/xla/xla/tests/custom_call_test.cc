@@ -26,17 +26,19 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/dynamic_annotations.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/blocking_counter.h"
 #include "absl/types/span.h"
-#include "xla/client/lib/constants.h"
+#include "xla/array2d.h"
+#include "xla/array3d.h"
 #include "xla/client/xla_builder.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
@@ -44,6 +46,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_target_registry.h"
+#include "xla/service/service.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_base.h"
@@ -54,6 +57,9 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
+
+#define EIGEN_USE_THREADS
+#include "unsupported/Eigen/CXX11/Tensor"
 
 namespace {
 void R0F32Add2(float* out, float** in) {
@@ -862,6 +868,40 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
                          "__xla_test$$HandleTupleDifferentRanks", "Host",
                          kHandleTupleDifferentRanks);
 
+static absl::Status CustomCallWithIntraOpThreadPool(
+    ffi::Result<ffi::AnyBuffer>,
+    const Eigen::ThreadPoolDevice* intra_op_thread_pool) {
+  // We use two blocking counters to ensure that the task is actually running
+  // inside a thread pool.
+  absl::BlockingCounter counter0(1);
+  absl::BlockingCounter counter1(1);
+
+  intra_op_thread_pool->getPool()->Schedule([&]() {
+    counter0.Wait();
+    counter1.DecrementCount();
+  });
+
+  // Unblock submitted task.
+  counter0.DecrementCount();
+
+  // TODO(b/356389210): It is unsafe to wait for the completion of a task
+  // submitted into an intra-op thread pool as we might be running on a thread
+  // inside the same thread pool, and this can lead to deadlocks. Custom calls
+  // should return `AsyncValue` to signal completion of all submitted tasks.
+  counter1.Wait();
+
+  return absl::OkStatus();
+}
+
+XLA_FFI_DEFINE_HANDLER(kIntraOpThreadPool, CustomCallWithIntraOpThreadPool,
+                       ffi::Ffi::Bind()
+                           .Ret<AnyBuffer>()  // unused out buffer
+                           .Ctx<ffi::IntraOpThreadPool>());
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
+                         "__xla_test$$intra_op_thread_pool", "Host",
+                         kIntraOpThreadPool);
+
 }  // namespace
 
 // __xla_test$$ConcatVectors
@@ -1606,6 +1646,114 @@ XLA_TEST_F(FfiCustomCallTest, FfiNestedTupleInputAndOutput) {
 
   Literal inner_tuple = LiteralUtil::MakeTuple({&arg2, &arg3});
   Literal expected = LiteralUtil::MakeTuple({&arg1, &inner_tuple, &arg0});
+  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
+  EXPECT_EQ(result, expected);
+}
+
+XLA_TEST_F(FfiCustomCallTest, IntraOpThreadPool) {
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+
+  builder.AddInstruction(HloInstruction::CreateCustomCall(
+      r0f32_, {}, "__xla_test$$intra_op_thread_pool", "",
+      /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
+
+  module->AddEntryComputation(builder.Build());
+
+  auto status = Execute(std::move(module), {}).status();
+  EXPECT_EQ(status, absl::OkStatus());
+}
+
+//===----------------------------------------------------------------------===//
+// Stateful XLA:FFI handler
+//===----------------------------------------------------------------------===//
+
+struct SomeState {
+  explicit SomeState(float value) : value(value) {}
+  float value = 0;
+};
+
+int instantiate_called_counter = 0;
+
+// Every time custom call HLO operation is instantiated as a CPU runtime Thunk,
+// XLA calls instantiate callback to create a new instance of the handler state,
+// that will be passed to all other FFI handler calls.
+static absl::StatusOr<std::unique_ptr<SomeState>> InstantiateState() {
+  ++instantiate_called_counter;
+  return std::make_unique<SomeState>(42.f);
+}
+
+// At run time we can access the state created by the instantiate callback.
+static absl::Status IncrementState(R0F32ResultBuffer out, SomeState* state) {
+  state->value += 1.f;
+  auto out_data = out->typed_data();
+  *out_data = state->value;
+  return absl::OkStatus();
+}
+
+XLA_FFI_DEFINE_HANDLER(kInstantiateState, InstantiateState,
+                       ffi::Ffi::BindInstantiate());
+
+XLA_FFI_DEFINE_HANDLER(
+    kIncrementState, IncrementState,
+    ffi::Ffi::Bind().Ret<R0F32Buffer>().Ctx<ffi::State<SomeState>>());
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$ffi_execution_state",
+                         "Host",
+                         {
+                             /*instantiate=*/kInstantiateState,
+                             /*prepare=*/nullptr,
+                             /*initialize=*/nullptr,
+                             /*execute=*/kIncrementState,
+                         });
+
+// This test doesn't care about execution results, its intent is just to test if
+// instantiate function was called.
+TEST_F(CustomCallTest, FfiExecutionStateInstantiate) {
+  const char* const kModuleStr = R"(
+    HloModule m
+    ENTRY test {
+      ROOT result = f32[] custom-call(), custom_call_target=
+        "__xla_test$$ffi_execution_state", api_version=API_VERSION_TYPED_FFI
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+
+  // Execute the module, but don't verify the results.
+  instantiate_called_counter = 0;
+  auto result = Execute(std::move(module), {});
+
+  // Check that instantiate callback was called.
+  EXPECT_EQ(instantiate_called_counter, 1);
+}
+
+TEST_F(CustomCallTest, FfiExecutionStateExecute) {
+  // Execution state is only partially implemented at the moment.
+  GTEST_SKIP() << "Not implemented yet.";
+
+  // TODO(abanas): Actually, this HLO probably creates two custom call thunks,
+  // each one is called once. If yes then fix it, cause the intent is to call
+  // the same custom call twice.
+  const char* const kModuleStr = R"(
+    HloModule m
+    ENTRY test {
+      first = f32[] custom-call(), custom_call_target=
+        "__xla_test$$ffi_execution_state", api_version=API_VERSION_TYPED_FFI
+      second = f32[] custom-call(), custom_call_target=
+        "__xla_test$$ffi_execution_state", api_version=API_VERSION_TYPED_FFI
+      ROOT result = (f32[], f32[]) tuple(first, second)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+
+  Literal expected0 =
+      LiteralUtil::CreateR0<int32_t>(43.f);  // Incremented once.
+  Literal expected1 =
+      LiteralUtil::CreateR0<int32_t>(44.f);  // Incremented twice.
+  Literal expected = LiteralUtil::MakeTuple({&expected0, &expected1});
+
   TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
   EXPECT_EQ(result, expected);
 }

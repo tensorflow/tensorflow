@@ -233,6 +233,16 @@ void RecordBatchParamMaxBatchSize(int64_t max_batch_size,
   cell->GetCell(model_name, op_name)->Set(max_batch_size);
 }
 
+void RecordBatchParamPaddingPolicy(const string& batch_padding_policy,
+                                   const string& model_name,
+                                   const string& op_name) {
+  static auto* cell = monitoring::Gauge<string, 2>::New(
+      "/tensorflow/serving/batching/configured_batch_padding_policy",
+      "The value of BatchFunction.batch_padding_policy attribute.",
+      "model_name", "op_name");
+  cell->GetCell(model_name, op_name)->Set(batch_padding_policy);
+}
+
 void RecordBatchParamMaxEnqueuedBatches(int64_t max_enqueued_batches,
                                         const string& model_name,
                                         const string& op_name) {
@@ -406,6 +416,9 @@ Status BatchResourceBase::RegisterInput(
     RecordBatchParamMaxEnqueuedBatches(
         batcher_queue_options_.max_enqueued_batches, GetModelName(context),
         context->op_kernel().name());
+    RecordBatchParamPaddingPolicy(
+        this->batcher_queue_options_.batch_padding_policy,
+        GetModelName(context), context->op_kernel().name());
   } else if (adaptive_batcher_) {
     RecordBatchParamBatchTimeoutMicros(
         adaptive_batcher_queue_options_.batch_timeout_micros,
@@ -472,8 +485,10 @@ Status BatchResourceBase::RegisterInput(
   }
 
   BatcherQueueT* batcher_queue;
-  TF_RETURN_IF_ERROR(
-      LookupOrCreateBatcherQueue(batcher_queue_name, &batcher_queue));
+  TF_RETURN_IF_ERROR(LookupOrCreateBatcherQueue(
+      /* queue_name= */ batcher_queue_name,
+      /* model_name= */ GetModelName(context),
+      /* op_name= */ context->op_kernel().name(), /* queue= */ &batcher_queue));
 
   if (!session_metadata().name().empty()) {
     absl::MutexLock lock(&outstanding_batch_mu_);
@@ -500,7 +515,9 @@ BatchResourceBase::GetBatcherQueueOptions(
   return GetBatcherQueueOptions(
       num_batch_threads, max_batch_size, batch_timeout_micros,
       max_enqueued_batches, allowed_batch_sizes, enable_large_batch_splitting,
-      disable_padding, /*low_priority_max_batch_size=*/0,
+      disable_padding,
+      /*batch_padding_policy=*/kPadUpPolicy,
+      /*low_priority_max_batch_size=*/0,
       /*low_priority_batch_timeout_micros=*/0,
       /*low_priority_max_enqueued_batches=*/0,
       /*low_priority_allowed_batch_sizes=*/{},
@@ -514,7 +531,7 @@ BatchResourceBase::GetBatcherQueueOptions(
     int32_t batch_timeout_micros, int32_t max_enqueued_batches,
     const std::vector<int32>& allowed_batch_sizes,
     bool enable_large_batch_splitting, bool disable_padding,
-    int32_t low_priority_max_batch_size,
+    absl::string_view batch_padding_policy, int32_t low_priority_max_batch_size,
     int32_t low_priority_batch_timeout_micros,
     int32_t low_priority_max_enqueued_batches,
     const std::vector<int32>& low_priority_allowed_batch_sizes,
@@ -523,6 +540,8 @@ BatchResourceBase::GetBatcherQueueOptions(
   batcher_queue_options.input_batch_size_limit = max_batch_size;
   batcher_queue_options.max_enqueued_batches = max_enqueued_batches;
   batcher_queue_options.batch_timeout_micros = batch_timeout_micros;
+  batcher_queue_options.batch_padding_policy =
+      std::string(batch_padding_policy);
   if (low_priority_max_batch_size > 0) {
     batcher_queue_options.enable_priority_queue = true;
   }
@@ -1172,9 +1191,9 @@ void BatchResourceBase::ProcessBatchCallBack(
   }
 }
 
-// Looks up the batcher queue for 'queue_name'. If it didn't previously exist,
-// creates it.
 Status BatchResourceBase::LookupOrCreateBatcherQueue(const string& queue_name,
+                                                     const string& model_name,
+                                                     const string& op_name,
                                                      BatcherQueueT** queue) {
   mutex_lock l(batcher_queues_mu_);
 
@@ -1186,8 +1205,12 @@ Status BatchResourceBase::LookupOrCreateBatcherQueue(const string& queue_name,
 
   std::unique_ptr<BatcherQueueT> new_queue;
   if (batcher_) {
+    BatcherT::QueueOptions batcher_queue_options = batcher_queue_options_;
+    batcher_queue_options.model_batch_stats = &GlobalBatchStatsRegistry().model(
+        /* model_name= */ model_name, /* op_name= */ op_name);
+
     TF_RETURN_IF_ERROR(batcher_->AddQueue(
-        batcher_queue_options_,
+        batcher_queue_options,
         absl::bind_front(&BatchResourceBase::ProcessBatchCallBack, this),
         &new_queue));
   } else if (adaptive_batcher_) {
@@ -1241,16 +1264,12 @@ void BatchResourceBase::SplitBatchCostsAndRecordMetrics(
                      absl::StrCat(cost_type, kNoSmearSuffix),
                      total_cost / processed_size * batch.size());
 
+    // Register batch stats for in-process use.
     if (cost_type == kTpuCostName) {
-      // Get the model stats object for the current model name and op name.
-      ModelBatchStats& model_stats = GlobalBatchStats().model(
+      ModelBatchStats& model_stats = GlobalBatchStatsRegistry().model(
           /* model_name= */ model_name, /* op_name= */ op_name);
-
-      // Register TPU cost for in-process use.
       model_stats.batch_size(processed_size).tpu_cost().Register(total_cost);
-
-      // Register cumulative size of processed non-padding jobs for in-process
-      // use.
+      // batch.size() is the size of the original batch before padding.
       model_stats.RegisterProcessedSize(batch.size());
     }
 

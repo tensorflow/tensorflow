@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/service/spmd/shardy/shardy_xla_pass.h"
 
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>

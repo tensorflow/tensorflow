@@ -310,15 +310,13 @@ class InterpreterTestErrorPropagation(test_util.TensorFlowTestCase):
 
   # Model must have at least 7 bytes to hold model identifier
   def testTooShortModelContent(self):
-    with self.assertRaisesRegex(
-        ValueError,
-        'Model provided must have at least 7 bytes to hold identifier.',
-    ):
+    with self.assertRaisesRegex(ValueError,
+                                'The model is not a valid Flatbuffer buffer'):
       interpreter_wrapper.Interpreter(model_content=b'short')
 
   def testInvalidModelContent(self):
     with self.assertRaisesRegex(ValueError,
-                                'Model provided has model identifier \''):
+                                'The model is not a valid Flatbuffer buffer'):
       interpreter_wrapper.Interpreter(model_content=b'wrong_identifier')
 
   def testInvalidModelFile(self):

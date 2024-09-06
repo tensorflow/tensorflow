@@ -28,10 +28,10 @@ limitations under the License.
 #include "json/reader.h"
 #include "json/value.h"
 #include "tensorflow/cc/saved_model/metrics.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/trackable_object_graph.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 
 namespace tensorflow {

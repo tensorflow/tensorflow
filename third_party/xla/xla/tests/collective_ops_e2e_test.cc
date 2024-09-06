@@ -18,6 +18,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -25,12 +26,15 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tests/test_utils.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -68,6 +72,31 @@ class CollectiveOpsTestE2E : public HloTestBase {
     return std::get<se::RocmComputeCapability>(Capability())
                .has_fp8_support() &&
            GetDebugOptionsForTest().xla_gpu_enable_cublaslt();
+  }
+
+  void CollectiveOpsVerifyF8Matmul(absl::string_view hlo_text,
+                                   const DebugOptions& options) {
+    if (!HasFp8Support()) {
+      return;
+    }
+    const int64_t kNumReplicas = 1;
+    const int64_t kNumPartitions = 4;
+
+    HloModuleConfig config =
+        GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+    config.set_debug_options(options);
+    config.set_num_partitions(kNumPartitions);
+    TF_ASSERT_OK_AND_ASSIGN(auto module,
+                            ParseAndReturnVerifiedModule(hlo_text, config));
+
+    TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                            CreateExecutable(std::move(module),
+                                             /*run_hlo_passes=*/true));
+    EXPECT_TRUE(executable->has_module());
+    HloInstruction* gemm_op =
+        FindInstruction(&executable->module(), HloOpcode::kCustomCall);
+    EXPECT_THAT(gemm_op, NotNull());
+    EXPECT_EQ(gemm_op->custom_call_target(), "__cublas$lt$matmul$f8");
   }
 
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(Executable* executable,
@@ -154,6 +183,7 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllReduce) {
     )";
 
   const int64_t kNumReplicas = 2;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
   const bool enable_async_all_reduce = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CreateExecutable(kModuleStr, kNumReplicas));
@@ -190,6 +220,7 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllGather) {
   }
   )";
   const int64_t kNumReplicas = 2;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
   const bool enable_async_all_gather = GetParam();
 
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
@@ -231,6 +262,7 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllGatherMixedTypes) {
   }
   )";
   const int64_t kNumReplicas = 2;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
   const bool enable_async_all_gather = GetParam();
 
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
@@ -268,6 +300,7 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncCollectiveBroadcast) {
   }
   )";
   const int64_t kNumReplicas = 2;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
   const bool enable_async_collective_broadcast = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CreateExecutable(kModuleStr, kNumReplicas));
@@ -300,6 +333,7 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncCollectivePermute) {
   }
   )";
   const int64_t kNumReplicas = 2;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
   const bool enable_async_collective_permute = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CreateExecutable(kModuleStr, kNumReplicas));
@@ -343,6 +377,7 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncReduceScatter) {
   )";
 
   const int64_t kNumReplicas = 2;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
   const bool enable_async_reduce_scatter = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CreateExecutable(kModuleStr, kNumReplicas));
@@ -376,6 +411,7 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllToAllWithSplitDim) {
   }
   )";
   const int64_t kNumReplicas = 2;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
   const bool enable_async_all_to_all = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CreateExecutable(kModuleStr, kNumReplicas));
@@ -420,6 +456,7 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllToAllWithoutSplitDim) {
   }
   )";
   const int64_t kNumReplicas = 2;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
   const bool enable_async_all_to_all = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CreateExecutable(kModuleStr, kNumReplicas));
@@ -472,6 +509,7 @@ TEST_P(AsyncCollectiveOps, MatmulReplicated) {
    }
   )";
   const int64_t kNumReplicas = 4;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -592,6 +630,7 @@ TEST_F(CollectiveOpsTestE2E, WhileLoopReduceScatterCodeMotion) {
   )";
 
   const int64_t kNumReplicas = 2;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
 
   DebugOptions debug_options = GetDebugOptionsForTest();
   debug_options.set_xla_gpu_enable_while_loop_reduce_scatter_code_motion(true);
@@ -646,6 +685,7 @@ TEST_F(CollectiveOpsTestE2E, NoAllToAllDecomposition) {
   }
   )";
   const int64_t kNumReplicas = 2;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -677,6 +717,7 @@ class CollectiveOpsTestE2EWindowedNonWindowed : public CollectiveOpsTestE2E {
       absl::string_view hlo_text, bool disable_dot_merger = false) {
     const int64_t kNumReplicas = 1;
     const int64_t kNumPartitions = 4;
+    SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas * kNumPartitions);
 
     HloModuleConfig config =
         GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -813,6 +854,59 @@ ENTRY main.12 {
   // Custom Calls.
   CollectiveOpsCompareWindowedNonWindowed(kModuleReplicatedStr,
                                           /*disable_dot_merger=*/true);
+
+  // Verify the creation of FP8 GEMM Custom Calls on Hopper and newer
+  // architectures.
+  DebugOptions opts = GetDebugOptionsForTest();
+  opts.set_xla_gpu_threshold_for_windowed_einsum_mib(0);
+  opts.set_xla_gpu_multi_streamed_windowed_einsum(true);
+  opts.set_xla_gpu_graph_min_graph_size(200);
+  opts.set_xla_gpu_enable_triton_gemm(false);
+  opts.add_xla_disable_hlo_passes("dot-merger");
+  CollectiveOpsVerifyF8Matmul(kModuleReplicatedStr, opts);
+}
+
+TEST_F(CollectiveOpsTestE2EWindowedNonWindowed,
+       WindowedEinsumE2EAllGatherMultiConsumerF8) {
+  absl::string_view kModuleReplicatedStr = R"(
+HloModule windowed_einsum_e2e_all_gather_multi_consumer_f8, entry_computation_layout={(f8e4m3fn[2,16,48]{2,1,0}, f8e4m3fn[48,192]{1,0}, f8e4m3fn[48,192]{1,0}, bf16[], bf16[], bf16[])->bf16[2,16,192]{2,1,0}}, allow_spmd_sharding_propagation_to_parameters={false,false,false,false}, num_partitions=4
+
+ENTRY main {
+  rhs = f8e4m3fn[2,16,48]{2,1,0} parameter(0), sharding={devices=[1,4,1]<=[4]}
+  lhs0 = f8e4m3fn[48,192]{1,0} parameter(1), sharding={devices=[1,4]<=[4]}
+  scale_rhs = bf16[] parameter(3)
+  scale_lhs0 = bf16[] parameter(4)
+  scale_rhs_bcast = bf16[2,16,48]{2,1,0} broadcast(scale_rhs), dimensions={}
+  scale_lhs0_bcast = bf16[48,192]{1,0} broadcast(scale_lhs0), dimensions={}
+  rhs_bf16 = bf16[2,16,48]{2,1,0} convert(rhs)
+  lhs0_bf16 = bf16[48,192]{1,0} convert(lhs0)
+  rhs_scaled = bf16[2,16,48]{2,1,0} multiply(scale_rhs_bcast, rhs_bf16)
+  lhs0_scaled = bf16[48,192]{1,0} multiply(scale_lhs0_bcast, lhs0_bf16)
+  dot0 = bf16[2,16,192]{2,1,0} dot(rhs_scaled, lhs0_scaled), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  lhs1 = f8e4m3fn[48,192]{1,0} parameter(2), sharding={devices=[1,4]<=[4]}
+  scale_lhs1 = bf16[] parameter(5)
+  scale_lhs1_bcast = bf16[48,192]{1,0} broadcast(scale_lhs1), dimensions={}
+  lhs1_bf16 = bf16[48,192]{1,0} convert(lhs1)
+  lhs1_scaled = bf16[48,192]{1,0} multiply(scale_lhs1_bcast, lhs1_bf16)
+  dot1 = bf16[2,16,192]{2,1,0} dot(rhs_scaled, lhs1_scaled), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  ROOT add.8 = bf16[2,16,192]{2,1,0} add(dot0, dot1)
+} // main
+)";
+
+  // Disable the dot merger pass which can prevent the creation of FP8 GEMM
+  // Custom Calls.
+  CollectiveOpsCompareWindowedNonWindowed(kModuleReplicatedStr,
+                                          /*disable_dot_merger=*/true);
+
+  // Verify the creation of FP8 GEMM Custom Calls on Hopper and newer
+  // architectures.
+  DebugOptions opts = GetDebugOptionsForTest();
+  opts.set_xla_gpu_threshold_for_windowed_einsum_mib(0);
+  opts.set_xla_gpu_multi_streamed_windowed_einsum(true);
+  opts.set_xla_gpu_graph_min_graph_size(200);
+  opts.set_xla_gpu_enable_triton_gemm(false);
+  opts.add_xla_disable_hlo_passes("dot-merger");
+  CollectiveOpsVerifyF8Matmul(kModuleReplicatedStr, opts);
 }
 
 TEST_F(CollectiveOpsTestE2EWindowedNonWindowed,
@@ -959,7 +1053,7 @@ ENTRY entry {
 )";
 
   const int64_t kNumReplicas = 1;
-  const int64_t kNumPartitions = 4;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -967,19 +1061,7 @@ ENTRY entry {
   opts.set_xla_gpu_run_post_layout_collective_pipeliner(true);
   opts.set_xla_gpu_enable_pipelined_collectives(true);
   opts.set_xla_gpu_enable_triton_gemm(false);
-  config.set_debug_options(opts);
-  config.set_num_partitions(kNumPartitions);
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
-
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          CreateExecutable(std::move(module),
-                                           /*run_hlo_passes=*/true));
-  EXPECT_TRUE(executable->has_module());
-  HloInstruction* gemm_op =
-      FindInstruction(&executable->module(), HloOpcode::kCustomCall);
-  EXPECT_THAT(gemm_op, NotNull());
-  EXPECT_EQ(gemm_op->custom_call_target(), "__cublas$lt$matmul$f8");
+  CollectiveOpsVerifyF8Matmul(kModuleReplicatedStr, opts);
 }
 
 TEST_F(CollectiveOpsTestE2E,
@@ -1052,6 +1134,7 @@ ENTRY entry {
 )";
 
   const int64_t kNumReplicas = 1;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -1085,6 +1168,7 @@ ENTRY entry {
 )";
 
   const int64_t kNumReplicas = 1;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
   const int64_t kNumPartitions = 4;
 
   HloModuleConfig config =

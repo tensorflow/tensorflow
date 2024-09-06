@@ -1450,6 +1450,42 @@ XlaOp XlaBuilder::Call(const XlaComputation& computation,
   });
 }
 
+XlaOp XlaBuilder::CompositeCall(const XlaComputation& computation,
+                                absl::Span<const XlaOp> operands,
+                                const std::string& name,
+                                std::optional<absl::string_view> attributes,
+                                std::optional<int64_t> version) {
+  return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    std::vector<const Shape*> operand_shape_ptrs;
+    TF_ASSIGN_OR_RETURN(const auto& operand_shapes, GetOperandShapes(operands));
+    absl::c_transform(operand_shapes, std::back_inserter(operand_shape_ptrs),
+                      [](const Shape& shape) { return &shape; });
+    TF_ASSIGN_OR_RETURN(const ProgramShape& called_program_shape,
+                        computation.GetProgramShape());
+    TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferCallShape(
+                                         operand_shape_ptrs,
+                                         /*to_apply=*/called_program_shape));
+    *instr.mutable_shape() = shape.ToProto();
+
+    AddCalledComputation(computation, &instr);
+    instr.set_is_composite(true);
+
+    TF_ASSIGN_OR_RETURN(
+        XlaOp instruction,
+        AddInstruction(std::move(instr), HloOpcode::kCall, operands));
+    TF_RETURN_IF_ERROR(
+        SetInstructionFrontendAttribute(instruction, "composite.name", name));
+    TF_RETURN_IF_ERROR(SetInstructionFrontendAttribute(
+        instruction, "composite.attributes",
+        attributes.has_value() ? std::string(*attributes) : "{}"));
+    TF_RETURN_IF_ERROR(SetInstructionFrontendAttribute(
+        instruction, "composite.version",
+        version.has_value() ? std::to_string(*version) : "0"));
+    return instruction;
+  });
+}
+
 XlaOp XlaBuilder::Parameter(
     int64_t parameter_number, const Shape& shape, const std::string& name,
     const std::vector<bool>& replicated_at_leaf_buffers) {
@@ -3854,6 +3890,7 @@ XlaOp XlaBuilder::AllToAllArray(
 
     if (is_unbounded) {
       std::vector<XlaOp> new_dimensions;
+      new_dimensions.reserve(operand_shape->rank());
       for (int64_t i = 0; i < operand_shape->rank(); ++i) {
         new_dimensions.push_back(GetR1DimensionSizeOrConstant(operand, i));
       }
@@ -5193,6 +5230,14 @@ void Outfeed(const XlaOp operand, const Shape& shape_with_layout,
 XlaOp Call(XlaBuilder* builder, const XlaComputation& computation,
            absl::Span<const XlaOp> operands) {
   return builder->Call(computation, operands);
+}
+
+XlaOp CompositeCall(XlaBuilder* builder, const XlaComputation& computation,
+                    absl::Span<const XlaOp> operands, const std::string& name,
+                    std::optional<absl::string_view> attributes,
+                    std::optional<int64_t> version) {
+  return builder->CompositeCall(computation, operands, name, attributes,
+                                version);
 }
 
 XlaOp CustomCall(

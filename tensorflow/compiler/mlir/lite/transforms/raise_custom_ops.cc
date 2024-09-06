@@ -17,9 +17,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_set.h"
-#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
@@ -30,7 +28,6 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
 namespace TFL {
@@ -48,6 +45,10 @@ struct RaiseCustomOpsPass
   explicit RaiseCustomOpsPass() {}
   explicit RaiseCustomOpsPass(const std::vector<std::string> &target_ops) {
     this->target_ops_ = target_ops;
+  }
+
+  explicit RaiseCustomOpsPass(const RaiseCustomOpsPassOptions &options) {
+    this->target_ops_ = options.target_ops_;
   }
 
   void runOnOperation() override;
@@ -111,6 +112,11 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateRaiseCustomOpsPass() {
 std::unique_ptr<OperationPass<func::FuncOp>> CreateRaiseCustomOpsPass(
     const std::vector<std::string> &target_ops) {
   return std::make_unique<RaiseCustomOpsPass>(target_ops);
+}
+
+std::unique_ptr<OperationPass<func::FuncOp>> CreateRaiseCustomOpsPass(
+    const RaiseCustomOpsPassOptions &options) {
+  return std::make_unique<RaiseCustomOpsPass>(options);
 }
 
 static PassRegistration<RaiseCustomOpsPass> pass;

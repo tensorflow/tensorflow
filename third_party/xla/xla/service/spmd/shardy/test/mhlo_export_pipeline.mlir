@@ -4,8 +4,8 @@ sdy.mesh @mesh_0 = <"axis_0"=2, "axis_1"=4, "axis_2"=4>
 sdy.mesh @mesh_1 = <"axis_0"=16>
 sdy.mesh @mesh_2 = <"x"=8, "y"=4>
 sdy.mesh @mesh_3 = <"a"=2, "b"=2, "c"=2, "d"=2>
-sdy.mesh @maximal_mesh_0 = <device_id=0>
-sdy.mesh @maximal_mesh_1 = <device_id=1>
+sdy.mesh @maximal_mesh_0 = <device_ids=[0]>
+sdy.mesh @maximal_mesh_1 = <device_ids=[1]>
 
 // CHECK-NOT: sdy.mesh
 

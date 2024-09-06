@@ -1868,14 +1868,17 @@ Status MasterSession::CreateDebuggerState(
       DebuggerStateRegistry::CreateState(debug_options, debugger_state));
 
   std::vector<string> input_names;
+  input_names.reserve(req.num_feeds());
   for (size_t i = 0; i < req.num_feeds(); ++i) {
     input_names.push_back(req.feed_name(i));
   }
   std::vector<string> output_names;
+  output_names.reserve(req.num_fetches());
   for (size_t i = 0; i < req.num_fetches(); ++i) {
     output_names.push_back(req.fetch_name(i));
   }
   std::vector<string> target_names;
+  target_names.reserve(req.num_targets());
   for (size_t i = 0; i < req.num_targets(); ++i) {
     target_names.push_back(req.target_name(i));
   }

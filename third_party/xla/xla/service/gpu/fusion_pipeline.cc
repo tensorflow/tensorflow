@@ -19,14 +19,14 @@ limitations under the License.
 #include <utility>
 
 #include "xla/service/cpu_gpu_shape_verifier.h"
-#include "xla/service/gpu/fusion_merger.h"
-#include "xla/service/gpu/horizontal_input_fusion.h"
-#include "xla/service/gpu/horizontal_loop_fusion.h"
-#include "xla/service/gpu/instruction_fusion.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
-#include "xla/service/gpu/multi_output_fusion.h"
-#include "xla/service/gpu/priority_fusion.h"
-#include "xla/service/gpu/variadic_op_splitter.h"
+#include "xla/service/gpu/transforms/fusion_merger.h"
+#include "xla/service/gpu/transforms/horizontal_input_fusion.h"
+#include "xla/service/gpu/transforms/horizontal_loop_fusion.h"
+#include "xla/service/gpu/transforms/instruction_fusion.h"
+#include "xla/service/gpu/transforms/multi_output_fusion.h"
+#include "xla/service/gpu/transforms/priority_fusion.h"
+#include "xla/service/gpu/transforms/variadic_op_splitter.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_cse.h"
 #include "xla/service/hlo_dce.h"
@@ -63,8 +63,8 @@ HloPassPipeline FusionPipeline(
         shape_size_bytes_function,
         /*per_second_rates=*/{},
         /*count_multiple_input_accesses=*/true};
-    fusion.AddPass<GpuPriorityFusion>(thread_pool, gpu_device_info,
-                                      std::move(cost_analysis_options));
+    fusion.AddPass<PriorityFusion>(thread_pool, gpu_device_info,
+                                   std::move(cost_analysis_options));
   } else {
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false,
                                          gpu_device_info);
@@ -77,8 +77,7 @@ HloPassPipeline FusionPipeline(
   fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
                          /*only_fusion_computations=*/true);
   fusion.AddPass<HloDCE>();
-  fusion.AddPass<GpuMultiOutputFusion>(gpu_device_info,
-                                       shape_size_bytes_function);
+  fusion.AddPass<MultiOutputFusion>(gpu_device_info, shape_size_bytes_function);
   fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
                          /*only_fusion_computations=*/true);
   fusion.AddPass<HloDCE>();
@@ -88,8 +87,8 @@ HloPassPipeline FusionPipeline(
 HloPassPipeline HorizontalFusionPipeline(
     const se::DeviceDescription& gpu_device_info) {
   HloPassFix<HloPassPipeline> horizontal_fusion("horizontal fusion");
-  horizontal_fusion.AddPass<GpuHorizontalLoopFusion>();
-  horizontal_fusion.AddPass<GpuHorizontalInputFusion>(gpu_device_info);
+  horizontal_fusion.AddPass<HorizontalLoopFusion>();
+  horizontal_fusion.AddPass<HorizontalInputFusion>(gpu_device_info);
   horizontal_fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
                                     /*only_fusion_computations=*/true);
   horizontal_fusion.AddPass<HloDCE>();

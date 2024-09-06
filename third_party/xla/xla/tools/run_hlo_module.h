@@ -40,6 +40,7 @@ struct RunHloModuleOptions {
   bool flatten_control_flow{false};
   bool run_test_hlo_passes{true};
   bool run_reference_hlo_passes{true};
+  bool force_use_cpu_thunk_runtime_for_test{false};
   // Using small float range by default, as otherwise all reductions
   // miscompare vs. the interpreter with inf/nan.
   bool use_large_float_range{false};

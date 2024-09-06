@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/client/xla_computation.h"
 #include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 
 namespace tensorflow {
@@ -201,8 +200,7 @@ Status BuildHloFromGraph(
     mlir::MLIRContext& mlir_context, llvm::ArrayRef<xla::XlaOp> xla_params,
     std::vector<xla::XlaOp>& returns, bool unconditionally_use_output_shapes,
     llvm::ArrayRef<XlaArgument> args, llvm::ArrayRef<std::string> control_rets,
-    llvm::StringRef device_type, const FunctionLibraryDefinition& flib_def,
-    const GraphDebugInfo& debug_info);
+    llvm::StringRef device_type, const FunctionLibraryDefinition& flib_def);
 
 static inline Status CompileToHloGraphAnalysisFailedError() {
   return errors::Internal("disabled after graph analysis");

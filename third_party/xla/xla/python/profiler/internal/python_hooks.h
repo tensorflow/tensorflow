@@ -77,7 +77,7 @@ struct PythonTraceEntry {
     Py_XDECREF(m_module);
   }
 
-  PythonTraceEntry(PythonTraceEntry&& other) {
+  PythonTraceEntry(PythonTraceEntry&& other) noexcept {
     start_time_ns = other.start_time_ns;
     end_time_ns = other.end_time_ns;
     co_firstlineno = other.co_firstlineno;

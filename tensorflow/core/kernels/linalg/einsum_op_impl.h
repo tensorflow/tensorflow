@@ -612,11 +612,12 @@ class EinsumOp : public OpKernel {
     if (verbose) {
       string shape = ShapeTraceString(ctx);
       if (!shape.empty()) {
-        return profiler::TraceMeEncode(
+        return tsl::profiler::TraceMeEncode(
             std::move(op), {{"equation", equation}, {"shape", shape}});
       }
     }
-    return profiler::TraceMeEncode(std::move(op), {{"equation", equation}});
+    return tsl::profiler::TraceMeEncode(std::move(op),
+                                        {{"equation", equation}});
   }
 
  private:

@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
+#include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -30,13 +31,13 @@ limitations under the License.
 #include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/gpu/gpu_test_kernels.h"
+#include "xla/stream_executor/gpu/gpu_test_kernels_fatbin.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/types.h"  // IWYU pragma: keep
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -235,7 +236,7 @@ TEST(CommandBufferCmdTest, MemcpyCmd) {
   TF_ASSERT_OK(commands.Record(params, record_params, command_buffer.get()));
 
   // Execute command buffer and verify that it copied the memory.
-  TF_ASSERT_OK(executor->Submit(stream.get(), *command_buffer));
+  TF_ASSERT_OK(command_buffer->Submit(stream.get()));
 
   // Copy `b` data back to host.
   std::vector<int32_t> dst(4, 0);
@@ -306,7 +307,7 @@ TEST(CommandBufferCmdTest, BarrierCmd) {
   TF_ASSERT_OK(commands.Record(params, record_params, command_buffer.get()));
 
   // Execute command buffer and verify that it copied the memory.
-  TF_ASSERT_OK(executor->Submit(stream.get(), *command_buffer));
+  TF_ASSERT_OK(command_buffer->Submit(stream.get()));
 
   // Copy data back to host, correct executor order should populate all buffers
   // with expected value.
@@ -352,20 +353,15 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
 
   // Prepare commands sequence for constructing command buffer.
   CommandBufferCmdSequence commands;
-  commands.Emplace<LaunchCmd>(s0, "add", args, args_access,
+  commands.Emplace<LaunchCmd>(s0, "AddI32", args, args_access,
                               LaunchDimensions(1, 4),
                               /*shmem_bytes=*/0);
 
   // Initialize command sequence and load device kernels.
-  Thunk::ExecutableSource source = {
-#if defined(GOOGLE_CUDA)
-      /*text=*/se::gpu::internal::kAddI32Kernel,
-      /*binary=*/{}
-#elif defined(TENSORFLOW_USE_ROCM)
-      /*text=*/{},
-      /*binary=*/se::gpu::internal::kAddI32KernelModule
-#endif
-  };
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<uint8_t> fatbin,
+                          se::gpu::GetGpuTestKernelsFatbin());
+  Thunk::ExecutableSource source = {/*text=*/{},
+                                    /*binary=*/fatbin};
 
   CommandBufferCmd::StateManager state;
   TF_ASSERT_OK(commands.Initialize({executor, source}, state));
@@ -384,7 +380,7 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
   TF_ASSERT_OK(commands.Record(params, record_params, command_buffer.get()));
 
   // Execute command buffer and verify that it copied the memory.
-  TF_ASSERT_OK(executor->Submit(stream.get(), *command_buffer));
+  TF_ASSERT_OK(command_buffer->Submit(stream.get()));
 
   // Copy `b` data back to host.
   std::vector<int32_t> dst(4, 0);

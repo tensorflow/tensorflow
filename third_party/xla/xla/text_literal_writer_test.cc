@@ -22,8 +22,8 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/types.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 
 namespace xla {

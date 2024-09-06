@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/service/algebraic_simplifier.h"
 #include "xla/service/conditional_simplifier.h"
 #include "xla/service/gather_expander.h"
-#include "xla/service/gpu/gpu_algebraic_simplifier.h"
+#include "xla/service/gpu/transforms/algebraic_simplifier.h"
 #include "xla/service/hlo_constant_folding.h"
 #include "xla/service/hlo_dce.h"
 #include "xla/service/hlo_module_config.h"
@@ -89,7 +89,7 @@ void AddSPMDPasses(
 
   const HloModuleConfig& config = hlo_module->config();
 
-  if (config.debug_options().xla_use_shardy()) {
+  if (config.use_shardy_partitioner()) {
     spmd_pipeline.AddPass<sdy::ShardyXLA>();
   } else {
     spmd_pipeline.AddPass<HloConstantSplitter>();

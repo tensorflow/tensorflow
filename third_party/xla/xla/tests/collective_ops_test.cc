@@ -34,28 +34,22 @@ limitations under the License.
 #include "xla/tests/test_macros.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tests/verified_hlo_module.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/threadpool.h"
+
+namespace xla {
+namespace {
 
 // Tests cross-GPU operations.
 //
 // Several tests requires at least four GPUs.  For instructions on running this
 // within Google, see go/multi-gpu-unit-test.
-
-#define SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(x)                     \
-  if (num_devices_ < x) {                                         \
-    GTEST_SKIP() << "Test requires at least " << x << " devices"; \
-  }
-
-namespace xla {
-namespace {
-
 class CollectiveOpsTest : public HloTestBase {
  public:
-  CollectiveOpsTest() : num_devices_(backend().device_count()) {
-    VLOG(1) << "Running with " << num_devices_ << " devices";
+  CollectiveOpsTest() {
+    VLOG(1) << "Running with " << num_devices() << " devices";
   }
 
  protected:
@@ -180,9 +174,6 @@ class CollectiveOpsTest : public HloTestBase {
           /*expected_value=*/to_literal({cast(-1), cast(-2), cast(-3)}));
     }
   }
-
- protected:
-  const int64_t num_devices_;
 };
 
 // Returns the non-empty subsets of {0, 1, ..., n}.  For example,
@@ -370,7 +361,7 @@ XLA_TEST_F(CollectiveOpsTest, AllReduceOr_Pred) {
 XLA_TEST_F(CollectiveOpsTest, AllReduce_AllCombinations) {
   const int64_t kNumElems = 1024;
 
-  for (std::vector<int64_t> devices : PowerSetOfIota(num_devices_)) {
+  for (std::vector<int64_t> devices : PowerSetOfIota(num_devices())) {
     SCOPED_TRACE(absl::StrFormat("Running on devices {%s}",
                                  absl::StrJoin(devices, ", ")));
 
@@ -494,7 +485,7 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_ThreeReplicaGroups) {
   // Test a prime number so it's not all powers of 2.
   const int64_t kNumElems = 137;
   const int64_t kNumReplicas = 4;
-  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -541,7 +532,7 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_Degenerate) {
       }
     )";
   static constexpr int kNumReplicas = 4;
-  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -577,19 +568,19 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AsyncAllReduce)) {
     )";
 
   HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/num_devices_);
+      GetModuleConfigForTest(/*replica_count=*/num_devices());
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
-                        num_devices_,
+                        num_devices(),
                         /*use_threads=*/true, /*run_hlo_passes=*/false));
 
-  ASSERT_EQ(results.size(), num_devices_);
+  ASSERT_EQ(results.size(), num_devices());
   // sum [0, num_devices)
-  uint32_t expected = num_devices_ * (num_devices_ - 1) / 2;
-  for (int i = 0; i < num_devices_; ++i) {
+  uint32_t expected = num_devices() * (num_devices() - 1) / 2;
+  for (int i = 0; i < num_devices(); ++i) {
     LiteralTestUtil::ExpectR0Equal<uint32_t>(expected, results[i]);
   }
 }
@@ -613,22 +604,22 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AsyncAllReduceTwoOperands)) {
     )";
 
   HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/num_devices_);
+      GetModuleConfigForTest(/*replica_count=*/num_devices());
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
-                        num_devices_,
+                        num_devices(),
                         /*use_threads=*/true, /*run_hlo_passes=*/false));
 
-  ASSERT_EQ(results.size(), num_devices_);
+  ASSERT_EQ(results.size(), num_devices());
   // sum [0, num_devices)
-  uint32_t expected0 = num_devices_ * (num_devices_ - 1) / 2;
+  uint32_t expected0 = num_devices() * (num_devices() - 1) / 2;
   // sum squares [0, num_devices)
   uint32_t expected1 =
-      num_devices_ * (num_devices_ - 1) * (2 * num_devices_ - 1) / 6;
-  for (int i = 0; i < num_devices_; ++i) {
+      num_devices() * (num_devices() - 1) * (2 * num_devices() - 1) / 6;
+  for (int i = 0; i < num_devices(); ++i) {
     std::vector<Literal> replica_results = results[i].DecomposeTuple();
     LiteralTestUtil::ExpectR0Equal<uint32_t>(expected0, replica_results[0]);
     LiteralTestUtil::ExpectR0Equal<uint32_t>(expected1, replica_results[1]);
@@ -645,18 +636,18 @@ XLA_TEST_F(CollectiveOpsTest, ReplicaId) {
   )";
 
   HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/num_devices_);
+      GetModuleConfigForTest(/*replica_count=*/num_devices());
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), absl::Span<Literal* const>{},
-                        num_devices_,
+                        num_devices(),
                         /*use_threads=*/true, /*run_hlo_passes=*/true));
 
-  ASSERT_EQ(results.size(), num_devices_);
-  for (uint32_t i = 0; i < num_devices_; ++i) {
+  ASSERT_EQ(results.size(), num_devices());
+  for (uint32_t i = 0; i < num_devices(); ++i) {
     EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR0(i), results[i]));
   }
 }
@@ -680,7 +671,7 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(CollectiveBroadcast_Simple)) {
   }
   )";
   const int64_t kNumReplicas = 4;
-  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -716,7 +707,7 @@ XLA_TEST_F(CollectiveOpsTest, CollectivePermute_Simple) {
   }
   )";
   const int64_t kNumReplicas = 4;
-  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -753,7 +744,7 @@ XLA_TEST_F(CollectiveOpsTest, CollectivePermute_Degenerate) {
   }
   )";
   const int64_t kNumReplicas = 4;
-  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -789,7 +780,7 @@ XLA_TEST_F(CollectiveOpsTest, CollectivePermute_NotDegenerate) {
   }
   )";
   const int64_t kNumReplicas = 4;
-  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -826,7 +817,7 @@ XLA_TEST_F(CollectiveOpsTest, CollectivePermute_Rotate) {
   }
   )";
   const int64_t kNumReplicas = 4;
-  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -864,7 +855,7 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AsyncCollectivePermute)) {
     )";
 
   const int64_t kNumReplicas = 2;
-  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -906,7 +897,7 @@ XLA_TEST_F(CollectiveOpsTest, AllToAll_EmptyReplicaGroups) {
   }
   )";
   const int64_t kNumReplicas = 4;
-  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -952,7 +943,7 @@ XLA_TEST_F(CollectiveOpsTest, AllToAll_OrderedReplicaGroups) {
   }
   )";
   const int64_t kNumReplicas = 4;
-  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -992,7 +983,7 @@ XLA_TEST_F(CollectiveOpsTest, AllToAll_TwoReplicaGroups) {
   }
   )";
   const int64_t kNumReplicas = 4;
-  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -1024,7 +1015,7 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllToAll_SplitDimension)) {
   }
   )";
   const int64_t kNumReplicas = 4;
-  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -2003,7 +1994,7 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(SendRecv_Simple)) {
   )";
 
   const int64_t kNumReplicas = 2;
-  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -2083,7 +2074,7 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(SendRecv_TwoConcurrentChains)) {
   })";
 
   const int64_t kNumReplicas = 2;
-  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -2162,7 +2153,7 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(SendRecv_ValidationAttr1)) {
   })";
 
   const int64_t kNumReplicas = 2;
-  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -2263,7 +2254,7 @@ body {
   })";
 
   const int64_t kNumReplicas = 2;
-  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas)
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);

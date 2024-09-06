@@ -55,7 +55,6 @@ absl::StatusOr<HloInstruction*> StableSortExpander::ExpandInstruction(
   HloComputation* computation = sort->parent();
 
   HloInstruction* expanded_sort = nullptr;
-  absl::flat_hash_set<int64_t> used_indices;
   int64_t iota_index = IotaOperandIndexForStableSort(*sort);
 
   // If there is currently no iota operand which we could use for making the

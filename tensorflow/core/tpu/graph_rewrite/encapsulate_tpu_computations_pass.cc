@@ -48,6 +48,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function_utils.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
+#include "tensorflow/core/config/flag_defs.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
@@ -151,8 +152,8 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
       retvals.push_back(n);
     } else if (n->type_string() == "TPUReplicateMetadata") {
       metadata_node = n;
-    } else if (!str_util::StrContains(n->requested_device(),
-                                      DEVICE_TPU_REPLICATED_CORE)) {
+    } else if (!absl::StrContains(n->requested_device(),
+                                  DEVICE_TPU_REPLICATED_CORE)) {
       // If an operator isn't assigned to a TPU core device, assign it to
       // TPU_REPLICATED_CORE without a specific core ID. For some operators,
       // such as variable reads/writes, the operator may be assigned to non-TPU
@@ -2481,10 +2482,32 @@ Status LiftOutsideCompilationOnlyArgs(Graph* g, FunctionLibraryRuntime* flr,
   return absl::OkStatus();
 }
 
+// TODO(b/355263902): Encapsulation fails for some non-TPU graphs that are
+// missing full variable shape information. Remove this path once the
+// underlying issue is fixed.
+bool ShouldSkipEncapsulationForNonTPUGraph() {
+  return flags::Global().enable_skip_encapsulation_for_non_tpu_graphs.value();
+}
+
 }  // namespace
 
 /*static*/ Status EncapsulateTPUComputationsPass::Encapsulate(
     std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def) {
+  // If the graph does not contain any TPU computations, there is nothing to do.
+  if (ShouldSkipEncapsulationForNonTPUGraph()) {
+    bool found_tpu_replicate = false;
+    for (const Node* n : (*graph)->nodes()) {
+      if (n->attrs().Find(kTPUReplicateAttr) != nullptr) {
+        found_tpu_replicate = true;
+        break;
+      }
+    }
+    if (!found_tpu_replicate) {
+      VLOG(1) << "No TPU replicate found, skipping encapsulation";
+      return absl::OkStatus();
+    }
+  }
+
   // Check for undeclared outputs before Encapsulation, so we can give a better
   // error message.
   // TODO(phawkins): merge this with the encapsulation code to avoid the extra

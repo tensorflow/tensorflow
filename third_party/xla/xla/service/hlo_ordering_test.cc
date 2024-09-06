@@ -28,9 +28,9 @@ limitations under the License.
 #include "xla/service/hlo_value.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -675,6 +675,7 @@ ENTRY %main {
   HloInstruction* async_wrapped_call =
       FindInstruction(module.get(), "async_wrapped_call");
   HloInstruction* p0 = FindInstruction(module.get(), "p0");
+  HloInstruction* broadcast1 = FindInstruction(module.get(), "broadcast.1");
 
   ASSERT_NE(async_start, nullptr);
   ASSERT_NE(async_done, nullptr);
@@ -685,13 +686,16 @@ ENTRY %main {
   HloUse async_done_use = HloUse{async_done, 0, {0, 0}};
   HloUse call_use = HloUse{async_wrapped_call, 0};
   const HloValue& value = dataflow->GetUniqueValueAt(async_wrapped_call, {});
+  const HloValue& broadcast_value = dataflow->GetUniqueValueAt(broadcast1, {});
 
   DependencyHloOrdering ordering(module.get());
-  EXPECT_FALSE(
+  EXPECT_TRUE(
       ordering.UsesBeforeValueDefinition({&async_start_use}, value, *dataflow));
+  EXPECT_TRUE(ordering.UsesBeforeValueDefinition({&async_start_use},
+                                                 broadcast_value, *dataflow));
   EXPECT_FALSE(
       ordering.UsesBeforeValueDefinition({&call_use}, value, *dataflow));
-  EXPECT_FALSE(
+  EXPECT_TRUE(
       ordering.UsesBeforeValueDefinition({&async_done_use}, value, *dataflow));
 }
 
@@ -795,11 +799,11 @@ ENTRY %main {
   const HloValue& value = dataflow->GetUniqueValueAt(async_wrapped_call, {});
 
   DependencyHloOrdering ordering(module.get());
-  EXPECT_FALSE(
+  EXPECT_TRUE(
       ordering.UsesBeforeValueDefinition({&async_start_use}, value, *dataflow));
   EXPECT_FALSE(
       ordering.UsesBeforeValueDefinition({&call_use}, value, *dataflow));
-  EXPECT_FALSE(
+  EXPECT_TRUE(
       ordering.UsesBeforeValueDefinition({&async_done_use}, value, *dataflow));
 }
 

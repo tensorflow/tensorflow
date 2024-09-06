@@ -1,5 +1,5 @@
 // RUN: xla-translate -split-input-file -mlir-hlo-to-hlo-text -with-layouts -print-layouts %s | FileCheck %s
-// RUN: xla-translate -split-input-file -mlir-hlo-to-hlo-text  -with-layouts -print-layouts --via-builder=true %s | FileCheck %s
+// RUN: xla-translate -split-input-file -mlir-hlo-to-hlo-text -with-layouts -print-layouts --via-builder=true %s | FileCheck %s
 
 #CSR = #sparse_tensor.encoding<{
   map = (d0, d1) -> (d0 : dense, d1 : compressed),

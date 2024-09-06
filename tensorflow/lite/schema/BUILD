@@ -48,10 +48,10 @@ py_strict_library(
         "upgrade_schema.py",
     ],
     data = [
-        "schema_v0.fbs",
-        "schema_v1.fbs",
-        "schema_v2.fbs",
-        "schema_v3.fbs",
+        "//tensorflow/compiler/mlir/lite/schema:schema_v0.fbs",
+        "//tensorflow/compiler/mlir/lite/schema:schema_v1.fbs",
+        "//tensorflow/compiler/mlir/lite/schema:schema_v2.fbs",
+        "//tensorflow/compiler/mlir/lite/schema:schema_v3.fbs",
         "@flatbuffers//:flatc",
     ],
     srcs_version = "PY3",
@@ -103,13 +103,6 @@ py_strict_test(
 
 exports_files([
     "conversion_metadata.fbs",
-    "schema.fbs",
-    "schema_v0.fbs",
-    "schema_v1.fbs",
-    "schema_v2.fbs",
-    "schema_v3.fbs",
-    "schema_v3a.fbs",
-    "schema_v3b.fbs",
 ])
 
 flatbuffer_cc_library(

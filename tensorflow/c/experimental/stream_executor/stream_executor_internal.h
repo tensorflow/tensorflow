@@ -19,6 +19,7 @@ limitations under the License.
 #define TENSORFLOW_C_EXPERIMENTAL_STREAM_EXECUTOR_STREAM_EXECUTOR_INTERNAL_H_
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -97,14 +98,15 @@ class CPlatform : public Platform {
   absl::StatusOr<std::unique_ptr<DeviceDescription>> DescriptionForDevice(
       int ordinal) const override;
   absl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
-  absl::StatusOr<StreamExecutor*> GetExecutor(
-      const StreamExecutorConfig& config) override;
-  absl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
-      const StreamExecutorConfig& config) override;
-
-  void DestroyAllExecutors() { executor_cache_.DestroyAllExecutors(); }
+  absl::StatusOr<StreamExecutor*> FindExisting(int ordinal) override;
 
  private:
+  // Returns a device constructed with the ordinal without
+  // looking in or storing to the Platform's executor cache.
+  // Ownership IS transferred to the caller.
+  absl::StatusOr<std::unique_ptr<StreamExecutor>> GetUncachedExecutor(
+      int ordinal);
+
   SP_Platform platform_;
   void (*destroy_platform_)(SP_Platform*);
   SP_PlatformFns platform_fns_;

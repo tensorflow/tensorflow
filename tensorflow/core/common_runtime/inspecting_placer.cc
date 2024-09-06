@@ -77,7 +77,7 @@ class ColocationGraphToIOColocationGroups {
       ColocationGraph* colocation_graph)
       : colocation_graph_(colocation_graph), next_group_id_(0) {}
 
-  void AssignGroups(const gtl::InlinedVector<Node*, 4>& nodes,
+  void AssignGroups(const absl::InlinedVector<Node*, 4UL>& nodes,
                     std::vector<int>* groups) {
     for (int i = 0; i < nodes.size(); ++i) {
       int root_id = colocation_graph_->FindAndUpdateRoot(nodes[i]->id());

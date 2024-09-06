@@ -53,7 +53,6 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
-#include "tsl/platform/host_info.h"
 #include "tsl/platform/retrying_utils.h"
 #include "tsl/protobuf/error_codes.pb.h"
 
@@ -381,9 +380,7 @@ DataServiceClient::CreateAlternativeWorkerClientWithGrpcFallback(
 absl::StatusOr<std::unique_ptr<DataServiceWorkerClient>>
 DataServiceClient::CreateWorkerClient(const TaskInfo& task_info) {
   if (params_.data_transfer_protocol == kLocalTransferProtocol ||
-      // TODO(b/291994182): Use remote workers in unit tests.
-      (tsl::port::JobUid() != -1 &&
-       LocalWorkers::Get(task_info.worker_address()) != nullptr)) {
+      ForceLocalProtocol(task_info.worker_address())) {
     DataTransferServerInfo info;
     info.set_protocol(kLocalTransferProtocol);
     info.set_address(task_info.worker_address());

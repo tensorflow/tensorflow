@@ -136,49 +136,6 @@ class XlaKeyValueStore : public xla::KeyValueStoreInterface {
   std::string key_prefix_;
 };
 
-// Remove LocalDeviceState objects from
-// info->local_device_states that have unique hardware IDs
-// (i.e. ignore duplicate virtual devices) and return them in a map.
-static std::map<int, std::unique_ptr<xla::LocalDeviceState>>
-GetUniqueDeviceStates(PjRtGpuClientCreationInfo* info) {
-  // Only consider each hardware device once. In test environments, one
-  // physical GPU (e.g. hardware_id 0) might be shared as virtual GPUs (e.g.
-  // local_id 0 and 1) by multiple workers (multiple processes on the same
-  // computer). If there is a need to not ignore these for an actual case, a
-  // possible solution is to add a flag to only enable the use of
-  // hardware_id_to_local_id for tests.
-
-  auto input_states = std::move(info->local_device_states);
-
-  absl::flat_hash_map<int, int> hardware_id_to_local_id;
-  for (const auto& id_state : input_states) {
-    int local_id = id_state.second->local_device_id().value();
-    int hardware_id = id_state.second->local_hardware_id().value();
-    if (hardware_id_to_local_id.contains(hardware_id)) {
-      if (hardware_id_to_local_id[hardware_id] > local_id) {
-        // Use the device with the smallest local_id, ignore others.
-        hardware_id_to_local_id[hardware_id] = local_id;
-      }
-    } else {
-      hardware_id_to_local_id[hardware_id] = local_id;
-    }
-  }
-  std::map<int, std::unique_ptr<xla::LocalDeviceState>> local_device_states;
-  for (auto& id_state : input_states) {
-    int local_id = id_state.second->local_device_id().value();
-    int hardware_id = id_state.second->local_hardware_id().value();
-    if (hardware_id_to_local_id[hardware_id] != local_id) {
-      VLOG(1) << "For hardware_id=" << hardware_id
-              << ", ignoring redundant local_id=" << local_id
-              << ". local_id=" << hardware_id_to_local_id[hardware_id]
-              << " will be used instead.";
-      continue;
-    }
-    local_device_states.emplace(id_state.first, std::move(id_state.second));
-  }
-  return local_device_states;
-}
-
 // Coordinate creation of a PjRt GPU client with distributed devices when there
 // are multiple threads (which typically occurs in test environments that use
 // multiple threads to simulate multiple workers).
@@ -319,10 +276,9 @@ absl::Status CreateClientOnce(
 
   auto kv_store =
       std::make_shared<XlaKeyValueStore>(coordination_service_agent);
-  std::map<int, std::unique_ptr<xla::LocalDeviceState>>
-      unique_local_device_states;
+  std::map<int, std::unique_ptr<xla::LocalDeviceState>> local_device_states;
   if (use_creation_info) {
-    unique_local_device_states = GetUniqueDeviceStates(info);
+    local_device_states = std::move(info->local_device_states);
   }
   if (use_creation_info) {
     // Tell any other threads are waiting to call BuildDistributedDevices to
@@ -330,7 +286,7 @@ absl::Status CreateClientOnce(
     creation_state->SetReady();
   }
   auto device_topology_pair = BuildDistributedDevices(
-      platform_name, std::move(unique_local_device_states), node_id, num_nodes,
+      platform_name, std::move(local_device_states), node_id, num_nodes,
       gpu_run_options.get(), kv_store, /*enable_mock_nccl=*/false);
   if (!device_topology_pair.ok()) {
     if (use_creation_info) {

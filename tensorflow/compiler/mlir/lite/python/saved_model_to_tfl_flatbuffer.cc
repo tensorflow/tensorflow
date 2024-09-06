@@ -211,6 +211,7 @@ Status ConvertSavedModelToTFLiteFlatBuffer(
   pass_config.enable_stablehlo_quantizer = toco_flags.has_quantization_config();
   pass_config.enable_composite_direct_lowering =
       toco_flags.enable_composite_direct_lowering();
+  pass_config.model_origin_framework = toco_flags.model_origin_framework();
 
   if (toco_flags.qdq_conversion_mode() == "STATIC") {
     pass_config.quant_specs.qdq_conversion_mode =

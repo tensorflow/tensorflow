@@ -23,12 +23,14 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -39,7 +41,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/ifrt/ifrt_config.pb.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
@@ -77,8 +78,10 @@ TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableNotFoundWrongName) {
   auto restore_work_queue = tfrt::CreateMultiThreadedWorkQueue(
       /*num_threads=*/4, /*num_blocking_threads=*/4);
 
-  VariableDeviceShardingConfigProto sharding_config;
-  sharding_config.add_device_ids(0);
+  VariableDeviceShardingConfig sharding_config = {
+      .device_ids = {0},
+      .hlo_sharding = xla::HloSharding::Replicate(),
+  };
 
   auto promise = xla::ifrt::Future<tensorflow::Tensor>::CreatePromise();
   auto future = xla::ifrt::Future<tensorflow::Tensor>(promise);
@@ -120,8 +123,10 @@ TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableSucceed) {
   auto restore_work_queue = tfrt::CreateMultiThreadedWorkQueue(
       /*num_threads=*/4, /*num_blocking_threads=*/4);
 
-  VariableDeviceShardingConfigProto sharding_config;
-  sharding_config.add_device_ids(0);
+  VariableDeviceShardingConfig sharding_config{
+      .device_ids = {0},
+      .hlo_sharding = xla::HloSharding::Replicate(),
+  };
 
   auto promise = xla::ifrt::Future<tensorflow::Tensor>::CreatePromise();
   auto future = xla::ifrt::Future<tensorflow::Tensor>(promise);
@@ -140,6 +145,7 @@ TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableSucceed) {
   IfrtLoadedVariableRegistry::Key key{
       .device_ids = {0},
       .input_name = "var_x",
+      .hlo_sharding = sharding_config.hlo_sharding,
   };
   TF_ASSERT_OK_AND_ASSIGN(auto v,
                           loaded_variable_registry.GetLoadedVariable(key));

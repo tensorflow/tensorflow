@@ -270,6 +270,8 @@ absl::Status TransferManager::WriteRootTupleIndexTable(
                device_memory.size());
 
   std::vector<se::DeviceMemoryBase> elements;
+  elements.reserve(
+      ShapeUtil::TupleElementCount(device_buffer.on_device_shape()));
   for (int64_t i = 0;
        i < ShapeUtil::TupleElementCount(device_buffer.on_device_shape()); ++i) {
     elements.push_back(device_buffer.buffer({i}));
@@ -290,6 +292,7 @@ absl::Status TransferManager::WriteRootTupleIndexTable(
                device_memory.size());
 
   std::vector<se::DeviceMemoryBase> elements;
+  elements.reserve(ShapeUtil::TupleElementCount(buffer_tree.shape()));
   for (int64_t i = 0; i < ShapeUtil::TupleElementCount(buffer_tree.shape());
        ++i) {
     elements.push_back(buffer_tree.element({i}).AsDeviceMemoryBase());
