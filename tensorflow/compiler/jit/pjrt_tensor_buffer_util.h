@@ -18,11 +18,13 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "tensorflow/compiler/jit/pjrt_tensor_buffer.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace tensorflow {
 

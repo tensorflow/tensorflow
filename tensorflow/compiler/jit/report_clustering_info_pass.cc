@@ -16,8 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/jit/report_clustering_info_pass.h"
 
 #include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/compiler/jit/xla_activity.pb.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
+#include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 Status ReportClusteringInfoPass::Run(

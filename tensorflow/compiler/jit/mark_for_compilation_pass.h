@@ -20,9 +20,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_MARK_FOR_COMPILATION_PASS_H_
 #define TENSORFLOW_COMPILER_JIT_MARK_FOR_COMPILATION_PASS_H_
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/jit/compilability_check_util.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 

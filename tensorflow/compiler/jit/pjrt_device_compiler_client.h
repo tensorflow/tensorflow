@@ -20,8 +20,11 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "absl/status/statusor.h"
 #include "tensorflow/compiler/jit/device_compiler_client.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_executable.h"
 
 namespace tensorflow {
 

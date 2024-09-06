@@ -18,8 +18,11 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {

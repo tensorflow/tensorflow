@@ -19,6 +19,14 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "tensorflow/compiler/jit/device_compiler_client.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_executable.h"
+#include "tsl/platform/statusor.h"
+
 namespace tensorflow {
 
 xla::CompileOptions GetPjRtCompileOptions(

@@ -19,9 +19,17 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/jit/cluster_scoping_pass.h"
-#include "tensorflow/core/common_runtime/device_factory.h"
-#include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
+#include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/device_factory.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 /*static*/ Status MarkForCompilationPassTestHelper::MarkForCompilation(

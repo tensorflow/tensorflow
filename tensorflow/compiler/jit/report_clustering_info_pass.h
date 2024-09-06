@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_JIT_REPORT_CLUSTERING_INFO_PASS_H_
 
 #include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 

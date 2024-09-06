@@ -19,6 +19,7 @@ limitations under the License.
 #include "xla/service/graphcycles/graphcycles.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 // An XLA cluster hoists all resource reads to be beginning of the cluster

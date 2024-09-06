@@ -14,6 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/jit/pjrt_base_device.h"
 
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/core/common_runtime/local_device.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/graph/types.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/types.h"
+
 namespace tensorflow {
 namespace {
 

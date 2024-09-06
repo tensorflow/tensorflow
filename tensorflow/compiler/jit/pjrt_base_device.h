@@ -20,9 +20,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/framework/types.h"
 
 namespace tensorflow {
 

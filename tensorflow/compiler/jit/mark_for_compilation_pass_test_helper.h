@@ -21,6 +21,9 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 class MarkForCompilationPassTestHelper {
