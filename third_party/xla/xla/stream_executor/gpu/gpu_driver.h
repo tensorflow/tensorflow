@@ -640,11 +640,6 @@ class GpuDriver {
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1g7a54725f28d34b8c6299f0c6ca579616
   static absl::Status SynchronizeContext(Context* context);
 
-  // Returns true if all stream tasks have completed at time of the call. Note
-  // the potential for races around this call (if another thread adds work to
-  // the stream immediately after this returns).
-  static bool IsStreamIdle(Context* context, GpuStreamHandle stream);
-
   // Returns whether code in the from context can access memory in the to
   // context via cuDeviceCanAccessPeer.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__PEER__ACCESS.html#group__CUDA__PEER__ACCESS_1g496bdaae1f632ebfb695b99d2c40f19e

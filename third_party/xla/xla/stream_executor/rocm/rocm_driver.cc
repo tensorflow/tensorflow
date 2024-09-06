@@ -1249,9 +1249,13 @@ void GpuDriver::DestroyStream(Context* context, GpuStreamHandle stream) {
   if (stream == nullptr) {
     return;
   }
+  hipError_t res = wrap::hipStreamQuery(stream);
+  if (res != hipSuccess) {
+    LOG(ERROR) << "stream not idle on destroy: " << ToString(res);
+  }
 
   ScopedActivateContext activated(context);
-  hipError_t res = wrap::hipStreamDestroy(stream);
+  res = wrap::hipStreamDestroy(stream);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to destroy ROCM stream for device "
                << context->device_ordinal() << ": " << ToString(res);
@@ -1452,20 +1456,6 @@ absl::Status GpuDriver::SynchronizeStream(Context* context,
   VLOG(2) << "successfully synchronized stream " << stream << " on device "
           << context->device_ordinal();
   return absl::OkStatus();
-}
-
-bool GpuDriver::IsStreamIdle(Context* context, GpuStreamHandle stream) {
-  ScopedActivateContext activated{context};
-  CHECK(stream != nullptr);
-  hipError_t res = wrap::hipStreamQuery(stream);
-  if (res == hipSuccess) {
-    return true;
-  }
-
-  if (res != hipErrorNotReady) {
-    LOG(ERROR) << "stream in bad state on status query: " << ToString(res);
-  }
-  return false;
 }
 
 absl::Status GpuDriver::SynchronousMemcpyD2H(Context* context, void* host_dst,

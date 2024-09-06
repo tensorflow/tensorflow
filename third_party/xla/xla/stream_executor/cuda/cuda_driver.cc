@@ -1388,6 +1388,11 @@ void GpuDriver::DestroyStream(Context* context, GpuStreamHandle stream) {
   }
 
   ScopedActivateContext activated{context};
+  CUresult res = cuStreamQuery(stream);
+  if (res != CUDA_SUCCESS) {
+    LOG(ERROR) << "stream not idle on destroy: " << cuda::ToStatus(res);
+  }
+
   auto status = cuda::ToStatus(cuStreamDestroy(stream));
   if (!status.ok()) {
     LOG(ERROR) << "failed to destroy CUDA stream for context " << context
@@ -1553,21 +1558,6 @@ absl::Status GpuDriver::SynchronizeStream(Context* context, CUstream stream) {
   CHECK(stream != nullptr);
   return cuda::ToStatus(cuStreamSynchronize(stream),
                         "Could not synchronize CUDA stream");
-}
-
-bool GpuDriver::IsStreamIdle(Context* context, CUstream stream) {
-  ScopedActivateContext activated{context};
-  CHECK(stream != nullptr);
-  CUresult res = cuStreamQuery(stream);
-  if (res == CUDA_SUCCESS) {
-    return true;
-  }
-
-  if (res != CUDA_ERROR_NOT_READY) {
-    LOG(ERROR) << "stream in bad state on status query: "
-               << cuda::ToStatus(res);
-  }
-  return false;
 }
 
 absl::Status GpuDriver::SynchronousMemcpyD2H(Context* context, void* host_dst,

@@ -156,10 +156,6 @@ GpuStream::~GpuStream() {
   BlockHostUntilDone().IgnoreError();
   parent()->DeallocateStream(this);
 
-  if (!GpuDriver::IsStreamIdle(parent_->gpu_context(), gpu_stream_)) {
-    LOG(ERROR) << "Deallocating stream with pending work";
-  }
-
   completed_event_.reset();
   GpuDriver::DestroyStream(parent_->gpu_context(), gpu_stream_);
 }
