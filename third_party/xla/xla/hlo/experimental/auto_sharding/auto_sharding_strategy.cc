@@ -297,12 +297,44 @@ BuildStrategyAndCost(
         const StrategyGroup* indices_strategy_group =
             strategy_map.at(indices).get();
 
+        auto add_sharding_strategy = [&](const HloSharding& data_sharding,
+                                         const HloSharding& indices_sharding,
+                                         const HloSharding& output_sharding) {
+          if (output_sharding.IsReplicated()) {
+            return;
+          }
+          double compute_cost = 0, communication_cost = 0;
+          double memory_cost =
+              ByteSizeOfShapeWithSharding(gather_shape, output_sharding);
+          std::vector<std::optional<HloSharding>> input_shardings_optional(
+              {data_sharding, indices_sharding});
+          std::pair<ReshardingCosts, ReshardingCosts> resharding_costs =
+              GenerateReshardingCostsAndMissingShardingsForAllOperands(
+                  ins, output_sharding, strategy_map, cluster_env, call_graph,
+                  input_shardings_optional);
+
+          strategy_group->strategies.push_back(ShardingStrategy(
+              {std::string(output_sharding.ToString()), output_sharding,
+               compute_cost, communication_cost, memory_cost,
+               std::move(resharding_costs.first),
+               std::move(resharding_costs.second), input_shardings_optional}));
+        };
+
         for (const ShardingStrategy& indices_strategy :
              indices_strategy_group->strategies) {
           const HloSharding& indices_spec = indices_strategy.output_sharding;
           const HloSharding& indices_to_combine_spec = hlo_sharding_util::
               GatherOutputShardingFromIndexIndexPassthroughDimensions(
                   indices_spec, ins);
+          if (std::optional<HloSharding> data_spec =
+                  hlo_sharding_util::GatherOperandShardingFromOutput(
+                      indices_to_combine_spec, *ins, call_graph)) {
+            add_sharding_strategy(*data_spec, indices_spec,
+                                  indices_to_combine_spec);
+          } else {
+            add_sharding_strategy(HloSharding::Replicate(), indices_spec,
+                                  indices_to_combine_spec);
+          }
 
           for (const ShardingStrategy& data_strategy :
                data_strategy_group->strategies) {
@@ -330,6 +362,9 @@ BuildStrategyAndCost(
                             /* may_combine_partial_sharding */ true,
                             /* allow_aggressive_resharding */ false)) {
                   output_spec = *improved_spec;
+                  add_sharding_strategy(data_spec, indices_spec, output_spec);
+                } else {
+                  add_sharding_strategy(data_spec, indices_spec, to_merge);
                 }
               }
               // Infer output sharding from scatter indices sharding.
@@ -346,6 +381,9 @@ BuildStrategyAndCost(
                             /* may_combine_partial_sharding */ true,
                             /* allow_aggressive_resharding */ false)) {
                   output_spec = *improved_spec;
+                  add_sharding_strategy(data_spec, indices_spec, output_spec);
+                } else {
+                  add_sharding_strategy(data_spec, indices_spec, to_merge);
                 }
               }
             }
@@ -372,29 +410,10 @@ BuildStrategyAndCost(
                         /* may_combine_partial_sharding */ true,
                         /* allow_aggressive_resharding */ false)) {
               output_spec = *improved_spec;
+              add_sharding_strategy(data_spec, indices_spec, output_spec);
+            } else {
+              add_sharding_strategy(data_spec, indices_spec, *maybe_from_data);
             }
-
-            // We add replicated strategies below.
-            if (output_spec.IsReplicated()) {
-              continue;
-            }
-
-            double compute_cost = 0, communication_cost = 0;
-            double memory_cost =
-                ByteSizeOfShapeWithSharding(gather_shape, output_spec);
-            std::vector<std::optional<HloSharding>> input_shardings_optional(
-                {data_spec, indices_spec});
-            std::pair<ReshardingCosts, ReshardingCosts> resharding_costs =
-                GenerateReshardingCostsAndMissingShardingsForAllOperands(
-                    ins, output_spec, strategy_map, cluster_env, call_graph,
-                    input_shardings_optional);
-
-            strategy_group->strategies.push_back(ShardingStrategy(
-                {std::string(output_spec.ToString()), output_spec, compute_cost,
-                 communication_cost, memory_cost,
-                 std::move(resharding_costs.first),
-                 std::move(resharding_costs.second),
-                 input_shardings_optional}));
           }
         }
         AddReplicatedStrategy(
