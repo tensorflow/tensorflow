@@ -3663,6 +3663,11 @@ OpFoldResult NotEqualOp::fold(FoldAdaptor adaptor) {
         getType(), adaptor.getLhs(), adaptor.getRhs(),
         [](int32_t lhs, int32_t rhs) { return lhs != rhs; });
   }
+  if (getLhs().getType().getElementType().isInteger(64)) {
+    return ConstFoldBinaryOp<DenseIntElementsAttr, int64_t, bool>(
+        getType(), adaptor.getLhs(), adaptor.getRhs(),
+        [](int64_t lhs, int64_t rhs) { return lhs != rhs; });
+  }
   if (getLhs().getType().getElementType().isF32()) {
     return ConstFoldBinaryOp<DenseIntElementsAttr, float, bool>(
         getType(), adaptor.getLhs(), adaptor.getRhs(),
