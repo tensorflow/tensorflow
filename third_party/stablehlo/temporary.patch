@@ -10,4 +10,153 @@ diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
          "@llvm-project//mlir:IR",
          "@llvm-project//mlir:Support",
      ],
+diff --ruN a/stablehlo/stablehlo/integrations/c/StablehloApi.cpp b/stablehlo/stablehlo/integrations/c/StablehloApi.cpp
+--- stablehlo/stablehlo/integrations/c/StablehloApi.cpp
++++ stablehlo/stablehlo/integrations/c/StablehloApi.cpp
+@@ -78,7 +78,7 @@
+   return mlirLogicalResultSuccess();
+ }
+ 
+-MlirLogicalResult stablehloSerializePortableArtifact(
++MlirLogicalResult stablehloSerializePortableArtifactFromModule(
+     MlirModule moduleStr, MlirStringRef targetVersion,
+     MlirStringCallback callback, void *userData) {
+   mlir::detail::CallbackOstream stream(callback, userData);
+@@ -88,7 +88,7 @@
+   return mlirLogicalResultSuccess();
+ }
+ 
+-MlirLogicalResult stablehloSerializePortableArtifact(
++MlirLogicalResult stablehloSerializePortableArtifactFromString(
+     MlirStringRef moduleStr, MlirStringRef targetVersion,
+     MlirStringCallback callback, void *userData) {
+   mlir::detail::CallbackOstream stream(callback, userData);
+@@ -107,8 +107,8 @@
+   return mlirLogicalResultSuccess();
+ }
+ 
+-MlirModule stablehloDeserializePortableArtifact(MlirStringRef artifactStr,
+-                                                MlirContext ctx) {
++MlirModule stablehloDeserializePortableArtifactNoError(
++    MlirStringRef artifactStr, MlirContext ctx) {
+   return wrap(mlir::stablehlo::deserializePortableArtifact(unwrap(artifactStr),
+                                                            unwrap(ctx))
+                   .release());
+diff --ruN a/stablehlo/stablehlo/integrations/c/StablehloApi.h b/stablehlo/stablehlo/integrations/c/StablehloApi.h
+--- stablehlo/stablehlo/integrations/c/StablehloApi.h
++++ stablehlo/stablehlo/integrations/c/StablehloApi.h
+@@ -15,6 +15,10 @@
+ 
+ #include "mlir-c/IR.h"
+ #include "mlir-c/Support.h"
++
++#ifdef __cplusplus
++extern "C" {
++#endif
+ 
+ // Get the current StableHLO API version.
+ //
+@@ -72,9 +76,11 @@
+ // `targetVersion` version of StableHLO, e.g. if it's using new or removed
+ // features, or if it involves unsupported dialects.
+ // Returns false on failure.
+-MLIR_CAPI_EXPORTED MlirLogicalResult stablehloSerializePortableArtifact(
+-    MlirStringRef moduleStr, MlirStringRef targetVersion,
+-    MlirStringCallback callback, void* userData);
++MLIR_CAPI_EXPORTED MlirLogicalResult
++stablehloSerializePortableArtifactFromString(MlirStringRef moduleStr,
++                                             MlirStringRef targetVersion,
++                                             MlirStringCallback callback,
++                                             void* userData);
+ 
+ // Write a StableHLO program expressed as a string (either prettyprinted MLIR
+ // module or MLIR bytecode) to a portable artifact.
+@@ -82,9 +88,11 @@
+ // `targetVersion` version of StableHLO, e.g. if it's using new or removed
+ // features, or if it involves unsupported dialects.
+ // Returns false on failure.
+-MLIR_CAPI_EXPORTED MlirLogicalResult stablehloSerializePortableArtifact(
+-    MlirModule moduleStr, MlirStringRef targetVersion,
+-    MlirStringCallback callback, void* userData);
++MLIR_CAPI_EXPORTED MlirLogicalResult
++stablehloSerializePortableArtifactFromModule(MlirModule moduleStr,
++                                             MlirStringRef targetVersion,
++                                             MlirStringCallback callback,
++                                             void* userData);
+ 
+ // Read a StableHLO program from a portable artifact, returning the module as
+ // MLIR bytecode. Note, this bytecode returned is not a portable artifact,
+@@ -104,13 +112,14 @@
+ // StableHLO, e.g. if it's using incompatible features.
+ //
+ // Returns empty module on failure.
+-MLIR_CAPI_EXPORTED MlirModule stablehloDeserializePortableArtifact(
++MLIR_CAPI_EXPORTED MlirModule stablehloDeserializePortableArtifactNoError(
+     MlirStringRef artifactStr, MlirContext ctx);
+ 
+ // Call the Interpreter, returns MlirArrayAttr of dense element
+ // MlirAttribute results
+-MLIR_CAPI_EXPORTED MlirModule stablehloDeserializePortableArtifact(
+-    MlirStringRef artifactStr, MlirContext ctx);
++MLIR_CAPI_EXPORTED MlirModule
++stablehloDeserializePortableArtifactToMlirArrayAttr(MlirStringRef artifactStr,
++                                                    MlirContext ctx);
+ 
+ // Entrypoint for calling the StableHLO reference interpreter.
+ // Returns an array attribute of dense element attributes for results.
+@@ -120,4 +129,8 @@
+                                                      MlirAttribute const* args,
+                                                      int* errorCode);
+ 
++#ifdef __cplusplus
++}
++#endif
++
+ #endif  // STABLEHLO_INTEGRATIONS_C_STABLEHLOAPI_H_
+diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloApi.cpp b/stablehlo/stablehlo/integrations/python/StablehloApi.cpp
+--- stablehlo/stablehlo/integrations/python/StablehloApi.cpp
++++ stablehlo/stablehlo/integrations/python/StablehloApi.cpp
+@@ -95,10 +95,11 @@
+       "serialize_portable_artifact",
+       [](MlirModule module, std::string_view target) -> py::bytes {
+         StringWriterHelper accumulator;
+-        if (mlirLogicalResultIsFailure(stablehloSerializePortableArtifact(
+-                module, toMlirStringRef(target),
+-                accumulator.getMlirStringCallback(),
+-                accumulator.getUserData()))) {
++        if (mlirLogicalResultIsFailure(
++                stablehloSerializePortableArtifactFromModule(
++                    module, toMlirStringRef(target),
++                    accumulator.getMlirStringCallback(),
++                    accumulator.getUserData()))) {
+           PyErr_SetString(PyExc_ValueError, "failed to serialize module");
+           return "";
+         }
+@@ -110,7 +111,7 @@
+   m.def(
+       "deserialize_portable_artifact",
+       [](MlirContext context, std::string_view artifact) -> MlirModule {
+-        auto module = stablehloDeserializePortableArtifact(
++        auto module = stablehloDeserializePortableArtifactNoError(
+             toMlirStringRef(artifact), context);
+         if (mlirModuleIsNull(module)) {
+           PyErr_SetString(PyExc_ValueError, "failed to deserialize module");
+@@ -197,11 +198,12 @@
+       [](std::string_view moduleStrOrBytecode,
+          std::string_view targetVersion) -> py::bytes {
+         StringWriterHelper accumulator;
+-        if (mlirLogicalResultIsFailure(stablehloSerializePortableArtifact(
+-                toMlirStringRef(moduleStrOrBytecode),
+-                toMlirStringRef(targetVersion),
+-                accumulator.getMlirStringCallback(),
+-                accumulator.getUserData()))) {
++        if (mlirLogicalResultIsFailure(
++                stablehloSerializePortableArtifactFromString(
++                    toMlirStringRef(moduleStrOrBytecode),
++                    toMlirStringRef(targetVersion),
++                    accumulator.getMlirStringCallback(),
++                    accumulator.getUserData()))) {
+           PyErr_SetString(PyExc_ValueError, "failed to serialize module");
+           return "";
+         }
 
