@@ -586,9 +586,9 @@ class GpuDriver {
   // -- Asynchronous memcopies.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g56f30236c7c5247f8e061b59d3268362
 
-  static bool AsynchronousMemcpyD2H(Context* context, void* host_dst,
-                                    GpuDevicePtr gpu_src, uint64_t size,
-                                    GpuStreamHandle stream);
+  static absl::Status AsynchronousMemcpyD2H(Context* context, void* host_dst,
+                                            GpuDevicePtr gpu_src, uint64_t size,
+                                            GpuStreamHandle stream);
   static absl::Status AsynchronousMemcpyH2D(Context* context,
                                             GpuDevicePtr gpu_dst,
                                             const void* host_src, uint64_t size,
