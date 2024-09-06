@@ -86,7 +86,7 @@ class ExecutionInput {
 
   ~ExecutionInput();
 
-  ExecutionInput& operator=(ExecutionInput&&) = default;
+  ExecutionInput& operator=(ExecutionInput&&) noexcept = default;
 
   const Shape& shape() const {
     return dynamic_shape_ != nullptr ? *dynamic_shape_ : buffers_.shape();
@@ -165,8 +165,8 @@ class ExecutionOutput {
                   int device_ordinal, int physical_device_ordinal = -1)
       : result_(std::move(on_device_shape), allocator, device_ordinal,
                 physical_device_ordinal) {}
-  ExecutionOutput(ExecutionOutput&&) = default;
-  ExecutionOutput& operator=(ExecutionOutput&&) = default;
+  ExecutionOutput(ExecutionOutput&&) noexcept = default;
+  ExecutionOutput& operator=(ExecutionOutput&&) noexcept = default;
 
   ~ExecutionOutput() {
     // If the ExecutionOutput has not been committed, and if there are aliased
