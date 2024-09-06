@@ -1810,3 +1810,28 @@ func.func @gather() -> (tensor<2x3x4x5xi16>, tensor<2x3x4x5xi16>) {
   // If the return value is the same constant twice, the result is the same as expected
   // CHECK: return [[CST]], [[CST]]
 }
+
+
+// CHECK-LABEL: reverse_2_dims
+func.func @reverse_2_dims() -> tensor<2x3x2xi32> {
+  %input = "tfl.pseudo_const"() <{value = dense<[[[1, 2], [3, 4], [5, 6]], [[7, 8], [9, 10], [11, 12]]]> : tensor<2x3x2xi32>}> : () -> tensor<2x3x2xi32>
+  %axis = "tfl.pseudo_const"() <{value = dense<[0, 1]> : tensor<2xi32>}> : () -> tensor<2xi32>
+  %reverse = "tfl.reverse_v2"(%input, %axis) : (tensor<2x3x2xi32>, tensor<2xi32>) -> tensor<2x3x2xi32>
+  return %reverse : tensor<2x3x2xi32>
+}
+
+// CHECK-LITERAL: %cst = arith.constant dense<[[[11, 12], [9, 10], [7, 8]], [[5, 6], [3, 4], [1, 2]]]> : tensor<2x3x2xi32>
+// CHECK:         return %cst : tensor<2x3x2xi32>
+
+// CHECK-LABEL: reverse_1_dim
+func.func @reverse_1_dim() -> tensor<2x3x2xi32> {
+  %input = "tfl.pseudo_const"() <{value = dense<[[[1, 2], [3, 4], [5, 6]], [[7, 8], [9, 10], [11, 12]]]> : tensor<2x3x2xi32>}> : () -> tensor<2x3x2xi32>
+  %axis = "tfl.pseudo_const"() <{value = dense<[2]> : tensor<1xi32>}> : () -> tensor<1xi32>
+  %reverse = "tfl.reverse_v2"(%input, %axis) : (tensor<2x3x2xi32>, tensor<1xi32>) -> tensor<2x3x2xi32>
+  return %reverse : tensor<2x3x2xi32>
+}
+
+// CHECK-LITERAL: %cst = arith.constant dense<[[[2, 1], [4, 3], [6, 5]], [[8, 7], [10, 9], [12, 11]]]> : tensor<2x3x2xi32>
+// CHECK:         return %cst : tensor<2x3x2xi32>
+
+

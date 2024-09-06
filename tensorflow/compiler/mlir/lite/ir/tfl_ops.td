@@ -3158,6 +3158,8 @@ def TFL_ReverseV2Op: TFL_Op<"reverse_v2", [
       TODO: Add support for multiple elements.
   }];
 
+  let hasFolder = 1;
+
   let arguments = (
     ins
     TFL_TensorOf<[F32, UI8, I16, I32, I64, QI16, QUI8, QI8, TFL_Quint8, I1]>:$input,
