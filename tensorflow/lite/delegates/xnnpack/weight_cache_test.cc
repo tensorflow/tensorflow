@@ -317,7 +317,6 @@ TEST(WeightCacheBuilderTest, NonExistingPathFails) {
 }
 
 TEST(WeightCacheBuilderTest, InMemoryCacheTriggeredByCorrectPrefix) {
-  TfLiteXNNPackDelegateCanUseInMemoryWeightCacheProvider();
   if (!TfLiteXNNPackDelegateCanUseInMemoryWeightCacheProvider()) {
     GTEST_SKIP() << "In-memory weight cache isn't enabled for this build or "
                     "isn't supported by the current system, skipping test.";

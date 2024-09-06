@@ -2971,7 +2971,6 @@ cc_test(
     name = "flexbuffers_util_test",
     srcs = ["flexbuffers_util_test.cc"],
     deps = [
-        ":file_util",
         ":flexbuffers_util",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers//:runtime_cc",

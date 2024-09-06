@@ -113,8 +113,11 @@ class MMapHandle {
   [[nodiscard /*Mapping a file can fail.*/]]
   bool Map(const char* path);
 
+  // Maps the fd associated to the file descriptor.
+  //
+  // The debug_path is printed along the error messages.
   [[nodiscard /*Mapping a file can fail.*/]]
-  bool Map(int fd, const char* debug_path = "unspecified");
+  bool Map(const FileDescriptor& fd, const char* debug_path = "unspecified");
 
   // Unmaps an existing mapping.
   void UnMap();

@@ -52,6 +52,17 @@ limitations under the License.
     std::abort();                                           \
   }
 
+#define XNNPACK_VAR_ARG_HEAD(FIRST, ...) FIRST
+
+#define XNNPACK_RETURN_CHECK(TEST, ...)                              \
+  if (!(TEST)) {                                                     \
+    if (sizeof(XNNPACK_VAR_ARG_HEAD("" __VA_ARGS__)) > sizeof("")) { \
+      TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,                      \
+                      "XNNPack weight cache: " __VA_ARGS__);         \
+    }                                                                \
+    return false;                                                    \
+  }
+
 namespace tflite::xnnpack {
 
 namespace {
@@ -134,68 +145,36 @@ MMapHandle& MMapHandle::operator=(MMapHandle&& other) {
 }
 
 bool MMapHandle::Map(const char* path) {
-  const int fd = open(path, O_RDONLY);
-  return this->Map(fd, path);
+  return this->Map(FileDescriptor::Open(path, O_RDONLY), path);
 }
 
-bool MMapHandle::Map(const int fd, const char* const path) {
+bool MMapHandle::Map(const FileDescriptor& fd, const char* const path) {
   this->UnMap();
 
-  if (fd == -1) {
-    TFLITE_LOG_PROD(
-        tflite::TFLITE_LOG_ERROR,
-        "XNNPack weight cache: could not open file to mmap ('%s'): %s.", path,
-        strerror(errno))
-    return false;
-  }
-
-  const ScopeGuard close_fd_on_return([&fd] {
-    if (fd >= 0) {
-      close(fd);
-    }
-  });
+  XNNPACK_RETURN_CHECK(fd.IsValid(),
+                       "cannot mmap invalid file descriptor %d ('%s').",
+                       fd.Value(), path);
 
   struct stat file_stats;
-  if (fstat(fd, &file_stats)) {
-    TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
-                    "XNNPack weight cache: could not access file stats to get "
-                    "size ('%s'): %s.",
-                    path, strerror(errno))
-    return false;
-  }
+  XNNPACK_RETURN_CHECK(fstat(fd.Value(), &file_stats) == 0,
+                       "could not access file stats to get size ('%s'): %s.",
+                       path, strerror(errno));
 
+  // This will reset data_ and size_ on return until is is deactivated.
+  ScopeGuard unmap_on_error([this] { UnMap(); });
   size_ = file_stats.st_size;
 #if defined(_MSC_VER)
+  // This allocation is freed in UnMap and in the desctructor.
   data_ = new uint8_t[size_];
-  {
-    uint8_t* data_reader = data_;
-    size_t remaining_bytes = size_;
-    while (remaining_bytes > 0) {
-      const auto bytes = read(fd, data_reader, remaining_bytes);
-      if (bytes == -1) {
-        TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
-                        "XNNPack weight cache: could not read file ('%s'): %s.",
-                        path, strerror(errno))
-        UnMap();
-        return false;
-      }
-      remaining_bytes -= bytes;
-      data_reader += bytes;
-    }
-  }
+  XNNPACK_RETURN_CHECK(fd.Read(data_, size_), "could not read file ('%s'): %s.",
+                       path, strerror(errno));
 #else
-  data_ = static_cast<uint8_t*>(
-      mmap(/*addr=*/nullptr, size_, PROT_READ, MAP_SHARED, fd, /*offset=*/0));
-  if (data_ == MAP_FAILED) {
-    TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
-                    "XNNPack weight cache: could not mmap file (%s): %s.", path,
-                    strerror(errno));
-    data_ = nullptr;
-    size_ = 0;
-    return false;
-  }
+  data_ = static_cast<uint8_t*>(mmap(/*addr=*/nullptr, size_, PROT_READ,
+                                     MAP_SHARED, fd.Value(), /*offset=*/0));
+  XNNPACK_RETURN_CHECK(data_ != MAP_FAILED, "could not mmap file (%s): %s.",
+                       path, strerror(errno));
 #endif
-
+  unmap_on_error.Deactivate();
   return true;
 }
 
@@ -206,9 +185,9 @@ void MMapHandle::UnMap() {
 #else
     munmap(data_, size_);
 #endif
-    data_ = nullptr;
-    size_ = 0;
   }
+  data_ = nullptr;
+  size_ = 0;
 }
 
 void swap(WeightCacheBuilder& a, WeightCacheBuilder& b) {
@@ -458,8 +437,7 @@ bool MMapWeightCacheProvider::Load() {
   cache_key_to_offset_.clear();
 
   if (temporary_file_descriptor_.IsValid()) {
-    if (!mmap_handle_.Map(temporary_file_descriptor_.Duplicate().Release(),
-                          file_path_.c_str())) {
+    if (!mmap_handle_.Map(temporary_file_descriptor_, file_path_.c_str())) {
       return false;
     }
   } else {
