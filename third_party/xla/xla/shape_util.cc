@@ -1169,6 +1169,16 @@ bool ShapeUtil::IsLeafIndex(const Shape& shape, const ShapeIndex& index) {
   return absl::c_linear_search(shape.dimensions(), 1);
 }
 
+/* static */ absl::StatusOr<int64_t>
+ShapeUtil::PackedFactorFor1DInterleavedArray(const Shape& shape) {
+  if (shape.rank() == 1 && shape.layout().tiles_size() == 3 &&
+      shape.layout().tiles()[2].dimensions().size() == 2) {
+    return shape.layout().tiles()[2].dimension(0);
+  }
+  return InvalidArgument("Shape %s is not a 1D interleaved array.",
+                         ShapeUtil::HumanStringWithLayout(shape));
+}
+
 /* static */ Shape ShapeUtil::DropDegenerateDimensions(const Shape& shape) {
   return FilterDimensions(
       [&](int64_t dim) -> bool { return shape.dimensions()[dim] != 1; }, shape);
