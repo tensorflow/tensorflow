@@ -612,8 +612,9 @@ class GpuDriver {
   // Enqueues a callback operation into stream.
   // See StreamCallback above and the NVIDIA documentation for additional
   // details.
-  static bool AddStreamCallback(Context* context, GpuStreamHandle stream,
-                                StreamCallback callback, void* data);
+  static absl::Status AddStreamCallback(Context* context,
+                                        GpuStreamHandle stream,
+                                        StreamCallback callback, void* data);
 
   // Causes stream to wait for event to trigger before proceeding via
   // cuStreamWaitEvent.

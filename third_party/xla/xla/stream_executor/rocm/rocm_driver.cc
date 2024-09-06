@@ -1185,14 +1185,13 @@ absl::Status GpuDriver::AsynchronousMemsetUint32(Context* context,
   return absl::OkStatus();
 }
 
-bool GpuDriver::AddStreamCallback(Context* context, GpuStreamHandle stream,
-                                  StreamCallback callback, void* data) {
-  hipError_t res = wrap::hipLaunchHostFunc(stream, (hipHostFn_t)callback, data);
-  if (res != hipSuccess) {
-    LOG(ERROR) << "unable to add host callback: " << ToString(res);
-    return false;
-  }
-  return true;
+absl::Status GpuDriver::AddStreamCallback(Context* context,
+                                          GpuStreamHandle stream,
+                                          StreamCallback callback, void* data) {
+  RETURN_IF_ROCM_ERROR(
+      wrap::hipLaunchHostFunc(stream, (hipHostFn_t)callback, data),
+      "unable to add host callback");
+  return absl::OkStatus();
 }
 
 absl::Status GpuDriver::GetModuleFunction(Context* context, hipModule_t module,

@@ -1320,15 +1320,10 @@ absl::Status GpuDriver::AsynchronousMemsetUint32(Context* context,
                         "Failed to enqueue async memset operation");
 }
 
-bool GpuDriver::AddStreamCallback(Context* context, CUstream stream,
-                                  StreamCallback callback, void* data) {
+absl::Status GpuDriver::AddStreamCallback(Context* context, CUstream stream,
+                                          StreamCallback callback, void* data) {
   // Note: flags param is required to be zero according to CUDA 6.0.
-  auto status = cuda::ToStatus(cuLaunchHostFunc(stream, callback, data));
-  if (!status.ok()) {
-    LOG(ERROR) << "unable to add host callback: " << status;
-    return false;
-  }
-  return true;
+  return cuda::ToStatus(cuLaunchHostFunc(stream, callback, data));
 }
 
 absl::Status GpuDriver::GetModuleFunction(Context* context, CUmodule module,

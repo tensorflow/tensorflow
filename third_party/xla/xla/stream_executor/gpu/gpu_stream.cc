@@ -155,11 +155,8 @@ absl::Status GpuStream::DoHostCallbackWithStatus(
           LOG(WARNING) << "Host callback failed: " << s;
         }
       });
-  if (GpuDriver::AddStreamCallback(parent_->gpu_context(), gpu_stream(),
-                                   InternalHostCallback, callback_ptr)) {
-    return absl::OkStatus();
-  }
-  return absl::InternalError("Failed to host callback.");
+  return GpuDriver::AddStreamCallback(parent_->gpu_context(), gpu_stream(),
+                                      InternalHostCallback, callback_ptr);
 }
 
 GpuStream::~GpuStream() {
