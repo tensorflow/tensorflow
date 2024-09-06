@@ -1326,6 +1326,18 @@ func.func @less_int() -> tensor<4xi1> {
 
 // CHECK: %cst = arith.constant dense<[false, false, false, true]> : tensor<4xi1>
 
+// CHECK-LABEL: @less_int64
+func.func @less_int64() -> tensor<4xi1> {
+  %0 = arith.constant dense<[11, 2, 0, 2]> : tensor<4xi64>
+  %1 = arith.constant dense<[10, 2, -1, 3]> : tensor<4xi64>
+
+  %2 = "tfl.less"(%0, %1) : (tensor<4xi64>, tensor<4xi64>) -> tensor<4xi1>
+
+  func.return %2 : tensor<4xi1>
+}
+
+// CHECK: %cst = arith.constant dense<[false, false, false, true]> : tensor<4xi1>
+
 // CHECK-LABEL: @less_float
 func.func @less_float() -> tensor<4xi1> {
   %0 = arith.constant dense<[11.0, 2.0, 0.0, 2.0]> : tensor<4xf32>
