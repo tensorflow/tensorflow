@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tests/manifest_checking_test.h"
 #include "xla/tests/verified_hlo_module.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
@@ -73,7 +72,7 @@ namespace xla {
 //  )
 //
 // For a more detailed example, see "../tests/sample_text_test.cc".
-class HloTestBase : public ManifestCheckingTest {
+class HloTestBase : public ::testing::Test {
  public:
   // Creates a new HLO module for a test. The module created will have
   // TestName() for its name; it will also automatically populate its debug

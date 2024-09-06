@@ -112,11 +112,6 @@ limitations under the License.
 
 namespace xla {
 
-inline const char** DisabledManifestPath() {
-  static const char* disabled_manifest_path = nullptr;
-  return &disabled_manifest_path;
-}
-
 inline const char** TestPlatform() {
   static const char* test_platform = nullptr;
   return &test_platform;
