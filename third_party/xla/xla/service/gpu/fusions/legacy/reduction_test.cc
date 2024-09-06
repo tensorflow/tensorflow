@@ -91,6 +91,7 @@ TEST_F(ReductionTest, ThreadIndexingRowReduction) {
         s1 in [0, 0]
         s2 in [0, 7]
         s3 in [0, 1]
+        is_simplified: true
       )"));
   EXPECT_THAT(
       fusion.ComputeThreadIdToOutputIndexing(0, &mlir_context_)->ToString(),
@@ -107,6 +108,7 @@ TEST_F(ReductionTest, ThreadIndexingRowReduction) {
         d4 in [0, 0]
         d5 in [0, 0]
         d0 mod 32 in [0, 0]
+        is_simplified: true
       )"));
 }
 

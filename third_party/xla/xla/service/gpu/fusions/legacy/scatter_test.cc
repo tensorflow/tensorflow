@@ -164,6 +164,7 @@ TEST_F(ScatterFusionTest, ThreadIdIndexing) {
     chunk_id in [0, 0]
     unroll_id in [0, 0]
     bl_x * 128 + th_x in [0, 8399]
+    is_simplified: true
   )";
   EXPECT_THAT(
       fusion
@@ -204,6 +205,7 @@ TEST_F(ScatterFusionTest, ThreadIdIndexing) {
     unroll_id in [0, 0]
     index_id in [0, 0]
     bl_x * 128 + th_x in [0, 8399]
+    is_simplified: true
   )";
   EXPECT_THAT(
       fusion

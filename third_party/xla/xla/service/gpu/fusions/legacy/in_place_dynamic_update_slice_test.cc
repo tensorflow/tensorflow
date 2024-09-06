@@ -96,6 +96,7 @@ TEST_F(InPlaceDynamicUpdateSliceFusionTest, ThreadIndexing) {
     bl_z in [0, 0]
     chunk_id in [0, 0]
     unroll_id in [0, 0]
+    is_simplified: true
   )"));
   auto thread_id_dst_indexing = fusion->ComputeThreadIdToInputIndexing(
       /*root_index=*/0, /*hero_operand_index=*/0, &mlir_context_);

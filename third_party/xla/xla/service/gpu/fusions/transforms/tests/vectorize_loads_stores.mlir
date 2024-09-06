@@ -1,8 +1,8 @@
 // RUN: mlir_fusions_opt -allow-unregistered-dialect %s -split-input-file \
-// RUN:  -xla-gpu-vectorize-loads-stores -canonicalize -cse \
-// RUN: | FileCheck %s
+// RUN:  -xla-gpu-vectorize-loads-stores -cse -canonicalize | FileCheck %s
+
 #map = #xla_gpu.indexing_map<(d0)[s0] -> (d0 * 2 + s0),
-                             domain: d0 in [0, 63], s0 in [0, 1]>
+                             domain: d0 in [0, 63], s0 in [0, 1], is_simplified: true>
 func.func @simple_read(%arg0: tensor<128xf32>) -> (f32) {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -20,7 +20,7 @@ func.func @simple_read(%arg0: tensor<128xf32>) -> (f32) {
   }
   return %outer : f32
 }
-// CHECK: #[[$MAP:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 * 2), domain: d0 in [0, 63]>
+// CHECK: #[[$MAP:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 * 2), domain: d0 in [0, 63], is_simplified: true>
 // CHECK-LABEL: @simple_read
 // CHECK-SAME:     (%[[ARG0:.*]]: tensor
 // CHECK-DAG:   %[[C0:.*]] = arith.constant 0 : index
@@ -37,7 +37,7 @@ func.func @simple_read(%arg0: tensor<128xf32>) -> (f32) {
 // -----
 
 #map = #xla_gpu.indexing_map<(d0)[s0] -> (d0 * 2 + s0 + 1),
-                             domain: d0 in [0, 63], s0 in [0, 1]>
+                             domain: d0 in [0, 63], s0 in [0, 1], is_simplified: true>
 func.func @misaligned_indexing_map(%arg0: tensor<128xf32>) -> (f32) {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -61,7 +61,7 @@ func.func @misaligned_indexing_map(%arg0: tensor<128xf32>) -> (f32) {
 // -----
 
 #map = #xla_gpu.indexing_map<(d0)[s0] -> (d0 * 3 + s0),
-                             domain: d0 in [0, 63], s0 in [0, 1]>
+                             domain: d0 in [0, 63], s0 in [0, 1], is_simplified: true>
 func.func @misaligned_indexing_map_2(%arg0: tensor<128xf32>) -> (f32) {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -85,7 +85,7 @@ func.func @misaligned_indexing_map_2(%arg0: tensor<128xf32>) -> (f32) {
 // -----
 
 #map = #xla_gpu.indexing_map<(d0)[s0] -> (3 * d0 + s0),
-                             domain: d0 in [0, 63], s0 in [0, 1]>
+                             domain: d0 in [0, 63], s0 in [0, 1], is_simplified: true>
 func.func @misaligned_shape(%arg0: tensor<192xf32>) -> (f32) {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -109,7 +109,7 @@ func.func @misaligned_shape(%arg0: tensor<192xf32>) -> (f32) {
 // -----
 
 #map = #xla_gpu.indexing_map<(d0)[s0] -> (d0 + s0 * 2),
-                             domain: d0 in [0, 63], s0 in [0, 1]>
+                             domain: d0 in [0, 63], s0 in [0, 1], is_simplified: true>
 func.func @wrong_stride(%arg0: tensor<128xf32>) -> (f32) {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -135,7 +135,7 @@ func.func @wrong_stride(%arg0: tensor<128xf32>) -> (f32) {
 // We could vectorize this as a float vector load of double the size, but we
 // don't currently.
 #map = #xla_gpu.indexing_map<(d0)[s0] -> (2 * d0 + s0),
-                             domain: d0 in [0, 127], s0 in [0, 1]>
+                             domain: d0 in [0, 127], s0 in [0, 1], is_simplified: true>
 func.func @simple_read_complex(%arg0: tensor<128xcomplex<f32>>, %i: index) -> (complex<f32>) {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -251,9 +251,9 @@ func.func @write_not_yielded(%arg0: tensor<64xf32>) -> tensor<64xf32> {
 // -----
 
 #map = #xla_gpu.indexing_map<(d0, d1)[s0] -> (d1 * 2 + d0 + s0 * 512),
-                             domain: d0 in [0, 7], d1 in [0, 255], s0 in [0, 7]>
+                             domain: d0 in [0, 7], d1 in [0, 255], s0 in [0, 7], is_simplified: true>
 #map1 = #xla_gpu.indexing_map<(d0, d1, d2)[s0] -> (d0 * 32 + d2 * 2 + d1 + s0 * 512),
-                             domain: d0 in [0, 7], d1 in [0, 1], d2 in [0, 255], s0 in [0, 7]>
+                             domain: d0 in [0, 7], d1 in [0, 1], d2 in [0, 255], s0 in [0, 7], is_simplified: true>
 func.func @multiple(%arg0: tensor<131072xf32>, %arg1: tensor<4096xbf16>,
       %arg2: tensor<32xf32>, %arg3: tensor<131072xf32>,
       %arg4: index) -> (tensor<131072xf32>, f32) {
@@ -280,8 +280,8 @@ func.func @multiple(%arg0: tensor<131072xf32>, %arg1: tensor<4096xbf16>,
   }
   return %0#0, %0#1 : tensor<131072xf32>, f32
 }
-// CHECK-DAG: #[[$MAP:.*]] = #xla_gpu.indexing_map<(d0, d1) -> (d0 * 2 + d1 * 512), domain: d0 in [0, 255], d1 in [0, 7]>
-// CHECK-DAG: #[[$MAP1:.*]] = #xla_gpu.indexing_map<(d0, d1, d2) -> (d0 * 32 + d1 * 2 + d2 * 512), domain: d0 in [0, 7], d1 in [0, 255], d2 in [0, 7]>
+// CHECK-DAG: #[[$MAP:.*]] = #xla_gpu.indexing_map<(d0, d1) -> (d0 * 2 + d1 * 512), domain: d0 in [0, 255], d1 in [0, 7], is_simplified: true>
+// CHECK-DAG: #[[$MAP1:.*]] = #xla_gpu.indexing_map<(d0, d1, d2) -> (d0 * 32 + d1 * 2 + d2 * 512), domain: d0 in [0, 7], d1 in [0, 255], d2 in [0, 7], is_simplified: true>
 // CHECK-LABEL: @multiple
 // CHECK-SAME: (%[[ARG0:.*]]: tensor{{.*}}, %[[ARG1:.*]]: tensor{{.*}}, %[[ARG2:.*]]: tensor{{.*}}, %[[ARG3:.*]]: tensor{{.*}}, %[[ARG4:.*]]: index)
 // CHECK:      %[[C0:.*]] = arith.constant 0 : index
@@ -305,7 +305,7 @@ func.func @multiple(%arg0: tensor<131072xf32>, %arg1: tensor<4096xbf16>,
 // -----
 
 #map = #xla_gpu.indexing_map<(d0)[s0] -> ((d0 * 4) mod 64 + s0),
-                             domain: d0 in [0, 63], s0 in [0, 1]>
+                             domain: d0 in [0, 63], s0 in [0, 1], is_simplified: true>
 func.func @remainder_with_modulo(%arg0: tensor<128xf32>) -> (f32) {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -333,7 +333,7 @@ func.func @remainder_with_modulo(%arg0: tensor<128xf32>) -> (f32) {
 // -----
 
 #map = #xla_gpu.indexing_map<(d0)[s0] -> ((d0 * 4) mod 65 + s0),
-                             domain: d0 in [0, 63], s0 in [0, 1]>
+                             domain: d0 in [0, 63], s0 in [0, 1], is_simplified: true>
 func.func @remainder_with_modulo_misaligned(%arg0: tensor<128xf32>) -> (f32) {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -357,9 +357,9 @@ func.func @remainder_with_modulo_misaligned(%arg0: tensor<128xf32>) -> (f32) {
 // -----
 
 #map0 = #xla_gpu.indexing_map<(d0) -> (d0 + 5),
-                              domain: d0 in [0, 63]>
+                              domain: d0 in [0, 63], is_simplified: true>
 #map1 = #xla_gpu.indexing_map<(d0)[s0] -> (d0 * 2 + s0),
-                              domain: d0 in [0, 63], s0 in [0, 1]>
+                              domain: d0 in [0, 63], s0 in [0, 1], is_simplified: true>
 module {
   func.func @apply_indexing_sequence(%arg0: tensor<128xf32>) -> (f32) {
     %c0 = arith.constant 0 : index
@@ -382,7 +382,7 @@ module {
 }
 
 // CHECK: #[[$MAP0:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 * 2 + 10),
-// CHECK-SAME:                                  domain: d0 in [0, 63]>
+// CHECK-SAME:                                  domain: d0 in [0, 63], is_simplified: true>
 // CHECK-LABEL: @apply_indexing_sequence
 // CHECK: %[[BASE:.*]] = xla_gpu.apply_indexing #[[$MAP0]]
 // CHECK: vector.transfer_read {{.*}}[%[[BASE]]]
@@ -391,9 +391,9 @@ module {
 
 
 #map0 = #xla_gpu.indexing_map<(d0) -> (d0 + 5),
-                              domain: d0 in [0, 63]>
+                              domain: d0 in [0, 63], is_simplified: true>
 #map1 = #xla_gpu.indexing_map<(d0)[s0] -> (d0 * 2 + s0),
-                              domain: d0 in [0, 63], s0 in [0, 1]>
+                              domain: d0 in [0, 63], s0 in [0, 1], is_simplified: true>
 module {
   func.func @apply_indexing_sequence_same_block(%arg0: tensor<128xf32>) -> (f32) {
     %c0 = arith.constant 0 : index

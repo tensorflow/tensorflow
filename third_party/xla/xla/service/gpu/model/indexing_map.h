@@ -19,7 +19,6 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -305,7 +304,8 @@ class IndexingMap {
   IndexingMap(
       mlir::AffineMap affine_map, std::vector<DimVar> dimensions,
       std::vector<RangeVar> range_vars, std::vector<RTVar> rt_vars,
-      absl::Span<std::pair<mlir::AffineExpr, Interval> const> constraints = {});
+      absl::Span<std::pair<mlir::AffineExpr, Interval> const> constraints = {},
+      bool is_simplified = false);
 
   IndexingMap(mlir::AffineMap affine_map, std::vector<DimVar> dimensions,
               std::vector<RangeVar> range_vars, std::vector<RTVar> rt_vars,
@@ -316,7 +316,8 @@ class IndexingMap {
 
   static IndexingMap FromTensorSizes(
       mlir::AffineMap affine_map, absl::Span<const int64_t> dim_upper_bounds,
-      absl::Span<const int64_t> symbol_upper_bounds);
+      absl::Span<const int64_t> symbol_upper_bounds,
+      bool is_simplified = false);
 
   std::string ToString(
       const AffineMapPrinter& printer = AffineMapPrinter()) const;
@@ -400,6 +401,10 @@ class IndexingMap {
   // satisfies both constraints.
   bool IsKnownEmpty() const { return is_known_empty_; }
 
+  // Returns true if the indexing map is simplified.
+  void SetIsSimplified(bool is_simplified) { is_simplified_ = is_simplified; }
+  bool IsSimplified() const { return is_simplified_; }
+
   bool IsUndefined() const { return affine_map_ == mlir::AffineMap(); }
 
   // Removes unused symbols from the `affine_map_` and constraints.
@@ -465,6 +470,8 @@ class IndexingMap {
   llvm::DenseMap<mlir::AffineExpr, Interval> constraints_;
   // Flag to indicate that the domain is empty.
   bool is_known_empty_ = false;
+  // Flag to indicate that the indexing map is simplified.
+  bool is_simplified_ = false;
 };
 std::ostream& operator<<(std::ostream& out, const IndexingMap& indexing_map);
 bool operator==(const IndexingMap& lhs, const IndexingMap& rhs);
