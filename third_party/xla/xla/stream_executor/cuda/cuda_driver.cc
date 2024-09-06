@@ -1543,16 +1543,9 @@ absl::Status GpuDriver::WaitStreamOnEvent(Context* context, CUstream stream,
   return cuda::ToStatus(cuStreamWaitEvent(stream, event, 0 /* = flags */));
 }
 
-bool GpuDriver::SynchronizeContext(Context* context) {
+absl::Status GpuDriver::SynchronizeContext(Context* context) {
   ScopedActivateContext activation(context);
-  auto status = cuda::ToStatus(cuCtxSynchronize());
-  if (!status.ok()) {
-    LOG(ERROR) << "could not synchronize on CUDA context: " << status
-               << " :: " << tsl::CurrentStackTrace();
-    return false;
-  }
-
-  return true;
+  return cuda::ToStatus(cuCtxSynchronize());
 }
 
 absl::Status GpuDriver::SynchronizeStream(Context* context, CUstream stream) {

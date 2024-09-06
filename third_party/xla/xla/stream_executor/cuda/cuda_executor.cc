@@ -473,7 +473,7 @@ void GpuExecutor::Deallocate(DeviceMemoryBase* mem) {
 }
 
 bool GpuExecutor::SynchronizeAllActivity() {
-  return GpuDriver::SynchronizeContext(context_);
+  return GpuDriver::SynchronizeContext(context_).ok();
 }
 
 absl::Status GpuExecutor::SynchronousMemZero(DeviceMemoryBase* location,

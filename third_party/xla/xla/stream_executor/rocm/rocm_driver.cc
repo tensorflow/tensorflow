@@ -1436,16 +1436,11 @@ absl::Status GpuDriver::WaitStreamOnEvent(Context* context,
   return absl::OkStatus();
 }
 
-bool GpuDriver::SynchronizeContext(Context* context) {
+absl::Status GpuDriver::SynchronizeContext(Context* context) {
   ScopedActivateContext activation{context};
-  hipError_t res = wrap::hipDeviceSynchronize();
-  if (res != hipSuccess) {
-    LOG(ERROR) << "could not synchronize on ROCM device: " << ToString(res)
-               << " :: " << tsl::CurrentStackTrace();
-    return false;
-  }
-
-  return true;
+  RETURN_IF_ROCM_ERROR(wrap::hipDeviceSynchronize(),
+                       "could not synchronize on ROCM device");
+  return absl::OkStatus();
 }
 
 absl::Status GpuDriver::SynchronizeStream(Context* context,
