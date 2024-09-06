@@ -2595,6 +2595,61 @@ ENTRY entry {
             input_output_alias_config_after.ToString());
 }
 
+TEST_F(AutoShardingTest, SliceAliasTest) {
+  const char* const kHloString = R"(
+HloModule module
+%branch0 {
+  %branch0_param = f32[256,256]{1,0} parameter(0)
+  ROOT %slice0 = f32[16,16]{1,0} slice(f32[256,256]{1,0} %branch0_param), slice={[16:32], [16:32]}
+}
+
+%branch1 {
+  %branch1_param = f32[256,256]{1,0} parameter(0)
+  ROOT %slice1 = f32[16,16]{1,0} slice(f32[256,256]{1,0} %branch1_param), slice={[0:16], [0:16]}
+}
+
+ENTRY %entry {
+  %entry_param0 = f32[256,256]{1,0} parameter(0), sharding={devices=[32,1]<=[32]}
+  %entry_param1 = s32[] parameter(1)
+  ROOT %conditional = f32[16,16]{1,0} conditional(s32[] %entry_param1, f32[256,256]{1,0} %entry_param0, f32[256,256]{1,0} %entry_param0), branch_computations={%branch0, %branch1}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  AutoShardingOption option;
+  option.preserve_shardings =
+      AutoShardingOption::PreserveShardingsType::kKeepAllShardings;
+  option.enable = true;
+  option.device_mesh_shape = {32, 1};
+  option.device_mesh_alpha = {1.0, 1.0};
+  option.device_mesh_beta = {0.01, 1.0};
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
+  ASSERT_TRUE(changed);
+  VLOG(5) << module->ToString();
+
+  const HloInstruction* branch0_param =
+      FindInstruction(module.get(), "branch0_param");
+  const HloInstruction* slice0 = FindInstruction(module.get(), "slice0");
+  const HloInstruction* branch1_param =
+      FindInstruction(module.get(), "branch1_param");
+  const HloInstruction* slice1 = FindInstruction(module.get(), "slice1");
+
+  ASSERT_NE(branch0_param, nullptr);
+  ASSERT_NE(slice0, nullptr);
+  ASSERT_NE(branch1_param, nullptr);
+  ASSERT_NE(slice1, nullptr);
+
+  ASSERT_TRUE(branch0_param->has_sharding());
+  ASSERT_TRUE(slice0->has_sharding());
+  ASSERT_TRUE(branch1_param->has_sharding());
+  ASSERT_TRUE(slice1->has_sharding());
+
+  EXPECT_THAT(branch0_param, op::Sharding("{devices=[32,1]<=[32]}"));
+  EXPECT_THAT(slice0, op::Sharding("{replicated}"));
+  EXPECT_THAT(branch1_param, op::Sharding("{devices=[32,1]<=[32]}"));
+  EXPECT_THAT(slice1, op::Sharding("{replicated}"));
+}
+
 TEST(NormalizeTest, NormalizeHandlesNegativeCosts) {
   EdgeReshardingCostMatrix edge_cost(2, 2);
   edge_cost(0, 0).communication_cost = -100;

@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "json/json.h"
@@ -1844,7 +1845,7 @@ absl::Status CheckAliasSetCompatibility(const AliasSet& alias_set,
                                         bool crash_on_error) {
   const std::vector<HloInstruction*>& instructions = sequence.instructions();
   // Checks the compatibility
-  for (const auto& pair : alias_set) {
+  for (const std::pair<NodeIdx, NodeIdx>& pair : alias_set) {
     const StrategyGroup* src_strategy_group = strategy_groups[pair.first];
     const StrategyGroup* dst_strategy_group = strategy_groups[pair.second];
 
@@ -1894,6 +1895,153 @@ absl::Status CheckAliasSetCompatibility(const AliasSet& alias_set,
       }
     }
   }
+  return absl::OkStatus();
+}
+
+struct AliasCompatibility {
+  std::vector<int> src_compatible;
+  std::vector<int> dst_compatible;
+  bool replicated = false;
+};
+
+absl::StatusOr<AliasCompatibility> ComputeAliasCompatibility(
+    const StrategyGroup* src_strategy_group,
+    const StrategyGroup* dst_strategy_group,
+    const std::vector<HloInstruction*>& instructions) {
+  AliasCompatibility alias_compatibility;
+  for (size_t i = 0; i < src_strategy_group->strategies.size(); ++i) {
+    for (size_t j = 0; j < dst_strategy_group->strategies.size(); ++j) {
+      if (src_strategy_group->strategies[i].output_sharding ==
+          dst_strategy_group->strategies[j].output_sharding) {
+        alias_compatibility.src_compatible.push_back(i);
+        alias_compatibility.dst_compatible.push_back(j);
+        if (src_strategy_group->strategies[i].output_sharding.IsReplicated()) {
+          alias_compatibility.replicated = true;
+        }
+      }
+    }
+  }
+
+  int compatible_cnt = alias_compatibility.src_compatible.size();
+  if (compatible_cnt == 1 && (alias_compatibility.replicated &&
+                              (src_strategy_group->strategies.size() > 1 ||
+                               dst_strategy_group->strategies.size() > 1))) {
+    LOG(WARNING) << "Alias pair has only replicated strategy in common. This "
+                    "will result in choosing replicated strategy for these "
+                    "tensors and may result in large memory consumption: "
+                 << "("
+                 << instructions.at(src_strategy_group->instruction_id)->name()
+                 << ", "
+                 << instructions.at(dst_strategy_group->instruction_id)->name()
+                 << ")" << "\n"
+                 << "(" << src_strategy_group->node_idx << ", "
+                 << dst_strategy_group->node_idx << ")\n"
+                 << src_strategy_group->ToString() << "\n"
+                 << dst_strategy_group->ToString();
+  }
+  if (compatible_cnt <= 0) {
+    std::string err_msg = absl::StrCat(
+        "Alias pair does not have any sharding strategy in common: (",
+        instructions.at(src_strategy_group->instruction_id)->name(), ", ",
+        instructions.at(dst_strategy_group->instruction_id)->name(), ")\n(",
+        src_strategy_group->node_idx, ", ", dst_strategy_group->node_idx, ")\n",
+        src_strategy_group->ToString(), "\n", dst_strategy_group->ToString());
+    LOG(WARNING) << err_msg;
+    return absl::InternalError(err_msg);
+  }
+  return alias_compatibility;
+}
+
+absl::Status RemoveFollowersIfMismatchedStrategies(
+    const AliasSet& alias_set, const StrategyGroups& strategy_groups,
+    const HloInstructionSequence& sequence, bool crash_on_error) {
+  // Compress follower relations
+  absl::flat_hash_map<NodeIdx, NodeIdx> follower_to_followees;
+  auto compress_follower = [&follower_to_followees](
+                               const StrategyGroup& strategy_group) {
+    if (strategy_group.following == nullptr) {
+      return;
+    }
+    if (strategy_group.following->following == nullptr) {
+      follower_to_followees[strategy_group.node_idx] =
+          strategy_group.following->node_idx;
+      return;
+    }
+    auto it = follower_to_followees.find(strategy_group.following->node_idx);
+    CHECK(it != follower_to_followees.end());
+    follower_to_followees[strategy_group.node_idx] = it->second;
+  };
+  for (const StrategyGroup* strategy_group : strategy_groups) {
+    strategy_group->ForEachLeafStrategyGroup(compress_follower);
+  }
+
+  absl::flat_hash_map<NodeIdx, absl::flat_hash_set<int>>
+      followee_root_valid_strategies;
+  auto update_valid_strategies = [&](NodeIdx idx,
+                                     std::vector<int>& valid_strategies) {
+    if (auto it = follower_to_followees.find(idx);
+        it != follower_to_followees.end()) {
+      idx = it->second;
+    }
+    if (auto it = followee_root_valid_strategies.find(idx);
+        it != followee_root_valid_strategies.end()) {
+      absl::erase_if(it->second, [&valid_strategies](int e) {
+        return absl::c_find(valid_strategies, e) == valid_strategies.end();
+      });
+    } else {
+      followee_root_valid_strategies[idx].insert(valid_strategies.begin(),
+                                                 valid_strategies.end());
+    }
+  };
+
+  const std::vector<HloInstruction*>& instructions = sequence.instructions();
+  // For each follower group, compute the set of valid strategies based on
+  // aliasing relations
+  for (const std::pair<NodeIdx, NodeIdx>& pair : alias_set) {
+    const StrategyGroup* src_strategy_group = strategy_groups[pair.first];
+    const StrategyGroup* dst_strategy_group = strategy_groups[pair.second];
+
+    TF_ASSIGN_OR_RETURN(
+        AliasCompatibility alias_compatibility,
+        ComputeAliasCompatibility(src_strategy_group, dst_strategy_group,
+                                  instructions));
+    update_valid_strategies(pair.first, alias_compatibility.src_compatible);
+    update_valid_strategies(pair.second, alias_compatibility.dst_compatible);
+  }
+
+  // Break appropriate follower relationships if there are no valid strategies
+  // with finite costs for a given node
+  absl::flat_hash_set<NodeIdx> unfollowed;
+  auto unfollow_if_no_valid_strategies = [&](StrategyGroup& strategy_group) {
+    if (strategy_group.following == nullptr) {
+      return;
+    }
+    NodeIdx idx = strategy_group.node_idx;
+    if (auto it = follower_to_followees.find(idx);
+        it != follower_to_followees.end()) {
+      idx = it->second;
+    }
+    if (auto it = followee_root_valid_strategies.find(idx);
+        it != followee_root_valid_strategies.end()) {
+      for (auto strategy_idx : it->second) {
+        if (strategy_group.strategies[strategy_idx].compute_cost !=
+            kInfinityCost) {
+          return;
+        }
+      }
+      LOG(INFO) << "Unfollow " << strategy_group.node_idx << " " << idx << " "
+                << absl::StrJoin(it->second, ",");
+      if (unfollowed.contains(strategy_group.following->node_idx)) {
+        return;
+      }
+      strategy_group.following = nullptr;
+      unfollowed.insert(strategy_group.node_idx);
+    }
+  };
+  for (StrategyGroup* strategy_group : strategy_groups) {
+    strategy_group->ForEachLeafStrategyGroup(unfollow_if_no_valid_strategies);
+  }
+
   return absl::OkStatus();
 }
 

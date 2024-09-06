@@ -4046,7 +4046,7 @@ absl::StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
                              option_.try_multiple_mesh_shapes));
     spmd::AliasSet alias_set =
         spmd::BuildAliasSet(module, input_output_alias_config, strategy_map);
-    TF_RETURN_IF_ERROR(CheckAliasSetCompatibility(
+    TF_RETURN_IF_ERROR(RemoveFollowersIfMismatchedStrategies(
         alias_set, strategy_groups, sequence,
         /* crash_at_error */ !option_.try_multiple_mesh_shapes));
     XLA_VLOG_LINES(8, PrintStrategyMap(strategy_map, sequence));

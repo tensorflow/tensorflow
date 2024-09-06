@@ -202,6 +202,9 @@ absl::Status CheckAliasSetCompatibility(const AliasSet& alias_set,
                                         const StrategyGroups& strategy_groups,
                                         const HloInstructionSequence& sequence,
                                         bool crash_on_error);
+absl::Status RemoveFollowersIfMismatchedStrategies(
+    const AliasSet& alias_set, const StrategyGroups& strategy_groups,
+    const HloInstructionSequence& sequence, bool crash_on_error);
 
 absl::Status GenerateReduceScatter(
     const HloInstructionSequence& sequence, const AliasMap& alias_map,
