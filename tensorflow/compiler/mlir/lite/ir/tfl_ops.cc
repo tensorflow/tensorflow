@@ -3869,14 +3869,17 @@ OpFoldResult CastIntToInt(DenseIntElementsAttr data, IntegerType in_type,
 
 OpFoldResult CastFloatToInt(DenseFPElementsAttr data, FloatType in_type,
                             IntegerType out_type) {
-  const bool from_f32 = in_type.isF32();
-  const bool to_i32 = out_type.isSignlessInteger(32);
-  if (!from_f32 || !to_i32) {
+  if (!in_type.isF32()) {
+    return {};
+  }
+
+  const auto out_width = out_type.getWidth();
+  if (out_width != 64 && out_width != 32) {
     return {};
   }
 
   auto cast = [&](APFloat value) -> APInt {
-    APSInt result(32, false);
+    APSInt result(out_width, false);
     bool is_exact;
     value.convertToInteger(result, llvm::RoundingMode::TowardZero, &is_exact);
     return result;
