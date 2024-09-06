@@ -524,11 +524,15 @@ cuda_only_cc_library(
     ],
 )
 
-cc_library(
+gpu_kernel_library(
     name = "command_buffer_kernels",
-    srcs = ["command_buffer_kernels.cc"],
+    srcs = [
+        "command_buffer_kernels.cc",
+        "command_buffer_kernels.cu.cc",
+    ],
     deps = [
         "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor/gpu:gpu_types_header",
         "@com_google_absl//absl/status:statusor",
     ],
 )

@@ -16,6 +16,7 @@ limitations under the License.
 #include <string_view>
 
 #include "absl/status/statusor.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/kernel_spec.h"
 
 namespace stream_executor {
@@ -757,45 +758,85 @@ inline constexpr std::string_view kNoOpKernel = R"(
 })";
 
 }  // namespace
+
+#if CUDA_VERSION >= 12030
+void* GetSetIfConditionKernel();
+void* GetSetIfElseConditionKernel();
+void* GetSetCaseConditionKernel();
+void* GetSetForConditionKernel();
+void* GetSetWhileConditionKernel();
+void* GetNoOpKernel();
+#endif
+
 }  // namespace cuda
 
 namespace gpu {
 
+// TODO(b/362786589): Remove PTX usage when we only support cuda >= 12.4.1
+// See comment at top of this file for why PTX is used for cuda < 12.4.1.
 absl::StatusOr<MultiKernelLoaderSpec> GetSetIfConditionKernelLoaderSpec() {
   MultiKernelLoaderSpec spec(/*arity=*/2);
+#if CUDA_VERSION >= 12030
+  spec.AddInProcessSymbol(cuda::GetSetIfConditionKernel(), "set_if_condition");
+#else
   spec.AddCudaPtxInMemory(cuda::kSetIfConditionKernel, "set_if_condition");
+#endif
   return spec;
 }
 
 absl::StatusOr<MultiKernelLoaderSpec> GetSetIfElseConditionKernelLoaderSpec() {
   MultiKernelLoaderSpec spec(/*arity=*/3);
+#if CUDA_VERSION >= 12030
+  spec.AddInProcessSymbol(cuda::GetSetIfElseConditionKernel(),
+                          "set_if_else_condition");
+#else
   spec.AddCudaPtxInMemory(cuda::kSetIfElseConditionKernel,
                           "set_if_else_condition");
+#endif
   return spec;
 }
 
 absl::StatusOr<MultiKernelLoaderSpec> GetSetCaseConditionKernelLoaderSpec() {
   MultiKernelLoaderSpec spec(/*arity=*/10);
+#if CUDA_VERSION >= 12030
+  spec.AddInProcessSymbol(cuda::GetSetCaseConditionKernel(),
+                          "set_case_condition");
+#else
   spec.AddCudaPtxInMemory(cuda::kSetCaseConditionKernel, "set_case_condition");
+#endif
   return spec;
 }
 
 absl::StatusOr<MultiKernelLoaderSpec> GetSetForConditionKernelLoaderSpec() {
   MultiKernelLoaderSpec spec(/*arity=*/3);
+#if CUDA_VERSION >= 12030
+  spec.AddInProcessSymbol(cuda::GetSetForConditionKernel(),
+                          "set_for_condition");
+#else
   spec.AddCudaPtxInMemory(cuda::kSetForConditionKernel, "set_for_condition");
+#endif
   return spec;
 }
 
 absl::StatusOr<MultiKernelLoaderSpec> GetSetWhileConditionKernelLoaderSpec() {
   MultiKernelLoaderSpec spec(/*arity=*/2);
+#if CUDA_VERSION >= 12030
+  spec.AddInProcessSymbol(cuda::GetSetWhileConditionKernel(),
+                          "set_while_condition");
+#else
   spec.AddCudaPtxInMemory(cuda::kSetWhileConditionKernel,
                           "set_while_condition");
+#endif
   return spec;
 }
 
 absl::StatusOr<MultiKernelLoaderSpec> GetNoOpKernelLoaderSpec() {
   MultiKernelLoaderSpec spec(/*arity=*/0);
+#if CUDA_VERSION >= 12030
+  spec.AddInProcessSymbol(cuda::GetNoOpKernel(), "noop");
+#else
   spec.AddCudaPtxInMemory(cuda::kNoOpKernel, "noop");
+#endif
   return spec;
 }
 
