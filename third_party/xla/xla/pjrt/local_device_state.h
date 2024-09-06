@@ -72,23 +72,7 @@ class LocalDeviceState {
     //
     // The client's use of the device allocator corresponds to a view of the
     // tail of the compute stream.
-    kComputeSynchronized,
-
-    // kAsynchronous is used by TPU devices.
-    //
-    // A buffer returned from the allocator can be used immediately.
-    //
-    // A buffer b can be freed as soon as the last stream operation using b has
-    // been enqueued.
-    //
-    // The allocator and lower-level runtime are responsible for keeping buffers
-    // alive (if that is needed) from the perspective of the device until any
-    // device-side work actually completes.
-    //
-    // The only exception is when a buffer is transferred between devices since
-    // only one of the device executors knows about the transfer, so the buffer
-    // must be manually kept alive from the perspective of the other executor.
-    kAsynchronous
+    kComputeSynchronized
   };
 
   // Options for stream creations.

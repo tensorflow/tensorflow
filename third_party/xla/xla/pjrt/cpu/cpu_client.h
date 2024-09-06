@@ -291,8 +291,6 @@ class TfrtCpuClient final : public PjRtClient {
 
   absl::string_view platform_version() const override { return "<unknown>"; }
 
-  PjRtRuntimeType runtime_type() const override { return kTfrt; }
-
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
 
@@ -365,25 +363,10 @@ class TfrtCpuClient final : public PjRtClient {
     return Unimplemented("MakeCrossHostReceiveBuffers not implemented.");
   }
 
-  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-  MakeCrossHostReceiveBuffersForGather(
-      absl::Span<const Shape> shapes, std::vector<GatherDetails> gather_details,
-      PjRtDevice* device, PjRtCrossHostRecvNotifier notifier) override {
-    return Unimplemented(
-        "MakeCrossHostReceiveBuffersForGather not implemented.");
-  }
-
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
       void* device_ptr, const Shape& shape, PjRtDevice* device,
       std::function<void()> on_delete_callback,
       std::optional<std::intptr_t> stream) override;
-
-  absl::StatusOr<ChannelHandle> CreateChannelHandle() override {
-    return Unimplemented("CreateChannelHandle not implemented.");
-  }
-  absl::StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() override {
-    return Unimplemented("CreateDeviceToHostChannelHandle not implemented.");
-  }
 
   absl::Status Defragment() override {
     return Unimplemented("Defragment not implemented.");

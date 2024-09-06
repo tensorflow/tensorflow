@@ -282,11 +282,6 @@ class PjRtCApiClient : public PjRtClient {
 
   std::optional<PjRtPluginAttributes> plugin_attributes() const override;
 
-  // TODO(b/244756954): Rethink this function altogether
-  PjRtRuntimeType runtime_type() const override {
-    return PjRtRuntimeType::kTfrt;
-  }
-
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
 
@@ -388,37 +383,11 @@ class PjRtCApiClient : public PjRtClient {
         "this feature.");
   }
 
-  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-  MakeCrossHostReceiveBuffersForGather(
-      absl::Span<const Shape> shapes, std::vector<GatherDetails> gather_details,
-      PjRtDevice* device, PjRtCrossHostRecvNotifier notifier) override {
-    return Unimplemented(
-        "PJRT C API does not support MakeCrossHostReceiveBuffers. Please "
-        "report an issue at https://github.com/google/jax/issues if you need "
-        "this feature.");
-  }
-
-  absl::StatusOr<ChannelHandle> CreateChannelHandle() override {
-    return Unimplemented(
-        "PJRT C API does not support CreateChannelHandle. Please report an "
-        "issue at https://github.com/google/jax/issues if you need this "
-        "feature.");
-  }
-
-  absl::StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() override {
-    return Unimplemented(
-        "PJRT C API does not support CreateDeviceToHostChannelHandle. Please "
-        "report an issue at https://github.com/google/jax/issues if you need "
-        "this feature.");
-  }
-
   absl::Status Defragment() override {
     return Unimplemented(
         "PJRT C API does not support Defragment. Please report an issue at "
         "https://github.com/google/jax/issues if you need this feature.");
   }
-
-  bool SupportsSendRecvCallbacks() const override { return true; }
 
   const PJRT_Api* pjrt_c_api() const;
 
@@ -434,11 +403,6 @@ class PjRtCApiClient : public PjRtClient {
     auto it = c_to_cpp_memory_map_.find(c_memory);
     CHECK(it != c_to_cpp_memory_map_.end());
     return it->second;
-  }
-
-  PjRtHostMemoryForDeviceManager* GetPjRtHostMemoryForDeviceManager()
-      const override {
-    return nullptr;
   }
 
  private:
