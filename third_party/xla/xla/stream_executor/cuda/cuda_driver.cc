@@ -1537,17 +1537,10 @@ bool GpuDriver::GetEventElapsedTime(Context* context,
   return true;
 }
 
-bool GpuDriver::WaitStreamOnEvent(Context* context, CUstream stream,
-                                  CUevent event) {
+absl::Status GpuDriver::WaitStreamOnEvent(Context* context, CUstream stream,
+                                          CUevent event) {
   ScopedActivateContext activation(context);
-  auto status =
-      cuda::ToStatus(cuStreamWaitEvent(stream, event, 0 /* = flags */));
-  if (!status.ok()) {
-    LOG(ERROR) << "could not wait stream on event: " << status;
-    return false;
-  }
-
-  return true;
+  return cuda::ToStatus(cuStreamWaitEvent(stream, event, 0 /* = flags */));
 }
 
 bool GpuDriver::SynchronizeContext(Context* context) {

@@ -1427,16 +1427,13 @@ bool GpuDriver::GetEventElapsedTime(Context* context,
   return true;
 }
 
-bool GpuDriver::WaitStreamOnEvent(Context* context, GpuStreamHandle stream,
-                                  GpuEventHandle event) {
+absl::Status GpuDriver::WaitStreamOnEvent(Context* context,
+                                          GpuStreamHandle stream,
+                                          GpuEventHandle event) {
   ScopedActivateContext activation{context};
-  hipError_t res = wrap::hipStreamWaitEvent(stream, event, 0 /* = flags */);
-  if (res != hipSuccess) {
-    LOG(ERROR) << "could not wait stream on event: " << ToString(res);
-    return false;
-  }
-
-  return true;
+  RETURN_IF_ROCM_ERROR(wrap::hipStreamWaitEvent(stream, event, 0 /* = flags */),
+                       "could not wait stream on event");
+  return absl::OkStatus();
 }
 
 bool GpuDriver::SynchronizeContext(Context* context) {

@@ -125,11 +125,8 @@ absl::Status GpuStream::WaitFor(Stream* other) {
   GpuEvent* other_completed_event = other_gpu->completed_event();
   TF_RETURN_IF_ERROR(other_completed_event->Record(other_gpu->gpu_stream()));
 
-  if (GpuDriver::WaitStreamOnEvent(parent_->gpu_context(), gpu_stream(),
-                                   other_completed_event->gpu_event())) {
-    return absl::OkStatus();
-  }
-  return absl::InternalError("Couldn't wait for stream.");
+  return GpuDriver::WaitStreamOnEvent(parent_->gpu_context(), gpu_stream(),
+                                      other_completed_event->gpu_event());
 }
 
 absl::Status GpuStream::RecordEvent(Event* event) {
@@ -137,15 +134,11 @@ absl::Status GpuStream::RecordEvent(Event* event) {
 }
 
 absl::Status GpuStream::WaitFor(Event* event) {
-  if (GpuDriver::WaitStreamOnEvent(
-          parent_->gpu_context(), gpu_stream(),
-          static_cast<GpuEvent*>(event)->gpu_event())) {
-    return absl::OkStatus();
-  } else {
-    return absl::InternalError(absl::StrFormat(
-        "error recording waiting for event on stream %p", this));
-  }
+  return GpuDriver::WaitStreamOnEvent(
+      parent_->gpu_context(), gpu_stream(),
+      static_cast<GpuEvent*>(event)->gpu_event());
 }
+
 absl::Status GpuStream::DoHostCallbackWithStatus(
     absl::AnyInvocable<absl::Status() &&> callback) {
   auto callback_ptr =

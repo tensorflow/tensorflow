@@ -619,8 +619,9 @@ class GpuDriver {
   // Causes stream to wait for event to trigger before proceeding via
   // cuStreamWaitEvent.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__STREAM.html#axzz334nAXAhM
-  static bool WaitStreamOnEvent(Context* context, GpuStreamHandle stream,
-                                GpuEventHandle event);
+  static absl::Status WaitStreamOnEvent(Context* context,
+                                        GpuStreamHandle stream,
+                                        GpuEventHandle event);
 
   // Blocks the calling thread until the operations enqueued onto stream have
   // been completed, via cuStreamSynchronize.
