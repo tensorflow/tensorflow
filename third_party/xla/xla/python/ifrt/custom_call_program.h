@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/program.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
@@ -36,7 +37,8 @@ struct CustomCallProgram
   // Specification for a single array. The sharding of all input and output
   // specs must use only the devices in `devices`.
   CustomCallProgram(std::string type, std::string name,
-                    absl::Cord serialized_program_text, DeviceList devices,
+                    absl::Cord serialized_program_text,
+                    tsl::RCReference<DeviceList> devices,
                     std::vector<ArraySpec> input_specs,
                     std::vector<ArraySpec> output_specs)
       : type(std::move(type)),
@@ -60,7 +62,7 @@ struct CustomCallProgram
   absl::Cord serialized_program_text;
 
   // List of devices to compile and run the custom call program on.
-  DeviceList devices;
+  tsl::RCReference<DeviceList> devices;
 
   // Specification for input and output arrays. The custom call program must
   // expect to receive input arrays and return output arrays both following the

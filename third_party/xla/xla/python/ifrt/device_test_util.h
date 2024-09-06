@@ -21,6 +21,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -44,7 +46,7 @@ class DeviceTest : public testing::TestWithParam<DeviceTestParam> {
   // Returns `DeviceList` containing devices at given indexes (not ids) within
   // `client.devices()`.
   // REQUIRES: 0 <= device_indices[i] < num_devices
-  DeviceList GetDevices(absl::Span<const int> device_indices);
+  tsl::RCReference<DeviceList> GetDevices(absl::Span<const int> device_indices);
 
  private:
   std::shared_ptr<Client> client_;

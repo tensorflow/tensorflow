@@ -89,7 +89,7 @@ class LoadedExecutable final
   absl::StatusOr<ExecuteResult> Execute(
       absl::Span<tsl::RCReference<xla::ifrt::Array>> args,
       const ExecuteOptions& options,
-      std::optional<DeviceList> devices) override;
+      std::optional<tsl::RCReference<xla::ifrt::DeviceList>> devices) override;
 
   Future<> Delete() override;
   bool IsDeleted() const override;

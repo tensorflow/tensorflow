@@ -33,12 +33,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/nb_class_ptr.h"
 #include "xla/python/nb_helpers.h"
 #include "xla/python/nb_numpy.h"
 #include "xla/python/py_client.h"
 #include "xla/python/py_device_list.h"
 #include "xla/python/sharded_device_array.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 
@@ -216,10 +218,10 @@ SingleDeviceSharding::SingleDeviceSharding(nb::object device,
 }
 
 SingleDeviceSharding::SingleDeviceSharding(
-    xla::nb_class_ptr<xla::PyClient> client, xla::ifrt::DeviceList device_list,
-    nb::object memory_kind)
+    xla::nb_class_ptr<xla::PyClient> client,
+    tsl::RCReference<xla::ifrt::DeviceList> device_list, nb::object memory_kind)
     : Sharding(/*num_devices=*/1),
-      device_(client->GetPyDevice(device_list.front())),
+      device_(client->GetPyDevice(device_list->devices().front())),
       memory_kind_(std::move(memory_kind)),
       internal_device_list_(xla::make_nb_class<PyDeviceList>(
           std::move(client), std::move(device_list))) {

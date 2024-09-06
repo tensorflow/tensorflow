@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/shape.h"
@@ -143,7 +144,7 @@ class IfrtServingExecutable {
       tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn,
       IfrtServingCoreSelector* ifrt_serving_core_selector,
       tensorflow::tpu::TPUCompileMetadataProto original_compile_metadata,
-      xla::ifrt::DeviceList assigned_device_list,
+      tsl::RCReference<xla::ifrt::DeviceList> assigned_device_list,
       tsl::protobuf::Message* compilation_environment_proto)
       : program_id_(program_id),
         model_name_(std::string(model_name)),
@@ -172,7 +173,7 @@ class IfrtServingExecutable {
   // test portable execution condition even if the Module itself is already
   // released.
   tensorflow::tpu::TPUCompileMetadataProto original_compile_metadata_;
-  const xla::ifrt::DeviceList assigned_device_list_;
+  const tsl::RCReference<xla::ifrt::DeviceList> assigned_device_list_;
 
   std::shared_ptr<xla::ifrt::Client> ifrt_client_;
   tsl::thread::ThreadPool& thread_pool_;
@@ -198,11 +199,11 @@ class IfrtServingExecutable {
       absl::Span<const tensorflow::Tensor> inputs,
       absl::Span<const int> variable_arg_indices,
       const CachedExecutableBundle& executable_bundle,
-      const xla::ifrt::DeviceList& devices);
+      const tsl::RCReference<xla::ifrt::DeviceList>& devices);
 
   absl::StatusOr<tsl::RCReference<xla::ifrt::Array>> ConvertTensorToArray(
       const tensorflow::Tensor& tensor,
-      const xla::ifrt::DeviceList& device_list,
+      const tsl::RCReference<xla::ifrt::DeviceList>& device_list,
       const xla::OpSharding& sharding);
 
   xla::ifrt::Future<SharedCachedExecutableBundle> LookUpOrCreateExecutable(

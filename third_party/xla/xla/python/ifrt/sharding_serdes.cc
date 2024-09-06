@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/shape.h"
@@ -51,7 +52,7 @@ class SingleDeviceShardingSerDes
     const SingleDeviceSharding& sharding =
         llvm::cast<SingleDeviceSharding>(serializable);
     SingleDeviceShardingProto proto;
-    proto.set_device_id(sharding.devices().front()->Id().value());
+    proto.set_device_id(sharding.devices()->devices().front()->Id().value());
     if (sharding.memory_kind().memory_kind().has_value()) {
       proto.set_memory_kind(std::string(*sharding.memory_kind().memory_kind()));
     }
@@ -93,7 +94,7 @@ class OpaqueShardingSerDes
   absl::StatusOr<std::string> Serialize(Serializable& serializable) override {
     const OpaqueSharding& sharding = llvm::cast<OpaqueSharding>(serializable);
     OpaqueShardingProto proto;
-    *proto.mutable_devices() = sharding.devices().ToProto();
+    *proto.mutable_devices() = sharding.devices()->ToProto();
     if (sharding.memory_kind().memory_kind().has_value()) {
       proto.set_memory_kind(std::string(*sharding.memory_kind().memory_kind()));
     }
@@ -137,7 +138,7 @@ class ConcreteShardingSerDes
     const ConcreteSharding& sharding =
         llvm::cast<ConcreteSharding>(serializable);
     ConcreteShardingProto proto;
-    *proto.mutable_devices() = sharding.devices().ToProto();
+    *proto.mutable_devices() = sharding.devices()->ToProto();
     if (sharding.memory_kind().memory_kind().has_value()) {
       proto.set_memory_kind(std::string(*sharding.memory_kind().memory_kind()));
     }
@@ -221,7 +222,7 @@ class ConcreteEvenShardingSerDes
     const ConcreteEvenSharding& sharding =
         llvm::cast<ConcreteEvenSharding>(serializable);
     ConcreteEvenShardingProto proto;
-    *proto.mutable_devices() = sharding.devices().ToProto();
+    *proto.mutable_devices() = sharding.devices()->ToProto();
     if (sharding.memory_kind().memory_kind().has_value()) {
       proto.set_memory_kind(std::string(*sharding.memory_kind().memory_kind()));
     }

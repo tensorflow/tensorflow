@@ -187,8 +187,8 @@ TEST_P(HloShardingTest, DisassembleWithReplication) {
   for (int i = 0; i < 2; ++i) {
     const auto& [shape, sharding] = disassembled[i];
     EXPECT_EQ(shape, Shape({10, 20}));
-    EXPECT_EQ(*sharding,
-              *SingleDeviceSharding::Create(device_list[i], MemoryKind()));
+    EXPECT_EQ(*sharding, *SingleDeviceSharding::Create(
+                             device_list->devices()[i], MemoryKind()));
   }
 }
 
@@ -224,8 +224,8 @@ TEST_P(HloShardingTest, DisassembleWithTile) {
   for (int i = 0; i < 2; ++i) {
     const auto& [shape, sharding] = disassembled[i];
     EXPECT_EQ(shape, Shape({5, 20}));
-    EXPECT_EQ(*sharding,
-              *SingleDeviceSharding::Create(device_list[i], MemoryKind()));
+    EXPECT_EQ(*sharding, *SingleDeviceSharding::Create(
+                             device_list->devices()[i], MemoryKind()));
   }
 }
 
@@ -265,8 +265,8 @@ TEST_P(HloShardingTest, DisassembleWithUnevenTile) {
     } else {
       EXPECT_EQ(shape, Shape({5, 20}));
     }
-    EXPECT_EQ(*sharding,
-              *SingleDeviceSharding::Create(device_list[i], MemoryKind()));
+    EXPECT_EQ(*sharding, *SingleDeviceSharding::Create(
+                             device_list->devices()[i], MemoryKind()));
   }
 }
 
@@ -310,8 +310,8 @@ TEST_P(HloShardingTest, DisassembleWithPartialTile) {
   for (int i = 0; i < 6; ++i) {
     const auto& [shape, sharding] = disassembled[i];
     EXPECT_EQ(shape, Shape({5, 20}));
-    EXPECT_EQ(*sharding,
-              *SingleDeviceSharding::Create(device_list[i], MemoryKind()));
+    EXPECT_EQ(*sharding, *SingleDeviceSharding::Create(
+                             device_list->devices()[i], MemoryKind()));
   }
 }
 
@@ -355,8 +355,8 @@ TEST_P(HloShardingTest, DisassembleWithSubgroupReplicated) {
   for (int i = 0; i < 6; ++i) {
     const auto& [shape, sharding] = disassembled[i];
     EXPECT_EQ(shape, Shape({5, 20}));
-    EXPECT_EQ(*sharding,
-              *SingleDeviceSharding::Create(device_list[i], MemoryKind()));
+    EXPECT_EQ(*sharding, *SingleDeviceSharding::Create(
+                             device_list->devices()[i], MemoryKind()));
   }
 }
 
@@ -400,8 +400,8 @@ TEST_P(HloShardingTest, DisassembleWithSubgroupMaximalSlowPath) {
   for (int i = 0; i < 6; ++i) {
     const auto& [shape, sharding] = disassembled[i];
     EXPECT_EQ(shape, Shape({5, 20}));
-    EXPECT_EQ(*sharding,
-              *SingleDeviceSharding::Create(device_list[i], MemoryKind()));
+    EXPECT_EQ(*sharding, *SingleDeviceSharding::Create(
+                             device_list->devices()[i], MemoryKind()));
   }
 }
 
@@ -431,8 +431,8 @@ TEST_P(HloShardingTest, DisassembleWithManual) {
   for (int i = 0; i < 6; ++i) {
     const auto& [shape, sharding] = disassembled[i];
     EXPECT_EQ(shape, Shape({10, 20}));
-    EXPECT_EQ(*sharding,
-              *SingleDeviceSharding::Create(device_list[i], MemoryKind()));
+    EXPECT_EQ(*sharding, *SingleDeviceSharding::Create(
+                             device_list->devices()[i], MemoryKind()));
   }
 }
 
