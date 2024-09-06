@@ -1470,6 +1470,18 @@ func.func @equal_int() -> tensor<4xi1> {
 
 // CHECK: %cst = arith.constant dense<[false, true, false, false]> : tensor<4xi1>
 
+// CHECK-LABEL: @equal_int64
+func.func @equal_int64() -> tensor<4xi1> {
+  %0 = arith.constant dense<[11, 2, 0, 2]> : tensor<4xi64>
+  %1 = arith.constant dense<[10, 2, -1, 3]> : tensor<4xi64>
+
+  %2 = "tfl.equal"(%0, %1) : (tensor<4xi64>, tensor<4xi64>) -> tensor<4xi1>
+
+  func.return %2 : tensor<4xi1>
+}
+
+// CHECK: %cst = arith.constant dense<[false, true, false, false]> : tensor<4xi1>
+
 // CHECK-LABEL: @equal_float
 func.func @equal_float() -> tensor<4xi1> {
   %0 = arith.constant dense<[11.0, 2.0, 0.0, 2.0]> : tensor<4xf32>
