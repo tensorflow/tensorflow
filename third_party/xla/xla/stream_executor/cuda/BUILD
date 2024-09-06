@@ -1,4 +1,5 @@
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
+load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
 load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "if_static",
@@ -524,12 +525,13 @@ cuda_only_cc_library(
     ],
 )
 
-gpu_kernel_library(
+cuda_library(
     name = "command_buffer_kernels",
     srcs = [
         "command_buffer_kernels.cc",
         "command_buffer_kernels.cu.cc",
     ],
+    tags = ["no_rocm"],
     deps = [
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor/gpu:gpu_types_header",
