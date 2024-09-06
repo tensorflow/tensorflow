@@ -1654,7 +1654,8 @@ absl::Status GpuDriver::AsynchronousMemcpyD2D(Context* context,
   if ((gpu_dst == 0 || gpu_src == 0) || is_capturing) {
     // GetContextMap()->GetAnyContext() doesn't works when ptr == 0.
     // This happens when the size is 0.
-    return cuda::ToStatus(cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream));
+    TF_RETURN_IF_ERROR(
+        cuda::ToStatus(cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream)));
   } else {
     // Any context work here.
     CUcontext dst_context =
@@ -1665,10 +1666,11 @@ absl::Status GpuDriver::AsynchronousMemcpyD2D(Context* context,
     if (dst_context == src_context) {
       // Since the CUDA context is the same, the src and dst are within the same
       // GPU. So we can use cuMemcpyDtoD.
-      return cuda::ToStatus(cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream));
+      TF_RETURN_IF_ERROR(
+          cuda::ToStatus(cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream)));
     } else {
-      return cuda::ToStatus(cuMemcpyPeerAsync(gpu_dst, dst_context, gpu_src,
-                                              src_context, size, stream));
+      TF_RETURN_IF_ERROR(cuda::ToStatus(cuMemcpyPeerAsync(
+          gpu_dst, dst_context, gpu_src, src_context, size, stream)));
     }
   }
 
