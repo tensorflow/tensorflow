@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #ifdef PLATFORM_GOOGLE
+#include "third_party/json/src/json.hpp"
 #include "tensorflow/compiler/mlir/lite/experimental/google/tooling/google/direct_hlo_to_json_graph_convert.h"
 #endif  // PLATFORM_GOOGLE
 #include "xla/hlo/ir/hlo_computation.h"
@@ -58,6 +59,8 @@ using ::xla::HloProto;
 using ::xla::HloRenderOptions;
 using ::xla::RenderedGraphFormat;
 
+constexpr char kCenterNodeKey[] = "centerNode";
+
 void CleanUpHloModuleForGraphviz(HloModule* hlo_module) {
   // Infeed config is escaped serialized proto, and graphviz server complains.
   for (HloComputation* computation : hlo_module->computations()) {
@@ -69,6 +72,48 @@ void CleanUpHloModuleForGraphviz(HloModule* hlo_module) {
       }
     }
   }
+}
+
+// This follows ModelExplorer's logic to get id of a layer.
+std::string GetLayerId(absl::string_view namespace_name) {
+  // TODO(b/361833306): support nested namespace.
+  return absl::StrCat(namespace_name, "___group___");
+}
+
+#ifdef PLATFORM_GOOGLE
+void AddCenterNodeMetadata(nlohmann::json& graph_json, std::string id,
+                           absl::string_view name, absl::string_view opcode) {
+  nlohmann::json centerGroupNodeAttributes;
+  centerGroupNodeAttributes["name"] = name;
+  centerGroupNodeAttributes["id"] = id;
+  if (!opcode.empty()) {
+    centerGroupNodeAttributes["opcode"] = opcode;
+  }
+  // Follow ModelExplorer's Graph typing: GraphCollectionFromBuiltinAdapters
+  graph_json[0]["subgraphs"][0]["groupNodeAttributes"][kCenterNodeKey] =
+      centerGroupNodeAttributes;
+}
+#endif  // PLATFORM_GOOGLE
+
+void AddGraphMetadata(std::string& graph_json_str,
+                      const HloInstruction& instr) {
+#ifdef PLATFORM_GOOGLE
+  nlohmann::json graph_json = nlohmann::json::parse(graph_json_str);
+  auto id = instr.opcode() == xla::HloOpcode::kFusion
+                ? GetLayerId(instr.name())
+                : absl::StrCat(instr.unique_id());
+  AddCenterNodeMetadata(graph_json, id, instr.name(),
+                        HloOpcodeString(instr.opcode()));
+  graph_json_str = graph_json.dump();
+#endif  // PLATFORM_GOOGLE
+}
+
+void AddGraphMetadata(std::string& graph_json_str, const HloComputation& comp) {
+#ifdef PLATFORM_GOOGLE
+  nlohmann::json graph_json = nlohmann::json::parse(graph_json_str);
+  AddCenterNodeMetadata(graph_json, GetLayerId(comp.name()), comp.name(), "");
+  graph_json_str = graph_json.dump();
+#endif  // PLATFORM_GOOGLE
 }
 
 // This function does the same thing as Plot() but uses the ModelExplorer
@@ -91,6 +136,7 @@ absl::StatusOr<std::string> PlotMe(std::unique_ptr<HloModule> module,
   }
   // Generate the graph and print the resulting string.
   absl::StatusOr<std::string> graph_handle;
+  std::string graph_json_str;
 // b/360874576: Enable when the adapter is open sourced.
 #ifdef PLATFORM_GOOGLE
   if (comp) {
@@ -102,6 +148,13 @@ absl::StatusOr<std::string> PlotMe(std::unique_ptr<HloModule> module,
 #endif  // PLATFORM_GOOGLE
   if (graph_handle.ok()) {
     VLOG(1) << graph_handle.value();
+    graph_json_str = graph_handle.value();
+    if (comp) {
+      AddGraphMetadata(graph_json_str, *comp);
+    } else {
+      AddGraphMetadata(graph_json_str, *instr);
+    }
+    return graph_json_str;
   } else {
     LOG(ERROR) << "Unable to render graph: " << graph_handle.status();
   }
