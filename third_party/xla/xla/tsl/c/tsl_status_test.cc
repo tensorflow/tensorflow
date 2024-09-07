@@ -19,8 +19,6 @@ limitations under the License.
 #include <unordered_map>
 #include <utility>
 
-#include "xla/tsl/c/tsl_status_internal.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/test.h"
 
 namespace tsl {
