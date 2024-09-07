@@ -452,7 +452,7 @@ void PrintMismatch(int64_t* mismatches, const ErrorGenerator& err_generator) {
 
 template <PrimitiveType T, size_t N>
 void ExhaustiveOpTestBase<T, N>::ExpectNear(
-    const InputLiterals& input_literals, const Literal& result_literal,
+    const LiteralInputs& input_literals, const Literal& result_literal,
     EvaluateOp evaluate_op, ErrorSpecGen error_spec_gen,
     OutputRangeCheck check_valid_range) {
   // Cache for when all components are subnormal testing values.
@@ -466,11 +466,12 @@ void ExhaustiveOpTestBase<T, N>::ExpectNear(
     // kNumSubnormalSubstitutionValues raised to the num_components.
     // num_components = N for the reals, and 2*N for the complex.
     int64_t max_cache_size =
-        pow(kNumSubnormalSubstitutionValues, N * (kIsComplex ? 2 : 1));
+        pow(kNumSubnormalSubstitutionValues, N * (Traits::kIsComplex ? 2 : 1));
     pure_subnormal_cache.reserve(max_cache_size);
     for (int i = 0; i < max_cache_size; ++i) {
       pure_subnormal_cache.push_back(CallOperation(
-          evaluate_op, FromCacheLocation<kIsComplex, NativeRefT, N>(i)));
+          evaluate_op,
+          FromCacheLocation<Traits::kIsComplex, NativeRefT, N>(i)));
     }
   }
 
@@ -498,7 +499,7 @@ void ExhaustiveOpTestBase<T, N>::ExpectNear(
                           "-----------------------------------------------\n"));
   }
 
-  NativeInputsList inputs_arr;
+  NativeListInputs inputs_arr;
   for (int i = 0; i < N; ++i) {
     const Literal& literal = input_literals[i];
     inputs_arr[i] = literal.data<NativeT>();
@@ -594,8 +595,9 @@ void ExhaustiveOpTestBase<T, N>::ExpectNear(
       // more than 1 input.
       if constexpr (N == 1) {
         int cache_loc =
-            GetCacheLocation<kIsComplex, typename NativeRefInputs::value_type,
-                             N>(test_value);
+            GetCacheLocation<Traits::kIsComplex,
+                             typename NativeRefInputs::value_type, N>(
+                test_value);
         if (cache_loc == kInvalidCacheIndex) {
           result = CallOperation(evaluate_op, test_value);
         } else {
@@ -624,15 +626,14 @@ void ExhaustiveOpTestBase<T, N>::ExpectNear(
 
     CHECK_EQ(subnormal_test_inputs.size(), subnormal_test_results.size());
     for (int i = 0; i < subnormal_test_inputs.size(); ++i) {
-      using IntegralNativeRefT =
-          typename ExhaustiveOpTestBase<kRef, N>::ComponentIntegralNativeT;
       absl::StrAppend(
           &mismatch,
-          absl::StrFormat("  %10s (evaluated at %s)\n",
-                          StringifyNum<NativeRefT, IntegralNativeRefT>(
-                              subnormal_test_results[i]),
-                          GetSubnormalDescription<kIsComplex, NativeRefT, N>(
-                              subnormal_test_inputs[i], inputs_ref_ty)));
+          absl::StrFormat(
+              "  %10s (evaluated at %s)\n",
+              StringifyNum<NativeRefT, ComponentIntegralNativeRefT>(
+                  subnormal_test_results[i]),
+              GetSubnormalDescription<Traits::kIsComplex, NativeRefT, N>(
+                  subnormal_test_inputs[i], inputs_ref_ty)));
     }
     absl::StrAppend(
         &mismatch,
