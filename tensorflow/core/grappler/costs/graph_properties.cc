@@ -100,14 +100,14 @@ struct Processor<ShapeHandle> {
     if (InferenceContext::RankKnown(*result)) {
       // The result was initialized in a previous merge to a shape of known
       // rank, make sure we preserve that information.
-      return OkStatus();
+      return absl::OkStatus();
     }
     if (InferenceContext::RankKnown(h1)) {
       *result = h1;
     } else {
       *result = h2;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -155,7 +155,7 @@ struct Processor<DimensionHandle> {
       CHECK_EQ(-1, dim1);
       return RefineDim(-1, result);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -169,7 +169,7 @@ struct Processor<DimensionHandle> {
     } else if (dim < *result) {
       *result = dim;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   int64_t counter = 2;
