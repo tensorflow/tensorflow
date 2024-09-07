@@ -18,10 +18,8 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
-#include "xla/service/hlo_parser.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/test.h"
-#include "xla/test_helpers.h"
-#include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 
 namespace xla {

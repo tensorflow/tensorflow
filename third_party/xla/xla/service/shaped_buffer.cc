@@ -22,13 +22,14 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "xla/layout_util.h"
 #include "xla/shape.h"
+#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
-#include "xla/types.h"
-#include "xla/util.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
