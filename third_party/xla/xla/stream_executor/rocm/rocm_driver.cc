@@ -1684,22 +1684,6 @@ absl::Status GpuDriver::GetGpuGCNArchName(hipDevice_t device,
       "failed to determine AMDGpu GCN Arch Name for device %d", device));
 }
 
-absl::StatusOr<bool> GpuDriver::GetMFMASupport() {
-  hipDeviceProp_t props;
-  int dev = 0;
-  hipError_t result = wrap::hipGetDevice(&dev);
-  result = wrap::hipGetDeviceProperties(&props, dev);
-  if (result == hipSuccess) {
-    std::string gcnArchName = props.gcnArchName;
-    VLOG(3) << "GCN arch name " << gcnArchName;
-    auto compute_capability = RocmComputeCapability(gcnArchName);
-    VLOG(3) << "GCN arch name (stripped) " << compute_capability.gfx_version();
-    return compute_capability.gfx9_mi100_or_later();
-  }
-  return absl::InternalError(absl::StrFormat(
-      "failed to determine AMDGpu GCN Arch Name for device %d", dev));
-}
-
 // Helper function that turns the integer output of hipDeviceGetAttribute to
 // type T and wraps it in a absl::StatusOr.
 template <typename T>
