@@ -659,8 +659,9 @@ class GpuDriver {
   // Returns the elapsed milliseconds between start and stop via
   // cuEventElapsedTime.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EVENT.html#group__CUDA__EVENT_1gdfb1178807353bbcaa9e245da497cf97
-  static bool GetEventElapsedTime(Context* context, float* elapsed_milliseconds,
-                                  GpuEventHandle start, GpuEventHandle stop);
+  static absl::StatusOr<float> GetEventElapsedTime(Context* context,
+                                                   GpuEventHandle start,
+                                                   GpuEventHandle stop);
 
   // Records that an event occurred when execution reaches the current point in
   // thestream via cuEventRecord.

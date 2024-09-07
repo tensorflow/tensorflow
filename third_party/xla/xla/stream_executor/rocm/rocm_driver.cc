@@ -1410,9 +1410,9 @@ absl::Status GpuDriver::RecordEvent(Context* context, GpuEventHandle event,
   }
 }
 
-bool GpuDriver::GetEventElapsedTime(Context* context,
-                                    float* elapsed_milliseconds,
-                                    GpuEventHandle start, GpuEventHandle stop) {
+absl::StatusOr<float> GpuDriver::GetEventElapsedTime(Context* context,
+                                                     GpuEventHandle start,
+                                                     GpuEventHandle stop) {
   ScopedActivateContext activated{context};
   // The stop event must have completed in order for hipEventElapsedTime to
   // work.
@@ -1421,14 +1421,12 @@ bool GpuDriver::GetEventElapsedTime(Context* context,
     LOG(ERROR) << "failed to synchronize the stop event: " << ToString(res);
     return false;
   }
-  res = wrap::hipEventElapsedTime(elapsed_milliseconds, start, stop);
-  if (res != hipSuccess) {
-    LOG(ERROR) << "failed to get elapsed time between events: "
-               << ToString(res);
-    return false;
-  }
+  float elapsed_milliseconds;
+  RETURN_IF_ROCM_ERROR(
+      wrap::hipEventElapsedTime(&elapsed_milliseconds, start, stop),
+      "failed to get elapsed time between events");
 
-  return true;
+  return elapsed_milliseconds;
 }
 
 absl::Status GpuDriver::WaitStreamOnEvent(Context* context,

@@ -1521,9 +1521,9 @@ absl::Status GpuDriver::RecordEvent(Context* context, CUevent event,
                         "Error recording CUDA event");
 }
 
-bool GpuDriver::GetEventElapsedTime(Context* context,
-                                    float* elapsed_milliseconds, CUevent start,
-                                    CUevent stop) {
+absl::StatusOr<float> GpuDriver::GetEventElapsedTime(Context* context,
+                                                     CUevent start,
+                                                     CUevent stop) {
   ScopedActivateContext activated{context};
   // The stop event must have completed in order for cuEventElapsedTime to
   // work.
@@ -1532,14 +1532,13 @@ bool GpuDriver::GetEventElapsedTime(Context* context,
     LOG(ERROR) << "failed to synchronize the stop event: " << status;
     return false;
   }
-  status =
-      cuda::ToStatus(cuEventElapsedTime(elapsed_milliseconds, start, stop));
-  if (!status.ok()) {
-    LOG(ERROR) << "failed to get elapsed time between events: " << status;
-    return false;
-  }
 
-  return true;
+  float elapsed_milliseconds;
+
+  TF_RETURN_IF_ERROR(
+      cuda::ToStatus(cuEventElapsedTime(&elapsed_milliseconds, start, stop)));
+
+  return elapsed_milliseconds;
 }
 
 absl::Status GpuDriver::WaitStreamOnEvent(Context* context, CUstream stream,

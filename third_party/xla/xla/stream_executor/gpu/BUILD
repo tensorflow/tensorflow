@@ -441,8 +441,6 @@ gpu_only_cc_library(
         ":gpu_event",
         ":gpu_semaphore",
         ":gpu_stream",
-        ":gpu_types_header",
-        "//xla/stream_executor",
         "//xla/stream_executor:event_based_timer",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
