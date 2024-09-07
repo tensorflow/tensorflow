@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
