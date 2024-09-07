@@ -449,7 +449,8 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
            {{BuiltinOperator_STABLEHLO_PAD, 1}, "2.16.0"},
            {{BuiltinOperator_STABLEHLO_COMPOSITE, 1}, "2.17.0"},
            {{BuiltinOperator_STABLEHLO_AND, 1}, "2.17.0"},
-           {{BuiltinOperator_STABLEHLO_SHIFT_LEFT, 1}, "2.17.0"}});
+           {{BuiltinOperator_STABLEHLO_SHIFT_LEFT, 1}, "2.17.0"},
+           {{BuiltinOperator_STABLEHLO_CBRT, 1}, "2.17.0"}});
 
   std::pair<BuiltinOperator, int> version_key = {op_code, op_version};
   auto it = op_version_map->find(version_key);
