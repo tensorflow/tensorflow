@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/graph_mgr.h"
 
 #include <chrono>  // NOLINT(build/c++11)
+#include <memory>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -147,14 +148,14 @@ Status GraphMgr::InitItem(const string& handle, const GraphDef& gdef,
   item->session = handle;
   item->session_config = config_proto;
   item->collective_graph_key = collective_graph_key;
-  item->lib_def.reset(
-      new FunctionLibraryDefinition(OpRegistry::Global(), gdef.library()));
+  item->lib_def = std::make_unique<FunctionLibraryDefinition>(
+      OpRegistry::Global(), gdef.library());
 
   TF_RETURN_IF_ERROR(ValidateGraphDefForDevices(gdef));
 
   // We don't explicitly Validate the graph def because ConvertGraphDefToGraph
   // does that below.
-  item->proc_flr.reset(new ProcessFunctionLibraryRuntime(
+  item->proc_flr = std::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr_, worker_env_->env, /*config=*/&config_proto,
       gdef.versions().producer(), item->lib_def.get(),
       graph_options.optimizer_options(), worker_env_->compute_pool, cluster_flr,
@@ -167,7 +168,7 @@ Status GraphMgr::InitItem(const string& handle, const GraphDef& gdef,
             TF_RETURN_IF_ERROR(remote_r->Initialize(session));
             *r = std::move(remote_r);
             return absl::OkStatus();
-          }}));
+          }});
 
   // Constructs the graph out of "gdef".
   Graph graph(OpRegistry::Global());

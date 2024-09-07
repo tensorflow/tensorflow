@@ -210,7 +210,7 @@ class MasterSession : public core::RefCounted {
   CancellationManager cancellation_manager_;
 
   // Private dtor. The client must call Close().
-  virtual ~MasterSession();
+  ~MasterSession() override;
 
   // Creates sessions on all workers.
   //
