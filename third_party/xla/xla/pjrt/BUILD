@@ -87,6 +87,7 @@ cc_library(
     deps = [
         ":event_pool",
         ":pjrt_client",
+        "//util/symbolize",
         "//xla:shape_tree",
         "//xla:shape_util",
         "//xla/service:executable",

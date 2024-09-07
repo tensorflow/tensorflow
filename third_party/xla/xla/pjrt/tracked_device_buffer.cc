@@ -64,6 +64,13 @@ bool BufferSequencingEvent::EventHasBeenRecorded() const {
   return event_.event() != nullptr;
 }
 
+bool BufferSequencingEvent::IsDefinedNoLock() const {
+  LOG_EVERY_N_SEC(INFO, 10)
+      << "Checking IsDefinedNoLock for BufferSequencingEvent: " << this
+      << ";\n The event was created with stack trace: " << debug_info;
+  return defined_status_.IsConcrete();
+}
+
 uint64_t BufferSequencingEvent::sequence_number() const {
   uint64_t seq = sequence_number_.load(std::memory_order_seq_cst);
   return seq;
@@ -103,13 +110,18 @@ absl::Status BufferSequencingEvent::WaitForEventOnExternalStream(
   return event_.event()->WaitForEventOnExternalStream(stream);
 }
 
-bool BufferSequencingEvent::DefinedOn(se::Stream* stream) {
+bool BufferSequencingEvent::IsPredeterminedErrorOrDefinedOn(
+    se::Stream* stream) {
   absl::MutexLock lock(&mu_);
+  // IsDefined would be true for both a defined buffer and an error buffer.
+  // Can't use BufferSequencingEvent::EventHasBeenRecorded here since that's
+  // only true for a non-error buffer(i.e. defined buffer).
+  mu_.Await(absl::Condition(this, &BufferSequencingEvent::IsDefinedNoLock));
 
-  // We cannot wait for an event until ThenRecordEvent has been called; on GPU
-  // newly created events are deemed to have already happened past.
-  mu_.Await(
-      absl::Condition(this, &BufferSequencingEvent::EventHasBeenRecorded));
+  if (defined_status_.IsConcrete() && !defined_status_.get().ok()) {
+    // IsPredeterminedError
+    return true;
+  }
 
   // The set of defined streams is expected to be very small indeed (usually
   // 1-2), so a simple linear scan should be fast enough.
