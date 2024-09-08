@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/inline_function_utils.h"
+#include "tensorflow/core/common_runtime/lower_function_call_inline_policy.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/lib/core/status.h"
 
