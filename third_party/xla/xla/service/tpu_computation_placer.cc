@@ -15,10 +15,14 @@ limitations under the License.
 
 #include "xla/service/tpu_computation_placer.h"
 
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "xla/array2d.h"
+#include "xla/service/computation_placer.h"
 #include "xla/stream_executor/tpu/status_helper.h"
-#include "xla/stream_executor/tpu/tpu_api.h"
-#include "xla/stream_executor/tpu/tpu_platform.h"
+#include "xla/stream_executor/tpu/tpu_executor_api.h"
 #include "xla/stream_executor/tpu/tpu_platform_id.h"
+#include "xla/stream_executor/tpu/tpu_topology.h"
 
 namespace tensorflow {
 namespace tpu {

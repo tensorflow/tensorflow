@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/literal.h"
 
 namespace xla {
 

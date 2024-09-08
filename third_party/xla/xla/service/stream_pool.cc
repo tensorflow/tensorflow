@@ -18,7 +18,11 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/log/log.h"
 #include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream.h"
 
 namespace xla {
 

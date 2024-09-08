@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "xla/service/constant_value.h"
+#include "xla/util.h"
 
 namespace xla {
 

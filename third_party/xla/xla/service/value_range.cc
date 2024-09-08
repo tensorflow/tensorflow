@@ -18,7 +18,15 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/primitive_util.h"
+#include "xla/service/constant_value.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
