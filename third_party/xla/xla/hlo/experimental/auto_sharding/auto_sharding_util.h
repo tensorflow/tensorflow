@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/service/call_graph.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {

@@ -48,7 +48,7 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/array.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding.pb.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_cost_graph.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_device_mesh.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_memory.h"
@@ -89,6 +89,8 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace spmd {

@@ -17,12 +17,17 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_parser.h"
 #include "xla/tools/hlo_module_loader.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/init_main.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace spmd {
