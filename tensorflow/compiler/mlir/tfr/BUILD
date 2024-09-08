@@ -356,6 +356,9 @@ tf_python_pybind_extension(
     pytype_srcs = [
         "tfr_wrapper.pyi",
     ],
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ],
     deps = [
         ":tfr",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -369,9 +372,6 @@ tf_python_pybind_extension(
         "@llvm-project//mlir:ShapeDialect",
         "@pybind11",
     ],
-    visibility = [
-        "//tensorflow/python:__pkg__",
-    ]
 )
 
 py_strict_library(

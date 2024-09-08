@@ -151,6 +151,9 @@ tf_python_pybind_extension(
     name = "pywrap_quantization",
     srcs = ["pywrap_quantization.cc"],
     pytype_srcs = ["pywrap_quantization.pyi"],
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ],
     # Each dependency MUST be either header-only or exclusive.
     deps = [
         ":pywrap_quantization_lib_header_only",
@@ -160,7 +163,4 @@ tf_python_pybind_extension(
         "@pybind11_abseil//pybind11_abseil:import_status_module",
         "@pybind11_abseil//pybind11_abseil:status_casters",
     ],
-    visibility = [
-        "//tensorflow/python:__pkg__",
-    ]
 )

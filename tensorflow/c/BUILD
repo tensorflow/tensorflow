@@ -3,6 +3,7 @@
 
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
+load("@local_tsl//tsl/platform:build_config_root.bzl", "if_pywrap")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -16,7 +17,6 @@ load(
     "tf_kernel_library",
 )
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test")
-load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")
 load(
     "//tensorflow/core/tpu:build_defs.bzl",
     "if_libtpu_tf_status",
@@ -937,10 +937,7 @@ tf_cuda_cc_test(
         ":test_op1.so",
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     ],
-    extra_copts = if_pywrap(
-        ["-DTENSORFLOW_NO_SHARED_OBJECTS"],
-        [],
-    ),
+    extra_copts = if_pywrap(["-DTENSORFLOW_NO_SHARED_OBJECTS"]),
     linkopts = select({
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
