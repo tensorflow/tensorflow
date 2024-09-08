@@ -1035,7 +1035,6 @@ class PjRtClient {
   // Create ChannelHandles for XLA send/recv.
   virtual absl::StatusOr<ChannelHandle> CreateChannelHandle() = 0;
   virtual absl::StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() = 0;
-  virtual absl::StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() = 0;
 
   // TODO(zhangqiaorjc): Experimental API to be removed.
   // Defragment device memory.

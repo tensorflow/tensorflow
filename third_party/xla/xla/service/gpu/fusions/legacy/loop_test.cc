@@ -102,6 +102,7 @@ TEST_F(LoopTest, ThreadIndexingUnrolled) {
   chunk_id in [0, 0]
   unroll_id in [0, 3]
   bl_x * 128 + th_x in [0, 1499999]
+  is_simplified: true
 )"));
 }
 
@@ -139,6 +140,7 @@ TEST_F(LoopTest, ThreadIndexingNotUnrolled) {
               bl_z in [0, 0]
               chunk_id in [0, 0]
               unroll_id in [0, 0]
+              is_simplified: true
             )"));
   auto thread_id_to_input_indexing =
       loop_fusion->ComputeThreadIdToInputIndexing(
@@ -155,6 +157,7 @@ TEST_F(LoopTest, ThreadIndexingNotUnrolled) {
               bl_z in [0, 0]
               chunk_id in [0, 0]
               unroll_id in [0, 0]
+              is_simplified: true
             )"));
 }
 
@@ -196,6 +199,7 @@ TEST_F(LoopTest, Broadcast) {
                 chunk_id in [0, 0]
                 unroll_id in [0, 0]
                 bl_x * 128 + th_x in [0, 5999]
+                is_simplified: true
             )"));
   auto thread_id_to_input_indexing =
       loop_fusion->ComputeThreadIdToInputIndexing(
@@ -214,6 +218,7 @@ TEST_F(LoopTest, Broadcast) {
                 chunk_id in [0, 0]
                 unroll_id in [0, 0]
                 bl_x * 128 + th_x in [0, 5999]
+                is_simplified: true
             )"));
 }
 

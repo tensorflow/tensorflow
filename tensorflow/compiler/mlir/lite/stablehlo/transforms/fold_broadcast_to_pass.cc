@@ -55,6 +55,26 @@ class ConvertResultsBroadcastableShapeOp : public RewritePattern {
           get_broadcasted_shape) const;
 };
 
+// Some tfl ops only support implicit broadcasting up to a certain rank.
+// Determine op with shapes is valid. TODO: @lukeboyer - Move the
+// `TFL_OperandsHaveSameShapesOrBroadcastableShape` runtime verification trait
+// into a standard (not runtime verification) trait and change this function to
+// use only that interface. Curently there is no way to query derived runtime
+// verification traits.
+bool IsRankSupported(Operation* op) {
+  // These ops have no rank constraints.
+  if (llvm::isa<TFL::AddOp, TFL::SubOp, TFL::MulOp>(op)) {
+    return true;
+  }
+
+  if (auto div_op = llvm::dyn_cast_or_null<TFL::DivOp>(op)) {
+    return div_op.getType().getRank() <= 5;
+  }
+
+  // Fallback, all implicit broadcast ops in tfl support at least rank 4.
+  return llvm::cast<ShapedType>(op->getResultTypes()[0]).getRank() <= 4;
+}
+
 LogicalResult ConvertResultsBroadcastableShapeOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   if (op->hasTrait<OpTrait::ResultsBroadcastableShape>())
@@ -75,11 +95,9 @@ LogicalResult ConvertResultsBroadcastableShapeOp::RewriteOp(
       mlir::dyn_cast_or_null<RankedTensorType>(op->getResultTypes().front());
   if (!result_type || !result_type.hasStaticShape()) return failure();
 
-  // Don't apply broadcast_to folding if target rank is > 4D. Most TFLite
-  // kernels does not support >4D implicit broadcasting.
-  // TODO(weiyiw): Figure out a way for fine grain controlling the folding
-  // behavior by ops.
-  if (result_type.getShape().size() > 4) return failure();
+  if (!IsRankSupported(op)) {
+    return failure();
+  }
 
   bool changed = false;
   for (uint64_t i = 0, e = op->getNumOperands(); i < e; ++i) {

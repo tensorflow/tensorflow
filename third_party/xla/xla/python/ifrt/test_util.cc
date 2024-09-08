@@ -19,12 +19,18 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
@@ -83,18 +89,19 @@ void SetTestFilterIfNotUserSpecified(absl::string_view custom_filter) {
 #endif
 }
 
-absl::StatusOr<DeviceList> GetDevices(Client* client,
-                                      absl::Span<const int> device_indices) {
-  DeviceList::Devices devices;
+absl::StatusOr<tsl::RCReference<DeviceList>> GetDevices(
+    Client* client, absl::Span<const int> device_indices) {
+  BasicDeviceList::Devices devices;
   devices.reserve(device_indices.size());
+  const absl::Span<Device* const> client_devices = client->devices();
   for (int device_index : device_indices) {
-    if (device_index < 0 || device_index >= client->devices().size()) {
+    if (device_index < 0 || device_index >= client_devices.size()) {
       return absl::InvalidArgumentError(
           absl::StrCat("Out of range device index: ", device_index));
     }
-    devices.push_back(client->devices()[device_index]);
+    devices.push_back(client_devices[device_index]);
   }
-  return DeviceList(std::move(devices));
+  return BasicDeviceList::Create(std::move(devices));
 }
 
 }  // namespace test_util

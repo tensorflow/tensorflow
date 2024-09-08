@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -3751,6 +3752,53 @@ ENTRY %main {
   VLOG(1) << "module after: " << module->ToString();
 }
 
+// Test to ensure that HostOffloader can handle the case in which a
+// MoveToHost(broadcast(...)) is shared between two
+// DynamicUpdateSlice(MoveToHost(...)) in a while loop body.
+TEST_F(HostOffloaderTest, MoveToHostInsideWhileLoopBodyShareSameBroadcast) {
+  const absl::string_view hlo_string = R"(
+    HloModule MoveToHostFoundOutsideAndInsideOfWhileLoop, entry_computation_layout={(s32[],f32[1,1,128,128],f32[1,1,128,128])->(f32[8,1,128,128]{3,2,1,0:T(8,128)S(5)}, f32[8,1,128,128]{3,2,1,0:T(8,128)S(5)}, f32[1,1,128,128], f32[1,1,128,128], s32[], s32[])} 
+    
+    while_condition {
+      condition_param = (f32[8,1,128,128], f32[8,1,128,128], f32[1,1,128,128], f32[1,1,128,128], s32[], s32[]) parameter(0)
+      condition_current_iteration_index = s32[] get-tuple-element(condition_param), index=5
+      condition_iteration_count = s32[] constant(16)
+      ROOT condition_result = pred[] compare(condition_current_iteration_index, condition_iteration_count), direction=LT
+    }
+
+    while_body {
+      while_body_input_tuple = (f32[8,1,128,128], f32[8,1,128,128], f32[1,1,128,128], f32[1,1,128,128], s32[], s32[]) parameter(0)
+      host_tensor_1 = f32[8,1,128,128] get-tuple-element(while_body_input_tuple), index=0
+      host_tensor_2 = f32[8,1,128,128] get-tuple-element(while_body_input_tuple), index=1
+      update_1 = f32[1,1,128,128] get-tuple-element(while_body_input_tuple), index=2
+      update_2 = f32[1,1,128,128] get-tuple-element(while_body_input_tuple), index=3
+      offset_dus = s32[] get-tuple-element(while_body_input_tuple), index=4
+      while_body_num_iter = s32[] get-tuple-element(while_body_input_tuple), index=5
+      mth_tensor_1 = f32[8,1,128,128] custom-call(host_tensor_1), custom_call_target="MoveToHost"
+      mth_tensor_2 = f32[8,1,128,128] custom-call(host_tensor_2), custom_call_target="MoveToHost"
+      constant_zero = s32[] constant(0)
+      host_dus_1 = f32[8,1,128,128]{3,2,1,0:T(8,128)} dynamic-update-slice(mth_tensor_1, update_1, offset_dus, constant_zero, constant_zero, constant_zero)
+      host_dus_2 = f32[8,1,128,128]{3,2,1,0:T(8,128)} dynamic-update-slice(mth_tensor_2, update_2, offset_dus, constant_zero, constant_zero, constant_zero)
+      ROOT while_output_tuple = tuple(host_dus_1,host_dus_2, update_1, update_2, offset_dus, while_body_num_iter)
+    }
+
+    ENTRY main {
+      offset = s32[] parameter(0)
+      update = f32[1,1,128,128] parameter(1)
+      update2 = f32[1,1,128,128] parameter(2)
+      constant = f32[] constant(1.0)
+      /*Shared broadcast between two MoveToHost inside while body.*/
+      broadcast = f32[8,1,128,128] broadcast(constant)
+      shared_host_memory = f32[8,1,128,128] custom-call(broadcast), custom_call_target="MoveToHost"
+      tuple_for_while = (f32[8,1,128,128], f32[8,1,128,128], f32[1,1,128,128], f32[1,1,128,128], s32[], s32[]) tuple(shared_host_memory, shared_host_memory, update, update2, offset, offset)
+      ROOT while = (f32[8,1,128,128], f32[8,1,128,128], f32[1,1,128,128], f32[1,1,128,128], s32[], s32[]) while(tuple_for_while), condition=while_condition, body=while_body
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+}
 }  // namespace
 
 }  // namespace xla

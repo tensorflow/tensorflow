@@ -833,6 +833,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        # copybara:uncomment "//third_party/json",
         # copybara:uncomment(b/360874576) "//tensorflow/compiler/mlir/lite/experimental/google/tooling/google:direct_hlo_to_json_graph_convert",
         "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/service:hlo_graph_dumper",

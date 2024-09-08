@@ -1301,6 +1301,64 @@ TEST(StreamExecutorGpuClientTest, MlirResultHostMemorySpaceIsSetInHlo) {
   EXPECT_EQ(result_layout.memory_space(), Layout::kHostMemorySpace);
 }
 
+TEST(StreamExecutorGpuClientTest, MlirAutoResultLayoutIsSet) {
+  constexpr char kMlirWithParameterLayout[] =
+      R"(
+    func.func public @main(%arg0: tensor<2x4x2xi32> {
+            mhlo.layout_mode = "{2, 1, 0}"
+        }) -> (tensor<2x2x4xi32> {
+            jax.result_info = "",
+            mhlo.layout_mode = "auto"}) {
+      %0 = stablehlo.transpose %arg0, dims = [0, 2, 1]
+          : (tensor<2x4x2xi32>) -> tensor<2x2x4xi32>
+      return %0 : tensor<2x2x4xi32>
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(auto module, xla::ParseMlirModuleString(
+                                           kMlirWithParameterLayout, context));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto executable, client->Compile(*module, {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto modules, executable->GetHloModules());
+
+  auto result_layout =
+      modules[0]->entry_computation_layout().result_layout().layout();
+  EXPECT_EQ(result_layout, Layout({1, 2, 0}));
+}
+
+TEST(StreamExecutorGpuClientTest, MlirAutoParameterLayoutIsSet) {
+  constexpr char kMlirWithParameterLayout[] =
+      R"(
+    func.func public @main(%arg0: tensor<2x4x2xi32> {
+            mhlo.layout_mode = "auto"
+        }) -> (tensor<2x2x4xi32> {
+            jax.result_info = "",
+            mhlo.layout_mode = "{2, 1, 0}"}) {
+      %0 = stablehlo.transpose %arg0, dims = [0, 2, 1]
+          : (tensor<2x4x2xi32>) -> tensor<2x2x4xi32>
+      return %0 : tensor<2x2x4xi32>
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(auto module, xla::ParseMlirModuleString(
+                                           kMlirWithParameterLayout, context));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto executable, client->Compile(*module, {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto modules, executable->GetHloModules());
+
+  auto first_param_layout =
+      modules[0]->entry_computation_layout().parameter_layout(0).layout();
+  EXPECT_EQ(first_param_layout, Layout({1, 2, 0}));
+}
+
 TEST(StreamExecutorGpuClientTest, MlirParameterLayoutIsSetInHlo) {
   constexpr char kMlirWithParameterLayout[] =
       R"(
@@ -1414,6 +1472,13 @@ TEST(StreamExecutorGpuClientTest,
       modules[0]->entry_computation_layout().result_layout().layout();
   EXPECT_EQ(result_layout,
             Layout({0, 1}).set_memory_space(Layout::kHostMemorySpace));
+
+  // Verify that the executable's layout callback is null.
+  // This is necessary for the executable to be serializable.
+  EXPECT_EQ(executable->GetCompileOptions()
+                .value()
+                .executable_build_options.layout_canonicalization_callback(),
+            nullptr);
 }
 
 }  // namespace

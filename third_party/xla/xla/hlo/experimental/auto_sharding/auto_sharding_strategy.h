@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/container/btree_map.h"
 #include "absl/container/btree_set.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -232,6 +233,27 @@ struct StrategyGroup {
       result = result->childs.at(index_element).get();
     }
     return result;
+  }
+
+  void ForEachLeafStrategyGroup(
+      absl::FunctionRef<void(const StrategyGroup&)> fn) const {
+    if (is_tuple) {
+      for (const std::unique_ptr<StrategyGroup>& child : childs) {
+        fn(*child);
+      }
+    } else {
+      fn(*this);
+    }
+  }
+
+  void ForEachLeafStrategyGroup(absl::FunctionRef<void(StrategyGroup&)> fn) {
+    if (is_tuple) {
+      for (std::unique_ptr<StrategyGroup>& child : childs) {
+        fn(*child);
+      }
+    } else {
+      fn(*this);
+    }
   }
 };
 

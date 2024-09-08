@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/jax_jit.h"
@@ -485,9 +486,10 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
 
     const auto& ifrt_sharding = ifrt_array->sharding();
     if (sharding_num_devices == 1 &&
-        ifrt_sharding.devices().front() != addressable_devices[0]) {
-      auto& copy_group = copy_groups[std::make_pair(
-          ifrt_sharding.devices().front(), ifrt_sharding.memory_kind())];
+        ifrt_sharding.devices()->devices().front() != addressable_devices[0]) {
+      auto& copy_group =
+          copy_groups[std::make_pair(ifrt_sharding.devices()->devices().front(),
+                                     ifrt_sharding.memory_kind())];
       copy_group.indices.push_back(num_args_arrays.size());
       copy_group.arrays.push_back(tsl::FormRef(ifrt_array));
       num_args_arrays.push_back({});
@@ -501,8 +503,8 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
   if (!copy_groups.empty()) {
     xla::ifrt::Client* const ifrt_client =
         executable.ifrt_loaded_executable()->client();
-    xla::ifrt::DeviceList ifrt_devices(
-        xla::ifrt::DeviceList::Devices({addressable_devices[0]}));
+    tsl::RCReference<xla::ifrt::DeviceList> ifrt_devices =
+        xla::ifrt::BasicDeviceList::Create({addressable_devices[0]});
     for (auto& [key, group] : copy_groups) {
       TF_ASSIGN_OR_RETURN(
           auto copied_ifrt_arrays,

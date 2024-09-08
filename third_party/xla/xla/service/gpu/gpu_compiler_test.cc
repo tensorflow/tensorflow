@@ -975,7 +975,13 @@ TEST_F(GpuCompilerPassTest,
                 ->GetDeviceDescription()
                 .cuda_compute_capability();
 
-  bool expect_triton_gemm_rewriter_has_run = cc.IsAtLeastAmpere();
+  bool is_rocm = std::holds_alternative<stream_executor::RocmComputeCapability>(
+      backend()
+          .default_stream_executor()
+          ->GetDeviceDescription()
+          .gpu_compute_capability());
+
+  bool expect_triton_gemm_rewriter_has_run = cc.IsAtLeastAmpere() || is_rocm;
 
   constexpr absl::string_view constant_module = R"(
 HloModule noop

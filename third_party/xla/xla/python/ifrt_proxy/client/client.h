@@ -37,6 +37,7 @@
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
@@ -79,7 +80,8 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
 
   absl::StatusOr<std::vector<tsl::RCReference<Array>>> CopyArrays(
       absl::Span<tsl::RCReference<Array>> arrays,
-      std::optional<DeviceList> devices, std::optional<MemoryKind> memory_kind,
+      std::optional<tsl::RCReference<DeviceList>> devices,
+      std::optional<MemoryKind> memory_kind,
       ArrayCopySemantics semantics) override;
 
   absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>> RemapArrays(
@@ -127,7 +129,7 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
     return &default_compiler_;
   }
   absl::StatusOr<std::shared_ptr<xla::ifrt::Topology>> GetTopologyForDevices(
-      const xla::ifrt::DeviceList& devices) const override {
+      const tsl::RCReference<xla::ifrt::DeviceList>& devices) const override {
     return absl::UnimplementedError(
         "GetTopologyForDevices is not supported for the IFRT proxy client.");
   }

@@ -96,6 +96,7 @@ TEST_F(InputSlicesTest, ThreadIndexing) {
     chunk_id in [0, 0]
     unroll_id in [0, 0]
     bl_x * 128 + th_x in [0, 29]
+    is_simplified: true
   )"));
 }
 

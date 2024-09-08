@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html devsite>
+<head>
+  <title>TfLiteEvalTensor Struct Reference</title>
+  <meta name="page_type" value="reference" />
+</head>
+<body>
+  <div id="top"><!-- do not remove this div --></div>
+  <h1>TfLiteEvalTensor</h1>
+  <code>#include &lt;common.h&gt;</code>
+  <p>Light-weight tensor struct for TF Micro runtime. </p>
+  <h2>Summary</h2>
+  <p>Provides the minimal amount of information required for a kernel to run during TfLiteRegistration::Eval. </p>
+  <table class="properties responsive">
+    <tr>
+      <th colspan="2">
+        <h3>Public attributes</h3>
+      </th>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_eval_tensor_1a82292e62c5af51d1f96ff418361f8205">data</a></code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/union/tf-lite-ptr-union.html#union_tf_lite_ptr_union">TfLitePtrUnion</a></code>
+        </div>
+        <div>A union of data pointers. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_eval_tensor_1a0c4cf82f4bf15dee9a92fa7cf999d759">dims</a></code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> *</code>
+        </div>
+        <div>A pointer to a structure representing the dimensionality interpretation that the buffer should have. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_eval_tensor_1a180bc742f14353dd12e73a872f0e0cb5">type</a></code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1ga8a47ba81bdef28b5c479ee7928a7d123">TfLiteType</a></code>
+        </div>
+        <div>The data type specification for data stored in <code>data</code>. </div>
+      </td>
+    </tr>
+  </table>
+  <h2>Public attributes</h2>
+  <div id="struct_tf_lite_eval_tensor_1a82292e62c5af51d1f96ff418361f8205">
+    <h3>data</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/union/tf-lite-ptr-union.html#union_tf_lite_ptr_union">TfLitePtrUnion</a> TfLiteEvalTensor::data</pre>
+    <div>
+      <p>A union of data pointers. </p>
+      <p>The appropriate type should be used for a typed tensor based on <code>type</code>. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_eval_tensor_1a0c4cf82f4bf15dee9a92fa7cf999d759">
+    <h3>dims</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> * TfLiteEvalTensor::dims</pre>
+    <div>
+      <p>A pointer to a structure representing the dimensionality interpretation that the buffer should have. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_eval_tensor_1a180bc742f14353dd12e73a872f0e0cb5">
+    <h3>type</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1ga8a47ba81bdef28b5c479ee7928a7d123">TfLiteType</a> TfLiteEvalTensor::type</pre>
+    <div>
+      <p>The data type specification for data stored in <code>data</code>. </p>
+      <p>This affects what member of <code>data</code> union should be used. </p>
+    </div>
+  </div>
+</body>
+</html>

@@ -2731,6 +2731,8 @@ def TFL_PadOp : TFL_Op<"pad", [
   let hasOptions = 1;
 
   let hasFolder = 1;
+
+  let hasCanonicalizer = 1;
 }
 
 def TFL_PadV2Op : TFL_Op<"padv2", [
@@ -3155,6 +3157,8 @@ def TFL_ReverseV2Op: TFL_Op<"reverse_v2", [
       with only 1 element which is the axis index.
       TODO: Add support for multiple elements.
   }];
+
+  let hasFolder = 1;
 
   let arguments = (
     ins

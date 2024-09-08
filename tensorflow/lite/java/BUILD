@@ -129,7 +129,6 @@ filegroup(
 # C headers for the Native APIs.
 
 # TODO(b/277186081) Move this list to `../c/BUILD` when aar_with_jni supports filegroups in the headers parameter.
-# TODO(b/279573130): add `builtin_op_data.h` to this list, it will be needed for DBA delegates.
 # LINT.IfChange(TFLITE_HEADERS)
 TFLITE_HEADERS = [
     # TODO(b/175298345): Clean up and if possible remove c:common.h and core/c:common.h here.
@@ -143,6 +142,7 @@ TFLITE_HEADERS = [
     "//tensorflow/lite/core/c:c_api.h",
     "//tensorflow/lite/core/c:c_api_opaque.h",
     "//tensorflow/lite/core/c:c_api_types.h",
+    "//tensorflow/lite/core/c:builtin_op_data.h",
     "//tensorflow/lite/core/c:c_api_experimental.h",
     "//tensorflow/lite/core/c:common.h",
     "//tensorflow/lite/core/c:operator.h",

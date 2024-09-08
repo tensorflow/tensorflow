@@ -194,6 +194,7 @@ cuda_only_cc_library(
         "@local_tsl//tsl/platform:numbers",
         "@local_tsl//tsl/platform:stacktrace",
         "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -525,7 +526,9 @@ cuda_only_cc_library(
 
 cc_library(
     name = "command_buffer_kernels",
-    srcs = ["command_buffer_kernels.cc"],
+    srcs = [
+        "command_buffer_kernels.cc",
+    ],
     deps = [
         "//xla/stream_executor:kernel_spec",
         "@com_google_absl//absl/status:statusor",

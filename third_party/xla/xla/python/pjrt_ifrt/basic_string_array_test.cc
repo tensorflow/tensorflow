@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
@@ -364,7 +365,7 @@ TEST(MakeArrayFromHostBufferTest, FailureCases) {
   // MakeArrayFromHostBuffer should check and fail if the sharding is not a
   // SingleDeviceSharding.
   std::shared_ptr<const Sharding> opaque_sharding =
-      OpaqueSharding::Create(DeviceList({device}), MemoryKind());
+      OpaqueSharding::Create(BasicDeviceList::Create({device}), MemoryKind());
   EXPECT_THAT(client->MakeArrayFromHostBuffer(
                   data, DType(DType::kString), shape,
                   /*byte_strides=*/std::nullopt, opaque_sharding,
@@ -445,8 +446,8 @@ absl::StatusOr<tsl::RCReference<Array>> MakeShardedStringTestArray(
   }
 
   std::shared_ptr<const Sharding> sharding = ConcreteEvenSharding::Create(
-      DeviceList({devices[0], devices[1]}), MemoryKind(), Shape({2, 1}),
-      Shape({1}), is_fully_replicated);
+      BasicDeviceList::Create({devices[0], devices[1]}), MemoryKind(),
+      Shape({2, 1}), Shape({1}), is_fully_replicated);
 
   std::vector<tsl::RCReference<Array>> arrays;
   for (int i = 0; i < 2; ++i) {
@@ -486,7 +487,7 @@ TEST(AssembleArrayFromSingleDeviceArraysTest, FailsWithNonStringArrays) {
   auto devices = client->addressable_devices();
   ASSERT_GE(devices.size(), 2);
   std::shared_ptr<const Sharding> opaque_sharding = OpaqueSharding::Create(
-      DeviceList({devices[0], devices[1]}), MemoryKind());
+      BasicDeviceList::Create({devices[0], devices[1]}), MemoryKind());
 
   std::vector<tsl::RCReference<Array>> arrays(2);
   TF_ASSERT_OK_AND_ASSIGN(
@@ -507,7 +508,7 @@ TEST(AssembleArrayFromSingleDeviceArraysTest,
   auto devices = client->addressable_devices();
   ASSERT_GE(devices.size(), 2);
   std::shared_ptr<const Sharding> opaque_sharding = OpaqueSharding::Create(
-      DeviceList({devices[0], devices[1]}), MemoryKind());
+      BasicDeviceList::Create({devices[0], devices[1]}), MemoryKind());
 
   std::vector<tsl::RCReference<Array>> arrays(2);
   const std::vector<std::string> per_shard_contents({"abc", "def"});
@@ -530,7 +531,7 @@ TEST(AssembleArrayFromSingleDeviceArraysTest,
   auto devices = client->addressable_devices();
   ASSERT_GE(devices.size(), 2);
   std::shared_ptr<const Sharding> opaque_sharding = OpaqueSharding::Create(
-      DeviceList({devices[0], devices[1]}), MemoryKind());
+      BasicDeviceList::Create({devices[0], devices[1]}), MemoryKind());
 
   // Make two non-ready single device sharded arrays.
   std::vector<tsl::RCReference<Array>> arrays;
@@ -580,7 +581,7 @@ TEST(AssembleArrayFromSingleDeviceArraysTest,
   auto devices = client->addressable_devices();
   ASSERT_GE(devices.size(), 2);
   std::shared_ptr<const Sharding> opaque_sharding = OpaqueSharding::Create(
-      DeviceList({devices[0], devices[1]}), MemoryKind());
+      BasicDeviceList::Create({devices[0], devices[1]}), MemoryKind());
 
   // Make two non-ready single device sharded arrays.
   std::vector<tsl::RCReference<Array>> arrays;
@@ -709,8 +710,9 @@ TEST(CopyTest, SuccessSingleDeviceShardedArray) {
   // second one for the new array.
   TF_ASSERT_OK_AND_ASSIGN(
       auto new_arrays,
-      client->CopyArrays(absl::MakeSpan(arrays), DeviceList({devices[1]}),
-                         MemoryKind(), ArrayCopySemantics::kAlwaysCopy));
+      client->CopyArrays(absl::MakeSpan(arrays),
+                         BasicDeviceList::Create({devices[1]}), MemoryKind(),
+                         ArrayCopySemantics::kAlwaysCopy));
 
   auto new_basic_string_array =
       llvm::dyn_cast<BasicStringArray>(new_arrays[0].get());
@@ -735,8 +737,8 @@ TEST(CopyTest, SuccessMultiDeviceShardedArray) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto new_arrays,
       client->CopyArrays(absl::MakeSpan(arrays),
-                         DeviceList({devices[2], devices[3]}), MemoryKind(),
-                         ArrayCopySemantics::kAlwaysCopy));
+                         BasicDeviceList::Create({devices[2], devices[3]}),
+                         MemoryKind(), ArrayCopySemantics::kAlwaysCopy));
 
   auto new_basic_string_array =
       llvm::dyn_cast<BasicStringArray>(new_arrays[0].get());
@@ -761,10 +763,10 @@ TEST(CopyTest, FailsAfterDeletion) {
 
   arrays[0]->Delete();
 
-  EXPECT_THAT(
-      client->CopyArrays(absl::MakeSpan(arrays), DeviceList({devices[1]}),
-                         MemoryKind(), ArrayCopySemantics::kAlwaysCopy),
-      StatusIs(absl::StatusCode::kFailedPrecondition));
+  EXPECT_THAT(client->CopyArrays(absl::MakeSpan(arrays),
+                                 BasicDeviceList::Create({devices[1]}),
+                                 MemoryKind(), ArrayCopySemantics::kAlwaysCopy),
+              StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 TEST(CopyTest, FailsWithDifferentNumbersDevices) {
@@ -779,10 +781,11 @@ TEST(CopyTest, FailsWithDifferentNumbersDevices) {
       CreateTestArray(client.get(), Future<BasicStringArray::Buffers>(buffers),
                       std::move(on_done_with_buffer)));
 
-  EXPECT_THAT(client->CopyArrays(absl::MakeSpan(arrays),
-                                 DeviceList({devices[0], devices[1]}),
-                                 MemoryKind(), ArrayCopySemantics::kAlwaysCopy),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(
+      client->CopyArrays(absl::MakeSpan(arrays),
+                         BasicDeviceList::Create({devices[0], devices[1]}),
+                         MemoryKind(), ArrayCopySemantics::kAlwaysCopy),
+      StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST(CopyTest, NonReadySourceArraySuccessfullyBecomesReadyAfterCopy) {
@@ -800,9 +803,9 @@ TEST(CopyTest, NonReadySourceArraySuccessfullyBecomesReadyAfterCopy) {
   arrays.push_back(std::move(ret.first));
   auto promise = std::move(ret.second);
 
-  TF_ASSERT_OK(client->CopyArrays(absl::MakeSpan(arrays),
-                                  DeviceList({devices[1]}), MemoryKind(),
-                                  ArrayCopySemantics::kAlwaysCopy));
+  TF_ASSERT_OK(client->CopyArrays(
+      absl::MakeSpan(arrays), BasicDeviceList::Create({devices[1]}),
+      MemoryKind(), ArrayCopySemantics::kAlwaysCopy));
 
   absl::Notification done_readying_single_device_arrays;
   tsl::Env::Default()->SchedClosure(([&]() mutable {
@@ -839,9 +842,9 @@ TEST(CopyTest, NonReadySourceArrayFailsToBecomeReadyAfterCopy) {
   arrays.push_back(std::move(ret.first));
   auto promise = std::move(ret.second);
 
-  TF_ASSERT_OK(client->CopyArrays(absl::MakeSpan(arrays),
-                                  DeviceList({devices[1]}), MemoryKind(),
-                                  ArrayCopySemantics::kAlwaysCopy));
+  TF_ASSERT_OK(client->CopyArrays(
+      absl::MakeSpan(arrays), BasicDeviceList::Create({devices[1]}),
+      MemoryKind(), ArrayCopySemantics::kAlwaysCopy));
 
   absl::Notification done_readying_single_device_arrays;
   tsl::Env::Default()->SchedClosure(([&]() mutable {

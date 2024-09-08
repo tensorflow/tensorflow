@@ -2730,13 +2730,75 @@ func.func @atanh_f32(%arg : tensor<f32>) -> tensor<f32> {
 // CHECK-LABEL: @atanh_complex_f32
 // CHECK-SAME: %[[ARG:.*]]: tensor<complex<f32>>
 func.func @atanh_complex_f32(%arg : tensor<complex<f32>>) -> tensor<complex<f32>> {
-  // CHECK-NEXT: %[[TMP_0:.*]] = mhlo.log_plus_one %[[ARG]]
-  // CHECK-NEXT: %[[TMP_1:.*]] = mhlo.negate %[[ARG]]
-  // CHECK-NEXT: %[[TMP_2:.*]] = mhlo.log_plus_one %[[TMP_1]]
-  // CHECK-NEXT: %[[TMP_3:.*]] = mhlo.subtract %[[TMP_0]], %[[TMP_2]]
-  // CHECK-NEXT: %[[TMP_4:.*]] = mhlo.constant dense<(5.000000e-01,0.000000e+00)>
-  // CHECK-NEXT: %[[TMP_5:.*]] = mhlo.multiply %[[TMP_3]], %[[TMP_4]]
-  // CHECK-NEXT: return %[[TMP_5]]
+  // CHECK-NEXT: %[[REAL:.*]] = mhlo.real %[[ARG]]
+  // CHECK-NEXT: %[[ZERO:.*]] = mhlo.constant dense<0.000000e+00>
+  // CHECK-NEXT: %[[CMP0:.*]] = mhlo.compare  GE, %[[REAL]], %[[ZERO]]
+  // CHECK-NEXT: %[[ONE:.*]] = mhlo.constant dense<1.000000e+00>
+  // CHECK-NEXT: %[[NEG_ONE:.*]] = mhlo.constant dense<-1.000000e+00>
+  // CHECK-NEXT: %[[SELECT0:.*]] = mhlo.select %[[CMP0]], %[[ONE]], %[[NEG_ONE]]
+  // CHECK-NEXT: %[[FOUR:.*]] = mhlo.constant dense<4.000000e+00>
+  // CHECK-NEXT: %[[ABS_REAL:.*]] = mhlo.abs %[[REAL]]
+  // CHECK-NEXT: %[[LARGE_VAL:.*]] = mhlo.constant dense<3.40282347E+38>
+  // CHECK-NEXT: %[[INF:.*]] = mhlo.constant dense<0x7F800000>
+  // CHECK-NEXT: %[[CMP1:.*]] = mhlo.compare  GT, %[[LARGE_VAL]], %[[INF]]
+  // CHECK-NEXT: %[[LARGE_VAL2:.*]] = mhlo.constant dense<9.00719925E+15>
+  // CHECK-NEXT: %[[LARGE_VAL3:.*]] = mhlo.constant dense<9.99999968E+37>
+  // CHECK-NEXT: %[[CMP2:.*]] = mhlo.compare  GT, %[[LARGE_VAL]], %[[LARGE_VAL3]]
+  // CHECK-NEXT: %[[LARGE_VAL4:.*]] = mhlo.constant dense<0x4B800001>
+  // CHECK-NEXT: %[[LARGE_VAL5:.*]] = mhlo.constant dense<2.050000e+03>
+  // CHECK-NEXT: %[[SELECT1:.*]] = mhlo.select %[[CMP2]], %[[LARGE_VAL4]], %[[LARGE_VAL5]]
+  // CHECK-NEXT: %[[SELECT2:.*]] = mhlo.select %[[CMP1]], %[[LARGE_VAL2]], %[[SELECT1]]
+  // CHECK-NEXT: %[[SQUARE:.*]] = mhlo.multiply %[[SELECT2]], %[[SELECT2]]
+  // CHECK-NEXT: %[[CMP3:.*]] = mhlo.compare  LT, %[[ABS_REAL]], %[[SQUARE]]
+  // CHECK-NEXT: %[[IMAG:.*]] = mhlo.imag %[[ARG]]
+  // CHECK-NEXT: %[[ABS_IMAG:.*]] = mhlo.abs %[[IMAG]]
+  // CHECK-NEXT: %[[CMP4:.*]] = mhlo.compare LT, %[[ABS_IMAG]], %[[SQUARE]]
+  // CHECK-NEXT: %[[AND:.*]] = mhlo.and %[[CMP3]], %[[CMP4]]
+  // CHECK-NEXT: %[[SUB0:.*]] = mhlo.subtract %[[ONE]], %[[ABS_REAL]] 
+  // CHECK-NEXT: %[[SQUARE1:.*]] = mhlo.multiply %[[SUB0]], %[[SUB0]] 
+  // CHECK-NEXT: %[[SQUARE2:.*]] = mhlo.multiply %[[IMAG]], %[[IMAG]] 
+  // CHECK-NEXT: %[[ADD0:.*]] = mhlo.add %[[SQUARE1]], %[[SQUARE2]] 
+  // CHECK-NEXT: %[[DIV0:.*]] = mhlo.divide %[[ABS_REAL]], %[[ADD0]] 
+  // CHECK-NEXT: %[[MULT0:.*]] = mhlo.multiply %[[ABS_IMAG]], %[[SELECT2]] 
+  // CHECK-NEXT: %[[CMP5:.*]] = mhlo.compare LT, %[[MULT0]], %[[ABS_REAL]] 
+  // CHECK-NEXT: %[[DIV1:.*]] = mhlo.divide %[[ONE]], %[[ABS_REAL]]
+  // CHECK-NEXT: %[[ISINF_REAL:.*]] = mhlo.constant dense<0x7F800000>
+  // CHECK-NEXT: %[[ISNINF_REAL:.*]] = mhlo.compare  EQ, %[[REAL]], %[[ISINF_REAL]]
+  // CHECK-NEXT: %[[ISINF_REAL_1:.*]] = mhlo.constant dense<0xFF800000>
+  // CHECK-NEXT: %[[ISNINF_REAL_1:.*]] = mhlo.compare  EQ, %[[REAL]], %[[ISINF_REAL_1]]
+  // CHECK-NEXT: %[[OR0:.*]] = mhlo.or %[[ISNINF_REAL]], %[[ISNINF_REAL_1]]
+  // CHECK-NEXT: %[[ISINF_IMAG:.*]] = mhlo.compare  EQ, %[[IMAG]], %[[ISINF_REAL]]
+  // CHECK-NEXT: %[[ISNINF_IMAG:.*]] = mhlo.compare  EQ, %[[IMAG]], %[[ISINF_REAL_1]]
+  // CHECK-NEXT: %[[OR1:.*]] = mhlo.or %[[ISINF_IMAG]], %[[ISNINF_IMAG]]
+  // CHECK-NEXT: %[[OR2:.*]] = mhlo.or %[[OR0]], %[[OR1]]
+  // CHECK-NEXT: %[[DIV2:.*]] = mhlo.divide %[[ABS_REAL]], %[[IMAG]]
+  // CHECK-NEXT: %[[DIV3:.*]] = mhlo.divide %[[IMAG]], %[[ABS_REAL]]
+  // CHECK-NEXT: %[[ADD1:.*]] = mhlo.add %[[DIV2]], %[[DIV3]]
+  // CHECK-NEXT: %[[DIV4:.*]] = mhlo.divide %[[ONE]], %[[ADD1]]
+  // CHECK-NEXT: %[[DIV5:.*]] = mhlo.divide %[[DIV4]], %[[IMAG]]
+  // CHECK-NEXT: %[[SELECT3:.*]] = mhlo.select %[[OR2]], %[[ZERO]], %[[DIV5]]
+  // CHECK-NEXT: %[[SELECT4:.*]] = mhlo.select %[[CMP5]], %[[DIV1]], %[[SELECT3]]
+  // CHECK-NEXT: %[[SELECT5:.*]] = mhlo.select %[[AND]], %[[DIV0]], %[[SELECT4]]
+  // CHECK-NEXT: %[[MULT1:.*]] = mhlo.multiply %[[FOUR]], %[[SELECT5]]
+  // CHECK-NEXT: %[[LOG1P:.*]] = mhlo.log_plus_one %[[MULT1]]
+  // CHECK-NEXT: %[[MULT2:.*]] = mhlo.multiply %[[SELECT0]], %[[LOG1P]]
+  // CHECK-NEXT: %[[HALF:.*]] = mhlo.constant dense<2.500000e-01>
+  // CHECK-NEXT: %[[MULT3:.*]] = mhlo.multiply %[[MULT2]], %[[HALF]]
+  // CHECK-NEXT: %[[ADD2:.*]] = mhlo.add %[[IMAG]], %[[IMAG]]
+  // CHECK-NEXT: %[[ADD3:.*]] = mhlo.add %[[ONE]], %[[ABS_REAL]]
+  // CHECK-NEXT: %[[MULT4:.*]] = mhlo.multiply %[[SUB0]], %[[ADD3]]
+  // CHECK-NEXT: %[[SUB1:.*]] = mhlo.subtract %[[MULT4]], %[[SQUARE2]]
+  // CHECK-NEXT: %[[ATAN2:.*]] = mhlo.atan2 %[[ADD2]], %[[SUB1]]
+  // CHECK-NEXT: %[[CONST0:.*]] = mhlo.constant dense<0.000000e+00>
+  // CHECK-NEXT: %[[CMP6:.*]] = mhlo.compare  GE, %[[IMAG]], %[[CONST0]]
+  // CHECK-NEXT: %[[SELECT6:.*]] = mhlo.select %[[CMP6]], %[[ONE]], %[[NEG_ONE]]
+  // CHECK-NEXT: %[[PI:.*]] = mhlo.constant dense<3.14159274>
+  // CHECK-NEXT: %[[MULT5:.*]] = mhlo.multiply %[[SELECT6]], %[[PI]]
+  // CHECK-NEXT: %[[SELECT7:.*]] = mhlo.select %[[AND]], %[[ATAN2]], %[[MULT5]]
+  // CHECK-NEXT: %[[CONST:.*]] = mhlo.constant dense<5.000000e-01>
+  // CHECK-NEXT: %[[MULT6:.*]] = mhlo.multiply %[[SELECT7]], %[[CONST]]
+  // CHECK-NEXT: %[[FINAL_RESULT:.*]] = mhlo.complex %[[MULT3]], %[[MULT6]]
+  // CHECK-NEXT: return %[[FINAL_RESULT]] : tensor<complex<f32>>
   %result = "chlo.atanh"(%arg) : (tensor<complex<f32>>) -> tensor<complex<f32>>
   func.return %result : tensor<complex<f32>>
 }

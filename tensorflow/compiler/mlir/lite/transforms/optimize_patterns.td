@@ -826,6 +826,13 @@ def MinimumOfReluAnd6ToRelu6 :
       (TFL_Relu6Op $x),
       [(IsConstantValueOf<6> $y)]>;
 
+def MinimumOfReluAnd6ToRelu62 :
+  Pat<(TFL_ReluOp
+        (TFL_MinimumOp $x,
+          (Arith_ConstantOp $y))),
+      (TFL_Relu6Op $x),
+      [(IsConstantValueOf<6> $y)]>;
+
 // For both relu1 and relu_0_to_1, the min/max operators commute,
 // so there are two possible orderings we need to rewrite.
 // Concretely, `m < n -> max(m, min(n, x)) = min(m, max(m, x))`.
@@ -1531,8 +1538,18 @@ def FuseLeakyReluConst : Pat<
 
 // Return true if the product of dimension values of a subsection of the tensor
 // is equal to the non-contracting dimension after a reshape
-class BroadcastDimsProductEqual<int agg_start_idx> : Constraint<CPred<
-  "TFL::BroadcastDimsProductEqual($0, $1, "# agg_start_idx #")">>;
+class NonBroadcastingNonContractingLhsDimsProductEqual<int agg_start_idx, int agg_end_idx=0> : Constraint<CPred<
+  "TFL::NonBroadcastingNonContractingDimsProductEqual($0, $1, true, "# agg_start_idx #","# agg_end_idx #")">>;
+
+// Predicate to check if the last dimensions of two values is equal.
+def TrailingDimValuesEqual : Constraint<
+  CPred<"mlir::cast<ShapedType>($0.getType()).getShape().back()"
+    "== mlir::cast<ShapedType>($1.getType()).getShape().back()">>;
+
+// Predicate to check if the product of last few dimensions in LHS is equal to
+// the last dimension in RHS.
+class ContractingDimsProductEqual<int agg_start_idx> : Constraint<CPred<
+  "TFL::ContractingDimsProductEqual($0, $1, "# agg_start_idx #")">>;
 
 // Returns true if the dimensions of a subsection of two tensors is equal
 class AreTensorSubSectionShapesEqual<int skip_first, int skip_last> : Constraint<CPred<
@@ -1559,9 +1576,38 @@ def FuseReshapesAroundBatchMatMulLHS: Pat<
   (TFL_BatchMatMulOp $input, $rhs, $adj_x, $adj_y, $bool_attr),
   [(HasRank<2> $rhs),
    (HasRank<2> $initial_shape_change),
-   (BroadcastDimsProductEqual<0> $input, $initial_shape_change),
-   (BroadcastDimsProductEqual<0> $final_shape_change, $bmm_tmp_output),
+   (TrailingDimValuesEqual $input, $initial_shape_change),
+   (NonBroadcastingNonContractingLhsDimsProductEqual<0> $input, $initial_shape_change),
+   (NonBroadcastingNonContractingLhsDimsProductEqual<0> $final_shape_change, $bmm_tmp_output),
    (AreTensorSubSectionShapesEqual<0, 1> $input, $final_shape_change)]>;
+
+// Pattern to fuse/fold the reshape of TFL_BatchMatMulOp output to expand the
+// dimensions of the output to add a unity broadcast dimension.
+// This pattern assumes that the input has more than one contracting dimensions.
+//
+// This pattern is applied when-
+// 1. The rank of rhs is 2
+// 2. The original input reshape has a) reduction in leading broadcast dim and
+//    b) flattening of the contracting dims.
+def FuseOutputReshape_BatchMatMulWithFlattenedContractingDims: Pat<
+  (TFL_ReshapeOp:$final_shape_change
+    (TFL_BatchMatMulOp:$bmm_tmp_output
+      (TFL_ReshapeOp:$initial_shape_change
+        $input, (Arith_ConstantOp I32ElementsAttr:$s0)),
+      $rhs, $adj_x, $adj_y, $bool_attr),
+    (Arith_ConstantOp $s1)),
+  (TFL_BatchMatMulOp
+    (TFL_ReshapeOp $input, (Arith_ConstantOp (GetExpandedShape<1> $s0))),
+    $rhs, $adj_x, $adj_y, $bool_attr),
+  [(HasRankAtLeast<4> $input),
+   (HasRank<2> $rhs),
+   (HasRank<2> $initial_shape_change),
+   (IsBroadcastDimEqualToOne $input),
+   (IsBroadcastDimEqualToOne $final_shape_change),
+   (ContractingDimsProductEqual<2> $input, $initial_shape_change),
+   (NonBroadcastingNonContractingLhsDimsProductEqual<0,1> $input, $initial_shape_change),
+   (NonBroadcastingNonContractingLhsDimsProductEqual<0,1> $final_shape_change, $bmm_tmp_output)]>;
+
 
 // Pattern to fuse/fold the reshape ops around TFL_BatchMatMulOp
 // This pattern is applied when the rank of rhs is 3
@@ -1578,8 +1624,9 @@ def FuseReshapesAroundBatchMatMulLHS1: Pat<
    (HasRank<3> $initial_shape_change),
    (IsBroadcastDimEqualToOne $rhs),
    (IsBroadcastDimEqualToOne $input),
-   (BroadcastDimsProductEqual<1> $input, $initial_shape_change),
-   (BroadcastDimsProductEqual<1> $final_shape_change, $bmm_tmp_output),
+   (TrailingDimValuesEqual $input, $initial_shape_change),
+   (NonBroadcastingNonContractingLhsDimsProductEqual<1> $input, $initial_shape_change),
+   (NonBroadcastingNonContractingLhsDimsProductEqual<1> $final_shape_change, $bmm_tmp_output),
    (AreTensorSubSectionShapesEqual<1, 1> $input, $final_shape_change)]>;
 
 

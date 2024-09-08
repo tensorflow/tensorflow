@@ -2760,6 +2760,10 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
             tflite::BuiltinOptions2_StablehloTransposeOptions,
             transpose_option.Union());
       }
+      if (auto vhlo_op = llvm::dyn_cast<mlir::vhlo::CbrtOpV1>(inst)) {
+        return BuildStablehloOperatorwithoutOptions(
+            inst, operands, results, tflite::BuiltinOperator_STABLEHLO_CBRT);
+      }
     }
     return inst->emitOpError("is not part of the vhlo support yet."),
            std::nullopt;

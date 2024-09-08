@@ -168,6 +168,7 @@ ENTRY main {
     domain:
     d0 in [0, 1]
     d1 in [0, 9]
+    is_simplified: true
   )"));
 
   auto p0_from_subtract0 = root->operand(0);
@@ -181,6 +182,7 @@ ENTRY main {
     domain:
     d0 in [0, 1]
     d1 in [0, 9]
+    is_simplified: true
   )"));
 
   EXPECT_THAT(*p0_from_subtract1, MatchTiledHloInstruction(
@@ -191,6 +193,7 @@ ENTRY main {
     domain:
     d0 in [0, 1]
     d1 in [0, 9]
+    is_simplified: true
   )"));
 }
 
@@ -283,6 +286,7 @@ ENTRY main {
     domain:
     d0 in [0, 1]
     d1 in [0, 0]
+    is_simplified: true
   )"));
 }
 
@@ -317,6 +321,7 @@ ENTRY main {
     d0 in [0, 1]
     d1 in [0, 1]
     d2 in [0, 7]
+    is_simplified: true
   )"));
 
   EXPECT_THAT(*root->operand(0),
@@ -328,6 +333,7 @@ ENTRY main {
     d0 in [0, 1]
     d1 in [0, 1]
     d2 in [0, 7]
+    is_simplified: true
   )"));
 }
 
@@ -365,6 +371,7 @@ ENTRY main {
     domain:
     d0 in [0, 1]
     d1 in [0, 3]
+    is_simplified: true
   )"));
 
   EXPECT_THAT(*p0_from_slice0,
@@ -375,6 +382,7 @@ ENTRY main {
     domain:
     d0 in [0, 1]
     d1 in [0, 3]
+    is_simplified: true
   )"));
 
   EXPECT_THAT(*p0_from_slice1,
@@ -385,6 +393,7 @@ ENTRY main {
     domain:
     d0 in [0, 1]
     d1 in [0, 3]
+    is_simplified: true
   )"));
 }
 
@@ -862,6 +871,7 @@ ENTRY main {
     domain:
     d0 in [0, 65537]
     d1 in [0, 32767]
+    is_simplified: true
   )"));
 }
 
@@ -917,6 +927,7 @@ ENTRY main {
     domain:
     d0 in [0, 0]
     d1 in [0, 1]
+    is_simplified: true
   )"));
 
   EXPECT_THAT(*param_0_tile, MatchTiledHloInstruction(
@@ -933,6 +944,7 @@ ENTRY main {
     s1 in [0, 226]
       hlo: %of3 = s32[] parameter(3)
       (d0, d1, d2) -> ()
+    is_simplified: true
   )"));
 }
 

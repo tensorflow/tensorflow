@@ -586,15 +586,17 @@ class GpuDriver {
   // -- Asynchronous memcopies.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g56f30236c7c5247f8e061b59d3268362
 
-  static bool AsynchronousMemcpyD2H(Context* context, void* host_dst,
-                                    GpuDevicePtr gpu_src, uint64_t size,
-                                    GpuStreamHandle stream);
-  static bool AsynchronousMemcpyH2D(Context* context, GpuDevicePtr gpu_dst,
-                                    const void* host_src, uint64_t size,
-                                    GpuStreamHandle stream);
-  static bool AsynchronousMemcpyD2D(Context* context, GpuDevicePtr gpu_dst,
-                                    GpuDevicePtr gpu_src, uint64_t size,
-                                    GpuStreamHandle stream);
+  static absl::Status AsynchronousMemcpyD2H(Context* context, void* host_dst,
+                                            GpuDevicePtr gpu_src, uint64_t size,
+                                            GpuStreamHandle stream);
+  static absl::Status AsynchronousMemcpyH2D(Context* context,
+                                            GpuDevicePtr gpu_dst,
+                                            const void* host_src, uint64_t size,
+                                            GpuStreamHandle stream);
+  static absl::Status AsynchronousMemcpyD2D(Context* context,
+                                            GpuDevicePtr gpu_dst,
+                                            GpuDevicePtr gpu_src, uint64_t size,
+                                            GpuStreamHandle stream);
 
   // The CUDA stream callback type signature.
   // The data passed to AddStreamCallback is subsequently passed to this
@@ -610,14 +612,16 @@ class GpuDriver {
   // Enqueues a callback operation into stream.
   // See StreamCallback above and the NVIDIA documentation for additional
   // details.
-  static bool AddStreamCallback(Context* context, GpuStreamHandle stream,
-                                StreamCallback callback, void* data);
+  static absl::Status AddStreamCallback(Context* context,
+                                        GpuStreamHandle stream,
+                                        StreamCallback callback, void* data);
 
   // Causes stream to wait for event to trigger before proceeding via
   // cuStreamWaitEvent.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__STREAM.html#axzz334nAXAhM
-  static bool WaitStreamOnEvent(Context* context, GpuStreamHandle stream,
-                                GpuEventHandle event);
+  static absl::Status WaitStreamOnEvent(Context* context,
+                                        GpuStreamHandle stream,
+                                        GpuEventHandle event);
 
   // Blocks the calling thread until the operations enqueued onto stream have
   // been completed, via cuStreamSynchronize.
@@ -634,12 +638,7 @@ class GpuDriver {
   // have been completed, via cuCtxSynchronize.
   //
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1g7a54725f28d34b8c6299f0c6ca579616
-  static bool SynchronizeContext(Context* context);
-
-  // Returns true if all stream tasks have completed at time of the call. Note
-  // the potential for races around this call (if another thread adds work to
-  // the stream immediately after this returns).
-  static bool IsStreamIdle(Context* context, GpuStreamHandle stream);
+  static absl::Status SynchronizeContext(Context* context);
 
   // Returns whether code in the from context can access memory in the to
   // context via cuDeviceCanAccessPeer.
@@ -660,8 +659,9 @@ class GpuDriver {
   // Returns the elapsed milliseconds between start and stop via
   // cuEventElapsedTime.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EVENT.html#group__CUDA__EVENT_1gdfb1178807353bbcaa9e245da497cf97
-  static bool GetEventElapsedTime(Context* context, float* elapsed_milliseconds,
-                                  GpuEventHandle start, GpuEventHandle stop);
+  static absl::StatusOr<float> GetEventElapsedTime(Context* context,
+                                                   GpuEventHandle start,
+                                                   GpuEventHandle stop);
 
   // Records that an event occurred when execution reaches the current point in
   // thestream via cuEventRecord.
@@ -699,11 +699,6 @@ class GpuDriver {
   // (supported on ROCm only)
   static absl::Status GetGpuGCNArchName(GpuDeviceHandle device,
                                         std::string* gcnArchName);
-
-#if TENSORFLOW_USE_ROCM
-  // tests the current device for MFMA insn support (ROCm only)
-  static absl::StatusOr<bool> GetMFMASupport();
-#endif
 
   // Returns the number of multiprocessors on the device (note that the device
   // may be multi-GPU-per-board).

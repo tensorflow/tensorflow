@@ -1563,18 +1563,46 @@ ENTRY %module {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
   VLOG(0) << module->ToString();
   EXPECT_TRUE(changed);
-  auto* gather = FindInstruction(module.get(), "gather");
+  const HloInstruction* gather = FindInstruction(module.get(), "gather");
   ASSERT_NE(gather, nullptr);
   EXPECT_THAT(gather, op::Sharding("{devices=[16,16]<=[256]}"));
+}
+
+TEST_F(AutoShardingTest, GatherTest2) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %module {
+  data = f32[1000]{0} parameter(0), sharding={replicated}
+  indices = s32[512,1280,8,1]{3,2,1,0} parameter(1), sharding={devices=[256,1,1,1]<=[256]}
+  ROOT gather = f32[512,1280,8,1]{3,2,1,0} gather(data, indices), offset_dims={3}, collapsed_slice_dims={}, start_index_map={0}, index_vector_dim=3, slice_sizes={1}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AutoShardingOption option;
+  option.enable = true;
+  option.device_mesh_shape = {256, 1};
+  option.device_mesh_alpha = {1.0, 1.0};
+  option.device_mesh_beta = {0.01, 1.0};
+  option.preserve_shardings =
+      AutoShardingOption::PreserveShardingsType::kKeepAllShardings;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
+  VLOG(0) << module->ToString();
+  EXPECT_TRUE(changed);
+  const HloInstruction* gather = FindInstruction(module.get(), "gather");
+  ASSERT_NE(gather, nullptr);
+  EXPECT_THAT(gather, op::Sharding("{devices=[256,1,1,1]<=[256]}"));
 }
 
 TEST_F(AutoShardingTest, GatherTestNoReshard) {
   constexpr absl::string_view kHloString = R"(
 HloModule module
 ENTRY %entry {
-  get-tuple-element = s8[1000,128]{1,0} parameter(0)
-  reshape = s32[8,1,1]{2,1,0} parameter(1)
-  gather = s8[8,1,128]{2,1,0} gather(get-tuple-element, reshape), offset_dims={2}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=2, slice_sizes={1,128}
+  data = s8[1000,128]{1,0} parameter(0)
+  indices = s32[8,1,1]{2,1,0} parameter(1)
+  gather = s8[8,1,128]{2,1,0} gather(data, indices), offset_dims={2}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=2, slice_sizes={1,128}
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloString));
@@ -1587,16 +1615,17 @@ ENTRY %entry {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
   VLOG(10) << module->ToString();
   EXPECT_TRUE(changed);
-  auto* gather = FindInstruction(module.get(), "gather");
-  auto* param0 = FindInstruction(module.get(), "get-tuple-element");
+  const HloInstruction* gather = FindInstruction(module.get(), "gather");
+  const HloInstruction* data = FindInstruction(module.get(), "data");
   ASSERT_NE(gather, nullptr);
-  ASSERT_NE(param0, nullptr);
-  EXPECT_THAT(gather, op::Sharding("{devices=[8,1,1]0,1,2,3,4,5,6,7}"));
-  EXPECT_THAT(param0, AnyOf(op::Sharding("{devices=[1,8]0,1,2,3,4,5,6,7}"),
-                            op::Sharding("{devices=[8,1]0,1,2,3,4,5,6,7}")));
+  ASSERT_NE(data, nullptr);
+  EXPECT_THAT(gather, AnyOf(op::Sharding("{devices=[1,1,8]<=[8]}"),
+                            op::Sharding("{devices=[8,1,1]<=[8]}")));
+  EXPECT_THAT(data, AnyOf(op::Sharding("{devices=[1,8]<=[8]}"),
+                          op::Sharding("{devices=[8,1]<=[8]}")));
   TF_EXPECT_OK(gather->sharding().Validate(gather->shape(), 8));
   // Ensure no resharding op is created for operand 0 of gather in this case.
-  EXPECT_EQ(param0, gather->operand(0));
+  EXPECT_EQ(data, gather->operand(0));
 }
 
 TEST_F(AutoShardingTest, GatherConvTest) {
@@ -2593,6 +2622,61 @@ ENTRY entry {
       module->input_output_alias_config();
   EXPECT_EQ(input_output_alias_config_before.ToString(),
             input_output_alias_config_after.ToString());
+}
+
+TEST_F(AutoShardingTest, SliceAliasTest) {
+  const char* const kHloString = R"(
+HloModule module
+%branch0 {
+  %branch0_param = f32[256,256]{1,0} parameter(0)
+  ROOT %slice0 = f32[16,16]{1,0} slice(f32[256,256]{1,0} %branch0_param), slice={[16:32], [16:32]}
+}
+
+%branch1 {
+  %branch1_param = f32[256,256]{1,0} parameter(0)
+  ROOT %slice1 = f32[16,16]{1,0} slice(f32[256,256]{1,0} %branch1_param), slice={[0:16], [0:16]}
+}
+
+ENTRY %entry {
+  %entry_param0 = f32[256,256]{1,0} parameter(0), sharding={devices=[32,1]<=[32]}
+  %entry_param1 = s32[] parameter(1)
+  ROOT %conditional = f32[16,16]{1,0} conditional(s32[] %entry_param1, f32[256,256]{1,0} %entry_param0, f32[256,256]{1,0} %entry_param0), branch_computations={%branch0, %branch1}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  AutoShardingOption option;
+  option.preserve_shardings =
+      AutoShardingOption::PreserveShardingsType::kKeepAllShardings;
+  option.enable = true;
+  option.device_mesh_shape = {32, 1};
+  option.device_mesh_alpha = {1.0, 1.0};
+  option.device_mesh_beta = {0.01, 1.0};
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
+  ASSERT_TRUE(changed);
+  VLOG(5) << module->ToString();
+
+  const HloInstruction* branch0_param =
+      FindInstruction(module.get(), "branch0_param");
+  const HloInstruction* slice0 = FindInstruction(module.get(), "slice0");
+  const HloInstruction* branch1_param =
+      FindInstruction(module.get(), "branch1_param");
+  const HloInstruction* slice1 = FindInstruction(module.get(), "slice1");
+
+  ASSERT_NE(branch0_param, nullptr);
+  ASSERT_NE(slice0, nullptr);
+  ASSERT_NE(branch1_param, nullptr);
+  ASSERT_NE(slice1, nullptr);
+
+  ASSERT_TRUE(branch0_param->has_sharding());
+  ASSERT_TRUE(slice0->has_sharding());
+  ASSERT_TRUE(branch1_param->has_sharding());
+  ASSERT_TRUE(slice1->has_sharding());
+
+  EXPECT_THAT(branch0_param, op::Sharding("{devices=[32,1]<=[32]}"));
+  EXPECT_THAT(slice0, op::Sharding("{replicated}"));
+  EXPECT_THAT(branch1_param, op::Sharding("{devices=[32,1]<=[32]}"));
+  EXPECT_THAT(slice1, op::Sharding("{replicated}"));
 }
 
 TEST(NormalizeTest, NormalizeHandlesNegativeCosts) {

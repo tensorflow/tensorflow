@@ -966,6 +966,7 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_STABLEHLO_SORT:
     case BuiltinOperator_STABLEHLO_WHILE:
     case BuiltinOperator_STABLEHLO_TRANSPOSE:
+    case BuiltinOperator_STABLEHLO_CBRT:
 
     // Below are the ops with no builtin_data structure.
     // TODO(aselle): Implement call in BuiltinOptions, but nullptrs are

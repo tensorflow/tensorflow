@@ -327,6 +327,9 @@ Register_STABLEHLO_COMPOSITE();  // WARNING: not implemented, using this
                                  // op will crash the runtime
 TfLiteRegistration* Register_STABLEHLO_SHIFT_LEFT();
 
+TfLiteRegistration*
+Register_STABLEHLO_CBRT();  // WARNING: not implemented, using this
+                            // op will crash the runtime
 }  // namespace builtin
 }  // namespace ops
 }  // namespace tflite

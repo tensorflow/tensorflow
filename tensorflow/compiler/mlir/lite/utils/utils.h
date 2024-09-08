@@ -295,6 +295,26 @@ inline ShapedType GetTransposedType(Value input,
   return transposed_type;
 }
 
+// Return the resultant shape if the shape of the supplied attribute/value is
+// expanded by n leading 1s'.
+inline DenseElementsAttr GetExpandedShape(DenseElementsAttr input_val_attr,
+                                          int n) {
+  SmallVector<int32_t> expanded_shape;
+  expanded_shape.reserve(input_val_attr.getNumElements() + n);
+  for (int i = 0; i < n; ++i) {
+    expanded_shape.push_back(1);
+  }
+  expanded_shape.insert(expanded_shape.end(),
+                        input_val_attr.getValues<int32_t>().begin(),
+                        input_val_attr.getValues<int32_t>().end());
+
+  return mlir::DenseElementsAttr::get(
+      RankedTensorType::get(
+          {static_cast<int>(expanded_shape.size())},
+          mlir::IntegerType::get(input_val_attr.getContext(), 32)),
+      llvm::ArrayRef(expanded_shape));
+}
+
 // Returns shape of a ranked tensor.
 // Precondition: output_val's is ranked tensor.
 // Returns a truncated shape when `truncate` is set to true.

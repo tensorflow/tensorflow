@@ -50,6 +50,9 @@ _XLA_DEFAULT_TARGET_PATTERNS = (
     "//build_tools/...",
     "@local_tsl//tsl/...",
 )
+_KOKORO_ARTIFACTS_DIR = os.environ.get(
+    "KOKORO_ARTIFACTS_DIR", "$KOKORO_ARTIFACTS_DIR"
+)
 
 
 def sh(args, check=True, **kwargs):
@@ -126,7 +129,10 @@ class Build:
   def commands(self) -> List[List[str]]:
     """Returns list of commands for a build."""
     cmds = []
-    cmds.append(["./github/xla/.kokoro/generate_index_html.sh", "index.html"])
+    cmds.append([
+        f"{_KOKORO_ARTIFACTS_DIR}/github/xla/.kokoro/generate_index_html.sh",
+        "index.html",
+    ])
     if self.repo != "openxla/xla":
       _, repo_name = self.repo.split("/")
 

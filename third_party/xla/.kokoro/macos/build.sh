@@ -22,4 +22,7 @@ set -euox pipefail -o history
 # Generate a templated results file to make output accessible to everyone
 "$KOKORO_ARTIFACTS_DIR"/github/xla/.kokoro/generate_index_html.sh "$KOKORO_ARTIFACTS_DIR"/index.html
 
+# TODO(ddunleavy) figure out how to best move this into build.py
+cd "${KOKORO_ARTIFACTS_DIR}/github/xla"
+
 "$KOKORO_ARTIFACTS_DIR"/github/xla/build_tools/ci/build.py

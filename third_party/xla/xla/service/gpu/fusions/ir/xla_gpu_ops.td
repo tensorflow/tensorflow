@@ -160,7 +160,7 @@ def XLAGPU_PureCallOp : XLAGPU_Op<"pure_call",
 }
 
 def XLAGPU_ShuffleReduceOp : XLAGPU_Op<"shuffle_reduce",
-    [Pure,
+    [Pure,  CallOpInterface,
      TypesMatchWith<"result type matches type of operands",
                      "operands", "results", "$_self">]> {
   let summary = "Performs a full warp shuffle and reduces the values";
@@ -197,6 +197,20 @@ def XLAGPU_ShuffleReduceOp : XLAGPU_Op<"shuffle_reduce",
 
   let assemblyFormat = [{
     $reducer `(` $operands `)` `to` $max_distance attr-dict `:` type($operands)
+  }];
+  let extraClassDeclaration = [{
+    mlir::CallInterfaceCallable getCallableForCallee() {
+      return (*this)->getAttrOfType<mlir::SymbolRefAttr>("reducer");
+    }
+    operand_range getArgOperands() {
+      return getOperands();
+    }
+    mlir::MutableOperandRange getArgOperandsMutable() {
+      return getOperandsMutable();
+    }
+    void setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
+      (*this)->setAttr("reducer", callee.get<mlir::SymbolRefAttr>());
+    }
   }];
 }
 
@@ -356,7 +370,8 @@ def LoopOp : XLAGPU_Op<"loop", [
   let hasCanonicalizer = 1;
 }
 
-def XLAGPU_MaterializeOp : XLAGPU_Op<"materialize", [AttrSizedOperandSegments]> {
+def XLAGPU_MaterializeOp : XLAGPU_Op<"materialize",
+    [AttrSizedOperandSegments, CallOpInterface]> {
   let summary = "Reads a tensor into registers";
   let arguments = (ins Variadic<AnyType>:$input,
                        Variadic<Index>:$indices,
@@ -366,6 +381,20 @@ def XLAGPU_MaterializeOp : XLAGPU_Op<"materialize", [AttrSizedOperandSegments]> 
   let hasVerifier = 1;
   let assemblyFormat = [{
     $callee `(` $input `)` `at` $map `(` $indices `)` attr-dict `:` functional-type($input, results)
+  }];
+  let extraClassDeclaration = [{
+    mlir::CallInterfaceCallable getCallableForCallee() {
+      return (*this)->getAttrOfType<mlir::SymbolRefAttr>("callee");
+    }
+    operand_range getArgOperands() {
+      return getInput();
+    }
+    mlir::MutableOperandRange getArgOperandsMutable() {
+      return getInputMutable();
+    }
+    void setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
+      (*this)->setAttr("callee", callee.get<mlir::SymbolRefAttr>());
+    }
   }];
 }
 

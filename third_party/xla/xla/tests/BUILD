@@ -64,21 +64,6 @@ cc_library(
 generate_backend_test_macros()
 
 cc_library(
-    name = "manifest_checking_test",
-    testonly = True,
-    srcs = ["manifest_checking_test.cc"],
-    hdrs = ["manifest_checking_test.h"],
-    deps = [
-        ":test_macros_header",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:regexp",
-        "@local_tsl//tsl/platform:test",
-    ],
-)
-
-cc_library(
     name = "test_utils",
     srcs = ["test_utils.cc"],
     hdrs = ["test_utils.h"],
@@ -190,7 +175,6 @@ cc_library(
     deps = [
         ":filecheck",
         ":literal_test_util",
-        ":manifest_checking_test",
         ":pjrt_client_registry",
         ":test_utils",
         ":verified_hlo_module",
@@ -260,7 +244,6 @@ cc_library(
     hdrs = ["client_library_test_base.h"],
     deps = [
         ":literal_test_util",
-        ":manifest_checking_test",
         ":test_utils",
         "//xla:array2d",
         "//xla:array3d",
@@ -351,7 +334,6 @@ cc_library(
     hdrs = ["local_client_test_base.h"],
     deps = [
         ":client_library_test_base",
-        ":manifest_checking_test",
         ":verified_hlo_module",
         "//xla:shape_util",
         "//xla:status_macros",

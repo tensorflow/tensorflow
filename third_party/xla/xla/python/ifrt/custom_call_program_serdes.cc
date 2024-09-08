@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/python/ifrt/program_serdes.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/sharding.pb.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -57,7 +58,7 @@ class CustomCallProgramSerDes
     // generates `absl::Cord` support on all platforms.
     absl::CopyCordToString(program.serialized_program_text,
                            proto.mutable_serialized_program_text());
-    *proto.mutable_devices() = program.devices.ToProto();
+    *proto.mutable_devices() = program.devices->ToProto();
     for (const ArraySpec& spec : program.input_specs) {
       TF_ASSIGN_OR_RETURN(*proto.add_input_specs(), spec.ToProto());
     }
@@ -79,7 +80,7 @@ class CustomCallProgramSerDes
           "Failed to parse serialized CustomCallProgramProto");
     }
     TF_ASSIGN_OR_RETURN(
-        DeviceList devices,
+        tsl::RCReference<DeviceList> devices,
         DeviceList::FromProto(deserialize_program_options->lookup_device,
                               proto.devices()));
     std::vector<ArraySpec> input_specs;

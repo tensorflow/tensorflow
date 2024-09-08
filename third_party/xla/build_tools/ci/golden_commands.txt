@@ -1,5 +1,5 @@
 # BEGIN BuildType.CPU_ARM64
-./github/xla/.kokoro/generate_index_html.sh index.html
+$KOKORO_ARTIFACTS_DIR/github/xla/.kokoro/generate_index_html.sh index.html
 docker pull us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/build-arm64:jax-latest-multi-python
 docker run --detach --name=xla_ci --rm --interactive --tty --volume=./github:/github --workdir=/github/xla us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/build-arm64:jax-latest-multi-python bash
 docker exec xla_ci bazel test --build_tag_filters=-no_oss,-gpu,-requires-gpu-nvidia,-requires-gpu-amd,-not_run:arm --test_tag_filters=-no_oss,-gpu,-requires-gpu-nvidia,-requires-gpu-amd,-not_run:arm --config=warnings --config=rbe_cross_compile_linux_arm64_xla --config=nonccl --test_output=errors --verbose_failures --keep_going --nobuild_tests_only --profile=profile.json.gz --flaky_test_attempts=3 --jobs=150 --bes_upload_mode=fully_async --build_tests_only -- //xla/... //build_tools/... @local_tsl//tsl/...
@@ -7,7 +7,7 @@ docker exec xla_ci bazel analyze-profile profile.json.gz
 docker stop xla_ci
 # END BuildType.CPU_ARM64
 # BEGIN BuildType.CPU_X86
-./github/xla/.kokoro/generate_index_html.sh index.html
+$KOKORO_ARTIFACTS_DIR/github/xla/.kokoro/generate_index_html.sh index.html
 parallel --ungroup --retries 3 --delay 15 docker pull ::: gcr.io/tensorflow-sigs/build:latest-python3.11
 docker run --detach --name=xla_ci --rm --interactive --tty --volume=./github:/github --workdir=/github/xla gcr.io/tensorflow-sigs/build:latest-python3.11 bash
 docker exec xla_ci bazel test --build_tag_filters=-no_oss,-gpu,-requires-gpu-nvidia,-requires-gpu-amd --test_tag_filters=-no_oss,-gpu,-requires-gpu-nvidia,-requires-gpu-amd --config=warnings --config=nonccl --config=rbe_linux_cpu --test_output=errors --verbose_failures --keep_going --nobuild_tests_only --profile=profile.json.gz --flaky_test_attempts=3 --jobs=150 --bes_upload_mode=fully_async -- //xla/... //build_tools/... @local_tsl//tsl/...
@@ -15,7 +15,7 @@ docker exec xla_ci bazel analyze-profile profile.json.gz
 docker stop xla_ci
 # END BuildType.CPU_X86
 # BEGIN BuildType.GPU
-./github/xla/.kokoro/generate_index_html.sh index.html
+$KOKORO_ARTIFACTS_DIR/github/xla/.kokoro/generate_index_html.sh index.html
 nvidia-smi
 parallel --ungroup --retries 3 --delay 15 docker pull ::: gcr.io/tensorflow-sigs/build:latest-python3.11
 docker run --detach --name=xla_ci --rm --interactive --tty --volume=./github:/github --workdir=/github/xla gcr.io/tensorflow-sigs/build:latest-python3.11 bash
@@ -24,7 +24,7 @@ docker exec xla_ci bazel analyze-profile profile.json.gz
 docker stop xla_ci
 # END BuildType.GPU
 # BEGIN BuildType.JAX_CPU
-./github/xla/.kokoro/generate_index_html.sh index.html
+$KOKORO_ARTIFACTS_DIR/github/xla/.kokoro/generate_index_html.sh index.html
 git clone --depth=1 https://github.com/google/jax ./github/jax
 parallel --ungroup --retries 3 --delay 15 docker pull ::: gcr.io/tensorflow-sigs/build:latest-python3.11
 docker run --detach --name=xla_ci --rm --interactive --tty --volume=./github:/github --workdir=/github/jax gcr.io/tensorflow-sigs/build:latest-python3.11 bash
@@ -33,7 +33,7 @@ docker exec xla_ci bazel analyze-profile profile.json.gz
 docker stop xla_ci
 # END BuildType.JAX_CPU
 # BEGIN BuildType.JAX_GPU
-./github/xla/.kokoro/generate_index_html.sh index.html
+$KOKORO_ARTIFACTS_DIR/github/xla/.kokoro/generate_index_html.sh index.html
 git clone --depth=1 https://github.com/google/jax ./github/jax
 parallel --ungroup --retries 3 --delay 15 docker pull ::: gcr.io/tensorflow-sigs/build:latest-python3.11
 docker run --detach --name=xla_ci --rm --interactive --tty --volume=./github:/github --workdir=/github/jax gcr.io/tensorflow-sigs/build:latest-python3.11 bash
@@ -42,7 +42,7 @@ docker exec xla_ci bazel analyze-profile profile.json.gz
 docker stop xla_ci
 # END BuildType.JAX_GPU
 # BEGIN BuildType.MACOS_CPU_X86
-./github/xla/.kokoro/generate_index_html.sh index.html
+$KOKORO_ARTIFACTS_DIR/github/xla/.kokoro/generate_index_html.sh index.html
 sudo wget --no-verbose -O /usr/local/bin/bazel https://github.com/bazelbuild/bazelisk/releases/download/v1.11.0/bazelisk-darwin-amd64
 chmod +x /usr/local/bin/bazel
 bazel --version
@@ -51,7 +51,7 @@ bazel test --build_tag_filters=-no_oss,-gpu,-no_mac,-mac_excluded,-requires-gpu-
 bazel analyze-profile profile.json.gz
 # END BuildType.MACOS_CPU_X86
 # BEGIN BuildType.TENSORFLOW_CPU
-./github/xla/.kokoro/generate_index_html.sh index.html
+$KOKORO_ARTIFACTS_DIR/github/xla/.kokoro/generate_index_html.sh index.html
 git clone --depth=1 https://github.com/tensorflow/tensorflow ./github/tensorflow
 parallel --ungroup --retries 3 --delay 15 docker pull ::: gcr.io/tensorflow-sigs/build:latest-python3.11
 docker run --detach --name=xla_ci --rm --interactive --tty --volume=./github:/github --workdir=/github/tensorflow gcr.io/tensorflow-sigs/build:latest-python3.11 bash
@@ -60,7 +60,7 @@ docker exec xla_ci bazel analyze-profile profile.json.gz
 docker stop xla_ci
 # END BuildType.TENSORFLOW_CPU
 # BEGIN BuildType.TENSORFLOW_GPU
-./github/xla/.kokoro/generate_index_html.sh index.html
+$KOKORO_ARTIFACTS_DIR/github/xla/.kokoro/generate_index_html.sh index.html
 git clone --depth=1 https://github.com/tensorflow/tensorflow ./github/tensorflow
 parallel --ungroup --retries 3 --delay 15 docker pull ::: gcr.io/tensorflow-sigs/build:latest-python3.11
 docker run --detach --name=xla_ci --rm --interactive --tty --volume=./github:/github --workdir=/github/tensorflow gcr.io/tensorflow-sigs/build:latest-python3.11 bash

@@ -1,11 +1,11 @@
 // RUN: mlir_fusions_opt %s -split-input-file -xla-gpu-optimize-loops | FileCheck %s
 
 #map = #xla_gpu.indexing_map<(d0) -> (d0 floordiv 8),
-                              domain: d0 in [0, 31]>
+                              domain: d0 in [0, 31], is_simplified: false>
 #map1 = #xla_gpu.indexing_map<(d0) -> (d0 mod 8),
-                              domain: d0 in [0, 31]>
+                              domain: d0 in [0, 31], is_simplified: false>
 #map2 = #xla_gpu.indexing_map<(d0, d1)[s0] -> (d1 * 2 + d0 + s0 * 512),
-                              domain: d0 in [0, 1], d1 in [0, 255], s0 in [0, 7]>
+                              domain: d0 in [0, 1], d1 in [0, 255], s0 in [0, 7], is_simplified: false>
 module {
   func.func @fully_unroll(%arg0: tensor<4x8x4096xf32>, %arg1: tensor<4096xbf16>,
       %arg2: tensor<4x8xf32>, %arg3: tensor<4096xbf16>,
@@ -154,7 +154,7 @@ module {
     %cst = arith.constant dense<[0.0, 0.0]> : vector<2xf32>
     %cst0  = arith.constant 0.0 : f32
     %ret = scf.for %i = %c0 to %c17 step %c1 iter_args (%iter = %cst) -> (vector<2xf32>) {
-      %base = xla_gpu.apply_indexing #xla_gpu.indexing_map<(d0) -> (d0 * 2), domain: d0 in [0, 15]>(%i)
+      %base = xla_gpu.apply_indexing #xla_gpu.indexing_map<(d0) -> (d0 * 2), domain: d0 in [0, 15], is_simplified: false>(%i)
       %val = vector.transfer_read %arg[%base], %cst0 : tensor<34xf32>, vector<2xf32>
       %log = math.log %val : vector<2xf32>
       %add = arith.addf %log, %iter : vector<2xf32>

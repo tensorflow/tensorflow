@@ -473,6 +473,7 @@ enum BuiltinOperator : int32 {
   REDUCE_WINDOW = 205 (deprecated),
   STABLEHLO_COMPOSITE = 206, // WARNING: No runtime support
   STABLEHLO_SHIFT_LEFT = 207,
+  STABLEHLO_CBRT = 208, // WARNING: No runtime support
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 

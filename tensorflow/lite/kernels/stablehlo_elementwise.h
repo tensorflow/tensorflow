@@ -72,7 +72,7 @@ inline DataType ApplyComputation(DataType input1, DataType input2) {
   } else if (computation_type == ComputationType::kMul) {
     return input1 * input2;
   }
-  unreachable();
+  TFL_UNREACHABLE();
 }
 
 // Evaluates this node given the type of the elements in the output_tensor

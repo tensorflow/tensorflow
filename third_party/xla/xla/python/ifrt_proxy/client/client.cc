@@ -36,6 +36,7 @@
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/memory.h"
@@ -213,17 +214,17 @@ Client::AssembleArrayFromSingleDeviceArrays(
 }
 
 absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
-Client::CopyArrays(absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
-                   std::optional<DeviceList> devices,
-                   std::optional<MemoryKind> memory_kind,
-                   ArrayCopySemantics semantics) {
+Client::CopyArrays(
+    absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
+    std::optional<tsl::RCReference<xla::ifrt::DeviceList>> devices,
+    std::optional<MemoryKind> memory_kind, ArrayCopySemantics semantics) {
   if (arrays.empty()) {
     return std::vector<tsl::RCReference<xla::ifrt::Array>>();
   }
 
   for (int i = 1; i < arrays.size(); ++i) {
     const auto& sharding = arrays[i]->sharding();
-    if (sharding.devices() != arrays[0]->sharding().devices() ||
+    if (*sharding.devices() != *arrays[0]->sharding().devices() ||
         sharding.memory_kind() != arrays[0]->sharding().memory_kind()) {
       return absl::InvalidArgumentError(
           "CopyArrays only supports arrays with the same device list and "
@@ -242,7 +243,7 @@ Client::CopyArrays(absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
     }
   }
   if (devices.has_value()) {
-    for (auto* const device : devices->devices()) {
+    for (auto* const device : (*devices)->devices()) {
       req->add_device_ids(device->Id().value());
     }
   }

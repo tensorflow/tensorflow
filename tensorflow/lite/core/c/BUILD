@@ -20,6 +20,7 @@ package(
 
 exports_files(
     srcs = [
+        "builtin_op_data.h",
         "c_api.h",
         "c_api_experimental.h",
         "c_api_opaque.h",

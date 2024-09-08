@@ -96,6 +96,10 @@ absl::StatusOr<ScopedShapedBuffer> CompileAndRunFusion(
                         return NewHloModuleFromFusion(fusion, opts,
                                                       clear_backend_config);
                       }));
+  if (executable == nullptr) {
+    return Internal("Failed to compile Triton fusion.");
+  }
+
   TF_ASSIGN_OR_RETURN(auto rz_buffers, RedzoneBuffers::FromInstruction(
                                            fusion, config, debug_opts,
                                            RedzoneBuffers::kAllInputs));
@@ -183,7 +187,13 @@ absl::StatusOr<bool> TritonFusionNumericsVerifier::Run(
         "Cannot run TritonFusionNumericsVerifier on a deviceless compilation.");
   }
 
-  const DebugOptions& debug_options = module->config().debug_options();
+  DebugOptions debug_options = module->config().debug_options();
+
+  // We don't want to filter out kernels that spill registers on autotuning,
+  // because we want to verify the numerics of those kernels as well.
+  debug_options.set_xla_gpu_filter_kernels_spilling_registers_on_autotuning(
+      false);
+
   TF_ASSIGN_OR_RETURN(std::optional<AutotunerCompileUtil> opt_compile_util,
                       AutotunerCompileUtil::Create(config_, debug_options));
   TF_RET_CHECK(opt_compile_util.has_value());

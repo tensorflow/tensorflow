@@ -95,6 +95,7 @@ TEST_F(TransposeTest, ThreadIndexing021) {
         s0 in [0, 0]
         s1 in [0, 7]
         s2 in [0, 0]
+        is_simplified: true
       )"));
   EXPECT_THAT(
       fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context)->ToString(),
@@ -115,6 +116,7 @@ TEST_F(TransposeTest, ThreadIndexing021) {
         s0 in [0, 0]
         s1 in [0, 7]
         s2 in [0, 0]
+        is_simplified: true
       )"));
 }
 
@@ -157,6 +159,7 @@ TEST_F(TransposeTest, ThreadIndexing201_SimplifiedTo021) {
         s0 in [0, 0]
         s1 in [0, 7]
         s2 in [0, 0]
+        is_simplified: true
       )"));
   EXPECT_THAT(
       fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context)->ToString(),
@@ -177,6 +180,7 @@ TEST_F(TransposeTest, ThreadIndexing201_SimplifiedTo021) {
         s0 in [0, 0]
         s1 in [0, 7]
         s2 in [0, 0]
+        is_simplified: true
       )"));
 }
 
@@ -221,6 +225,7 @@ TEST_F(TransposeTest, ThreadIndexingPartialBlock) {
         s1 in [0, 0]
         s2 in [0, 0]
         d0 mod 32 in [0, 23]
+        is_simplified: true
       )"));
   EXPECT_THAT(
       fusion->ComputeThreadIdToOutputIndexing(0, &mlir_context)->ToString(),
@@ -241,6 +246,7 @@ TEST_F(TransposeTest, ThreadIndexingPartialBlock) {
         s1 in [0, 0]
         s2 in [0, 0]
         d0 mod 32 in [0, 23]
+        is_simplified: true
       )"));
 }
 
@@ -316,6 +322,7 @@ TEST_F(TransposeTest, ThreadIndexingSideOutput) {
         s0 in [0, 0]
         s1 in [0, 7]
         s2 in [0, 0]
+        is_simplified: true
       )"));
   EXPECT_THAT(
       fusion->ComputeThreadIdToOutputIndexing(1, &mlir_context)->ToString(),
@@ -336,6 +343,7 @@ TEST_F(TransposeTest, ThreadIndexingSideOutput) {
         s0 in [0, 0]
         s1 in [0, 7]
         s2 in [0, 0]
+        is_simplified: true
       )"));
 }
 

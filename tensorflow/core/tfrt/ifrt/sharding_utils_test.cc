@@ -113,7 +113,7 @@ TEST_P(ReshardToTensorTest, MakeHostTensorFromDeviceArrays) {
   for (int i = 0; i < GetParam().split_tensors.size(); ++i) {
     const auto& split_tensor = GetParam().split_tensors[i];
     auto single_device_sharding = xla::ifrt::SingleDeviceSharding::Create(
-        device_list[i], xla::ifrt::MemoryKind());
+        device_list->devices()[i], xla::ifrt::MemoryKind());
     TF_ASSERT_OK_AND_ASSIGN(auto dtype, ToIfrtDType(split_tensor.dtype()));
     TF_ASSERT_OK_AND_ASSIGN(
         auto array,

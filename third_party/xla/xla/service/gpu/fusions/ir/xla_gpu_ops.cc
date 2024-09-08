@@ -298,37 +298,45 @@ IndexingMapWithAdditions GetNewIndexingMapAfterFoldingSequence(
 
 namespace {
 
-// Simplifies the indexing map, removes unused variables.
+// Simplifies the indexing map.
 struct SimplifyIndexingMap : public mlir::OpRewritePattern<ApplyIndexingOp> {
   using OpRewritePattern<ApplyIndexingOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(ApplyIndexingOp indexing_op,
                                 PatternRewriter& rewriter) const override {
     IndexingMap indexing_map = indexing_op.getIndexingMap();
-    bool is_simplified = indexing_map.Simplify();
+    if (indexing_map.IsSimplified()) {
+      return rewriter.notifyMatchFailure(indexing_op,
+                                         "IndexingMap is already simplified");
+    }
+    indexing_map.Simplify();
+    rewriter.replaceOpWithNewOp<ApplyIndexingOp>(
+        indexing_op, indexing_op.getOperands(), indexing_map);
+    return success();
+  }
+};
 
-    // Remove unused symbols.
+// Removes unused variables.
+struct RemoveUnusedVariables : public mlir::OpRewritePattern<ApplyIndexingOp> {
+  using OpRewritePattern<ApplyIndexingOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ApplyIndexingOp indexing_op,
+                                PatternRewriter& rewriter) const override {
+    IndexingMap indexing_map = indexing_op.getIndexingMap();
     auto unused_symbols_bit_vector = indexing_map.RemoveUnusedVars();
-    bool symbols_removed = unused_symbols_bit_vector.count() != 0;
-
-    if (!is_simplified && !symbols_removed) {
+    if (unused_symbols_bit_vector.count() == 0) {
       return rewriter.notifyMatchFailure(indexing_op,
                                          "IndexingMap stayed unchanged");
     }
-    if (!unused_symbols_bit_vector.empty()) {
-      SmallVector<Value, 4> operands;
-      operands.reserve(unused_symbols_bit_vector.count());
-      for (int i = 0; i < unused_symbols_bit_vector.size(); ++i) {
-        if (!unused_symbols_bit_vector[i]) {
-          operands.push_back(indexing_op.getOperand(i));
-        }
+    SmallVector<Value, 4> operands;
+    operands.reserve(unused_symbols_bit_vector.count());
+    for (int i = 0; i < unused_symbols_bit_vector.size(); ++i) {
+      if (!unused_symbols_bit_vector[i]) {
+        operands.push_back(indexing_op.getOperand(i));
       }
-      rewriter.replaceOpWithNewOp<ApplyIndexingOp>(indexing_op, operands,
-                                                   indexing_map);
-    } else {
-      rewriter.replaceOpWithNewOp<ApplyIndexingOp>(
-          indexing_op, indexing_op.getOperands(), indexing_map);
     }
+    rewriter.replaceOpWithNewOp<ApplyIndexingOp>(indexing_op, operands,
+                                                 indexing_map);
     return success();
   }
 };
@@ -365,8 +373,10 @@ struct MoveSymbolsToDims : public mlir::OpRewritePattern<ApplyIndexingOp> {
 
     AffineMap canonical_map =
         affine_map.replaceDimsAndSymbols({}, syms_replacements, num_vars, 0);
-    IndexingMap new_indexing_map(canonical_map, new_idx_map_dims, {},
-                                 /*rt_vars=*/{});
+    IndexingMap new_indexing_map(
+        canonical_map, new_idx_map_dims, /*range_vars=*/{},
+        /*rt_vars=*/{}, /*constraints=*/{}, /*is_simplified=*/false);
+    new_indexing_map.Simplify();
     rewriter.replaceOpWithNewOp<ApplyIndexingOp>(
         indexing_op, indexing_op->getOperands(), new_indexing_map);
     return success();
@@ -379,6 +389,7 @@ struct FoldApplyIndexingSequence
 
   LogicalResult matchAndRewrite(ApplyIndexingOp indexing_op,
                                 PatternRewriter& rewriter) const override {
+    auto indexing_map = indexing_op.getIndexingMap();
     SmallVector<std::pair<int, ApplyIndexingOp>, 2> apply_indexing_ops;
     bool all_apply_indexing_operands_have_one_use = true;
     for (auto& operand : indexing_op->getOpOperands()) {
@@ -391,7 +402,15 @@ struct FoldApplyIndexingSequence
       return rewriter.notifyMatchFailure(indexing_op,
                                          "No apply_indexing sequences found");
     }
-
+    // If the indexing map has unused variables, we can accidentally fuse an
+    // operand that is not used in the map and it can lead to an infinite loop
+    // in canonicalizer.
+    auto indexing_map_with_no_unused_vars = indexing_map;
+    if (indexing_map_with_no_unused_vars.RemoveUnusedVars().count() > 0) {
+      indexing_map_with_no_unused_vars.RemoveUnusedVars();
+      return rewriter.notifyMatchFailure(indexing_op,
+                                         "IndexingMap has unused variables");
+    }
     MLIRContext* ctx = indexing_op.getContext();
     int num_dims = indexing_op.getAffineMap().getNumDims();
     int num_syms = indexing_op.getAffineMap().getNumSymbols();
@@ -405,7 +424,7 @@ struct FoldApplyIndexingSequence
     }
 
     auto replacement = GetNewIndexingMapAfterFoldingSequence(
-        indexing_op.getIndexingMap(), apply_indexing_ops, operand_exprs, ctx);
+        indexing_map, apply_indexing_ops, operand_exprs, ctx);
 
     if (!all_apply_indexing_operands_have_one_use &&
         !replacement.indexing_map.Simplify()) {
@@ -427,6 +446,7 @@ struct FoldApplyIndexingSequence
 
     rewriter.replaceOpWithNewOp<ApplyIndexingOp>(indexing_op, new_operands,
                                                  replacement.indexing_map);
+
     return success();
   }
 };
@@ -577,10 +597,9 @@ struct FoldApplyIndexingResults
 
 void ApplyIndexingOp::getCanonicalizationPatterns(
     mlir::RewritePatternSet& results, MLIRContext* context) {
-  results
-      .add<FoldApplyIndexingOperands, FoldApplyIndexingResults,
-           SimplifyIndexingMap, FoldApplyIndexingSequence, MoveSymbolsToDims>(
-          context);
+  results.add<FoldApplyIndexingOperands, FoldApplyIndexingResults,
+              FoldApplyIndexingSequence, MoveSymbolsToDims,
+              RemoveUnusedVariables, SimplifyIndexingMap>(context);
 }
 
 mlir::LogicalResult ApplyIndexingOp::fold(

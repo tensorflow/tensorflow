@@ -42,6 +42,10 @@ struct GraphViewerParams {
   bool show_metadata;
 };
 
+// Return mapping from style key word to op names separated by comma.
+// following hlo_graph_dumper styling
+absl::StatusOr<std::string> GetNodeStyles();
+
 // Parse tool options to get the parameters for graph viewer.
 absl::StatusOr<GraphViewerParams> ParseGraphViewerParams(
     const ToolOptions& options);

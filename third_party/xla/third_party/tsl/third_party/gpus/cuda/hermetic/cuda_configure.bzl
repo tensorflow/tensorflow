@@ -14,7 +14,6 @@
   * `HERMETIC_CUDA_COMPUTE_CAPABILITIES`: The CUDA compute capabilities. Default 
     is `3.5,5.2`. If not specified, the value will be determined by the
     `TF_CUDA_COMPUTE_CAPABILITIES`.
-  * `PYTHON_BIN_PATH`: The python binary path
 """
 
 load(
@@ -478,7 +477,6 @@ def _cuda_autoconf_impl(repository_ctx):
 
 _CC = "CC"
 _CLANG_CUDA_COMPILER_PATH = "CLANG_CUDA_COMPILER_PATH"
-_PYTHON_BIN_PATH = "PYTHON_BIN_PATH"
 _HERMETIC_CUDA_COMPUTE_CAPABILITIES = "HERMETIC_CUDA_COMPUTE_CAPABILITIES"
 _TF_CUDA_COMPUTE_CAPABILITIES = "TF_CUDA_COMPUTE_CAPABILITIES"
 HERMETIC_CUDA_VERSION = "HERMETIC_CUDA_VERSION"
@@ -497,7 +495,6 @@ _ENVIRONS = [
     _TF_CUDA_COMPUTE_CAPABILITIES,
     _HERMETIC_CUDA_COMPUTE_CAPABILITIES,
     _TF_SYSROOT,
-    _PYTHON_BIN_PATH,
     "TMP",
     "TMPDIR",
     "LOCAL_CUDA_PATH",
@@ -528,7 +525,6 @@ cuda_configure = repository_rule(
         "cc_toolchain_config_tpl": attr.label(default = Label("//third_party/gpus/crosstool:cc_toolchain_config.bzl.tpl")),
     },
 )
-
 """Detects and configures the hermetic CUDA toolchain.
 
 Add the following to your WORKSPACE file:

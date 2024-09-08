@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
+#include <utility>
 
 #include <gmock/gmock.h>
 #include "absl/status/statusor.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
@@ -119,10 +121,11 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
       });
   ON_CALL(*this, CopyArrays)
       .WillByDefault([this](absl::Span<tsl::RCReference<Array>> arrays,
-                            std::optional<DeviceList> devices,
+                            std::optional<tsl::RCReference<DeviceList>> devices,
                             std::optional<MemoryKind> memory_kind,
                             ArrayCopySemantics semantics) {
-        return delegated_->CopyArrays(arrays, devices, memory_kind, semantics);
+        return delegated_->CopyArrays(arrays, std::move(devices), memory_kind,
+                                      semantics);
       });
   ON_CALL(*this, RemapArrays)
       .WillByDefault([this](const RemapPlan& plan,
@@ -185,9 +188,10 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
     return delegated_->GetDefaultCompiler();
   });
   ON_CALL(*this, GetTopologyForDevices)
-      .WillByDefault([this](const xla::ifrt::DeviceList& devices) {
-        return delegated_->GetTopologyForDevices(devices);
-      });
+      .WillByDefault(
+          [this](const tsl::RCReference<xla::ifrt::DeviceList>& devices) {
+            return delegated_->GetTopologyForDevices(devices);
+          });
   ON_CALL(*this, GetDefaultLayoutForDevice)
       .WillByDefault([this](xla::ifrt::DType dtype,
                             absl::Span<const int64_t> dims,

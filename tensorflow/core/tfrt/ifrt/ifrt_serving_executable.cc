@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
@@ -127,9 +128,10 @@ absl::StatusOr<std::vector<DtypeAndShape>> BuildDtypeAndShape(
 
 // Returns the device assignment from the given IFRT devices list.
 absl::StatusOr<xla::DeviceAssignment> GetRuntimeXlaDeviceAssignment(
-    const xla::ifrt::DeviceList& devices, int num_replicas,
-    int num_cores_per_replica) {
+    const tsl::RCReference<xla::ifrt::DeviceList>& device_list,
+    int num_replicas, int num_cores_per_replica) {
   const int num_devices = num_replicas * num_cores_per_replica;
+  const absl::Span<xla::ifrt::Device* const> devices = device_list->devices();
   if (devices.size() != num_devices) {
     return absl::InternalError(
         absl::StrCat("Device assignment has ", devices.size(),
@@ -213,7 +215,7 @@ IfrtServingExecutable::Create(
       ifrt_restore, checkpoint_loader_queue, device_mgr,
       std::move(shape_representation_fn), ifrt_serving_core_selector,
       std::move(original_compile_metadata),
-      xla::ifrt::DeviceList(xla::ifrt::DeviceList::Devices(
+      xla::ifrt::BasicDeviceList::Create(xla::ifrt::BasicDeviceList::Devices(
           assigned_devices.begin(), assigned_devices.end())),
       compilation_environement_proto));
 
@@ -222,7 +224,8 @@ IfrtServingExecutable::Create(
 
 absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
 IfrtServingExecutable::ConvertTensorToArray(
-    const tensorflow::Tensor& tensor, const xla::ifrt::DeviceList& device_list,
+    const tensorflow::Tensor& tensor,
+    const tsl::RCReference<xla::ifrt::DeviceList>& device_list,
     const xla::OpSharding& sharding) {
   xla::ifrt::Shape input_shape = ToIfrtShape(tensor.shape());
   VLOG(2) << "Converting tensor of shape " << input_shape;
@@ -556,7 +559,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
 
   // `device_reservation` should be alive before the end of the execution.
   tsl::DeviceReservation device_reservation(kNoCoreSelectedIndex, nullptr);
-  xla::ifrt::DeviceList device_list;
+  tsl::RCReference<xla::ifrt::DeviceList> device_list;
   if (UsePortableExecution(compile_metadata)) {
     device_reservation =
         ifrt_serving_core_selector_->ReserveDevice(program_id_);
@@ -566,8 +569,8 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
     TF_ASSIGN_OR_RETURN(xla::ifrt::Device * device,
                         ifrt_client_->LookupDevice(xla::ifrt::DeviceId(
                             device_reservation.device_index())));
-    device_list =
-        xla::ifrt::DeviceList(xla::ifrt::DeviceList::Devices({device}));
+    device_list = xla::ifrt::BasicDeviceList::Create(
+        xla::ifrt::BasicDeviceList::Devices({device}));
   } else {
     device_list = assigned_device_list_;
   }
@@ -594,8 +597,8 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
     if (variable_index < variable_arg_indices.size() &&
         i == variable_arg_indices[variable_index]) {
       std::vector<int> device_ids;
-      device_ids.reserve(device_list.size());
-      for (const auto& device : device_list) {
+      device_ids.reserve(device_list->size());
+      for (xla::ifrt::Device* device : device_list->devices()) {
         device_ids.push_back(device->Id().value());
       }
       TF_ASSIGN_OR_RETURN(
@@ -627,7 +630,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
 
   VLOG(2) << "Start Execution";
 
-  std::optional<xla::ifrt::DeviceList> execution_device_list;
+  std::optional<tsl::RCReference<xla::ifrt::DeviceList>> execution_device_list;
   if (UsePortableExecution(compile_metadata)) {
     execution_device_list = device_list;
   }
@@ -683,7 +686,7 @@ absl::Status IfrtServingExecutable::AsyncLoadIfrtArray(
     absl::Span<const tensorflow::Tensor> inputs,
     absl::Span<const int> variable_arg_indices,
     const CachedExecutableBundle& executable_bundle,
-    const xla::ifrt::DeviceList& devices) {
+    const tsl::RCReference<xla::ifrt::DeviceList>& devices) {
   for (const int i : variable_arg_indices) {
     if (inputs[i].dtype() != tensorflow::DT_STRING ||
         !tensorflow::TensorShapeUtils::IsScalar(inputs[i].shape())) {
@@ -702,7 +705,7 @@ absl::Status IfrtServingExecutable::AsyncLoadIfrtArray(
     VariableDeviceShardingConfig sharding_config{
         .hlo_sharding = std::move(hlo_sharding),
     };
-    for (const auto& device : devices) {
+    for (xla::ifrt::Device* device : devices->devices()) {
       sharding_config.device_ids.push_back(device->Id().value());
     }
 

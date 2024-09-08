@@ -399,9 +399,6 @@ class PjRtStreamExecutorClient : public PjRtClient {
   absl::StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() override {
     return client()->CreateDeviceToHostChannelHandle();
   }
-  absl::StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() override {
-    return client()->CreateHostToDeviceChannelHandle();
-  }
 
   // TODO(zhangqiaorjc): Experimental. Will be removed.
   absl::Status Defragment() override {
@@ -473,6 +470,12 @@ class PjRtStreamExecutorClient : public PjRtClient {
     std::vector<PjRtDevice*> addressable_devices;
   };
   absl::StatusOr<ExecutableExtras> GetExecutableExtras(CompileOptions* options);
+
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileInternal(
+      const XlaComputation& computation,
+      const std::vector<const Shape*>& argument_layout_pointers,
+      LayoutCanonicalizationCallback layout_canonicalization_callback,
+      CompileOptions options);
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBufferInternal(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,

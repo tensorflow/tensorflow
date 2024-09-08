@@ -10,7 +10,7 @@ def _container_image_uri(container_name):
     container = containers[container_name]
     return "docker://%s/%s@%s" % (container["registry"], container["repository"], container["digest"])
 
-def _tensorflow_rbe_config(name, compiler, python_versions, os, rocm_version = None, cuda_version = None, cudnn_version = None, tensorrt_version = None, tensorrt_install_path = None, compiler_prefix = None, python_install_path = "/usr"):
+def _tensorflow_rbe_config(name, compiler, os, rocm_version = None, cuda_version = None, cudnn_version = None, tensorrt_version = None, tensorrt_install_path = None, compiler_prefix = None):
     if cuda_version != None and rocm_version != None:
         fail("Specifying both cuda_version and rocm_version is not supported.")
 
@@ -79,35 +79,15 @@ def _tensorflow_rbe_config(name, compiler, python_versions, os, rocm_version = N
             environ = env,
             exec_properties = exec_properties,
         )
-    elif python_versions != None:
-        container_image = _container_image_uri(os)
-        exec_properties = {
-            "container-image": container_image,
-            "Pool": "default",
-        }
 
     else:
-        fail("Neither cuda_version, rocm_version nor python_version specified.")
+        fail("Neither cuda_version nor rocm_version specified.")
 
     remote_platform_configure(
         name = "%s_config_platform" % name,
         platform = "linux",
         platform_exec_properties = exec_properties,
     )
-    for python_version in python_versions:
-        env.update({
-            "PYTHON_BIN_PATH": "%s/bin/python%s" % (python_install_path, python_version),
-        })
-
-        # For backwards compatibility do not add the python version to the name
-        # if we only create a single python configuration.
-        version = python_version if len(python_versions) > 1 else ""
-        remote_python_configure(
-            name = "%s_config_python%s" % (name, version),
-            environ = env,
-            exec_properties = exec_properties,
-            platform_constraint = "@%s_config_platform//:platform_constraint" % name,
-        )
 
 def _tensorflow_rbe_win_config(name, python_bin_path, container_name = "windows-1803"):
     container_image = _container_image_uri(container_name)
@@ -169,11 +149,4 @@ def sigbuild_tf_configs(name_container_map, env):
             name = "%s_config_platform" % name,
             platform = "linux",
             platform_exec_properties = exec_properties,
-        )
-
-        remote_python_configure(
-            name = "%s_config_python" % name,
-            environ = env,
-            exec_properties = exec_properties,
-            platform_constraint = "@%s_config_platform//:platform_constraint" % name,
         )

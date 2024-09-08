@@ -38,7 +38,7 @@ class ShardingSerDesTest : public test_util::DeviceTest {};
 
 TEST_P(ShardingSerDesTest, SingleDeviceShardingRoundTrip) {
   auto sharding = SingleDeviceSharding::Create(
-      GetDevices({0}).devices().front(), MemoryKind("abc"));
+      GetDevices({0})->devices().front(), MemoryKind("abc"));
 
   TF_ASSERT_OK_AND_ASSIGN(auto serialized, Serialize(*sharding));
 
@@ -48,7 +48,8 @@ TEST_P(ShardingSerDesTest, SingleDeviceShardingRoundTrip) {
           serialized, std::make_unique<DeserializeShardingOptions>(
                           absl::bind_front(&Client::LookupDevice, client()))));
 
-  EXPECT_THAT(out_sharding->devices(), ElementsAreArray(sharding->devices()));
+  EXPECT_THAT(out_sharding->devices()->devices(),
+              ElementsAreArray(sharding->devices()->devices()));
 }
 
 TEST_P(ShardingSerDesTest, OpaqueShardingRoundTrip) {
@@ -62,7 +63,8 @@ TEST_P(ShardingSerDesTest, OpaqueShardingRoundTrip) {
           serialized, std::make_unique<DeserializeShardingOptions>(
                           absl::bind_front(&Client::LookupDevice, client()))));
 
-  EXPECT_THAT(out_sharding->devices(), ElementsAreArray(sharding->devices()));
+  EXPECT_THAT(out_sharding->devices()->devices(),
+              ElementsAreArray(sharding->devices()->devices()));
 }
 
 TEST_P(ShardingSerDesTest, ConcreteShardingRoundTrip) {
@@ -79,7 +81,8 @@ TEST_P(ShardingSerDesTest, ConcreteShardingRoundTrip) {
           serialized, std::make_unique<DeserializeShardingOptions>(
                           absl::bind_front(&Client::LookupDevice, client()))));
 
-  EXPECT_THAT(out_sharding->devices(), ElementsAreArray(sharding->devices()));
+  EXPECT_THAT(out_sharding->devices()->devices(),
+              ElementsAreArray(sharding->devices()->devices()));
   EXPECT_THAT(out_sharding->shape(), sharding->shape());
   EXPECT_THAT(out_sharding->shard_shapes(),
               ElementsAreArray(sharding->shard_shapes()));
@@ -111,7 +114,8 @@ TEST_P(ShardingSerDesTest, ConcreteShardingWithDynamicShapeRoundTrip) {
           serialized, std::make_unique<DeserializeShardingOptions>(
                           absl::bind_front(&Client::LookupDevice, client()))));
 
-  EXPECT_THAT(out_sharding->devices(), ElementsAreArray(sharding->devices()));
+  EXPECT_THAT(out_sharding->devices()->devices(),
+              ElementsAreArray(sharding->devices()->devices()));
   EXPECT_THAT(out_sharding->dynamic_shape(), sharding->dynamic_shape());
   EXPECT_THAT(out_sharding->shard_dynamic_shapes(),
               ElementsAreArray(sharding->shard_dynamic_shapes()));
@@ -131,7 +135,8 @@ TEST_P(ShardingSerDesTest, ConcreteEvenShardingRoundTrip) {
           serialized, std::make_unique<DeserializeShardingOptions>(
                           absl::bind_front(&Client::LookupDevice, client()))));
 
-  EXPECT_THAT(out_sharding->devices(), ElementsAreArray(sharding->devices()));
+  EXPECT_THAT(out_sharding->devices()->devices(),
+              ElementsAreArray(sharding->devices()->devices()));
   EXPECT_THAT(out_sharding->shape(), sharding->shape());
   EXPECT_THAT(out_sharding->shard_shape(), sharding->shard_shape());
   EXPECT_THAT(out_sharding->IsFullyReplicated(), sharding->IsFullyReplicated());

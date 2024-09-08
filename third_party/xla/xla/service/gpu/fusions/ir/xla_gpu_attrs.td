@@ -35,6 +35,8 @@ def XLAGPU_RangeVarsParameter : ArrayRefParameter<"::xla::gpu::RangeVar",
                                                   "RangeVarArray"> {
 }
 
+def XLAGPU_BoolParameter : AttrOrTypeParameter<"bool", ""> {}
+
 def XLAGPU_ConstraintsParameter :
     ArrayRefParameter<"::std::pair<::mlir::AffineExpr, ::xla::gpu::Interval>",
                       "ContraintsArray"> {
@@ -49,7 +51,8 @@ def XLAGPU_IndexingMapAttr : XLAGPU_Attr<"IndexingMap"> {
   let parameters = (ins XLAGPU_AffineMapParameter:$map,
                         XLAGPU_DimVarsParameter:$dim_vars,
                         XLAGPU_RangeVarsParameter:$range_vars,
-                        XLAGPU_ConstraintsParameter:$constraints);
+                        XLAGPU_ConstraintsParameter:$constraints,
+                        XLAGPU_BoolParameter:$is_simplified);
   let hasCustomAssemblyFormat = 1;
   let builders =  [
     AttrBuilder<(ins "const ::xla::gpu::IndexingMap&":$indexing_map)>,

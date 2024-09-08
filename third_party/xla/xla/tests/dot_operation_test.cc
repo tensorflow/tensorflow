@@ -321,7 +321,6 @@ class ParametricDotTest : public DotOperationTest,
         propagate_grad_xy_ = param.dot_lhs_row_major ? 1 : 2;
       }
     }
-    ManifestCheckingTest::SetUp();
   }
 
   template <typename NativeT>

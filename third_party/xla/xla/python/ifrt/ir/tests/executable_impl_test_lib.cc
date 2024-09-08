@@ -25,7 +25,7 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/array.h"
-#include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
@@ -72,7 +72,7 @@ module {
   )";
   TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
                           LoadFromSource(source));
-  TF_ASSERT_OK_AND_ASSIGN(DeviceList devices, PickDevices(2));
+  TF_ASSERT_OK_AND_ASSIGN(tsl::RCReference<DeviceList> devices, PickDevices(2));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<LoadedExecutable> loaded_exec,
       client_->GetDefaultCompiler()->Compile(
@@ -112,7 +112,7 @@ module {
   )";
   TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
                           LoadFromSource(source));
-  TF_ASSERT_OK_AND_ASSIGN(DeviceList devices, PickDevices(2));
+  TF_ASSERT_OK_AND_ASSIGN(tsl::RCReference<DeviceList> devices, PickDevices(2));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<LoadedExecutable> loaded_exec,
       client_->GetDefaultCompiler()->Compile(
@@ -120,11 +120,12 @@ module {
           std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices))));
 
   std::vector<int> data = {1, 2};
-  TF_ASSERT_OK_AND_ASSIGN(tsl::RCReference<Array> input,
-                          CreateArray({data.data()}, xla::ifrt::Shape({2}),
-                                      xla::ifrt::DType(xla::ifrt::DType::kS32),
-                                      xla::ifrt::ShardingParam({1}, {{0}, {1}}),
-                                      DeviceList({devices[0]})));
+  TF_ASSERT_OK_AND_ASSIGN(
+      tsl::RCReference<Array> input,
+      CreateArray({data.data()}, xla::ifrt::Shape({2}),
+                  xla::ifrt::DType(xla::ifrt::DType::kS32),
+                  xla::ifrt::ShardingParam({1}, {{0}, {1}}),
+                  BasicDeviceList::Create({devices->devices()[0]})));
 
   TF_ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
@@ -135,7 +136,8 @@ module {
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
       result.outputs[0], xla::ifrt::DType(xla::ifrt::DType::kS32),
-      xla::ifrt::Shape({2}), {{1, 2}}, DeviceList({devices[1]})));
+      xla::ifrt::Shape({2}), {{1, 2}},
+      BasicDeviceList::Create({devices->devices()[1]})));
 }
 
 TEST_F(IfrtIrExecutableImplTest, Reshard) {
@@ -151,7 +153,7 @@ module {
   )";
   TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
                           LoadFromSource(source));
-  TF_ASSERT_OK_AND_ASSIGN(DeviceList devices, PickDevices(2));
+  TF_ASSERT_OK_AND_ASSIGN(tsl::RCReference<DeviceList> devices, PickDevices(2));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<LoadedExecutable> loaded_exec,
       client_->GetDefaultCompiler()->Compile(
@@ -159,11 +161,12 @@ module {
           std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices))));
 
   std::vector<int> data = {1, 2};
-  TF_ASSERT_OK_AND_ASSIGN(tsl::RCReference<Array> input,
-                          CreateArray({data.data()}, xla::ifrt::Shape({2}),
-                                      xla::ifrt::DType(xla::ifrt::DType::kS32),
-                                      xla::ifrt::ShardingParam({1}, {{0}, {1}}),
-                                      DeviceList({devices[0]})));
+  TF_ASSERT_OK_AND_ASSIGN(
+      tsl::RCReference<Array> input,
+      CreateArray({data.data()}, xla::ifrt::Shape({2}),
+                  xla::ifrt::DType(xla::ifrt::DType::kS32),
+                  xla::ifrt::ShardingParam({1}, {{0}, {1}}),
+                  BasicDeviceList::Create({devices->devices()[0]})));
 
   TF_ASSERT_OK_AND_ASSIGN(
       LoadedExecutable::ExecuteResult result,
@@ -195,7 +198,7 @@ module {
   )";
   TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
                           LoadFromSource(source));
-  TF_ASSERT_OK_AND_ASSIGN(DeviceList devices, PickDevices(2));
+  TF_ASSERT_OK_AND_ASSIGN(tsl::RCReference<DeviceList> devices, PickDevices(2));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<LoadedExecutable> loaded_exec,
       client_->GetDefaultCompiler()->Compile(
@@ -232,7 +235,7 @@ module {
   )";
   TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
                           LoadFromSource(source));
-  TF_ASSERT_OK_AND_ASSIGN(DeviceList devices, PickDevices(2));
+  TF_ASSERT_OK_AND_ASSIGN(tsl::RCReference<DeviceList> devices, PickDevices(2));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<LoadedExecutable> loaded_exec,
       client_->GetDefaultCompiler()->Compile(
@@ -277,7 +280,7 @@ module {
   )";
   TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
                           LoadFromSource(source));
-  TF_ASSERT_OK_AND_ASSIGN(DeviceList devices, PickDevices(2));
+  TF_ASSERT_OK_AND_ASSIGN(tsl::RCReference<DeviceList> devices, PickDevices(2));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<LoadedExecutable> loaded_exec,
       client_->GetDefaultCompiler()->Compile(
@@ -311,7 +314,7 @@ module {
 }
 
 TEST_F(IfrtIrExecutableImplTest, LoadedExecBinding) {
-  TF_ASSERT_OK_AND_ASSIGN(DeviceList devices, PickDevices(2));
+  TF_ASSERT_OK_AND_ASSIGN(tsl::RCReference<DeviceList> devices, PickDevices(2));
   std::string mhlo_source = R"(
 module {
   func.func @main(

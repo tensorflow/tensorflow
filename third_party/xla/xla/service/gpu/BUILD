@@ -154,6 +154,7 @@ xla_test(
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:test_helpers",
+        "//xla:xla_data_proto_cc",
         "//xla/client:xla_builder",
         "//xla/client/lib:constants",
         "//xla/ffi",

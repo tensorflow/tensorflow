@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/conv.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/custom_call.h"
@@ -286,27 +287,6 @@ bool IsNotOpLegal(mhlo::NotOp op) {
   return op.getType().getElementType().isInteger(64);
 }
 
-// Mark possible target ops from rounding patterns as having "unknown"
-// legality. This is required to schedule patterns on these ops even
-// though MhloDialect is explicitly marked legal (which cannot be changed
-// easily).
-void AddRoundingOpsAsUnknown(ConversionTarget& target) {
-  target.addDynamicallyLegalOp<
-      // go/keep-sorted start
-      // clang-format off
-      mhlo::ConstantOp,
-      mhlo::FloorOp,
-      mhlo::MulOp,
-      mhlo::RemOp,
-      mhlo::RoundOp,
-      mhlo::SelectOp,
-      mhlo::SignOp,
-      mhlo::SubtractOp,
-      mhlo::TupleOp
-      // clang-format on
-      // go/keep-sorted end
-      >([](Operation* op) { return std::nullopt; });
-}
 bool IsCompareLegal(mhlo::CompareOp op) {
   return !SupportedComparisonType(op.getCompareTypeAttr());
 }
@@ -361,9 +341,28 @@ void SetBinaryBitwiseLegal(ConversionTarget& target) {
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/generated_tflite_legalize_hlo.inc"
 void LegalizeHloToTfLitePass::runOnOperation() {
   MLIRContext* context = &getContext();
-  RewritePatternSet patterns(context);
-  patterns.add<odml::LowerDotGeneralOp>(context);
-  populateWithGenerated(patterns);
+
+  // Apply large rounding related patterns first without dialect conversion.
+  // This unlocks cleaner match/fold behavior, making these patterns less
+  // sensitive to broadcasted constants.
+  {
+    RewritePatternSet patterns(context);
+    patterns.add<
+        // clang-format off
+        Phase1_Round,
+        Phase1_FloorMod,
+        Phase1_FloorMod2,
+        Phase1_FloorDiv,
+        Phase1_FloorDiv2,
+        Phase1_FloorDiv3,
+        Phase1_FloorDiv4,
+        Phase1_FloorDiv5
+        // clang-format on
+        >(context);
+
+    (void)applyPatternsAndFoldGreedily(getOperation().getOperation(),
+                                       std::move(patterns));
+  }
 
   ConversionTarget target(*context);
   target.addLegalDialect<TFL::TensorFlowLiteDialect, mhlo::MhloDialect>();
@@ -372,8 +371,8 @@ void LegalizeHloToTfLitePass::runOnOperation() {
   target.addDynamicallyLegalOp<mhlo::CbrtOp>(IsCbrtLegal);
   target.addDynamicallyLegalOp<mhlo::NotOp>(IsNotOpLegal);
   target.addDynamicallyLegalOp<mhlo::CompareOp>(IsCompareLegal);
-  target.addDynamicallyLegalOp<mhlo::ConstantOp>(
-      [](mhlo::ConstantOp op) { return std::nullopt; });
+  target.addDynamicallyLegalOp<mhlo::TupleOp>(
+      [](mhlo::TupleOp op) { return std::nullopt; });
 
   target.addIllegalOp<
       // go/keep-sorted start
@@ -383,6 +382,7 @@ void LegalizeHloToTfLitePass::runOnOperation() {
       mhlo::BroadcastInDimOp,
       mhlo::ClampOp,
       mhlo::ConcatenateOp,
+      mhlo::ConstantOp,
       mhlo::DivOp,
       mhlo::DotGeneralOp,
       mhlo::DotOp,
@@ -396,6 +396,7 @@ void LegalizeHloToTfLitePass::runOnOperation() {
       mhlo::ReshapeOp,
       mhlo::ReverseOp,
       mhlo::RoundNearestEvenOp,
+      mhlo::RoundOp,
       mhlo::SelectOp,
       mhlo::ShiftRightArithmeticOp,
       mhlo::ShiftRightLogicalOp,
@@ -405,7 +406,10 @@ void LegalizeHloToTfLitePass::runOnOperation() {
       // go/keep-sorted end
       >();
 
-  AddRoundingOpsAsUnknown(target);
+  RewritePatternSet patterns(context);
+
+  populateWithGenerated(patterns);
+
   SetUnaryOpLegal(target);
   SetBinaryBitwiseLegal(target);
 
@@ -421,6 +425,8 @@ void LegalizeHloToTfLitePass::runOnOperation() {
   PopulateGetDimensionSizePatterns(context, patterns, target);
   PopulateIfPatterns(context, patterns, target);
   PopulateCustomCallPatterns(context, patterns, target);
+
+  patterns.add<odml::LowerDotGeneralOp>(context);
 
   if (failed(applyPartialConversion(getOperation(), target,
                                     std::move(patterns)))) {

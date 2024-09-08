@@ -42,6 +42,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/Sequence.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/SmallVectorExtras.h"
 #include "llvm/ADT/StringExtras.h"
@@ -3502,11 +3503,19 @@ OpFoldResult ReluOp::fold(FoldAdaptor adaptor) {
 OpFoldResult MaximumOp::fold(FoldAdaptor adaptor) {
   auto lhs_type = getLhs().getType();
   auto rhs_type = getRhs().getType();
-  // Only constant fold for float tensors of the same type is implemented.
-  if (lhs_type != rhs_type || !IsFloatShapedType(lhs_type)) return nullptr;
 
   auto lhs = mlir::dyn_cast_or_null<DenseElementsAttr>(adaptor.getLhs());
   auto rhs = mlir::dyn_cast_or_null<DenseElementsAttr>(adaptor.getRhs());
+
+  if (lhs && rhs) {
+    return ConstFoldBinaryOp(
+        getType(), adaptor.getOperands(),
+        [](APFloat a, APFloat b) { return llvm::maximum(a, b); },
+        [](APInt a, APInt b) { return a.slt(b) ? b : a; });
+  }
+  // Only constant fold for float tensors of the same type is implemented.
+  if (lhs_type != rhs_type || !IsFloatShapedType(lhs_type)) return nullptr;
+
   if (lhs && lhs.isSplat()) {
     APFloat lhs_value = lhs.getSplatValue<APFloat>();
     lhs_value.changeSign();
@@ -3527,11 +3536,18 @@ OpFoldResult MaximumOp::fold(FoldAdaptor adaptor) {
 OpFoldResult MinimumOp::fold(FoldAdaptor adaptor) {
   auto lhs_type = getLhs().getType();
   auto rhs_type = getRhs().getType();
-  // Only constant fold for float tensors of the same type is implemented.
-  if (lhs_type != rhs_type || !IsFloatShapedType(lhs_type)) return nullptr;
 
   auto lhs = mlir::dyn_cast_or_null<DenseElementsAttr>(adaptor.getLhs());
   auto rhs = mlir::dyn_cast_or_null<DenseElementsAttr>(adaptor.getRhs());
+  if (lhs && rhs) {
+    return ConstFoldBinaryOp(
+        getType(), adaptor.getOperands(),
+        [](APFloat a, APFloat b) { return llvm::minimum(a, b); },
+        [](APInt a, APInt b) { return a.slt(b) ? a : b; });
+  }
+
+  if (lhs_type != rhs_type || !IsFloatShapedType(lhs_type)) return nullptr;
+
   if (lhs && lhs.isSplat()) {
     auto splat = lhs.getSplatValue<APFloat>();
     if (splat.isLargest() || splat.isInfinity()) return getRhs();
@@ -3553,6 +3569,11 @@ OpFoldResult LessOp::fold(FoldAdaptor adaptor) {
         getType(), adaptor.getLhs(), adaptor.getRhs(),
         [](int32_t lhs, int32_t rhs) { return lhs < rhs; });
   }
+  if (getLhs().getType().getElementType().isInteger(64)) {
+    return ConstFoldBinaryOp<DenseIntElementsAttr, int64_t, bool>(
+        getType(), adaptor.getLhs(), adaptor.getRhs(),
+        [](int64_t lhs, int64_t rhs) { return lhs < rhs; });
+  }
   if (getLhs().getType().getElementType().isF32()) {
     return ConstFoldBinaryOp<DenseIntElementsAttr, float, bool>(
         getType(), adaptor.getLhs(), adaptor.getRhs(),
@@ -3566,6 +3587,11 @@ OpFoldResult LessEqualOp::fold(FoldAdaptor adaptor) {
     return ConstFoldBinaryOp<DenseIntElementsAttr, int32_t, bool>(
         getType(), adaptor.getLhs(), adaptor.getRhs(),
         [](int32_t lhs, int32_t rhs) { return lhs <= rhs; });
+  }
+  if (getLhs().getType().getElementType().isInteger(64)) {
+    return ConstFoldBinaryOp<DenseIntElementsAttr, int64_t, bool>(
+        getType(), adaptor.getLhs(), adaptor.getRhs(),
+        [](int64_t lhs, int64_t rhs) { return lhs <= rhs; });
   }
   if (getLhs().getType().getElementType().isF32()) {
     return ConstFoldBinaryOp<DenseIntElementsAttr, float, bool>(
@@ -3581,6 +3607,11 @@ OpFoldResult GreaterOp::fold(FoldAdaptor adaptor) {
         getType(), adaptor.getLhs(), adaptor.getRhs(),
         [](int32_t lhs, int32_t rhs) { return lhs > rhs; });
   }
+  if (getLhs().getType().getElementType().isInteger(64)) {
+    return ConstFoldBinaryOp<DenseIntElementsAttr, int64_t, bool>(
+        getType(), adaptor.getLhs(), adaptor.getRhs(),
+        [](int64_t lhs, int64_t rhs) { return lhs > rhs; });
+  }
   if (getLhs().getType().getElementType().isF32()) {
     return ConstFoldBinaryOp<DenseIntElementsAttr, float, bool>(
         getType(), adaptor.getLhs(), adaptor.getRhs(),
@@ -3594,6 +3625,11 @@ OpFoldResult GreaterEqualOp::fold(FoldAdaptor adaptor) {
     return ConstFoldBinaryOp<DenseIntElementsAttr, int32_t, bool>(
         getType(), adaptor.getLhs(), adaptor.getRhs(),
         [](int32_t lhs, int32_t rhs) { return lhs >= rhs; });
+  }
+  if (getLhs().getType().getElementType().isInteger(64)) {
+    return ConstFoldBinaryOp<DenseIntElementsAttr, int64_t, bool>(
+        getType(), adaptor.getLhs(), adaptor.getRhs(),
+        [](int64_t lhs, int64_t rhs) { return lhs >= rhs; });
   }
   if (getLhs().getType().getElementType().isF32()) {
     return ConstFoldBinaryOp<DenseIntElementsAttr, float, bool>(
@@ -3609,6 +3645,11 @@ OpFoldResult EqualOp::fold(FoldAdaptor adaptor) {
         getType(), adaptor.getX(), adaptor.getY(),
         [](int32_t lhs, int32_t rhs) { return lhs == rhs; });
   }
+  if (getX().getType().getElementType().isInteger(64)) {
+    return ConstFoldBinaryOp<DenseIntElementsAttr, int64_t, bool>(
+        getType(), adaptor.getX(), adaptor.getY(),
+        [](int64_t lhs, int64_t rhs) { return lhs == rhs; });
+  }
   if (getX().getType().getElementType().isF32()) {
     return ConstFoldBinaryOp<DenseIntElementsAttr, float, bool>(
         getType(), adaptor.getX(), adaptor.getY(),
@@ -3622,6 +3663,11 @@ OpFoldResult NotEqualOp::fold(FoldAdaptor adaptor) {
     return ConstFoldBinaryOp<DenseIntElementsAttr, int32_t, bool>(
         getType(), adaptor.getLhs(), adaptor.getRhs(),
         [](int32_t lhs, int32_t rhs) { return lhs != rhs; });
+  }
+  if (getLhs().getType().getElementType().isInteger(64)) {
+    return ConstFoldBinaryOp<DenseIntElementsAttr, int64_t, bool>(
+        getType(), adaptor.getLhs(), adaptor.getRhs(),
+        [](int64_t lhs, int64_t rhs) { return lhs != rhs; });
   }
   if (getLhs().getType().getElementType().isF32()) {
     return ConstFoldBinaryOp<DenseIntElementsAttr, float, bool>(
@@ -3869,14 +3915,17 @@ OpFoldResult CastIntToInt(DenseIntElementsAttr data, IntegerType in_type,
 
 OpFoldResult CastFloatToInt(DenseFPElementsAttr data, FloatType in_type,
                             IntegerType out_type) {
-  const bool from_f32 = in_type.isF32();
-  const bool to_i32 = out_type.isSignlessInteger(32);
-  if (!from_f32 || !to_i32) {
+  if (!in_type.isF32()) {
+    return {};
+  }
+
+  const auto out_width = out_type.getWidth();
+  if (out_width != 64 && out_width != 32) {
     return {};
   }
 
   auto cast = [&](APFloat value) -> APInt {
-    APSInt result(32, false);
+    APSInt result(out_width, false);
     bool is_exact;
     value.convertToInteger(result, llvm::RoundingMode::TowardZero, &is_exact);
     return result;
@@ -4821,6 +4870,69 @@ int64_t MaxPool2DOp::GetArithmeticCount(Operation* op) {
 }
 
 //===----------------------------------------------------------------------===//
+// ReverseV2Op
+//===----------------------------------------------------------------------===//
+
+OpFoldResult ReverseV2Op::fold(FoldAdaptor adaptor) {
+  auto input = adaptor.getInput();
+  auto axis = adaptor.getAxis();
+
+  if (!input || !axis) {
+    return {};
+  }
+
+  auto axis_val = llvm::cast<DenseIntElementsAttr>(axis);
+  llvm::SetVector<int32_t> axis_set(axis_val.value_begin<int32_t>(),
+                                    axis_val.value_end<int32_t>());
+
+  auto input_type = getInput().getType();
+
+  auto get_shaped_ind = [&](int64_t flat_ind) -> llvm::SmallVector<int64_t> {
+    llvm::SmallVector<int64_t> result;
+    result.reserve(input_type.getRank());
+    auto num_els = input_type.getNumElements();
+    for (auto d : input_type.getShape()) {
+      num_els /= d;
+      result.push_back(flat_ind / num_els);
+      flat_ind %= num_els;
+    }
+    return result;
+  };
+
+  auto get_flat_ind = [&](llvm::ArrayRef<int64_t> shaped_ind) -> int64_t {
+    auto num_els = input_type.getNumElements();
+    int64_t result = 0;
+    for (auto [max_dim, ind_dim] :
+         llvm::zip(input_type.getShape(), shaped_ind)) {
+      num_els /= max_dim;
+      result += num_els * ind_dim;
+    }
+    return result;
+  };
+
+  std::vector<Attribute> new_data(input_type.getNumElements());
+  auto input_data = llvm::cast<DenseElementsAttr>(input);
+
+  for (auto [i, val] : llvm::enumerate(input_data.getValues<Attribute>())) {
+    auto shaped_ind = get_shaped_ind(i);
+
+    for (int d = 0; d < shaped_ind.size(); ++d) {
+      if (!axis_set.contains(d)) {
+        continue;
+      }
+
+      shaped_ind[d] = input_type.getDimSize(d) - 1 - shaped_ind[d];
+    }
+
+    auto new_flat_ind = get_flat_ind(shaped_ind);
+
+    new_data[new_flat_ind] = val;
+  }
+
+  return DenseElementsAttr::get(getType(), new_data);
+}
+
+//===----------------------------------------------------------------------===//
 // L2NormalizationOp
 //===----------------------------------------------------------------------===//
 
@@ -4845,6 +4957,39 @@ OpFoldResult PadOp::fold(FoldAdaptor) {
     return getInput();
 
   return {};
+}
+
+// When padding amounts are constants, cast them to i32. XNN can only
+// consume i32 pad amounts in some cases.
+struct CastConstPadAmounts : public OpRewritePattern<PadOp> {
+  using OpRewritePattern<PadOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(PadOp op,
+                                PatternRewriter& rewriter) const override {
+    auto padding_amount_op = op.getPadding().getDefiningOp();
+    if (!padding_amount_op ||
+        !padding_amount_op->hasTrait<OpTrait::ConstantLike>()) {
+      return failure();
+    }
+
+    auto padding_type = op.getPadding().getType();
+    if (!padding_type.getElementType().isSignlessInteger(64)) {
+      return failure();
+    }
+
+    auto cast = rewriter.createOrFold<CastOp>(
+        padding_amount_op->getLoc(),
+        padding_type.clone(rewriter.getIntegerType(32)), op.getPadding());
+
+    rewriter.modifyOpInPlace(op, [&]() { op->setOperand(1, cast); });
+
+    return success();
+  }
+};
+
+void PadOp::getCanonicalizationPatterns(RewritePatternSet& results,
+                                        MLIRContext* context) {
+  results.add<CastConstPadAmounts>(context);
 }
 
 //===----------------------------------------------------------------------===//

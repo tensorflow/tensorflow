@@ -22,18 +22,16 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
@@ -207,7 +205,7 @@ class LoadedExecutable
   // API).
   virtual absl::StatusOr<ExecuteResult> Execute(
       absl::Span<tsl::RCReference<Array>> args, const ExecuteOptions& options,
-      std::optional<DeviceList> devices) = 0;
+      std::optional<tsl::RCReference<DeviceList>> devices) = 0;
 
   // Deletes the executable from the devices. The operation may be asynchronous.
   // The returned future will have the result of the deletion on the devices.
