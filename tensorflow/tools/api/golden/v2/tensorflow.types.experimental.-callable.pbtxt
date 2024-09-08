@@ -1,12 +1,21 @@
-path: "tensorflow.types.experimental.Callable"
-tf_class {
-  is_instance: "<class \'tensorflow.python.types.core.Callable\'>"
-  is_instance: "<type \'object\'>"
-  member {
-    name: "function_type"
-    mtype: "<type \'property\'>"
-  }
-  member_method {
-    name: "__init__"
-  }
-}
+import tensorflow as tf
+
+# Define a simple function
+@tf.function(output_signature=tf.TensorSpec(shape=[None, 10], dtype=tf.float32))
+def my_function(x):
+    return x
+
+# Or if you have multiple outputs
+@tf.function(output_signature=(tf.TensorSpec(shape=[None, 10], dtype=tf.float32), 
+                             tf.TensorSpec(shape=[None, 20], dtype=tf.float32)))
+def my_function(x):
+    return x, x * 2
+
+# If you're using the experimental Callable type
+from tensorflow.types.experimental import Callable
+
+my_callable = Callable(
+    input_signature=[tf.TensorSpec(shape=[None, 10], dtype=tf.float32)],
+    output_signature=tf.TensorSpec(shape=[None, 10], dtype=tf.float32),
+    function=my_function
+)
