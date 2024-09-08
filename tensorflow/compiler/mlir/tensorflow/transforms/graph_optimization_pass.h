@@ -18,7 +18,14 @@ limitations under the License.
 
 #include <string>
 
+#include "llvm/ADT/StringRef.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/mlir_graph_optimization_pass.h"
+#include "tensorflow/core/common_runtime/device_set.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace mlir {
 namespace TF {

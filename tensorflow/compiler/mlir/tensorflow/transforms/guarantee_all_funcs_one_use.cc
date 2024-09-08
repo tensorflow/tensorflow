@@ -17,9 +17,9 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Analysis/CallGraph.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/Utils.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
