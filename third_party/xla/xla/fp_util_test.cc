@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/numeric/bits.h"
+#include "xla/bit_cast.h"
 #include "xla/test.h"
 #include "xla/util.h"
 #include "tsl/platform/ml_dtypes.h"
@@ -214,6 +215,61 @@ TEST(FPDistanceTest, F8E5M2Distance) {
                 -std::numeric_limits<tsl::float8_e5m2>::min(),
                 std::numeric_limits<tsl::float8_e5m2>::min()),
             8);
+}
+
+TEST(FPDistanceTest, F64Distance) {
+  // a & b are equal
+  EXPECT_EQ(CalculateDistanceInFloats<double>(8.0, 8.0), 0);
+
+  // a & b have the same exponents
+  EXPECT_EQ(CalculateDistanceInFloats<double>(
+                std::numeric_limits<double>::denorm_min(),
+                std::nextafter(std::numeric_limits<double>::denorm_min(), 1.0)),
+            1);
+
+  // a & b have different exponents
+  EXPECT_EQ(CalculateDistanceInFloats<double>(
+                std::numeric_limits<double>::min(),
+                std::numeric_limits<double>::denorm_min()),
+            (1ULL << 52) - 1);
+
+  // 1 from 0 in the positive direction
+  EXPECT_EQ(CalculateDistanceInFloats<double>(
+                std::numeric_limits<double>::denorm_min(), 0.0),
+            1);
+
+  // 1 from 0 in the negative direction
+  EXPECT_EQ(CalculateDistanceInFloats<double>(
+                -std::numeric_limits<double>::denorm_min(), 0.0),
+            1);
+
+  // a & b have different signs
+  EXPECT_EQ(CalculateDistanceInFloats<double>(
+                -std::numeric_limits<double>::denorm_min(),
+                std::numeric_limits<double>::denorm_min()),
+            2);
+
+  // 1 non denorm from 0 in the positive direction
+  EXPECT_EQ(CalculateDistanceInFloats<double>(
+                std::numeric_limits<double>::min(), 0.0),
+            1ULL << 52);
+
+  // 1 non denorm from 0 in the negative direction
+  EXPECT_EQ(CalculateDistanceInFloats<double>(
+                -std::numeric_limits<double>::min(), 0.0),
+            1ULL << 52);
+
+  // a & b have different signs
+  EXPECT_EQ(
+      CalculateDistanceInFloats<double>(-std::numeric_limits<double>::min(),
+                                        std::numeric_limits<double>::min()),
+      2 * (1ULL << 52));
+
+  // signed integer arithmetic would overflow.
+  EXPECT_EQ(
+      CalculateDistanceInFloats<double>(BitCast<double>(0x7fffffffffffffff),
+                                        BitCast<double>(0xffffffffffffffff)),
+      2);
 }
 
 }  // namespace

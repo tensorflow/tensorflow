@@ -310,6 +310,7 @@ xla_cc_test(
     name = "fp_util_test",
     srcs = ["fp_util_test.cc"],
     deps = [
+        ":bit_cast",
         ":fp_util",
         ":test",
         ":util",
