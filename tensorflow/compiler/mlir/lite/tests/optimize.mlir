@@ -842,6 +842,46 @@ func.func @FuseReshapeAroundBMMNagativeTest2(%arg0: tensor<2x1536xf32>) -> tenso
   // CHECK: return %3 : tensor<2x768xf32>
 }
 
+// CHECK-LABEL: @FuseBMMOutputReshape_WithTwoLHSContractionDims
+func.func @FuseBMMOutputReshape_WithTwoLHSContractionDims(%arg0: tensor<8x256x1792xf32>, %arg1: tensor<1x128x8x256xf32>) -> (tensor<1x128x1792xf32>){
+  %cst = arith.constant dense<[1, 128, 1792]> : tensor<3xi32>
+  %cst_0 = arith.constant dense<[2048, 1792]> : tensor<2xi32>
+  %cst_1 = arith.constant dense<[128, 2048]> : tensor<2xi32>
+  %0 = "tfl.reshape"(%arg1, %cst_1) : (tensor<1x128x8x256xf32>, tensor<2xi32>) -> tensor<128x2048xf32>
+  %1 = "tfl.reshape"(%arg0, %cst_0) : (tensor<8x256x1792xf32>, tensor<2xi32>) -> tensor<2048x1792xf32>
+  %2 = "tfl.batch_matmul"(%0, %1) <{adj_x = false, adj_y = false, asymmetric_quantize_inputs = false}> : (tensor<128x2048xf32>, tensor<2048x1792xf32>) -> tensor<128x1792xf32>
+  %3 = "tfl.reshape"(%2, %cst) : (tensor<128x1792xf32>, tensor<3xi32>) -> tensor<1x128x1792xf32>
+  return %3 : tensor<1x128x1792xf32>
+  // CHECK:  %cst = arith.constant dense<[1, 128, 2048]> : tensor<3xi32>
+  // CHECK:  %cst_0 = arith.constant dense<[2048, 1792]> : tensor<2xi32>
+  // CHECK:  %0 = "tfl.reshape"(%arg0, %cst_0) : (tensor<8x256x1792xf32>, tensor<2xi32>) -> tensor<2048x1792xf32>
+  // CHECK:  %1 = "tfl.reshape"(%arg1, %cst) : (tensor<1x128x8x256xf32>, tensor<3xi32>) -> tensor<1x128x2048xf32>
+  // CHECK:  %2 = "tfl.batch_matmul"(%1, %0) <{adj_x = false, adj_y = false, asymmetric_quantize_inputs = false}> : (tensor<1x128x2048xf32>, tensor<2048x1792xf32>) -> tensor<1x128x1792xf32>
+  // CHECK:  return %2 : tensor<1x128x1792xf32>
+}
+
+// CHECK-LABEL: @FuseBMMOutputReshape_WithThreeLHSContractionDims
+func.func @FuseBMMOutputReshape_WithThreeLHSContractionDims(%arg0: tensor<2x8x256x1792xf32>, %arg1: tensor<1x2x128x8x256xf32>) -> (tensor<1x128x1792xf32>){
+  %cst = arith.constant dense<[1, 128, 1792]> : tensor<3xi32>
+  %cst_0 = arith.constant dense<[4096, 1792]> : tensor<2xi32>
+  %cst_1 = arith.constant dense<[128, 4096]> : tensor<2xi32>
+  %cst_2 = arith.constant dense<[0, 2, 1, 3, 4]> : tensor<5xi32>
+  %0 = "tfl.transpose"(%arg1, %cst_2) : (tensor<1x2x128x8x256xf32>, tensor<5xi32>) -> tensor<1x128x2x8x256xf32>
+  %1 = "tfl.reshape"(%0, %cst_1) : (tensor<1x128x2x8x256xf32>, tensor<2xi32>) -> tensor<128x4096xf32>
+  %2 = "tfl.reshape"(%arg0, %cst_0) : (tensor<2x8x256x1792xf32>, tensor<2xi32>) -> tensor<4096x1792xf32>
+  %3 = "tfl.batch_matmul"(%1, %2) <{adj_x = false, adj_y = false, asymmetric_quantize_inputs = false}> : (tensor<128x4096xf32>, tensor<4096x1792xf32>) -> tensor<128x1792xf32>
+  %4 = "tfl.reshape"(%3, %cst) : (tensor<128x1792xf32>, tensor<3xi32>) -> tensor<1x128x1792xf32>
+  return %4 : tensor<1x128x1792xf32>
+  // CHECK:  %cst = arith.constant dense<[1, 128, 4096]> : tensor<3xi32>
+  // CHECK:  %cst_0 = arith.constant dense<[4096, 1792]> : tensor<2xi32>
+  // CHECK:  %cst_1 = arith.constant dense<[0, 2, 1, 3, 4]> : tensor<5xi32>
+  // CHECK:  %0 = "tfl.transpose"(%arg1, %cst_1) : (tensor<1x2x128x8x256xf32>, tensor<5xi32>) -> tensor<1x128x2x8x256xf32>
+  // CHECK:  %1 = "tfl.reshape"(%arg0, %cst_0) : (tensor<2x8x256x1792xf32>, tensor<2xi32>) -> tensor<4096x1792xf32>
+  // CHECK:  %2 = "tfl.reshape"(%0, %cst) : (tensor<1x128x2x8x256xf32>, tensor<3xi32>) -> tensor<1x128x4096xf32>
+  // CHECK:  %3 = "tfl.batch_matmul"(%2, %1) <{adj_x = false, adj_y = false, asymmetric_quantize_inputs = false}> : (tensor<1x128x4096xf32>, tensor<4096x1792xf32>) -> tensor<1x128x1792xf32>
+  // CHECK:  return %3 : tensor<1x128x1792xf32>
+}
+
 // CHECK-LABEL: @FuseReshapeAroundBMMRHS
 func.func @FuseReshapeAroundBMMRHS(%arg0: tensor<1x3x6x5x1024xf32>) -> tensor<1x3x6x5x8192xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "inputs", outputs = "Identity_1"}} {
   %cst = arith.constant dense_resource<__elided__> : tensor<1x1024x8192xf32>
