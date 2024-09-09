@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
@@ -34,6 +35,8 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/rocm/rocm_platform_id.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/trace_command_buffer_factory.h"
@@ -44,10 +47,6 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
-
-#if GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
-#endif
 
 namespace stream_executor::gpu {
 
@@ -93,14 +92,17 @@ static std::vector<GpuGraphNodeHandle> ExpectedDeps(Infos... info) {
 }
 
 // Some of the tests rely on CUDA 12.3+ features.
-static bool IsAtLeastCuda12300() {
-#if defined(TENSORFLOW_USE_ROCM)
-  return false;
-#endif
-#if CUDA_VERSION >= 12030
+static bool IsAtLeastCuda12300(
+    const stream_executor::StreamExecutor* executor) {
+  if (executor->GetPlatform()->id() != cuda::kCudaPlatformId) {
+    return false;
+  }
+  if (std::min({executor->GetDeviceDescription().runtime_version(),
+                executor->GetDeviceDescription().driver_version()}) <
+      SemanticVersion{12, 3, 0}) {
+    return false;
+  }
   return true;
-#endif
-  return false;
 }
 
 TEST(GpuCommandBufferTest, LaunchSingleKernel) {
@@ -157,14 +159,18 @@ TEST(GpuCommandBufferTest, LaunchSingleKernel) {
 }
 
 TEST(CudaCommandBufferTest, TraceSingleKernel) {
-#if defined(TENSORFLOW_USE_ROCM)
-  GTEST_SKIP() << "Not supported on ROCM";
-#endif
-#if CUDA_VERSION < 12030
-  GTEST_SKIP() << "Command buffer tracing is not supported";
-#endif
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  if (platform->id() == rocm::kROCmPlatformId) {
+    GTEST_SKIP() << "Not supported on ROCM";
+  }
+
+  if (platform->id() == cuda::kCudaPlatformId &&
+      executor->GetDeviceDescription().runtime_version() <
+          SemanticVersion{12, 3, 0}) {
+    GTEST_SKIP() << "Command buffer tracing is not supported";
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -688,12 +694,12 @@ TEST(GpuCommandBufferTest, ExecutionScopeOneDirectionalBarriers) {
 }
 
 TEST(GpuCommandBufferTest, ConditionalIf) {
-  if (!IsAtLeastCuda12300()) {
-    GTEST_SKIP() << "CUDA graph conditionals are not supported";
-  }
-
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  if (!IsAtLeastCuda12300(executor)) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -774,12 +780,14 @@ TEST(GpuCommandBufferTest, ConditionalIf) {
 }
 
 TEST(GpuCommandBufferTest, ConditionalIfWithMemset) {
-#if CUDA_VERSION < 12040
-  GTEST_SKIP() << "ConditionalsWithMemset are not supported before 12.4.1.";
-#endif
   Platform* platform = GpuPlatform();
-
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  if (platform->id() == cuda::kCudaPlatformId &&
+      executor->GetDeviceDescription().driver_version() <
+          SemanticVersion{12, 4, 0}) {
+    GTEST_SKIP() << "ConditionalsWithMemset are not supported before 12.4.";
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -837,12 +845,12 @@ TEST(GpuCommandBufferTest, ConditionalIfWithMemset) {
 }
 
 TEST(GpuCommandBufferTest, ConditionalIfElse) {
-  if (!IsAtLeastCuda12300()) {
-    GTEST_SKIP() << "CUDA graph conditionals are not supported";
-  }
-
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  if (!IsAtLeastCuda12300(executor)) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -933,13 +941,13 @@ TEST(GpuCommandBufferTest, ConditionalIfElse) {
 }
 
 TEST(GpuCommandBufferTest, ConditionalCaseEmptyGraph) {
-  // See b/362769658.
-  if (!IsAtLeastCuda12300()) {
-    GTEST_SKIP() << "CUDA graph conditionals are not supported";
-  }
-
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  // See b/362769658.
+  if (!IsAtLeastCuda12300(executor)) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -1018,12 +1026,12 @@ TEST(GpuCommandBufferTest, ConditionalCaseEmptyGraph) {
 }
 
 TEST(GpuCommandBufferTest, ConditionalCase) {
-  if (!IsAtLeastCuda12300()) {
-    GTEST_SKIP() << "CUDA graph conditionals are not supported";
-  }
-
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  if (!IsAtLeastCuda12300(executor)) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -1107,12 +1115,12 @@ TEST(GpuCommandBufferTest, ConditionalCase) {
 }
 
 TEST(GpuCommandBufferTest, ConditionalFor) {
-  if (!IsAtLeastCuda12300()) {
-    GTEST_SKIP() << "CUDA graph conditionals are not supported";
-  }
-
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  if (!IsAtLeastCuda12300(executor)) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -1156,12 +1164,12 @@ TEST(GpuCommandBufferTest, ConditionalFor) {
 }
 
 TEST(GpuCommandBufferTest, ConditionalWhile) {
-  if (!IsAtLeastCuda12300()) {
-    GTEST_SKIP() << "CUDA graph conditionals are not supported";
-  }
-
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  if (!IsAtLeastCuda12300(executor)) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -1224,12 +1232,12 @@ TEST(GpuCommandBufferTest, ConditionalWhile) {
 
 // TODO(b/339653343): Re-enable when not failing.
 TEST(GpuCommandBufferTest, DISABLED_WhileNestedConditional) {
-  if (!IsAtLeastCuda12300()) {
-    GTEST_SKIP() << "CUDA graph conditionals are not supported";
-  }
-
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  if (!IsAtLeastCuda12300(executor)) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -1306,12 +1314,12 @@ TEST(GpuCommandBufferTest, DISABLED_WhileNestedConditional) {
 }
 
 TEST(GpuCommandBufferTest, ConditionalIfInExecutionScope) {
-  if (!IsAtLeastCuda12300()) {
-    GTEST_SKIP() << "CUDA graph conditionals are not supported";
-  }
-
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  if (!IsAtLeastCuda12300(executor)) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
@@ -1401,12 +1409,12 @@ TEST(GpuCommandBufferTest, ConditionalIfInExecutionScope) {
 }
 
 TEST(GpuCommandBufferTest, ConditionalWhileInExecutionScope) {
-  if (!IsAtLeastCuda12300()) {
-    GTEST_SKIP() << "CUDA graph conditionals are not supported";
-  }
-
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  if (!IsAtLeastCuda12300(executor)) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
 
