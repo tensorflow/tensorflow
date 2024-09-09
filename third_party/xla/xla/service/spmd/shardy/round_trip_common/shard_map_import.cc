@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "xla/service/spmd/shardy/round_trip_common/shard_map_import.h"
 
+#include <cassert>
 #include <cstdint>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "absl/algorithm/container.h"
@@ -30,6 +33,7 @@ limitations under the License.
 #include "llvm/ADT/SetOperations.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSet.h"  // IWYU pragma: keep
 #include "llvm/Support/ErrorHandling.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
@@ -50,13 +54,16 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/TypeID.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/InliningUtils.h"
 #include "shardy/dialect/sdy/ir/constants.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/spmd/shardy/constants.h"
+#include "xla/service/spmd/shardy/utils.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
 
 namespace xla {
 namespace sdy {
@@ -86,7 +93,10 @@ using sdy::SdyDialect;
 using sdy::TensorShardingAttr;
 using sdy::TensorShardingPerValueAttr;
 
-// A pair of custom calls. `shardingOp` has target name "Sharding".
+// A sharding op and corresponding shape transform op.
+// If `shardingOp` is a CustomCallOp, it has target name "Sharding". Else it is
+// expected to be an sdy::ShardingConstraintOp.
+//
 // `shapeTransformOp` has target name "SPMDFullToShardShape" or
 // "SPMDShardToFullShape". `shardingOp` has exactly one user, which is
 // shapeTransformOp. `shapeTransformOp` has exactly one operand, which is
@@ -95,7 +105,7 @@ using sdy::TensorShardingPerValueAttr;
 // Both `shardingOp` and `shapeTransformOp` will be nullptr for unused results
 // of the shard map `func.call`.
 struct ShardMapCustomCallPair {
-  CustomCallOp shardingOp;
+  Operation* shardingOp;
   CustomCallOp shapeTransformOp;
 };
 
@@ -188,19 +198,36 @@ absl::StatusOr<ShardMapArgumentsResults> getJaxShardMapPatternOps(CallOp op) {
       return absl::NotFoundError(
           "expecting SPMDFullToShardShape custom call as operand");
     }
-    auto shardingCustomCall =
-        fullToShardCustomCall->getOperand(0).getDefiningOp<CustomCallOp>();
-    if (!shardingCustomCall) {
+    if (mlir::isa<mlir::BlockArgument>(fullToShardCustomCall->getOperand(0))) {
       return absl::NotFoundError(
           "expecting CustomCallOp as operand of SPMDFullToShardShape");
     }
-    if (!isShardMapCustomCall(shardingCustomCall,
-                              kShardingCustomCallTargetName)) {
-      return absl::NotFoundError(
-          "expecting Sharding CustomCallOp as operand of SPMDFullToShardShape");
-    }
-    argumentOps.push_back(
-        ShardMapCustomCallPair{shardingCustomCall, fullToShardCustomCall});
+    TF_RETURN_IF_ERROR(
+        mlir::TypeSwitch<Operation*, absl::Status>(
+            fullToShardCustomCall->getOperand(0).getDefiningOp())
+            .Case<CustomCallOp>([&](CustomCallOp customCallOp) {
+              if (!isShardMapCustomCall(customCallOp,
+                                        kShardingCustomCallTargetName)) {
+                return absl::NotFoundError(
+                    "expecting Sharding CustomCallOp as operand of "
+                    "SPMDFullToShardShape");
+              }
+              argumentOps.push_back(
+                  ShardMapCustomCallPair{customCallOp, fullToShardCustomCall});
+              return absl::OkStatus();
+            })
+            .Case<sdy::ShardingConstraintOp>(
+                [&](sdy::ShardingConstraintOp shardingConstraintOp) {
+                  argumentOps.push_back(ShardMapCustomCallPair{
+                      shardingConstraintOp, fullToShardCustomCall});
+                  return absl::OkStatus();
+                })
+            .Default([](Operation*) {
+              return absl::NotFoundError(
+                  "expecting CustomCallOp or ShardingConstraintOp as operand "
+                  "of "
+                  "SPMDFullToShardShape");
+            }));
   }
 
   SmallVector<ShardMapCustomCallPair> resultOps;
@@ -249,6 +276,55 @@ absl::StatusOr<ShardMapArgumentsResults> getJaxShardMapPatternOps(CallOp op) {
   }
 
   return ShardMapArgumentsResults{argumentOps, resultOps};
+}
+
+// Inlines shard maps with no operand/result custom calls.
+//
+// When the shard map's manual axes are all of size 1, JAX will not create the
+// shmap pattern with custom calls. Instead, the call op by itself will exist.
+// If that is the case, just inline the op.
+absl::Status inlineRedundantShardMap(FuncOp funcOp,
+                                     mlir::DenseSet<FuncOp>& toDeleteFuncOps) {
+  bool errorEmitted = false;
+  bool inlined = false;
+  mlir::SymbolTableCollection symbolTableCollection;
+  CallOp toDeleteCallOp;
+  funcOp->walk([&](CallOp op) {
+    bool anyOperandCustomCall = llvm::any_of(
+        op.getOperands(),
+        [](Value operand) { return operand.getDefiningOp<CustomCallOp>(); });
+    bool anyResultCustomCall = llvm::any_of(op.getResults(), [](Value result) {
+      return !result.use_empty() &&
+             mlir::dyn_cast<CustomCallOp>(*result.user_begin());
+    });
+    if (!anyOperandCustomCall && !anyResultCustomCall) {
+      mlir::InlinerInterface inliner(op.getContext());
+      auto calleeOp = mlir::cast<FuncOp>(
+          mlir::cast<mlir::CallOpInterface>(*op).resolveCallable(
+              &symbolTableCollection));
+      if (mlir::failed(inlineCall(
+              inliner, mlir::cast<mlir::CallOpInterface>(op.getOperation()),
+              mlir::cast<mlir::CallableOpInterface>(calleeOp.getOperation()),
+              calleeOp.getCallableRegion()))) {
+        op.emitOpError() << "failed to inline.\n";
+        errorEmitted = true;
+        return mlir::WalkResult::interrupt();
+      }
+      inlined = true;
+      toDeleteFuncOps.insert(calleeOp);
+      toDeleteCallOp = op;
+    }
+    return mlir::WalkResult::advance();
+  });
+  if (errorEmitted) {
+    return absl::InternalError("Failed to inline redundant shard maps.");
+  }
+
+  if (inlined) {
+    toDeleteCallOp.erase();
+    return inlineRedundantShardMap(funcOp, toDeleteFuncOps);
+  }
+  return absl::OkStatus();
 }
 
 // When calling `jax.shard_map`, we have the following pattern in the MHLO.
@@ -308,6 +384,20 @@ class ShardMapImportPass
     // Subsequent CallOps with that symbol will clone the mapped region.
     llvm::SmallDenseMap<StringRef, mlir::Region*> shardMapNameToMovedRegion;
     bool success = true;
+    mlir::DenseSet<FuncOp> toDeleteFuncOps;
+    module->walk([&](FuncOp funcOp) {
+      if (isShmapBody(funcOp)) {
+        return mlir::WalkResult::advance();
+      }
+      if (!inlineRedundantShardMap(funcOp, toDeleteFuncOps).ok()) {
+        signalPassFailure();
+        return mlir::WalkResult::interrupt();
+      }
+      return mlir::WalkResult::advance();
+    });
+    for (FuncOp funcOp : llvm::make_early_inc_range(toDeleteFuncOps)) {
+      symbolTable.erase(funcOp);
+    }
     module->walk([&](CallOp op) {
       if (!op.getCallee().contains("shmap_body")) {
         return mlir::WalkResult::advance();
@@ -359,38 +449,104 @@ class ShardMapImportPass
                 .front());
       }
 
-      // Collect the manual axes if inOutShardings is not empty.
+      std::optional<StringRef> meshName =
+          sdy::getCommonMeshName(inShardings, outShardings);
+      MeshAttr mesh = nullptr;
+      // Mesh name may not exist for empty shmaps with no operands/results.
+      if (meshName) {
+        mesh = sdy::getMeshAttr(op, meshName.value());
+        assert(mesh && "unknown mesh");
+      }
+
+      // Get the manualAxes.
       SmallVector<StringAttr> manualAxes;
-      if (!inShardings.empty() || !outShardings.empty()) {
-        auto inOutShardings =
-            llvm::concat<TensorShardingAttr>(inShardings, outShardings);
-        // All in/out shardings must refer to the same mesh.
-        const mlir::FlatSymbolRefAttr meshName =
-            inOutShardings.begin()->getMeshSymName();
-        if (absl::c_any_of(inOutShardings,
-                           [&meshName](TensorShardingAttr sharding) {
-                             return sharding.getMeshSymName() != meshName;
-                           })) {
-          op.emitError("Multiple meshes in a single manual computation.");
-          success = false;
-          return mlir::WalkResult::interrupt();
+      if (mlir::DictionaryAttr frontendAttrs = getFrontendAttrs(op);
+          frontendAttrs && frontendAttrs.contains(kXlaManualAxes)) {
+        // sdy-round-trip code path.
+        // TODO(bartchr): Expose ManualAxesAttr and parse it instead of having
+        // JAX save it as an ArrayAttr.
+        auto manualAxisStrings =
+            parseStringAttr<mlir::ArrayAttr>(frontendAttrs.get(kXlaManualAxes));
+        manualAxes.reserve(manualAxisStrings.size());
+        sdy::ManualAxisToOwner alreadyManualAxes =
+            sdy::getParentManualComputationOps(op);
+        for (auto manualAxis : manualAxisStrings) {
+          if (!alreadyManualAxes.contains(mlir::cast<StringAttr>(manualAxis))) {
+            manualAxes.push_back(mlir::cast<StringAttr>(manualAxis));
+          }
         }
-        MeshAttr mesh = sdy::getMeshAttr(op, meshName);
+        if (mesh) {
+          llvm::sort(manualAxes, mesh.getAxisNameComparator());
+        }
+      } else {
+        // mhlo-round-trip code path.
+        if (!inShardings.empty() || !outShardings.empty()) {
+          auto inOutShardings =
+              llvm::concat<TensorShardingAttr>(inShardings, outShardings);
+          // All in/out shardings must refer to the same mesh.
+          const mlir::FlatSymbolRefAttr meshName =
+              inOutShardings.begin()->getMeshSymName();
+          if (absl::c_any_of(inOutShardings,
+                             [&meshName](TensorShardingAttr sharding) {
+                               return sharding.getMeshSymName() != meshName;
+                             })) {
+            op.emitError("Multiple meshes in a single manual computation.");
+            success = false;
+            return mlir::WalkResult::interrupt();
+          }
+          MeshAttr mesh = sdy::getMeshAttr(op, meshName);
 
-        // Manual axes are the union of the axes in the in/out shardings.
-        llvm::SmallDenseSet<StringAttr> manualAxesSet;
-        for (TensorShardingAttr tensorSharding : inOutShardings) {
-          insertAxisNamesFromSharding(context, tensorSharding, manualAxesSet);
-        }
-        // Update the in/out shardings with manual axes. Append the unused
-        // manual axes in the list of explicitly replicated axes.
-        for (TensorShardingAttr& tensorSharding : inOutShardings) {
-          tensorSharding = appendReplicatedAxes(context, tensorSharding,
-                                                manualAxesSet, mesh);
-        }
+          // Manual axes are the union of the axes in the in/out shardings.
+          llvm::SmallDenseSet<StringAttr> manualAxesSet;
+          for (TensorShardingAttr tensorSharding : inOutShardings) {
+            insertAxisNamesFromSharding(context, tensorSharding, manualAxesSet);
+          }
+          // Update the in/out shardings with manual axes. Append the unused
+          // manual axes in the list of explicitly replicated axes.
+          for (TensorShardingAttr& tensorSharding : inOutShardings) {
+            tensorSharding = appendReplicatedAxes(context, tensorSharding,
+                                                  manualAxesSet, mesh);
+          }
 
-        manualAxes.assign(manualAxesSet.begin(), manualAxesSet.end());
-        llvm::sort(manualAxes, mesh.getAxisNameComparator());
+          manualAxes.assign(manualAxesSet.begin(), manualAxesSet.end());
+          llvm::sort(manualAxes, mesh.getAxisNameComparator());
+        }
+      }
+      mlir::StringSet<> manualAxesSet;
+      manualAxesSet.insert(manualAxes.begin(), manualAxes.end());
+
+      // Make sure all in/out shardings refer to all axes in manualAxes. JAX
+      // doesn't have a way to mark axes as explicitly replicated, so for any
+      // unused manual axis add it as a replicated axis.
+      std::optional<std::function<bool(AxisRefAttr lhs, AxisRefAttr rhs)>>
+          axisRefComparator = std::nullopt;
+      if (mesh) {
+        axisRefComparator = AxisRefAttr::getMeshComparator(mesh);
+      }
+      for (TensorShardingAttr& sharding :
+           llvm::concat<TensorShardingAttr>(inShardings, outShardings)) {
+        mlir::StringSet<> unusedManualAxes = manualAxesSet;
+        for (AxisRefAttr axis : sharding.getReplicatedAxes()) {
+          unusedManualAxes.erase(axis.getName());
+        }
+        for (DimensionShardingAttr dimSharding : sharding.getDimShardings()) {
+          for (AxisRefAttr axis : dimSharding.getAxes()) {
+            unusedManualAxes.erase(axis.getName());
+          }
+        }
+        SmallVector<AxisRefAttr> newReplicatedAxes;
+        newReplicatedAxes.reserve(sharding.getReplicatedAxes().size() +
+                                  unusedManualAxes.size());
+        newReplicatedAxes.append(sharding.getReplicatedAxes().begin(),
+                                 sharding.getReplicatedAxes().end());
+        for (const auto& axis : unusedManualAxes) {
+          newReplicatedAxes.push_back(AxisRefAttr::get(context, axis.first()));
+        }
+        CHECK(axisRefComparator);
+        llvm::sort(newReplicatedAxes, *axisRefComparator);
+        sharding = TensorShardingAttr::get(context, sharding.getMeshName(),
+                                           sharding.getDimShardings(),
+                                           newReplicatedAxes);
       }
 
       auto manualComputationOp = builder.create<ManualComputationOp>(
@@ -472,7 +628,7 @@ class ShardMapImportPass
         CHECK(shapeTransformOp && shapeTransformOp->use_empty());
         shapeTransformOp.erase();
         CHECK(shardingOp->use_empty());
-        shardingOp.erase();
+        shardingOp->erase();
       }
 
       // Erase the call op itself.
@@ -497,7 +653,7 @@ class ShardMapImportPass
           shapeTransformOp.erase();
         }
         if (shardingOp->use_empty()) {
-          shardingOp.erase();
+          shardingOp->erase();
         }
       }
     }

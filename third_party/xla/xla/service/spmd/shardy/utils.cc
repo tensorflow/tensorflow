@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/escaping.h"
+#include "absl/strings/match.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -159,6 +160,10 @@ void loadAllRequiredDialects(mlir::MLIRContext* context) {
   mlir::sdy::registerAllDialects(registry);
   context->appendDialectRegistry(registry);
   context->loadAllAvailableDialects();
+}
+
+bool isShmapBody(mlir::func::FuncOp funcOp) {
+  return absl::StrContains(funcOp.getSymName(), "shmap_body");
 }
 
 }  // namespace sdy

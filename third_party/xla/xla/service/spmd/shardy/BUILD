@@ -100,8 +100,10 @@ cc_library(
     deps = [
         ":constants",
         "//xla/mlir_hlo",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AsmParser",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
