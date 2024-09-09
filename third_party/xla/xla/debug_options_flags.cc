@@ -660,6 +660,17 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
         return true;
       };
 
+  // Custom "sub-parser" lambda for xla_step_marker_location.
+  auto setter_for_xla_step_marker_location = [debug_options](
+                                                 const std::string& value) {
+    DebugOptions::StepMarkerLocation step_marker_location;
+    if (!DebugOptions::StepMarkerLocation_Parse(value, &step_marker_location)) {
+      return false;
+    }
+    debug_options->set_xla_step_marker_location(step_marker_location);
+    return true;
+  };
+
   // Don't use an initializer list for initializing the vector; this would
   // create a temporary copy, and exceeds the stack space when compiling with
   // certain configurations.
@@ -1896,6 +1907,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_async_dot(),
                 "Wrap `dot` operations into async computations in an effort to "
                 "parallelize matrix operations."));
+  flag_list->push_back(tsl::Flag(
+      "xla_step_marker_location", setter_for_xla_step_marker_location,
+      DebugOptions::StepMarkerLocation_Name(
+          debug_options->xla_step_marker_location()),
+      "Option to emit a target-specific marker to indicate the start of "
+      "a training. The location of the marker (if any) is determined "
+      "by the option value of type DebugOptions::StepMarkerLocation."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more
