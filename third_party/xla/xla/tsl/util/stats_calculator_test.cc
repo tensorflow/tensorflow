@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cfloat>
 
-#include "xla/tsl/util/stat_summarizer_options.h"
 #include "tsl/platform/test.h"
 
 namespace tsl {

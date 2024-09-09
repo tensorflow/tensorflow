@@ -21,8 +21,6 @@ limitations under the License.
 #include <sstream>
 #include <string>
 
-#include "xla/tsl/util/stat_summarizer_options.h"
-
 namespace tsl {
 
 constexpr int kNodeTypeWidth = 40;
