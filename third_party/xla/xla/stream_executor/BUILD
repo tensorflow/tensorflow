@@ -100,6 +100,7 @@ cc_library(
         ":module_spec",
         ":numeric_options",
         ":platform",
+        ":semantic_version",
         ":stream_common",
         ":stream_executor_common",
         ":stream_executor_h",
@@ -155,6 +156,7 @@ cc_library(
     deps = [
         ":device_description_proto_cc",
         ":launch_dim",
+        ":semantic_version",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/lib/math:math_util",
@@ -880,6 +882,7 @@ xla_cc_test(
     srcs = ["device_description_test.cc"],
     deps = [
         ":device_description",
+        ":semantic_version",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],

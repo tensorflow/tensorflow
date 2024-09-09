@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "rocm/include/hip/hip_version.h"
 #include "rocm/rocm_config.h"
 #include "xla/stream_executor/gpu/gpu_collectives.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
@@ -44,6 +45,7 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_driver.h"
 #include "xla/stream_executor/rocm/rocm_event.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
+#include "xla/stream_executor/rocm/rocm_version_parser.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/env.h"
@@ -679,7 +681,7 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
         "%d (%s)", version,
         rocm::DriverVersionStatusToString(Diagnostician::FindDsoVersion())
             .c_str());
-    desc.set_driver_version(augmented_driver_version);
+    desc.set_driver_version_string(augmented_driver_version);
   }
 
   {
@@ -761,7 +763,15 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
       GpuDriver::GetMaxRegistersPerBlock(device).value());
   desc.set_threads_per_warp(GpuDriver::GetThreadsPerWarp(device).value());
   desc.set_registers_per_core_limit(64 * 1024);
-  desc.set_runtime_version(std::to_string(TF_ROCM_VERSION));
+  desc.set_runtime_version_string(std::to_string(TF_ROCM_VERSION));
+  desc.set_compile_time_toolkit_version(
+      SemanticVersion{HIP_VERSION_MAJOR, HIP_VERSION_MINOR, HIP_VERSION_PATCH});
+  desc.set_runtime_version(
+      ParseRocmVersion(GpuRuntime::GetRuntimeVersion().value_or(0))
+          .value_or(SemanticVersion{0, 0, 0}));
+  desc.set_driver_version(
+      ParseRocmVersion(GpuDriver::GetDriverVersion().value_or(0))
+          .value_or(SemanticVersion{0, 0, 0}));
 
   int cc_major = 0;
   int cc_minor = 0;

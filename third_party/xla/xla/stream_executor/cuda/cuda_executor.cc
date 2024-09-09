@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_driver.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/stream_executor/cuda/cuda_version_parser.h"
 #include "xla/stream_executor/cuda/delay_kernel.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
@@ -67,6 +68,7 @@ limitations under the License.
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/plugin_registry.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/errors.h"
@@ -751,8 +753,17 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
     std::string augmented_driver_version = absl::StrFormat(
         "%d (%s)", driver_version,
         cuda::DriverVersionStatusToString(Diagnostician::FindDsoVersion()));
-    desc.set_driver_version(augmented_driver_version);
+    desc.set_driver_version_string(augmented_driver_version);
   }
+
+  desc.set_driver_version(
+      ParseCudaVersion(GpuDriver::GetDriverVersion().value_or(0))
+          .value_or(SemanticVersion{0, 0, 0}));
+  desc.set_runtime_version(
+      ParseCudaVersion(GpuRuntime::GetRuntimeVersion().value_or(0))
+          .value_or(SemanticVersion{0, 0, 0}));
+  desc.set_compile_time_toolkit_version(
+      ParseCudaVersion(CUDA_VERSION).value_or(SemanticVersion{0, 0, 0}));
 
   {
     std::string pci_bus_id = GpuDriver::GetPCIBusID(device);

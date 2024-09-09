@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/semantic_version.h"
 
 namespace xla {
 namespace gpu {
@@ -41,6 +42,8 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::RTXA6000DeviceInfo(
   b.set_device_memory_size(51'050'250'240);
   b.set_registers_per_core_limit(65536);
   b.set_registers_per_block_limit(65536);
+  b.set_runtime_version(stream_executor::SemanticVersion{12, 4, 0});
+  b.set_driver_version(stream_executor::SemanticVersion{12, 4, 0});
   return b;
 }
 
@@ -63,6 +66,8 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::AMDMI210DeviceInfo() {
   b.set_l2_cache_size(8 * 1024 * 1024);
   b.set_clock_rate_ghz(1.7);
   b.set_device_memory_size(67'628'957'696);
+  b.set_runtime_version(stream_executor::SemanticVersion{6, 0, 0});
+  b.set_driver_version(stream_executor::SemanticVersion{6, 0, 0});
   return b;
 }
 

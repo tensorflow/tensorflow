@@ -858,6 +858,7 @@ cuda_only_cc_library(
         ":cuda_kernel",  # buildcleaner: keep
         ":cuda_platform_id",
         ":cuda_runtime",  # buildcleaner: keep
+        ":cuda_version_parser",
         "//xla/stream_executor",
         "//xla/stream_executor:blas",
         "//xla/stream_executor:command_buffer",
@@ -868,6 +869,7 @@ cuda_only_cc_library(
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:module_spec",
         "//xla/stream_executor:plugin_registry",
+        "//xla/stream_executor:semantic_version",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/gpu:context",
         "//xla/stream_executor/gpu:gpu_collectives_header",
@@ -972,4 +974,28 @@ cc_library(
     name = "ptx_linking_method",
     hdrs = ["ptx_linking_method.h"],
     deps = ["@com_google_absl//absl/strings"],
+)
+
+cc_library(
+    name = "cuda_version_parser",
+    srcs = ["cuda_version_parser.cc"],
+    hdrs = ["cuda_version_parser.h"],
+    deps = [
+        "//xla/stream_executor:semantic_version",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_test(
+    name = "cuda_version_parser_test",
+    srcs = ["cuda_version_parser_test.cc"],
+    deps = [
+        ":cuda_version_parser",
+        "//xla/stream_executor:semantic_version",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
+    ],
 )

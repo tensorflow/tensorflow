@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/gemm_algorithm_picker.h"
 
 #include <cstdint>
+#include <string>
 #include <variant>
 #include <vector>
 
@@ -84,7 +85,8 @@ class GemmAlgorithmPickerTest : public HloTestBase,
             },
             [&](const se::RocmComputeCapability& cc) {
               if (blas_get_version) {
-                auto version = std::stol(device_desc().runtime_version());
+                auto version =
+                    std::stol(device_desc().runtime_version_string());
                 if (version < 60200) {
                   GTEST_SKIP()
                       << "This API is not available on ROCM 6.1 and below.";

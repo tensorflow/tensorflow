@@ -270,6 +270,7 @@ cc_library(
     local_defines = if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
     deps = [
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor:semantic_version",
     ],
 )
 

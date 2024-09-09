@@ -155,7 +155,7 @@ TEST_P(DotAlgorithmSupportTest, AlgorithmIsSupportedFromCudaCapability) {
   } else if (const auto *rcc =
                  std::get_if<se::RocmComputeCapability>(&gpu_cc)) {
     is_algorithm_supported = rcc->gfx9_mi100_or_later();
-    auto version = std::stol(GetDeviceDescription().runtime_version());
+    auto version = std::stol(GetDeviceDescription().runtime_version_string());
     if (version < params.min_rocm_version &&
         (params.input_storage_type == F8E5M2 ||
          params.input_storage_type == F8E4M3FN) &&

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/stream_executor/device_description.h"
 
+#include "xla/stream_executor/semantic_version.h"
 #include "tsl/platform/test.h"
 
 namespace stream_executor {
@@ -26,8 +27,11 @@ TEST(DeviceDescription, DefaultConstruction) {
   EXPECT_EQ(desc.clock_rate_ghz(), -1);
   EXPECT_EQ(desc.name(), "<undefined>");
   EXPECT_EQ(desc.platform_version(), "<undefined>");
-  EXPECT_EQ(desc.driver_version(), "<undefined>");
-  EXPECT_EQ(desc.runtime_version(), "<undefined>");
+  constexpr SemanticVersion kZeroVersion = {0, 0, 0};
+  EXPECT_EQ(desc.driver_version(), kZeroVersion);
+  EXPECT_EQ(desc.runtime_version(), kZeroVersion);
+  EXPECT_EQ(desc.driver_version_string(), "<undefined>");
+  EXPECT_EQ(desc.runtime_version_string(), "<undefined>");
   EXPECT_EQ(desc.pci_bus_id(), "<undefined>");
 }
 

@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/semantic_version.h"
 
 namespace stream_executor {
 
@@ -257,11 +258,27 @@ class DeviceDescription {
 
   // Returns the driver version interfacing with the underlying platform. Vendor
   // dependent format.
-  const std::string &driver_version() const { return driver_version_; }
+  const std::string &driver_version_string() const {
+    return driver_version_string_;
+  }
 
   // Return the runtime version, if one is provided by the underlying platform.
   // Vendor dependent format / usefulness.
-  const std::string &runtime_version() const { return runtime_version_; }
+  const std::string &runtime_version_string() const {
+    return runtime_version_string_;
+  }
+
+  // Returns the driver version interfacing with the underlying platform.
+  // Note for CUDA this returns the CUDA Toolkit version the driver ships with.
+  SemanticVersion driver_version() const { return driver_version_; }
+
+  // Returns the runtime version.
+  SemanticVersion runtime_version() const { return runtime_version_; }
+
+  // Returns the toolkit version that the application was compiled against.
+  SemanticVersion compile_time_toolkit_version() const {
+    return compile_time_toolkit_version_;
+  }
 
   // Returns the name that the device reports. Vendor dependent.
   const std::string &name() const { return name_; }
@@ -472,11 +489,20 @@ class DeviceDescription {
   void set_platform_version(std::string value) {
     platform_version_ = std::move(value);
   }
-  void set_driver_version(std::string value) {
-    driver_version_ = std::move(value);
+  void set_driver_version_string(std::string value) {
+    driver_version_string_ = std::move(value);
   }
-  void set_runtime_version(std::string value) {
-    runtime_version_ = std::move(value);
+  void set_runtime_version_string(std::string value) {
+    runtime_version_string_ = std::move(value);
+  }
+  void set_driver_version(const SemanticVersion &value) {
+    driver_version_ = value;
+  }
+  void set_runtime_version(const SemanticVersion &value) {
+    runtime_version_ = value;
+  }
+  void set_compile_time_toolkit_version(const SemanticVersion &value) {
+    compile_time_toolkit_version_ = value;
   }
   void set_pci_bus_id(std::string value) { pci_bus_id_ = std::move(value); }
   void set_name(std::string value) { name_ = std::move(value); }
@@ -539,8 +565,8 @@ class DeviceDescription {
   // N.B. If another field is added, update ToMap() above.
   std::string device_vendor_ = kUndefinedString;
   std::string platform_version_ = kUndefinedString;
-  std::string driver_version_ = kUndefinedString;
-  std::string runtime_version_ = kUndefinedString;
+  std::string driver_version_string_ = kUndefinedString;
+  std::string runtime_version_string_ = kUndefinedString;
   std::string pci_bus_id_ = kUndefinedString;
   std::string name_ = kUndefinedString;
   std::string model_str_ = kUndefinedString;
@@ -579,6 +605,10 @@ class DeviceDescription {
   int core_count_ = kUninitialized<int>;
   int fpus_per_core_ = kUninitialized<int>;
   bool ecc_enabled_ = false;
+
+  SemanticVersion driver_version_{0, 0, 0};
+  SemanticVersion runtime_version_{0, 0, 0};
+  SemanticVersion compile_time_toolkit_version_{0, 0, 0};
 };
 
 // Returns whether the given thread_dim is acceptable given the limits described
