@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_device_helper.h"
 
+#include "llvm/ADT/STLExtras.h"
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/util/device_name_utils.h"
