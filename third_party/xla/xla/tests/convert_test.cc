@@ -769,9 +769,7 @@ XLA_TEST_F(ConvertTest, ConvertF16F8e5m2Roundtrip) {
       execution_options_.debug_options().xla_allow_excess_precision();
   execution_options_.mutable_debug_options()->set_xla_allow_excess_precision(
       false);
-  // Pass in ErrorSpec, as this causes all NaNs to be treated as equal.
-  ComputeAndCompareR1<Eigen::half>(&builder, expected_roundtrip, {},
-                                   ErrorSpec(0.));
+  ComputeAndCompareR1<Eigen::half>(&builder, expected_roundtrip, {});
   execution_options_.mutable_debug_options()->set_xla_allow_excess_precision(
       saved);
 }
@@ -931,9 +929,7 @@ XLA_TEST_F(ConvertTest, ConvertF16F8e4m3fnRoundtrip) {
       execution_options_.debug_options().xla_allow_excess_precision();
   execution_options_.mutable_debug_options()->set_xla_allow_excess_precision(
       false);
-  // Pass in ErrorSpec, as this causes all NaNs to be treated as equal.
-  ComputeAndCompareR1<Eigen::half>(&builder, expected_roundtrip, {},
-                                   ErrorSpec(0.));
+  ComputeAndCompareR1<Eigen::half>(&builder, expected_roundtrip, {});
   execution_options_.mutable_debug_options()->set_xla_allow_excess_precision(
       saved);
 }

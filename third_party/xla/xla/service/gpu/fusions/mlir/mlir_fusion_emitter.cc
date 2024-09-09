@@ -307,7 +307,7 @@ MlirFusionEmitterBase::CreateLLVMModule(
   mlir::PassManager pm(&mlir_context);
   AddXlaGpuOpsOptimizationPasses(pm);
   AddLoopTransformationPasses(pm);
-  AddLoweringPasses(pm, device, hlo_module->config().debug_options());
+  AddLoweringPasses(pm, device);
   auto pipeline_status = RunPassPipeline(module.get(), pm, trace.get());
   if (trace) {
     DumpPerModuleProtobufToFile(
@@ -566,8 +566,7 @@ void AddLoopTransformationPasses(mlir::OpPassManager& pm) {
 }
 
 void AddLoweringPasses(mlir::OpPassManager& pm,
-                       const se::DeviceDescription& device,
-                       const DebugOptions& debug_options) {
+                       const se::DeviceDescription& device) {
   bool is_amd = std::holds_alternative<se::RocmComputeCapability>(
       device.gpu_compute_capability());
   pm.addNestedPass<FuncOp>(CreateConvertPureCallOpsPass());
@@ -591,14 +590,6 @@ void AddLoweringPasses(mlir::OpPassManager& pm,
   pm.addPass(mlir::createLoopInvariantCodeMotionPass());
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(mlir::createCSEPass());
-
-  // This pass has to run before `ExpandFloatOpsPass`.
-  auto maybe_convert_fp8 = MaybeCreateConvertFloatNvidiaPass(
-      device.cuda_compute_capability(), debug_options.xla_gpu_cuda_data_dir());
-  if (maybe_convert_fp8.has_value()) {
-    pm.addPass(std::move(*maybe_convert_fp8));
-  }
-
   pm.addPass(CreateExpandFloatOpsPass());
   pm.addPass(mlir::createLowerAffinePass());
   pm.addPass(mlir::createConvertSCFToCFPass());
