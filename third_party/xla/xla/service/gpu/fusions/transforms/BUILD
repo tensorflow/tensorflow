@@ -1,4 +1,5 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
+load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -48,7 +49,12 @@ cc_library(
         "simplify_arith.cc",
         "unswitch_loops.cc",
         "vectorize_loads_stores.cc",
-    ],
+    ] + if_cuda_is_configured(
+        [
+            "convert_float_nvidia.cc",
+        ],
+        no_cuda = ["cuda_stub.cc"],
+    ),
     hdrs = ["passes.h"],
     deps = [
         ":passes_inc_gen",
@@ -67,6 +73,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineDialect",
@@ -104,5 +111,8 @@ cc_library(
         "@llvm-project//mlir:VectorDialect",
         "@llvm-project//mlir:VectorToLLVM",
         "@llvm-project//mlir:VectorTransforms",
-    ],
+    ] + if_cuda_is_configured([
+        "//xla/stream_executor:semantic_version",
+        "//xla/stream_executor/cuda:cuda_asm_compiler",
+    ]),
 )

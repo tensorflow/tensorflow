@@ -122,7 +122,8 @@ void AddLoopTransformationPasses(mlir::OpPassManager& pm);
 
 // Adds passes that lower transformed loops to LLVM.
 void AddLoweringPasses(mlir::OpPassManager& pm,
-                       const se::DeviceDescription& device);
+                       const se::DeviceDescription& device,
+                       const DebugOptions& debug_options);
 
 }  // namespace gpu
 }  // namespace xla
