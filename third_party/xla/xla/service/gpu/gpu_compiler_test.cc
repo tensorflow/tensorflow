@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tests/verified_hlo_module.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
@@ -1000,7 +1001,7 @@ ENTRY main {
   bool triton_gemm_rewriter_has_run = false;
   for (const HloPassMetadata& pass_metadata : module_metadata.pass_metadata()) {
     triton_gemm_rewriter_has_run |=
-        pass_metadata.pass_name() == "triton-gemm-rewriter";
+        pass_metadata.pass_name() == "triton-fusion-rewriter";
   }
 
   EXPECT_EQ(triton_gemm_rewriter_has_run, expect_triton_gemm_rewriter_has_run);

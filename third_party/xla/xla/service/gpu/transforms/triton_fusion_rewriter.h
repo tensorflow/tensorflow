@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_SERVICE_GPU_TRANSFORMS_GEMM_FUSION_H_
-#define XLA_SERVICE_GPU_TRANSFORMS_GEMM_FUSION_H_
+#ifndef XLA_SERVICE_GPU_TRANSFORMS_TRITON_FUSION_REWRITER_H_
+#define XLA_SERVICE_GPU_TRANSFORMS_TRITON_FUSION_REWRITER_H_
 
 // This file contains the code for fusing dots and other operations into Triton
 // GEMM fusions.
@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/hlo_pass_interface.h"
-#include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
@@ -36,11 +35,12 @@ bool ShouldTritonHandleGEMM(HloDotInstruction&,
 
 // Rewrite compatible dot() calls into custom calls with fused computations
 // that target Triton-based matmul emitter.
-class GemmFusion : public HloModulePass {
+class TritonFusionRewriter : public HloModulePass {
  public:
-  explicit GemmFusion(const se::GpuComputeCapability& compute_capability)
+  explicit TritonFusionRewriter(
+      const se::GpuComputeCapability& compute_capability)
       : compute_capability_(compute_capability) {}
-  absl::string_view name() const override { return "triton-gemm-rewriter"; }
+  absl::string_view name() const override { return "triton-fusion-rewriter"; }
 
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(
@@ -54,4 +54,4 @@ class GemmFusion : public HloModulePass {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_TRANSFORMS_GEMM_FUSION_H_
+#endif  // XLA_SERVICE_GPU_TRANSFORMS_TRITON_FUSION_REWRITER_H_

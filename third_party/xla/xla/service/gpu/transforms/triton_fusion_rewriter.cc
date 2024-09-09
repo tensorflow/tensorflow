@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/transforms/gemm_fusion.h"
+#include "xla/service/gpu/transforms/triton_fusion_rewriter.h"
 
 #include <array>
 #include <cstddef>
@@ -717,9 +717,10 @@ absl::StatusOr<FusionDecision> CreateDotFusion(
 
 // Extracts into fused computations parts of HLO graph including dot()
 // operations that can target the triton GEMM emitter.
-class GemmFusionVisitor : public DfsHloRewriteVisitor {
+class TritonFusionRewriterVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit GemmFusionVisitor(const se::GpuComputeCapability& gpu_version)
+  explicit TritonFusionRewriterVisitor(
+      const se::GpuComputeCapability& gpu_version)
       : gpu_version_(gpu_version) {}
   // Checks that a dot() should be targeting the triton GEMM emitter;
   // if so - fuses all its compatible inputs and outputs as a new computation
@@ -801,7 +802,7 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
 
 absl::StatusOr<bool> RunOnComputation(
     HloComputation* computation, const se::GpuComputeCapability& gpu_version) {
-  GemmFusionVisitor visitor(gpu_version);
+  TritonFusionRewriterVisitor visitor(gpu_version);
   TF_RETURN_IF_ERROR(computation->Accept(&visitor));
   return visitor.changed();
 }
@@ -817,7 +818,7 @@ bool ShouldTritonHandleGEMM(HloDotInstruction& dot,
       ->CanFuse();
 }
 
-absl::StatusOr<bool> GemmFusion::Run(
+absl::StatusOr<bool> TritonFusionRewriter::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_RETURN_IF_ERROR(

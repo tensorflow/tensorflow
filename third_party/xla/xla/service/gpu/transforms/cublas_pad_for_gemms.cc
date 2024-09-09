@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/gpu/fusions/triton/triton_support_legacy.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/transforms/gemm_fusion.h"
+#include "xla/service/gpu/transforms/triton_fusion_rewriter.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"

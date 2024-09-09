@@ -605,7 +605,7 @@ cc_library(
     srcs = ["cublas_pad_for_gemms.cc"],
     hdrs = ["cublas_pad_for_gemms.h"],
     deps = [
-        ":gemm_fusion",
+        ":triton_fusion_rewriter",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:util",
@@ -1530,9 +1530,9 @@ xla_test(
 )
 
 cc_library(
-    name = "gemm_fusion",
-    srcs = ["gemm_fusion.cc"],
-    hdrs = ["gemm_fusion.h"],
+    name = "triton_fusion_rewriter",
+    srcs = ["triton_fusion_rewriter.cc"],
+    hdrs = ["triton_fusion_rewriter.h"],
     deps = [
         "//xla:shape_util",
         "//xla:util",
@@ -1563,10 +1563,10 @@ cc_library(
 )
 
 xla_cc_test(
-    name = "gemm_fusion_test",
-    srcs = ["gemm_fusion_test.cc"],
+    name = "triton_fusion_rewriter_test",
+    srcs = ["triton_fusion_rewriter_test.cc"],
     deps = [
-        ":gemm_fusion",
+        ":triton_fusion_rewriter",
         "//xla:autotuning_proto_cc",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
