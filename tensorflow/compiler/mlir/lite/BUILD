@@ -422,6 +422,7 @@ cc_library(
         ":pass_options_setter",
         "//tensorflow/compiler/mlir/lite:common",
         "//tensorflow/compiler/mlir/lite:optimize_pass_options",
+        "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/toco:toco_flags_proto_cc",
         "@llvm-project//llvm:Support",
     ],
