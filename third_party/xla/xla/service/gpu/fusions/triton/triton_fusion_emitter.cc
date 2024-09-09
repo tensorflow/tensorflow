@@ -134,6 +134,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/tools/hlo_decomposer.h"
 #include "xla/translate/hlo_to_mhlo/hlo_function_importer.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -2879,7 +2880,9 @@ absl::Status CreateInternalError(std::string_view message,
   std::string err;
   llvm::raw_string_ostream os(err);
   os << message << "\n";
-  os << fusion->fused_instructions_computation()->ToString() << "\n";
+  os << "fusion instruction: " << fusion->ToString() << "\n";
+  os << "HLO module to reproduce:\n"
+     << ExtractInstructionIntoNewModule(*fusion)->ToString();
   os << "triton_module: \n";
   triton_module->print(os, mlir::OpPrintingFlags().enableDebugInfo(true, true));
   return absl::InternalError(err);

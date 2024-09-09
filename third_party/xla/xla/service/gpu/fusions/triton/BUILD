@@ -73,6 +73,7 @@ cc_library(
         "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:launch_dim",
+        "//xla/tools:hlo_decomposer_lib",
         "//xla/translate/hlo_to_mhlo:hlo_function_importer",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
