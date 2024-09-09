@@ -397,7 +397,6 @@ xla_test(
         "gpu_v100",
         "gpu_amd_any",
     ],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     tags = [
         "no_rocm",
         "noasan",
@@ -425,7 +424,6 @@ xla_test(
         "//xla/tests:hlo_test_base",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/strings:string_view",
-        "@local_config_cuda//cuda:cuda_headers",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
