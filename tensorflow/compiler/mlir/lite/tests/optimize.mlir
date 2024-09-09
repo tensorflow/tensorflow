@@ -842,6 +842,28 @@ func.func @FuseReshapeAroundBMMNagativeTest2(%arg0: tensor<2x1536xf32>) -> tenso
   // CHECK: return %3 : tensor<2x768xf32>
 }
 
+// CHECK-LABEL: @FuseBMMInputReshape_WithTwoRhsDims
+func.func @FuseBMMInputReshape_WithTwoRhsDims(%arg0: tensor<8x1792x256xf32>, %arg1: tensor<1x1x1792xf32>) -> (tensor<1x1x8x256xf32>) {
+  %cst = arith.constant dense<[1, 1, 8, 256]> : tensor<4xi32>
+  %cst_0 = arith.constant dense<[1792, 2048]> : tensor<2xi32>
+  %cst_1 = arith.constant dense<[1, 1792]> : tensor<2xi32>
+  %cst_2 = arith.constant dense<[1, 0, 2]> : tensor<3xi32>
+  %0 = "tfl.transpose"(%arg0, %cst_2) : (tensor<8x1792x256xf32>, tensor<3xi32>) -> tensor<1792x8x256xf32>
+  %1 = "tfl.reshape"(%arg1, %cst_1) : (tensor<1x1x1792xf32>, tensor<2xi32>) -> tensor<1x1792xf32>
+  %2 = "tfl.reshape"(%0, %cst_0) : (tensor<1792x8x256xf32>, tensor<2xi32>) -> tensor<1792x2048xf32>
+  %3 = "tfl.batch_matmul"(%1, %2) <{adj_x = false, adj_y = false, asymmetric_quantize_inputs = false}> : (tensor<1x1792xf32>, tensor<1792x2048xf32>) -> tensor<1x2048xf32>
+  %4 = "tfl.reshape"(%3, %cst) : (tensor<1x2048xf32>, tensor<4xi32>) -> tensor<1x1x8x256xf32>
+  return %4 : tensor<1x1x8x256xf32>
+  // CHECK: %cst = arith.constant dense<[1, 1, 8, 256]> : tensor<4xi32>
+  // CHECK: %cst_0 = arith.constant dense<[1792, 2048]> : tensor<2xi32>
+  // CHECK: %cst_1 = arith.constant dense<[1, 0, 2]> : tensor<3xi32>
+  // CHECK: %0 = "tfl.transpose"(%arg0, %cst_1) : (tensor<8x1792x256xf32>, tensor<3xi32>) -> tensor<1792x8x256xf32>
+  // CHECK: %1 = "tfl.reshape"(%0, %cst_0) : (tensor<1792x8x256xf32>, tensor<2xi32>) -> tensor<1792x2048xf32>
+  // CHECK: %2 = "tfl.batch_matmul"(%arg1, %1) <{adj_x = false, adj_y = false, asymmetric_quantize_inputs = false}> : (tensor<1x1x1792xf32>, tensor<1792x2048xf32>) -> tensor<1x1x2048xf32>
+  // CHECK: %3 = "tfl.reshape"(%2, %cst) : (tensor<1x1x2048xf32>, tensor<4xi32>) -> tensor<1x1x8x256xf32>
+  // CHECK: return %3 : tensor<1x1x8x256xf32>
+}
+
 // CHECK-LABEL: @FuseBMMOutputReshape_WithTwoLHSContractionDims
 func.func @FuseBMMOutputReshape_WithTwoLHSContractionDims(%arg0: tensor<8x256x1792xf32>, %arg1: tensor<1x128x8x256xf32>) -> (tensor<1x128x1792xf32>){
   %cst = arith.constant dense<[1, 128, 1792]> : tensor<3xi32>

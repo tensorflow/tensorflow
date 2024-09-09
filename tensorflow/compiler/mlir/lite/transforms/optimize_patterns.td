@@ -1541,6 +1541,9 @@ def FuseLeakyReluConst : Pat<
 class NonBroadcastingNonContractingLhsDimsProductEqual<int agg_start_idx, int agg_end_idx=0> : Constraint<CPred<
   "TFL::NonBroadcastingNonContractingDimsProductEqual($0, $1, true, "# agg_start_idx #","# agg_end_idx #")">>;
 
+class NonBroadcastingNonContractingRhsDimsProductEqual<int agg_start_idx, int agg_end_idx=0> : Constraint<CPred<
+  "TFL::NonBroadcastingNonContractingDimsProductEqual($0, $1, false, "# agg_start_idx #","# agg_end_idx #")">>;
+
 // Predicate to check if the last dimensions of two values is equal.
 def TrailingDimValuesEqual : Constraint<
   CPred<"mlir::cast<ShapedType>($0.getType()).getShape().back()"
@@ -1597,7 +1600,8 @@ def FuseOutputReshape_BatchMatMulWithFlattenedContractingDims: Pat<
       $rhs, $adj_x, $adj_y, $bool_attr),
     (Arith_ConstantOp $s1)),
   (TFL_BatchMatMulOp
-    (TFL_ReshapeOp $input, (Arith_ConstantOp (GetExpandedShape<1> $s0))),
+    (TFL_ReshapeOp $input,
+      (Arith_ConstantOp (GetExpandedShapeAttr<1> $initial_shape_change))),
     $rhs, $adj_x, $adj_y, $bool_attr),
   [(HasRankAtLeast<4> $input),
    (HasRank<2> $rhs),
@@ -1608,6 +1612,30 @@ def FuseOutputReshape_BatchMatMulWithFlattenedContractingDims: Pat<
    (NonBroadcastingNonContractingLhsDimsProductEqual<0,1> $input, $initial_shape_change),
    (NonBroadcastingNonContractingLhsDimsProductEqual<0,1> $final_shape_change, $bmm_tmp_output)]>;
 
+// Pattern to fuse/fold the reshape of TFL_BatchMatMulOp input.
+//
+// This pattern is applied if-
+// 1. LHS has only one non-broadcasting, non-contracting dimension
+// 2. No batching dimensions on LHS and RHS
+// 3. RHS has a flattened non-broadcasting, non-contracting dimension
+def FuseInputReshape_BatchMatMulWithFlattenedRhsDims: Pat<
+  (TFL_ReshapeOp:$final_shape_change
+    (TFL_BatchMatMulOp:$bmm_tmp_output
+      (TFL_ReshapeOp:$initial_shape_change
+        $input, (Arith_ConstantOp I32ElementsAttr:$s0)),
+      $rhs, $adj_x, $adj_y, $bool_attr),
+    (Arith_ConstantOp I32ElementsAttr:$s1)),
+  (TFL_ReshapeOp
+    (TFL_BatchMatMulOp $input, $rhs, $adj_x, $adj_y, $bool_attr,
+      (returnType (GetExpandedShapeType<1> $bmm_tmp_output))),
+    (Arith_ConstantOp $s1)),
+  [(HasRank<2> $rhs),
+   (HasRank<3> $input),
+   (HasRank<2> $initial_shape_change),
+   (IsBroadcastDimEqualToOne $input),
+   (TrailingDimValuesEqual $input, $initial_shape_change),
+   (NonBroadcastingNonContractingLhsDimsProductEqual<0,1> $input, $initial_shape_change),
+   (NonBroadcastingNonContractingRhsDimsProductEqual<2> $final_shape_change, $bmm_tmp_output)]>;
 
 // Pattern to fuse/fold the reshape ops around TFL_BatchMatMulOp
 // This pattern is applied when the rank of rhs is 3
