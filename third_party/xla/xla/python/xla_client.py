@@ -26,7 +26,6 @@ import logging
 import os
 import threading
 from typing import Any, Protocol, Union
-import warnings
 
 import ml_dtypes
 import numpy as np
@@ -232,10 +231,6 @@ def generate_pjrt_gpu_plugin_options() -> _NameValueMapping:
       )
     else:
       memory_fraction = deprecated_memory_fraction
-      warnings.warn(
-          'Use XLA_CLIENT_MEM_FRACTION instead of '
-          'XLA_PYTHON_CLIENT_MEM_FRACTION.'
-      )
   preallocate = os.getenv('XLA_PYTHON_CLIENT_PREALLOCATE', '')
   collective_memory_size = os.getenv(
       'XLA_PYTHON_CLIENT_COLLECTIVE_MEM_SIZE_MB', ''
