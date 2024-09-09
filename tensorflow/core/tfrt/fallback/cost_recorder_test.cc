@@ -20,6 +20,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/tfrt/fallback/op_cost_map.pb.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace tfrt_stub {

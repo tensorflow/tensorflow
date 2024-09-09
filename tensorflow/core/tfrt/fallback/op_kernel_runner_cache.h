@@ -18,8 +18,16 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
+#include "tsl/platform/thread_annotations.h"
 #include "tfrt/host_context/location.h"  // from @tf_runtime
 
 namespace tensorflow {
