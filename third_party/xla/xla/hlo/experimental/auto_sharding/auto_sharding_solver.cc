@@ -496,6 +496,7 @@ AutoShardingSolverResult CallORToolsSolver(
         infinity_vars.insert(s[node_idx][j]);
         continue;
       }
+      if (request.minimize_departures()) continue;
       double accumulated_coefficient =
           solver->MutableObjective()->GetCoefficient(s[node_idx][j]);
       solver->MutableObjective()->SetCoefficient(
@@ -510,6 +511,7 @@ AutoShardingSolverResult CallORToolsSolver(
         infinity_vars.insert(e[edge_idx][j]);
         continue;
       }
+      if (request.minimize_departures()) continue;
       double accumulated_coefficient =
           solver->MutableObjective()->GetCoefficient(e[edge_idx][j]);
       solver->MutableObjective()->SetCoefficient(
@@ -618,7 +620,7 @@ AutoShardingSolverResult CallORToolsSolver(
                      overbudget_var, reduced_times, e, group_edge_vars,
                      constraints);
     }
-    if (overbudget_var) {
+    if (overbudget_var && !request.minimize_departures()) {
       solver->MutableObjective()->SetCoefficient(
           overbudget_var,
           request.overbudget_coeff().coeff() * request.memory_budget());
@@ -684,6 +686,17 @@ AutoShardingSolverResult CallORToolsSolver(
         double departure_cost = request.departure_costs(node_idx).costs(j);
         constraint->SetCoefficient(s[node_idx][j],
                                    accumulated_coefficient + departure_cost);
+      }
+    }
+  }
+  if (request.minimize_departures()) {
+    for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
+      for (NodeStrategyIdx j = 0; j < s[node_idx].size(); ++j) {
+        double accumulated_coefficient =
+            solver->MutableObjective()->GetCoefficient(s[node_idx][j]);
+        double departure_cost = request.departure_costs(node_idx).costs(j);
+        solver->MutableObjective()->SetCoefficient(
+            s[node_idx][j], accumulated_coefficient + departure_cost);
       }
     }
   }
