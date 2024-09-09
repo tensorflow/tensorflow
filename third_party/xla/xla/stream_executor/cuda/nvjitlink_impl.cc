@@ -91,10 +91,13 @@ static absl::Status CreateErrorFromPTXASLog(std::string_view log,
       absl::StrContains(log, "Register allocation failed")) {
     return absl::ResourceExhaustedError("Register allocation failed");
   }
-  if (cancel_if_reg_spill && absl::StrContains(log, "warning") &&
-      absl::StrContains(log, "Registers are spilled")) {
-    return absl::CancelledError(
-        "Compilation result discarded due to register spilling");
+  if (absl::StrContains(log, "warning")) {
+    LOG(INFO) << log;
+    if (cancel_if_reg_spill &&
+        absl::StrContains(log, "Registers are spilled")) {
+      return absl::CancelledError(
+          "Compilation result discarded due to register spilling");
+    }
   }
   return absl::OkStatus();
 }

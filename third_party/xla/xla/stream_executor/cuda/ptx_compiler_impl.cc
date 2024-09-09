@@ -154,6 +154,7 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingLibNvPtxCompiler(
   // Print the verbose output of ptxas.
   if (!info_log.empty()) {
     if (absl::StrContains(info_log, "warning")) {
+      LOG(INFO) << info_log;
       if (cancel_if_reg_spill &&
           absl::StrContains(info_log, "Registers are spilled")) {
         return absl::CancelledError(
