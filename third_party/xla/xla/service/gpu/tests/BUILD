@@ -832,10 +832,10 @@ xla_test(
         "gpu_a100",
         "gpu_h100",
     ],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     shard_count = 2,
     deps = [
         ":gpu_codegen_test",
+        "//xla:array3d",
         "//xla:array4d",
         "//xla:error_spec",
         "//xla:literal",
@@ -855,6 +855,8 @@ xla_test(
         "//xla/stream_executor",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:dnn",
+        "//xla/stream_executor:semantic_version",
+        "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/tests:client_library_test_base",
         "//xla/tests:hlo_test_base",
         "//xla/tests:literal_test_util",
@@ -867,9 +869,7 @@ xla_test(
         "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
-    ] + if_cuda_is_configured([
-        "@local_config_cuda//cuda:cuda_headers",
-    ]),
+    ],
 )
 
 # This library is here to be reused by tests.

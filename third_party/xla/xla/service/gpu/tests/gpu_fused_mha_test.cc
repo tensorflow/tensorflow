@@ -17,7 +17,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -25,6 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
+#include "xla/array3d.h"
 #include "xla/array4d.h"
 #include "xla/client/xla_builder.h"
 #include "xla/client/xla_computation.h"
@@ -38,8 +38,10 @@ limitations under the License.
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
@@ -50,10 +52,6 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
-#if GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
-#endif
-
 namespace xla {
 namespace gpu {
 namespace {
@@ -61,10 +59,15 @@ namespace {
 class MultiHeadedAttentionTest : public GpuCodegenTest {
  public:
   MultiHeadedAttentionTest() {
-#if !defined(GOOGLE_CUDA) || CUDA_VERSION < 12000
-    skip_reason_ = "cuDNN Fused MHA requires CUDA 12 or later.";
-    return;
-#endif
+    if (backend().platform()->id() != stream_executor::cuda::kCudaPlatformId ||
+        backend()
+                .default_stream_executor()
+                ->GetDeviceDescription()
+                .runtime_version() <
+            stream_executor::SemanticVersion{12, 0, 0}) {
+      skip_reason_ = "cuDNN Fused MHA requires CUDA 12 or later.";
+      return;
+    }
     stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
     // Enforce capability minor == 0 because hardware with a non-zero minor
     // number typically has insufficient shared memory for cuDNN FMHA.
