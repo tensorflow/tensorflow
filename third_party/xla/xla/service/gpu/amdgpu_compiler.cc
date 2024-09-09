@@ -65,10 +65,6 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
 
-#if TENSORFLOW_USE_ROCM
-#include "rocm/rocm_config.h"
-#endif
-
 namespace xla {
 namespace gpu {
 
@@ -100,13 +96,6 @@ class ConvBfloat16Support : public FloatSupport {
 };
 
 }  // namespace
-
-int32_t AMDGPUCompiler::GetToolkitVersion() const {
-#if TENSORFLOW_USE_ROCM
-  return TF_ROCM_VERSION;
-#endif
-  LOG(FATAL) << "Failed to get ROCm version.";
-}
 
 absl::Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
     HloModule* hlo_module, se::GpuComputeCapability gpu_version,

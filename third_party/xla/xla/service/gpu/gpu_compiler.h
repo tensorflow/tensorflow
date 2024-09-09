@@ -23,12 +23,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "llvm/IR/Module.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/algebraic_simplifier.h"
-#include "xla/service/buffer_assignment.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
@@ -116,8 +117,6 @@ class GpuCompiler : public LLVMCompiler {
   virtual HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() const {
     return &FusionCanShareBufferHint;
   }
-
-  virtual int32_t GetToolkitVersion() const = 0;
 
   virtual absl::StatusOr<bool> CanUseLinkModules(
       const HloModuleConfig& config) {

@@ -16,9 +16,11 @@ limitations under the License.
 #include "xla/service/gpu/gpu_compiler.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <new>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -28,6 +30,7 @@ limitations under the License.
 
 #include "absl/base/call_once.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -134,7 +137,6 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/prepare_hlo_for_ir_emitting_pipeline.h"
 #include "xla/service/gpu/reduction_utils.h"
-#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/gpu/runtime_intrinsics.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/transforms/algebraic_simplifier.h"
@@ -238,8 +240,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/dnn.h"
-#include "xla/stream_executor/gpu/gpu_driver.h"
-#include "xla/stream_executor/integrations/device_mem_allocator.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -257,6 +258,7 @@ limitations under the License.
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
+#include "tsl/profiler/lib/scoped_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
 
 #ifdef PLATFORM_GOOGLE
@@ -2550,14 +2552,9 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
 
   // Pipeline with passes which wrap a scheduled module into command buffers.
   {
-    absl::StatusOr<int32_t> driver_version =
-        se::gpu::GpuDriver::GetDriverVersion();
-    int32_t toolkit_version = GetToolkitVersion();
     HloPassPipeline& pipeline =
         main_pipeline.AddPass<HloPassPipeline>("command-buffer-scheduling");
-    pipeline.AddPass<CommandBufferScheduling>(
-        gpu_device_info, toolkit_version,
-        driver_version.value_or(toolkit_version));
+    pipeline.AddPass<CommandBufferScheduling>(gpu_device_info);
     pipeline.AddPass<SanitizeConstantNames>();
   }
 
