@@ -1,48 +1,65 @@
+diff --git a/shardy/dialect/sdy/ir/attrs.td b/shardy/dialect/sdy/ir/attrs.td
+index f1ac348..7a9c0c1 100644
+--- a/shardy/dialect/sdy/ir/attrs.td
++++ b/shardy/dialect/sdy/ir/attrs.td
+@@ -476,10 +476,8 @@ def Sdy_TensorSharding : AttrDef<Sdy_Dialect, "TensorSharding"> {
+     // Verifies that this `TensorShardingAttr` is valid w.r.t the given
+     // tensor type and mesh.
+     //
+-    // If `type` isn't a `ShapedType`, the sharding must have rank 0
+-    // and no replicated axes. Otherwise, the `ShapedType` must have a static
+-    // shape.
+-
++    // If `type` isn't a `RankedTensorType`, the sharding must have rank 0
++    // and no replicated axes.
+     //
+     // If `checkDivisibility` is true, verifies that each dimension size
+     // is divisible by its sharded size.
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 509398d..45151d8 100644
+index 45151d8..509398d 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1 +1,28 @@
+@@ -1,28 +1 @@
  Auto generated patch. Do not edit or delete it, even if empty.
-+diff -ruN --strip-trailing-cr a/llvm/lib/Target/X86/MCTargetDesc/X86ATTInstPrinter.cpp b/llvm/lib/Target/X86/MCTargetDesc/X86ATTInstPrinter.cpp
-+--- a/llvm/lib/Target/X86/MCTargetDesc/X86ATTInstPrinter.cpp
-++++ b/llvm/lib/Target/X86/MCTargetDesc/X86ATTInstPrinter.cpp
-+@@ -216,8 +216,6 @@
-+               printdwordmem(MI, CurOp--, OS);
-+           } else if ((Desc.TSFlags & X86II::OpPrefixMask) == X86II::XD &&
-+                      (Desc.TSFlags & X86II::OpMapMask) != X86II::TA) {
-+-            assert((Desc.TSFlags & X86II::OpMapMask) != X86II::TA &&
-+-                   "Unexpected op map!");
-+             printqwordmem(MI, CurOp--, OS);
-+           } else if (Desc.TSFlags & X86II::EVEX_L2) {
-+             printzmmwordmem(MI, CurOp--, OS);
-+diff -ruN --strip-trailing-cr a/llvm/lib/Target/X86/MCTargetDesc/X86IntelInstPrinter.cpp b/llvm/lib/Target/X86/MCTargetDesc/X86IntelInstPrinter.cpp
-+--- a/llvm/lib/Target/X86/MCTargetDesc/X86IntelInstPrinter.cpp
-++++ b/llvm/lib/Target/X86/MCTargetDesc/X86IntelInstPrinter.cpp
-+@@ -204,9 +204,8 @@
-+               printwordmem(MI, CurOp++, OS);
-+             else
-+               printdwordmem(MI, CurOp++, OS);
-+-          } else if ((Desc.TSFlags & X86II::OpPrefixMask) == X86II::XD) {
-+-            assert((Desc.TSFlags & X86II::OpMapMask) != X86II::TA &&
-+-                   "Unexpected op map!");
-++          } else if ((Desc.TSFlags & X86II::OpPrefixMask) == X86II::XD &&
-++                     (Desc.TSFlags & X86II::OpMapMask) != X86II::TA) {
-+             printqwordmem(MI, CurOp++, OS);
-+           } else if (Desc.TSFlags & X86II::EVEX_L2) {
-+             printzmmwordmem(MI, CurOp++, OS);
+-diff -ruN --strip-trailing-cr a/llvm/lib/Target/X86/MCTargetDesc/X86ATTInstPrinter.cpp b/llvm/lib/Target/X86/MCTargetDesc/X86ATTInstPrinter.cpp
+---- a/llvm/lib/Target/X86/MCTargetDesc/X86ATTInstPrinter.cpp
+-+++ b/llvm/lib/Target/X86/MCTargetDesc/X86ATTInstPrinter.cpp
+-@@ -216,8 +216,6 @@
+-               printdwordmem(MI, CurOp--, OS);
+-           } else if ((Desc.TSFlags & X86II::OpPrefixMask) == X86II::XD &&
+-                      (Desc.TSFlags & X86II::OpMapMask) != X86II::TA) {
+--            assert((Desc.TSFlags & X86II::OpMapMask) != X86II::TA &&
+--                   "Unexpected op map!");
+-             printqwordmem(MI, CurOp--, OS);
+-           } else if (Desc.TSFlags & X86II::EVEX_L2) {
+-             printzmmwordmem(MI, CurOp--, OS);
+-diff -ruN --strip-trailing-cr a/llvm/lib/Target/X86/MCTargetDesc/X86IntelInstPrinter.cpp b/llvm/lib/Target/X86/MCTargetDesc/X86IntelInstPrinter.cpp
+---- a/llvm/lib/Target/X86/MCTargetDesc/X86IntelInstPrinter.cpp
+-+++ b/llvm/lib/Target/X86/MCTargetDesc/X86IntelInstPrinter.cpp
+-@@ -204,9 +204,8 @@
+-               printwordmem(MI, CurOp++, OS);
+-             else
+-               printdwordmem(MI, CurOp++, OS);
+--          } else if ((Desc.TSFlags & X86II::OpPrefixMask) == X86II::XD) {
+--            assert((Desc.TSFlags & X86II::OpMapMask) != X86II::TA &&
+--                   "Unexpected op map!");
+-+          } else if ((Desc.TSFlags & X86II::OpPrefixMask) == X86II::XD &&
+-+                     (Desc.TSFlags & X86II::OpMapMask) != X86II::TA) {
+-             printqwordmem(MI, CurOp++, OS);
+-           } else if (Desc.TSFlags & X86II::EVEX_L2) {
+-             printzmmwordmem(MI, CurOp++, OS);
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 9c7abe8..99b4831 100644
+index 99b4831..e6cd438 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "eaa95a1c2bd38332c1a4e634595f29d22b28ffea"
--    LLVM_SHA256 = "c9a50bb272d70f0ee360642d035761b27298afe78adf5c8a30dca50529ac21d6"
-+    LLVM_COMMIT = "ede40da1f8c1e91601b985cd32ad785aa8806880"
-+    LLVM_SHA256 = "86030eaa1c4ea388d0cdff49b5fdbe12100e2a87d18bfd752fec76fdcd76d860"
+-    LLVM_COMMIT = "ede40da1f8c1e91601b985cd32ad785aa8806880"
+-    LLVM_SHA256 = "86030eaa1c4ea388d0cdff49b5fdbe12100e2a87d18bfd752fec76fdcd76d860"
++    LLVM_COMMIT = "6b67f79f5f851bfcd5a5861910aedc9e31f377b9"
++    LLVM_SHA256 = "b419877fa36c06b0d711d65fe6b62246863763cbf32dae223ee822870b96ca14"
  
      tf_http_archive(
          name = name,
