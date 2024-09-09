@@ -577,7 +577,7 @@ bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
       auto hlo = *inst_it;
       auto adjust_hlo_output = [&](const Shape& /* subshape */,
                                    const ShapeIndex& index) {
-        auto output_type = OutputTypeAfterChange(hlo, index);
+        const PrimitiveType output_type = OutputTypeAfterChange(hlo, index);
         VLOG(2) << "output_type is " << ((output_type == BF16) ? "BF16" : "F32")
                 << " for :" << hlo->ToString() << "\n";
         if (output_type != F32 && output_type != BF16) {
@@ -1018,6 +1018,9 @@ void BFloat16Propagation::AddToOrRemoveFromBF16ChangeSet(
     }
     it->second.erase(
         ShapeUtil::GetMutableSubshape(hlo->mutable_shape(), index));
+    if (it->second.empty()) {
+      changes_to_bf16_.erase(it);
+    }
   }
 }
 
