@@ -75,6 +75,7 @@ xla_cc_test(
     name = "ffi_test",
     srcs = ["ffi_test.cc"],
     deps = [
+        ":c_api",
         ":ffi",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",

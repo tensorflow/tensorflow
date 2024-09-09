@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/synchronization/blocking_counter.h"
+#include "xla/ffi/api/c_api.h"
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/execution_state.h"
@@ -1086,6 +1087,17 @@ TEST(FfiTest, Metadata) {
   EXPECT_EQ(metadata.api_version.major_version, api->api_version.major_version);
   EXPECT_EQ(metadata.api_version.minor_version, api->api_version.minor_version);
   EXPECT_EQ(metadata.traits, 0);
+}
+
+TEST(FfiTest, MetadataTraits) {
+  auto handler = Ffi::BindTo([]() { return Error::Success(); },
+                             {Traits::kCmdBufferCompatible});
+  auto maybe_metadata = GetMetadata(*handler);
+  EXPECT_TRUE(maybe_metadata.ok());
+  auto metadata = maybe_metadata.value();
+  EXPECT_EQ(metadata.api_version.major_version, XLA_FFI_API_MAJOR);
+  EXPECT_EQ(metadata.api_version.minor_version, XLA_FFI_API_MINOR);
+  EXPECT_EQ(metadata.traits, XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE);
 }
 
 //===----------------------------------------------------------------------===//
