@@ -38,6 +38,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/MLIRContext.h"
@@ -78,7 +79,7 @@ using ::mlir::OpBuilder;
 using ::mlir::OperationPass;
 using ::mlir::Pass;
 using ::mlir::PassWrapper;
-using ::mlir::RankedTensorType;
+using ::mlir::ShapedType;
 using ::mlir::SmallVector;
 using ::mlir::StringAttr;
 using ::mlir::StringRef;
@@ -510,7 +511,7 @@ LogicalResult importShardings(
           argNum, kShardingAttr,
           convertToNewSharding(parseShardingFromString(oldSharding), globalMesh,
                                deviceIdToMaximalMeshName,
-                               mlir::cast<RankedTensorType>(argType).getRank(),
+                               mlir::cast<ShapedType>(argType).getRank(),
                                shouldOpenDims(allowPropagationToArgs, argNum)));
       funcOp.removeArgAttr(argNum, kXlaShardingAttr);
     }
@@ -524,7 +525,7 @@ LogicalResult importShardings(
           convertToNewSharding(
               parseShardingFromString(oldSharding), globalMesh,
               deviceIdToMaximalMeshName,
-              mlir::cast<RankedTensorType>(resType).getRank(),
+              mlir::cast<ShapedType>(resType).getRank(),
               shouldOpenDims(allowPropagationToResults, resNum)));
       funcOp.removeResultAttr(
           resNum, StringAttr::get(funcOp.getContext(), kXlaShardingAttr));
@@ -544,7 +545,7 @@ LogicalResult importShardings(
            llvm::zip_equal(flatHloSharding, op->getResultTypes())) {
         newShardings.push_back(convertToNewSharding(
             resHloSharding, globalMesh, deviceIdToMaximalMeshName,
-            mlir::cast<RankedTensorType>(resType).getRank(),
+            mlir::cast<ShapedType>(resType).getRank(),
             /*openDims=*/false));
       }
       op->setAttr(kShardingAttr, TensorShardingPerValueAttr::get(
