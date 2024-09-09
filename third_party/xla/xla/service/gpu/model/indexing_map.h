@@ -311,6 +311,11 @@ class IndexingMap {
               std::vector<RangeVar> range_vars, std::vector<RTVar> rt_vars,
               const llvm::DenseMap<mlir::AffineExpr, Interval>& constraints);
 
+  IndexingMap(const IndexingMap&) = default;
+  IndexingMap(IndexingMap&&) = default;
+  IndexingMap& operator=(const IndexingMap&) = default;
+  IndexingMap& operator=(IndexingMap&&) = default;
+
   // Returns an undefined indexing map.
   static IndexingMap GetUndefined() { return IndexingMap(); }
 
