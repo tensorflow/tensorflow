@@ -82,7 +82,7 @@ jobs:
       -
         name: Build and push
         id: docker_build
-        uses: docker/build-push-action@5176d81f87c23d6fc96624dfdbcd9f3830bbe445 # v6.5.0
+        uses: docker/build-push-action@5cd11c3a4ced054e52742c5fd54dca954e0edd85 # v6.7.0
         with:
           push: true
           context: ./tensorflow/tools/tf_sig_build_dockerfiles
