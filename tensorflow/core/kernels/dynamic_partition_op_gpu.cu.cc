@@ -35,6 +35,7 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -48,13 +49,10 @@ limitations under the License.
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/transform_output_iterator.h"
 
-#if GOOGLE_CUDA
-#include "xla/stream_executor/cuda/cuda_activation.h"
-using stream_executor::cuda::ScopedActivateExecutorContext;
-#elif TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
-using stream_executor::rocm::ScopedActivateExecutorContext;
 #endif  // GOOGLE_CUDA
+using stream_executor::gpu::ScopedActivateContext;
 
 namespace tensorflow {
 
@@ -298,7 +296,7 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
                              partition_ref, cpu_tensor, done]() {
       {
         auto stream = c->op_device_context()->stream();
-        ScopedActivateExecutorContext scoped_activation{stream->parent()};
+        ScopedActivateContext scoped_activation{stream->parent()};
 
         OpOutputList outputs;
         this->AllocateOutputs(c, &data, &partitions, &cpu_tensor, &outputs,
@@ -311,7 +309,7 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
         int64 slice_size = data.NumElements() / N;
         this->GatherSlices(c, &data, &indices_out, N, slice_size, outputs);
         partition_ref.Unref();
-      }  // Release ScopedActivateExecutorContext to prevent deadlock when done
+      }  // Release ScopedActivateContext to prevent deadlock when done
          // inlines another Op kernel, which may assume the original cuda
          // Context.
 

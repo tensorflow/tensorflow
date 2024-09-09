@@ -17,14 +17,18 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_GPU_SCOPED_ACTIVATE_CONTEXT_H_
 
 #include "xla/stream_executor/gpu/context.h"
+#include "xla/stream_executor/gpu/gpu_executor.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor::gpu {
 
 // Ensures a context is activated within a scope.
 class ScopedActivateContext {
  public:
-  // Activates the context Context::SetActive.
+  // Activates the context via Context::SetActive.
   explicit ScopedActivateContext(Context* gpu_context);
+  explicit ScopedActivateContext(GpuExecutor* gpu_executor);
+  explicit ScopedActivateContext(StreamExecutor* executor);
 
   // Checks that the context has remained activated for the duration of the
   // scope.

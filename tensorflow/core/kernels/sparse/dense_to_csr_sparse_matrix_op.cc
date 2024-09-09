@@ -20,6 +20,7 @@ limitations under the License.
 #endif
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_reference.h"
@@ -39,13 +40,7 @@ limitations under the License.
 #include "tensorflow/core/util/gpu_solvers.h"
 #endif
 
-#if GOOGLE_CUDA
-#include "xla/stream_executor/cuda/cuda_activation.h"
-using ::stream_executor::cuda::ScopedActivateExecutorContext;
-#elif TENSORFLOW_USE_ROCM
-#include "xla/stream_executor/rocm/rocm_activation.h"
-using ::stream_executor::rocm::ScopedActivateExecutorContext;
-#endif
+using ::stream_executor::gpu::ScopedActivateContext;
 
 namespace tensorflow {
 
@@ -228,7 +223,7 @@ class DenseToCSRSparseMatrixGPUOp : public AsyncOpKernel {
       {
         // Ensure that within the callback, the proper GPU settings are
         // configured.
-        ScopedActivateExecutorContext scoped_activation{stream->parent()};
+        ScopedActivateContext scoped_activation{stream->parent()};
 
         // Extract out the values.
         Tensor temp_values_t;
@@ -343,7 +338,7 @@ class DenseToCSRSparseMatrixGPUOp : public AsyncOpKernel {
             c, c->allocate_output(0, TensorShape({}), &matrix_t, cpu_alloc),
             done);
         matrix_t->scalar<Variant>()() = std::move(matrix);
-      }  // Release ScopedActivateExecutorContext to prevent deadlock when done
+      }  // Release ScopedActivateContext to prevent deadlock when done
          // inlines another Op kernel, which may assume the original cuda
          // Context.
 

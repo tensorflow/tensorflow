@@ -32,7 +32,6 @@ cc_library(
         "@local_config_nccl//:nccl",
         "//tensorflow/core/platform:blocking_counter",
         "//tensorflow/core/platform:unbounded_work_queue",
-        "@local_xla//xla/stream_executor/cuda:cuda_activation",
         "//tensorflow/core/framework:tensor_proto_cc",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rccl",
@@ -48,7 +47,9 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:annotated_traceme",
-    ]),
+    ]) + [
+        "@local_xla//xla/stream_executor/gpu:scoped_activate_context",
+    ],
     alwayslink = 1,
 )
 

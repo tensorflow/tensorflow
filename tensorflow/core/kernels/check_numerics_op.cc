@@ -23,6 +23,7 @@ limitations under the License.
 #include <numeric>  // NOLINT
 // clang-format on
 
+#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -33,9 +34,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#if GOOGLE_CUDA
-#include "xla/stream_executor/cuda/cuda_activation.h"
-#elif TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
 #endif
 namespace tensorflow {
@@ -261,18 +260,12 @@ class CheckNumericsOp<GPUDevice, T> : public AsyncOpKernel {
     auto check_cb = [this, stream, abnormal_detected_ref,
                      abnormal_detected_host, context, done]() {
       {
-#if GOOGLE_CUDA
-        se::cuda::ScopedActivateExecutorContext scoped_activation{
-            stream->parent()};
-#elif TENSORFLOW_USE_ROCM
-        se::rocm::ScopedActivateExecutorContext scoped_activation{
-            stream->parent()};
-#endif
+        se::gpu::ScopedActivateContext scoped_activation{stream->parent()};
         TTypes<const int>::Vec abnormal_detected_host_flat =
             abnormal_detected_host.flat<int>();
         abnormal_detected_ref.Unref();
         checkForAnomalies(context, abnormal_detected_host_flat);
-      }  // Release ScopedActivateExecutorContext to prevent deadlock when done
+      }  // Release ScopedActivateContext to prevent deadlock when done
          // inlines another Op kernel, which may assume the original cuda
          // Context.
       done();

@@ -234,7 +234,7 @@ class GpuExecutor : public StreamExecutorCommon {
   std::unique_ptr<GpuCommandBuffer> CreateCommandBuffer(
       CommandBuffer::Mode mode, GpuGraphHandle graph, bool is_owned_graph);
 
-  Context* gpu_context();
+  Context* gpu_context() { return context_; }
 
   // Provide a type-erased way of attaching arbitrary XLA specific state to the
   // GpuExecutor. XLA based execution will use this method to attach per-stream

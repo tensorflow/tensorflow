@@ -13,12 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file contains APIs that assume a StreamExecutor is backed by CUDA.
-// It reaches into the CUDA implementation to activate an underlying CUDA
-// context.
-//
-// Having this file separate from gpu/gpu_executor.h means that dependent
-// code does not also have to depend on cuda.h.
+// This file contains APIs that assume a StreamExecutor is backed by a GPU
+// implementation. It ensures the underlying GPU context is active.
 
 #ifndef XLA_STREAM_EXECUTOR_GPU_GPU_ACTIVATION_H_
 #define XLA_STREAM_EXECUTOR_GPU_GPU_ACTIVATION_H_
@@ -33,20 +29,19 @@ namespace gpu {
 
 class GpuExecutor;
 
-// Activates a CUDA context within an enclosing scope.
+// Activates a context within an enclosing scope.
 class ScopedActivateExecutorContext {
  public:
-  // Form that takes a CUDA executor implementation.
+  // Form that takes a GPU executor.
   explicit ScopedActivateExecutorContext(GpuExecutor* gpu_exec);
 
-  // Form that takes a pImpl executor and extracts a CUDA implementation --
-  // fatal failure if it is not CUDA inside.
+  // Form that takes an executor and extracts a GPU Executor --
+  // fatal failure if it is not a GPU executor.
   explicit ScopedActivateExecutorContext(StreamExecutor* stream_exec);
 
   ~ScopedActivateExecutorContext();
 
  private:
-  // The cuda.h-using datatype that we wrap.
   ScopedActivateContext* driver_scoped_activate_context_;
 
   ScopedActivateExecutorContext(const ScopedActivateExecutorContext&) = delete;

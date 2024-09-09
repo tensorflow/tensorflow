@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,9 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_ROCM_H_
-#define TENSORFLOW_CORE_PLATFORM_ROCM_H_
+#ifndef XLA_STREAM_EXECUTOR_GPU_READ_NUMA_NODE_H_
+#define XLA_STREAM_EXECUTOR_GPU_READ_NUMA_NODE_H_
 
-#include "tensorflow/core/platform/platform.h"  // IWYU pragma: keep
+#include <string>
 
-#endif  // TENSORFLOW_CORE_PLATFORM_ROCM_H_
+namespace stream_executor::gpu {
+
+// Attempts to read the NUMA node corresponding to the GPU device's PCI bus out
+// of SysFS. Returns -1 if it cannot.
+int ReadNumaNode(const std::string& pci_bus_id, int device_ordinal);
+
+}  // namespace stream_executor::gpu
+
+#endif  // XLA_STREAM_EXECUTOR_GPU_READ_NUMA_NODE_H_

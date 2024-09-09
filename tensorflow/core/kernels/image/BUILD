@@ -195,9 +195,9 @@ tf_kernel_library(
     deps = IMAGE_DEPS + [
         "//tensorflow/core:framework_internal",
         "//tensorflow/core/util:determinism_for_kernels",
+        "@local_xla//xla/stream_executor/gpu:scoped_activate_context",
     ] + if_cuda_or_rocm([
         "//tensorflow/core/platform:stream_executor",
-        "@local_xla//xla/stream_executor/cuda:cuda_activation",
     ]),
 )
 

@@ -3671,7 +3671,10 @@ tf_kernel_library(
     name = "check_numerics_op",
     features = ["-layering_check"],
     prefix = "check_numerics_op",
-    deps = MATH_DEPS + ["//tensorflow/core:framework_internal"],
+    deps = MATH_DEPS + [
+        "//tensorflow/core:framework_internal",
+        "@local_xla//xla/stream_executor/gpu:scoped_activate_context",
+    ],
 )
 
 tf_kernel_library(

@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
-#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -39,7 +38,6 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
-#include "xla/stream_executor/cuda/cuda_driver.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/cuda_version_parser.h"
@@ -62,6 +60,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
+#include "xla/stream_executor/gpu/read_numa_node.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -74,17 +73,7 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/numa.h"
 #include "tsl/platform/statusor.h"
-
-// LOG(ERROR) uses a const named ERROR, so a macro with the same name is
-// always unwanted. This happens on Windows that defines such a macro.
-#undef ERROR
-
-#ifdef __CUDA_RUNTIME_H__
-#error \
-    "CUDA runtime being included into CUDA GPU executor; should be driver only."
-#endif
 
 namespace stream_executor {
 namespace gpu {
@@ -115,11 +104,6 @@ static CUdeviceptr AsCudaDevicePtr(const DeviceMemoryBase& gpu_mem) {
 // See description on const version above.
 static CUdeviceptr AsCudaDevicePtr(DeviceMemoryBase* gpu_mem) {
   return AsCudaDevicePtr(*gpu_mem);
-}
-
-Context* ExtractGpuContext(GpuExecutor* cuda_exec) {
-  CHECK(cuda_exec != nullptr);
-  return cuda_exec->gpu_context();
 }
 
 GpuExecutor::~GpuExecutor() {
@@ -671,71 +655,6 @@ std::unique_ptr<GpuCommandBuffer> GpuExecutor::CreateCommandBuffer(
                                             is_owned_graph);
 }
 
-Context* GpuExecutor::gpu_context() { return context_; }
-
-// Attempts to read the NUMA node corresponding to the GPU device's PCI bus out
-// of SysFS. Returns -1 if it cannot.
-//
-// For anything more complicated/prod-focused than this, you'll likely want to
-// turn to gsys' topology modeling.
-static int TryToReadNumaNode(const std::string& pci_bus_id,
-                             int device_ordinal) {
-  if (!tsl::port::NUMAEnabled()) {
-    // NUMA is not currently enabled. Return node 0.
-    return 0;
-  }
-  VLOG(2) << "trying to read NUMA node for device ordinal: " << device_ordinal;
-  static const int kUnknownNumaNode = -1;
-
-  if (pci_bus_id.empty()) {
-    LOG(INFO) << "no PCI bus ID for device ordinal: " << device_ordinal;
-    return kUnknownNumaNode;
-  }
-
-  std::string filename =
-      absl::StrFormat("/sys/bus/pci/devices/%s/numa_node", pci_bus_id);
-
-  // We have to use fopen/fread here so that the device properties can be
-  // populated before InitGoogle procedure has been completed (at which point we
-  // could use the file::* utilities).
-  FILE* file = fopen(filename.c_str(), "r");
-  if (file == nullptr) {
-    LOG(INFO) << "could not open file to read NUMA node: " << filename
-              << "\nYour kernel may have been built without NUMA support.";
-    return kUnknownNumaNode;
-  }
-
-  std::string content;
-  char buf[32];
-  size_t did_read = fread(buf, sizeof(buf[0]), sizeof(buf) - 1, file);
-  buf[did_read] = '\0';
-  content = buf;
-
-  int32_t value;
-  if (absl::SimpleAtoi(content, &value)) {
-    if (value < 0) {  // See http://b/18228951 for details on this path.
-      LOG(INFO) << "successful NUMA node read from SysFS had negative value ("
-                << value
-                << "), but there must be at least one NUMA node"
-                   ", so returning NUMA node zero."
-                   " See more at "
-                   "https://github.com/torvalds/linux/blob/v6.0/Documentation/"
-                   "ABI/testing/sysfs-bus-pci#L344-L355";
-      fclose(file);
-      return 0;
-    }
-    fclose(file);
-    return value;
-  }
-
-  LOG(WARNING)
-      << "could not convert SysFS file contents to integral NUMA node value: "
-      << content;
-
-  fclose(file);
-  return kUnknownNumaNode;
-}
-
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 GpuExecutor::CreateDeviceDescription(int device_ordinal) {
   GpuDeviceHandle device;
@@ -773,7 +692,7 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
     desc.set_pci_bus_id(pci_bus_id);
 
     // Read the NUMA node corresponding to the PCI bus ID out of sysfs.
-    int numa_node = TryToReadNumaNode(pci_bus_id, device_ordinal);
+    int numa_node = ReadNumaNode(pci_bus_id, device_ordinal);
     desc.set_numa_node(numa_node);
   }
 
