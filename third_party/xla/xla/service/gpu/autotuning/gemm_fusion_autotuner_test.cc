@@ -22,10 +22,10 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/autotuning.pb.h"
@@ -66,6 +66,7 @@ limitations under the License.
 #include "tsl/platform/path.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/platform/test.h"
 #include "tsl/platform/threadpool.h"
 
 namespace xla {

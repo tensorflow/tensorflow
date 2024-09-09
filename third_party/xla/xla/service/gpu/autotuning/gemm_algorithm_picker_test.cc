@@ -20,7 +20,9 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
+#include "xla/autotune_results.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -28,11 +30,11 @@ limitations under the License.
 #include "xla/service/gpu/variant_visitor.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
-#include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 #include "tsl/protobuf/dnn.pb.h"
