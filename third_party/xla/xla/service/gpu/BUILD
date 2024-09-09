@@ -1564,6 +1564,7 @@ cc_library(
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/stream_executor:dnn",
         "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:semantic_version",
         "//xla/translate/hlo_to_mhlo:hlo_utils",
         "//xla/translate/mhlo_to_hlo:location_exporter",
         "//xla:autotune_results_proto_cc",

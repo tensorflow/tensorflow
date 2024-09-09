@@ -1520,15 +1520,13 @@ xla_test(
     name = "gemm_broadcast_folding_rewriter_test",
     srcs = ["gemm_broadcast_folding_rewriter_test.cc"],
     backends = ["gpu"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
-        "TENSORFLOW_USE_ROCM=1",
-    ]),
     deps = [
         ":gemm_broadcast_folding_rewriter",
         ":gemm_rewriter",
         "//xla:error_spec",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu/tests:gpu_codegen_test",
+        "//xla/stream_executor:semantic_version",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
@@ -1618,10 +1616,12 @@ cc_library(
         "//xla/service/gpu:matmul_utils",
         "//xla/stream_executor:blas",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor:semantic_version",
         "//xla/stream_executor/gpu:gpu_blas_lt",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -1637,9 +1637,6 @@ xla_test(
     name = "gemm_rewriter_test",
     srcs = ["gemm_rewriter_test.cc"],
     backends = ["gpu"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
-        "TENSORFLOW_USE_ROCM=1",
-    ]),
     deps = [
         ":gemm_rewriter",
         "//xla:error_spec",
@@ -1656,6 +1653,7 @@ xla_test(
         "//xla/service/gpu/tests:gpu_codegen_test",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_memory_allocator",
+        "//xla/stream_executor:semantic_version",
         "//xla/stream_executor:stream_executor_memory_allocator",
         "//xla/tests:filecheck",
         "//xla/tests:verified_hlo_module",
@@ -1666,11 +1664,7 @@ xla_test(
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test_main",
-    ] + if_cuda_is_configured([
-        "@local_config_cuda//cuda:cuda_headers",
-    ]) + if_rocm_is_configured([
-        "@local_config_rocm//rocm:rocm_headers",
-    ]),
+    ],
 )
 
 cc_library(

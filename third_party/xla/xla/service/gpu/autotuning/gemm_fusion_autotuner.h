@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/threadpool.h"
 
@@ -49,7 +50,7 @@ namespace gpu {
 class GemmFusionAutotuner : public HloModulePass {
  public:
   explicit GemmFusionAutotuner(const AutotuneConfig& config,
-                               const int32_t toolkit_version,
+                               const se::SemanticVersion& toolkit_version,
                                tsl::thread::ThreadPool* thread_pool,
                                const MultiProcessKeyValueStore& key_value_store)
       : config_(config),
@@ -65,8 +66,8 @@ class GemmFusionAutotuner : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  const AutotuneConfig config_;
-  const int32_t toolkit_version_;
+  AutotuneConfig config_;
+  se::SemanticVersion toolkit_version_;
   tsl::thread::ThreadPool* thread_pool_;
   MultiProcessKeyValueStore key_value_store_;
 };
@@ -74,10 +75,10 @@ class GemmFusionAutotuner : public HloModulePass {
 // Autotuner implementation.
 class GemmFusionAutotunerImpl {
  public:
-  GemmFusionAutotunerImpl(const AutotuneConfig config,
-                          const int32_t toolkit_version,
-                          const DebugOptions debug_options,
-                          tsl::thread::ThreadPool* thread_pool)
+  GemmFusionAutotunerImpl(
+      AutotuneConfig& config,
+      const stream_executor::SemanticVersion& toolkit_version,
+      DebugOptions debug_options, tsl::thread::ThreadPool* thread_pool)
       : config_(std::move(config)),
         toolkit_version_(toolkit_version),
         debug_options_(std::move(debug_options)),
@@ -134,9 +135,9 @@ class GemmFusionAutotunerImpl {
   std::vector<TritonGemmConfig> GetDefaultTritonConfigs() const;
   std::vector<TritonGemmConfig> GetExhaustiveTritonConfigs() const;
 
-  const AutotuneConfig config_;
-  const int32_t toolkit_version_;
-  const DebugOptions debug_options_;
+  AutotuneConfig config_;
+  se::SemanticVersion toolkit_version_;
+  DebugOptions debug_options_;
   tsl::thread::ThreadPool* thread_pool_;
   std::vector<TritonGemmConfig> triton_configs_;
 };

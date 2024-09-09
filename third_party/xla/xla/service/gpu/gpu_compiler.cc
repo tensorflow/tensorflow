@@ -241,6 +241,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/integrations/device_mem_allocator.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -1348,7 +1349,7 @@ namespace {
 void AddGemmRewriterPasses(HloPassPipeline& pipeline,
                            const DebugOptions& debug_options,
                            const se::GpuComputeCapability gpu_version,
-                           const int32_t toolkit_version) {
+                           const se::SemanticVersion& toolkit_version) {
   // Adding bias to GEMMs is helpful for skipping kernel launches for `add`
   // operations. However, the bias term can add dependencies between the GEMMs
   // that could otherwise be parallelized. Because of this, we disable bias
@@ -1468,8 +1469,9 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     }
 
     // Rewrite GEMMs into custom calls.
-    AddGemmRewriterPasses(pipeline, debug_options, gpu_version,
-                          GetToolkitVersion());
+    AddGemmRewriterPasses(
+        pipeline, debug_options, gpu_version,
+        gpu_target_config.device_description.runtime_version());
 
     // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
     pipeline.AddPass<GemmBroadcastFoldingRewriter>();
@@ -1532,15 +1534,16 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // f32).
   add_float_normalization(pipeline);
 
-  TF_RETURN_IF_ERROR(AddGemmFusionAutotuningPasses(&pipeline, hlo_module,
-                                                   autotune_config, thread_pool,
-                                                   options.key_value_store));
+  TF_RETURN_IF_ERROR(AddGemmFusionAutotuningPasses(
+      &pipeline, hlo_module, autotune_config, thread_pool,
+      options.key_value_store,
+      gpu_target_config.device_description.runtime_version()));
   // Inline back the calls which have better performance with cuBLAS.
   pipeline.AddPass<CallInliner>();
   // TODO(tdanyluk): Apply CublasPadForGemms to the cuBLAS GEMMs generated
   // here for possibly better cuBLAS performance.
   AddGemmRewriterPasses(pipeline, debug_options, gpu_version,
-                        GetToolkitVersion());
+                        gpu_target_config.device_description.runtime_version());
 
   // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
   pipeline.AddPass<GemmBroadcastFoldingRewriter>();

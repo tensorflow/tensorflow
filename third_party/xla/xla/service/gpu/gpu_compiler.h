@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -161,7 +162,8 @@ class GpuCompiler : public LLVMCompiler {
   virtual absl::Status AddGemmFusionAutotuningPasses(
       HloPassPipeline* pipeline, HloModule* hlo_module,
       AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
-      const MultiProcessKeyValueStore& key_value_store) {
+      const MultiProcessKeyValueStore& key_value_store,
+      const se::SemanticVersion& toolkit_version) {
     return absl::OkStatus();
   }
 

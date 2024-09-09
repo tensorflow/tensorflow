@@ -83,6 +83,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tools/hlo_decomposer.h"
@@ -386,8 +387,8 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
 
 absl::StatusOr<std::unique_ptr<HloModule>> CublasGemmAutotuneExtractor(
     const AutotuneConfig& config, const se::DeviceDescription& gpu_device_info,
-    const int32_t toolkit_version, const HloFusionInstruction* fusion,
-    const DebugOptions& debug_opts) {
+    const se::SemanticVersion& toolkit_version,
+    const HloFusionInstruction* fusion, const DebugOptions& debug_opts) {
   const HloComputation* fusion_computation =
       fusion->called_computations().at(0);
   std::unique_ptr<HloModule> new_module =
@@ -515,7 +516,7 @@ absl::Status DumpOriginalFusion(AutotunerCompileUtil& util,
 }
 
 absl::Status DumpAutotunedFusion(const AutotuneConfig& autotune_config,
-                                 const int32_t toolkit_version,
+                                 const se::SemanticVersion& toolkit_version,
                                  AutotunerCompileUtil& util,
                                  const AutotuneResult result,
                                  const HloFusionInstruction* fusion,
