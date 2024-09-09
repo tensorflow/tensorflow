@@ -67,26 +67,6 @@ namespace gpu {
 
 namespace {
 
-absl::StatusOr<GpuContext*> GetPointerContext(CUdeviceptr pointer) {
-  GpuContext* context = nullptr;
-  auto status = cuda::ToStatus(
-      cuPointerGetAttribute(&context, CU_POINTER_ATTRIBUTE_CONTEXT, pointer));
-  if (status.ok()) {
-    // For cudaMallocAsync, the context returned is null.  For now
-    // return not-available. But how to manage that correctly
-    // everywhere in TF?  Currently this is only used during error
-    // handling.  So all is working fine, but TF have a different
-    // error then the original one.
-    if (context == nullptr) {
-      return absl::UnavailableError(
-          "Empty context returned while querying context for device pointer");
-    }
-    return context;
-  }
-
-  return status;
-}
-
 // Returns the device associated with the given context.
 absl::StatusOr<CUdevice> DeviceFromContext(Context* context) {
   ScopedActivateContext activated{context};
@@ -160,53 +140,6 @@ void GpuContext::SetActive() {
 bool GpuContext::IsActive() const { return CurrentContext() == context_; }
 
 namespace {
-
-// Returns a stringified device number associated with pointer, primarily for
-// logging purposes. Returns "?" if the device could not be successfully
-// queried.
-std::string CUDAPointerToDeviceString(CUdeviceptr pointer) {
-  auto value = GpuDriver::GetPointerDevice(pointer);
-  if (value.ok()) {
-    return absl::StrCat(value.value());
-  }
-  LOG(ERROR) << "could not query device: " << value.status();
-  return "?";
-}
-
-// Returns a stringified memory space associated with pointer, primarily for
-// logging purposes. Returns "?" if the memory space could not be successfully
-// queried.
-std::string CUDAPointerToMemorySpaceString(CUdeviceptr pointer) {
-  auto value = GpuDriver::GetPointerMemorySpace(pointer);
-  if (value.ok()) {
-    return MemoryTypeString(value.value());
-  }
-  LOG(ERROR) << "could not query device: " << value.status();
-  return "?";
-}
-
-// Returns a stringified representation of whether or not peer access is
-// permitted between the "from" and "to" pointers' associated contexts,
-// primarily for logging purposes. Returns "error" if an error is encountered
-// in the process of querying.
-std::string CUDAPointersToCanAccessString(CUdeviceptr from, CUdeviceptr to) {
-  auto from_context = GetPointerContext(from);
-  if (!from_context.ok()) {
-    LOG(ERROR) << "could not retrieve source pointer's context: "
-               << from_context.status();
-    return "source ptr error";
-  }
-  auto to_context = GetPointerContext(to);
-  if (!to_context.ok()) {
-    LOG(ERROR) << "could not retrieve destination pointer's context: "
-               << to_context.status();
-    return "destination ptr error";
-  }
-  return GpuDriver::CanEnablePeerAccess(from_context.value(),
-                                        to_context.value())
-             ? "true"
-             : "false";
-}
 
 // Actually performs the work of CUDA initialization. Wrapped up in one-time
 // execution guard.
@@ -826,111 +759,6 @@ absl::Status GpuDriver::GraphAddKernelNode(
 
   return cuda::ToStatus(cuGraphExecKernelNodeSetParams(exec, node, &params),
                         "Failed to set CUDA graph kernel node params");
-}
-
-static CUmemAccess_flags ToCudaMemAccessFlags(
-    GpuDriver::MemAccessFlags access_flags) {
-  switch (access_flags) {
-    case GpuDriver::MemAccessFlags::kNone:
-      return CU_MEM_ACCESS_FLAGS_PROT_NONE;
-    case GpuDriver::MemAccessFlags::kRead:
-      return CU_MEM_ACCESS_FLAGS_PROT_READ;
-    case GpuDriver::MemAccessFlags::kReadWrite:
-      return CU_MEM_ACCESS_FLAGS_PROT_READWRITE;
-  }
-}
-
-static CUmemLocationType ToCudaLocationType(
-    GpuDriver::MemLocationType location_type) {
-  switch (location_type) {
-    case GpuDriver::MemLocationType::kInvalid:
-      return CU_MEM_LOCATION_TYPE_INVALID;
-    case GpuDriver::MemLocationType::kDevice:
-      return CU_MEM_LOCATION_TYPE_DEVICE;
-#if CUDA_VERSION >= 12030
-    case GpuDriver::MemLocationType::kHost:
-      return CU_MEM_LOCATION_TYPE_HOST;
-    case GpuDriver::MemLocationType::kHostNuma:
-      return CU_MEM_LOCATION_TYPE_HOST_NUMA;
-    case GpuDriver::MemLocationType::kHostNumaCurrent:
-      return CU_MEM_LOCATION_TYPE_HOST_NUMA_CURRENT;
-#else
-    case GpuDriver::MemLocationType::kHost:
-    case GpuDriver::MemLocationType::kHostNuma:
-    case GpuDriver::MemLocationType::kHostNumaCurrent:
-      return CU_MEM_LOCATION_TYPE_INVALID;
-#endif  // CUDA_VERSION >= 12030
-  }
-}
-
-static CUmemAllocationType ToCudaAllocationType(
-    GpuDriver::MemAllocationType alocation_type) {
-  switch (alocation_type) {
-    case GpuDriver::MemAllocationType::kInvalid:
-      return CU_MEM_ALLOCATION_TYPE_INVALID;
-    case GpuDriver::MemAllocationType::kPinned:
-      return CU_MEM_ALLOCATION_TYPE_PINNED;
-  }
-}
-
-/*static*/ absl::Status GpuDriver::GraphAddMemAllocNode(
-    CUgraphNode* node, CUgraph graph, absl::Span<const CUgraphNode> deps,
-    GpuDriver::MemAccessFlags access_flags,
-    GpuDriver::MemLocationType location_type, int device_id,
-    GpuDriver::MemAllocationType allocation_type, uint64_t size,
-    CUdeviceptr* d_ptr, uint64_t max_pool_size) {
-  CUDA_MEM_ALLOC_NODE_PARAMS params;
-  memset(&params, 0, sizeof(params));
-
-  CUmemLocation mem_location;
-  mem_location.id = device_id;
-  mem_location.type = ToCudaLocationType(location_type);
-
-  CUmemAccessDesc mem_desc;
-  mem_desc.flags = ToCudaMemAccessFlags(access_flags);
-  mem_desc.location = mem_location;
-
-  CUmemPoolProps mem_pool_props;
-  mem_pool_props.allocType = ToCudaAllocationType(allocation_type);
-  mem_pool_props.handleTypes = CU_MEM_HANDLE_TYPE_NONE;
-  mem_pool_props.location = mem_location;
-#if CUDA_VERSION >= 12030
-  mem_pool_props.maxSize = max_pool_size;
-#endif  // CUDA_VERSION >= 12030
-  // cuda graph requires reserved space initialized to 0
-  memset(mem_pool_props.reserved, 0, sizeof(mem_pool_props.reserved));
-
-  params.accessDescCount = 1;
-  params.bytesize = size;
-  params.accessDescs = &mem_desc;
-  params.poolProps = mem_pool_props;
-
-  TF_RETURN_IF_ERROR(cuda::ToStatus(
-      cuGraphAddMemAllocNode(node, graph, deps.data(), deps.size(), &params),
-      "Failed to add memory allocation node to a CUDA graph"));
-
-  VLOG(2) << "Add MemAllocNode to a graph " << graph << " size " << size
-          << " address " << reinterpret_cast<void*>(params.dptr);
-
-  *d_ptr = params.dptr;
-  return absl::OkStatus();
-}
-
-/*static*/ absl::StatusOr<std::pair<CUdeviceptr, uint64_t>>
-GpuDriver::GraphGetMemAllocNodeParams(CUgraphNode node) {
-  CUDA_MEM_ALLOC_NODE_PARAMS params;
-  TF_RETURN_IF_ERROR(
-      cuda::ToStatus(cuGraphMemAllocNodeGetParams(node, &params),
-                     "Failed to get memory allocation node parameter"));
-  return std::pair<CUdeviceptr, uint64_t>{params.dptr, params.bytesize};
-}
-
-/*static*/ absl::Status GpuDriver::GraphAddMemFreeNode(
-    CUgraphNode* node, CUgraph graph, absl::Span<const CUgraphNode> deps,
-    CUdeviceptr gpu_dst) {
-  return cuda::ToStatus(
-      cuGraphAddMemFreeNode(node, graph, deps.data(), deps.size(), gpu_dst),
-      "Failed to add memory free node to a CUDA graph");
 }
 
 absl::Status GpuDriver::GraphAddMemcpyD2DNode(
@@ -1704,15 +1532,6 @@ absl::Status GpuDriver::GetPointerAddressRange(CUdeviceptr dptr,
                                                CUdeviceptr* base,
                                                size_t* size) {
   return cuda::ToStatus(cuMemGetAddressRange(base, size, dptr));
-}
-
-absl::StatusOr<CUdevice> GpuDriver::GetPointerDevice(CUdeviceptr pointer) {
-  auto result = GetPointerContext(pointer);
-  if (!result.ok()) {
-    return result.status();
-  }
-
-  return DeviceFromContext(result.value());
 }
 
 absl::Status GpuDriver::GetComputeCapability(int* cc_major, int* cc_minor,
