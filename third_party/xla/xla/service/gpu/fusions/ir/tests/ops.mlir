@@ -159,7 +159,7 @@ func.func private @exp(%p0: tensor<32x64xf32>, %i: index, %j: index) -> f32
 #map1 = #xla_gpu.indexing_map<(d0, d1)[s0, s1] -> (s0, s1), domain: d0 in [0, 32], d1 in [0, 2], s0 in [0, 1024], s1 in [0, 32], is_simplified: false>
 func.func @materialize_and_insert(%input: tensor<32x64xf32>, %i: index, %j: index, %output: tensor<32x64xf32>) -> tensor<32x64xf32> {
   %0 = xla_gpu.materialize @exp(%input) at #map(%i, %j) : (tensor<32x64xf32>) -> !xla_gpu.indexed_vector<32x64xf32, #map1>
-  %1 = xla_gpu.insert %0 into %output at #map1(%i, %j) : !xla_gpu.indexed_vector<32x64xf32, #map1> -> tensor<32x64xf32>
+  %1 = xla_gpu.insert %0(%i, %j) into %output at #map1 : !xla_gpu.indexed_vector<32x64xf32, #map1> -> tensor<32x64xf32>
   func.return %1 : tensor<32x64xf32>
 }
 
@@ -169,4 +169,4 @@ func.func @materialize_and_insert(%input: tensor<32x64xf32>, %i: index, %j: inde
 // CHECK-SAME: d0 in [0, 32], d1 in [0, 2], s0 in [0, 1024], s1 in [0, 32]
 // CHECK-LABEL: @materialize_and_insert
 // CHECK: %[[MATERIALIZED:.*]] = xla_gpu.materialize @exp(%{{.*}}) at #[[$MAP]](%{{.*}}, %{{.*}})
-// CHECK: xla_gpu.insert %[[MATERIALIZED]] into %{{.*}} at #[[$MAP1]](%{{.*}}, %{{.*}})
+// CHECK: xla_gpu.insert %[[MATERIALIZED]](%{{.*}}, %{{.*}}) into %{{.*}} at #[[$MAP1]]

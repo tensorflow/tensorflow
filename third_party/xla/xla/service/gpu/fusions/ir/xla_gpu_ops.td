@@ -408,7 +408,7 @@ def XLAGPU_InsertOp : XLAGPU_Op<"insert", [TypesMatchWith<
                        XLAGPU_IndexingMapAttr:$map);
   let results = (outs AnyRankedTensor:$result);
   let assemblyFormat = [{
-    $source `into` $dest `at` $map `(` $indices `)` attr-dict `:` type($source) `->` type($result)
+    $source `(` $indices `)` `into` $dest `at` $map attr-dict `:` type($source) `->` type($result)
   }];
 }
 
