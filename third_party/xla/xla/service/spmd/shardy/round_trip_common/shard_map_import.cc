@@ -50,13 +50,16 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/TypeID.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/InliningUtils.h"
 #include "shardy/dialect/sdy/ir/constants.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/spmd/shardy/constants.h"
+#include "xla/service/spmd/shardy/utils.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
 
 namespace xla {
 namespace sdy {
@@ -86,7 +89,10 @@ using sdy::SdyDialect;
 using sdy::TensorShardingAttr;
 using sdy::TensorShardingPerValueAttr;
 
-// A pair of custom calls. `shardingOp` has target name "Sharding".
+// A sharding op and corresponding shape transform op.
+// If `shardingOp` is a CustomCallOp, it has target name "Sharding". Else it is
+// expected to be an sdy::ShardingConstraintOp.
+//
 // `shapeTransformOp` has target name "SPMDFullToShardShape" or
 // "SPMDShardToFullShape". `shardingOp` has exactly one user, which is
 // shapeTransformOp. `shapeTransformOp` has exactly one operand, which is
@@ -95,7 +101,7 @@ using sdy::TensorShardingPerValueAttr;
 // Both `shardingOp` and `shapeTransformOp` will be nullptr for unused results
 // of the shard map `func.call`.
 struct ShardMapCustomCallPair {
-  CustomCallOp shardingOp;
+  Operation* shardingOp;
   CustomCallOp shapeTransformOp;
 };
 
@@ -188,19 +194,36 @@ absl::StatusOr<ShardMapArgumentsResults> getJaxShardMapPatternOps(CallOp op) {
       return absl::NotFoundError(
           "expecting SPMDFullToShardShape custom call as operand");
     }
-    auto shardingCustomCall =
-        fullToShardCustomCall->getOperand(0).getDefiningOp<CustomCallOp>();
-    if (!shardingCustomCall) {
+    if (mlir::isa<mlir::BlockArgument>(fullToShardCustomCall->getOperand(0))) {
       return absl::NotFoundError(
           "expecting CustomCallOp as operand of SPMDFullToShardShape");
     }
-    if (!isShardMapCustomCall(shardingCustomCall,
-                              kShardingCustomCallTargetName)) {
-      return absl::NotFoundError(
-          "expecting Sharding CustomCallOp as operand of SPMDFullToShardShape");
-    }
-    argumentOps.push_back(
-        ShardMapCustomCallPair{shardingCustomCall, fullToShardCustomCall});
+    TF_RETURN_IF_ERROR(
+        mlir::TypeSwitch<Operation*, absl::Status>(
+            fullToShardCustomCall->getOperand(0).getDefiningOp())
+            .Case<CustomCallOp>([&](CustomCallOp customCallOp) {
+              if (!isShardMapCustomCall(customCallOp,
+                                        kShardingCustomCallTargetName)) {
+                return absl::NotFoundError(
+                    "expecting Sharding CustomCallOp as operand of "
+                    "SPMDFullToShardShape");
+              }
+              argumentOps.push_back(
+                  ShardMapCustomCallPair{customCallOp, fullToShardCustomCall});
+              return absl::OkStatus();
+            })
+            .Case<sdy::ShardingConstraintOp>(
+                [&](sdy::ShardingConstraintOp shardingConstraintOp) {
+                  argumentOps.push_back(ShardMapCustomCallPair{
+                      shardingConstraintOp, fullToShardCustomCall});
+                  return absl::OkStatus();
+                })
+            .Default([](Operation*) {
+              return absl::NotFoundError(
+                  "expecting CustomCallOp or ShardingConstraintOp as operand "
+                  "of "
+                  "SPMDFullToShardShape");
+            }));
   }
 
   SmallVector<ShardMapCustomCallPair> resultOps;
@@ -249,6 +272,55 @@ absl::StatusOr<ShardMapArgumentsResults> getJaxShardMapPatternOps(CallOp op) {
   }
 
   return ShardMapArgumentsResults{argumentOps, resultOps};
+}
+
+// Inlines shard maps with no operand/result custom calls.
+//
+// When the shard map's manual axes are all of size 1, JAX will not create the
+// shmap pattern with custom calls. Instead, the call op by itself will exist.
+// If that is the case, just inline the op.
+absl::Status inlineRedundantShardMap(FuncOp funcOp,
+                                     mlir::DenseSet<FuncOp>& toDeleteFuncOps) {
+  bool errorEmitted = false;
+  bool inlined = false;
+  mlir::SymbolTableCollection symbolTableCollection;
+  CallOp toDeleteCallOp;
+  funcOp->walk([&](CallOp op) {
+    bool anyOperandCustomCall = llvm::any_of(
+        op.getOperands(),
+        [](Value operand) { return operand.getDefiningOp<CustomCallOp>(); });
+    bool anyResultCustomCall = llvm::any_of(op.getResults(), [](Value result) {
+      return !result.use_empty() &&
+             mlir::dyn_cast<CustomCallOp>(*result.user_begin());
+    });
+    if (!anyOperandCustomCall && !anyResultCustomCall) {
+      mlir::InlinerInterface inliner(op.getContext());
+      auto calleeOp = mlir::cast<FuncOp>(
+          mlir::cast<mlir::CallOpInterface>(*op).resolveCallable(
+              &symbolTableCollection));
+      if (mlir::failed(inlineCall(
+              inliner, mlir::cast<mlir::CallOpInterface>(op.getOperation()),
+              mlir::cast<mlir::CallableOpInterface>(calleeOp.getOperation()),
+              calleeOp.getCallableRegion()))) {
+        op.emitOpError() << "failed to inline.\n";
+        errorEmitted = true;
+        return mlir::WalkResult::interrupt();
+      }
+      inlined = true;
+      toDeleteFuncOps.insert(calleeOp);
+      toDeleteCallOp = op;
+    }
+    return mlir::WalkResult::advance();
+  });
+  if (errorEmitted) {
+    return absl::InternalError("Failed to inline redundant shard maps.");
+  }
+
+  if (inlined) {
+    toDeleteCallOp.erase();
+    return inlineRedundantShardMap(funcOp, toDeleteFuncOps);
+  }
+  return absl::OkStatus();
 }
 
 // When calling `jax.shard_map`, we have the following pattern in the MHLO.
@@ -308,6 +380,20 @@ class ShardMapImportPass
     // Subsequent CallOps with that symbol will clone the mapped region.
     llvm::SmallDenseMap<StringRef, mlir::Region*> shardMapNameToMovedRegion;
     bool success = true;
+    mlir::DenseSet<FuncOp> toDeleteFuncOps;
+    module->walk([&](FuncOp funcOp) {
+      if (isShmapBody(funcOp)) {
+        return mlir::WalkResult::advance();
+      }
+      if (!inlineRedundantShardMap(funcOp, toDeleteFuncOps).ok()) {
+        signalPassFailure();
+        return mlir::WalkResult::interrupt();
+      }
+      return mlir::WalkResult::advance();
+    });
+    for (FuncOp funcOp : llvm::make_early_inc_range(toDeleteFuncOps)) {
+      symbolTable.erase(funcOp);
+    }
     module->walk([&](CallOp op) {
       if (!op.getCallee().contains("shmap_body")) {
         return mlir::WalkResult::advance();
@@ -472,7 +558,7 @@ class ShardMapImportPass
         CHECK(shapeTransformOp && shapeTransformOp->use_empty());
         shapeTransformOp.erase();
         CHECK(shardingOp->use_empty());
-        shardingOp.erase();
+        shardingOp->erase();
       }
 
       // Erase the call op itself.
@@ -497,7 +583,7 @@ class ShardMapImportPass
           shapeTransformOp.erase();
         }
         if (shardingOp->use_empty()) {
-          shardingOp.erase();
+          shardingOp->erase();
         }
       }
     }

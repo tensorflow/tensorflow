@@ -3,14 +3,13 @@
 sdy.mesh @mesh_0 = <["a"=4]>
 sdy.mesh @mesh_1 = <["a"=4, "b"=2]>
 sdy.mesh @mesh_2 = <["a"=4, "b"=2, "c"=3]>
+sdy.mesh @mesh_3 = <["i"=1, "j"=2, "k"=2]>
 
 // CHECK-LABEL: func.func public @call_op_with_no_operands_or_results()
 func.func public @call_op_with_no_operands_or_results() {
-  // CHECK: sdy.manual_computation() in_shardings=[] out_shardings=[] manual_axes={} () {
-  // CHECK:   sdy.return
-  // CHECK: } : () -> ()
+  // CHECK-NOT: sdy.manual_computation
   // CHECK: return
-  call @shmap_body_empty() : () -> ()
+  call @shmap_body_empty() {mhlo.frontend_attributes = {xla.sdy.manual_axes = "[]"}} : () -> ()
   return
 }
 // CHECK-NOT: func.func private @shmap_body_empty
@@ -379,4 +378,19 @@ func.func public @shard_map_duplicate_operand(%arg0: tensor<16x32xf32>) -> tenso
 func.func private @shmap_body_11(%arg0: tensor<4x32xf32>, %arg1: tensor<4x32xf32>) -> (tensor<4x32xf32>) {
   %0 = mhlo.add %arg0, %arg1 : tensor<4x32xf32>
   return %0 : tensor<4x32xf32>
+}
+
+// Even with a mesh with multiple axes size > 1, if the shmap is operating on no
+// axes > 1, then JAX will create the call but not have the pattern of the
+// custom calls. So just inline.
+// CHECK-LABEL: no_custom_call_pattern
+func.func public @no_custom_call_pattern(%arg0: tensor<4x8xf32> { sdy.sharding = #sdy.sharding<@mesh_3, [{"i"}, {"j"}]>}) -> tensor<4x8xf32> {
+  // CHECK: %[[MULT:.*]] = stablehlo.multiply %arg0, %arg0 : tensor<4x8xf32>
+  // CHECK-NEXT: return %[[MULT]] : tensor<4x8xf32>
+  %0 = call @shmap_body_14(%arg0) {xla.sdy.manual_axes = "[\\\22i\\\22]"} : (tensor<4x8xf32>) -> tensor<4x8xf32>
+  return %0 : tensor<4x8xf32>
+}
+func.func private @shmap_body_14(%arg0: tensor<4x8xf32>) -> tensor<4x8xf32> {
+  %0 = stablehlo.multiply %arg0, %arg0 : tensor<4x8xf32>
+  return %0 : tensor<4x8xf32>
 }
