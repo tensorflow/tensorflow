@@ -6869,7 +6869,7 @@ func Concat(scope *Scope, concat_dim tf.Output, values []tf.Output) (output tf.O
 // >>> y = [2, 3, 7]
 // >>> z = [2, 9, 7]
 // >>> offsets = concat_offset(1, [x, y, z])
-// >>> [list(off.numpy()) for off in offsets]
+// >>> [[a.item() for a in list(off.numpy())] for off in offsets]
 // [[0, 0, 0], [0, 2, 0], [0, 5, 0]]
 //
 // This is typically used by gradient computations for a concat operation.
