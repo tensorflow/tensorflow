@@ -659,31 +659,6 @@ build:release_arm64_linux --config=mkl_aarch64_threadpool
 build:release_arm64_linux --copt=-flax-vector-conversions
 test:release_arm64_linux --flaky_test_attempts=3
 
-# The old gcc linux build options are preserved in the unsupported_*_linux
-# configs. If your project fails to build with Clang, you can use these
-# unsupported flags to replace the release flags in your build command.
-# However, please note that the old toolchain is no longer officially supported
-# by TensorFlow and the unsupported configs will be removed soon b/299962977. We
-# strongly recommend that you migrate to Clang as your compiler for TensorFlow
-# Linux builds. Instructions are available in the official documentation:
-# https://www.tensorflow.org/install/source#install_clang_recommended_linux_only
-# Another good option is to use our Docker containers to build and test TF:
-# https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/tf_sig_build_dockerfiles.
-build:unsupported_cpu_linux --config=avx_linux
-build:unsupported_cpu_linux --crosstool_top="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
-test:unsupported_cpu_linux --test_env=LD_LIBRARY_PATH
-test:unsupported_cpu_linux --config=release_base
-
-build:unsupported_gpu_linux --config=cuda
-build:unsupported_gpu_linux --config=unsupported_cpu_linux
-build:unsupported_gpu_linux --action_env=TF_CUDA_VERSION="11"
-build:unsupported_gpu_linux --action_env=TF_CUDNN_VERSION="8"
-build:unsupported_gpu_linux --repo_env=TF_CUDA_COMPUTE_CAPABILITIES="sm_35,sm_50,sm_60,sm_70,sm_75,compute_80"
-build:unsupported_gpu_linux --action_env=CUDA_TOOLKIT_PATH="/usr/local/cuda-11.2"
-build:unsupported_gpu_linux --action_env=LD_LIBRARY_PATH="/usr/local/cuda:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/cuda-11.1/lib64"
-build:unsupported_gpu_linux --action_env=GCC_HOST_COMPILER_PATH="/dt9/usr/bin/gcc"
-build:unsupported_gpu_linux --crosstool_top=@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain
-
 build:release_cpu_macos --config=avx_linux
 
 # Base build configs for macOS
