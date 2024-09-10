@@ -180,9 +180,9 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "cpuinfo",
-        sha256 = "5d7f00693e97bd7525753de94be63f99b0490ae6855df168f5a6b2cfc452e49e",
-        strip_prefix = "cpuinfo-3c8b1533ac03dd6531ab6e7b9245d488f13a82a5",
-        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/3c8b1533ac03dd6531ab6e7b9245d488f13a82a5.zip"),
+        sha256 = "2bf2b62eb86e2d2eaf862d0b9683a6c467a4d69fb2f7f1dc47c799809148608f",
+        strip_prefix = "cpuinfo-fa1c679da8d19e1d87f20175ae1ec10995cd3dd3",
+        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/fa1c679da8d19e1d87f20175ae1ec10995cd3dd3.zip"),
     )
 
     tf_http_archive(
