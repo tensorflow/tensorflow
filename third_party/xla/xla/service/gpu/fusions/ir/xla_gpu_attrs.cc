@@ -176,18 +176,7 @@ mlir::Attribute IndexingMapAttr::parse(mlir::AsmParser& parser, mlir::Type) {
 }
 
 void IndexingMapAttr::print(mlir::AsmPrinter& printer) const {
-  printer << "<";
-  printer.printStrippedAttrOrType(getMap());
-  if (getDimVars().empty() && getRangeVars().empty()) {
-    printer << ">";
-    return;
-  }
-  printer << ", domain: ";
-  PrintDimVars(printer, getDimVars());
-  PrintRangeVars(printer, getRangeVars());
-  PrintConstraints(printer, getConstraints());
-  printer << kIsSimplifiedKeyword << ": "
-          << (getIsSimplified() ? "true" : "false") << ">";
+  printer << "<" << getIndexingMap().ToString() << ">";
 }
 
 IndexingMapAttr IndexingMapAttr::get(mlir::MLIRContext* context,
@@ -217,12 +206,14 @@ mlir::LogicalResult IndexingMapAttr::verify(
   return mlir::success();
 }
 
-IndexingMap IndexingMapAttr::getIndexingMap() {
+IndexingMap IndexingMapAttr::getIndexingMap() const {
   return IndexingMap(getMap(), getDimVars(), getRangeVars(), /*rt_vars=*/{},
                      getConstraints(), getIsSimplified());
 }
 
-int64_t IndexingMapAttr::getNumResults() { return getMap().getNumResults(); }
+int64_t IndexingMapAttr::getNumResults() const {
+  return getMap().getNumResults();
+}
 
 }  // namespace gpu
 }  // namespace xla

@@ -83,18 +83,18 @@ TEST_F(TransposeTest, ThreadIndexing021) {
           d3 floordiv 2,
           d0 floordiv 32 + s1 * 4,
           (d3 mod 2) * 32 + d0 mod 32
-        )
+        ),
         domain:
-        d0 in [0, 127]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 199]
-        d4 in [0, 0]
-        d5 in [0, 0]
+        d0 in [0, 127],
+        d1 in [0, 0],
+        d2 in [0, 0],
+        d3 in [0, 199],
+        d4 in [0, 0],
+        d5 in [0, 0],
 
-        s0 in [0, 0]
-        s1 in [0, 7]
-        s2 in [0, 0]
+        s0 in [0, 0],
+        s1 in [0, 7],
+        s2 in [0, 0],
         is_simplified: true
       )"));
   EXPECT_THAT(
@@ -104,18 +104,18 @@ TEST_F(TransposeTest, ThreadIndexing021) {
           d3 floordiv 2,
           (d3 mod 2) * 32 + s1 * 4 + d0 floordiv 32,
           d0 mod 32
-        )
+        ),
         domain:
-        d0 in [0, 127]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 199]
-        d4 in [0, 0]
-        d5 in [0, 0]
+        d0 in [0, 127],
+        d1 in [0, 0],
+        d2 in [0, 0],
+        d3 in [0, 199],
+        d4 in [0, 0],
+        d5 in [0, 0],
 
-        s0 in [0, 0]
-        s1 in [0, 7]
-        s2 in [0, 0]
+        s0 in [0, 0],
+        s1 in [0, 7],
+        s2 in [0, 0],
         is_simplified: true
       )"));
 }
@@ -147,18 +147,18 @@ TEST_F(TransposeTest, ThreadIndexing201_SimplifiedTo021) {
           0,
           d3  * 32 + s1 * 4 + d0 floordiv 32,
           d0 mod 32
-        )
+        ),
         domain:
-        d0 in [0, 127]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 199]
-        d4 in [0, 0]
-        d5 in [0, 0]
+        d0 in [0, 127],
+        d1 in [0, 0],
+        d2 in [0, 0],
+        d3 in [0, 199],
+        d4 in [0, 0],
+        d5 in [0, 0],
 
-        s0 in [0, 0]
-        s1 in [0, 7]
-        s2 in [0, 0]
+        s0 in [0, 0],
+        s1 in [0, 7],
+        s2 in [0, 0],
         is_simplified: true
       )"));
   EXPECT_THAT(
@@ -168,18 +168,18 @@ TEST_F(TransposeTest, ThreadIndexing201_SimplifiedTo021) {
           0,
           d0 floordiv 32 + s1 * 4,
           d3 * 32 + d0 mod 32
-        )
+        ),
         domain:
-        d0 in [0, 127]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 199]
-        d4 in [0, 0]
-        d5 in [0, 0]
+        d0 in [0, 127],
+        d1 in [0, 0],
+        d2 in [0, 0],
+        d3 in [0, 199],
+        d4 in [0, 0],
+        d5 in [0, 0],
 
-        s0 in [0, 0]
-        s1 in [0, 7]
-        s2 in [0, 0]
+        s0 in [0, 0],
+        s1 in [0, 7],
+        s2 in [0, 0],
         is_simplified: true
       )"));
 }
@@ -213,18 +213,18 @@ TEST_F(TransposeTest, ThreadIndexingPartialBlock) {
           d0 floordiv 32 + s0 * 4,
           d3,
           d0 mod 32
-        )
+        ),
         domain:
-        d0 in [0, 127]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 1]
-        d4 in [0, 0]
-        d5 in [0, 0]
-        s0 in [0, 5]
-        s1 in [0, 0]
-        s2 in [0, 0]
-        d0 mod 32 in [0, 23]
+        d0 in [0, 127],
+        d1 in [0, 0],
+        d2 in [0, 0],
+        d3 in [0, 1],
+        d4 in [0, 0],
+        d5 in [0, 0],
+        s0 in [0, 5],
+        s1 in [0, 0],
+        s2 in [0, 0],
+        d0 mod 32 in [0, 23],
         is_simplified: true
       )"));
   EXPECT_THAT(
@@ -234,18 +234,18 @@ TEST_F(TransposeTest, ThreadIndexingPartialBlock) {
           d0 floordiv 32 + s0 * 4,
           d3,
           d0 mod 32
-        )
+        ),
         domain:
-        d0 in [0, 127]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 1]
-        d4 in [0, 0]
-        d5 in [0, 0]
-        s0 in [0, 5]
-        s1 in [0, 0]
-        s2 in [0, 0]
-        d0 mod 32 in [0, 23]
+        d0 in [0, 127],
+        d1 in [0, 0],
+        d2 in [0, 0],
+        d3 in [0, 1],
+        d4 in [0, 0],
+        d5 in [0, 0],
+        s0 in [0, 5],
+        s1 in [0, 0],
+        s2 in [0, 0],
+        d0 mod 32 in [0, 23],
         is_simplified: true
       )"));
 }
@@ -310,18 +310,18 @@ TEST_F(TransposeTest, ThreadIndexingSideOutput) {
         (d0, d1, d2, d3, d4, d5)[s0, s1, s2] -> (
           d3 floordiv 2,
           d0 floordiv 32 + s1 * 4
-        )
+        ),
         domain:
-        d0 in [0, 127]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 199]
-        d4 in [0, 0]
-        d5 in [0, 0]
+        d0 in [0, 127],
+        d1 in [0, 0],
+        d2 in [0, 0],
+        d3 in [0, 199],
+        d4 in [0, 0],
+        d5 in [0, 0],
 
-        s0 in [0, 0]
-        s1 in [0, 7]
-        s2 in [0, 0]
+        s0 in [0, 0],
+        s1 in [0, 7],
+        s2 in [0, 0],
         is_simplified: true
       )"));
   EXPECT_THAT(
@@ -331,18 +331,18 @@ TEST_F(TransposeTest, ThreadIndexingSideOutput) {
           d3 floordiv 2,
           d0 floordiv 32 + s1 * 4,
           (d3 mod 2) * 32 + d0 mod 32
-        )
+        ),
         domain:
-        d0 in [0, 127]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 199]
-        d4 in [0, 0]
-        d5 in [0, 0]
+        d0 in [0, 127],
+        d1 in [0, 0],
+        d2 in [0, 0],
+        d3 in [0, 199],
+        d4 in [0, 0],
+        d5 in [0, 0],
 
-        s0 in [0, 0]
-        s1 in [0, 7]
-        s2 in [0, 0]
+        s0 in [0, 0],
+        s1 in [0, 7],
+        s2 in [0, 0],
         is_simplified: true
       )"));
 }

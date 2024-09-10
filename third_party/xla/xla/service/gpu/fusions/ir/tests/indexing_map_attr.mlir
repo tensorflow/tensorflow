@@ -7,8 +7,8 @@
 // CHECK-SAME: d1 in [5, 8],
 // CHECK-SAME: d2 in [10, 12],
 // CHECK-SAME: s0 in [0, 32],
-// CHECK-SAME: d0 mod 2 in [0, 1],
 // CHECK-SAME: d0 + s0 in [1, 10],
+// CHECK-SAME: d0 mod 2 in [0, 1],
 // CHECK-SAME: is_simplified: true
 // CHECK-SAME: >
 #map = #xla_gpu.indexing_map<(d0, d1, d2)[s0] -> (d0),
@@ -36,8 +36,8 @@ func.func private @indexing_map_attr(!xla_gpu.indexed_vector<64x64x32xf64, #map>
 // CHECK-SAME: s0 in [0, 10]
 // CHECK-SAME: s1 in [0, 5]
 // CHECK-SAME: s2 in [0, 32]
-// CHECK-SAME: d0 mod 2 in [0, 1]
 // CHECK-SAME: d0 + s0 in [1, 10]
+// CHECK-SAME: d0 mod 2 in [0, 1]
 // CHECK-SAME: d1 + s1 + s2 in [1, 32]
 // CHECK-SAME: is_simplified: false
 // CHECK-SAME: >

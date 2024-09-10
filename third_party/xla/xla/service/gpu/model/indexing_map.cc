@@ -1270,10 +1270,10 @@ void PrintRTVars(const std::vector<RTVar>& rt_vars,
                static_cast<int64_t>(first_rt_var_symbol_index + index))
         << " in ";
     rt_var.feasible_values.Print(out);
-    out << "\n  hlo: "
-        << (rt_var.hlo == nullptr ? "NULL" : rt_var.hlo->ToString()) << "\n  ";
+    out << ",  hlo: "
+        << (rt_var.hlo == nullptr ? "NULL" : rt_var.hlo->ToString()) << ",  ";
     printer.Print(out, rt_var.map);
-    out << '\n';
+    out << ", ";
   }
 }
 
@@ -1284,16 +1284,19 @@ void IndexingMap::Print(std::ostream& out,
     return;
   }
   printer.Print(out, affine_map_);
-  out << "\ndomain:\n";
+  if (dim_vars_.empty() && range_vars_.empty() && rt_vars_.empty()) {
+    return;
+  }
+  out << ", domain: ";
   for (const auto& [index, dim_var] : llvm::enumerate(dim_vars_)) {
     out << printer.GetDimensionName(static_cast<int64_t>(index)) << " in ";
     dim_var.bounds.Print(out);
-    out << '\n';
+    out << ", ";
   }
   for (const auto& [index, range_var] : llvm::enumerate(range_vars_)) {
     out << printer.GetSymbolName(static_cast<int64_t>(index)) << " in ";
     range_var.range.Print(out);
-    out << '\n';
+    out << ", ";
   }
   int64_t range_vars_count = GetRangeVarsCount();
   PrintRTVars(rt_vars_, /*first_rt_var_symbol_index=*/range_vars_count, out,
@@ -1309,9 +1312,9 @@ void IndexingMap::Print(std::ostream& out,
   }
   std::sort(expr_range_strings.begin(), expr_range_strings.end());
   for (const auto& expr_range_string : expr_range_strings) {
-    out << expr_range_string << '\n';
+    out << expr_range_string << ", ";
   }
-  out << "is_simplified: " << (is_simplified_ ? "true" : "false") << "\n";
+  out << "is_simplified: " << (is_simplified_ ? "true" : "false");
 }
 
 MLIRContext* IndexingMap::GetMLIRContext() const {

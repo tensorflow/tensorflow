@@ -406,12 +406,12 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughDynamicSlice) {
         size_map: (d0, d1, d2) -> (1, d1, d2)
         stride_map: (d0, d1, d2) -> (0, 1, 1)
         rt_vars:
-          s0 in [0, 1]
-            hlo: %of1 = s32[] parameter(1)
-            (d0, d1, d2) -> ()
-          s1 in [0, 226]
-            hlo: %of3 = s32[] parameter(3)
-            (d0, d1, d2) -> ()
+          s0 in [0, 1],
+            hlo: %of1 = s32[] parameter(1),
+            (d0, d1, d2) -> (),
+          s1 in [0, 226],
+            hlo: %of3 = s32[] parameter(3),
+            (d0, d1, d2) -> (),
       )")));
   for (int i = 1; i <= 3; i++) {
     EXPECT_THAT(
@@ -458,12 +458,12 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughDynamicUpdateSlice) {
         size_map: (d0, d1) -> (d0, d1)
         stride_map: (d0, d1) -> (1, 1)
         rt_vars:
-          s0 in [0, 15]
-            hlo: %of1 = s32[] parameter(2)
-            (d0, d1) -> ()
-          s1 in [0, 20]
-            hlo: %of2 = s32[] parameter(3)
-            (d0, d1) -> ()
+          s0 in [0, 15],
+            hlo: %of1 = s32[] parameter(2),
+            (d0, d1) -> (),
+          s1 in [0, 20],
+            hlo: %of2 = s32[] parameter(3),
+            (d0, d1) -> (),
       )")));
   for (int i = 2; i <= 3; i++) {
     EXPECT_THAT(
@@ -501,12 +501,12 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughGather) {
         size_map: (d0, d1, d2, d3) -> (d1, d2, d3)
         stride_map: (d0, d1, d2, d3) -> (1, 1, 1)
         rt_vars:
-          s0 in [0, 26]
-            hlo: %indices = s32[1806,2]{1,0} parameter(1)
-            (d0, d1, d2, d3) -> (d0, 0)
-          s1 in [0, 68]
-            hlo: %indices = s32[1806,2]{1,0} parameter(1)
-            (d0, d1, d2, d3) -> (d0, 1)
+          s0 in [0, 26],
+            hlo: %indices = s32[1806,2]{1,0} parameter(1),
+            (d0, d1, d2, d3) -> (d0, 0),
+          s1 in [0, 68],
+            hlo: %indices = s32[1806,2]{1,0} parameter(1),
+            (d0, d1, d2, d3) -> (d0, 1),
       )")));
 
   EXPECT_THAT(
