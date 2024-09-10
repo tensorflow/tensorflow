@@ -487,7 +487,11 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
         std::move(aggregator));
     LOG(INFO) << "Found profile, using profile guided latency estimator";
     VLOG(1) << "Profile:\n" << profile->DebugString();
-    pipeline.AddPass<PGLEAccuracyChecker>(*pg_latency_estimator);
+    if (module->config()
+            .debug_options()
+            .xla_gpu_enable_pgle_accuracy_checker()) {
+      pipeline.AddPass<PGLEAccuracyChecker>(*pg_latency_estimator);
+    }
     latency_estimator = std::move(pg_latency_estimator);
   } else if (enable_analytical_latency_estimator) {
     latency_estimator = std::make_unique<AnalyticalLatencyEstimator>(

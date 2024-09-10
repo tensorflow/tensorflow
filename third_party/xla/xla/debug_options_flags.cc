@@ -287,6 +287,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_cudnn_gemm_max_plans(5);
 
   opts.set_xla_gpu_enable_triton_gemm_int4(false);
+
+  opts.set_xla_gpu_enable_pgle_accuracy_checker(false);
   return opts;
 }
 

@@ -962,7 +962,9 @@ message DebugOptions {
     AUTOTUNE_CACHE_MODE_READ = 2;
   }
 
-  // Next id: 326
+  bool xla_gpu_enable_pgle_accuracy_checker = 326;
+
+  // Next id: 327
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
