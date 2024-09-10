@@ -210,7 +210,7 @@ Value BacktrackAnalysis::BacktrackValue(Value value) {
       value = op->getOperand(res_index);
     } else if (auto call = dyn_cast<CallOpInterface>(op)) {
       func::FuncOp func = dyn_cast<func::FuncOp>(
-          call.resolveCallable(&symbol_table_collection_));
+          call.resolveCallableInTable(&symbol_table_collection_));
       if (!func) break;
       // Check if the function being called has been analyzed. if not,
       // we cannot backtrack the value further.
@@ -406,7 +406,7 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
       AnalyzeRegionCaseOrIfOp(op, backtrack_analysis);
     } else if (auto call = dyn_cast<CallOpInterface>(op)) {
       func::FuncOp func = dyn_cast_or_null<func::FuncOp>(
-          call.resolveCallable(&symbol_table_collection));
+          call.resolveCallableInTable(&symbol_table_collection));
       if (!func) {
         assign_unknown_id_to_all(op->getResults());
         return WalkResult::advance();
