@@ -74,7 +74,7 @@ static void PrintEdges(Edges *edges) {
   LOG(INFO) << "---";
 }
 
-static void PrintGCEdges(Nodes *nodes, tensorflow::GraphCycles *gc) {
+static void PrintGCEdges(Nodes *nodes, xla::GraphCycles *gc) {
   LOG(INFO) << "GC EDGES";
   for (int i = 0; i != nodes->size(); i++) {
     for (int j = 0; j != nodes->size(); j++) {
@@ -89,7 +89,7 @@ static void PrintGCEdges(Nodes *nodes, tensorflow::GraphCycles *gc) {
 }
 
 static void PrintTransitiveClosure(Nodes *nodes, Edges *edges,
-                                   tensorflow::GraphCycles *gc) {
+                                   xla::GraphCycles *gc) {
   LOG(INFO) << "Transitive closure";
   for (int i = 0; i != nodes->size(); i++) {
     for (int j = 0; j != nodes->size(); j++) {
@@ -104,8 +104,7 @@ static void PrintTransitiveClosure(Nodes *nodes, Edges *edges,
   LOG(INFO) << "---";
 }
 
-static void PrintGCTransitiveClosure(Nodes *nodes,
-                                     tensorflow::GraphCycles *gc) {
+static void PrintGCTransitiveClosure(Nodes *nodes, xla::GraphCycles *gc) {
   LOG(INFO) << "GC Transitive closure";
   for (int i = 0; i != nodes->size(); i++) {
     for (int j = 0; j != nodes->size(); j++) {
@@ -120,7 +119,7 @@ static void PrintGCTransitiveClosure(Nodes *nodes,
 }
 
 static void CheckTransitiveClosure(Nodes *nodes, Edges *edges,
-                                   tensorflow::GraphCycles *gc) {
+                                   xla::GraphCycles *gc) {
   absl::flat_hash_set<int> seen;
   for (int i = 0; i != nodes->size(); i++) {
     for (int j = 0; j != nodes->size(); j++) {
@@ -142,8 +141,7 @@ static void CheckTransitiveClosure(Nodes *nodes, Edges *edges,
   }
 }
 
-static void CheckEdges(Nodes *nodes, Edges *edges,
-                       tensorflow::GraphCycles *gc) {
+static void CheckEdges(Nodes *nodes, Edges *edges, xla::GraphCycles *gc) {
   int count = 0;
   for (int i = 0; i != edges->size(); i++) {
     int a = (*edges)[i].from;
@@ -197,7 +195,7 @@ static int EdgeIndex(Edges *edges, int from, int to) {
 TEST(GraphCycles, RandomizedTest) {
   Nodes nodes;
   Edges edges;  // from, to
-  tensorflow::GraphCycles graph_cycles;
+  xla::GraphCycles graph_cycles;
   static const int kMaxNodes = 7;     // use <= 7 nodes to keep test short
   static const int kDataOffset = 17;  // an offset to the node-specific data
   int n = 100000;
@@ -376,7 +374,7 @@ TEST(GraphCycles, RandomizedTest) {
 
 class GraphCyclesTest : public ::testing::Test {
  public:
-  tensorflow::GraphCycles g_;
+  xla::GraphCycles g_;
 
   // Test relies on ith NewNode() call returning Node numbered i
   GraphCyclesTest() {
@@ -513,7 +511,7 @@ static void BM_StressTest(::testing::benchmark::State &state) {
   const int num_nodes = state.range(0);
 
   while (state.KeepRunningBatch(num_nodes)) {
-    tensorflow::GraphCycles g;
+    xla::GraphCycles g;
     int32_t *nodes = new int32_t[num_nodes];
     for (int i = 0; i < num_nodes; i++) {
       nodes[i] = g.NewNode();
@@ -536,7 +534,7 @@ static void BM_ContractEdge(::testing::benchmark::State &state) {
 
   while (state.KeepRunningBatch(num_nodes)) {
     state.PauseTiming();
-    tensorflow::GraphCycles g;
+    xla::GraphCycles g;
     std::vector<int32_t> nodes;
     nodes.reserve(num_nodes);
     for (int i = 0; i < num_nodes; i++) {
@@ -559,7 +557,7 @@ BENCHMARK(BM_ContractEdge)->Arg(1000)->Arg(10000);
 static void BM_IsReachableNonConst(testing::benchmark::State &state) {
   const int num_nodes = state.range(0);
 
-  tensorflow::GraphCycles g;
+  xla::GraphCycles g;
   std::vector<uint32_t> nodes;
   nodes.reserve(num_nodes);
   for (int i = 0; i < num_nodes; i++) {

@@ -46,7 +46,7 @@ using SourceTargetPairs = std::vector<SourceTargetPair>;
 //
 bool HasCycles(const SourceTargetPairs& pairs) {
   // Build a direct graph to check for cycles in (source, target) relationship.
-  tensorflow::GraphCycles graph;
+  GraphCycles graph;
 
   // Map replica numbers to graph node ids.
   absl::flat_hash_map<int64_t, int32_t> replica_to_node_id;

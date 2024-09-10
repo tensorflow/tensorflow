@@ -83,7 +83,7 @@ class ComputationInstructionOrdering {
 
  private:
   absl::flat_hash_map<int32_t, int32_t> node_id_to_graph_id_;
-  tensorflow::GraphCycles graph_cycles_;
+  GraphCycles graph_cycles_;
 };
 
 }  // namespace
