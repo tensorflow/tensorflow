@@ -623,4 +623,9 @@ tf_cc_test(
 #     name = "inspect_checkpoint.par_sig",
 #     srcs = [":inspect_checkpoint.par"],
 # )
+#
+# gensignature(
+#     name = "saved_model_cli.par_sig",
+#     srcs = [":saved_model_cli.par"],
+# )
 # copybara:uncomment_end
