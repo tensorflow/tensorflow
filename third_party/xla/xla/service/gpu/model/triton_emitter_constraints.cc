@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/AffineMap.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/model/affine_map_evaluator.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
@@ -64,13 +65,22 @@ llvm::SmallVector<int64_t> GetPaddedTileSizes(
 /*static*/ std::vector<TritonEmitterConstraints::CustomConstraints>
 TritonEmitterConstraints::DeriveCustomConstraints(
     const std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>&
-        instructions) {
+        instructions,
+    const HloFusionAdaptor& fusion_adaptor) {
   std::vector<CustomConstraints> result;
 
   for (const auto& instruction : instructions) {
     const HloInstruction* hlo = instruction->hlo();
+    // Construct custom constraints for parameters of bitcasts and reshapes
+    // within `instructions`. If the operation's parameter is not part of
+    // `instructions`, then the bitcast/reshape node is an operand of the
+    // fusion computation, and there is no need to add constraints.
     if (hlo->opcode() == HloOpcode::kReshape ||
         hlo->opcode() == HloOpcode::kBitcast) {
+      if (!fusion_adaptor.ContainsInstruction(hlo)) {
+        continue;
+      }
+
       mlir::MLIRContext* ctx =
           instruction->symbolic_tile().size_map().getContext();
 
@@ -81,9 +91,12 @@ TritonEmitterConstraints::DeriveCustomConstraints(
 
       std::optional<SymbolicTile> reshape_symbolic_tile =
           SymbolicTile::FromIndexingMap(reshape_indexing_map);
+
       // Since we managed to create a `SymbolicTiledHloInstruction` for this
       // instruction, it should never be the case that we fail to derive a
-      // `SymbolicTile`, so we `CHECK`.
+      // `SymbolicTile`, so we `CHECK`. This is enforced by checks in
+      // `SymbolicTileAnalysis`'s internal function
+      // `ShouldProceedWithSymbolicTileDerivation`.
       CHECK(reshape_symbolic_tile.has_value());
 
       ConstraintExpression reshape_constraints =
@@ -101,7 +114,8 @@ TritonEmitterConstraints::DeriveCustomConstraints(
 TritonEmitterConstraints::GetBuilder(
     const se::DeviceDescription& device_description) {
   return [=](const std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>&
-                 instructions) {
+                 instructions,
+             const HloFusionAdaptor& fusion_adaptor) {
     llvm::DenseSet<mlir::AffineMap> unique_tile_size_maps;
     for (const auto& tiled_hlo_instruction : instructions) {
       unique_tile_size_maps.insert(
@@ -109,7 +123,7 @@ TritonEmitterConstraints::GetBuilder(
     }
 
     std::vector<CustomConstraints> custom_constraints =
-        DeriveCustomConstraints(instructions);
+        DeriveCustomConstraints(instructions, fusion_adaptor);
 
     llvm::SmallVector<mlir::AffineMap, 4> tile_size_maps(
         unique_tile_size_maps.begin(), unique_tile_size_maps.end());
