@@ -399,6 +399,8 @@ TEST_F(TfrtSessionTest, Callable) {
   TF_ASSERT_OK(session_->ReleaseCallable(callable_handle));
 }
 
+TEST_F(TfrtSessionTest, Finalize) { TF_ASSERT_OK(session_->Finalize()); }
+
 TEST_F(TfrtSessionTest, WithTargetNodes) {
   std::vector<Tensor> outputs;
   TF_ASSERT_OK(session_->Run(inputs_, output_tensor_names_, target_node_names_,

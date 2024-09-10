@@ -481,6 +481,8 @@ class TfrtSession : public tensorflow::Session {
     return absl::OkStatus();
   }
 
+  Status Finalize() override { return absl::OkStatus(); }
+
  private:
   tfrt::HostContext* GetHostContext() {
     return runtime_->core_runtime()->GetHostContext();
