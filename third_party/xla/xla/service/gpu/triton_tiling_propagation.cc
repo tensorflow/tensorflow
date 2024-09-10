@@ -1006,7 +1006,10 @@ GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
       hlo.opcode() == HloOpcode::kGetTupleElement) {
     return "Unsupported instruction.";
   }
-  if (hlo.opcode() == HloOpcode::kReduce) {
+  if (hlo.opcode() == HloOpcode::kReduce ||
+      hlo.opcode() == HloOpcode::kAllReduce ||
+      hlo.opcode() == HloOpcode::kAllReduceStart ||
+      hlo.opcode() == HloOpcode::kAllReduceDone) {
     return "Reductions are not fused yet.";
   }
   if (hlo.opcode() == HloOpcode::kPad) {
