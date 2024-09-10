@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"
+#include "xla/tests/exhaustive/exhaustive_op_test_base.h"
 #include "xla/tests/exhaustive/exhaustive_op_test_utils.h"
 #include "xla/tests/test_macros.h"
 #include "tsl/platform/test.h"

@@ -24,8 +24,15 @@ package_group(
 cc_library(
     name = "exhaustive_op_test_utils",
     testonly = True,
-    srcs = ["exhaustive_op_test_utils.cc"],
-    hdrs = ["exhaustive_op_test_utils.h"],
+    srcs = [
+        "exhaustive_op_test_base.cc",
+        "exhaustive_op_test_utils.cc",
+    ],
+    hdrs = [
+        "error_spec.h",
+        "exhaustive_op_test_base.h",
+        "exhaustive_op_test_utils.h",
+    ],
     deps = [
         "//xla:bit_cast",
         "//xla:executable_run_options",
@@ -50,7 +57,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:statusor",

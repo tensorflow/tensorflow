@@ -23,6 +23,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/client/xla_builder.h"
 #include "xla/literal.h"
+#include "xla/tests/exhaustive/error_spec.h"
+#include "xla/tests/exhaustive/exhaustive_op_test_base.h"
 #include "xla/tests/exhaustive/exhaustive_op_test_utils.h"
 #include "xla/tests/test_macros.h"
 #include "xla/types.h"

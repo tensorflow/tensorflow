@@ -25,6 +25,8 @@ limitations under the License.
 #include "xla/client/lib/constants.h"
 #include "xla/client/lib/math.h"
 #include "xla/client/xla_builder.h"
+#include "xla/tests/exhaustive/error_spec.h"
+#include "xla/tests/exhaustive/exhaustive_op_test_base.h"
 #include "xla/tests/exhaustive/exhaustive_op_test_utils.h"
 #include "xla/tests/exhaustive/exhaustive_unary_test_definitions.h"
 #include "xla/types.h"
