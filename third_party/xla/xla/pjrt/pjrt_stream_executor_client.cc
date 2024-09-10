@@ -1506,14 +1506,8 @@ PjRtStreamExecutorBuffer::Release(bool wait_for_operations_to_complete) {
         // occur when a buffer was copied to a device and then never used there.
         // In that case we get a new stream and use it to hold onto a reference
         // to the buffer until the events are complete.
-        //
-        // It is also important that we check IsPredeterminedError before
-        // checking DefinedOn(compute_stream) because otherwise DefinedOn would
-        // indefinitely wait since the event is never recorded when the buffer
-        // is predetermined error.
-        if (!stream_and_event.event->IsPredeterminedError() &&
-            !stream_and_event.reference_held &&
-            !stream_and_event.event->DefinedOn(
+        if (!stream_and_event.reference_held &&
+            !stream_and_event.event->IsPredeterminedErrorOrDefinedOn(
                 local_device_state->compute_stream()) &&
             !stream_and_event.event->IsComplete()) {
           if (block_stream == nullptr) {
@@ -1536,22 +1530,16 @@ PjRtStreamExecutorBuffer::Release(bool wait_for_operations_to_complete) {
         // well, if they are not on the compute stream and not also recorded as
         // usage events.
         //
-        // It is also important that we check IsPredeterminedError before
-        // checking DefinedOn(compute_stream) because otherwise DefinedOn would
-        // indefinitely wait since the event is never recorded when the buffer
-        // is predetermined error.
-        //
         // Since it's possible that definition_event.SetSequencingEvent()
         // is called on a different host thread than this host thread, when in
         // future more conditions are added to this check, we should be careful
-        // about whether we put them before the DefinedOn check or after it.
-        // For example, we shouldn't add an IsDefined() check before the
-        // DefinedOn() check here because that could potentially cause a
-        // shortcut where we don't wait for
+        // about whether we put them before the IsPredeterminedErrorOrDefinedOn
+        // check or after it. For example, we shouldn't add an IsDefined() check
+        // before the IsPredeterminedErrorOrDefinedOn() check here because that
+        // could potentially cause a shortcut where we don't wait for
         // definition_event.SetSequencingEvent() on the other thread and
         // eventually cause memory corruption.
-        if (!definition_event->IsPredeterminedError() &&
-            !definition_event->DefinedOn(
+        if (!definition_event->IsPredeterminedErrorOrDefinedOn(
                 local_device_state->compute_stream()) &&
             !definition_event->IsComplete()) {
           if (block_stream == nullptr) {
