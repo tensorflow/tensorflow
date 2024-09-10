@@ -1037,10 +1037,10 @@ class DatasetV2(
     >>> a = tf.data.Dataset.range(1, 4)  # ==> [ 1, 2, 3 ]
     >>> b = tf.data.Dataset.range(4, 7)  # ==> [ 4, 5, 6 ]
     >>> ds = tf.data.Dataset.zip(a, b)
-    >>> list(ds.as_numpy_iterator())
+    >>> [(i.item(), j.item()) for i, j in ds.as_numpy_iterator()]
     [(1, 4), (2, 5), (3, 6)]
     >>> ds = tf.data.Dataset.zip(b, a)
-    >>> list(ds.as_numpy_iterator())
+    >>> [(i.item(), j.item()) for i, j in ds.as_numpy_iterator()]
     [(4, 1), (5, 2), (6, 3)]
     >>>
     >>> # The `datasets` argument may contain an arbitrary number of datasets.
@@ -1048,17 +1048,17 @@ class DatasetV2(
     ...                                            #       [9, 10],
     ...                                            #       [11, 12] ]
     >>> ds = tf.data.Dataset.zip(a, b, c)
-    >>> for element in ds.as_numpy_iterator():
-    ...   print(element)
-    (1, 4, array([7, 8]))
-    (2, 5, array([ 9, 10]))
-    (3, 6, array([11, 12]))
+    >>> for i, j, k in ds.as_numpy_iterator():
+    ...   print(i.item(), j.item(), k)
+    1 4 [7 8]
+    2 5 [ 9 10]
+    3 6 [11 12]
     >>>
     >>> # The number of elements in the resulting dataset is the same as
     >>> # the size of the smallest dataset in `datasets`.
     >>> d = tf.data.Dataset.range(13, 15)  # ==> [ 13, 14 ]
     >>> ds = tf.data.Dataset.zip(a, d)
-    >>> list(ds.as_numpy_iterator())
+    >>> [(i.item(), j.item()) for i, j in ds.as_numpy_iterator()]
     [(1, 13), (2, 14)]
 
     Args:
@@ -2676,7 +2676,7 @@ name=None))
      <...Dataset element_spec=TensorSpec(shape=(), dtype=tf.int32, name=None)>)
 
     >>> def to_numpy(ds):
-    ...   return list(ds.as_numpy_iterator())
+    ...   return [a.item() for a in ds.as_numpy_iterator()]
     >>>
     >>> for windows in dataset:
     ...   print(to_numpy(windows[0]), to_numpy(windows[1]))
@@ -2692,7 +2692,7 @@ name=None))
     ...                                               'c': [7, 8, 9]})
     >>> dataset = dataset.window(2)
     >>> def to_numpy(ds):
-    ...   return list(ds.as_numpy_iterator())
+    ...   return [a.item() for a in ds.as_numpy_iterator()]
     >>>
     >>> for windows in dataset:
     ...   print(tf.nest.map_structure(to_numpy, windows))
@@ -2753,23 +2753,23 @@ name=None))
     its internal state. The `initial_state` argument is used for the initial
     state and the final state is returned as the result.
 
-    >>> tf.data.Dataset.range(5).reduce(np.int64(0), lambda x, _: x + 1).numpy()
+    >>> tf.data.Dataset.range(5).reduce(np.int64(0), lambda x, _: x +
+    ...   1).numpy().item()
     5
-    >>> tf.data.Dataset.range(5).reduce(np.int64(0), lambda x, y: x + y).numpy()
+    >>> tf.data.Dataset.range(5).reduce(np.int64(0), lambda x, y: x +
+    ...   y).numpy().item()
     10
 
     Args:
       initial_state: An element representing the initial state of the
         transformation.
       reduce_func: A function that maps `(old_state, input_element)` to
-        `new_state`. It must take two arguments and return a new element
-        The structure of `new_state` must match the structure of
-        `initial_state`.
+        `new_state`. It must take two arguments and return a new element The
+        structure of `new_state` must match the structure of `initial_state`.
       name: (Optional.) A name for the tf.data operation.
 
     Returns:
       A dataset element corresponding to the final state of the transformation.
-
     """
 
     with ops.name_scope("initial_state"):
