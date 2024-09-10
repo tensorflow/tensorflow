@@ -1558,20 +1558,10 @@ LogicalResult FullyConnectedOp::fold(FoldAdaptor adaptor,
     return failure();
   }
 
-  auto num_non_unit_dims = [](llvm::ArrayRef<int64_t> shape) {
-    int64_t non_unit_dims = 0;
-    for (auto d : shape) {
-      if (d != 1) {
-        non_unit_dims++;
-      }
-    }
-    return non_unit_dims;
-  };
-
   // Folding only implemented for 1D input, 2D weights and 1D bias
-  if (num_non_unit_dims(input_type.getShape()) != 1 ||
+  if (input_type.getShape().size() != 1 ||
       weights_type.getShape().size() != 2 ||
-      (has_bias && num_non_unit_dims(bias_type.getShape()) != 1)) {
+      (has_bias && bias_type.getShape().size() != 1)) {
     return failure();
   }
 
