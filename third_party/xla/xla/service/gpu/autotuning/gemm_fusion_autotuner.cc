@@ -1122,8 +1122,12 @@ absl::Status GemmFusionAutotunerImpl::Autotune(
 
     // The reference config (if it exists) will be the first in the results,
     // due to how sorting the variants work.
-    if (!debug_options_.xla_gpu_cublas_fallback() &&
-        results.front().has_gemm()) {
+    // TODO(b/358580281): As of now we also want to ignore the reference config
+    // if the `xla_gpu_enable_triton_gemm_int4` flag is set because otherwise
+    // the model may fail with OOM.
+    bool ignore_cublas = !debug_options_.xla_gpu_cublas_fallback() ||
+                         debug_options_.xla_gpu_enable_triton_gemm_int4();
+    if (ignore_cublas && results.front().has_gemm()) {
       results.erase(results.begin());
     }
 
