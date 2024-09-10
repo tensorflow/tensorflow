@@ -534,7 +534,7 @@ Status DirectSession::RunInternal(
               "SessionRun", {{"id", step_id}, {"_r", 1} /*root_event*/});
         }
       },
-      profiler::ContextType::kTfExecutor, step_id,
+      tsl::profiler::ContextType::kTfExecutor, step_id,
       profiler::TraceMeLevel::kInfo);
 
   std::unique_ptr<DebuggerStateInterface> debugger_state;
