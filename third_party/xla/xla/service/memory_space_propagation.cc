@@ -40,7 +40,8 @@ absl::StatusOr<bool> MemorySpacePropagation::Run(
     for (HloInstruction* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kFusion) {
         // Propagate the operand subshapes.
-        for (int operand_idx = 0; operand_idx < instruction->operand_count();
+        for (int operand_idx = 0;
+             operand_idx < instruction->fused_parameters().size();
              ++operand_idx) {
           ShapeUtil::ForEachLeafShape(
               instruction->operand(operand_idx)->shape(),

@@ -8330,14 +8330,21 @@ entry {
   // plus 2 window prefetch buffers.
   EXPECT_EQ(fusion->operand_count(), 5);
 
-  // The root of the fusion should be a WindowPrefetchBuffer. The first operand
-  // should be the original root, and the second and third operands should be
-  // the window prefetch buffers.
-  HloInstruction* root = fusion->fused_expression_root();
-  EXPECT_TRUE(root->IsCustomCall("WindowPrefetchBuffer"));
-  EXPECT_EQ(root->operand_count(), 3);
-  EXPECT_EQ(root->operand(1), fusion->fused_parameter(3));
-  EXPECT_EQ(root->operand(2), fusion->fused_parameter(4));
+  // The 2 added operands are async calls to WindowPrefetch.
+  for (int i = 3; i < 5; i++) {
+    const HloInstruction* async_done = fusion->operand(i);
+    EXPECT_EQ(async_done->opcode(), HloOpcode::kAsyncDone);
+    EXPECT_EQ(async_done->operand_count(), 1);
+    EXPECT_TRUE(async_done->async_wrapped_instruction()->IsCustomCall(
+        "WindowPrefetch"));
+
+    const HloInstruction* async_start = async_done->operand(0);
+    EXPECT_EQ(async_start->opcode(), HloOpcode::kAsyncStart);
+    EXPECT_EQ(async_start->operand_count(), 1);
+    EXPECT_TRUE(async_start->async_wrapped_instruction()->IsCustomCall(
+        "WindowPrefetch"));
+  }
+
   VLOG(2) << "module: " << module->ToString();
 }
 
