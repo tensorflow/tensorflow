@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/profiler/convert/trace_events_to_json.h"
+#include "xla/tsl/profiler/convert/trace_events_to_json.h"
 
 #include <algorithm>
 #include <string>

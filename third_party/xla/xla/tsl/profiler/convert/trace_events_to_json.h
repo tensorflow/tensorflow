@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_PROFILER_CONVERT_TRACE_EVENTS_TO_JSON_H_
-#define TENSORFLOW_TSL_PROFILER_CONVERT_TRACE_EVENTS_TO_JSON_H_
+#ifndef XLA_TSL_PROFILER_CONVERT_TRACE_EVENTS_TO_JSON_H_
+#define XLA_TSL_PROFILER_CONVERT_TRACE_EVENTS_TO_JSON_H_
 
 #include <string>
 
+#include "xla/tsl/profiler/convert/trace_container.h"
 #include "tsl/platform/types.h"
-#include "tsl/profiler/convert/trace_container.h"
 
 namespace tsl {
 namespace profiler {
@@ -31,4 +31,4 @@ std::string TraceContainerToJson(const TraceContainer& container);
 }  // namespace profiler
 }  // namespace tsl
 
-#endif  // TENSORFLOW_TSL_PROFILER_CONVERT_TRACE_EVENTS_TO_JSON_H_
+#endif  // XLA_TSL_PROFILER_CONVERT_TRACE_EVENTS_TO_JSON_H_

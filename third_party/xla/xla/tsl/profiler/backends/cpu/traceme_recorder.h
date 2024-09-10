@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_TSL_PROFILER_BACKENDS_CPU_TRACEME_RECORDER_H_
-#define TENSORFLOW_TSL_PROFILER_BACKENDS_CPU_TRACEME_RECORDER_H_
+#ifndef XLA_TSL_PROFILER_BACKENDS_CPU_TRACEME_RECORDER_H_
+#define XLA_TSL_PROFILER_BACKENDS_CPU_TRACEME_RECORDER_H_
 
 #include <atomic>
 #include <cstdint>
@@ -115,4 +115,4 @@ class TraceMeRecorder {
 }  // namespace profiler
 }  // namespace tsl
 
-#endif  // TENSORFLOW_TSL_PROFILER_BACKENDS_CPU_TRACEME_RECORDER_H_
+#endif  // XLA_TSL_PROFILER_BACKENDS_CPU_TRACEME_RECORDER_H_

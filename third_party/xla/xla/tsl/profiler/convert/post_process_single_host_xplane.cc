@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tsl/profiler/convert/post_process_single_host_xplane.h"
+#include "xla/tsl/profiler/convert/post_process_single_host_xplane.h"
 
 #include <string>
 #include <vector>

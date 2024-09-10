@@ -220,7 +220,7 @@ cc_library(
         "//tsl/platform",
         "//tsl/platform:platform_port",
         "//tsl/platform:status",
-        "//tsl/profiler/convert:post_process_single_host_xplane",
+        "@local_xla//xla/tsl/profiler/convert:post_process_single_host_xplane",
         "//tsl/profiler/utils:time_utils",
     ]),
     alwayslink = True,
@@ -271,7 +271,7 @@ cc_library(
         "//tsl/profiler/utils:no_init",
         "@com_google_absl//absl/strings",
     ] + if_not_android([
-        "//tsl/profiler/backends/cpu:traceme_recorder",
+        "@local_xla//xla/tsl/profiler/backends/cpu:traceme_recorder",
         "//tsl/profiler/utils:time_utils",
     ]),
 )
@@ -324,7 +324,7 @@ cc_library(
         "//tsl/platform:types",
         "@com_google_absl//absl/strings",
     ] + if_not_android([
-        "//tsl/profiler/backends/cpu:annotation_stack",
+        "@local_xla//xla/tsl/profiler/backends/cpu:annotation_stack",
     ]),
 )
 
@@ -337,9 +337,9 @@ tsl_cc_test(
         "//tsl/platform:test",
         "//tsl/platform:test_benchmark",
         "//tsl/platform:test_main",
-        "//tsl/profiler/backends/cpu:annotation_stack",
-        "//tsl/profiler/backends/cpu:annotation_stack_impl",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla/tsl/profiler/backends/cpu:annotation_stack",
+        "@local_xla//xla/tsl/profiler/backends/cpu:annotation_stack_impl",
     ],
 )
 

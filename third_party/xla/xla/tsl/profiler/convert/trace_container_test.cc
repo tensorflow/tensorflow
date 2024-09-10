@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/profiler/convert/trace_container.h"
+#include "xla/tsl/profiler/convert/trace_container.h"
 
 #include <string>
 

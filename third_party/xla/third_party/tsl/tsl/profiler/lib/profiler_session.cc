@@ -27,8 +27,8 @@ limitations under the License.
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
+#include "xla/tsl/profiler/convert/post_process_single_host_xplane.h"
 #include "tsl/platform/host_info.h"
-#include "tsl/profiler/convert/post_process_single_host_xplane.h"
 #include "tsl/profiler/lib/profiler_collection.h"
 #include "tsl/profiler/lib/profiler_factory.h"
 #include "tsl/profiler/lib/profiler_interface.h"

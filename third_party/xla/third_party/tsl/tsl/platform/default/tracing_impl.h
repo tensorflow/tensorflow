@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_TSL_PLATFORM_DEFAULT_TRACING_IMPL_H_
 
 #ifndef IS_MOBILE_PLATFORM
-#include "tsl/profiler/backends/cpu/threadpool_listener_state.h"
+#include "xla/tsl/profiler/backends/cpu/threadpool_listener_state.h"
 #endif
 // Stub implementations of tracing functionality.
 

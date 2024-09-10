@@ -171,6 +171,7 @@ tsl_gpu_library(
         ":cupti_interface",
         ":cupti_utils",
         ":nvtx_utils",
+        "//xla/tsl/profiler/backends/cpu:annotation_stack",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
@@ -182,7 +183,6 @@ tsl_gpu_library(
         "@local_tsl//tsl/platform:macros",
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:types",
-        "@local_tsl//tsl/profiler/backends/cpu:annotation_stack",
         "@local_tsl//tsl/profiler/utils:lock_free_queue",
         "@local_tsl//tsl/profiler/utils:per_thread",
     ],
@@ -196,6 +196,7 @@ tsl_gpu_library(
     visibility = ["//visibility:public"],
     deps = [
         ":cupti_interface",
+        "//xla/tsl/profiler/backends/cpu:annotation_stack",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -208,7 +209,6 @@ tsl_gpu_library(
         "@local_tsl//tsl/platform:macros",
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:types",
-        "@local_tsl//tsl/profiler/backends/cpu:annotation_stack",
         "@local_tsl//tsl/profiler/lib:scoped_annotation",
     ],
 )
@@ -221,6 +221,7 @@ tsl_gpu_library(
     visibility = ["//visibility:public"],
     deps = [
         "//xla/stream_executor/rocm:roctracer_wrapper",
+        "//xla/tsl/profiler/backends/cpu:annotation_stack",
         "//xla/tsl/util:env_var",
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -238,7 +239,6 @@ tsl_gpu_library(
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:thread_annotations",
         "@local_tsl//tsl/platform:types",
-        "@local_tsl//tsl/profiler/backends/cpu:annotation_stack",
         "@local_tsl//tsl/profiler/lib:profiler_factory",
         "@local_tsl//tsl/profiler/lib:profiler_interface",
         "@local_tsl//tsl/profiler/utils:parse_annotation",
@@ -257,6 +257,7 @@ tsl_gpu_library(
     deps = [
         ":rocm_collector",
         "//xla/stream_executor/rocm:roctracer_wrapper",
+        "//xla/tsl/profiler/backends/cpu:annotation_stack",
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -270,7 +271,6 @@ tsl_gpu_library(
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:types",
-        "@local_tsl//tsl/profiler/backends/cpu:annotation_stack",
         "@local_tsl//tsl/profiler/utils:time_utils",
     ],
 )

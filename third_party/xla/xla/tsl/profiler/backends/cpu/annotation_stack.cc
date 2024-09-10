@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/profiler/backends/cpu/annotation_stack.h"
+#include "xla/tsl/profiler/backends/cpu/annotation_stack.h"
 
 #include <atomic>
 #include <cstddef>

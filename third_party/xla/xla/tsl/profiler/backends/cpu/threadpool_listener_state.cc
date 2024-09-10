@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,24 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_PROFILER_CONVERT_XPLANE_TO_TRACE_EVENTS_H_
-#define TENSORFLOW_TSL_PROFILER_CONVERT_XPLANE_TO_TRACE_EVENTS_H_
+#include "xla/tsl/profiler/backends/cpu/threadpool_listener_state.h"
 
-#include <string>
-
-#include "tsl/platform/types.h"
-#include "tsl/profiler/convert/trace_container.h"
-#include "tsl/profiler/protobuf/xplane.pb.h"
+#include <atomic>
 
 namespace tsl {
 namespace profiler {
+namespace threadpool_listener {
+namespace {
+static std::atomic<int> enabled = {0};
+}
 
-TraceContainer ConvertXSpaceToTraceContainer(
-    const tensorflow::profiler::XSpace& xspace);
+bool IsEnabled() { return enabled.load(std::memory_order_acquire); }
 
-void ConvertXSpaceToTraceEventsString(
-    const tensorflow::profiler::XSpace& xspace, std::string* content);
+void Activate() { enabled.store(1, std::memory_order_release); }
+
+void Deactivate() { enabled.store(0, std::memory_order_release); }
+
+}  // namespace threadpool_listener
 }  // namespace profiler
 }  // namespace tsl
-
-#endif  // TENSORFLOW_TSL_PROFILER_CONVERT_XPLANE_TO_TRACE_EVENTS_H_

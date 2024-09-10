@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_TSL_PROFILER_CONVERT_XLA_OP_UTILS_H_
-#define TENSORFLOW_TSL_PROFILER_CONVERT_XLA_OP_UTILS_H_
+#ifndef XLA_TSL_PROFILER_CONVERT_XLA_OP_UTILS_H_
+#define XLA_TSL_PROFILER_CONVERT_XLA_OP_UTILS_H_
 
 #include <string>
 
@@ -38,4 +38,4 @@ inline std::string HloModuleNameWithProgramId(absl::string_view hlo_module_name,
 }  // namespace profiler
 }  // namespace tsl
 
-#endif  // TENSORFLOW_TSL_PROFILER_CONVERT_XLA_OP_UTILS_H_
+#endif  // XLA_TSL_PROFILER_CONVERT_XLA_OP_UTILS_H_

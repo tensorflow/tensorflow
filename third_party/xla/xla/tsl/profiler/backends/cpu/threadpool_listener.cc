@@ -12,18 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tsl/profiler/backends/cpu/threadpool_listener.h"
+#include "xla/tsl/profiler/backends/cpu/threadpool_listener.h"
 
 #include <cstdint>
 #include <memory>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "xla/tsl/profiler/backends/cpu/threadpool_listener_state.h"
+#include "xla/tsl/profiler/backends/cpu/traceme_recorder.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/tracing.h"
 #include "tsl/platform/types.h"
-#include "tsl/profiler/backends/cpu/threadpool_listener_state.h"
-#include "tsl/profiler/backends/cpu/traceme_recorder.h"
 #include "tsl/profiler/lib/context_types.h"
 #include "tsl/profiler/lib/traceme_encode.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"

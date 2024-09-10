@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/profiler/convert/trace_events_to_json.h"
+#include "xla/tsl/profiler/convert/trace_events_to_json.h"
 
 #include <string>
 
 #include "json/json.h"
+#include "xla/tsl/profiler/convert/trace_container.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/test.h"
-#include "tsl/profiler/convert/trace_container.h"
 #include "tsl/profiler/protobuf/trace_events.pb.h"
 
 namespace tsl {

@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/profiler/convert/xplane_to_trace_events.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -60,7 +61,6 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/file_system.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/profiler/convert/xplane_to_trace_events.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {

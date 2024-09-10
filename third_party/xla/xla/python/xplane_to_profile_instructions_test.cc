@@ -21,8 +21,8 @@ limitations under the License.
 
 #include "xla/service/hlo.pb.h"
 #include "xla/tests/verified_hlo_module.h"
+#include "xla/tsl/profiler/convert/xla_op_utils.h"
 #include "tsl/platform/test.h"
-#include "tsl/profiler/convert/xla_op_utils.h"
 #include "tsl/profiler/protobuf/profiled_instructions.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 #include "tsl/profiler/rpc/client/save_profile.h"

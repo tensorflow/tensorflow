@@ -653,8 +653,8 @@ cc_library(
         "//tensorflow/core/profiler/utils:xplane_utils",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/profiler/convert:xplane_to_trace_events",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@local_xla//xla/tsl/profiler/convert:xplane_to_trace_events",
     ],
 )
 
@@ -818,7 +818,7 @@ cc_library(
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/profiler/convert:xla_op_utils",
+        "@local_xla//xla/tsl/profiler/convert:xla_op_utils",
     ],
 )
 

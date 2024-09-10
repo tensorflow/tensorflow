@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_PROFILER_BACKENDS_CPU_THREADPOOL_LISTENER_H_
-#define TENSORFLOW_TSL_PROFILER_BACKENDS_CPU_THREADPOOL_LISTENER_H_
+#ifndef XLA_TSL_PROFILER_BACKENDS_CPU_THREADPOOL_LISTENER_H_
+#define XLA_TSL_PROFILER_BACKENDS_CPU_THREADPOOL_LISTENER_H_
 
 #include "absl/status/status.h"
+#include "xla/tsl/profiler/backends/cpu/threadpool_listener_state.h"
 #include "tsl/platform/tracing.h"
 #include "tsl/platform/types.h"
-#include "tsl/profiler/backends/cpu/threadpool_listener_state.h"
 #include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 namespace tsl {
@@ -55,4 +55,4 @@ class ThreadpoolProfilerInterface : public ProfilerInterface {
 }  // namespace profiler
 }  // namespace tsl
 
-#endif  // TENSORFLOW_TSL_PROFILER_BACKENDS_CPU_THREADPOOL_LISTENER_H_
+#endif  // XLA_TSL_PROFILER_BACKENDS_CPU_THREADPOOL_LISTENER_H_

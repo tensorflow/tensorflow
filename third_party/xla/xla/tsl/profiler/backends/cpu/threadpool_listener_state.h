@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,18 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/profiler/convert/xla_op_utils.h"
-
-#include "tsl/platform/test.h"
+#ifndef XLA_TSL_PROFILER_BACKENDS_CPU_THREADPOOL_LISTENER_STATE_H_
+#define XLA_TSL_PROFILER_BACKENDS_CPU_THREADPOOL_LISTENER_STATE_H_
 
 namespace tsl {
 namespace profiler {
-namespace {
+namespace threadpool_listener {
 
-TEST(XlaOpUtilsTest, HloModuleNameWithProgramId) {
-  EXPECT_EQ("module(123)", HloModuleNameWithProgramId("module", 123));
-}
+// Check if the threadpool listener is enabled.
+bool IsEnabled();
 
-}  // namespace
+// Set global state of threadpool listener to enabled.
+void Activate();
+
+// Set global state of threadpool listener to disabled.
+void Deactivate();
+
+}  // namespace threadpool_listener
 }  // namespace profiler
 }  // namespace tsl
+
+#endif  // XLA_TSL_PROFILER_BACKENDS_CPU_THREADPOOL_LISTENER_STATE_H_

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/profiler/convert/xplane_to_trace_events.h"
+#include "xla/tsl/profiler/convert/xplane_to_trace_events.h"
 
 #include <limits>
 #include <utility>

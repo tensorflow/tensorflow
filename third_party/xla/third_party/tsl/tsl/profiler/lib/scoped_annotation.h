@@ -27,7 +27,7 @@ limitations under the License.
 #include "tsl/profiler/lib/nvtx_utils.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
-#include "tsl/profiler/backends/cpu/annotation_stack.h"
+#include "xla/tsl/profiler/backends/cpu/annotation_stack.h"
 #endif
 
 namespace tsl::profiler {

@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,20 +12,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_TSL_PROFILER_CONVERT_POST_PROCESS_SINGLE_HOST_XPLANE_H_
-#define TENSORFLOW_TSL_PROFILER_CONVERT_POST_PROCESS_SINGLE_HOST_XPLANE_H_
+#ifndef XLA_TSL_PROFILER_BACKENDS_CPU_HOST_TRACER_UTILS_H_
+#define XLA_TSL_PROFILER_BACKENDS_CPU_HOST_TRACER_UTILS_H_
 
+#include "xla/tsl/profiler/backends/cpu/traceme_recorder.h"
 #include "tsl/platform/types.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tsl {
 namespace profiler {
 
-// Post process XSpaces collected locally from multiple profilers.
-void PostProcessSingleHostXSpace(tensorflow::profiler::XSpace* space,
-                                 uint64 start_time_ns, uint64 stop_time_ns);
+// Convert complete events to XPlane format.
+void ConvertCompleteEventsToXPlane(uint64 start_timestamp_ns,
+                                   TraceMeRecorder::Events&& events,
+                                   tensorflow::profiler::XPlane* raw_plane);
 
 }  // namespace profiler
 }  // namespace tsl
 
-#endif  // TENSORFLOW_TSL_PROFILER_CONVERT_POST_PROCESS_SINGLE_HOST_XPLANE_H_
+#endif  // XLA_TSL_PROFILER_BACKENDS_CPU_HOST_TRACER_UTILS_H_
