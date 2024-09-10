@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/hlo_domain_map.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/xla_data.pb.h"
 
@@ -40,6 +41,36 @@ class AllGatherCombiner : public HloModulePass {
   absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+  // The group key encapsulates all of the properties which must match for it to
+  // be possible to combine the instructions.
+  // The field of the key corresponds to the following:
+  // 1. all_gather_dimension
+  // 2. domain_metadata_id
+  // 3. channel_id
+  // 4. use_global_device_ids
+  // 5. data_type
+  // 6. replica_groups
+  // 7. extra arguments in string format.
+  using GroupKey =
+      std::tuple<std::optional<int64_t>, int64_t, bool, bool, PrimitiveType,
+                 std::vector<std::vector<int64_t>>, std::string>;
+
+  static std::string& GetGroupKeyExtraArgs(GroupKey& key);
+
+  // Returns a key that will be equal for instructions that might be combined,
+  // or different if not.
+  static std::optional<AllGatherCombiner::GroupKey> CombineKey(
+      const HloInstruction* instruction, const HloDomainMap& domain_map,
+      bool combine_by_dim, bool combine_different_dtypes = true);
+
+ protected:
+  absl::StatusOr<bool> RunWithKeyCombiner(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads,
+      absl::FunctionRef<std::optional<AllGatherCombiner::GroupKey>(
+          const HloInstruction*, const HloDomainMap&, bool, bool)>
+          combine_key);
 
  private:
   // Combine all gather ops up to this threshold.
