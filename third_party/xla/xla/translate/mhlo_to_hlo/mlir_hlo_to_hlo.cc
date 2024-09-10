@@ -568,10 +568,6 @@ static xla::ComparisonDirection Convert_comparison_direction(
 
 static xla::GatherDimensionNumbers Convert_dimension_numbers(
     mlir::mhlo::GatherDimensionNumbersAttr input) {
-  assert(input.getOperandBatchingDims().empty() &&
-         input.getStartIndicesBatchingDims().empty() &&
-         "batching dimensions aren't supported in xla::GatherDimensionNumbers");
-
   xla::GatherDimensionNumbers output;
 
   auto offset_dims = input.getOffsetDims();
@@ -584,6 +580,17 @@ static xla::GatherDimensionNumbers Convert_dimension_numbers(
             tsl::protobuf::RepeatedFieldBackInserter(
                 output.mutable_collapsed_slice_dims()));
 
+  auto operand_batching_dims = input.getOperandBatchingDims();
+  std::copy(operand_batching_dims.begin(), operand_batching_dims.end(),
+            tsl::protobuf::RepeatedFieldBackInserter(
+                output.mutable_operand_batching_dims()));
+
+  auto start_indices_batching_dims = input.getStartIndicesBatchingDims();
+  std::copy(start_indices_batching_dims.begin(),
+            start_indices_batching_dims.end(),
+            tsl::protobuf::RepeatedFieldBackInserter(
+                output.mutable_start_indices_batching_dims()));
+
   auto start_index_map = input.getStartIndexMap();
   std::copy(start_index_map.begin(), start_index_map.end(),
             tsl::protobuf::RepeatedFieldBackInserter(
@@ -595,11 +602,6 @@ static xla::GatherDimensionNumbers Convert_dimension_numbers(
 
 static xla::ScatterDimensionNumbers Convert_scatter_dimension_numbers(
     mlir::mhlo::ScatterDimensionNumbersAttr input) {
-  assert(
-      input.getInputBatchingDims().empty() &&
-      input.getScatterIndicesBatchingDims().empty() &&
-      "batching dimensions aren't supported in xla::ScatterDimensionNumbers");
-
   xla::ScatterDimensionNumbers output;
 
   auto update_window_dims = input.getUpdateWindowDims();
@@ -611,6 +613,17 @@ static xla::ScatterDimensionNumbers Convert_scatter_dimension_numbers(
   std::copy(inserted_window_dims.begin(), inserted_window_dims.end(),
             tsl::protobuf::RepeatedFieldBackInserter(
                 output.mutable_inserted_window_dims()));
+
+  auto input_batching_dims = input.getInputBatchingDims();
+  std::copy(input_batching_dims.begin(), input_batching_dims.end(),
+            tsl::protobuf::RepeatedFieldBackInserter(
+                output.mutable_input_batching_dims()));
+
+  auto scatter_indices_batching_dims = input.getScatterIndicesBatchingDims();
+  std::copy(scatter_indices_batching_dims.begin(),
+            scatter_indices_batching_dims.end(),
+            tsl::protobuf::RepeatedFieldBackInserter(
+                output.mutable_scatter_indices_batching_dims()));
 
   auto scatter_dims_to_operand_dims = input.getScatterDimsToOperandDims();
   std::copy(scatter_dims_to_operand_dims.begin(),
