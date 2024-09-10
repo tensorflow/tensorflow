@@ -965,7 +965,7 @@ absl::Status GpuCommandBuffer::Finalize() {
   // TODO(b/362769658): Remove this workaround when cuda supports conditionals
   // with empty graphs.
 #if !defined(TENSORFLOW_USE_ROCM)
-  if (num_nodes == 0) {
+  if (num_nodes == 0 && mode_ == Mode::kNested) {
     GpuGraphNodeHandle empty_node_handle = nullptr;
     TF_ASSIGN_OR_RETURN(NoOpKernel * noop, GetNoOpKernel());
 
