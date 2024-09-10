@@ -393,5 +393,56 @@ class TestDynamicTfWithBoundXlaOp : public LightOutsideCompilationOp {
 REGISTER_XLA_OP(Name("TestDynamicTfWithBound").Device(DEVICE_GPU_XLA_JIT),
                 TestDynamicTfWithBoundXlaOp);
 
+REGISTER_OP("TestDeviceTensorIsCopiedToHost")
+    // Later, this input is registered as residing on host memory.
+    .Input("input_residing_on_device_before_op: float")
+    .Output("output: float")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->input(0));
+      return absl::OkStatus();
+    });
+
+// This op is used by the eponymous test in python. This op expects an input
+// tensor that resides on the host (not the device!). Thus, if the input tensor
+// is not copied to host by light outside compilation logic, the test crashes
+// with SIGSEGV because host logic tries to read values of a device tensor.
+class TestDeviceTensorIsCopiedToHostOp : public OpKernel {
+ public:
+  explicit TestDeviceTensorIsCopiedToHostOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {}
+  void Compute(OpKernelContext* ctx) override {
+    Tensor* out_tensor = nullptr;
+    const Tensor& input = ctx->input(0);
+    OP_REQUIRES_OK(ctx, ctx->allocate_output("output", ctx->input(0).shape(),
+                                             &out_tensor));
+
+    uint64_t size = input.AllocatedBytes();
+    se::DeviceMemoryBase gpu_dst{out_tensor->data(), size};
+    se::Stream* stream = ctx->op_device_context()->stream();
+
+    auto input_flat = ctx->input(0).flat<float>();
+    std::vector<float> vec(input_flat.size());
+    for (int i = 0; i < input_flat.size(); i++) {
+      // Read the value of the tensor on host! This should not seg fault. If the
+      // the tensor is un-expectedly on device, however, this will seg fault,
+      // and the test fails with a crash.
+      vec[i] = input_flat(i) + 1;  // Simply add 1 to the values.
+    }
+
+    // After calculations performed on host, copy results to outputs on device.
+    OP_REQUIRES_OK(ctx, stream->Memcpy(
+                            /*gpu_dst=*/&gpu_dst, /*host_src=*/vec.data(),
+                            /*size=*/vec.size() * sizeof(float)));
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("TestDeviceTensorIsCopiedToHost")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("input_residing_on_device_before_op"),
+                        TestDeviceTensorIsCopiedToHostOp);
+REGISTER_XLA_OP(
+    Name("TestDeviceTensorIsCopiedToHost").Device(DEVICE_GPU_XLA_JIT),
+    LightOutsideCompilationOp)
+
 }  // namespace
 }  // namespace tensorflow

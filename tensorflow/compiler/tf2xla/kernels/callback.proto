@@ -11,6 +11,8 @@ message TfCallbackData {
   message BufferDescription {
     optional TensorShapeProto shape = 1;
     optional DataType type = 2;
+    // If true, this device buffer is read on host memory: It must be copied.
+    optional bool should_be_copied_to_host_memory = 3;
   }
 
   message InputBufferDescription {
