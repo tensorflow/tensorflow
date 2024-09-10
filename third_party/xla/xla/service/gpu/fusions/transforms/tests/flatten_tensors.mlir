@@ -24,7 +24,8 @@ func.func @tensor_insert(
   %real = arith.constant 3.0 : f32
   %imag = arith.constant 2.0 : f32
   %complex = complex.create %real, %imag : complex<f32>
-  %out = tensor.insert %complex into %arg0[%c1, %c1] : tensor<10x24xcomplex<f32>>
+  %out = tensor.insert %complex into %arg0[%c1, %c1]
+    : tensor<10x24xcomplex<f32>>
   func.return %out : tensor<10x24xcomplex<f32>>
 }
 // CHECK-LABEL: func.func @tensor_insert(
@@ -86,7 +87,8 @@ func.func @for_loop(%t0: tensor<32x1024xf32>, %t1: tensor<64x8x4xf32>)
   %for:2 = scf.for %i = %c0 to %c64 step %c32 iter_args(%t0_ = %t0, %t1_ = %t1)
     -> (tensor<32x1024xf32>, tensor<64x8x4xf32>) {
     %update0 = tensor.insert %c0_f32 into %t0_[%c1, %i] : tensor<32x1024xf32>
-    %update1 = tensor.insert %c0_f32 into %t1_[%i, %c1, %c1] : tensor<64x8x4xf32>
+    %update1 = tensor.insert %c0_f32 into %t1_[%i, %c1, %c1]
+      : tensor<64x8x4xf32>
     scf.yield %update0, %update1 : tensor<32x1024xf32>, tensor<64x8x4xf32>
   } {some_attr}
     return %for#0, %for#1, %c0_f32 : tensor<32x1024xf32>, tensor<64x8x4xf32>, f32
@@ -112,9 +114,12 @@ func.func @for_loop(%t0: tensor<32x1024xf32>, %t1: tensor<64x8x4xf32>)
 
 // -----
 
-#map = #xla_gpu.indexing_map<(d0, d1) -> ((d1 * 128 + d0) floordiv 36), domain: d0 in [0, 127], d1 in [0, 393749], is_simplified: true>
-#map1 = #xla_gpu.indexing_map<(d0, d1) -> (((d1 * 128 + d0) floordiv 9) mod 4), domain: d0 in [0, 127], d1 in [0, 393749], is_simplified: true>
-#map2 = #xla_gpu.indexing_map<(d0, d1) -> ((d1 * 128 + d0) mod 9), domain: d0 in [0, 127], d1 in [0, 393749], is_simplified: true>
+#map = #xla_gpu.indexing_map<(d0, d1) -> ((d1 * 128 + d0) floordiv 36),
+  domain: d0 in [0, 127], d1 in [0, 393749], is_simplified: true>
+#map1 = #xla_gpu.indexing_map<(d0, d1) -> (((d1 * 128 + d0) floordiv 9) mod 4),
+  domain: d0 in [0, 127], d1 in [0, 393749], is_simplified: true>
+#map2 = #xla_gpu.indexing_map<(d0, d1) -> ((d1 * 128 + d0) mod 9),
+  domain: d0 in [0, 127], d1 in [0, 393749], is_simplified: true>
 func.func @if_op(%arg0: tensor<4000x4x9xf32>, %arg1: tensor<1400x1xi32>,
     %arg2: tensor<1400x1x4x9xf32>, %arg3: tensor<4000x4x9xf32>)
      -> tensor<4000x4x9xf32> {

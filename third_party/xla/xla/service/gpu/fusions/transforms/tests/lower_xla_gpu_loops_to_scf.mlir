@@ -1,7 +1,10 @@
-// RUN: mlir_fusions_opt %s -xla-gpu-lower-xla-gpu-loops-to-scf --split-input-file | FileCheck %s
+// RUN: mlir_fusions_opt %s -xla-gpu-lower-xla-gpu-loops-to-scf  \
+// RUN: --split-input-file | FileCheck %s
 
 #map = #xla_gpu.indexing_map<(d0)[s0, s1] -> (s0 + 1, s1 - 1),
-  domain: d0 in [0, 3], s0 in [0, 1024], s1 in [0, 32], s0 + s1 in [0, 90], is_simplified: false>
+  domain: d0 in [0, 3], s0 in [0, 1024], s1 in [0, 32], s0 + s1 in [0, 90],
+  is_simplified: false>
+
 func.func @loop_op(%input: tensor<1024x32xf32>, %init: f32, %dim: index) -> (f32) {
   %sum = xla_gpu.loop (%dim)[%i, %j] -> (%ra, %rb)
       in #map iter_args(%sum_ = %init) -> (f32) {
@@ -58,8 +61,11 @@ func.func @loop_op(%input: tensor<1024x32xf32>, %init: f32, %dim: index) -> (f32
 // -----
 
 #map = #xla_gpu.indexing_map<(d0)[s0, s1] -> (s0 + 1, s1 - 1),
-  domain: d0 in [0, 3], s0 in [0, 1024], s1 in [0, 32], s0 + s1 in [0, 90], is_simplified: false>
-func.func @loop_yields_value_from_above(%input: tensor<1024x32xf32>, %init: f32, %dim: index) -> (f32) {
+  domain: d0 in [0, 3], s0 in [0, 1024], s1 in [0, 32], s0 + s1 in [0, 90],
+  is_simplified: false>
+
+func.func @loop_yields_value_from_above(%input: tensor<1024x32xf32>, %init: f32,
+    %dim: index) -> (f32) {
   %sum = xla_gpu.loop (%dim)[%i, %j] -> (%ra, %rb)
       in #map iter_args(%sum_ = %init) -> (f32) {
     xla_gpu.yield %init : f32

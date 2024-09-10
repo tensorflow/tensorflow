@@ -124,43 +124,58 @@ func.func @predicated_extract(
 
 func.func private @exp(%p0: tensor<32x64xf32>, %i: index, %j: index) -> f32
 
-#map = #xla_gpu.indexing_map<(d0, d1)[s0, s1] -> (d1*32+d0*2+s0, s1), domain: d0 in [0, 32], d1 in [0, 8], s0 in [0, 1], s1 in [0, 1], is_simplified: false>
-#map1 = #xla_gpu.indexing_map<(d0, d1)[s0, s1] -> (d0*2+s0, s1), domain: d0 in [0, 32], d1 in [0, 2], s0 in [0, 1], s1 in [0, 1], is_simplified: false>
-func.func @materialize(%input: tensor<32x64xf32>, %i: index, %j: index) -> !xla_gpu.indexed_vector<32x2x2xf32, #map1> {
-  %0 = xla_gpu.materialize @exp(%input) at #map(%i, %j) : (tensor<32x64xf32>) -> !xla_gpu.indexed_vector<32x2x2xf32, #map1>
+#map = #xla_gpu.indexing_map<(d0, d1)[s0, s1] -> (d1*32+d0*2+s0, s1),
+  domain: d0 in [0, 32], d1 in [0, 8], s0 in [0, 1], s1 in [0, 1],
+  is_simplified: false>
+#map1 = #xla_gpu.indexing_map<(d0, d1)[s0, s1] -> (d0*2+s0, s1),
+  domain: d0 in [0, 32], d1 in [0, 2], s0 in [0, 1], s1 in [0, 1],
+  is_simplified: false>
+
+func.func @materialize(%input: tensor<32x64xf32>, %i: index, %j: index)
+    -> !xla_gpu.indexed_vector<32x2x2xf32, #map1> {
+  %0 = xla_gpu.materialize @exp(%input) at #map(%i, %j)
+    : (tensor<32x64xf32>) -> !xla_gpu.indexed_vector<32x2x2xf32, #map1>
   func.return %0 : !xla_gpu.indexed_vector<32x2x2xf32, #map1>
 }
-
 // CHECK-DAG: #[[$MAP:.*]] = #xla_gpu.indexing_map<(d0, d1)[s0, s1] -> (d1 * 32 + d0 * 2 + s0, s1)
 // CHECK-DAG: #[[$MAP1:.*]] = #xla_gpu.indexing_map<(d0, d1)[s0, s1] -> (d0 * 2 + s0, s1)
+
 // CHECK: @materialize(%[[INPUT:.*]]: tensor<32x64xf32>, %[[INDEX1:.*]]: index, %[[INDEX2:.*]]: index)
-// CHECK: %[[INIT_VEC:.*]] = arith.constant {{.*}} : vector<2x2xf32>
-// CHECK: xla_gpu.loop (%[[INDEX1]], %[[INDEX2]])[%[[S0:.*]], %[[S1:.*]]]
-// CHECK-SAME: -> (%[[MAP_RESULT1:.*]], %[[MAP_RESULT2:.*]]) in
-// CHECK-SAME: #[[$MAP]] iter_args(%[[ITER_ARG:.*]] = %[[INIT_VEC]])
+
+// CHECK:      %[[INIT_VEC:.*]] = arith.constant {{.*}} : vector<2x2xf32>
+// CHECK:      xla_gpu.loop (%[[INDEX1]], %[[INDEX2]])[%[[S0:.*]], %[[S1:.*]]]
+// CHECK-SAME:   -> (%[[MAP_RESULT1:.*]], %[[MAP_RESULT2:.*]]) in
+// CHECK-SAME:   #[[$MAP]] iter_args(%[[ITER_ARG:.*]] = %[[INIT_VEC]])
+
 // CHECK: %[[PURE_CALL:.*]] = xla_gpu.pure_call @exp(%[[INPUT]], %[[MAP_RESULT1]], %[[MAP_RESULT2]])
 // CHECK: vector.insert %[[PURE_CALL]], %[[ITER_ARG]] [%[[S0]], %[[S1]]]
 // CHECK xla_gpu.yield %{{.*}} : vector<2x2xf32>
 
 // -----
 
-#map = #xla_gpu.indexing_map<(d0, d1)[s0, s1] -> (d1*32+d0*2+s0, s1), domain: d0 in [0, 32], d1 in [0, 8], s0 in [0, 1], s1 in [0, 1], is_simplified: false>
-#map1 = #xla_gpu.indexing_map<(d0, d1)[s0, s1] -> (d0*2+s0, s1), domain: d0 in [0, 32], d1 in [0, 2], s0 in [0, 1], s1 in [0, 1], is_simplified: false>
-func.func @insert(%input: !xla_gpu.indexed_vector<32x64xf32, #map>, %i: index, %j: index, %output: tensor<32x64xf32>) -> tensor<32x64xf32> {
-  %0 = xla_gpu.insert %input(%i, %j) into %output at #map1 : !xla_gpu.indexed_vector<32x64xf32, #map> -> tensor<32x64xf32>
+#map = #xla_gpu.indexing_map<(d0, d1)[s0, s1] -> (d1*32+d0*2+s0, s1),
+  domain: d0 in [0, 32], d1 in [0, 8], s0 in [0, 1], s1 in [0, 1],
+  is_simplified: false>
+#map1 = #xla_gpu.indexing_map<(d0, d1)[s0, s1] -> (d0*2+s0, s1),
+  domain: d0 in [0, 32], d1 in [0, 2], s0 in [0, 1], s1 in [0, 1],
+  is_simplified: false>
+
+func.func @insert(%input: !xla_gpu.indexed_vector<32x64xf32, #map>,
+    %i: index, %j: index, %output: tensor<32x64xf32>) -> tensor<32x64xf32> {
+  %0 = xla_gpu.insert %input(%i, %j) into %output at #map1
+    : !xla_gpu.indexed_vector<32x64xf32, #map> -> tensor<32x64xf32>
   func.return %0 : tensor<32x64xf32>
 }
-
 // CHECK-DAG: #[[$MAP:.*]] = #xla_gpu.indexing_map<(d0, d1)[s0, s1] -> (d1 * 32 + d0 * 2 + s0, s1)
 // CHECK-DAG: #[[$MAP1:.*]] = #xla_gpu.indexing_map<(d0, d1)[s0, s1] -> (d0 * 2 + s0, s1)
 
-// CHECK: @insert(%[[INPUT:.*]]: !xla_gpu.indexed_vector<32x64xf32, #[[$MAP]]>,
-// CHECK-SAME: %[[I:.*]]: index, %[[J:.*]]: index,
-// CHECK-SAME: %[[OUTPUT:.*]]: tensor<32x64xf32>)
+// CHECK:      @insert(%[[INPUT:.*]]: !xla_gpu.indexed_vector<32x64xf32, #[[$MAP]]>,
+// CHECK-SAME:   %[[I:.*]]: index, %[[J:.*]]: index,
+// CHECK-SAME:   %[[OUTPUT:.*]]: tensor<32x64xf32>)
 
-// CHECK: xla_gpu.loop (%[[I]], %[[J]])[%[[S0:.*]], %[[S1:.*]]] ->
-// CHECK-SAME: (%[[MAP_RESULT1:.*]], %[[MAP_RESULT2:.*]]) in #[[$MAP]]
-// CHECK-SAME: iter_args(%[[TENSOR:.*]] = %[[OUTPUT]])
+// CHECK:      xla_gpu.loop (%[[I]], %[[J]])[%[[S0:.*]], %[[S1:.*]]] ->
+// CHECK-SAME:   (%[[MAP_RESULT1:.*]], %[[MAP_RESULT2:.*]]) in #[[$MAP]]
+// CHECK-SAME:   iter_args(%[[TENSOR:.*]] = %[[OUTPUT]])
 
 // CHECK: %[[SCALAR:.*]] = vector.extract %{{.*}}[%[[S0]], %[[S1]]] : f32 from vector<2x2xf32>
 // CHECK: %[[MAP1_RESULT:.*]]:2 = xla_gpu.apply_indexing #[[$MAP1]](%[[I]], %[[J]])[%[[MAP_RESULT1]], %[[MAP_RESULT2]]]
@@ -171,13 +186,22 @@ func.func @insert(%input: !xla_gpu.indexed_vector<32x64xf32, #map>, %i: index, %
 
 func.func private @exp(%p0: tensor<32x64xf32>, %i: index, %j: index) -> f32
 
-#map = #xla_gpu.indexing_map<(d0, d1)[s0, s1] -> (d1*32+d0*2+s0, s1), domain: d0 in [0, 32], d1 in [0, 8], s0 in [0, 1], s1 in [0, 1], is_simplified: false>
-#map1 = #xla_gpu.indexing_map<(d0, d1)[s0, s1] -> (d0*2+s0, s1), domain: d0 in [0, 32], d1 in [0, 2], s0 in [0, 1], s1 in [0, 1], is_simplified: false>
-#map2 = #xla_gpu.indexing_map<(d0, d1)[s0, s1] -> (s0, s1), domain: d0 in [0, 32], d1 in [0, 2], s0 in [0, 1], s1 in [0, 1], is_simplified: false>
-func.func @materialize_and_insert(%input: tensor<32x64xf32>, %i: index, %j: index, %output: tensor<32x64xf32>) -> tensor<32x64xf32> {
-  %0 = xla_gpu.materialize @exp(%input) at #map(%i, %j) : (tensor<32x64xf32>) -> !xla_gpu.indexed_vector<32x2x2xf32, #map1>
-  %1 = xla_gpu.insert %0(%i, %j) into %output at #map2 : !xla_gpu.indexed_vector<32x2x2xf32, #map1> -> tensor<32x64xf32>
+#map = #xla_gpu.indexing_map<(d0, d1)[s0, s1] -> (d1*32+d0*2+s0, s1),
+  domain: d0 in [0, 32], d1 in [0, 8], s0 in [0, 1], s1 in [0, 1],
+  is_simplified: false>
+#map1 = #xla_gpu.indexing_map<(d0, d1)[s0, s1] -> (d0*2+s0, s1),
+  domain: d0 in [0, 32], d1 in [0, 2], s0 in [0, 1], s1 in [0, 1],
+  is_simplified: false>
+#map2 = #xla_gpu.indexing_map<(d0, d1)[s0, s1] -> (s0, s1),
+  domain: d0 in [0, 32], d1 in [0, 2], s0 in [0, 1], s1 in [0, 1],
+  is_simplified: false>
+
+func.func @materialize_and_insert(%input: tensor<32x64xf32>, %i: index,
+    %j: index, %output: tensor<32x64xf32>) -> tensor<32x64xf32> {
+  %0 = xla_gpu.materialize @exp(%input) at #map(%i, %j)
+    : (tensor<32x64xf32>) -> !xla_gpu.indexed_vector<32x2x2xf32, #map1>
+  %1 = xla_gpu.insert %0(%i, %j) into %output at #map2
+    : !xla_gpu.indexed_vector<32x2x2xf32, #map1> -> tensor<32x64xf32>
   func.return %1 : tensor<32x64xf32>
 }
-
 // CHECK-NOT: unrealized_conversion_cast
