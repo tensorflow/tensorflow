@@ -291,9 +291,6 @@ void AddPostQuantizationStableHloToTfPasses(
     pass_manager.addNestedPass<mlir::func::FuncOp>(
         mlir::odml::CreateFoldBroadcastToPass());
   }
-  // TF dialect passes
-  pass_manager.addPass(mlir::odml::CreateLegalizeHloToTfPass());
-
   // folds tf.BroadcastTo ops with subsequent ops if they have built in
   // broadcasting support. This needs to be run immediately after HLO->TF
   // legalization; otherwise other passes like `ConvertTFBroadcastTo` will
