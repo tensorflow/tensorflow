@@ -157,6 +157,7 @@ cc_library(
 cc_library(
     name = "rocm_executor",
     srcs = if_rocm_is_configured(["rocm_executor.cc"]),
+    hdrs = if_rocm_is_configured(["rocm_executor.h"]),
     deps = if_rocm_is_configured([
         # keep sorted
         ":rocm_collectives",
@@ -194,7 +195,7 @@ cc_library(
         "@local_tsl//tsl/platform:fingerprint",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
-    ]),
+    ]) + ["@com_google_absl//absl/base:core_headers"],
     alwayslink = True,
 )
 
@@ -204,6 +205,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = if_rocm_is_configured([
         "//xla/stream_executor/gpu:gpu_kernel_header",
+        "//xla/stream_executor/gpu:gpu_driver_header",
     ]),
     alwayslink = True,
 )

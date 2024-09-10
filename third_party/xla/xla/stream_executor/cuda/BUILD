@@ -850,6 +850,9 @@ cuda_only_cc_library(
         "cuda_executor.cc",
         "delay_kernel.h",
     ],
+    hdrs = [
+        "cuda_executor.h",
+    ],
     deps = [
         ":cuda_collectives",  # buildcleaner: keep
         ":cuda_diagnostics",
@@ -866,7 +869,9 @@ cuda_only_cc_library(
         "//xla/stream_executor:event",
         "//xla/stream_executor:event_based_timer",
         "//xla/stream_executor:fft",
+        "//xla/stream_executor:host_memory_allocation",
         "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor:memory_allocation",
         "//xla/stream_executor:module_spec",
         "//xla/stream_executor:plugin_registry",
         "//xla/stream_executor:semantic_version",
@@ -877,6 +882,7 @@ cuda_only_cc_library(
         "//xla/stream_executor/gpu:gpu_diagnostics_header",
         "//xla/stream_executor/gpu:gpu_driver_header",
         "//xla/stream_executor/gpu:gpu_event_header",
+        "//xla/stream_executor/gpu:gpu_executor_header",
         "//xla/stream_executor/gpu:gpu_kernel_header",
         "//xla/stream_executor/gpu:gpu_runtime_header",
         "//xla/stream_executor/gpu:gpu_semaphore",
@@ -886,6 +892,8 @@ cuda_only_cc_library(
         "//xla/stream_executor/gpu:read_numa_node",
         "//xla/stream_executor/integrations:device_mem_allocator",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/numeric:int128",

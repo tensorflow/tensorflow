@@ -697,8 +697,8 @@ GpuCommandBuffer::CreateConditionalCommandBuffers(
   bool is_owned_graph = false;
 
   for (size_t i = 0; i < handles.size(); ++i) {
-    auto command_buffer =
-        parent_->CreateCommandBuffer(nested, graphs[i], is_owned_graph);
+    auto command_buffer = std::make_unique<GpuCommandBuffer>(
+        nested, parent_, graphs[i], is_owned_graph);
     TF_RETURN_IF_ERROR(builders[i](command_buffer.get(), handles[i]));
     TF_RETURN_IF_ERROR(command_buffer->Finalize());
 
@@ -990,7 +990,7 @@ absl::Status GpuCommandBuffer::Finalize() {
                    << "; conditionals: " << num_cond_cmd_buffers
                    << "; alive executable graphs: " << AliveExecs();
 
-      TF_RETURN_IF_ERROR(GpuDriver::DeviceGraphMemTrim(parent_->device()));
+      TF_RETURN_IF_ERROR(parent_->TrimGraphMemory());
 
       auto retry = GpuDriver::GraphInstantiate(&exec_, graph_, flags);
       if (retry.code() == absl::StatusCode::kResourceExhausted) {
