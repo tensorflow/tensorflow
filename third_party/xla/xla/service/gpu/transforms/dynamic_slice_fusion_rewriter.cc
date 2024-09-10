@@ -525,7 +525,8 @@ absl::StatusOr<bool> DynamicSliceFusionRewriter::Run(
         sliced_operand_paths = GetSlicedOperandPaths(instr);
         has_sliced_operand_paths = sliced_operand_paths.size() > 1;
       }
-      if (instr->opcode() == HloOpcode::kReduceScatter ||
+      if ((instr->opcode() == HloOpcode::kReduceScatter &&
+           instr->shape().IsArray()) ||
           IsLegacyCublasMatmul(*instr) || IsCustomCall(instr, platform_name_)) {
         DefUseDataflowPaths sliced_user_paths = GetSlicedUserPaths(instr);
         bool has_sliced_user_paths = absl::c_any_of(

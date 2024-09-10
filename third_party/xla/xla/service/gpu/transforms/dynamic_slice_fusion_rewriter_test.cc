@@ -2061,4 +2061,29 @@ TEST_F(DynamicSliceFusionRewriterTest, DUSSimpleGemmLaxScan) {
   RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"), expected);
 }
 
+// Remove this when tuple support is added to dynamic slice fusion
+TEST_F(DynamicSliceFusionRewriterTest, DUSReduceScatterTupleNoTransform) {
+  const char* hlo = R"(
+  HloModule test, replica_count=2
+
+  add {
+    param_0 = f16[] parameter(0)
+    param_1 = f16[] parameter(1)
+    ROOT add.1 = f16[] add(param_0, param_1)
+  }
+
+  ENTRY main.9 {
+    param_0 = f16[128,128]{1,0} parameter(0)
+    param_1 = f16[128,128]{1,0} parameter(1)
+    param_2 = f16[128,128]{1,0} parameter(2)
+    constant_20 = u32[] constant(20)
+    constant_0 = u32[] constant(0)
+    reduce-scatter = (f16[64,128]{1,0}, f16[64,128]{1,0}) reduce-scatter(param_0, param_2), channel_id=64, replica_groups={{0,1}}, use_global_device_ids=true, dimensions={0}, to_apply=add
+    rs1 = get-tuple-element(reduce-scatter), index=0
+    ROOT loop_dynamic_update_slice_fusion = f16[128,128]{1,0} dynamic-update-slice(param_1, rs1, constant_20, constant_0)
+  })";
+  RunAndFilecheckHloRewrite(hlo, DynamicSliceFusionRewriter("gpu"),
+                            std::nullopt);
+}
+
 }  // namespace xla::gpu
