@@ -28,3 +28,9 @@ cc_library(
     hdrs = ["lite_rt_support.h"],
     deps = [":lite_rt_common"],
 )
+
+cc_library(
+    name = "lite_rt_op_code",
+    hdrs = ["lite_rt_op_code.h"],
+    deps = ["//tensorflow/lite:builtin_ops"],
+)
