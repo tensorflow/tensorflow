@@ -78,6 +78,7 @@ limitations under the License.
 #include "xla/service/all_reduce_promotion.h"
 #include "xla/service/all_reduce_reassociate.h"
 #include "xla/service/async_collective_creator.h"
+#include "xla/service/batched_gather_scatter_normalizer.h"
 #include "xla/service/batchnorm_expander.h"
 #include "xla/service/bitcast_dtypes_expander.h"
 #include "xla/service/broadcast_canonicalizer.h"
@@ -542,6 +543,8 @@ AlgebraicSimplifierOptions LayoutInsensitiveAlgebraicSimplifierOptions(
 
 absl::Status RunPreSPMDPartitionerPasses(HloModule* hlo_module) {
   HloPassPipeline pre_spmd_pipeline("pre-spmd-partitioner");
+  // TODO(b/359982037): Run BatchedGatherScatterNormalizer after partitioning.
+  pre_spmd_pipeline.AddPass<BatchedGatherScatterNormalizer>();
   // Run some IR cleanup passes before running the SPMD partitioning
   // passes.
   pre_spmd_pipeline.AddPass<CuDnnCustomCallConverter>();

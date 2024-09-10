@@ -95,6 +95,7 @@ limitations under the License.
 #include "xla/service/all_reduce_promotion.h"
 #include "xla/service/all_to_all_decomposer.h"
 #include "xla/service/batch_dot_simplification.h"
+#include "xla/service/batched_gather_scatter_normalizer.h"
 #include "xla/service/batchnorm_expander.h"
 #include "xla/service/bitcast_dtypes_expander.h"
 #include "xla/service/broadcast_canonicalizer.h"
@@ -475,6 +476,11 @@ void AddHloVerifier(HloPassPipeline* pipeline, HloVerifierOpts&& opts = {},
 absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     HloModule* module, bool is_aot_compile,
     LLVMTargetMachineFeatures* target_machine_features, bool is_mlir_compile) {
+  HloPassPipeline pre_sharding_pipeline("pre-spmd-pipeline");
+  // TODO(b/359982037): Run BatchedGatherScatterNormalizer after partitioning.
+  pre_sharding_pipeline.AddPass<BatchedGatherScatterNormalizer>();
+  TF_RETURN_IF_ERROR(pre_sharding_pipeline.Run(module).status());
+
   const DebugOptions& debug_options = module->config().debug_options();
   const int64_t num_partitions = module->config().num_partitions();
   if (num_partitions > 1) {

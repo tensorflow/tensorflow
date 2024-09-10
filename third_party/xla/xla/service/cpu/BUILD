@@ -250,6 +250,7 @@ cc_library(
         "//xla/service:all_reduce_promotion",
         "//xla/service:all_to_all_decomposer",
         "//xla/service:batch_dot_simplification",
+        "//xla/service:batched_gather_scatter_normalizer",
         "//xla/service:batchnorm_expander",
         "//xla/service:bitcast_dtypes_expander",
         "//xla/service:broadcast_canonicalizer",

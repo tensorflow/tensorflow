@@ -1468,6 +1468,7 @@ cc_library(
         "//xla/service:all_reduce_promotion",
         "//xla/service:all_reduce_reassociate",
         "//xla/service:async_collective_creator",
+        "//xla/service:batched_gather_scatter_normalizer",
         "//xla/service:batchnorm_expander",
         "//xla/service:bitcast_dtypes_expander",
         "//xla/service:broadcast_canonicalizer",
