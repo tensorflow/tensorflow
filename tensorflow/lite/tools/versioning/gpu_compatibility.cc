@@ -762,9 +762,6 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
         return absl::InvalidArgumentError(
             "Op can only handle 1 or 2 operand(s).");
       }
-      if (op_sig.inputs.at(0).type == kTfLiteInt32) {
-        return absl::UnimplementedError("Does not accept INT32 input.\n");
-      }
       if (op_sig.inputs[1].dims.size() != 1) {
         return absl::UnimplementedError("Only support 1D indices\n");
       }
