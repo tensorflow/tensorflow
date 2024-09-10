@@ -962,7 +962,11 @@ message DebugOptions {
     AUTOTUNE_CACHE_MODE_READ = 2;
   }
 
-  // Next id: 326
+  // Timeouts for RendezvousSingle stuck warning and termination.
+  int32 xla_gpu_executable_warn_stuck_timeout = 326;
+  int32 xla_gpu_executable_terminate_timeout = 327;
+
+  // Next id: 328
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
