@@ -37,10 +37,10 @@ class HloFusionAdaptor;
 // Treats HloInstructions as if they were unfused.
 class HloInstructionAdaptor {
  public:
+  // Needed for UnionFind used in GroupDisjointReductions.
   HloInstructionAdaptor() = default;
   HloInstructionAdaptor(const HloInstruction& instruction,
-                        const HloFusionAdaptor* parent)
-      : instruction_(&instruction), parent_(parent) {}
+                        const HloFusionAdaptor* parent);
 
   HloOpcode opcode() const { return instruction_->opcode(); }
   absl::string_view name() const { return instruction_->name(); }
@@ -63,10 +63,10 @@ class HloInstructionAdaptor {
   const HloFusionAdaptor& parent() const { return *parent_; }
 
  private:
-  const HloInstruction* instruction_;
+  const HloInstruction* instruction_ = nullptr;
 
-  // Pointer to the parent fusion adaptor. Can not be null.
-  const HloFusionAdaptor* parent_;
+  // Pointer to the parent fusion adaptor.
+  const HloFusionAdaptor* parent_ = nullptr;
 };
 
 template <typename H>
@@ -104,6 +104,7 @@ class HloFusionInstructionAdaptor {
 
 }  // namespace internal
 
+// Treats a set of HloInstructions as if they were fused.
 class HloFusionAdaptor {
  public:
   bool ContainsInstruction(HloInstructionAdaptor instruction) const;
@@ -126,6 +127,10 @@ class HloFusionAdaptor {
       const HloComputation* computation);
 
  private:
+  HloFusionAdaptor() = default;
+  HloFusionAdaptor(const HloFusionAdaptor&) = delete;
+  HloFusionAdaptor& operator=(const HloFusionAdaptor&) = delete;
+
   void AddInstruction(const HloInstruction* instruction);
   void AddComputation(const HloComputation* computation);
 
