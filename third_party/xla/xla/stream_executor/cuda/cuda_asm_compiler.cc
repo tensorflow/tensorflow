@@ -342,8 +342,9 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(
     tsl::Env::Default()->DeleteFile(cubin_path).IgnoreError();
   };
   tsl::SubProcess ptxas_info_dumper;
-  // If the target is sm_90, hard code it to sm_90a so that all instructions
-  // can be used. We don't need the portability that sm_90 gives.
+  // On Hopper, default to sm_90a so that all instructions can be used. But
+  // only sm_90 is forward compatible, so don't use sm_90a with newer hardware:
+  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#ptx-compatibility
   std::string extension = (cc_major == 9 && cc_minor == 0) ? "a" : "";
   std::vector<std::string> ptxas_args = {
       ptxas_path,
