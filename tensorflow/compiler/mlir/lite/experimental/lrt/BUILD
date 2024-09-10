@@ -22,3 +22,9 @@ cc_library(
     srcs = ["lite_rt_common.cc"],
     hdrs = ["lite_rt_common.h"],
 )
+
+cc_library(
+    name = "lite_rt_support",
+    hdrs = ["lite_rt_support.h"],
+    deps = [":lite_rt_common"],
+)
