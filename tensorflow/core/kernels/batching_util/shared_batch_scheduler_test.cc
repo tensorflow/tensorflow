@@ -1115,8 +1115,9 @@ TEST_P(SharedBatchSchedulerTest, BatchPaddingPolicyBatchDown) {
     first_batch_processed.WaitForNotification();
 
     // Ensure the scheduler correctly updates the starting time of the new
-    // batch.
-    env.AdvanceByMicroseconds(options.batch_timeout_micros - 1);
+    // batch. We should only wait 2/3 of the batch timeout now.
+    auto new_batch_timeout_micros = options.batch_timeout_micros * 2 / 3;
+    env.AdvanceByMicroseconds(new_batch_timeout_micros - 1);
     EXPECT_FALSE(second_batch_processed.WaitForNotificationWithTimeout(
         absl::Milliseconds(10)));
     env.AdvanceByMicroseconds(1);
