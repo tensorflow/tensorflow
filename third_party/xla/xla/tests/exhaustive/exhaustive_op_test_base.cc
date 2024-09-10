@@ -17,8 +17,11 @@ limitations under the License.
 
 #include <array>
 #include <cmath>
+#include <complex>
 #include <cstddef>
 #include <cstdint>
+#include <iomanip>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <string>
@@ -26,6 +29,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/meta/type_traits.h"
@@ -35,7 +39,14 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/bit_cast.h"
+#include "xla/client/executable_build_options.h"
+#include "xla/client/xla_builder.h"
+#include "xla/client/xla_computation.h"
+#include "xla/executable_run_options.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
+#include "xla/service/shaped_buffer.h"
+#include "xla/shape.h"
 #include "xla/tests/exhaustive/error_spec.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/util/command_line_flags.h"
@@ -43,6 +54,7 @@ limitations under the License.
 #include "tsl/platform/env.h"
 #include "tsl/platform/file_system.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -348,7 +360,272 @@ void PrintMismatch(int64_t* mismatches, const ErrorGenerator& err_generator) {
   }
 }
 
+// Replace infinites with max value to help compute errors.
+template <typename NativeRefT>
+NativeRefT ReplaceInfWithMax(NativeRefT value) {
+  if constexpr (std::is_same_v<NativeRefT, xla::complex64> ||
+                std::is_same_v<NativeRefT, xla::complex128>) {
+    value.real(ReplaceInfWithMax(value.real()));
+    value.imag(ReplaceInfWithMax(value.imag()));
+    return value;
+  } else {
+    if (std::isinf(value)) {
+      return std::copysign(std::numeric_limits<NativeRefT>::max(), value);
+    }
+    return value;
+  }
+}
+
+// Returns true if both components are 0, but their sign bits differ.
+template <typename NativeRefT>
+bool CheckSignedZeroError(NativeRefT expected, NativeRefT actual) {
+  if constexpr (std::is_same_v<NativeRefT, xla::complex64> ||
+                std::is_same_v<NativeRefT, xla::complex128>) {
+    return CheckSignedZeroError(expected.real(), actual.real()) ||
+           CheckSignedZeroError(expected.imag(), actual.imag());
+  } else {
+    return expected == 0 && actual == 0 &&
+           std::signbit(expected) != std::signbit(actual);
+  }
+}
+
+// Sets the components to 0 if both are NaNs.
+template <typename NativeRefT>
+void RemoveCorrespondingNaNs(NativeRefT* expected, NativeRefT* actual) {
+  if constexpr (std::is_same_v<NativeRefT, xla::complex64> ||
+                std::is_same_v<NativeRefT, xla::complex128>) {
+    auto expected_real = expected->real();
+    auto expected_imag = expected->imag();
+    auto actual_real = actual->real();
+    auto actual_imag = actual->imag();
+    RemoveCorrespondingNaNs(&expected_real, &actual_real);
+    RemoveCorrespondingNaNs(&expected_imag, &actual_imag);
+    expected->real(expected_real);
+    expected->imag(expected_imag);
+    actual->real(actual_real);
+    actual->imag(actual_imag);
+  } else {
+    if (std::isnan(*expected) && std::isnan(*actual)) {
+      *expected = 0;
+      *actual = 0;
+    }
+  }
+}
+
+// Get the floating point distance (number of floating point values between)
+// expected and actual.
+//
+// This is a wrapper around xla::CalculateDistanceInFloats for most types. For
+// complex types, this returns the maximum distance between the real and
+// imaginary components.
+template <typename NativeT>
+int64_t GetDistanceErr(NativeT expected, NativeT actual) {
+  if constexpr (std::is_same_v<NativeT, xla::complex64> ||
+                std::is_same_v<NativeT, xla::complex128>) {
+    return std::max(
+        CalculateDistanceInFloats(expected.real(), actual.real()),
+        CalculateDistanceInFloats(expected.imag(), expected.imag()));
+  } else {
+    return CalculateDistanceInFloats(expected, actual);
+  }
+}
+
 }  // namespace
+
+template <PrimitiveType T, size_t N>
+void ExhaustiveOpTestBase<T, N>::Run(EnqueueOp enqueue_op,
+                                     EvaluateOp evaluate_op,
+                                     ErrorSpecGen error_spec_gen,
+                                     OutputRangeCheck check_valid_range) {
+  LiteralInputs input_literals;
+  for (int i = 0; i < N; ++i) {
+    input_literals[i] = LiteralUtil::CreateFromDimensions(T, {GetInputSize()});
+  }
+  FillInput(&input_literals);
+
+  XlaBuilder builder(TestName());
+  XlaInputs xla_inputs;
+  for (int i = 0; i < N; ++i) {
+    xla_inputs[i] = Parameter(&builder, i, input_literals[i].shape(), "input");
+  }
+  Traits::BuildFromInputs(xla_inputs, enqueue_op);
+
+  TF_ASSERT_OK_AND_ASSIGN(XlaComputation comp, builder.Build());
+  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
+                          RunComputationHelper(comp, input_literals));
+
+  ExpectNear(input_literals, result_literal, evaluate_op, error_spec_gen,
+             check_valid_range);
+}
+
+template <PrimitiveType T, size_t N>
+absl::StatusOr<Literal> ExhaustiveOpTestBase<T, N>::RunComputation(
+    const XlaComputation& computation,
+    absl::Span<const Literal* const> input_literals) {
+  // Copy debug options from ClientLibraryTestBase.  In particular, we're
+  // interested in disabling constant folding.
+  ExecutableBuildOptions build_opts;
+  *build_opts.mutable_debug_options() = *mutable_debug_options();
+
+  std::vector<ScopedShapedBuffer> input_buffers;
+  absl::c_transform(input_literals, std::back_inserter(input_buffers),
+                    [&](const Literal* input_literal) {
+                      return client_
+                          ->LiteralToShapedBuffer(*input_literal,
+                                                  /*device_ordinal=*/0)
+                          .value();
+                    });
+  std::vector<const Shape*> input_shapes;
+  absl::c_transform(input_buffers, std::back_inserter(input_shapes),
+                    [&](const ScopedShapedBuffer& buffer) {
+                      return &buffer.on_device_shape();
+                    });
+
+  TF_ASSIGN_OR_RETURN(auto executables,
+                      client_->Compile(computation, input_shapes, build_opts));
+
+  std::vector<const ShapedBuffer*> input_buffer_pointers;
+  absl::c_transform(input_buffers, std::back_inserter(input_buffer_pointers),
+                    [&](const ScopedShapedBuffer& buffer) { return &buffer; });
+
+  ExecutableRunOptions run_opts;
+  run_opts.set_allocator(client_->backend().memory_allocator());
+  run_opts.set_intra_op_thread_pool(
+      client_->backend().eigen_intra_op_thread_pool_device());
+  TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
+                      executables[0]->Run(input_buffer_pointers, run_opts));
+
+  TF_ASSIGN_OR_RETURN(Literal result_literal,
+                      client_->ShapedBufferToLiteral(result));
+  return std::move(result_literal);
+}
+
+template <PrimitiveType T, size_t N>
+bool ExhaustiveOpTestBase<T, N>::IsClose(NativeRefT expected, NativeRefT actual,
+                                         ErrorSpec spec) {
+  // When two corresponding values are a NaN, they can be considered to have
+  // the same value, so the values are just set to 0.
+  RemoveCorrespondingNaNs(&expected, &actual);
+
+  if (spec.strict_signed_zeros) {
+    if (CheckSignedZeroError(expected, actual)) {
+      return false;
+    }
+  }
+
+  // Replace Inf with Max when calculating absolute or relative errors. This
+  // allows the test to pass when another value are close to Inf and the
+  // specified absolute or relative errors are not zero.
+  double abs_err =
+      std::abs(ReplaceInfWithMax(expected) - ReplaceInfWithMax(actual));
+  double rel_err = abs_err / std::abs(ReplaceInfWithMax(expected));
+  // N.B.: For sub-32-bit floats, NativeRefT is `float`, so ULP comparisons
+  // will be wildly off. We convert back to NativeT for this comparison.
+  int64_t distance_err = GetDistanceErr(NativeT(expected), NativeT(actual));
+
+  bool passed = abs_err <= spec.abs_err || rel_err <= spec.rel_err ||
+                distance_err <= spec.distance_err;
+  if (should_emit_debug_logging_ && !passed) {
+    LOG(INFO) << std::setprecision(
+                     std::numeric_limits<ComponentNativeT>::max_digits10)
+              << "actual: " << actual << "; expected: " << expected
+              << std::setprecision(std::numeric_limits<double>::max_digits10)
+              << "\n\tabs_err: " << abs_err
+              << "; spec.abs_err: " << spec.abs_err
+              << "\n\trel_err: " << rel_err
+              << "; spec.rel_err: " << spec.rel_err
+              << "\n\tdistance_err: " << distance_err
+              << "; spec.distance_err: " << spec.distance_err;
+  }
+  return passed;
+}
+
+template <PrimitiveType T, size_t N>
+std::vector<typename ExhaustiveOpTestBase<T, N>::ComponentNativeRefT>
+ExhaustiveOpTestBase<T, N>::GetTestValuesWithSubnormalSubstitutions(
+    ComponentNativeRefT value) {
+  std::vector<ComponentNativeRefT> test_values;
+  if (std::fpclassify(value) == FP_SUBNORMAL) {
+    test_values.reserve(relaxed_denormal_signs_ ? 3 : 2);
+    test_values.push_back(std::copysign(0, value));
+    test_values.push_back(
+        std::copysign(std::numeric_limits<ComponentNativeRefT>::min(), value));
+    if (relaxed_denormal_signs_) {
+      test_values.push_back(std::copysign(0, -value));
+    }
+  } else {
+    test_values.push_back(value);
+  }
+  return test_values;
+}
+
+template <PrimitiveType T, size_t N>
+std::vector<
+    std::complex<typename ExhaustiveOpTestBase<T, N>::ComponentNativeRefT>>
+ExhaustiveOpTestBase<T, N>::GetTestValuesWithSubnormalSubstitutions(
+    std::complex<ComponentNativeRefT> value) {
+  using Complex = std::complex<ComponentNativeRefT>;
+
+  auto real_values = GetTestValuesWithSubnormalSubstitutions(value.real());
+  auto imag_values = GetTestValuesWithSubnormalSubstitutions(value.imag());
+
+  std::vector<Complex> test_values;
+  test_values.reserve(real_values.size() * imag_values.size());
+  for (auto real : real_values) {
+    for (auto imag : imag_values) {
+      test_values.push_back(Complex(real, imag));
+    }
+  }
+
+  return test_values;
+}
+
+template <PrimitiveType T, size_t N>
+std::vector<typename ExhaustiveOpTestBase<T, N>::NativeRefInputs>
+ExhaustiveOpTestBase<T, N>::GetTestValuesWithSubnormalSubstitutionsArray(
+    const NativeRefInputs& value) {
+  std::vector<NativeRefInputs> test_values;
+
+  std::array<std::vector<NativeRefT>, N> component_test_values;
+  int total = 1;
+  for (int i = 0; i < N; ++i) {
+    component_test_values[i] =
+        GetTestValuesWithSubnormalSubstitutions(value[i]);
+    if (!component_test_values.empty()) {
+      total *= component_test_values[i].size();
+    }
+  }
+
+  // If total == 1, then value has no subnormal components, so we can just
+  // return a vector with value in it.
+  if (total == 1) {
+    test_values.push_back(value);
+    return test_values;
+  }
+
+  test_values.reserve(total);
+
+  // Perform a Cartesian product of the vectors in component_test_values.
+  // We can calculate this by uniquely mapping each integer from 0 to
+  // (total - 1) to a list of component indices. The function that maps an
+  // integer z to the index of component j is:
+  //    component_index(j) =  (i / NumValues(0, j-1)) % NumValues(j, j)
+  // and NumIndices(x, y) is the number of values in the Cartesian product of
+  // component_test_values[x], component_test_values[x+1], ...
+  // component_test_values[y].
+  for (int i = 0; i < total; ++i) {
+    int accumulated_num_values = 1;
+    std::array<NativeRefT, N> test_value;
+    for (int j = 0; j < N; ++j) {
+      int num_indices = component_test_values[j].size();
+      int component_index = (i / accumulated_num_values) % num_indices;
+      test_value[j] = component_test_values[j][component_index];
+      accumulated_num_values *= num_indices;
+    }
+    test_values.push_back(std::move(test_value));
+  }
+  return test_values;
+}
 
 // If we are in debug mode, we fail the test execution at the first
 // comparison failure to avoid dumping too much log data and ensure the
@@ -482,7 +759,7 @@ void ExhaustiveOpTestBase<T, N>::ExpectNear(
     }
 
     std::vector<NativeRefInputs> subnormal_test_inputs =
-        GetTestValuesWithSubnormalSubstitutions(inputs_ref_ty);
+        GetTestValuesWithSubnormalSubstitutionsArray(inputs_ref_ty);
 
     // Easy case: If `input` is not subnormal and !IsClose(expected, actual,
     // error_spec), print an error.
