@@ -172,7 +172,7 @@ class AddNOp<Device, Variant> : public OpKernel {
   // the inputs into temp at the lowest levels of the summation tree.
   static inline Status AddVariantTo(OpKernelContext* ctx, const int lhs_ix,
                                     const int rhs_ix,
-                                    gtl::InlinedVector<Variant, 4>* temp,
+                                    absl::InlinedVector<Variant, 4UL>* temp,
                                     gtl::InlinedVector<bool, 4>* temp_filled) {
     Variant tmp;
     if (temp_filled->at(lhs_ix)) tmp = std::move(temp->at(lhs_ix));
