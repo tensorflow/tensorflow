@@ -842,6 +842,48 @@ func.func @FuseReshapeAroundBMMNagativeTest2(%arg0: tensor<2x1536xf32>) -> tenso
   // CHECK: return %3 : tensor<2x768xf32>
 }
 
+// CHECK-LABEL: @convert_bmm_rhs_transpose_into_fc
+// FOLD-LABEL: @convert_bmm_rhs_transpose_into_fc
+func.func @convert_bmm_rhs_transpose_into_fc(%arg0: tensor<8x256xf32>, %arg1: tensor<256x256xf32>) -> (tensor<8x256xf32>) {
+  %10 = "tfl.pseudo_const"() <{value = dense<[1, 0]> : tensor<2xi32>}> : () -> tensor<2xi32>
+  %11 = "tfl.transpose"(%arg1, %10) : (tensor<256x256xf32>, tensor<2xi32>) -> tensor<256x256xf32>
+  %14 = "tfl.batch_matmul"(%arg0, %11) <{adj_x = false, adj_y = false, asymmetric_quantize_inputs = false}> : (tensor<8x256xf32>, tensor<256x256xf32>) -> tensor<8x256xf32>
+  return %14 : tensor<8x256xf32>
+  // CHECK:  %0 = "tfl.pseudo_const"() <{value = dense<[1, 0]> : tensor<2xi32>}> : () -> tensor<2xi32>
+  // CHECK:  %1 = "tfl.transpose"(%arg1, %0) : (tensor<256x256xf32>, tensor<2xi32>) -> tensor<256x256xf32>
+  // CHECK:  %2 = "tfl.batch_matmul"(%arg0, %1) <{adj_x = false, adj_y = false, asymmetric_quantize_inputs = false}> : (tensor<8x256xf32>, tensor<256x256xf32>) -> tensor<8x256xf32>
+  // CHECK:  return %2 : tensor<8x256xf32>
+
+  // FOLD:  %0 = "tfl.no_value"() <{value}> : () -> none
+  // FOLD:  %1 = "tfl.fully_connected"(%arg0, %arg1, %0) <{asymmetric_quantize_inputs = false, fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"}> : (tensor<8x256xf32>, tensor<256x256xf32>, none) -> tensor<8x256xf32>
+  // FOLD:  return %1 : tensor<8x256xf32>
+}
+
+// CHECK-LABEL: @convert_bmm_rhs_transpose_into_fc_negative
+func.func @convert_bmm_rhs_transpose_into_fc_negative(%arg0: tensor<2x1x256xf32>, %arg1: tensor<256x256x2xf32>) -> (tensor<2x1x256xf32>) {
+  %10 = "tfl.pseudo_const"() <{value = dense<[2, 1, 0]> : tensor<3xi32>}> : () -> tensor<3xi32>
+  %11 = "tfl.transpose"(%arg1, %10) : (tensor<256x256x2xf32>, tensor<3xi32>) -> tensor<2x256x256xf32>
+  %14 = "tfl.batch_matmul"(%arg0, %11) <{adj_x = false, adj_y = false, asymmetric_quantize_inputs = false}> : (tensor<2x1x256xf32>, tensor<2x256x256xf32>) -> tensor<2x1x256xf32>
+  return %14 : tensor<2x1x256xf32>
+  // CHECK:  %0 = "tfl.pseudo_const"() <{value = dense<[2, 1, 0]> : tensor<3xi32>}> : () -> tensor<3xi32>
+  // CHECK:  %1 = "tfl.transpose"(%arg1, %0) : (tensor<256x256x2xf32>, tensor<3xi32>) -> tensor<2x256x256xf32>
+  // CHECK:  %2 = "tfl.batch_matmul"(%arg0, %1) <{adj_x = false, adj_y = false, asymmetric_quantize_inputs = false}> : (tensor<2x1x256xf32>, tensor<2x256x256xf32>) -> tensor<2x1x256xf32>
+  // CHECK:  return %2 : tensor<2x1x256xf32>
+}
+
+
+// CHECK-LABEL: @convert_bmm_rhs_transpose_into_fc_negative_adjx_true
+func.func @convert_bmm_rhs_transpose_into_fc_negative_adjx_true(%arg0: tensor<16x16xf32>, %arg1: tensor<16x16xf32>) -> (tensor<16x16xf32>) {
+  %cst = arith.constant dense<[1, 0]> : tensor<2xi32>
+  %0 = "tfl.transpose"(%arg1, %cst) : (tensor<16x16xf32>, tensor<2xi32>) -> tensor<16x16xf32>
+  %1 = "tfl.batch_matmul"(%arg0, %0) <{adj_x = true, adj_y = false, asymmetric_quantize_inputs = false}> : (tensor<16x16xf32>, tensor<16x16xf32>) -> tensor<16x16xf32>
+  return %1 : tensor<16x16xf32>
+  // CHECK:  %cst = arith.constant dense<[1, 0]> : tensor<2xi32>
+  // CHECK:  %0 = "tfl.transpose"(%arg1, %cst) : (tensor<16x16xf32>, tensor<2xi32>) -> tensor<16x16xf32>
+  // CHECK:  %1 = "tfl.batch_matmul"(%arg0, %0) <{adj_x = true, adj_y = false, asymmetric_quantize_inputs = false}> : (tensor<16x16xf32>, tensor<16x16xf32>) -> tensor<16x16xf32>
+  // CHECK:  return %1 : tensor<16x16xf32>
+}
+
 // CHECK-LABEL: @FuseBMMInputReshape_WithTwoRhsDims
 func.func @FuseBMMInputReshape_WithTwoRhsDims(%arg0: tensor<8x1792x256xf32>, %arg1: tensor<1x1x1792xf32>) -> (tensor<1x1x8x256xf32>) {
   %cst = arith.constant dense<[1, 1, 8, 256]> : tensor<4xi32>

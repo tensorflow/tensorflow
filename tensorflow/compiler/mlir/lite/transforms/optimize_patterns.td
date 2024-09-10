@@ -1681,11 +1681,11 @@ def FuseTransposeAfterBatchMatmul : Pat<
   ),
   [(AreLastTwoDimsTransposed $perm_value)]>;
 
-// Fuse redundant RHS TFL_TransposeOp into TFL_BatchMatMulOp if rhs is constant
+// Fuse redundant RHS TFL_TransposeOp into TFL_BatchMatMulOp if rhs is any
 // tensor of rank-2.
 def FuseTransposeIntoBatchMatMulRHS: Pat<
   (TFL_BatchMatMulOp $lhs,
-    (TFL_TransposeOp (TFL_QConstOp:$input $_, $_), (Arith_ConstantOp:$perm_value $p0)),
+    (TFL_TransposeOp $input, (Arith_ConstantOp:$perm_value $p0)),
     $adj_x, $adj_y, $asymmetric_quantize_inputs),
   (TFL_FullyConnectedOp
     $lhs,
@@ -1693,6 +1693,7 @@ def FuseTransposeIntoBatchMatMulRHS: Pat<
     ConstBoolAttrTrue, $asymmetric_quantize_inputs),
   [(HasRank<2> $input),
    (AreLastTwoDimsTransposed $perm_value),
+   (IsBoolAttrEqual<"false"> $adj_x),
    (IsBoolAttrEqual<"false"> $adj_y)]>;
 
 // Replace conv-->transpose-->add with conv-->add-->transpose
