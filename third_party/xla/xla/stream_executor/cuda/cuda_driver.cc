@@ -488,49 +488,6 @@ absl::Status GpuDriver::GraphExecUpdate(CUgraphExec exec, CUgraph graph,
   return cuda::ToStatus(err_code, "Failed to update CUDA graph");
 }
 
-absl::StatusOr<GpuDriver::GraphNodeType> GpuDriver::GraphNodeGetType(
-    CUgraphNode node) {
-  CUgraphNodeType cu_node_type;
-  memset(&cu_node_type, 0, sizeof(cu_node_type));
-  TF_RETURN_IF_ERROR(cuda::ToStatus(cuGraphNodeGetType(node, &cu_node_type),
-                                    "Failed to get CUDA graph node type"));
-
-  switch (cu_node_type) {
-    case CU_GRAPH_NODE_TYPE_KERNEL:
-      return GraphNodeType::kKernel;
-    case CU_GRAPH_NODE_TYPE_MEMCPY:
-      return GraphNodeType::kMemcpy;
-    case CU_GRAPH_NODE_TYPE_MEMSET:
-      return GraphNodeType::kMemset;
-    case CU_GRAPH_NODE_TYPE_HOST:
-      return GraphNodeType::kHost;
-    case CU_GRAPH_NODE_TYPE_GRAPH:
-      return GraphNodeType::kGraph;
-    case CU_GRAPH_NODE_TYPE_EMPTY:
-      return GraphNodeType::kEmpty;
-#if CUDA_VERSION >= 12000
-    case CU_GRAPH_NODE_TYPE_WAIT_EVENT:
-      return GraphNodeType::kWaitEvent;
-    case CU_GRAPH_NODE_TYPE_EVENT_RECORD:
-      return GraphNodeType::kEventRecord;
-    case CU_GRAPH_NODE_TYPE_EXT_SEMAS_SIGNAL:
-      return GraphNodeType::kExtSemasSignal;
-    case CU_GRAPH_NODE_TYPE_EXT_SEMAS_WAIT:
-      return GraphNodeType::kExtSemasWait;
-    case CU_GRAPH_NODE_TYPE_MEM_ALLOC:
-      return GraphNodeType::kMemAlloc;
-    case CU_GRAPH_NODE_TYPE_MEM_FREE:
-      return GraphNodeType::kMemFree;
-    case CU_GRAPH_NODE_TYPE_BATCH_MEM_OP:
-      return GraphNodeType::kBatchMemOp;
-#endif  // CUDA_VERSION >= 12000
-    default:
-      return absl::InternalError("Unknown graph node type");
-  }
-
-  return absl::InternalError("Invalid CUDA graph node type");
-}
-
 absl::StatusOr<std::vector<GpuGraphNodeHandle>>
 GpuDriver::GraphNodeGetDependencies(GpuGraphNodeHandle node) {
   VLOG(2) << "Get CUDA graph node " << node << " dependencies";

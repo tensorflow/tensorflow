@@ -54,23 +54,8 @@ limitations under the License.
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
-#ifdef PLATFORMS_GPUS_ROCM_DYNAMIC_LIBROCM_DYNAMIC_LIBROCM_H_
-#error \
-    "No driver calls in this file, wrap driver functionality in rocm_driver.cc."
-#endif
-
-#ifdef __ROCM_RUNTIME_H__
-#error \
-    "ROCM runtime being included into ROCM GPU executor; should be driver only."
-#endif
-
 namespace stream_executor {
 namespace gpu {
-
-static GpuEvent* AsGpuEvent(Event* event) {
-  DCHECK(event != nullptr);
-  return static_cast<GpuEvent*>(event);
-}
 
 // Given const GPU memory, returns a librocm device pointer datatype, suitable
 // for passing directly to librocm APIs.
@@ -85,11 +70,6 @@ static hipDeviceptr_t AsROCmDevicePtr(const DeviceMemoryBase& gpu_mem) {
 // See description on const version above.
 static hipDeviceptr_t AsROCmDevicePtr(DeviceMemoryBase* gpu_mem) {
   return AsROCmDevicePtr(*gpu_mem);
-}
-
-Context* ExtractGpuContext(GpuExecutor* rocm_exec) {
-  CHECK(rocm_exec != nullptr);
-  return rocm_exec->gpu_context();
 }
 
 GpuExecutor::~GpuExecutor() {

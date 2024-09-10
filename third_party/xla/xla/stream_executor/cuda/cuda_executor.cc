@@ -77,15 +77,6 @@ limitations under the License.
 #include "tsl/platform/numa.h"
 #include "tsl/platform/statusor.h"
 
-// LOG(ERROR) uses a const named ERROR, so a macro with the same name is
-// always unwanted. This happens on Windows that defines such a macro.
-#undef ERROR
-
-#ifdef __CUDA_RUNTIME_H__
-#error \
-    "CUDA runtime being included into CUDA GPU executor; should be driver only."
-#endif
-
 namespace stream_executor {
 namespace gpu {
 
@@ -115,11 +106,6 @@ static CUdeviceptr AsCudaDevicePtr(const DeviceMemoryBase& gpu_mem) {
 // See description on const version above.
 static CUdeviceptr AsCudaDevicePtr(DeviceMemoryBase* gpu_mem) {
   return AsCudaDevicePtr(*gpu_mem);
-}
-
-Context* ExtractGpuContext(GpuExecutor* cuda_exec) {
-  CHECK(cuda_exec != nullptr);
-  return cuda_exec->gpu_context();
 }
 
 GpuExecutor::~GpuExecutor() {

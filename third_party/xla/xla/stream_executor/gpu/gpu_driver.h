@@ -295,31 +295,6 @@ class GpuDriver {
                                       GpuGraphHandle graph,
                                       GraphExecUpdateResultInfo* result);
 
-  // Graph node type.
-  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TYPES.html#group__CUDA__TYPES_1g0731a28f826922120d783d8444e154dc
-  // https://docs.amd.com/projects/HIP/en/docs-5.0.0/doxygen/html/group___graph.html#ga4727d20b89566832c74b762f987b9728
-  enum class GraphNodeType {
-    kKernel,
-    kMemcpy,
-    kMemset,
-    kHost,
-    kGraph,
-    kEmpty,
-    kWaitEvent,
-    kEventRecord,
-    kExtSemasSignal,
-    kExtSemasWait,
-    kMemAlloc,
-    kMemFree,
-    kBatchMemOp,
-  };
-
-  // Return the node type of the graph node.
-  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1gdb1776d97aa1c9d5144774b29e4b8c3e
-  // https://docs.amd.com/projects/HIP/en/docs-5.0.0/doxygen/html/group___graph.html#ga87c68ae9408a6438d4a1101560ceea11
-  static absl::StatusOr<GraphNodeType> GraphNodeGetType(
-      GpuGraphNodeHandle node);
-
   // Returns a node's dependencies.
   //
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g048f4c0babcbba64a933fc277cd45083
