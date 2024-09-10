@@ -569,9 +569,7 @@ class FpValues {
   std::array<int, kTotalBitChunks + 1> offsets_;
 };
 
-template <typename T,
-          typename std::enable_if_t<std::is_same_v<T, float> ||
-                                    std::is_same_v<T, double>>* = nullptr>
+template <typename T>
 int GetMantissaTotalBits() {
   return std::numeric_limits<T>::digits - 1;
 }
@@ -596,9 +594,7 @@ uint64_t GetAllOneExponent() {
   return (1ull << GetExponentTotalBits<T>()) - 1ull;
 }
 
-template <typename T,
-          typename std::enable_if_t<std::is_same_v<T, float> ||
-                                    std::is_same_v<T, double>>* = nullptr>
+template <typename T>
 FpValues GetFpValues(BitChunks mantissa, BitChunks exponent, BitChunks sign) {
   int total_bits = GetFpTotalBits<T>();
   return FpValues({mantissa, exponent, sign},
@@ -709,6 +705,61 @@ template <typename T>
 std::vector<FpValues> CreateFpValuesForBoundaryTest() {
   return {GetZeros<T>(), GetSubnormals<T>(1000), GetInfinites<T>(),
           GetNans<T>(1000)};
+}
+
+// Creates ranges for exhaustively testing T pairs, (T1, T2), where T1 and T2
+// both only range over the subnormal values for T.
+//
+// This is intended to be used for exhaustive binary tests where it is helpful
+// to only look at how subnormals interact for both parameters.
+//
+// Ranges are encoded as a tuple of `int64_t`. Each `int64_t` tuple element is a
+// packed pair of values equal to `(T1 << TotalBits(T)) | T2`. A range
+// `((T1,T2),(T3,T4))` will test all binary pairs between `(T1,T2)`, inclusive,
+// and `(T3,T4)`, exclusive.
+//
+// Any `T` supported by `std::numeric_limits<T>` is supported here.
+template <typename T>
+inline std::vector<std::pair<int64_t, int64_t>> CreateSubnormalStrictRanges() {
+  std::vector<std::pair<int64_t, int64_t>> ret;
+  // N.B.: Exclude 0.
+  int subnormal_count = (1ull << GetMantissaTotalBits<T>()) - 1;
+  // N.B.: subnormal_count / 2 is intended to provide mantissa spacing of 1.
+  for (auto subnormal :
+       GetSubnormals<T>((1ull << GetMantissaTotalBits<T>()) / 2)) {
+    // | 1 avoids selecting 0 as the first right value.
+    auto start = (subnormal << GetFpTotalBits<T>()) | 1;
+    auto end = start + subnormal_count;
+    ret.push_back({start, end});
+  }
+  return ret;
+}
+
+// Creates ranges for exhaustively testing T pairs, (T1, T2), where T1 only
+// ranges over the subnormal values for T and T2 ranges over all values.
+//
+// This is intended to be used for exhaustive binary tests where it is helpful
+// to only look at how subnormals interact for both parameters.
+//
+// Ranges are encoded as a tuple of `int64_t`. Each `int64_t` tuple element is a
+// packed pair of values equal to `(T1 << TotalBits(T)) | T2`. A range
+// `((T1,T2),(T3,T4))` will test all binary pairs between `(T1,T2)`, inclusive,
+// and `(T3,T4)`, exclusive.
+//
+// Any `T` supported by `std::numeric_limits<T>` is supported here.
+template <typename T>
+inline std::vector<std::pair<int64_t, int64_t>>
+CreateSubnormalExhaustiveRanges() {
+  std::vector<std::pair<int64_t, int64_t>> ret;
+  int entire_count = 1ull << GetFpTotalBits<T>();
+  // N.B.: subnormal_count / 2 is intended to provide mantissa spacing of 1.
+  for (auto subnormal :
+       GetSubnormals<T>((1ull << GetMantissaTotalBits<T>()) / 2)) {
+    auto start = subnormal << GetFpTotalBits<T>();
+    auto end = start + entire_count;
+    ret.push_back({start, end});
+  }
+  return ret;
 }
 
 inline std::vector<std::pair<int64_t, int64_t>> CreateExhaustiveF32Ranges() {
