@@ -2239,6 +2239,9 @@ void SetHloSharding(
     const absl::flat_hash_set<const HloInstruction*>& instructions_to_shard,
     const StrategyMap& strategy_map, const CostGraph& cost_graph,
     absl::Span<const NodeStrategyIdx> s_val, bool last_iteration) {
+  if (!last_iteration) {
+    LOG(INFO) << "Skip setting shardings (since not the last iteration)";
+  }
   // Set the HloSharding for every instruction
   const std::vector<HloInstruction*>& instructions = sequence.instructions();
 
@@ -2304,7 +2307,7 @@ void SetHloSharding(
       }
       // Do not overwrite existing complete shardings.
       if (sharding_spec.IsReplicated() && !last_iteration) {
-        LOG(INFO) << "skip setting shardings for inst " << inst->name();
+        VLOG(5) << "skip setting shardings for inst " << inst->name();
       } else {
         inst->set_sharding(sharding_spec);
       }
