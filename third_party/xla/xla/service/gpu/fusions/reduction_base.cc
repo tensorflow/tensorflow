@@ -145,8 +145,7 @@ ReductionGroups GroupDisjointReductions(const HloFusionAnalysis& analysis,
     return {{{&analysis.fusion_root(0).instruction()}}, {0}, {true}};
   }
 
-  absl::node_hash_map<HloInstructionAdaptor,
-                      tensorflow::UnionFind<HloInstructionAdaptor>>
+  absl::node_hash_map<HloInstructionAdaptor, UnionFind<HloInstructionAdaptor>>
       disjoint_sets;
 
   // TODO(b/249976438): we currently do not treat properly
