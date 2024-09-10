@@ -382,10 +382,9 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingPtxAs(
           "%s ptxas too old. Falling back to the driver to compile.",
           ptxas_path));
     }
-    if (absl::StrContains(stderr_output, "ptxas fatal") &&
-        absl::StrContains(stderr_output, "Register allocation failed")) {
+    if (IsPtxRegisterAllocationError(stderr_output)) {
       LOG(INFO) << stderr_output;
-      return absl::ResourceExhaustedError("Register allocation failed");
+      return absl::ResourceExhaustedError(stderr_output);
     }
 
     return absl::InternalError(

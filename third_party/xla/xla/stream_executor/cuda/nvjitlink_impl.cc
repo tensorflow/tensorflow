@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "third_party/gpus/cuda/include/nvJitLink.h"
 #include "xla/stream_executor/cuda/nvjitlink.h"
+#include "xla/stream_executor/cuda/ptx_compiler_support.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -87,9 +88,8 @@ static absl::Status CreateErrorFromPTXASLog(std::string_view log,
     return absl::UnimplementedError(absl::StrFormat(
         "Loaded PTX assembler is too old for %s.", architecture));
   }
-  if (absl::StrContains(log, "ptxas fatal") &&
-      absl::StrContains(log, "Register allocation failed")) {
-    return absl::ResourceExhaustedError("Register allocation failed");
+  if (IsPtxRegisterAllocationError(log)) {
+    return absl::ResourceExhaustedError(log);
   }
   if (absl::StrContains(log, "warning")) {
     LOG(INFO) << log;
