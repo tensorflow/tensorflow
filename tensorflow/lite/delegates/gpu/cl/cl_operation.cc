@@ -171,12 +171,10 @@ absl::Status ClOperation::Compile(const CreationContext& creation_context) {
     operation_->compiler_options_.push_back(
         CompilerOptions::kClFastRelaxedMath);
   }
-  RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
+  return creation_context.cache->GetOrCreateCLKernel(
       operation_->code_, "main_function", operation_->compiler_options_,
       *creation_context.context, *creation_context.device, &kernel_,
-      &kernel_fingerprint_));
-  return operation_->PostCompileCheck(creation_context.GetGpuInfo(),
-                                      kernel_.info_);
+      &kernel_fingerprint_);
 }
 
 absl::Status ClOperation::RestoreDeserialized(const ProgramCache& program_cache,
