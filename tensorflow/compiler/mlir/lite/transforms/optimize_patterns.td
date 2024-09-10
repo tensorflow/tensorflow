@@ -1696,6 +1696,28 @@ def FuseTransposeIntoBatchMatMulRHS: Pat<
    (IsBoolAttrEqual<"false"> $adj_x),
    (IsBoolAttrEqual<"false"> $adj_y)]>;
 
+// Fuse broadcasting LHS reshape into tfl.fully_connected.
+// This will work for any FullyConnected(Reshape(LHS), RHS), provided-
+// 1.The reshape is only squeezing the broadcast dimensions of the LHS.
+// 2. Rank after reshape is 2.
+// 3. keep_num_dims=True
+// Ex- [1,  128, 32] -> [128, 32] or [1, 1, 1, 128, 32] -> [128, 32]
+//
+// We should be able to set keep_num_dims=False and fold the reshape.
+def FuseBroadcastingReshapeIntoFC_LHS: Pat<
+  (TFL_FullyConnectedOp:$results
+    (TFL_ReshapeOp:$reshaped_input $input, (Arith_ConstantOp $s)),
+    $filter, $bias, $fused_activation_function, $weights_format,
+    $keep_num_dims, $asymmetric_quantize_inputs),
+  (TFL_FullyConnectedOp
+    $input, $filter, $bias, $fused_activation_function, $weights_format,
+    ConstBoolAttrFalse, $asymmetric_quantize_inputs),
+  [(IsBoolAttrEqual<"true"> $keep_num_dims),
+   (HasRankAtLeast<3> $input),
+   (HasRank<2> $reshaped_input),
+   (HasRank<2> $filter),
+   (IsReducedTailOfShape $input, $reshaped_input)]>;
+
 // Replace conv-->transpose-->add with conv-->add-->transpose
 // The bias needs only reshape (i.e. ReshapeNCHWBiasToNHWC) and not transpose
 // because the bias's shape simply changes from NxCx1x1 to Nx1x1xC.
