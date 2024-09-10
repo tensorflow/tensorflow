@@ -234,6 +234,7 @@ xla_cc_test(
         ":device_test_util",
         ":ifrt",
         "//xla/python/ifrt/ir:sharding_param",
+        "//xla/tsl/concurrency:ref_count",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
         "@local_tsl//tsl/platform:errors",

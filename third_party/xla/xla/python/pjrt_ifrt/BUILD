@@ -176,6 +176,7 @@ xla_cc_test(
         "//xla/python/ifrt",
         "//xla/python/ifrt:device_test_util",
         "//xla/python/ifrt:tuple_impl_test_lib",
+        "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:errors",

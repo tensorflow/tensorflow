@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
@@ -50,6 +51,10 @@ class OpaqueShardingTest : public test_util::DeviceTest {};
 class ConcreteShardingTest : public test_util::DeviceTest {};
 class ConcreteEvenShardingTest : public test_util::DeviceTest {};
 class ShardingParamShardingTest : public test_util::DeviceTest {};
+
+TEST_P(SingleDeviceShardingTest, CreateWithBadDevice) {
+  EXPECT_DEATH(SingleDeviceSharding::Create(nullptr, MemoryKind()), "");
+}
 
 TEST_P(SingleDeviceShardingTest, IsFullyReplicated) {
   auto device_list = GetDevices({0});
@@ -143,6 +148,14 @@ TEST_P(SingleDeviceShardingTest, Disassemble) {
   }
 }
 
+TEST_P(OpaqueShardingTest, CreateWithBadDeviceList) {
+  EXPECT_DEATH(
+      OpaqueSharding::Create(tsl::RCReference<DeviceList>(), MemoryKind()), "");
+
+  EXPECT_DEATH(
+      OpaqueSharding::Create(BasicDeviceList::Create({}), MemoryKind()), "");
+}
+
 TEST_P(OpaqueShardingTest, IsFullyReplicated) {
   auto device_list = GetDevices({0, 1});
   std::shared_ptr<const Sharding> sharding =
@@ -233,6 +246,16 @@ TEST_P(OpaqueShardingTest, IndexDomainsFails) {
       StatusIs(
           tsl::error::INVALID_ARGUMENT,
           HasSubstr("OpaqueSharding does not have index domain information")));
+}
+
+TEST_P(ConcreteShardingTest, CreateWithBadDeviceList) {
+  EXPECT_DEATH(ConcreteSharding::Create(tsl::RCReference<DeviceList>(),
+                                        MemoryKind(), Shape({}), {Shape({})}),
+               "");
+
+  EXPECT_DEATH(ConcreteSharding::Create(BasicDeviceList::Create({}),
+                                        MemoryKind(), Shape({}), {Shape({})}),
+               "");
 }
 
 TEST_P(ConcreteShardingTest, IsFullyReplicated) {
@@ -429,6 +452,18 @@ TEST_P(ConcreteShardingTest, IndexDomainsFails) {
                                  "domain information")));
 }
 
+TEST_P(ConcreteEvenShardingTest, CreateWithBadDeviceList) {
+  EXPECT_DEATH(ConcreteEvenSharding::Create(tsl::RCReference<DeviceList>(),
+                                            MemoryKind(), Shape({}), Shape({}),
+                                            /*is_fully_replicated=*/true),
+               "");
+
+  EXPECT_DEATH(ConcreteEvenSharding::Create(BasicDeviceList::Create({}),
+                                            MemoryKind(), Shape({}), Shape({}),
+                                            /*is_fully_replicated=*/true),
+               "");
+}
+
 TEST_P(ConcreteEvenShardingTest, IsFullyReplicated) {
   auto device_list = GetDevices({0, 1});
   {
@@ -579,6 +614,20 @@ TEST_P(ConcreteEvenShardingTest, IndexDomainsFails) {
           tsl::error::INVALID_ARGUMENT,
           HasSubstr(
               "ConcreteEvenSharding does not have index domain information")));
+}
+
+TEST_P(ShardingParamShardingTest, CreateWithBadDeviceList) {
+  ShardingParam param{/*dim_shards=*/{2, 3},
+                      {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
+  EXPECT_DEATH(ShardingParamSharding::Create(
+                   param, tsl::RCReference<DeviceList>(), MemoryKind())
+                   .value(),
+               "");
+
+  EXPECT_DEATH(ShardingParamSharding::Create(param, BasicDeviceList::Create({}),
+                                             MemoryKind())
+                   .value(),
+               "");
 }
 
 TEST_P(ShardingParamShardingTest, CreateFailsWhenDeviceCountNotMatch) {

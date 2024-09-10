@@ -24,12 +24,14 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/device_test_util.h"
 #include "xla/python/ifrt/index.h"
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status_matchers.h"
@@ -47,6 +49,17 @@ using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
 
 class HloShardingTest : public test_util::DeviceTest {};
+
+TEST_P(HloShardingTest, CreateWithBadDeviceList) {
+  auto xla_hlo_sharding = xla::HloSharding::Replicate();
+  EXPECT_DEATH(HloSharding::Create(tsl::RCReference<DeviceList>(), MemoryKind(),
+                                   xla_hlo_sharding),
+               "");
+
+  EXPECT_DEATH(HloSharding::Create(BasicDeviceList::Create({}), MemoryKind(),
+                                   xla_hlo_sharding),
+               "");
+}
 
 TEST_P(HloShardingTest, IsFullyReplicated) {
   auto device_list = GetDevices({0, 1, 2, 3, 4, 5});

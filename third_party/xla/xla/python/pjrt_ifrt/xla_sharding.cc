@@ -102,6 +102,7 @@ std::vector<IndexDomain> IndexDomainsSlowPath(
 MemoryKind CanonicalizeMemoryKindWithDevices(
     const MemoryKind& memory_kind,
     const tsl::RCReference<DeviceList>& devices) {
+  CHECK(devices != nullptr);
   CHECK(!devices->devices().empty());
   return CanonicalizeMemoryKind(memory_kind, devices->devices().front());
 }

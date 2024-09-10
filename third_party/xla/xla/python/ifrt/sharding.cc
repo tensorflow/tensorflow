@@ -57,6 +57,7 @@ namespace {
 MemoryKind CanonicalizeMemoryKindWithDevices(
     const MemoryKind& memory_kind,
     const tsl::RCReference<DeviceList>& devices) {
+  CHECK(devices != nullptr);
   CHECK(!devices->devices().empty());
   return CanonicalizeMemoryKind(memory_kind, devices->devices().front());
 }
@@ -201,6 +202,7 @@ std::ostream& operator<<(std::ostream& os, const Sharding& sharding) {
 
 std::unique_ptr<SingleDeviceSharding> SingleDeviceSharding::Create(
     Device* device, MemoryKind memory_kind) {
+  CHECK(device != nullptr);
   memory_kind = CanonicalizeMemoryKind(memory_kind, device);
   return std::unique_ptr<SingleDeviceSharding>(
       new SingleDeviceSharding(device, memory_kind));
@@ -595,6 +597,7 @@ absl::StatusOr<std::unique_ptr<ShardingParamSharding>>
 ShardingParamSharding::Create(ShardingParam sharding_param,
                               tsl::RCReference<DeviceList> devices,
                               MemoryKind memory_kind) {
+  memory_kind = CanonicalizeMemoryKindWithDevices(memory_kind, devices);
   int64_t device_count =
       absl::c_accumulate(sharding_param.minor_to_major().axis_sizes, 1,
                          std::multiplies<int64_t>());
@@ -604,7 +607,6 @@ ShardingParamSharding::Create(ShardingParam sharding_param,
         "%d",
         device_count, devices->size());
   }
-  memory_kind = CanonicalizeMemoryKindWithDevices(memory_kind, devices);
   return std::unique_ptr<ShardingParamSharding>(new ShardingParamSharding(
       std::move(sharding_param), std::move(devices), memory_kind));
 }
