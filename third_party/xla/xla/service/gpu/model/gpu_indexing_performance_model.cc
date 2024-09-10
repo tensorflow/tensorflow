@@ -297,9 +297,44 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledHloComputation(
   int64_t num_blocks = launch_dimensions.num_blocks();
 
   for (const auto& tiled_hlo : tiled_hlo_computation.instructions()) {
+    // Number of elements in the tile.
+    int64_t tile_size = Product(tiled_hlo->tile_sizes());
+
+    // Check if the tile is too large to fit in registers and would result in
+    // spilling.
+    //
+    // Spilling almost always causes significant performance regressions, so
+    // this heuristic tries be safe and increase recall at the cost of
+    // precision.
+    //
+    // Register allocation happens at PTX->SASS level, so we can't know the
+    // exact number of registers used by a kernel. We make a few assumptions
+    // about the kernel we will generate (this may not hold in the future):
+    //
+    //  * We'll need to at least 1 register to store 1 element of the tile.
+    //  * All value of the tile are live at the same time.
+    //  * If all values don't need to be live at the same time (for example to
+    //    compute a reduction), it will be modeled by an explicit loop with
+    //    smaller tiles inside during tiling propagation.
+    //
+    // TODO(b/363194951): Check how many registers we need for scratch memory
+    // for indexing computation and expensive instructions like exponential or
+    // cosine.
+    //
+    // TODO(b/363194951): Check how the number of registers used depends on the
+    // data type. `registers_per_block_limit()` returns the number of 32-bit
+    // registers. Check if 64-bit types need twice as many registers. Check if
+    // smaller types can fit into one register.
+    //
+    // TODO(b/363194951): Estimate performance regression due to spilling in
+    // terms of memory bandwidth instead of returning infinite run time.
+    if (tile_size > device_info_->registers_per_block_limit()) {
+      return EstimateRunTimeData::Infinite();
+    }
+
     // Total number of elements that are read from memory or computed for this
     // tile across all blocks.
-    int64_t num_elements = num_blocks * Product(tiled_hlo->tile_sizes());
+    int64_t num_elements = num_blocks * tile_size;
 
     const HloInstruction* hlo = tiled_hlo->hlo();
 

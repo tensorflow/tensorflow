@@ -415,6 +415,50 @@ ENTRY main {
                                HasSubstr("SymbolicTileAnalysis failed")));
 }
 
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_RegisterSpill_ReturnsInfinite) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add {
+  Arg_0 = f32[] parameter(0)
+  Arg_1 = f32[] parameter(1)
+  ROOT add = f32[] add(Arg_0, Arg_1)
+}
+
+triton_softmax_computation {
+  param_0 = f32[16,40000] parameter(0)
+  constant_0 = f32[] constant(0)
+  reduce_0 = f32[16] reduce(param_0, constant_0), dimensions={1}, to_apply=add
+  broadcast = f32[16,40000] broadcast(reduce_0), dimensions={0}
+  ROOT multiply = f32[16,40000] multiply(param_0, broadcast)
+}
+
+ENTRY main {
+  param_0 = f32[16,40000] parameter(0)
+  ROOT triton_softmax = f32[16,40000] fusion(param_0), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
+}
+)"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto tiling_result,
+      indexing_cost_model_.TryFindBestTilingForFusion(*fusion_adaptor));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto res1,
+                          indexing_cost_model_.EstimateRunTimeForTiledFusion(
+                              *fusion_adaptor, /*launch_dimensions=*/{16, 32},
+                              /*output_tile_sizes=*/{1, 40000}));
+  EXPECT_NEAR(absl::ToDoubleMicroseconds(res1.exec_time), 7, 1);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto res2,
+                          indexing_cost_model_.EstimateRunTimeForTiledFusion(
+                              *fusion_adaptor, /*launch_dimensions=*/{8, 32},
+                              /*output_tile_sizes=*/{2, 40000}));
+  EXPECT_TRUE(res2.IsInfinite());
+}
+
 class FlopsPerElementTest : public GpuIndexingPerformanceModelTest {
  public:
   void CompareFlopsModels(absl::string_view hlo_module_string) {
