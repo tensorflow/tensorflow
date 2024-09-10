@@ -75,7 +75,11 @@ triton_reduction_computation {
 
 ENTRY main {
   param_0 = f32[8,4] parameter(0)
-  ROOT triton_reduction = f32[8] fusion(param_0), kind=kCustom, calls=triton_reduction_computation, backend_config={"fusion_backend_config":{"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["4"],"num_warps":"1"}}}
+  ROOT triton_reduction = f32[8] fusion(param_0),
+    kind=kCustom, calls=triton_reduction_computation,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{"output_tile_sizes":["4"],"num_warps":"1"}}}
 })";
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText,
                                           FromOutputTileSizes({4}),
@@ -104,7 +108,11 @@ triton_reduction_computation {
 
 ENTRY main {
   param_0 = f32[8,4] parameter(0)
-  ROOT triton_reduction = f32[4] fusion(param_0), kind=kCustom, calls=triton_reduction_computation, backend_config={"fusion_backend_config":{"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["4"],"num_warps":"1"}}}
+  ROOT triton_reduction = f32[4] fusion(param_0),
+      kind=kCustom, calls=triton_reduction_computation,
+      backend_config={"fusion_backend_config":{
+        "kind":"__triton",
+        "block_level_fusion_config":{"output_tile_sizes":["4"],"num_warps":"1"}}}
 })";
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText,
                                           FromOutputTileSizes({4}),
@@ -133,10 +141,15 @@ triton_reduction_computation {
 
 ENTRY main {
   param_0 = f32[5,5,5,5,3] parameter(0)
-  ROOT triton_reduction = f32[5,5,5,3] fusion(param_0), kind=kCustom, calls=triton_reduction_computation, backend_config={"fusion_backend_config":{"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["4", "2", "5", "1"],"num_warps":"1"}}}
+  ROOT triton_reduction = f32[5,5,5,3] fusion(param_0),
+    kind=kCustom, calls=triton_reduction_computation,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{"output_tile_sizes":["4", "2", "8", "1"],
+                                   "num_warps":"1"}}}
 })";
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText,
-                                          FromOutputTileSizes({4, 2, 5, 1}),
+                                          FromOutputTileSizes({4, 2, 8, 1}),
                                           "triton_reduction_computation", R"(
 CHECK:  tt.make_range
 CHECK-COUNT-4:  tt.expand_dims
@@ -164,10 +177,14 @@ triton_reduction_computation {
 
 ENTRY main {
   param_0 = f32[5,3] parameter(0)
-  ROOT triton_reduction = f32[3] fusion(param_0), kind=kCustom, calls=triton_reduction_computation, backend_config={"fusion_backend_config":{"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["3"],"num_warps":"1"}}}
+  ROOT triton_reduction = f32[3] fusion(param_0),
+    kind=kCustom, calls=triton_reduction_computation,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{"output_tile_sizes":["4"],"num_warps":"1"}}}
 })";
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText,
-                                          FromOutputTileSizes({3}),
+                                          FromOutputTileSizes({4}),
                                           "triton_reduction_computation", R"(
 ; Make sure input reduction tile is padded with a neutral value.
 CHECK:  %[[LOAD:.*]] = tt.load
@@ -209,10 +226,15 @@ triton_softmax_computation {
 
 ENTRY main {
   param_0 = f32[125,127]{1,0} parameter(0)
-  ROOT triton_softmax = f32[125,127]{1,0} fusion(param_0), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
+  ROOT triton_softmax = f32[125,127]{1,0} fusion(param_0),
+    kind=kCustom, calls=triton_softmax_computation,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{"output_tile_sizes":["1", "128"],
+                                   "num_warps":"1"}}}
 })";
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText,
-                                          FromOutputTileSizes({1, 127}),
+                                          FromOutputTileSizes({1, 128}),
                                           "triton_softmax_computation", R"(
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
 CHECK-DAG:        %[[ZERO:.*]] = arith.constant 0 : i32
@@ -263,11 +285,15 @@ triton_softmax_computation {
 ENTRY main {
   param_0 = f32[125,127]{1,0} parameter(0)
   param_1 = f32[127]{0} parameter(1)
-  ROOT triton_softmax = f32[125,127]{1,0} fusion(param_0, param_1), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
-}
-)";
+  ROOT triton_softmax = f32[125,127]{1,0} fusion(param_0, param_1),
+    kind=kCustom, calls=triton_softmax_computation,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{"output_tile_sizes":["1", "128"],
+                                   "num_warps":"1"}}}
+})";
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText,
-                                          FromOutputTileSizes({1, 127}),
+                                          FromOutputTileSizes({1, 128}),
                                           "triton_softmax_computation", R"(
 CHECK-LABEL:  tt.func @triton_fn(
 CHECK-SAME:                      %[[P0:[A-Za-z0-9_]*]]: !tt.ptr<f32>
@@ -324,12 +350,12 @@ ENTRY main {
     kind=kCustom, calls=triton_softmax_computation,
     backend_config={"fusion_backend_config":
       {"kind":"__triton",
-       "block_level_fusion_config": {"output_tile_sizes": ["1", "1", "127"],
+       "block_level_fusion_config": {"output_tile_sizes": ["1", "1", "128"],
                                      "num_warps": "1"}}}
 })";
 
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText,
-                                          FromOutputTileSizes({1, 1, 127}),
+                                          FromOutputTileSizes({1, 1, 128}),
                                           "triton_softmax_computation", R"(
 CHECK:        #[[MAP:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 floordiv 125), domain: d0 in [0, 1249], is_simplified: true>
 CHECK:        #[[MAP1:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 mod 125), domain: d0 in [0, 1249], is_simplified: true>
@@ -386,7 +412,12 @@ triton_softmax_computation {
 ENTRY main {
   parameter_1 = f32[32]{0} parameter(1)
   parameter_0 = f32[32,16]{1,0} parameter(0)
-  ROOT _ = f32[32,16]{1,0} fusion(parameter_0, parameter_1), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config":{"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["1","16"],"num_warps":"1"}}}
+  ROOT _ = f32[32,16]{1,0} fusion(parameter_0, parameter_1),
+    kind=kCustom, calls=triton_softmax_computation,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{"output_tile_sizes":["1","16"],
+                                   "num_warps":"1"}}}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
@@ -430,7 +461,12 @@ triton_softmax_computation {
 
 ENTRY main {
   p0 = pred[10,128]{1,0} parameter(0)
-  ROOT softmax = f32[10,128] fusion(p0), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config":{"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["1","128"],"num_warps":"1"}}}
+  ROOT softmax = f32[10,128] fusion(p0),
+    kind=kCustom, calls=triton_softmax_computation,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{"output_tile_sizes":["1","128"],
+                                   "num_warps":"1"}}}
 })";
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0,
@@ -463,7 +499,12 @@ triton_softmax_computation {
 ENTRY main {
   parameter_0 = f32[16,32]{1,0} parameter(0)
   parameter_1 = f32[32]{0} parameter(1)
-  ROOT _ = f32[16,32]{1,0} fusion(parameter_0,parameter_1), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config":{"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["1","32"],"num_warps":"1"}}}
+  ROOT _ = f32[16,32]{1,0} fusion(parameter_0,parameter_1), kind=kCustom,
+    calls=triton_softmax_computation,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{"output_tile_sizes":["1","32"],
+                                   "num_warps":"1"}}}
 })";
 
   EXPECT_TRUE(
@@ -472,7 +513,7 @@ ENTRY main {
 
 TEST_F(
     TritonEmitterTest,
-    DiamondWithAdditionalSplatDiamondScalarParameterProducesAccurateResults) {  // NOLINT(whitespace/line_length)
+    DiamondWithAdditionalSplatDiamondScalarParameterProducesAccurateResults) {
   const std::string kHloText = R"(
 HloModule h1
 
@@ -540,19 +581,24 @@ max_computation {
 
 triton_softmax_computation {
   parameter_1 = f32[16]{0} parameter(1)
-  broadcast_1 = f32[64,32,16]{2,1,0} broadcast(f32[16]{0} parameter_1), dimensions={2}
+  broadcast_1 = f32[64,32,16]{2,1,0} broadcast(parameter_1), dimensions={2}
   parameter_0 = f32[64,32,16]{2,1,0} parameter(0)
-  add_0 = f32[64,32,16]{2,1,0} add(f32[64,32,16]{2,1,0} broadcast_1, f32[64,32,16]{2,1,0} parameter_0)
+  add_0 = f32[64,32,16]{2,1,0} add(broadcast_1, parameter_0)
   c = f32[] constant(0)
-  reduce_0 = f32[64,32]{1,0} reduce(f32[64,32,16]{2,1,0} parameter_0, f32[] c), dimensions={2}, to_apply=max_computation
-  broadcast_0 = f32[64,32,16]{2,1,0} broadcast(f32[64,32]{1,0} reduce_0), dimensions={0,1}
-  ROOT _ = f32[64,32,16]{2,1,0} add(f32[64,32,16]{2,1,0} add_0, f32[64,32,16]{2,1,0} broadcast_0)
+  reduce_0 = f32[64,32]{1,0} reduce(parameter_0, c), dimensions={2}, to_apply=max_computation
+  broadcast_0 = f32[64,32,16]{2,1,0} broadcast(reduce_0), dimensions={0,1}
+  ROOT _ = f32[64,32,16]{2,1,0} add(add_0, broadcast_0)
 }
 
 ENTRY main {
   parameter_1 = f32[64,32,16]{2,1,0} parameter(1)
   parameter_0 = f32[16]{0} parameter(0)
-  ROOT _ = f32[64,32,16]{2,1,0} fusion(f32[64,32,16]{2,1,0} parameter_1, f32[16]{0} parameter_0), kind=kCustom, calls=%triton_softmax_computation, backend_config={"fusion_backend_config":{"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["1","1","16"],"num_warps":"1"}}}
+  ROOT _ = f32[64,32,16]{2,1,0} fusion(parameter_1, parameter_0),
+    kind=kCustom, calls=%triton_softmax_computation,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{"output_tile_sizes":["1","1","16"],
+                                   "num_warps":"1"}}}
 }
 )";
 
@@ -683,7 +729,12 @@ triton_reduction_computation {
 ENTRY main {
   param_0 = f32[125,127]{1,0} parameter(0)
   param_1 = f32[125]{0} parameter(1)
-  ROOT triton_reduction = f32[125]{0} fusion(param_0, param_1), kind=kCustom, calls=triton_reduction_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
+  ROOT triton_reduction = f32[125]{0} fusion(param_0, param_1),
+    kind=kCustom, calls=triton_reduction_computation,
+    backend_config={"fusion_backend_config": {
+      "kind":"__triton",
+      "block_level_fusion_config": {"output_tile_sizes": ["1"],
+                                    "num_warps": "1"}}}
 })";
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText,
                                           FromOutputTileSizes({1}),
@@ -722,7 +773,8 @@ ENTRY main {
     kind=kCustom, calls=triton_reduction_computation,
     backend_config={"fusion_backend_config":
       {"kind":"__triton",
-      "block_level_fusion_config":{"output_tile_sizes":["2","5","16"],"num_warps":"4"}}}
+      "block_level_fusion_config":{"output_tile_sizes":["2","8","16"],
+                                   "num_warps":"4"}}}
 })";
 
   EXPECT_TRUE(
@@ -742,17 +794,22 @@ region {
 triton_softmax_computation {
   constant.1 = f32[] constant(0)
   broadcast.2 = f32[4,4,8] broadcast(constant.1), dimensions={}
-  param_0.1 = f32[4,4,8] parameter(0)
+  param_0 = f32[4,4,8] parameter(0)
   constant = f32[] constant(0)
-  reduce = f32[4,4] reduce(param_0.1, constant), dimensions={2}, to_apply=region
+  reduce = f32[4,4] reduce(param_0, constant), dimensions={2}, to_apply=region
   broadcast = f32[4,4,8] broadcast(reduce), dimensions={0,1}
   multiply = f32[4,4,8] multiply(broadcast.2, broadcast)
   ROOT add.2 = f32[4,4,8] add(multiply, broadcast)
 }
 
 ENTRY entry_computation {
-  param_0.2 = f32[4,4,8] parameter(0)
-  ROOT fusion = f32[4,4,8] fusion(param_0.2), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["2","2","8"],"num_warps":"1"}}}
+  param_0 = f32[4,4,8] parameter(0)
+  ROOT fusion = f32[4,4,8] fusion(param_0),
+    kind=kCustom, calls=triton_softmax_computation,
+    backend_config={"fusion_backend_config": {
+      "kind":"__triton",
+      "block_level_fusion_config":{"output_tile_sizes":["2","2","8"],
+                                   "num_warps":"1"}}}
 })";
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/1e-6,
                                                            /*arel=*/1e-6}));
@@ -793,7 +850,12 @@ fused_computation {
 
 ENTRY entry_computation {
   param_0.2 = f32[16,16,32] parameter(0)
-  ROOT fusion = f32[4,4,8] fusion(param_0.2), kind=kCustom, calls=fused_computation, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["2","2","8"],"num_warps":"1"}}}
+  ROOT fusion = f32[4,4,8] fusion(param_0.2),
+    kind=kCustom, calls=fused_computation,
+    backend_config={"fusion_backend_config": {
+      "kind":"__triton",
+      "block_level_fusion_config":{"output_tile_sizes":["2","2","8"],
+                                   "num_warps":"1"}}}
 })";
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/1e-6,
                                                            /*arel=*/1e-6}));
@@ -818,7 +880,7 @@ ENTRY main {
 })";
   // TODO(b/353490600): parse output tile sizes from backend config.
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText,
-                                          FromOutputTileSizes({4, 2, 8, 2}),
+                                          FromOutputTileSizes({2, 2, 2, 2}),
                                           "triton_computation", R"(
 CHECK: tt.reshape
 )"));
@@ -846,7 +908,7 @@ ENTRY main {
 })";
   // TODO(b/353490600): parse output tile sizes from backend config.
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText,
-                                          FromOutputTileSizes({2, 2, 2, 2}),
+                                          FromOutputTileSizes({4, 2, 8, 2}),
                                           "triton_computation", R"(
 CHECK: tt.reshape
 )"));

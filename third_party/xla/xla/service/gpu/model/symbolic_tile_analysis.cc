@@ -600,17 +600,19 @@ std::vector<int64_t> PossibleTileSizesForOneDimension(int64_t dim_size) {
 
   std::vector<int64_t> result;
   result.reserve(absl::bit_width(static_cast<uint64_t>(dim_size)));
-  for (int64_t tile_size = 1; tile_size < dim_size; tile_size *= 2) {
+  int64_t tile_size;
+  for (tile_size = 1; tile_size < dim_size; tile_size *= 2) {
     result.push_back(tile_size);
   }
-  result.push_back(dim_size);
+
+  result.push_back(tile_size);
   return result;
 }
 
 }  // namespace
 
 namespace detail {
-std::vector<SymbolicTileAnalysis::Tiling> GetGoodTilings(
+std::vector<SymbolicTileAnalysis::Tiling> GetValidTilings(
     absl::Span<const int64_t> dim_sizes,
     std::function<bool(absl::Span<const int64_t>)> is_valid) {
   CHECK(is_valid != nullptr);
@@ -641,7 +643,7 @@ std::vector<SymbolicTileAnalysis::Tiling> GetGoodTilings(
 }  // namespace detail
 
 absl::StatusOr<std::vector<SymbolicTileAnalysis::Tiling>>
-SymbolicTileAnalysis::GetGoodTilings() const {
+SymbolicTileAnalysis::GetValidTilings() const {
   TF_RET_CHECK(!symbolic_tiled_hlo_instructions_.empty());
   TF_RET_CHECK(symbolic_tiled_hlo_instructions_.back() != nullptr);
 
@@ -656,7 +658,7 @@ SymbolicTileAnalysis::GetGoodTilings() const {
   }
 
   absl::Status status = absl::OkStatus();
-  std::vector<SymbolicTileAnalysis::Tiling> result = detail::GetGoodTilings(
+  std::vector<SymbolicTileAnalysis::Tiling> result = detail::GetValidTilings(
       shape.dimensions(), [&](absl::Span<const int64_t> tile_sizes) {
         absl::StatusOr<bool> is_valid =
             ParametersSatisfyConstraints(tile_sizes);

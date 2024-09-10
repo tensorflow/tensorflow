@@ -141,13 +141,13 @@ class SymbolicTileAnalysis {
   std::string ToString(
       const AffineMapPrinter& printer = AffineMapPrinter()) const;
 
-  // Returns a list of tilings for the symbolic tiled HLO computation of the
-  // analysis that are expected to perform well.
+  // Returns all the valid tilings for the symbolically tiled HLO computation.
   //
   // Note: This is an initial implementation where the results may not perform
   // that well, and now we're filtering the tilings with Triton in mind
-  // (allowing only powers of 2 or the full dimension size).
-  absl::StatusOr<std::vector<Tiling>> GetGoodTilings() const;
+  // (allowing only powers of 2 up to the smallest power of 2 larger or equal
+  // to the dimension size).
+  absl::StatusOr<std::vector<Tiling>> GetValidTilings() const;
 
  private:
   SymbolicTileAnalysis(
@@ -177,9 +177,9 @@ class SymbolicTileAnalysis {
 };
 
 namespace detail {
-// Only exposed for testing, please use SymbolicTileAnalysis::GetGoodTilings()
+// Only exposed for testing, please use SymbolicTileAnalysis::GetValidTilings()
 // instead.
-std::vector<SymbolicTileAnalysis::Tiling> GetGoodTilings(
+std::vector<SymbolicTileAnalysis::Tiling> GetValidTilings(
     absl::Span<const int64_t> dim_sizes,
     std::function<bool(absl::Span<const int64_t>)> is_valid);
 }  // namespace detail

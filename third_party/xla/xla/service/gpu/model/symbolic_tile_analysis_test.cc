@@ -49,7 +49,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using detail::GetGoodTilings;
+using detail::GetValidTilings;
 using ::testing::ElementsAreArray;
 using ::testing::ExplainMatchResult;
 using ::testing::IsEmpty;
@@ -602,62 +602,66 @@ ENTRY main {
 
 bool AlwaysValid(absl::Span<const int64_t>) { return true; }
 
-TEST(GetGoodTilingsTest, ReturnsOneTilingWhenRankIsZero) {
-  EXPECT_EQ(GetGoodTilings({}, AlwaysValid),
+TEST(GetValidTilingsTest, ReturnsOneTilingWhenRankIsZero) {
+  EXPECT_EQ(GetValidTilings({}, AlwaysValid),
             TilingVector{SymbolicTileAnalysis::Tiling{}});
 }
 
-TEST(GetGoodTilingsTest, ReturnsPowersOfTwoAndTheDimSizeForRankOne) {
-  EXPECT_EQ(GetGoodTilings({1}, AlwaysValid), TilingVector{{1}});
-  EXPECT_EQ(GetGoodTilings({2}, AlwaysValid), TilingVector({{1}, {2}}));
-  EXPECT_EQ(GetGoodTilings({3}, AlwaysValid), TilingVector({{1}, {2}, {3}}));
-  EXPECT_EQ(GetGoodTilings({4}, AlwaysValid), TilingVector({{1}, {2}, {4}}));
-  EXPECT_EQ(GetGoodTilings({5}, AlwaysValid),
-            TilingVector({{1}, {2}, {4}, {5}}));
-  EXPECT_EQ(GetGoodTilings({11}, AlwaysValid),
-            TilingVector({{1}, {2}, {4}, {8}, {11}}));
+TEST(GetValidTilingsTest, ReturnsPowersOfTwoAndTheDimSizeForRankOne) {
+  EXPECT_EQ(GetValidTilings({1}, AlwaysValid), TilingVector{{1}});
+  EXPECT_EQ(GetValidTilings({2}, AlwaysValid), TilingVector({{1}, {2}}));
+  EXPECT_EQ(GetValidTilings({3}, AlwaysValid), TilingVector({{1}, {2}, {4}}));
+  EXPECT_EQ(GetValidTilings({4}, AlwaysValid), TilingVector({{1}, {2}, {4}}));
+  EXPECT_EQ(GetValidTilings({5}, AlwaysValid),
+            TilingVector({{1}, {2}, {4}, {8}}));
+  EXPECT_EQ(GetValidTilings({11}, AlwaysValid),
+            TilingVector({{1}, {2}, {4}, {8}, {16}}));
 }
 
-TEST(GetGoodTilingsTest, CreatesCartesianProductForRankTwo) {
-  EXPECT_EQ(GetGoodTilings({3, 4}, AlwaysValid), TilingVector({{1, 1},
-                                                               {1, 2},
-                                                               {1, 4},
-                                                               {2, 1},
-                                                               {2, 2},
-                                                               {2, 4},
-                                                               {3, 1},
-                                                               {3, 2},
-                                                               {3, 4}}));
+TEST(GetValidTilingsTest, CreatesCartesianProductForRankTwo) {
+  EXPECT_EQ(GetValidTilings({3, 4}, AlwaysValid), TilingVector({{1, 1},
+                                                                {1, 2},
+                                                                {1, 4},
+                                                                {2, 1},
+                                                                {2, 2},
+                                                                {2, 4},
+                                                                {4, 1},
+                                                                {4, 2},
+                                                                {4, 4}}));
 }
 
-TEST(GetGoodTilingsTest, CreatesCartesianProductForRankThree) {
-  EXPECT_EQ(GetGoodTilings({3, 4, 2}, AlwaysValid), TilingVector({{1, 1, 1},
-                                                                  {1, 1, 2},
-                                                                  {1, 2, 1},
-                                                                  {1, 2, 2},
-                                                                  {1, 4, 1},
-                                                                  {1, 4, 2},
-                                                                  {2, 1, 1},
-                                                                  {2, 1, 2},
-                                                                  {2, 2, 1},
-                                                                  {2, 2, 2},
-                                                                  {2, 4, 1},
-                                                                  {2, 4, 2},
-                                                                  {3, 1, 1},
-                                                                  {3, 1, 2},
-                                                                  {3, 2, 1},
-                                                                  {3, 2, 2},
-                                                                  {3, 4, 1},
-                                                                  {3, 4, 2}}));
+TEST(GetValidTilingsTest, CreatesCartesianProductForRankThree) {
+  EXPECT_EQ(GetValidTilings({3, 4, 2}, AlwaysValid), TilingVector({{1, 1, 1},
+                                                                   {1, 1, 2},
+                                                                   {1, 2, 1},
+                                                                   {1, 2, 2},
+                                                                   {1, 4, 1},
+                                                                   {1, 4, 2},
+                                                                   {2, 1, 1},
+                                                                   {2, 1, 2},
+                                                                   {2, 2, 1},
+                                                                   {2, 2, 2},
+                                                                   {2, 4, 1},
+                                                                   {2, 4, 2},
+                                                                   {4, 1, 1},
+                                                                   {4, 1, 2},
+                                                                   {4, 2, 1},
+                                                                   {4, 2, 2},
+                                                                   {4, 4, 1},
+                                                                   {4, 4, 2}}));
 }
 
-TEST(GetGoodTilingsTest, FiltersTheTilingsUsingThePredicate) {
-  auto all_even = [](absl::Span<const int64_t> tile_sizes) {
-    return absl::c_all_of(tile_sizes,
-                          [](int64_t tile_size) { return tile_size % 2 == 0; });
+TEST(GetValidTilingsTest, FiltersTheTilingsUsingThePredicate) {
+  auto filter = [](absl::Span<const int64_t> tile_sizes) {
+    int64_t sum = 0;
+    for (int64_t tile_size : tile_sizes) {
+      sum += tile_size;
+    }
+    return sum > 3 && sum < 7;
   };
 
-  EXPECT_EQ(GetGoodTilings({3, 4}, all_even), TilingVector({{2, 2}, {2, 4}}));
+  EXPECT_EQ(GetValidTilings({3, 4}, filter),
+            TilingVector({{1, 4}, {2, 2}, {2, 4}, {4, 1}, {4, 2}}));
 
   auto all_equal = [](absl::Span<const int64_t> tile_sizes) {
     return absl::c_all_of(tile_sizes, [&](int64_t tile_size) {
@@ -665,12 +669,12 @@ TEST(GetGoodTilingsTest, FiltersTheTilingsUsingThePredicate) {
     });
   };
 
-  EXPECT_EQ(GetGoodTilings({3, 3, 3}, all_equal),
-            TilingVector({{1, 1, 1}, {2, 2, 2}, {3, 3, 3}}));
+  EXPECT_EQ(GetValidTilings({3, 3, 3}, all_equal),
+            TilingVector({{1, 1, 1}, {2, 2, 2}, {4, 4, 4}}));
 }
 
 TEST_F(SymbolicTileAnalysisTest,
-       GetGoodTilingsWorksTakingConstraintsIntoAccount) {
+       GetValidTilingsWorksTakingConstraintsIntoAccount) {
   // The module was chosen (from SymbolicTileTest) because it has a constraint
   // on the tile sizes.
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
@@ -692,14 +696,14 @@ ENTRY main {
   const SymbolicTileAnalysis& analysis = opt_analysis.value();
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<SymbolicTileAnalysis::Tiling> good_tilings,
-      analysis.GetGoodTilings());
+      analysis.GetValidTilings());
   // The constraint on the 1st dimension is
   //   6 mod s0 in [0, 0] || s0 mod 6 in [0, 0],
-  // and only 48, 1, and 2 fulfill it from the set of possible tile sizes
-  // (1, 2, 4, 8, 16, 32, 48).
+  // and only 1, and 2 fulfill it from the set of possible tile sizes
+  // (1, 2, 4, 8, 16, 32, 64).
   // There is no constraint on the 2nd dimension.
-  EXPECT_EQ(good_tilings, std::vector<SymbolicTileAnalysis::Tiling>(
-                              {{1, 1}, {2, 1}, {48, 1}}));
+  EXPECT_EQ(good_tilings,
+            std::vector<SymbolicTileAnalysis::Tiling>({{1, 1}, {2, 1}}));
 }
 
 // Logs the tilings if VLOG level 1 is enabled.
@@ -718,7 +722,7 @@ void LogTilingsIfVlog1(absl::Span<const SymbolicTileAnalysis::Tiling> tilings) {
   }
 }
 
-TEST_F(SymbolicTileAnalysisTest, GetGoodTilingsWorksForSoftmaxExample) {
+TEST_F(SymbolicTileAnalysisTest, GetValidTilingsWorksForSoftmaxExample) {
   // The example is from
   // https://github.com/google/paxml/blob/91893818862645f5e9f23b84f530e611551745f6/paxml/contrib/gpu/scripts_gpu/configs.py#L107-L120.
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
@@ -766,13 +770,13 @@ ENTRY entry_computation {
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<SymbolicTileAnalysis::Tiling> good_tilings,
-      analysis.GetGoodTilings());
+      analysis.GetValidTilings());
   EXPECT_THAT(good_tilings, Not(IsEmpty()));
   LogTilingsIfVlog1(good_tilings);
 }
 
 TEST_F(SymbolicTileAnalysisTest,
-       GetGoodTilingsWorksForSoftmaxAndReduceExample) {
+       GetValidTilingsWorksForSoftmaxAndReduceExample) {
   // The example is from
   // https://github.com/google/paxml/blob/91893818862645f5e9f23b84f530e611551745f6/paxml/contrib/gpu/scripts_gpu/configs.py#L107-L120.
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
@@ -830,7 +834,7 @@ ENTRY entry_computation {
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<SymbolicTileAnalysis::Tiling> good_tilings,
-      analysis.GetGoodTilings());
+      analysis.GetValidTilings());
   EXPECT_THAT(good_tilings, Not(IsEmpty()));
   LogTilingsIfVlog1(good_tilings);
 }
