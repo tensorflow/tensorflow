@@ -1913,6 +1913,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Option to emit a target-specific marker to indicate the start of "
       "a training. The location of the marker (if any) is determined "
       "by the option value of type DebugOptions::StepMarkerLocation."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_pgle_accuracy_checker",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_pgle_accuracy_checker),
+      debug_options->xla_gpu_enable_pgle_accuracy_checker(),
+      "Enables strict PGLE checking. If an FDO profile is specified and "
+      "latency hiding scheduler encounters missing instructions in the profile "
+      "compilation will halt."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

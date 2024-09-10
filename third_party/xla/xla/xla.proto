@@ -962,6 +962,9 @@ message DebugOptions {
     AUTOTUNE_CACHE_MODE_READ = 2;
   }
 
+  // Enables strict PGLE checking. If an FDO profile is specified and latency
+  // hiding scheduler encounters missing instructions in the profile
+  // compilation will halt.
   bool xla_gpu_enable_pgle_accuracy_checker = 326;
 
   // Next id: 327
