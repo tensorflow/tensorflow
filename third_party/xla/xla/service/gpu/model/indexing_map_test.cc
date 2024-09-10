@@ -534,6 +534,31 @@ TEST_F(IndexingMapTest, RemoveUnusedSymbols_ConstraintsWithRTVars) {
                               d0 * 4 + s0 + s1 in [24, 459],
                               is_simplified: false
                             )"));
+};
+
+TEST_F(IndexingMapTest, ConvertSymbolsToDimensions) {
+  auto zero_dim_map = AffineMap::get(&mlir_context_);
+  IndexingMap indexing_map(
+      ParseAffineMap(
+          "(d0)[s0, s1, s2, s3] -> (d0 * 4 + s0 + s1 + 2 * s2 + 3 * s3 - 42)",
+          &mlir_context_),
+      {DimVar{{0, 31}}}, {RangeVar{{0, 0}}, RangeVar{{0, 1}}},
+      {RTVar{Interval{0, 3}, /*instr=*/nullptr, zero_dim_map},
+       RTVar{Interval{0, 4}, /*instr=*/nullptr, zero_dim_map}});
+  indexing_map.AddConstraint(
+      ParseAffineExpr("d0 * 4 + s0 + 2 * s2", &mlir_context_),
+      Interval{24, 459});
+  EXPECT_THAT(indexing_map.ConvertSymbolsToDimensions(), MatchIndexingMap(R"(
+      (d0, d1, d2, d3, d4) -> (d0 * 4 + d1 + d2 + d3 * 2 + d4 * 3 - 42),
+      domain:
+      d0 in [0, 31],
+      d1 in [0, 0],
+      d2 in [0, 1],
+      d3 in [0, 3],
+      d4 in [0, 4],
+      d0 * 4 + d1 + d3 * 2 in [24, 459],
+      is_simplified: false
+    )"));
 }
 
 TEST_F(IndexingMapTest, ConstraintIntervalSimplification_Sum) {

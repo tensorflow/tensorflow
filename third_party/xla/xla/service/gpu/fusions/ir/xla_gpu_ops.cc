@@ -347,38 +347,12 @@ struct MoveSymbolsToDims : public mlir::OpRewritePattern<ApplyIndexingOp> {
   LogicalResult matchAndRewrite(ApplyIndexingOp indexing_op,
                                 PatternRewriter& rewriter) const override {
     IndexingMap indexing_map = indexing_op.getIndexingMap();
-    int num_symbols = indexing_map.GetSymbolCount();
-    if (num_symbols == 0) {
+    if (indexing_map.GetSymbolCount() == 0) {
       return rewriter.notifyMatchFailure(indexing_op, "No symbols found");
     }
-    int num_dims = indexing_map.GetDimensionCount();
-    AffineMap affine_map = indexing_map.GetAffineMap();
-
-    auto* ctx = affine_map.getContext();
-    int64_t num_vars = num_dims + num_symbols;
-
-    std::vector<DimVar> new_idx_map_dims;
-    new_idx_map_dims.reserve(num_vars);
-
-    // // Populate the existing dims.
-    llvm::append_range(new_idx_map_dims, indexing_map.GetDimVars());
-
-    // Capture the existing symbols as dims.
-    SmallVector<AffineExpr> syms_replacements;
-    for (int64_t symbol_id = 0; symbol_id < num_symbols; ++symbol_id) {
-      syms_replacements.push_back(getAffineDimExpr(symbol_id + num_dims, ctx));
-      new_idx_map_dims.push_back(
-          DimVar{indexing_map.GetRangeVar(symbol_id).range});
-    }
-
-    AffineMap canonical_map =
-        affine_map.replaceDimsAndSymbols({}, syms_replacements, num_vars, 0);
-    IndexingMap new_indexing_map(
-        canonical_map, new_idx_map_dims, /*range_vars=*/{},
-        /*rt_vars=*/{}, /*constraints=*/{}, /*is_simplified=*/false);
-    new_indexing_map.Simplify();
     rewriter.replaceOpWithNewOp<ApplyIndexingOp>(
-        indexing_op, indexing_op->getOperands(), new_indexing_map);
+        indexing_op, indexing_op->getOperands(),
+        indexing_map.ConvertSymbolsToDimensions());
     return success();
   }
 };

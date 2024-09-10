@@ -2134,5 +2134,50 @@ bool IndexingMap::IsRTVarSymbol(mlir::AffineSymbolExpr symbol) const {
   return position >= range_vars_.size();
 }
 
+IndexingMap IndexingMap::ConvertSymbolsToDimensions() const {
+  int num_symbols = GetSymbolCount();
+  if (IsUndefined() || IsKnownEmpty() || num_symbols == 0) {
+    return *this;
+  }
+  int num_dims = GetDimensionCount();
+
+  MLIRContext* mlir_context = GetMLIRContext();
+  int64_t num_vars = num_dims + num_symbols;
+
+  std::vector<DimVar> new_dim_vars;
+  new_dim_vars.reserve(num_vars);
+
+  // // Populate the existing dims.
+  llvm::append_range(new_dim_vars, GetDimVars());
+
+  // Capture the existing symbols as dims.
+  SmallVector<AffineExpr> syms_replacements;
+  int64_t symbol_id = num_dims;
+  for (const auto& range_var : range_vars_) {
+    syms_replacements.push_back(getAffineDimExpr(symbol_id++, mlir_context));
+    new_dim_vars.push_back(DimVar{range_var.range});
+  }
+  for (const auto& rt_var : rt_vars_) {
+    syms_replacements.push_back(getAffineDimExpr(symbol_id++, mlir_context));
+    new_dim_vars.push_back(DimVar{rt_var.feasible_values});
+  }
+
+  // Update constraints.
+  SmallVector<std::pair<AffineExpr, Interval>, 4> new_constraints;
+  for (const auto& [expr, range] : constraints_) {
+    new_constraints.push_back(
+        std::make_pair(expr.replaceSymbols(syms_replacements), range));
+  }
+
+  AffineMap canonical_map =
+      affine_map_.replaceDimsAndSymbols({}, syms_replacements, num_vars, 0);
+  IndexingMap new_indexing_map(canonical_map, new_dim_vars, /*range_vars=*/{},
+                               /*rt_vars=*/{}, new_constraints, is_simplified_);
+  if (is_simplified_) {
+    new_indexing_map.Simplify();
+  }
+  return new_indexing_map;
+}
+
 }  // namespace gpu
 }  // namespace xla

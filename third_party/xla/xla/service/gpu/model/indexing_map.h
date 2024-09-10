@@ -437,6 +437,14 @@ class IndexingMap {
             rt_vars_, constraints_};
   }
 
+  // Returns a new indexing map with all RangeVars and RTVars converted to
+  // DimVars.
+  // For example,
+  // (d0, d1, d2)[s0, s1] -> (d0, d1, d2, s0, s1)
+  // will be converted to
+  // (d0, d1, d2, d3, d4) -> (d0, d1, d2, d3, d4)
+  IndexingMap ConvertSymbolsToDimensions() const;
+
  private:
   IndexingMap() = default;
 
