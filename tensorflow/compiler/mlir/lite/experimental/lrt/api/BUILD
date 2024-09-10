@@ -26,3 +26,19 @@ cc_library(
         "//tensorflow/lite/core/c:c_api_types",
     ],
 )
+
+cc_library(
+    name = "graph_tools",
+    hdrs = [
+        "graph_tools.h",
+    ],
+    deps = [
+        ":lite_rt_model_api",
+        "//tensorflow/compiler/mlir/lite/core:model_builder_base",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt:lite_rt_common",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt:lite_rt_op_code",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt:lite_rt_support",
+        "//tensorflow/lite/c:c_api_types",
+        "@llvm-project//llvm:Support",
+    ],
+)
