@@ -1061,8 +1061,15 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig,
       }
       return absl::OkStatus();
     }
+    case kTfLiteBuiltinReverseV2: {
+      RETURN_IF_ERROR(CheckInputsConstsOutputs(op_sig,
+                                               /*required_runtime_inputs=*/1,
+                                               /*required_const_inputs=*/1,
+                                               /*required_outputs=*/1));
+      return CheckAxesAreInt32Const(op_sig, 1);
+    }
 
-    // One argument elemenetwise operations
+    // One argument elementwise operations
     case kTfLiteBuiltinAbs:
     case kTfLiteBuiltinCeil:
     case kTfLiteBuiltinCos:
