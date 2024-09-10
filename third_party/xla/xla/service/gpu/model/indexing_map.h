@@ -475,7 +475,8 @@ class IndexingMap {
   llvm::DenseMap<mlir::AffineExpr, Interval> constraints_;
   // Flag to indicate that the domain is empty.
   bool is_known_empty_ = false;
-  // Flag to indicate that the indexing map is simplified.
+  // Flag to indicate that the indexing map is simplified. Simplification is
+  // expensive and this field is needed to avoid simplifying the same map twice.
   bool is_simplified_ = false;
 };
 std::ostream& operator<<(std::ostream& out, const IndexingMap& indexing_map);
