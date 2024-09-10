@@ -201,28 +201,300 @@ ENTRY %elementwise {
 
   void RunMatMulAutoShardingWithOptionsNoDeviceIds(
       AutoShardingOption option, std::vector<int64_t> expected_tile,
-      bool expeted_last_dim_replicate = false) {
+      bool expected_last_dim_replicate = false) {
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                             ParseAndReturnVerifiedModule(kDotHloString));
     RunAutoShardingWithOptionsNoDeviceIds(module.get(), option, expected_tile,
-                                          expeted_last_dim_replicate);
+                                          expected_last_dim_replicate);
   }
 
   void RunAutoShardingWithOptionsNoDeviceIds(HloModule* module,
                                              AutoShardingOption option,
                                              std::vector<int64_t> expected_tile,
-                                             bool expeted_last_dim_replicate) {
+                                             bool expected_last_dim_replicate) {
     TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module));
     EXPECT_TRUE(changed);
     // To simplify the test, only checking the sharding of root.
     HloInstruction* root = FindInstruction(module, "root");
     ASSERT_NE(root, nullptr);
     EXPECT_EQ(root->sharding().ReplicateOnLastTileDim(),
-              expeted_last_dim_replicate);
+              expected_last_dim_replicate);
     EXPECT_THAT(root->sharding().tile_assignment().dimensions(),
                 ElementsAreArray(expected_tile));
   }
 };
+
+TEST_F(AutoShardingTest, MatmulMeshShape1DMeshShape) {
+  AutoShardingOption option;
+  option.enable = true;
+  // Only provide device_mesh_shape
+  option.device_mesh_shape = {4};
+  RunMatMulAutoShardingWithOptions(option, 4);
+  option.device_mesh_shape = {8};
+  RunMatMulAutoShardingWithOptions(option, 8);
+}
+
+TEST_F(AutoShardingTest, MatmulMeshShape1DMeshShapeIds) {
+  AutoShardingOption option;
+  option.enable = true;
+
+  // Add mesh_ids
+  option.device_mesh_shape = {4};
+  option.device_mesh_ids = {0, 1, 2, 3};
+  RunMatMulAutoShardingWithOptions(option, 4);
+
+  option.device_mesh_shape = {8};
+  option.device_mesh_ids = {0, 1, 2, 3, 4, 5, 6, 7};
+  RunMatMulAutoShardingWithOptions(option, 8);
+}
+
+TEST_F(AutoShardingTest, MatmulMeshShape1DAllOptions) {
+  AutoShardingOption option;
+  option.enable = true;
+  // Add alpha and beta
+  option.device_mesh_shape = {4};
+  option.device_mesh_ids = {0, 1, 2, 3};
+  option.device_mesh_alpha = {1.0};
+  option.device_mesh_beta = {1.0};
+  RunMatMulAutoShardingWithOptions(option, 4);
+
+  option.device_mesh_shape = {8};
+  option.device_mesh_ids = {0, 1, 2, 3, 4, 5, 6, 7};
+  option.device_mesh_alpha = {1.0};
+  option.device_mesh_beta = {1.0};
+  RunMatMulAutoShardingWithOptions(option, 8);
+}
+
+TEST_F(AutoShardingTest, MatmulMeshShape2DAllOptions) {
+  AutoShardingOption option;
+  option.enable = true;
+  option.device_mesh_shape = {2, 2};
+  option.device_mesh_ids = {0, 1, 2, 3};
+  option.device_mesh_alpha = {1.0, 1.0};
+  option.device_mesh_beta = {0.01, 1.0};
+  RunMatMulAutoShardingWithOptions(option, 4, 2);
+
+  option.enable = true;
+  option.device_mesh_shape = {1, 4};
+  RunMatMulAutoShardingWithOptions(option, 4);
+
+  option.enable = true;
+  option.device_mesh_shape = {4, 1};
+  RunMatMulAutoShardingWithOptions(option, 4);
+}
+
+TEST_F(AutoShardingTest, MatmulMeshShape2DNoAlphaBeta) {
+  AutoShardingOption option;
+  option.enable = true;
+  option.device_mesh_shape = {2, 2};
+  option.device_mesh_ids = {0, 1, 2, 3};
+  RunMatMulAutoShardingWithOptions(option, 4, 2);
+
+  option.enable = true;
+  option.device_mesh_shape = {1, 4};
+  RunMatMulAutoShardingWithOptions(option, 4);
+
+  // Specifying all mesh_* options.
+  option.enable = true;
+  option.device_mesh_shape = {4, 1};
+  RunMatMulAutoShardingWithOptions(option, 4);
+}
+
+TEST_F(AutoShardingTest, MatmulMeshShape2DNoAlphaBetaMeshIds) {
+  AutoShardingOption option;
+  option.enable = true;
+  option.device_mesh_shape = {2, 2};
+  RunMatMulAutoShardingWithOptions(option, 4, 2);
+
+  option.enable = true;
+  option.device_mesh_shape = {1, 4};
+  RunMatMulAutoShardingWithOptions(option, 4);
+
+  // Specifying all mesh_* options.
+  option.enable = true;
+  option.device_mesh_shape = {4, 1};
+  RunMatMulAutoShardingWithOptions(option, 4);
+}
+
+TEST_F(AutoShardingTest, MatmulMeshShape2DNoMeshIds) {
+  AutoShardingOption option;
+  option.enable = true;
+  option.device_mesh_shape = {2, 2};
+  option.device_mesh_alpha = {1.0, 1.0};
+  option.device_mesh_beta = {0.01, 1.0};
+  RunMatMulAutoShardingWithOptions(option, 4, 2);
+
+  option.enable = true;
+  option.device_mesh_shape = {1, 4};
+  RunMatMulAutoShardingWithOptions(option, 4);
+
+  // Specifying all mesh_* options.
+  option.enable = true;
+  option.device_mesh_shape = {4, 1};
+  RunMatMulAutoShardingWithOptions(option, 4);
+}
+
+TEST_F(AutoShardingTest, MatmulMeshShape3DAllOptions) {
+  AutoShardingOption option;
+  option.enable = true;
+  option.allow_mixed_mesh_shape = false;
+  option.allow_recompute_heavy_op = false;
+  option.device_mesh_shape = {2, 2, 2};
+  option.device_mesh_ids = {0, 1, 2, 3, 4, 5, 6, 7};
+  option.device_mesh_alpha = {1.0, 1.0, 1.0};
+  option.device_mesh_beta = {0.01, 0.5, 1.0};
+  RunMatMulAutoShardingWithOptionsNoDeviceIds(option, {2, 2, 2}, true);
+}
+
+TEST_F(AutoShardingTest, Matmul3DMeshShape2DSharding) {
+  AutoShardingOption option;
+  option.enable = true;
+  option.device_mesh_shape = {1, 2, 2};
+  RunMatMulAutoShardingWithOptions(option, 4, 2);
+
+  option.device_mesh_shape = {2, 1, 2};
+  RunMatMulAutoShardingWithOptions(option, 4, 2);
+
+  option.device_mesh_shape = {2, 2, 1};
+  RunMatMulAutoShardingWithOptions(option, 4, 2);
+}
+
+TEST_F(AutoShardingTest, AddMeshShape3DAllOptions) {
+  AutoShardingOption option;
+  option.enable = true;
+  option.allow_mixed_mesh_shape = false;
+  option.device_mesh_shape = {1, 2, 4};
+  option.device_mesh_ids = {0, 1, 2, 3, 4, 5, 6, 7};
+  option.device_mesh_alpha = {1.0, 1.0, 1.0};
+  option.device_mesh_beta = {0.01, 0.5, 1.0};
+  RunAddAutoShardingWithOptions(option, 8, 2);
+
+  option.device_mesh_shape = {4, 1, 2};
+  RunAddAutoShardingWithOptions(option, 8, 2);
+
+  option.device_mesh_shape = {1, 4, 2};
+  RunAddAutoShardingWithOptions(option, 8, 2);
+}
+
+TEST_F(AutoShardingTest, AddMeshShape3DNoAlphaBeta) {
+  AutoShardingOption option;
+  option.enable = true;
+  option.allow_mixed_mesh_shape = false;
+  option.device_mesh_shape = {1, 2, 4};
+  option.device_mesh_ids = {0, 1, 2, 3, 4, 5, 6, 7};
+  RunAddAutoShardingWithOptions(option, 8, 2);
+
+  option.device_mesh_shape = {4, 1, 2};
+  RunAddAutoShardingWithOptions(option, 8, 2);
+
+  option.device_mesh_shape = {1, 4, 2};
+  RunAddAutoShardingWithOptions(option, 8, 2);
+}
+
+TEST_F(AutoShardingTest, AddMeshShape3DNoAlphaBetaMeshIds) {
+  AutoShardingOption option;
+  option.allow_mixed_mesh_shape = false;
+  option.enable = true;
+  option.device_mesh_shape = {1, 2, 4};
+  RunAddAutoShardingWithOptions(option, 8, 2);
+
+  option.device_mesh_shape = {4, 1, 2};
+  RunAddAutoShardingWithOptions(option, 8, 2);
+
+  option.device_mesh_shape = {1, 4, 2};
+  RunAddAutoShardingWithOptions(option, 8, 2);
+}
+
+TEST_F(AutoShardingTest, AddMeshShape3DNoMeshIds) {
+  AutoShardingOption option;
+  option.allow_mixed_mesh_shape = false;
+  option.enable = true;
+  option.device_mesh_shape = {1, 2, 4};
+  option.device_mesh_alpha = {1.0, 1.0, 1.0};
+  option.device_mesh_beta = {0.01, 0.5, 1.0};
+  RunAddAutoShardingWithOptions(option, 8, 2);
+
+  option.device_mesh_shape = {4, 1, 2};
+  RunAddAutoShardingWithOptions(option, 8, 2);
+
+  option.device_mesh_shape = {1, 4, 2};
+  RunAddAutoShardingWithOptions(option, 8, 2);
+}
+
+TEST_F(AutoShardingTest, MatMulMeshShape2D) {
+  AutoShardingOption option;
+  option.allow_mixed_mesh_shape = false;
+  option.enable = true;
+  option.device_mesh_shape = {2, 2};
+  option.device_mesh_alpha = {1.0, 1.0};
+  option.device_mesh_beta = {0.01, 1.0};
+  RunMatMulAutoShardingWithOptions(option, 4, 2);
+}
+
+TEST_F(AutoShardingTest, AddMeshShape2D) {
+  AutoShardingOption option;
+  option.allow_mixed_mesh_shape = false;
+  option.enable = true;
+  option.device_mesh_shape = {2, 2};
+  option.device_mesh_alpha = {1.0, 1.0};
+  option.device_mesh_beta = {0.01, 1.0};
+  RunAddAutoShardingWithOptions(option, 4, 2);
+}
+
+TEST_F(AutoShardingTest, AddMeshShape3D) {
+  AutoShardingOption option;
+  option.enable = true;
+  option.allow_mixed_mesh_shape = false;
+  option.device_mesh_shape = {2, 2, 2};
+  option.device_mesh_alpha = {1.0, 1.0, 1.0};
+  option.device_mesh_beta = {0.01, 0.5, 1.0};
+  RunAddAutoShardingWithOptions(option, 2);
+}
+
+TEST_F(AutoShardingTest, LargeSize) {
+  AutoShardingOption option;
+  option.enable = true;
+  option.device_mesh_shape = {1, 2, 4, 7};
+  option.device_mesh_alpha = {1.0, 1.0, 1.0, 1.0};
+  option.device_mesh_beta = {1.0, 1.0, 1.0, 1.0};
+  option.memory_budget_per_device = (8192 + 8192 * 2 + 8192 * 4 / 8);
+  RunMatMulAutoShardingWithOptions(option, 7, 1);
+}
+
+TEST_F(AutoShardingTest, InvalidOptions) {
+  // Sizes do not match.
+  AutoShardingOption option;
+  option.enable = true;
+  option.device_mesh_shape = {1, 2, 4};
+  option.device_mesh_alpha = {1.0, 1.0};
+  option.device_mesh_beta = {0.01, 0.5};
+  EXPECT_FALSE(option.CheckAndSetup().ok());
+  RunMatMulAutoShardingWithOptionsExpectFail(option);
+
+  // device_mesh_shape is empty.
+  AutoShardingOption empty_option;
+  empty_option.enable = true;
+  EXPECT_FALSE(empty_option.CheckAndSetup().ok());
+  RunMatMulAutoShardingWithOptionsExpectFail(empty_option);
+
+  // Non-positive values in device_mesh_shape.
+  AutoShardingOption option_with_non_positive_mesh;
+  option_with_non_positive_mesh.enable = true;
+  option_with_non_positive_mesh.device_mesh_shape = {0, 4};
+  EXPECT_FALSE(option_with_non_positive_mesh.CheckAndSetup().ok());
+  RunMatMulAutoShardingWithOptionsExpectFail(option_with_non_positive_mesh);
+  option_with_non_positive_mesh.device_mesh_shape = {-1, 4};
+  EXPECT_FALSE(option_with_non_positive_mesh.CheckAndSetup().ok());
+  RunMatMulAutoShardingWithOptionsExpectFail(option_with_non_positive_mesh);
+
+  // device_mesh_shape and device_mesh_ids are not compatible.
+  AutoShardingOption option_not_compatible;
+  option_not_compatible.enable = true;
+  option_not_compatible.device_mesh_shape = {4, 8};
+  option_not_compatible.device_mesh_ids = {1, 2, 3, 4};
+  EXPECT_FALSE(option_not_compatible.CheckAndSetup().ok());
+  RunMatMulAutoShardingWithOptionsExpectFail(option_not_compatible);
+}
 
 TEST_F(AutoShardingTest, MemoryBudgetTest) {
   auto compute_memory_budget_lower_bound =
@@ -1663,270 +1935,6 @@ ENTRY %entry {
   EXPECT_OK(conv_sharding.Validate(conv->shape(), 4));
 }
 
-TEST_F(AutoShardingTest, MatmulMeshShape1DMeshShape) {
-  AutoShardingOption option;
-  option.enable = true;
-  // Only provide device_mesh_shape
-  option.device_mesh_shape = {4};
-  RunMatMulAutoShardingWithOptions(option, 4);
-  option.device_mesh_shape = {8};
-  RunMatMulAutoShardingWithOptions(option, 8);
-}
-
-TEST_F(AutoShardingTest, MatmulMeshShape1DMeshShapeIds) {
-  AutoShardingOption option;
-  option.enable = true;
-
-  // Add mesh_ids
-  option.device_mesh_shape = {4};
-  option.device_mesh_ids = {0, 1, 2, 3};
-  RunMatMulAutoShardingWithOptions(option, 4);
-
-  option.device_mesh_shape = {8};
-  option.device_mesh_ids = {0, 1, 2, 3, 4, 5, 6, 7};
-  RunMatMulAutoShardingWithOptions(option, 8);
-}
-
-TEST_F(AutoShardingTest, MatmulMeshShape1DAllOptions) {
-  AutoShardingOption option;
-  option.enable = true;
-  // Add alpha and beta
-  option.device_mesh_shape = {4};
-  option.device_mesh_ids = {0, 1, 2, 3};
-  option.device_mesh_alpha = {1.0};
-  option.device_mesh_beta = {1.0};
-  RunMatMulAutoShardingWithOptions(option, 4);
-
-  option.device_mesh_shape = {8};
-  option.device_mesh_ids = {0, 1, 2, 3, 4, 5, 6, 7};
-  option.device_mesh_alpha = {1.0};
-  option.device_mesh_beta = {1.0};
-  RunMatMulAutoShardingWithOptions(option, 8);
-}
-
-TEST_F(AutoShardingTest, MatmulMeshShape2DAllOptions) {
-  AutoShardingOption option;
-  option.enable = true;
-  option.device_mesh_shape = {2, 2};
-  option.device_mesh_ids = {0, 1, 2, 3};
-  option.device_mesh_alpha = {1.0, 1.0};
-  option.device_mesh_beta = {0.01, 1.0};
-  RunMatMulAutoShardingWithOptions(option, 4, 2);
-
-  option.enable = true;
-  option.device_mesh_shape = {1, 4};
-  RunMatMulAutoShardingWithOptions(option, 4);
-
-  option.enable = true;
-  option.device_mesh_shape = {4, 1};
-  RunMatMulAutoShardingWithOptions(option, 4);
-}
-
-TEST_F(AutoShardingTest, MatmulMeshShape2DNoAlphaBeta) {
-  AutoShardingOption option;
-  option.enable = true;
-  option.device_mesh_shape = {2, 2};
-  option.device_mesh_ids = {0, 1, 2, 3};
-  RunMatMulAutoShardingWithOptions(option, 4, 2);
-
-  option.enable = true;
-  option.device_mesh_shape = {1, 4};
-  RunMatMulAutoShardingWithOptions(option, 4);
-
-  // Specifying all mesh_* options.
-  option.enable = true;
-  option.device_mesh_shape = {4, 1};
-  RunMatMulAutoShardingWithOptions(option, 4);
-}
-
-TEST_F(AutoShardingTest, MatmulMeshShape2DNoAlphaBetaMeshIds) {
-  AutoShardingOption option;
-  option.enable = true;
-  option.device_mesh_shape = {2, 2};
-  RunMatMulAutoShardingWithOptions(option, 4, 2);
-
-  option.enable = true;
-  option.device_mesh_shape = {1, 4};
-  RunMatMulAutoShardingWithOptions(option, 4);
-
-  // Specifying all mesh_* options.
-  option.enable = true;
-  option.device_mesh_shape = {4, 1};
-  RunMatMulAutoShardingWithOptions(option, 4);
-}
-
-TEST_F(AutoShardingTest, MatmulMeshShape2DNoMeshIds) {
-  AutoShardingOption option;
-  option.enable = true;
-  option.device_mesh_shape = {2, 2};
-  option.device_mesh_alpha = {1.0, 1.0};
-  option.device_mesh_beta = {0.01, 1.0};
-  RunMatMulAutoShardingWithOptions(option, 4, 2);
-
-  option.enable = true;
-  option.device_mesh_shape = {1, 4};
-  RunMatMulAutoShardingWithOptions(option, 4);
-
-  // Specifying all mesh_* options.
-  option.enable = true;
-  option.device_mesh_shape = {4, 1};
-  RunMatMulAutoShardingWithOptions(option, 4);
-}
-
-TEST_F(AutoShardingTest, DISABLED_MatmulMeshShape3DAllOptions) {
-  AutoShardingOption option;
-  option.enable = true;
-  option.device_mesh_shape = {2, 2, 2};
-  option.device_mesh_ids = {0, 1, 2, 3, 4, 5, 6, 7};
-  option.device_mesh_alpha = {1.0, 1.0, 1.0};
-  option.device_mesh_beta = {0.01, 0.5, 1.0};
-  RunMatMulAutoShardingWithOptionsNoDeviceIds(option, {2, 2, 2}, true);
-}
-
-TEST_F(AutoShardingTest, Matmul3DMeshShape2DSharding) {
-  AutoShardingOption option;
-  option.enable = true;
-  option.device_mesh_shape = {1, 2, 2};
-  RunMatMulAutoShardingWithOptions(option, 4, 2);
-
-  option.device_mesh_shape = {2, 1, 2};
-  RunMatMulAutoShardingWithOptions(option, 4, 2);
-
-  option.device_mesh_shape = {2, 2, 1};
-  RunMatMulAutoShardingWithOptions(option, 4, 2);
-}
-
-TEST_F(AutoShardingTest, DISABLED_AddMeshShape3DAllOptions) {
-  AutoShardingOption option;
-  option.enable = true;
-  option.device_mesh_shape = {1, 2, 4};
-  option.device_mesh_ids = {0, 1, 2, 3, 4, 5, 6, 7};
-  option.device_mesh_alpha = {1.0, 1.0, 1.0};
-  option.device_mesh_beta = {0.01, 0.5, 1.0};
-  RunAddAutoShardingWithOptions(option, 8, 2);
-
-  option.device_mesh_shape = {4, 1, 2};
-  RunAddAutoShardingWithOptions(option, 8, 2);
-
-  option.device_mesh_shape = {1, 4, 2};
-  RunAddAutoShardingWithOptions(option, 8, 2);
-}
-
-TEST_F(AutoShardingTest, DISABLED_AddMeshShape3DNoAlphaBeta) {
-  AutoShardingOption option;
-  option.enable = true;
-  option.device_mesh_shape = {1, 2, 4};
-  option.device_mesh_ids = {0, 1, 2, 3, 4, 5, 6, 7};
-  RunAddAutoShardingWithOptions(option, 8, 2);
-
-  option.device_mesh_shape = {4, 1, 2};
-  RunAddAutoShardingWithOptions(option, 8, 2);
-
-  option.device_mesh_shape = {1, 4, 2};
-  RunAddAutoShardingWithOptions(option, 8, 2);
-}
-
-TEST_F(AutoShardingTest, DISABLED_AddMeshShape3DNoAlphaBetaMeshIds) {
-  AutoShardingOption option;
-  option.enable = true;
-  option.device_mesh_shape = {1, 2, 4};
-  RunAddAutoShardingWithOptions(option, 8, 2);
-
-  option.device_mesh_shape = {4, 1, 2};
-  RunAddAutoShardingWithOptions(option, 8, 2);
-
-  option.device_mesh_shape = {1, 4, 2};
-  RunAddAutoShardingWithOptions(option, 8, 2);
-}
-
-TEST_F(AutoShardingTest, DISABLED_AddMeshShape3DNoMeshIds) {
-  AutoShardingOption option;
-  option.enable = true;
-  option.device_mesh_shape = {1, 2, 4};
-  option.device_mesh_alpha = {1.0, 1.0, 1.0};
-  option.device_mesh_beta = {0.01, 0.5, 1.0};
-  RunAddAutoShardingWithOptions(option, 8, 2);
-
-  option.device_mesh_shape = {4, 1, 2};
-  RunAddAutoShardingWithOptions(option, 8, 2);
-
-  option.device_mesh_shape = {1, 4, 2};
-  RunAddAutoShardingWithOptions(option, 8, 2);
-}
-
-TEST_F(AutoShardingTest, DISABLED_MatMulMeshShape2D) {
-  AutoShardingOption option;
-  option.enable = true;
-  option.device_mesh_shape = {2, 2};
-  option.device_mesh_alpha = {1.0, 1.0};
-  option.device_mesh_beta = {0.01, 1.0};
-  RunMatMulAutoShardingWithOptions(option, 4, 2);
-}
-
-TEST_F(AutoShardingTest, DISABLED_AddMeshShape2D) {
-  AutoShardingOption option;
-  option.enable = true;
-  option.device_mesh_shape = {2, 2};
-  option.device_mesh_alpha = {1.0, 1.0};
-  option.device_mesh_beta = {0.01, 1.0};
-  RunAddAutoShardingWithOptions(option, 4, 2);
-}
-
-// Disabled as we do not currently support 3D meshes
-TEST_F(AutoShardingTest, DISABLED_AddMeshShape3D) {
-  AutoShardingOption option;
-  option.enable = true;
-  option.device_mesh_shape = {2, 2, 2};
-  option.device_mesh_alpha = {1.0, 1.0, 1.0};
-  option.device_mesh_beta = {0.01, 0.5, 1.0};
-  RunAddAutoShardingWithOptions(option, 2);
-}
-
-TEST_F(AutoShardingTest, LargeSize) {
-  AutoShardingOption option;
-  option.enable = true;
-  option.device_mesh_shape = {1, 2, 4, 7};
-  option.device_mesh_alpha = {1.0, 1.0, 1.0, 1.0};
-  option.device_mesh_beta = {1.0, 1.0, 1.0, 1.0};
-  option.memory_budget_per_device = (8192 + 8192 * 2 + 8192 * 4 / 8);
-  RunMatMulAutoShardingWithOptions(option, 7, 1);
-}
-
-TEST_F(AutoShardingTest, InvalidOptions) {
-  // Sizes do not match.
-  AutoShardingOption option;
-  option.enable = true;
-  option.device_mesh_shape = {1, 2, 4};
-  option.device_mesh_alpha = {1.0, 1.0};
-  option.device_mesh_beta = {0.01, 0.5};
-  EXPECT_FALSE(option.CheckAndSetup().ok());
-  RunMatMulAutoShardingWithOptionsExpectFail(option);
-
-  // device_mesh_shape is empty.
-  AutoShardingOption empty_option;
-  empty_option.enable = true;
-  EXPECT_FALSE(empty_option.CheckAndSetup().ok());
-  RunMatMulAutoShardingWithOptionsExpectFail(empty_option);
-
-  // Non-positive values in device_mesh_shape.
-  AutoShardingOption option_with_non_positive_mesh;
-  option_with_non_positive_mesh.enable = true;
-  option_with_non_positive_mesh.device_mesh_shape = {0, 4};
-  EXPECT_FALSE(option_with_non_positive_mesh.CheckAndSetup().ok());
-  RunMatMulAutoShardingWithOptionsExpectFail(option_with_non_positive_mesh);
-  option_with_non_positive_mesh.device_mesh_shape = {-1, 4};
-  EXPECT_FALSE(option_with_non_positive_mesh.CheckAndSetup().ok());
-  RunMatMulAutoShardingWithOptionsExpectFail(option_with_non_positive_mesh);
-
-  // device_mesh_shape and device_mesh_ids are not compatible.
-  AutoShardingOption option_not_compatible;
-  option_not_compatible.enable = true;
-  option_not_compatible.device_mesh_shape = {4, 8};
-  option_not_compatible.device_mesh_ids = {1, 2, 3, 4};
-  EXPECT_FALSE(option_not_compatible.CheckAndSetup().ok());
-  RunMatMulAutoShardingWithOptionsExpectFail(option_not_compatible);
-}
-
 TEST_F(AutoShardingTest, AutoShardingKeepUserShardingInputOutput) {
   // An HLO Module with sharding for all instructions.
   constexpr absl::string_view kHloString = R"(
@@ -2043,7 +2051,7 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
   EXPECT_THAT(copy_after, op::Sharding("{devices=[2,2]0,1,2,3}"));
 }
 
-TEST_F(AutoShardingTest, DISABLED_AutoShardingKeepUserShardingTupleReduce) {
+TEST_F(AutoShardingTest, ENABLEDAutoShardingKeepUserShardingTupleReduce) {
   constexpr absl::string_view kHloString = R"(
 HloModule module
 %func (lhs_value: f32[], lhs_index: s32[], rhs_value: f32[], rhs_index: s32[]) -> (f32[], s32[]) {
@@ -2125,7 +2133,7 @@ ENTRY %tupleparameter {
   EXPECT_THAT(second, op::Sharding("{devices=[4,1]<=[4]}"));
 }
 
-TEST_F(AutoShardingTest, DISABLED_TupleParameter) {
+TEST_F(AutoShardingTest, TupleParameter) {
   constexpr absl::string_view kHloString = R"(
 HloModule module
 ENTRY %tupleparameter {
@@ -2146,16 +2154,34 @@ ENTRY %tupleparameter {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
   VLOG(10) << module->ToString();
   EXPECT_TRUE(changed);
-  auto* tuple_param = FindInstruction(module.get(), "tuple_param");
+  const HloInstruction* tuple_param =
+      FindInstruction(module.get(), "tuple_param");
+  const HloInstruction* first = FindInstruction(module.get(), "first");
+  const HloInstruction* second = FindInstruction(module.get(), "second");
+  const HloInstruction* root = FindInstruction(module.get(), "root");
+
   ASSERT_NE(tuple_param, nullptr);
-  EXPECT_THAT(
-      tuple_param,
-      op::Sharding("{{devices=[2,2,1]0,2,1,3}, {devices=[2,2,1]0,2,1,3}}"));
+  ASSERT_NE(first, nullptr);
+  ASSERT_NE(second, nullptr);
+  ASSERT_NE(root, nullptr);
+
+  ASSERT_TRUE(tuple_param->has_sharding());
+  ASSERT_TRUE(first->has_sharding());
+  ASSERT_TRUE(second->has_sharding());
+  ASSERT_TRUE(root->has_sharding());
+
+  EXPECT_EQ(first->sharding(), second->sharding());
+  EXPECT_EQ(first->sharding(), root->sharding());
+
+  ASSERT_TRUE(tuple_param->sharding().IsTuple());
+  ASSERT_EQ(tuple_param->sharding().tuple_elements().size(), 2);
+  EXPECT_EQ(tuple_param->sharding().tuple_elements()[0], first->sharding());
+  EXPECT_EQ(tuple_param->sharding().tuple_elements()[1], second->sharding());
+
   TF_EXPECT_OK(tuple_param->sharding().Validate(tuple_param->shape(), 4));
 }
 
-// CRASHES
-TEST_F(AutoShardingTest, DISABLED_GetTupleElementWithUserShardingTest) {
+TEST_F(AutoShardingTest, GetTupleElementWithUserShardingTest) {
   constexpr absl::string_view kHloString = R"(
 HloModule module
 
@@ -2198,8 +2224,8 @@ ENTRY %entry (param0: f32[16,256,256], param1: f32[16,256,256]) -> f32[16,256,25
   option.device_mesh_ids = {0, 1, 2, 3};
   option.device_mesh_alpha = {1.0, 1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0, 1.0};
-  auto changed_or = AutoSharding(option).Run(module.get());
-  EXPECT_FALSE(changed_or.ok());
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
+  EXPECT_TRUE(changed);
 }
 
 TEST_F(AutoShardingTest, While) {
