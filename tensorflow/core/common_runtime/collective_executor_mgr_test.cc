@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
 
+#include <memory>
+
 #include "tensorflow/core/common_runtime/collective_param_resolver_local.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -54,9 +56,9 @@ class CollectiveExecutorMgrTest : public ::testing::Test {
         new CollectiveParamResolverLocal(cp, device_mgr_.get(), drl.get(),
                                          /*nccl_communicator*/ nullptr,
                                          task_name));
-    cme_.reset(new CollectiveExecutorMgr(cp, device_mgr_.get(), std::move(drl),
-                                         std::move(prl),
-                                         MaybeCreateNcclCommunicator(cp)));
+    cme_ = std::make_unique<CollectiveExecutorMgr>(
+        cp, device_mgr_.get(), std::move(drl), std::move(prl),
+        MaybeCreateNcclCommunicator(cp));
   }
 
   std::unique_ptr<CollectiveExecutorMgr> cme_;
