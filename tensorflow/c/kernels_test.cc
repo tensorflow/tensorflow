@@ -867,7 +867,7 @@ TEST(TestKernel, TestInputAndOutputCount) {
 
     Tensor t(tensorflow::uint8(123));
 
-    gtl::InlinedVector<TensorValue, 4> inputs;
+    absl::InlinedVector<TensorValue, 4UL> inputs;
     // Simulate 2 inputs
     inputs.emplace_back(&t);
     inputs.emplace_back();
@@ -1350,7 +1350,7 @@ TEST_F(DeviceKernelOpTest, TestGetKernelInfo) {
     AllocatorAttributes alloc_attrs;
     p.output_attr_array = &alloc_attrs;
 
-    gtl::InlinedVector<TensorValue, 4> inputs;
+    absl::InlinedVector<TensorValue, 4UL> inputs;
     Tensor t0(1.0f);
     Tensor t1(2.0f);
     Tensor t2_0(2.0f);
@@ -1424,7 +1424,7 @@ TEST_F(DeviceKernelOpTest, TestForwardInputOrAllocateOutput) {
 
     Tensor t(123.0f);
 
-    gtl::InlinedVector<TensorValue, 4> inputs;
+    absl::InlinedVector<TensorValue, 4UL> inputs;
     // GetFakeKernel requires a NodeDef with two inputs
     inputs.emplace_back(&t);
     inputs.emplace_back();
