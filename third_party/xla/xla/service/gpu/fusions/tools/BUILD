@@ -1,3 +1,4 @@
+load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 load("//xla:xla.bzl", "xla_cc_binary")
 
 package(
@@ -33,7 +34,12 @@ xla_cc_binary(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorDialect",
-    ],
+    ] + if_cuda_is_configured(
+        [
+            "@local_config_cuda//cuda:cudnn",
+            "//xla/stream_executor/cuda:stream_executor_cuda",
+        ],
+    ),
 )
 
 cc_library(
