@@ -590,6 +590,13 @@ void AddLoweringPasses(mlir::OpPassManager& pm,
   pm.addPass(mlir::createLoopInvariantCodeMotionPass());
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(mlir::createCSEPass());
+
+  // This pass has to run before `ExpandFloatOpsPass`.
+  auto maybe_convert_fp8 = MaybeCreateConvertFloatNvidiaPass(device);
+  if (maybe_convert_fp8.has_value()) {
+    pm.addPass(std::move(*maybe_convert_fp8));
+  }
+
   pm.addPass(CreateExpandFloatOpsPass());
   pm.addPass(mlir::createLowerAffinePass());
   pm.addPass(mlir::createConvertSCFToCFPass());

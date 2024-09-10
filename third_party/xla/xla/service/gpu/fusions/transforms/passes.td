@@ -158,6 +158,17 @@ def ExpandFloatOpsPass : Pass<"xla-gpu-expand-float-ops", "mlir::ModuleOp"> {
   let constructor = "CreateExpandFloatOpsPass()";
 }
 
+def ConvertFloatNvidiaPass : Pass<"xla-gpu-convert-float-nvidia", "mlir::ModuleOp"> {
+  let summary = "Convert floating point types using NVidia intrinsics.";
+
+  let dependentDialects = [
+    "mlir::LLVM::LLVMDialect",
+    "mlir::arith::ArithDialect",
+  ];
+
+  let constructor = "CreateConvertFloatNvidiaPass()";
+}
+
 def LowerXlaGpuToScfPass :
    Pass<"xla-gpu-lower-xla-gpu-to-scf", "mlir::func::FuncOp"> {
   let summary = "Lowers xla_gpu to SCF.";
