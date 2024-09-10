@@ -984,6 +984,30 @@ CHECK:      tt.trans %[[TILE]] {order = array<i32: 2, 0, 1>} : tensor<8x4x1xf32>
       RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
 }
 
+// TODO(b/353484968): Delete this test once we have constraints to only
+// propagate tile sizes that are a power of 2.
+TEST_F(TritonEmitterTest, Transpose3D_TileFullDimThatIsNotPowerOf2) {
+  const std::string kHloText = R"(
+HloModule m
+
+triton_computation {
+  param_0 = f32[3,8,20] parameter(0)
+  ROOT transpose = f32[8,3,20] transpose(param_0), dimensions={1,0,2}
+}
+
+ENTRY main {
+  param_0 = f32[3,8,20] parameter(0)
+  ROOT triton_fusion = f32[8,3,20] fusion(param_0),
+    kind=kCustom, calls=triton_computation,
+    backend_config={"fusion_backend_config":
+      {"kind":"__triton",
+      "block_level_fusion_config":{"output_tile_sizes":["1","1", "20"],
+                                   "num_warps":"4"}}}
+})";
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

@@ -169,6 +169,18 @@ using mlir::ValueRange;
 
 namespace {
 
+// Triton requires that all block dimensions are a power of 2.
+// TODO(b/353484968): Delete this function once we have constraints to only
+// propagate tile sizes that are a power of 2.
+llvm::SmallVector<int64_t> GetPaddedTileSizes(ArrayRef<int64_t> tile_sizes) {
+  llvm::SmallVector<int64_t> result;
+  result.reserve(tile_sizes.size());
+  for (int64_t value : tile_sizes) {
+    result.push_back(llvm::PowerOf2Ceil(value));
+  }
+  return result;
+}
+
 // XLA -> Triton type conversions.
 absl::StatusOr<Type> TritonType(mlir::OpBuilder b, PrimitiveType t) {
   switch (t) {
@@ -871,17 +883,14 @@ absl::StatusOr<Value> EmitNestedFusion(
 Value EmitTiledBroadcast(
     ImplicitLocOpBuilder& b, const TiledHloInstruction& tiled_broadcast,
     absl::flat_hash_map<const TiledHloInstruction*, Value>& values) {
-  auto input_tile_shape = tiled_broadcast.operand(0)->tile_sizes();
-  auto output_tile_shape = tiled_broadcast.tile_sizes();
+  const llvm::SmallVector<int64_t>& input_tile_shape =
+      tiled_broadcast.operand(0)->tile_sizes();
+  const llvm::SmallVector<int64_t>& output_tile_shape =
+      tiled_broadcast.tile_sizes();
+  SmallVector<int64_t> padded_output_tile_shape =
+      GetPaddedTileSizes(output_tile_shape);
 
   Value expanded_input = values[tiled_broadcast.operand(0)];
-
-  SmallVector<int64_t> padded_output_tile_shape;
-  padded_output_tile_shape.reserve(output_tile_shape.size());
-
-  for (int64_t tile_dim : output_tile_shape) {
-    padded_output_tile_shape.push_back(llvm::PowerOf2Ceil(tile_dim));
-  }
 
   // Returns true if `dim_id` is broadcasted.
   auto is_broadcasted_dim = [&](int64_t dim_id) {
@@ -927,9 +936,8 @@ Value EmitTiledBroadcast(
 Value EmitTiledReshape(ImplicitLocOpBuilder& b,
                        const TiledHloInstruction& tiled_reshape_or_bitcast,
                        Value input) {
-  SmallVector<int64_t> padded_tile_sizes = llvm::to_vector(llvm::map_range(
-      tiled_reshape_or_bitcast.tile_sizes(),
-      [](int64_t size) { return (int64_t)llvm::PowerOf2Ceil(size); }));
+  SmallVector<int64_t> padded_tile_sizes =
+      GetPaddedTileSizes(tiled_reshape_or_bitcast.tile_sizes());
 
   Type input_element_type =
       mlir::cast<ShapedType>(input.getType()).getElementType();
@@ -946,10 +954,13 @@ Value EmitTiledReshape(ImplicitLocOpBuilder& b,
 Value EmitTiledTranspose(ImplicitLocOpBuilder& b,
                          const TiledHloInstruction& tiled_transpose,
                          Value input) {
+  SmallVector<int64_t> padded_tile_sizes =
+      GetPaddedTileSizes(tiled_transpose.tile_sizes());
+
   Type input_element_type =
       mlir::cast<ShapedType>(input.getType()).getElementType();
-  Type output_tensor_type = mlir::RankedTensorType::get(
-      tiled_transpose.tile_sizes(), input_element_type);
+  Type output_tensor_type =
+      mlir::RankedTensorType::get(padded_tile_sizes, input_element_type);
 
   auto transpose =
       ::xla::Cast<const HloTransposeInstruction>(tiled_transpose.hlo());
@@ -2741,39 +2752,39 @@ absl::StatusOr<MakeTensorPtrOpAndBoundaryChecks> CreateMakeTensorPtrOp(
                                     /*dims=*/tile_multi_index,
                                     /*symbols=*/{}, b);
 
+  // Triton requires that all block dimensions are a power of 2.
+  SmallVector<int64_t> padded_tile_sizes =
+      GetPaddedTileSizes(tiled_hlo.tile_sizes());
+
   llvm::SmallVector<Value> parent_shape;
   llvm::SmallVector<Value> offsets;
-  llvm::SmallVector<int32_t> power2_sizes;
   llvm::SmallVector<int32_t> order;
   llvm::SmallVector<int32_t> boundary_checks;
-  for (auto size : tiled_hlo.tile_sizes()) {
-    int dimension_index = offsets.size();
 
+  for (int dim_idx = 0; dim_idx < padded_tile_sizes.size(); ++dim_idx) {
     parent_shape.push_back(
-        CreateConst(b, b.getI64Type(), shape.dimensions(dimension_index)));
+        CreateConst(b, b.getI64Type(), shape.dimensions(dim_idx)));
     offsets.push_back(b.create<ma::IndexCastOp>(
-        b.getI32Type(), tile_offsets_as_indices[dimension_index]));
-
-    // Triton requires that all block dimensions are a power of 2.
-    power2_sizes.push_back(llvm::PowerOf2Ceil(size));
+        b.getI32Type(), tile_offsets_as_indices[dim_idx]));
 
     // TODO(b/342989850): Clarify and comment what `order` exactly is. It's not
     // entirely clear from the Triton docs.
-    order.insert(order.begin(), dimension_index);
+    order.insert(order.begin(), dim_idx);
 
-    if (shape.dimensions(dimension_index) % power2_sizes.back() != 0) {
-      boundary_checks.push_back(dimension_index);
+    if (shape.dimensions(dim_idx) % padded_tile_sizes[dim_idx] != 0) {
+      boundary_checks.push_back(dim_idx);
     }
   }
 
-  return MakeTensorPtrOpAndBoundaryChecks{b.create<mt::MakeTensorPtrOp>(
-                                              /*base=*/parent_base_ptr,
-                                              /*shape=*/parent_shape,
-                                              /*strides=*/strides,
-                                              /*offsets=*/offsets,
-                                              /*tensorShape=*/power2_sizes,
-                                              /*order=*/order),
-                                          boundary_checks};
+  return MakeTensorPtrOpAndBoundaryChecks{
+      b.create<mt::MakeTensorPtrOp>(
+          /*base=*/parent_base_ptr,
+          /*shape=*/parent_shape,
+          /*strides=*/strides,
+          /*offsets=*/offsets,
+          /*tensorShape=*/llvm::to_vector_of<int32_t>(padded_tile_sizes),
+          /*order=*/order),
+      boundary_checks};
 }
 
 }  // namespace ir_emitter_triton_internal
