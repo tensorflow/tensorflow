@@ -100,15 +100,12 @@ nb::object CheckAndCanonicalizeMemoryKind(
 }
 
 int Sharding::SafeNumDevices(nb::handle sharding) {
-  // Pure python shardings are not initialized, so we should not
-  // even be casting if they are not initialized.
-  if (nb::inst_check(sharding) && nb::inst_ready(sharding)) {
-    const auto* cpp_sharding = nb::cast<const jax::Sharding*>(sharding);
+  const jax::Sharding* cpp_sharding;
+  if (nb::try_cast<const jax::Sharding*>(sharding, cpp_sharding)) {
     if (cpp_sharding->num_devices_.has_value()) {
       return (*cpp_sharding->num_devices_);
     }
   }
-
   nb::set device_set = sharding.attr("device_set");
   return device_set.size();
 }
