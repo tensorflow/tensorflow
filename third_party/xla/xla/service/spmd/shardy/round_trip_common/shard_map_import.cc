@@ -407,7 +407,7 @@ class ShardMapImportPass
                                   manualComputationRegion.begin());
       } else {
         auto calleeOp = mlir::cast<FuncOp>(
-            mlir::cast<mlir::CallOpInterface>(*op).resolveCallable(
+            mlir::cast<mlir::CallOpInterface>(*op).resolveCallableInTable(
                 &symbolTableCollection));
         sdy::inlineRegionAndConvertTerminatorOp<ReturnOp>(
             calleeOp.getBody(), manualComputationRegion);
@@ -457,7 +457,7 @@ class ShardMapImportPass
       // If this callee op has multiple CallOps, then after it is erased for the
       // first CallOp, resolveCallable will return nullptr.
       if (Operation* calleeOp =
-              mlir::cast<mlir::CallOpInterface>(*callOp).resolveCallable(
+              mlir::cast<mlir::CallOpInterface>(*callOp).resolveCallableInTable(
                   &symbolTableCollection)) {
         symbolTable.erase(calleeOp);
       }
