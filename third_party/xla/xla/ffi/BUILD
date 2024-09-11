@@ -157,6 +157,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:platform_util",
         "//xla/stream_executor",
+        "//xla/tsl/concurrency:async_value",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/numeric:bits",

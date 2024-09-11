@@ -46,6 +46,8 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/chain.h"
 #include "xla/util.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -59,6 +61,10 @@ limitations under the License.
 
 struct XLA_FFI_Error {
   absl::Status status;
+};
+
+struct XLA_FFI_Future {
+  tsl::AsyncValueRef<tsl::Chain> async_value;
 };
 
 struct XLA_FFI_ExecutionContext {
@@ -459,6 +465,49 @@ static void XLA_FFI_Error_Destroy(XLA_FFI_Error_Destroy_Args* args) {
   delete args->error;
 }
 
+static XLA_FFI_Error* XLA_FFI_Future_Create(XLA_FFI_Future_Create_Args* args) {
+  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "XLA_FFI_Future_Create", XLA_FFI_Future_Create_Args_STRUCT_SIZE,
+      args->struct_size));
+  args->future =
+      new XLA_FFI_Future{tsl::MakeConstructedAsyncValueRef<tsl::Chain>()};
+  return nullptr;
+}
+
+static XLA_FFI_Error* XLA_FFI_Future_Destroy(
+    XLA_FFI_Future_Destroy_Args* args) {
+  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "XLA_FFI_Future_Destroy", XLA_FFI_Future_Destroy_Args_STRUCT_SIZE,
+      args->struct_size));
+  delete args->future;
+  return nullptr;
+}
+
+static XLA_FFI_Error* XLA_FFI_Future_SetAvailable(
+    XLA_FFI_Future_SetAvailable_Args* args) {
+  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "XLA_FFI_Future_SetAvailable",
+      XLA_FFI_Future_SetAvailable_Args_STRUCT_SIZE, args->struct_size));
+  args->future->async_value.SetStateConcrete();
+  return nullptr;
+}
+
+static XLA_FFI_Error* XLA_FFI_Future_SetError(
+    XLA_FFI_Future_SetError_Args* args) {
+  XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "XLA_FFI_Future_SetError", XLA_FFI_Future_SetError_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  if (args->error == nullptr || args->error->status.ok()) {
+    return new XLA_FFI_Error{InvalidArgument("Error must not be null or OK")};
+  }
+
+  absl::Status error = TakeStatus(args->error);
+  args->future->async_value.SetError(std::move(error));
+
+  return nullptr;
+}
+
 static XLA_FFI_Error* XLA_FFI_Handler_Register(
     XLA_FFI_Handler_Register_Args* args) {
   XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
@@ -770,6 +819,10 @@ static XLA_FFI_Api api = {
     XLA_FFI_DeviceMemory_Allocate,
     XLA_FFI_DeviceMemory_Free,
     XLA_FFI_ThreadPool_Schedule,
+    XLA_FFI_Future_Create,
+    XLA_FFI_Future_Destroy,
+    XLA_FFI_Future_SetAvailable,
+    XLA_FFI_Future_SetError,
 };
 
 const XLA_FFI_Api* GetXlaFfiApi() { return &api; }
