@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 #include "xla/client/sharding_builder.h"
 #include "xla/xla_data.pb.h"
@@ -554,6 +555,7 @@ bool HasSingleCoreTpu(Operation* op) {
 
 void TPUValidateInputsPass::runOnOperation() {
   ModuleOp module = getOperation();
+  tensorflow::DumpMlirOpToFile("before_tpu_validate_inputs.mlir", module);
   bool success = true;
   int num_metadata = 0;
   TF::TPUReplicateMetadataOp metadata;
