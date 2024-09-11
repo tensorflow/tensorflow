@@ -198,6 +198,39 @@ double DivTpuAbsErr(NativeT left, NativeT right) {
   // TPUs perform `left * (1 / right)`, where `left` and `1 / right` are
   // flushed to `0` if they are subnormal. Also applies to if reciprocal is min
   // normal.
+  if (IsSubnormal(left) || IsSubnormal(reciprocal)) {
+    // Subnormals can have a larger value in BF16 than float due to rounding to
+    // the nearest BF16 value during conversion while having less representation
+    // bits. For normals, the float value is usually always bigger due to
+    // greater precision.
+    return std::max(std::abs(output), std::abs(output_as_native_ref_t));
+  }
+
+  // For subnormals, we need to set absolute error to the smallest positive
+  // representable value due to hardware implementations that truncate
+  // subnormals to zero.
+  if (IsSubnormal(output)) {
+    return std::numeric_limits<NativeT>::min();
+  }
+
+  return 0.0;
+}
+
+template <typename NativeT, typename NativeRefT>
+double DivTpuBf16F32AbsErr(NativeT left, NativeT right) {
+  NativeRefT reciprocal = 1.0f / static_cast<NativeRefT>(right);
+  NativeT output = left / right;
+  NativeRefT output_as_native_ref_t =
+      static_cast<NativeRefT>(left) / static_cast<NativeRefT>(right);
+
+  // If we calculate NaN, we don't need to adjust tolerances.
+  if (std::isnan(output_as_native_ref_t)) {
+    return 0.0;
+  }
+
+  // TPUs perform `left * (1 / right)`, where `left` and `1 / right` are
+  // flushed to `0` if they are subnormal. Also applies to if reciprocal is min
+  // normal.
   if (IsSubnormal(left) || IsSubnormalOrMinNormal(reciprocal)) {
     // Subnormals can have a larger value in BF16 than float due to rounding to
     // the nearest BF16 value during conversion while having less representation
@@ -269,7 +302,7 @@ BINARY_TEST(Div, {
     if constexpr (std::is_same_v<NativeT, xla::bfloat16>) {
       error_spec_gen = +[](NativeT left, NativeT right) {
         return ErrorSpec::Builder()
-            .abs_err(DivTpuAbsErr<NativeT, NativeRefT>(left, right))
+            .abs_err(DivTpuBf16F32AbsErr<NativeT, NativeRefT>(left, right))
             .strict_signed_zeros()
             .skip_comparison(
                 DivTpuBf16F32Skip<NativeT, NativeRefT>(left, right))
@@ -316,7 +349,7 @@ BINARY_TEST(Div, {
       error_spec_gen = +[](NativeT left, NativeT right) {
         NativeT eps = std::numeric_limits<NativeT>::epsilon();
         return ErrorSpec::Builder()
-            .abs_err(DivTpuAbsErr<NativeT, NativeRefT>(left, right))
+            .abs_err(DivTpuBf16F32AbsErr<NativeT, NativeRefT>(left, right))
             .rel_err(eps)
             .strict_signed_zeros()
             .skip_comparison(
@@ -640,8 +673,7 @@ double Atan2TpuBf16F32AbsErr(NativeT left, NativeT right) {
   NativeRefT reciprocal_as_float =
       1.0f / std::max(std::abs(static_cast<NativeRefT>(left)),
                       std::abs(static_cast<NativeRefT>(right)));
-  if (!std::isnan(output_as_float) &&
-      IsSubnormalOrMinNormal(reciprocal_as_float)) {
+  if (!std::isnan(output_as_float) && IsSubnormal(reciprocal_as_float)) {
     return std::max({std::abs(output_as_float), std::abs(output),
                      static_cast<NativeRefT>(M_PI_2)});
   }
@@ -785,22 +817,6 @@ bool AbsComplexSkip(NativeRefT real, NativeRefT imag) {
 }
 
 template <typename NativeRefT>
-double AbsComplexPreV6TpuRelErr(NativeRefT real, NativeRefT imag) {
-  NativeRefT abs_max = std::max(std::abs(real), std::abs(imag));
-  NativeRefT kOne(1);
-  NativeRefT reciprocal = kOne / abs_max;
-  if (IsSubnormalOrMinNormal(reciprocal)) {
-    // In this case, the reciprocal erroneously returns zero, and
-    // we get max(|real|, |imag|) instead of sqrt(real^2 + imag^2),
-    // so the relative error can be as large as (sqrt(2)-1)/sqrt(2) ~= 0.293,
-    // when using the typical hypot implementation hypot(max, min) = max *
-    // sqrt(1 + min / max).
-    return 0.293;
-  }
-  return 0.0;
-}
-
-template <typename NativeRefT>
 double AbsComplexTpuRelErr(NativeRefT real, NativeRefT imag) {
   NativeRefT abs_max = std::max(std::abs(real), std::abs(imag));
   NativeRefT kOne(1);
@@ -869,7 +885,7 @@ BINARY_TEST_COMPLEX(AbsComplex, {
   if (IsPreV6Tpu(platform_)) {
     error_spec_gen = +[](NativeRefT real, NativeRefT imag) {
       return ErrorSpec::Builder()
-          .rel_err(AbsComplexPreV6TpuRelErr(real, imag))
+          .rel_err(AbsComplexTpuRelErr(real, imag))
           .distance_err(125)
           .skip_comparison(AbsComplexSkip(real, imag))
           .build();
