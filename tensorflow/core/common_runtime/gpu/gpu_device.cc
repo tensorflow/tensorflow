@@ -73,7 +73,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #if GOOGLE_CUDA
 #include "third_party/gpus/cudnn/cudnn.h"
-#include "xla/stream_executor/cuda/cuda_activation.h"
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
 #endif
@@ -86,6 +85,7 @@ limitations under the License.
 #include "xla/stream_executor/integrations/device_host_allocator.h"
 #endif  // TF_GPU_USE_PJRT
 #include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/platform/dso_loader.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/platform/fingerprint.h"
@@ -141,14 +141,14 @@ int GetPriority(const int tf_device_id, const GPUOptions& options) {
 typedef cudaStream_t gpuStream_t;
 typedef cudaDeviceProp gpuDeviceProp_t;
 #define EIGEN_GPU_SCRATCH_SIZE (Eigen::kGpuScratchSize)
-using se::cuda::ScopedActivateExecutorContext;
+using se::gpu::ScopedActivateContext;
 
 #elif TENSORFLOW_USE_ROCM
 
 typedef hipStream_t gpuStream_t;
 typedef hipDeviceProp_t gpuDeviceProp_t;
 #define EIGEN_GPU_SCRATCH_SIZE (Eigen::kGpuScratchSize)
-using se::rocm::ScopedActivateExecutorContext;
+using se::gpu::ScopedActivateContext;
 
 #endif
 
@@ -790,7 +790,7 @@ void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
       kernel_tracker_->PauseWhilePendingExceeds(pending_cap_);
     }
   }
-  ScopedActivateExecutorContext scoped_activation{stream->parent()};
+  ScopedActivateContext scoped_activation{stream->parent()};
   profiler::ScopedMemoryDebugAnnotation op_annotation(
       op_kernel->name_view().data(), context->step_id());
   bool should_log_inputs_and_outputs = ShouldLogInputsAndOutputs(op_kernel);
@@ -884,7 +884,7 @@ void BaseGPUDevice::ComputeAsync(AsyncOpKernel* op_kernel,
     };
   }
 
-  ScopedActivateExecutorContext scoped_activation{stream->parent()};
+  ScopedActivateContext scoped_activation{stream->parent()};
   op_kernel->ComputeAsync(context, std::move(done));
 }
 

@@ -1,9 +1,9 @@
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("@local_xla//xla/tsl:tsl.bzl", "internal_visibility")
 load("@local_xla//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
+load("@local_xla//xla/tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
 load("//tsl/platform:build_config.bzl", "tsl_cc_test")
 load("//tsl/platform:build_config_root.bzl", "if_static")
-load("//tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

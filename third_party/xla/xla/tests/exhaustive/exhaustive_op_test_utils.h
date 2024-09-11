@@ -118,7 +118,8 @@ class ExhaustiveOpTestTraits {
       return op(inputs[0], inputs[1]);
     } else {
       static_assert(
-          false, "BuildFromInputs only supports N == 1 and N == 2 currently.");
+          N == 1 || N == 2,
+          "BuildFromInputs only supports N == 1 and N == 2 currently.");
     }
   }
 };
