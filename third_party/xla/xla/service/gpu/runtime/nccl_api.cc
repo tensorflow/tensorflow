@@ -35,8 +35,8 @@ limitations under the License.
 #include "xla/service/gpu/runtime/nccl_clique_key.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/gpu/gpu_activation.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
@@ -392,7 +392,7 @@ DefaultNcclApi::CommInitRanks(int32_t nranks, const NcclCliqueId& clique_id,
             << " of " << nranks
             << "; fingerprint(id)=" << clique_id.fingerprint();
 
-    se::gpu::ScopedActivateExecutorContext activate_context(ranks[i].device);
+    se::gpu::ScopedActivateContext activate_context(ranks[i].device);
 
     XLA_NCCL_RETURN_IF_ERROR(ncclCommInitRankConfig(
         &comm_handles[i], nranks, AsNcclUniqueId(clique_id), ranks[i].rank,
