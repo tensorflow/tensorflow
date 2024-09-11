@@ -224,7 +224,7 @@ class MIOpenHandle {
   miopenHandle_t handle() const { return handle_; }
 
  private:
-  gpu::ScopedActivateExecutorContext context_;
+  ScopedActivateContext context_;
   std::unique_ptr<absl::MutexLock> lock_;
   miopenHandle_t handle_;  // Not owned.
 };
@@ -774,7 +774,7 @@ MIOpenSupport::MIOpenSupport(GpuExecutor* parent) : parent_(parent) {
 }
 
 absl::Status MIOpenSupport::Init() {
-  ScopedActivateExecutorContext context(parent_);
+  ScopedActivateContext context(parent_);
   miopenHandle_t miopen_handle = nullptr;
   auto status = wrap::miopenCreateWithStream(
       reinterpret_cast<miopenHandle_t*>(&miopen_handle), (hipStream_t)(0));

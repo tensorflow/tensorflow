@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/stream_executor/rocm/rocm_blas.h"
 
+#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/rocm/rocblas_wrapper.h"
 
 #define EIGEN_USE_GPU
@@ -30,7 +31,6 @@ limitations under the License.
 #include "rocm/rocm_config.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event_based_timer.h"
-#include "xla/stream_executor/gpu/gpu_activation.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
@@ -109,7 +109,7 @@ static std::string ToString(rocblas_status status) {
 }
 
 bool ROCMBlas::Init() {
-  gpu::ScopedActivateExecutorContext sac{parent_};
+  ScopedActivateContext sac{parent_};
   rocblas_status ret = wrap::rocblas_create_handle(&blas_);
   if (ret != rocblas_status_success) {
     LOG(ERROR) << "failed to create rocBLAS handle: " << ToString(ret);
@@ -148,7 +148,7 @@ ROCMBlas::ROCMBlas(gpu::GpuExecutor *parent)
 
 ROCMBlas::~ROCMBlas() {
   if (blas_ != nullptr) {
-    gpu::ScopedActivateExecutorContext sac{parent_};
+    ScopedActivateContext sac{parent_};
     wrap::rocblas_destroy_handle(blas_);
   }
 }
@@ -157,7 +157,7 @@ bool ROCMBlas::SetStream(Stream *stream) {
   CHECK(stream != nullptr);
   CHECK(AsGpuStreamValue(stream) != nullptr);
   CHECK(blas_ != nullptr);
-  gpu::ScopedActivateExecutorContext sac{parent_};
+  ScopedActivateContext sac{parent_};
 
   rocblas_status ret =
       wrap::rocblas_set_stream(blas_, AsGpuStreamValue(stream));
@@ -172,7 +172,7 @@ bool ROCMBlas::SetStream(Stream *stream) {
 hipStream_t ROCMBlas::ROCMStream(Stream *stream) {
   CHECK(stream != nullptr);
   CHECK(AsGpuStreamValue(stream) != nullptr);
-  gpu::ScopedActivateExecutorContext sac{parent_};
+  ScopedActivateContext sac{parent_};
   return AsGpuStreamValue(stream);
 }
 
@@ -355,7 +355,7 @@ absl::Status ROCMBlas::DoBlasInternalImpl(FuncT rocblas_func, Stream *stream,
     return absl::InternalError("Setting stream failed");
   }
 
-  gpu::ScopedActivateExecutorContext sac{parent_};
+  ScopedActivateContext sac{parent_};
   rocblas_status ret;
   // set the atomics mode, leaving default to library
   bool allow_atomics = !OpDeterminismRequired();
