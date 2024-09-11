@@ -61,6 +61,15 @@ std::vector<TestCase> ExpandUseBfloat16(
   return expanded;
 }
 
+// Make valid bfloat16 from a float32.
+inline void MaskFloatToBFloat16(absl::Span<const int64_t>, float* value) {
+  *value = absl::bit_cast<float>(absl::bit_cast<uint32_t>(*value) & 0xFFF00000);
+}
+
+inline void MaskF8E5M2(absl::Span<const int64_t>, tsl::float8_e5m2* value) {
+  *value = tsl::float8_e5m2::FromRep(value->rep() & 0xFE);
+}
+
 // A client library test establishes an in-process XLA client connection.
 class ClientLibraryTestBase : public ::testing::Test {
  protected:
@@ -418,6 +427,16 @@ class ClientLibraryTestBase : public ::testing::Test {
 
   // Converts an f32 literal to bf16 if use_bfloat16_ is true.
   Literal MaybeConvertLiteralToBfloat16(const Literal& literal);
+
+  // Creates a 128 x 128 array following CreatePatternedMatrix.
+  std::unique_ptr<Array2D<float>> CreateTilePattern() {
+    return CreatePatternedMatrix(128, 128);
+  }
+
+  // Creates an 8x128 array of the form above.
+  std::unique_ptr<Array2D<float>> CreateChunkPattern() {
+    return CreatePatternedMatrix(8, 128);
+  }
 
   LocalClient* client_;
   LocalClient* ref_client_;  // To compute reference result.
