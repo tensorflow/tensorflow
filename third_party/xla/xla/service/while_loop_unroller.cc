@@ -476,7 +476,7 @@ std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
     return std::nullopt;
   }
   const HloInstruction* operand = instr->operand(0);
-  if (operand != input) {
+  if (input != nullptr && operand != input) {
     VLOG(3) << "Input of dynamic index instruction is not the given operand.";
     return std::nullopt;
   }
