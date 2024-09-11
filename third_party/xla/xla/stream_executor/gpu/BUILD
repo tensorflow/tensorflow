@@ -124,6 +124,7 @@ cc_library(
     deps = [
         ":context",
         ":gpu_executor_header",
+        "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/log:check",
         "@local_tsl//tsl/platform:logging",
     ],
@@ -626,9 +627,9 @@ cc_library(
     deps = [
         ":gpu_init_impl",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor/cuda:cuda_activation",
         "//xla/stream_executor/cuda:cuda_executor",
         "//xla/stream_executor/cuda:cuda_status",
+        "//xla/stream_executor/gpu:scoped_activate_context",
         "//xla/tsl/framework:allocator",
         "//xla/tsl/framework:device_id",
         "//xla/tsl/util:env_var",

@@ -30,10 +30,9 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/synchronization/mutex.h"
 #include "third_party/gpus/cuda/include/cuda.h"
-#include "xla/stream_executor/cuda/cuda_activation.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/framework/device_id.h"
 #include "xla/tsl/util/env_var.h"
@@ -146,7 +145,7 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
           << "Failed to retain context: " << cuda::ToStatus(result);
   }
 
-  cuda::ScopedActivateExecutorContext scoped_activation{stream_exec_};
+  gpu::ScopedActivateContext scoped_activation{stream_exec_};
 
   // Check the CUDA runtime is recent enough.
   if (auto status2 = cuDriverGetVersion(&driverVersion)) {
@@ -340,7 +339,7 @@ void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
   if (stats_) {
     lock.emplace(&mutex_);
   }
-  cuda::ScopedActivateExecutorContext scoped_activation{stream_exec_};
+  gpu::ScopedActivateContext scoped_activation{stream_exec_};
   void* ptr = nullptr;
   auto result =
       cuMemAllocFromPoolAsync(reinterpret_cast<CUdeviceptr*>(&ptr), num_bytes,
@@ -409,7 +408,7 @@ void GpuCudaMallocAsyncAllocator::DeallocateRaw(void* ptr) {
       VLOG(1) << "Ignoring CUDA error: " << cuda::ToStatus(result);
     } else {
       size_t free, total;
-      cuda::ScopedActivateExecutorContext scoped_activation{stream_exec_};
+      gpu::ScopedActivateContext scoped_activation{stream_exec_};
       cuMemGetInfo(&free, &total);
       LOG(ERROR) << "cudaFreeAsync failed to free " << ptr << ": "
                  << cuda::ToStatus(result)
