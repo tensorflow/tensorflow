@@ -2,7 +2,7 @@ load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("@local_xla//xla/tsl:tsl.bzl", "internal_visibility")
 load("@local_xla//xla/tsl:tsl.default.bzl", "tsl_grpc_cc_dependencies")
 load(
-    "//tsl/profiler/builds:build_config.bzl",
+    "@local_xla//xla/tsl/profiler/builds:build_config.bzl",
     "tf_profiler_copts",
     "tf_profiler_pybind_cc_library_wrapper",
 )

@@ -8,7 +8,6 @@ load(
     "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
-load("@local_tsl//tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load(
     "//xla/tsl:tsl.bzl",
@@ -16,6 +15,7 @@ load(
     "tsl_copts",
     "tsl_gpu_library",
 )
+load("//xla/tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
