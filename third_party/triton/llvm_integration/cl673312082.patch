@@ -1,0 +1,26 @@
+
+--- a/include/triton/Analysis/AxisInfo.h	2024-03-11 11:42:57.000000000 -0700
++++ b/include/triton/Analysis/AxisInfo.h	2024-09-11 03:11:19.000000000 -0700
+@@ -180,8 +180,8 @@
+     for (auto funcOp : llvm::reverse(sortedFuncs)) {
+       initialize(funcOp);
+       funcOp.walk([&](CallOpInterface callOp) {
+-        auto callee =
+-            dyn_cast<FunctionOpInterface>(callOp.resolveCallable(&symbolTable));
++        auto callee = dyn_cast<FunctionOpInterface>(
++            callOp.resolveCallableInTable(&symbolTable));
+         update(callOp, callee);
+       });
+     }
+
+--- a/include/triton/Analysis/Utility.h	2024-08-14 09:36:23.000000000 -0700
++++ b/include/triton/Analysis/Utility.h	2024-09-11 03:11:19.000000000 -0700
+@@ -316,7 +316,7 @@
+     moduleOp.walk([&](Operation *op) {
+       auto caller = op->getParentOfType<FunctionOpInterface>();
+       if (auto callOp = dyn_cast<CallOpInterface>(op)) {
+-        auto *callee = callOp.resolveCallable(&symbolTable);
++        auto *callee = callOp.resolveCallableInTable(&symbolTable);
+         auto funcOp = dyn_cast_or_null<FunctionOpInterface>(callee);
+         if (funcOp) {
+           graph[caller].emplace_back(

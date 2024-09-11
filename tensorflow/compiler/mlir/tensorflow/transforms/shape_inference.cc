@@ -1117,8 +1117,8 @@ bool ShapeInference::RefineResultType(Operation* op, Value result,
 // Infers the shape from a (Stateful)PartitionedCall operation by looking up
 // the called function and propagating the return type.
 bool ShapeInference::InferShapeForCall(CallOpInterface call_op) {
-  func::FuncOp func =
-      dyn_cast_or_null<func::FuncOp>(call_op.resolveCallable(&symbol_table_));
+  func::FuncOp func = dyn_cast_or_null<func::FuncOp>(
+      call_op.resolveCallableInTable(&symbol_table_));
   if (!func) return false;
 
   DCOMMENT("Infer shape for call " << func.getName());
@@ -2976,8 +2976,8 @@ FailureOr<bool> ShapeInference::PropagateShapeIntoAttachedFunctions(
          while_op.ResolveBodyFunction(&symbol_table_)},
         max_iterations);
   } else if (auto call_op = dyn_cast<CallOpInterface>(op)) {
-    if (auto func =
-            dyn_cast<func::FuncOp>(call_op.resolveCallable(&symbol_table_))) {
+    if (auto func = dyn_cast<func::FuncOp>(
+            call_op.resolveCallableInTable(&symbol_table_))) {
       PropagateConstantToCallee(call_op, func, module);
       FailureOr<bool> failure_or_converged = PropagateShapeToFunctions(
           module, call_op.getArgOperands().getTypes(), {func}, max_iterations);
