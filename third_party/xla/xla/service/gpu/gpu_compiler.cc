@@ -1507,7 +1507,8 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
       pipeline.AddPass<HloConstantFolding>();
       pipeline.AddPass<HloDCE>();
       pipeline.AddPass<SoftmaxRewriterTriton>(
-          gpu_target_config.device_description, ShapeSizeBytesFunction());
+          gpu_target_config.device_description, ShapeSizeBytesFunction(),
+          /*only_fuse_if_profitable=*/true);
     }
 
     pipeline.AddPass<ReductionDimensionGrouper>();

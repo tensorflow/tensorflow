@@ -1576,6 +1576,50 @@ ENTRY main {
   EXPECT_FALSE(fusion_rewriter_.Run(module.get()).value());
 }
 
+TEST_F(SoftmaxRewriterTritonTest,
+       DoNotFuseNormalizationWithVeryLongRowsIfProfitabilityCheckIsEnabled) {
+  const std::string hlo_string = R"(
+HloModule softmax
+max_computation {
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
+}
+ENTRY main {
+  param_0 = f32[8,262144] parameter(0)
+  constant_neg_inf = f32[] constant(-inf)
+  reduce = f32[8]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f32[8,262144] broadcast(reduce), dimensions={0}
+  ROOT subtract = f32[8,262144] subtract(param_0, broadcast)
+})";
+
+  {
+    // Verify that SoftmaxRewriterTriton without Cost Model will fuse the
+    // normalization diamond.
+    SoftmaxRewriterTriton fusion_rewriter_without_cost_model{
+        device_info_, ShapeSizeBytesFunction(),
+        /*only_fuse_if_profitable=*/false};
+
+    auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+    EXPECT_TRUE(fusion_rewriter_without_cost_model.Run(module.get()).value());
+    EXPECT_TRUE(verifier().Run(module.get()).status().ok());
+    EXPECT_THAT(module->entry_computation()->root_instruction(),
+                GmockMatch(m::Fusion(m::Parameter())
+                               .WithPredicate(HasBlockLevelFusionConfig)));
+  }
+
+  {
+    // SoftmaxRewriterTriton with Cost Model will discard the normalization
+    // diamond, because row size is too large.
+    SoftmaxRewriterTriton fusion_rewriter_with_cost_model{
+        device_info_, ShapeSizeBytesFunction(),
+        /*only_fuse_if_profitable=*/true};
+
+    auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+    EXPECT_FALSE(fusion_rewriter_with_cost_model.Run(module.get()).value());
+  }
+}
+
 }  // anonymous namespace
 }  // namespace gpu
 }  // namespace xla
