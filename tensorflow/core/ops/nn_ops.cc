@@ -1031,7 +1031,7 @@ REGISTER_OP("MaxPoolWithArgmax")
       for (int i = 0; i < ksize.size(); ++i) {
         if (ksize[i] <= 0) {
           return errors::InvalidArgument(
-              "ksize must be a postive int32 value, got:", ksize[i]);
+              "ksize must be a positive int32 value, got:", ksize[i]);
         }
       }
       TF_RETURN_IF_ERROR(shape_inference::MaxPoolShape(c));
