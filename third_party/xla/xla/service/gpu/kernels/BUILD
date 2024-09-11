@@ -275,6 +275,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/stream_executor",
         "//xla/stream_executor:kernel_spec",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
