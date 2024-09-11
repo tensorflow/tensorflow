@@ -113,7 +113,7 @@ void BM_BuildSignature(::testing::benchmark::State& state) {
 
   for (auto i : state) {
     auto s = DeviceCompilationClusterSignature::Build(fn, args);
-    CHECK(s.ok());
+    CHECK_OK(s.status());
     DeviceCompilationClusterSignature sig = std::move(s.value());
   }
 }

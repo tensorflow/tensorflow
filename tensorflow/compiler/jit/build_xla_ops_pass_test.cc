@@ -37,9 +37,8 @@ class BuildXlaOpsTest : public ::testing::Test {
  protected:
   void SetUp() override {
     // This is needed to register the XLA_* devices.
-    CHECK(DeviceFactory::AddDevices(
-              SessionOptions(), "/job:localhost/replica:0/task:0", &devices_)
-              .ok());
+    CHECK_OK(DeviceFactory::AddDevices(
+        SessionOptions(), "/job:localhost/replica:0/task:0", &devices_));
   }
 
  private:
