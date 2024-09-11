@@ -1948,7 +1948,10 @@ cc_library(
         "amdgpu_compiler_registration.cc",
     ],
     local_defines = if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
-    tags = ["manual"],
+    tags = [
+        "gpu",
+        "manual",
+    ],
     deps = [
         ":amdgpu_compiler_impl",
         "//xla/service:compiler",
@@ -1965,7 +1968,10 @@ cc_library(
     hdrs = [
         "amdgpu_compiler.h",
     ],
-    tags = ["manual"],
+    tags = [
+        "gpu",
+        "manual",
+    ],
     deps = [
         ":cublas_padding_requirements",
         ":gpu_compiler",

@@ -1151,6 +1151,7 @@ cc_library(
     name = "custom_kernel_fusion_rewriter",
     srcs = ["custom_kernel_fusion_rewriter.cc"],
     hdrs = ["custom_kernel_fusion_rewriter.h"],
+    tags = ["gpu"],
     deps = [
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
@@ -1174,6 +1175,7 @@ cc_library(
 xla_cc_test(
     name = "custom_kernel_fusion_rewriter_test",
     srcs = ["custom_kernel_fusion_rewriter_test.cc"],
+    tags = ["gpu"],
     deps = [
         ":custom_kernel_fusion_rewriter",
         "//xla/hlo/ir:hlo",
@@ -1350,6 +1352,7 @@ cc_library(
     name = "dynamic_slice_fusion_rewriter",
     srcs = ["dynamic_slice_fusion_rewriter.cc"],
     hdrs = ["dynamic_slice_fusion_rewriter.h"],
+    tags = ["gpu"],
     deps = [
         "//xla:shape_util",
         "//xla:util",
