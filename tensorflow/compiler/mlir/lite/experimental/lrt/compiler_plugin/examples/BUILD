@@ -18,55 +18,31 @@ package(
 )
 
 cc_library(
-    name = "lite_rt_model",
-    srcs = ["lite_rt_model.cc"],
-    hdrs = [
-        "lite_rt_model.h",
-    ],
+    name = "mul_op_plugin",
+    srcs = ["mul_op_plugin.cc"],
     deps = [
-        "//tensorflow/compiler/mlir/lite/core:model_builder_base",
         "//tensorflow/compiler/mlir/lite/experimental/lrt:lite_rt_common",
         "//tensorflow/compiler/mlir/lite/experimental/lrt:lite_rt_op_code",
         "//tensorflow/compiler/mlir/lite/experimental/lrt:lite_rt_support",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/api:graph_tools",
         "//tensorflow/compiler/mlir/lite/experimental/lrt/api:lite_rt_model_api",
-        "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/core/c:c_api_types",
-        "//tensorflow/lite/schema:schema_fbs",
-    ],
-)
-
-cc_library(
-    name = "lite_rt_model_init",
-    srcs = ["lite_rt_model_init.cc"],
-    hdrs = ["lite_rt_model_init.h"],
-    deps = [
-        ":lite_rt_model",
-        "//tensorflow/compiler/mlir/lite:allocation",
-        "//tensorflow/compiler/mlir/lite/core:model_builder_base",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt:lite_rt_common",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt:lite_rt_op_code",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt:lite_rt_support",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/api:lite_rt_model_api",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite:stderr_reporter",
-        "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/schema:schema_fbs",
-        "@flatbuffers//:runtime_cc",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/compiler_plugin:lite_rt_compiler_plugin",
     ],
 )
 
 cc_test(
-    name = "lite_rt_model_test",
-    srcs = ["lite_rt_model_test.cc"],
+    name = "mul_op_plugin_test",
+    srcs = ["mul_op_plugin_test.cc"],
     tags = ["no_oss"],
     deps = [
-        ":lite_rt_model_init",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt:lite_rt_common",
+        ":mul_op_plugin",  # buildcleaner: keep
         "//tensorflow/compiler/mlir/lite/experimental/lrt:lite_rt_op_code",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt:lite_rt_support",
         "//tensorflow/compiler/mlir/lite/experimental/lrt/api:graph_tools",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/api:lite_rt_model_api",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/compiler_plugin:lite_rt_compiler_plugin",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/model:lite_rt_model",
         "//tensorflow/compiler/mlir/lite/experimental/lrt/test_data:test_data_util",
+        "@com_google_absl//absl/log:check",
         "@com_google_googletest//:gtest_main",
-        "@llvm-project//llvm:Support",
     ],
 )
