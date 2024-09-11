@@ -47,33 +47,6 @@ class GpuStream;
 // Intermediate implementation class for StreamExecutors that are used with
 // GPUs.
 class GpuExecutor : public StreamExecutorCommon {
-  // Helper classes to attach a type erased state to the GpuExecutor. Currently,
-  // we just need to support some XLA specific state.
-  class Object {
-    struct Concept {
-      virtual ~Concept() {}
-    };
-    template <typename T>
-    struct Model : Concept {
-      explicit Model(StreamExecutor* se) : object(se) {}
-      T object;
-    };
-
-   public:
-    template <typename T>
-    T* getOrCreate(StreamExecutor* se) {
-      absl::MutexLock l(&mu_);
-      if (!object_) {
-        object_ = std::make_unique<Model<T>>(se);
-      }
-      return &(dynamic_cast<Model<T>*>(object_.get())->object);
-    }
-
-   private:
-    absl::Mutex mu_;
-    std::unique_ptr<Concept> object_ ABSL_GUARDED_BY(mu_);
-  };
-
  public:
   GpuExecutor(Platform* platform, int device_ordinal)
       : StreamExecutorCommon(platform),
@@ -95,20 +68,6 @@ class GpuExecutor : public StreamExecutorCommon {
   virtual absl::Status TrimGraphMemory() = 0;
 
   Context* gpu_context() const { return context_; }
-
-  // Provide a type-erased way of attaching arbitrary XLA specific state to the
-  // GpuExecutor. XLA based execution will use this method to attach per-stream
-  // executor XLA specific objects (like the Infeed and Outfeed managers) to the
-  // stream executor, so that their lifetimes can be tied to the lifetime of the
-  // stream executor for which that object is allocated for. This simplifies
-  // memory management as compared to having these objects reside on the side
-  // and then either leaking or having to implement callbacks that the SE
-  // destructors call to deallocate any side state that is associated with that
-  // SE object.
-  template <typename T>
-  T* getOrCreateXLAState(StreamExecutor* se) {
-    return xla_state_.getOrCreate<T>(se);
-  }
 
   absl::StatusOr<std::vector<ApiTrace>> ExtractApiTrace() override {
     absl::MutexLock lock(&logger_mu_);
@@ -143,9 +102,6 @@ class GpuExecutor : public StreamExecutorCommon {
   // The device ordinal value that this executor was initialized with; recorded
   // for use in getting device metadata. Immutable post-initialization.
   int device_ordinal_;
-
-  // Type erased XLA specific state attached to GpuExecutor.
-  Object xla_state_;
 
   absl::Mutex logger_mu_;
 

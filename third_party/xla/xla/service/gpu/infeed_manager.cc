@@ -34,11 +34,6 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "xla/service/gpu/xla_executor_state.h"
-#include "xla/stream_executor/gpu/gpu_executor.h"
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
 namespace xla {
 namespace gpu {
 
@@ -100,18 +95,6 @@ absl::Status InfeedManager::TransferLiteralToInfeed(
 
   EnqueueDestination(std::move(buffer_tree));
   return absl::OkStatus();
-}
-
-InfeedManager* GetOrCreateInfeedManager(se::StreamExecutor* executor) {
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  stream_executor::gpu::GpuExecutor* gpu_executor =
-      stream_executor::gpu::ExtractGpuExecutor(executor);
-  auto* xla_state =
-      gpu_executor->getOrCreateXLAState<GpuExecutorXLAState>(executor);
-  return xla_state->getOrCreateInfeedManager(executor);
-#else   // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  return nullptr;
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
 }  // namespace gpu
