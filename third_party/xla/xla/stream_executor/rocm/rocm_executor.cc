@@ -16,20 +16,40 @@ limitations under the License.
 
 #include <unistd.h>
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <optional>
+#include <string>
+#include <utility>
+#include <variant>
 
 #include "absl/base/casts.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/numeric/int128.h"
+#include "absl/status/status.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "rocm/include/hip/hip_version.h"
 #include "rocm/rocm_config.h"
+#include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/event.h"
+#include "xla/stream_executor/event_based_timer.h"
+#include "xla/stream_executor/fft.h"
+#include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/gpu/gpu_collectives.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
+#include "xla/stream_executor/gpu/gpu_diagnostics.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
@@ -37,8 +57,13 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_runtime.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_timer.h"
+#include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/gpu/read_numa_node.h"
 #include "xla/stream_executor/integrations/device_mem_allocator.h"
+#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/dso_loader.h"
 #include "xla/stream_executor/platform/initialize.h"
@@ -49,6 +74,7 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_event.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/rocm/rocm_version_parser.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/env.h"

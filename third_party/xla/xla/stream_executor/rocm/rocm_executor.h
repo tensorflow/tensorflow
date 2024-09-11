@@ -1,4 +1,3 @@
-#include "xla/stream_executor/gpu/gpu_driver.h"
 /* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,10 +16,44 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_ROCM_ROCM_EXECUTOR_H_
 #define XLA_STREAM_EXECUTOR_ROCM_ROCM_EXECUTOR_H_
 
+#include <cstdint>
+#include <map>
+#include <memory>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <variant>
+
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/numeric/int128.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
+#include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/event.h"
+#include "xla/stream_executor/event_based_timer.h"
+#include "xla/stream_executor/fft.h"
+#include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_kernel.h"
+#include "xla/stream_executor/gpu/gpu_types.h"
+#include "xla/stream_executor/host_memory_allocation.h"
+#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/module_spec.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor::gpu {
 
