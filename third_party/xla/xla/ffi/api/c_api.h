@@ -54,6 +54,7 @@ typedef struct XLA_FFI_Extension_Base {
   XLA_FFI_Extension_Type type;
   struct XLA_FFI_Extension_Base* next;
 } XLA_FFI_Extension_Base;
+
 XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Extension_Base, next);
 
 //===----------------------------------------------------------------------===//
@@ -630,14 +631,14 @@ struct XLA_FFI_Metadata {
   XLA_FFI_Api_Version api_version;
   XLA_FFI_Handler_Traits traits;
 };
+
 XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Metadata, traits);
 
 struct XLA_FFI_Metadata_Extension {
-  size_t struct_size;
-  XLA_FFI_Extension_Type type;
-  XLA_FFI_Extension_Base* next;
+  XLA_FFI_Extension_Base extension_base;
   XLA_FFI_Metadata* metadata;
 };
+
 XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Metadata_Extension, metadata);
 
 //===----------------------------------------------------------------------===//
