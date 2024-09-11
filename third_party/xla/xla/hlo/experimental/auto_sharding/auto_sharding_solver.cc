@@ -565,7 +565,8 @@ AutoShardingSolverResult CallORToolsSolver(
         LOG(FATAL) << err_msg;
       } else {
         LOG(WARNING) << err_msg;
-        return AutoShardingSolverResult(absl::InternalError(err_msg), false);
+        return AutoShardingSolverResult(absl::InternalError(err_msg),
+                                        /*skip_auto_sharding=*/false);
       }
     }
   }
@@ -869,16 +870,17 @@ AutoShardingSolverResult SolveAndExtractSolution(
       }
     }
 #endif
-
     return AutoShardingSolverResult(
         absl::InternalError("MPSolver could not find any feasible solution."),
-        false);
+        /*skip_auto_sharding=*/false);
   } else if (status == operations_research::MPSolver::MODEL_INVALID) {
     LOG(FATAL) << "Solver says that the input MIP is invalid. This is most "
                   "likely a bug and should be reported.";
+    return AutoShardingSolverResult(absl::InternalError("Solver timed out."),
+                                    /*skip_auto_sharding=*/false);
   } else if (status != operations_research::MPSolver::OPTIMAL) {
-    auto err_msg = "Solver timed out.";
-    return AutoShardingSolverResult(absl::InternalError(err_msg), true);
+    return AutoShardingSolverResult(absl::InternalError("Solver timed out."),
+                                    /*skip_auto_sharding=*/true);
   }
 
   // Fingerprint the model & solution (useful when checking for determinism).
@@ -949,7 +951,7 @@ AutoShardingSolverResult SolveAndExtractSolution(
   PrintLargestInstructions(chosen_node_strategy, request);
   const AutoShardingSolverOutput output = {std::move(chosen_node_strategy),
                                            solver.Objective().Value()};
-  return AutoShardingSolverResult(output, false);
+  return AutoShardingSolverResult(output, /*skip_auto_sharding=*/false);
 }
 
 bool CostComponents::operator==(const CostComponents& other) const {

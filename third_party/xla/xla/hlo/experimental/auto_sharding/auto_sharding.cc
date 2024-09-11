@@ -4135,7 +4135,6 @@ absl::StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
               << num_node_terms.second + num_edge_terms.second;
 
     // ----- Call the ILP Solver -----
-    spmd::AutoShardingSolverOutput output;
     std::string request_name = absl::StrCat("mesh_idx_", mesh_idx);
     auto solver_result =
         Solve(*module, *hlo_live_range, strategy_map, strategy_groups,
@@ -4146,12 +4145,11 @@ absl::StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
       return AutoShardingResult::kModuleUnchangedNoShardingPerformed;
     } else if (!solver_result.status.ok()) {
       return AutoShardingResult::kModuleUnchanged;
-    } else {
-      TF_ASSIGN_OR_RETURN(auto solution, solver_result.status);
-      output = solution;
-      if (mesh_idx == partial_mesh_shapes.size() - 1) {
-        this->solver_optimal_objective_value_ = output.cost;
-      }
+    }
+    TF_ASSIGN_OR_RETURN(spmd::AutoShardingSolverOutput output,
+                        solver_result.status);
+    if (mesh_idx == partial_mesh_shapes.size() - 1) {
+      this->solver_optimal_objective_value_ = output.cost;
     }
 
     XLA_VLOG_LINES(5, PrintAutoShardingSolution(
@@ -4271,6 +4269,39 @@ std::unique_ptr<HloModule> CloneModule(const HloModule* module) {
   return module_clone;
 }
 
+absl::Status MoveComputationsFromModuleToModule(HloModule* from_module,
+                                                HloModule* to_module) {
+  TF_RETURN_IF_ERROR(from_module->RemoveUnusedComputations());
+  const std::vector<HloComputation*>& original_module_computations =
+      to_module->MakeComputationSorted();
+  const std::vector<HloComputation*>& clone_module_computations =
+      from_module->MakeComputationSorted();
+
+  if (original_module_computations.size() != clone_module_computations.size()) {
+    return absl::InternalError(
+        "The cloned and the original modules do not have the same number "
+        "of computations. This is a bug and should be reported.");
+  }
+
+  absl::flat_hash_map<HloComputation*, HloComputation*>
+      computation_replacements;
+  for (size_t i = 0; i < original_module_computations.size(); ++i) {
+    HloComputation* original_computation = original_module_computations[i];
+    HloComputation* new_computation = clone_module_computations[i];
+    computation_replacements[original_computation] = new_computation;
+  }
+
+  to_module->ReplaceComputations(computation_replacements);
+  to_module->MoveComputationsFrom(from_module);
+
+  *to_module->mutable_config().mutable_entry_computation_layout() =
+      from_module->entry_computation_layout();
+  to_module->input_output_alias_config() =
+      from_module->input_output_alias_config();
+  to_module->buffer_donor_config() = from_module->buffer_donor_config();
+  return absl::OkStatus();
+}
+
 AutoSharding::AutoSharding(const AutoShardingOption& option)
     : option_(option) {}
 
@@ -4377,12 +4408,12 @@ absl::StatusOr<bool> AutoSharding::Run(
 
   absl::flat_hash_map<std::string, const HloInstruction*>
       sharding_propagation_solution;
-  std::unique_ptr<HloModule> module_with_default_solution = nullptr;
   if (option_.use_sharding_propagation_for_default_shardings) {
-    module_with_default_solution = CloneModule(module);
+    std::unique_ptr<HloModule> module_with_default_solution =
+        CloneModule(module);
     // TODO(pratikf): Ensure that we're passing the correct custom call
     // sharding helper to the sharding propagation pass.
-    auto sharding_prop = ShardingPropagation(
+    ShardingPropagation sharding_propagation(
         /*is_spmd */ true, /*propagate_metadata */ false,
         /*allow_spmd_sharding_propagation_to_output*/
         module->config().allow_spmd_sharding_propagation_to_output(),
@@ -4390,8 +4421,8 @@ absl::StatusOr<bool> AutoSharding::Run(
         /*cse_prevention_only */ false,
         /*sharding_helper*/ nullptr);
 
-    CHECK_OK(sharding_prop.Run(module_with_default_solution.get(),
-                               execution_threads));
+    CHECK_OK(sharding_propagation.Run(module_with_default_solution.get(),
+                                      execution_threads));
     VLOG(6) << module_with_default_solution->ToString();
     for (const auto computation :
          module_with_default_solution->computations()) {
@@ -4404,15 +4435,14 @@ absl::StatusOr<bool> AutoSharding::Run(
   }
 
   size_t num_meshes = mesh_shapes.size();
-  std::vector<std::unique_ptr<HloModule>> modules(num_meshes);
   std::vector<absl::StatusOr<AutoShardingResult>> changed(
       num_meshes, AutoShardingResult::kModuleUnchanged);
-  std::vector<double> objective_values(num_meshes, -1);
 
   VLOG(1) << "Original mesh shape "
           << spmd::ToString(option_.device_mesh_shape);
   double min_objective_value = std::numeric_limits<double>::max();
   int min_mesh_shape_index = -1;
+  std::unique_ptr<HloModule> min_mesh_shape_module;
   bool skip_auto_sharding = true;
   for (size_t i = 0; i < mesh_shapes.size(); ++i) {
     VLOG(1) << "Trying mesh shape " << spmd::ToString(mesh_shapes[i]);
@@ -4424,16 +4454,14 @@ absl::StatusOr<bool> AutoSharding::Run(
       this_option.device_mesh_beta.clear();
       TF_RETURN_IF_ERROR(this_option.CheckAndSetup());
     }
-    auto pass = new AutoShardingImplementation(this_option);
-    auto module_clone = CloneModule(module);
-    auto pass_result =
+    auto pass = std::make_unique<AutoShardingImplementation>(this_option);
+    std::unique_ptr<HloModule> module_clone = CloneModule(module);
+    absl::StatusOr<AutoShardingResult> pass_result =
         pass->RunAutoSharding(module_clone.get(), replicated_small_tensors,
                               execution_threads, sharding_propagation_solution);
 
     changed[i] = pass_result;
-    objective_values[i] = pass->GetSolverOptimalObjectiveValue();
-    modules[i] = std::move(module_clone);
-    delete pass;
+    double this_mesh_objective_value = pass->GetSolverOptimalObjectiveValue();
     if (!pass_result.ok()) {
       VLOG(1) << "Mesh shape " << spmd::ToString(mesh_shapes[i])
               << " led to the following error: "
@@ -4441,14 +4469,15 @@ absl::StatusOr<bool> AutoSharding::Run(
       continue;
     }
     VLOG(1) << "Mesh shape " << spmd::ToString(mesh_shapes[i])
-            << " has objective value " << objective_values[i];
-    if (objective_values[i] >= 0 && min_objective_value > objective_values[i]) {
+            << " has objective value " << this_mesh_objective_value;
+    if (this_mesh_objective_value >= 0 &&
+        min_objective_value > this_mesh_objective_value) {
       min_mesh_shape_index = i;
-      min_objective_value = objective_values[i];
+      min_mesh_shape_module = std::move(module_clone);
+      min_objective_value = this_mesh_objective_value;
     }
-    if (pass_result.ok() &&
-        pass_result.value() !=
-            AutoShardingResult::kModuleUnchangedNoShardingPerformed) {
+    if (*pass_result !=
+        AutoShardingResult::kModuleUnchangedNoShardingPerformed) {
       skip_auto_sharding = false;
     }
   }
@@ -4457,12 +4486,10 @@ absl::StatusOr<bool> AutoSharding::Run(
   if (skip_auto_sharding) {
     module_is_changed = false;  // The auto-sharding solver timed out.
   } else {
-    std::string trying_to_find;
-    if (option_.try_multiple_mesh_shapes) {
-      trying_to_find = "a device mesh (and the corresponding shardings)";
-    } else {
-      trying_to_find = "shardings";
-    }
+    std::string trying_to_find =
+        option_.try_multiple_mesh_shapes
+            ? "a device mesh (and the corresponding shardings)"
+            : "shardings";
     CHECK_GE(min_mesh_shape_index, 0)
         << "The auto-sharding pass could not find " << trying_to_find
         << " that works for this input. This could be the result of a low "
@@ -4482,42 +4509,9 @@ absl::StatusOr<bool> AutoSharding::Run(
                 << " which had the minimal solver objective value of "
                 << min_objective_value;
         chosen_mesh_shape_ = mesh_shapes[min_mesh_shape_index];
-        TF_RETURN_IF_ERROR(
-            modules[min_mesh_shape_index]->RemoveUnusedComputations());
-        const std::vector<HloComputation*>& original_module_computations =
-            module->MakeComputationSorted();
-        const std::vector<HloComputation*>& clone_module_computations =
-            modules[min_mesh_shape_index]->MakeComputationSorted();
-        if (original_module_computations.size() !=
-            clone_module_computations.size()) {
-          return absl::InternalError(
-              "The cloned and the original modules do not have the same number "
-              "of computations. This is a bug and should be reported.");
-        }
-
-        absl::flat_hash_map<HloComputation*, HloComputation*>
-            computation_replacements;
-        for (size_t i = 0; i < original_module_computations.size(); ++i) {
-          HloComputation* original_computation =
-              original_module_computations[i];
-          HloComputation* new_computation = clone_module_computations[i];
-          computation_replacements[original_computation] = new_computation;
-        }
-
-        module->ReplaceComputations(computation_replacements);
-        module->MoveComputationsFrom(modules[min_mesh_shape_index].get());
-
-        *module->mutable_config().mutable_entry_computation_layout() =
-            modules[min_mesh_shape_index]->entry_computation_layout();
-        module->input_output_alias_config() =
-            modules[min_mesh_shape_index]->input_output_alias_config();
-        module->buffer_donor_config() =
-            modules[min_mesh_shape_index]->buffer_donor_config();
-
+        TF_RETURN_IF_ERROR(MoveComputationsFromModuleToModule(
+            min_mesh_shape_module.get(), module));
         module_is_changed = true;
-      } else if (changed[min_mesh_shape_index].value() ==
-                 AutoShardingResult::kModuleUnchanged) {
-        module_is_changed = false;
       } else {
         module_is_changed = false;
       }
@@ -4525,7 +4519,7 @@ absl::StatusOr<bool> AutoSharding::Run(
   }
 
   absl::Time end_time = absl::Now();
-  auto duration = end_time - start_time;
+  absl::Duration duration = end_time - start_time;
   LOG(INFO) << "Auto Sharding took " << absl::ToInt64Seconds(duration)
             << " seconds";
 #if !defined(__APPLE__)
