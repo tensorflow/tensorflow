@@ -123,6 +123,7 @@ cc_library(
     hdrs = ["scoped_activate_context.h"],
     deps = [
         ":context",
+        ":gpu_executor_header",
         "@com_google_absl//absl/log:check",
         "@local_tsl//tsl/platform:logging",
     ],
