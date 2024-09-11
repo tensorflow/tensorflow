@@ -211,27 +211,6 @@ WeightCacheBuilder& WeightCacheBuilder::operator=(WeightCacheBuilder&& other) {
 
 WeightCacheBuilder::~WeightCacheBuilder() { Reset(); }
 
-namespace {
-
-[[nodiscard /*Writing data may fail.*/]]
-bool WriteData(const int fd, const uint8_t* data, size_t size,
-               const char* const file_path, const char* step_description) {
-  for (size_t bytes = 0; bytes < size;) {
-    const auto written_bytes = write(fd, data + bytes, size - bytes);
-    if (written_bytes == -1) {
-      TFLITE_LOG_PROD(
-          tflite::TFLITE_LOG_ERROR,
-          "XNNPack weight cache: file write incomplete (%s). %s: %s.",
-          file_path, step_description, strerror(errno))
-      return false;
-    }
-    bytes += written_bytes;
-  }
-  return true;
-}
-
-}  // namespace
-
 bool WeightCacheBuilder::Start(const char* path) {
   Reset();
   ScopeGuard reset_on_error([this] { Reset(); });
@@ -242,21 +221,17 @@ bool WeightCacheBuilder::Start(const char* path) {
   } else {
     fd_.Reset(open(file_path_.c_str(), O_CREAT | O_TRUNC | O_WRONLY, 0644));
   }
-  if (!fd_.IsValid()) {
-    TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR, "Could not open file ('%s'): %s.",
-                    file_path_.c_str(), strerror(errno));
-    return false;
-  }
+  XNNPACK_RETURN_CHECK(fd_.IsValid(), "could not open file ('%s'): %s.",
+                       file_path_.c_str(), strerror(errno));
 
   // Write data in the header, this will be overwritten in the `Finalize` call.
   // We explicitly set the header as invalid. If any error happens during
   // the build, reloading the cache file will fail.
   const XNNPackCacheHeader header{XNNPackCacheHeader::kInvalidHeader};
 
-  if (!WriteData(fd_.Value(), (const uint8_t*)&header, sizeof(header),
-                 file_path_.c_str(), "padding for flatbuffer offset")) {
-    return false;
-  }
+  XNNPACK_RETURN_CHECK(fd_.Write(&header, sizeof(header)),
+                       "could not write padding for flatbuffer offset in %s.",
+                       file_path_.c_str());
 
   schema_.base_offset = Align(sizeof(header), kMinAlignment);
 
@@ -268,6 +243,7 @@ void WeightCacheBuilder::Reset() {
   fd_.Close();
   data_.reset(nullptr);
   capacity_ = 0;
+  schema_ = cache::schema::BufferListT();
 }
 
 void* WeightCacheBuilder::Reserve(size_t size) {
@@ -284,7 +260,7 @@ void* WeightCacheBuilder::Reserve(size_t size) {
 BufferLocation WeightCacheBuilder::Append(PackIdentifier pack_id,
                                           const void* data, uint64_t size) {
   XNNPACK_ABORT_CHECK(IsStarted(),
-                      "Cannot append data to an unstarted builder.");
+                      "cannot append data to an unstarted builder.");
   // Add some padding so that the cache file can be mmaped and the buffer
   // stays aligned correctly.
   const size_t offset = Align(fd_.GetPos(), kMinAlignment);
@@ -301,8 +277,9 @@ BufferLocation WeightCacheBuilder::Append(PackIdentifier pack_id,
   buffer.size = loc.size;
   schema_.buffers.push_back(std::make_unique<cache::schema::BufferT>(buffer));
 
-  if (!WriteData(fd_.Value(), reinterpret_cast<const uint8_t*>(data), size,
-                 file_path_.c_str(), "Append buffer to cache file")) {
+  if (!fd_.Write(data, size)) {
+    TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR, file_path_.c_str(),
+                    "XNNPack weight cache: cannot append buffer to cache file");
     return BufferLocation::Invalid();
   }
   return loc;
@@ -311,13 +288,9 @@ BufferLocation WeightCacheBuilder::Append(PackIdentifier pack_id,
 bool WeightCacheBuilder::ShouldFinalize() const { return fd_.IsValid(); }
 
 bool WeightCacheBuilder::Finalize() {
-  if (!fd_.IsValid()) {
-    TFLITE_LOG_PROD(
-        tflite::TFLITE_LOG_ERROR,
-        "XNNPack weight cache: cache file ('%s') is not open for writing: %s.",
-        file_path_.c_str(), strerror(errno))
-    return false;
-  }
+  XNNPACK_RETURN_CHECK(fd_.IsValid(),
+                       "cache file ('%s') is not open for writing: %s.",
+                       file_path_.c_str(), strerror(errno));
 
   flatbuffers::FlatBufferBuilder builder;
   // Add a fake size and the base offset to mutate them afterwards. Otherwise
@@ -328,21 +301,14 @@ bool WeightCacheBuilder::Finalize() {
   // Add some padding so that the cache file can be mmaped and the buffer
   // stays aligned correctly.
   const size_t layout_offset = Align(fd_.GetPos(), kMinAlignment);
-  if (fd_.SetPos(layout_offset) != layout_offset) {
-    TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
-                    "XNNPack weight cache: could not move in the file: %s",
-                    strerror(errno))
-    return false;
-  }
+  XNNPACK_RETURN_CHECK(fd_.SetPos(layout_offset) != -1,
+                       "could not move in the file: %s", strerror(errno));
 
-  if (sizeof(XNNPackCacheHeader::xnnpack_build_identifier) !=
-      xnn_experimental_get_build_identifier_size()) {
-    TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
-                    "XNNPack weight cache: cache file ('%s') header cannot "
-                    "hold XNNPack's build identifier: %s.",
-                    file_path_.c_str(), strerror(errno))
-    return false;
-  }
+  XNNPACK_RETURN_CHECK(
+      sizeof(XNNPackCacheHeader::xnnpack_build_identifier) ==
+          xnn_experimental_get_build_identifier_size(),
+      "cache file ('%s') header cannot hold XNNPack's build identifier: %s.",
+      file_path_.c_str(), strerror(errno));
 
   XNNPackCacheHeader header{XNNPackCacheHeader::kVersion};
   memcpy(header.xnnpack_build_identifier,
@@ -352,23 +318,15 @@ bool WeightCacheBuilder::Finalize() {
   header.buffer_list_size = builder.GetSize();
 
   // Write the flatbuffer which serves as a header to index the buffer data.
-  if (!WriteData(fd_.Value(), builder.GetBufferPointer(), builder.GetSize(),
-                 file_path_.c_str(), "Buffer list")) {
-    return false;
-  }
+  XNNPACK_RETURN_CHECK(fd_.Write(builder.GetBufferPointer(), builder.GetSize()),
+                       "cannot write buffer list to '%s'.", file_path_.c_str());
 
   // Write the header at the beginning of the file.
-  if (fd_.SetPos(0) != 0) {
-    TFLITE_LOG_PROD(
-        tflite::TFLITE_LOG_ERROR,
-        "XNNPack weight cache: could not move in the file to write header: %s",
-        strerror(errno))
-    return false;
-  }
-  if (!WriteData(fd_.Value(), (const uint8_t*)&header, sizeof(header),
-                 file_path_.c_str(), "Writing header")) {
-    return false;
-  }
+  XNNPACK_RETURN_CHECK(fd_.SetPos(0) != -1,
+                       "could not move in the file to write header to %s",
+                       strerror(errno));
+  XNNPACK_ABORT_CHECK(fd_.Write(&header, sizeof(header)),
+                      "cannot write cache header to %s.", file_path_.c_str());
 
   TFLITE_LOG_PROD(tflite::TFLITE_LOG_VERBOSE,
                   "XNNPack weight cache: written to '%s'.", file_path_.c_str());
@@ -437,9 +395,8 @@ bool MMapWeightCacheProvider::Load() {
   cache_key_to_offset_.clear();
 
   if (temporary_file_descriptor_.IsValid()) {
-    if (!mmap_handle_.Map(temporary_file_descriptor_, file_path_.c_str())) {
-      return false;
-    }
+    XNNPACK_RETURN_CHECK(
+        mmap_handle_.Map(temporary_file_descriptor_, file_path_.c_str()));
   } else {
     XNNPACK_ABORT_CHECK(!file_path_.empty(),
                         "Path wasn't provided to weight cache provider.");
@@ -450,18 +407,13 @@ bool MMapWeightCacheProvider::Load() {
       return false;
     }
 
-    if (!mmap_handle_.Map(file_path_.c_str())) {
-      return false;
-    }
+    XNNPACK_RETURN_CHECK(mmap_handle_.Map(file_path_.c_str()));
   }
 
   ScopeGuard unmap_on_fail([this] { mmap_handle_.UnMap(); });
 
-  if (mmap_handle_.size() < sizeof(XNNPackCacheHeader)) {
-    TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
-                    "XNNPack weight cache: invalid cache file size.");
-    return false;
-  }
+  XNNPACK_RETURN_CHECK(mmap_handle_.size() >= sizeof(XNNPackCacheHeader),
+                       "invalid cache file size.");
 
   const XNNPackCacheHeader header = [this] {
     XNNPackCacheHeader header;
@@ -469,64 +421,39 @@ bool MMapWeightCacheProvider::Load() {
     return header;
   }();
 
-  if (header.version != XNNPackCacheHeader::kVersion) {
-    TFLITE_LOG(tflite::TFLITE_LOG_VERBOSE,
-               "XNNPack weight cache: incompatible header version. Cache "
-               "needs to be built again.");
-    return false;
-  }
+  XNNPACK_RETURN_CHECK(
+      header.version == XNNPackCacheHeader::kVersion,
+      "incompatible header version. Cache needs to be built again.");
 
-  if (!xnn_experimental_check_build_identifier(
-          header.xnnpack_build_identifier,
-          sizeof(header.xnnpack_build_identifier))) {
-    TFLITE_LOG(tflite::TFLITE_LOG_VERBOSE,
-               "XNNPack weight cache: incompatible XNNPack version. Cache "
-               "needs to be built again.");
-    return false;
-  }
+  XNNPACK_RETURN_CHECK(xnn_experimental_check_build_identifier(
+                           header.xnnpack_build_identifier,
+                           sizeof(header.xnnpack_build_identifier)),
+                       "XNNPack weight cache: incompatible XNNPack version. "
+                       "Cache needs to be built again.");
 
-  if (header.buffer_list_offset >= mmap_handle_.size()) {
-    TFLITE_LOG_PROD(
-        tflite::TFLITE_LOG_ERROR,
-        "XNNPack weight cache: invalid offset for buffer list descriptor.");
-    return false;
-  }
+  XNNPACK_RETURN_CHECK(header.buffer_list_offset < mmap_handle_.size(),
+                       "invalid offset for buffer list descriptor.");
 
-  if (header.buffer_list_size !=
-      mmap_handle_.size() - header.buffer_list_offset) {
-    TFLITE_LOG_PROD(
-        tflite::TFLITE_LOG_ERROR,
-        "XNNPack weight cache: invalid size for buffer list descriptor.");
-    return false;
-  }
+  XNNPACK_RETURN_CHECK(header.buffer_list_size ==
+                           mmap_handle_.size() - header.buffer_list_offset,
+                       "invalid size for buffer list descriptor.");
 
   // Verifiy the flabuffer part of the file.
   flatbuffers::Verifier verifier(
       mmap_handle_.data() + header.buffer_list_offset, header.buffer_list_size);
-  if (!cache::schema::VerifyBufferListBuffer(verifier)) {
-    TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
-                    "XNNPack weight cache: buffer list validation failed.");
-    return false;
-  }
+  XNNPACK_RETURN_CHECK(cache::schema::VerifyBufferListBuffer(verifier),
+                       "buffer list validation failed.");
 
   // Load flatbuffer.
   const cache::schema::BufferList* buffer_list = cache::schema::GetBufferList(
       mmap_handle_.data() + header.buffer_list_offset);
-  if (!buffer_list) {
-    TFLITE_LOG_PROD(
-        tflite::TFLITE_LOG_ERROR,
-        "XNNPack weight cache: could not get packed weights from flatbuffer.");
-    return false;
-  }
+  XNNPACK_RETURN_CHECK(buffer_list,
+                       "could not get packed weights from flatbuffer.");
+
   mmap_buffer_base_offset_ = buffer_list->base_offset();
   if (const auto buffers = buffer_list->buffers(); buffers) {
     for (auto* buffer : *buffers) {
-      if (!buffer) {
-        TFLITE_LOG_PROD(
-            tflite::TFLITE_LOG_ERROR,
-            "XNNPack weight cache: Invalid buffer address in buffer list.");
-        return false;
-      }
+      XNNPACK_RETURN_CHECK(buffer, "invalid buffer address in buffer list.");
       cache_key_to_offset_.emplace(
           PackIdentifier{/*pack_algorithm_id=*/buffer->packing_algorithm_id(),
                          /*weights_id=*/buffer->weights_id(),
@@ -616,12 +543,8 @@ bool MMapWeightCacheProvider::Finalize() {
   if (IsFinalized()) {
     return true;
   }
-  if (file_path_.empty()) {
-    TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
-                    "XNNPack weight cache: file path wasn't set. Cannot "
-                    "finalize the cache.");
-    return false;
-  }
+  XNNPACK_RETURN_CHECK(!file_path_.empty(),
+                       "file path wasn't set. Cannot finalize the cache.");
   if (IsInMemoryCachePath(file_path_)) {
     // Duplicate the file descriptor to avoid loosing the temporary file when
     // the builder is reset.
