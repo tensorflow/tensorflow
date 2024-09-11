@@ -1080,6 +1080,39 @@ ENTRY %entry {
   EXPECT_THAT(dot, op::Sharding("{devices=[4,1]0,1,2,3}"));
 }
 
+TEST_F(AutoShardingTest, DotInsertReshardingReshapes) {
+  constexpr absl::string_view kHloString = R"(
+HloModule module
+ENTRY %entry {
+  %param0 = f32[256,256]{1,0} parameter(0), sharding={devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}
+  %param1 = f32[256,256]{1,0} parameter(1), sharding={devices=[2,2]0,1,2,3}
+  %dot = f32[256,256]{1,0} dot(%param0, %param1), lhs_contracting_dims={1}, rhs_contracting_dims={1}, sharding={devices=[2,2]0,1,2,3}
+  ROOT %copy = f32[256,256]{1,0} copy(%dot)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  AutoShardingOption option;
+  option.enable = true;
+  option.device_mesh_shape = {2, 2};
+  option.device_mesh_ids = {0, 1, 2, 3};
+  option.device_mesh_alpha = {1.0, 1.0};
+  option.device_mesh_beta = {0.01, 1.0};
+  option.preserve_shardings =
+      AutoShardingOption::PreserveShardingsType::kKeepAllShardings;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
+  VLOG(2) << module->ToString();
+  EXPECT_TRUE(changed);
+  const HloInstruction* param0 = FindInstruction(module.get(), "param0");
+  const HloInstruction* param1 = FindInstruction(module.get(), "param1");
+  const HloInstruction* dot = FindInstruction(module.get(), "dot");
+  ASSERT_NE(param0, nullptr);
+  ASSERT_NE(param1, nullptr);
+  ASSERT_NE(dot, nullptr);
+  EXPECT_EQ(dot->operand(0), param0);
+  EXPECT_NE(dot->operand(1), param1);
+}
+
 TEST_F(AutoShardingTest, DotLHSTwoNonContractingDims) {
   constexpr absl::string_view kHloString = R"(
 HloModule module

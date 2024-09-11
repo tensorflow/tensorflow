@@ -204,8 +204,12 @@ struct AutoShardingOption {
   // Split constant expressions as well when invoking HloConstantSplitter.
   bool enable_expression_constant_splitter = false;
 
-  // Whether to post-process the solution by reshaping / resharding tensors.
-  bool insert_resharding_reshapes = false;
+  // Whether to post-process the solution by reshaping/resharding tensors for
+  // non-dot/conv ops. We insert the reshapes for dots/convs as this empirically
+  // gives better auto-sharding outcomes.
+  // TODO(b/365834709) Investigate the need for resharding reshapes across all
+  // ops in a principled manner.
+  bool insert_resharding_reshapes_for_non_dot_ops = false;
 
   // Prints a debug string.
   std::string ToString() const;

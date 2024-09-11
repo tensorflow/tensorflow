@@ -142,8 +142,8 @@ std::string AutoShardingOption::ToString() const {
       absl::StrCat("allow_shardings_small_dims_across_many_devices: ",
                    allow_shardings_small_dims_across_many_devices));
 
-  lines.push_back(
-      absl::StrCat("insert_resharding_reshapes: ", insert_resharding_reshapes));
+  lines.push_back(absl::StrCat("insert_resharding_reshapes_for_non_dot_ops: ",
+                               insert_resharding_reshapes_for_non_dot_ops));
 
   return absl::StrJoin(lines, "\n");
 }

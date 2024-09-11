@@ -2321,6 +2321,7 @@ absl::Status InsertReshardReshapes(
     const StrategyMap& strategy_map, const CostGraph& cost_graph,
     absl::Span<const NodeStrategyIdx> s_val,
     const ClusterEnvironment& cluster_env, bool crash_at_error,
+    bool insert_resharding_reshapes_for_non_dot_ops,
     absl::flat_hash_map<std::string, std::vector<HloSharding>>&
         preserve_shardings) {
   const std::vector<HloInstruction*>& instructions = sequence.instructions();
@@ -2403,11 +2404,17 @@ absl::Status InsertReshardReshapes(
                                           device_mesh, resharding_cache));
         }
       }
-    } else if (inst->opcode() == HloOpcode::kOutfeed ||
-               inst->opcode() == HloOpcode::kSendDone ||
-               inst->opcode() == HloOpcode::kSend ||
-               inst->opcode() == HloOpcode::kRecv ||
-               inst->opcode() == HloOpcode::kRecvDone) {
+    }
+
+    if (!insert_resharding_reshapes_for_non_dot_ops) {
+      continue;
+    }
+
+    if (inst->opcode() == HloOpcode::kOutfeed ||
+        inst->opcode() == HloOpcode::kSendDone ||
+        inst->opcode() == HloOpcode::kSend ||
+        inst->opcode() == HloOpcode::kRecv ||
+        inst->opcode() == HloOpcode::kRecvDone) {
     } else {
       if (inst->shape().IsTuple()) {
         // While we do not support nested tuples fully (b/332951306), this is a
@@ -4175,14 +4182,11 @@ absl::StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
         return AutoShardingResult::kModuleUnchanged;
       }
 
-      if (!option_.insert_resharding_reshapes) {
-        continue;
-      }
-
       if (!InsertReshardReshapes(
                sequence, instructions_to_shard, strategy_map, cost_graph,
                output.s_val, cluster_env,
                /* crash_at_error */ !option_.try_multiple_mesh_shapes,
+               option_.insert_resharding_reshapes_for_non_dot_ops,
                preserve_shardings)
                .ok()) {
         return AutoShardingResult::kModuleUnchanged;
