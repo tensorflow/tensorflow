@@ -471,16 +471,7 @@ PrepareIfrtInputs(const xla::PyLoadedExecutable& executable,
       continue;
     }
 
-    const jax::Sharding* py_array_sharding;
-    int num_arr_devices;
-    if (nb::try_cast<const jax::Sharding*>(py_array.sharding(),
-                                           py_array_sharding)) {
-      num_arr_devices = py_array_sharding->SafeNumDevices(py_array.sharding());
-    } else {
-      nb::set device_set = py_array.sharding().attr("device_set");
-      num_arr_devices = device_set.size();
-    }
-    if (num_arr_devices != num_global_devices) {
+    if (sharding_num_devices != num_global_devices) {
       CallShardArgFallback(arg.ptr(), in_shardings[dce_index],
                            in_device_local_layout, shard_arg_fallback,
                            num_args_arrays, keep_alive_objects);
