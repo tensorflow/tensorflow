@@ -167,6 +167,8 @@ class GpuExecutable : public Executable {
     return buffer_assignment_.get();
   }
 
+  const SequentialThunk& GetThunk() { return *thunks_; }
+
  private:
   // Use GpuExecutable::Create() to create an instance.
   explicit GpuExecutable(Params params);

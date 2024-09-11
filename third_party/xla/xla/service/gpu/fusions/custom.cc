@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/kernels/custom_kernel_fusion.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/runtime/copy_thunk.h"
 #include "xla/service/gpu/runtime/custom_call_thunk.h"
 #include "xla/service/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/service/gpu/runtime/gemm_thunk.h"
@@ -774,9 +775,11 @@ absl::StatusOr<FusionEmissionResult> EmitCustomCall(
   return result;
 }
 
+template <typename NcclThunkType, typename HloInstType>
 absl::StatusOr<FusionEmissionResult> EmitCollective(
     IrEmitterContext& ir_emitter_context, const HloFusionAdaptor& adaptor,
-    const HloFusionInstruction& fusion_instr, const HloInstruction* instr) {
+    const HloFusionInstruction& fusion_instr, const HloInstType* instr,
+    bool use_global_device_ids) {
   if (instr->opcode() != HloOpcode::kReduceScatter) {
     return absl::UnimplementedError(
         "Dynamic slice fusion with collectives only works for reduce-scatter "
@@ -825,56 +828,75 @@ absl::StatusOr<FusionEmissionResult> EmitCollective(
         "operation.");
   }
 
-  // Provide fake allocations for inputs and outputs.
+  // Provide fake allocations for inputs and outputs. The dynamic-slice thunk
+  // will own these allocations.
   std::vector<std::unique_ptr<BufferAllocation>> fake_allocations(2);
   unsigned fake_arg_idx = 0;
   int64_t operand_byte_size =
       ShapeUtil::ByteSizeOf(instr->operand(fake_arg_idx)->shape());
   fake_allocations[fake_arg_idx] = std::make_unique<BufferAllocation>(
       /*index=*/fake_arg_idx, operand_byte_size, /*color=*/0);
-  BufferAllocation::Slice slice_operand(fake_allocations[fake_arg_idx].get(), 0,
-                                        operand_byte_size);
+  BufferAllocation::Slice src(
+      /*allocation=*/fake_allocations[fake_arg_idx].get(), /*offset=*/0,
+      /*size=*/operand_byte_size);
   fake_arg_idx++;
   TF_RET_CHECK(instr->shape().IsArray() &&
                "The output is not expected to be a tuple.");
   int64_t out_fake_byte_size =
       ShapeUtil::ByteSizeOf(instr->shape());  // TODO: we don't need this
   fake_allocations[fake_arg_idx] = std::make_unique<BufferAllocation>(
-      /*index=*/fake_arg_idx, out_fake_byte_size, /*color=*/0);
-  BufferAllocation::Slice slice_out_fake(fake_allocations[fake_arg_idx].get(),
-                                         0, out_fake_byte_size);
+      /*index=*/fake_arg_idx, /*size*/ out_fake_byte_size, /*color=*/0);
+  BufferAllocation::Slice dst(
+      /*allocation=*/fake_allocations[fake_arg_idx].get(),
+      /*offset=*/0, /*size=*/out_fake_byte_size);
 
-  // Generate the hero thunk and wrap it in a dynamic-slice thunk.
-  ThunkSequence seq;
-  auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(instr);
   std::vector<NcclCollectiveThunk::Buffer> buffers;
   const Shape& src_shape = instr->operand(0)->shape();
   const Shape& dst_shape = instr->shape();
   buffers.push_back(NcclCollectiveThunk::Buffer{
-      ShapeUtil::ElementsIn(src_shape), slice_operand, slice_out_fake,
-      src_shape.layout().memory_space(), dst_shape.layout().memory_space(),
-      nullptr, nullptr});
+      /*element_count=*/ShapeUtil::ElementsIn(src_shape), /*source_buffer=*/src,
+      /*destination_buffer=*/dst,
+      /*source_memory_space=*/src_shape.layout().memory_space(),
+      /*destination_memory_space=*/dst_shape.layout().memory_space(),
+      /*source_value=*/nullptr,
+      /*destination_value=*/nullptr});
 
-  if (instr->opcode() == HloOpcode::kReduceScatter) {
-    int64_t replica_count = instr->GetModule()->config().replica_count();
-    int64_t partition_count = instr->GetModule()->config().num_partitions();
-    auto rs = static_cast<const HloReduceScatterInstruction*>(instr);
-    TF_RETURN_IF_ERROR(NcclReduceScatterStartThunk::CheckImplementable(
-        rs, replica_count, partition_count));
+  ThunkSequence seq;
+  auto thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(instr);
+  int64_t replica_count = instr->GetModule()->config().replica_count();
+  int64_t partition_count = instr->GetModule()->config().num_partitions();
+  absl::Status implementable_status =
+      NcclThunkType::CheckImplementable(instr, replica_count, partition_count);
+  bool is_degenerate = GetNcclCollectiveConfig(instr, use_global_device_ids)
+                           .IsDegenerate(replica_count, partition_count);
 
-    // TODO: add special handling for degenerate case - where no communication
-    // is needed. Just copy.
-    auto rs_start_thunk = std::make_unique<NcclReduceScatterStartThunk>(
-        thunk_info, NcclApi::Default(), rs, buffers);
-    auto rs_done = std::make_unique<NcclCollectiveDoneThunk>(
+  if (is_degenerate) {
+    // Degenerate collectives are simply identity function. Buffer
+    // assignment expects a copy, so that's what we do.
+    for (int64_t i = 0; i < buffers.size(); i++) {
+      const Shape shape = instr->operand(i)->shape();
+      TF_RET_CHECK(shape == instr->shape())
+          << "Expected operand shape to be equal to result shape, because the "
+             "collective is degenerate: "
+          << shape.ToString() << " vs " << instr->shape().ToString();
+      seq.emplace_back(std::make_unique<DeviceToDeviceCopyThunk>(
+          thunk_info,
+          /*source_buffer=*/buffers[i].source_buffer,
+          /*destination_buffer=*/buffers[i].destination_buffer,
+          /*mem_size=*/ShapeUtil::ByteSizeOf(shape)));
+    }
+  } else if (implementable_status.ok()) {
+    auto collective_start_thunk = std::make_unique<NcclThunkType>(
+        thunk_info, NcclApi::Default(), instr, buffers);
+    auto collective_done_thunk = std::make_unique<NcclCollectiveDoneThunk>(
         /*kind=*/Thunk::kNcclReduceScatterDone,
-        /*thunk_info=*/Thunk::ThunkInfo::WithProfileAnnotation(rs),
-        /*async_events=*/rs_start_thunk->async_events(),
+        /*thunk_info=*/Thunk::ThunkInfo::WithProfileAnnotation(instr),
+        /*async_events=*/collective_start_thunk->async_events(),
         /*async_stream_kind=*/AsyncStreamKind::kCollective);
-    seq.emplace_back(std::move(rs_start_thunk));
-    seq.emplace_back(std::move(rs_done));
+    seq.emplace_back(std::move(collective_start_thunk));
+    seq.emplace_back(std::move(collective_done_thunk));
   } else {
-    return absl::InternalError("Expected reduce-scatter hero instruction");
+    return implementable_status;
   }
 
   std::unique_ptr<Thunk> thunk = std::make_unique<DynamicSliceThunk>(
@@ -946,8 +968,13 @@ absl::StatusOr<FusionEmissionResult> DynamicSliceFusion::Emit(
                      return node.opcode() == HloOpcode::kReduceScatter;
                    });
   if (maybe_collective != std::nullopt) {
-    return EmitCollective(ir_emitter_context, adaptor, fusion,
-                          &maybe_collective->instruction());
+    const HloReduceScatterInstruction* rs =
+        Cast<const HloReduceScatterInstruction>(
+            &maybe_collective->instruction());
+    return EmitCollective<NcclReduceScatterStartThunk,
+                          HloReduceScatterInstruction>(
+        ir_emitter_context, adaptor, /*fusion_instr=*/fusion, /*instr=*/rs,
+        /*use_global_device_ids=*/rs->use_global_device_ids());
   }
   auto maybe_custom_call_adaptor = HloBfsFindIf(
       adaptor.GetRoots(), adaptor,

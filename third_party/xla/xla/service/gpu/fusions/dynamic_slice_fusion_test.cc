@@ -30,6 +30,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/gpu_executable.h"
+#include "xla/service/gpu/runtime/dynamic_slice_thunk.h"
+#include "xla/service/gpu/runtime/sequential_thunk.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/gpu/transforms/dynamic_slice_fusion_rewriter.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
@@ -3403,6 +3407,93 @@ TEST_F(DynamicSliceFusionTest, OffsetArrayTestU64) {
   EXPECT_DEATH(auto status = RunAndCompareTwoModulesReplicated(
                    hlo, normal, true, true, error_spec),
                ".*");
+}
+
+TEST_F(DynamicSliceFusionTest, ReduceScatterDegenerateCollective) {
+  const char* hlo_ref = R"(
+  HloModule test, replica_count=2
+
+  add.clone {
+    x.1 = f16[] parameter(0)
+    y.1 = f16[] parameter(1)
+    ROOT add.462 = f16[] add(x.1, y.1)
+  }
+
+  ENTRY %main.9 {
+    param_0 = f16[128,128]{1,0} parameter(0)
+    param_1 = f16[128,128]{1,0} parameter(1)
+    constant_20 = u32[] constant(20)
+    constant_0 = u32[] constant(0)
+    dynamic-slice = f16[64,128]{1,0} dynamic-slice(param_0, constant_0, constant_0), dynamic_slice_sizes={64,128}
+    reduce-scatter = f16[64,128]{1,0} reduce-scatter(dynamic-slice), channel_id=64, replica_groups={{0},{1}}, use_global_device_ids=true, dimensions={0}, to_apply=add.clone
+    ROOT dynamic-update-slice = f16[128,128]{1,0} dynamic-update-slice(param_1, reduce-scatter, constant_20, constant_0)
+  })";
+
+  const char* hlo_opt = R"(
+  HloModule test, replica_count=2
+
+  %add {
+    %param_0 = f16[] parameter(0)
+    %param_1 = f16[] parameter(1)
+    ROOT %add.1 = f16[] add(%param_0, %param_1)
+  }
+
+  %address-computation {
+    %p0 = f16[128,128]{1,0} parameter(0)
+    %p1 = f16[128,128]{1,0} parameter(1)
+    %p2 = u32[] parameter(2)
+    %p3 = u32[] parameter(3)
+    %dynamic-slice = f16[64,128]{1,0} dynamic-slice(%p0, %p3, %p3), dynamic_slice_sizes={64,128}
+    %reduce-scatter.1 = f16[64,128]{1,0} reduce-scatter(%dynamic-slice), channel_id=64, replica_groups={{0},{1}}, use_global_device_ids=true, dimensions={0}, to_apply=%add
+    ROOT %loop_dynamic_update_slice_fusion.1 = f16[128,128]{1,0} dynamic-update-slice(%p1, %reduce-scatter.1, %p2, %p3)
+  }
+
+  ENTRY %main.9 {
+    %param_0.1 = f16[128,128]{1,0} parameter(0)
+    %param_1.1 = f16[128,128]{1,0} parameter(1)
+    %constant_20 = u32[] constant(20)
+    %constant_0 = u32[] constant(0)
+    ROOT %address_computation = f16[128,128]{1,0} fusion(%param_0.1, %param_1.1, %constant_20, %constant_0), kind=kCustom, calls=%address-computation, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}},"force_earliest_schedule":false}
+  })";
+
+  // Dynamic slice fusion is turned on by default. So, we need to turn that off
+  // while parsing.
+  HloModuleConfig ref_config;
+  DebugOptions debug_options;
+  debug_options.set_xla_gpu_enable_dynamic_slice_fusion(false);
+  ref_config.set_debug_options(debug_options);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto ref_module,
+                          ParseAndReturnVerifiedModule(hlo_ref, ref_config));
+  TF_ASSERT_OK_AND_ASSIGN(auto ref_module_opt,
+                          GetOptimizedModule(std::move(ref_module)));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module_with_fusion,
+                          ParseAndReturnVerifiedModule(hlo_opt, ref_config));
+  TF_ASSERT_OK_AND_ASSIGN(auto module_with_fusion_opt,
+                          GetOptimizedModule(std::move(module_with_fusion)));
+
+  // Check that the thunk is a d2d copy thunk because the collective is
+  // degenerate.
+  auto module_with_fusion_opt_clone = module_with_fusion_opt->Clone();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto exec,
+      CreateExecutable(std::move(module_with_fusion_opt_clone), false));
+  GpuExecutable* gpu_exec = dynamic_cast<GpuExecutable*>(exec.get());
+  auto& child_thunk = gpu_exec->GetThunk().thunks()[1];
+  ASSERT_EQ(child_thunk->kind(), Thunk::kDynamicSlice);
+  auto* ds_thunk = dynamic_cast<const DynamicSliceThunk*>(child_thunk.get());
+  ASSERT_EQ(ds_thunk->embedded_thunk()->kind(), Thunk::kSequential);
+  auto* embedded_thunk =
+      dynamic_cast<const SequentialThunk*>(ds_thunk->embedded_thunk());
+  ASSERT_EQ(embedded_thunk->thunks().size(), 1ul);
+  ASSERT_EQ(embedded_thunk->thunks()[0]->kind(), Thunk::kCopy);
+  ErrorSpec error{/*aabs=*/1e-3, /*arel=*/1e-3};
+
+  // Comparing the outputs.
+  EXPECT_TRUE(RunAndCompareTwoModulesReplicated(
+      std::move(ref_module_opt), std::move(module_with_fusion_opt),
+      /*run_hlo_passes=*/false, /*use_threads=*/true, error));
 }
 
 }  // namespace
