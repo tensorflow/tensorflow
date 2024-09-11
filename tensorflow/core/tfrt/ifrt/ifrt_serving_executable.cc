@@ -590,6 +590,8 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   TF_RETURN_IF_ERROR(AsyncLoadIfrtArray(inputs, variable_arg_indices,
                                         *executable_bundle, device_list));
 
+  VLOG(2) << "Completed AsyncLoadIfrtArray";
+
   std::vector<tsl::RCReference<xla::ifrt::Array>> args;
   args.reserve(inputs.size());
   int variable_index = 0;

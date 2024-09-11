@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "xla/python/ifrt/future.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
@@ -298,8 +297,8 @@ absl::Status CheckpointLoader::Load(
     const std::vector<tensorflow::tfrt_stub::FallbackTensor>& var_handles,
     const tensorflow::tfrt_stub::FallbackTensor& tensor_names,
     const tensorflow::tfrt_stub::FallbackTensor& shape_and_slices,
-    const mlrt::bc::Vector<tensorflow::DataType>& restored_dtypes,
-    const mlrt::bc::Vector<bool>& truncate_in_cast, tf_mlrt::Context& context) {
+    absl::Span<const tensorflow::DataType> restored_dtypes,
+    const std::vector<bool>& truncate_in_cast, tf_mlrt::Context& context) {
   std::vector<int64_t> variable_sizes;
   variable_sizes.reserve(var_handles.size());
   for (auto& handle : var_handles) {

@@ -624,8 +624,7 @@ absl::StatusOr<std::unique_ptr<SavedModel>> SavedModelImpl::LoadSavedModel(
     model_context.set_callable_options(nullptr);
   }
 
-  if (options.graph_execution_options.use_ifrt &&
-      options.graph_execution_options.ifrt_use_persistence_api_for_restore) {
+  if (options.graph_execution_options.use_ifrt) {
     std::optional<ifrt_serving::IfrtModelRestoreContext*>
         model_restore_context =
             model_context.resource_context()
