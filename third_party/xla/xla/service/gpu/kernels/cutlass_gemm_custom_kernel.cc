@@ -211,26 +211,6 @@ absl::StatusOr<std::vector<CustomKernel>> GetCutlassGemmKernels(
     PrimitiveType rhs_type, int32_t m, int32_t n, int32_t k,
     const ArgsIndices& indices, const DynamicSliceIndices& slices,
     const se::DeviceDescription& device) {
-  if (dot_type == BF16 && lhs_type == BF16 && rhs_type == BF16) {
-    auto& cuda_cc =
-        std::get<se::CudaComputeCapability>(device.gpu_compute_capability());
-#if CUDA_VERSION >= 12000
-    if (cuda_cc.IsAtLeastHopper()) {
-      return {{Load<Bf16xBf16ToBf16<Sm90>>(std::move(name), GemmMode::kGemm,
-                                           /*batch_count=*/1, m, n, k, indices,
-                                           slices, device)}};
-    }
-#endif
-    if (cuda_cc.IsAtLeastAmpere()) {
-      return {{Load<Bf16xBf16ToBf16<Default>>(std::move(name), GemmMode::kGemm,
-                                              /*batch_count=*/1, m, n, k,
-                                              indices, slices, device)}};
-    }
-    return {{Load<Bf16xBf16ToBf16<Default>>(std::move(name), GemmMode::kGemm,
-                                            /*batch_count=*/1, m, n, k, indices,
-                                            slices, device)}};
-  }
-
   // Lookup table for supported kernels.
   // LHS_TYPE, RHS_TYPE, DOT_TYPE -> [kernel]
   absl::flat_hash_map<std::tuple<PrimitiveType, PrimitiveType, PrimitiveType>,
