@@ -2070,6 +2070,29 @@ func.func @maxpool_same(%arg0: tensor<4x16x16x8xf32>) -> tensor<4x8x8x8xf32> {
 
 // -----
 
+// CHECK-LABEL: maxpool_explicit
+func.func @maxpool_explicit(%arg0: tensor<1x112x112x64xf32>) -> tensor<1x56x56x64xf32> {
+  // "0xFF800000" represents -INF for f32.
+  %0 = mhlo.constant dense<0xFF800000> : tensor<f32>
+  %1 = "mhlo.reduce_window"(%arg0, %0)({
+    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+      %2 = mhlo.maximum %arg1, %arg2 : (tensor<f32>, tensor<f32>) -> tensor<f32>
+      mhlo.return %2 : tensor<f32>
+    }) {
+    padding = dense<[[0, 0], [1, 1], [1, 1], [0, 0]]> : tensor<4x2xi64>,
+    window_dimensions = dense<[1, 3, 3, 1]> : tensor<4xi64>,
+    window_strides = dense<[1, 2, 2, 1]> : tensor<4xi64> } : (tensor<1x112x112x64xf32>, tensor<f32>) -> tensor<1x56x56x64xf32>
+  func.return %1 : tensor<1x56x56x64xf32>
+}
+
+// CHECK: %[[PADDING_CONST:.*]] = arith.constant dense<0xFF800000> : tensor<f32>
+// CHECK: %[[PADDING:.*]] = arith.constant dense<{{\[\[}}0, 0], [1, 1], [1, 1], [0, 0]]> : tensor<4x2xi64>
+// CHECK: %[[PAD_V2_OUT:.*]] = "tfl.padv2"(%arg0, %[[PADDING]], %[[PADDING_CONST]]) : (tensor<1x112x112x64xf32>, tensor<4x2xi64>, tensor<f32>) -> tensor<1x114x114x64xf32>
+// CHECK: "tfl.max_pool_2d"(%[[PAD_V2_OUT]]) <{filter_height = 3 : i32, filter_width = 3 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 2 : i32, stride_w = 2 : i32}> : (tensor<1x114x114x64xf32>) -> tensor<1x56x56x64xf32>
+
+
+// -----
+
 // CHECK-LABEL: maxpool_valid
 func.func @maxpool_valid(%arg0: tensor<4x16x16x8xf32>) -> tensor<4x7x7x8xf32> {
   // "0xFF800000" represents -INF for f32.
