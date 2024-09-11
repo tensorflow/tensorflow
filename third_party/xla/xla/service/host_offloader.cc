@@ -661,6 +661,12 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
       // The AllocateBuffer that we're about to create will suffice for every
       // DynamicUpdateSlice we pass through as we walk up the graph.
       dynamic_update_slices_already_allocated_.insert(instruction);
+    } else if (instruction->IsCustomCall("AllocateBuffer")) {
+      VLOG(2) << absl::StreamFormat(
+          "DynamicUpdateSlice \"%s\" already writes into an AllocateBuffer "
+          "\"%s\"",
+          dynamic_update_slice->name(), instruction->name());
+      return absl::OkStatus();
     }
     const std::vector<InstructionAndShapeIndex> predecessors =
         host_offload_utils::GetPredecessors(instruction_and_shape);
