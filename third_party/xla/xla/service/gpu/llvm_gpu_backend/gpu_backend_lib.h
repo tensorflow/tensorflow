@@ -66,8 +66,8 @@ absl::StatusOr<std::string> CompileToPtx(
     std::function<void(llvm::TargetMachine*)> configure_target = nullptr);
 
 // Determine PTX version from CUDA version.
-using Version = std::pair<int, int>;
-Version DetermineHighestSupportedPtxVersionFromCudaVersion(
+stream_executor::SemanticVersion
+DetermineHighestSupportedPtxVersionFromCudaVersion(
     stream_executor::SemanticVersion cuda_version);
 
 }  // namespace nvptx

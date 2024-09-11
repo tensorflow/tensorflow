@@ -315,11 +315,10 @@ std::unique_ptr<llvm::TargetMachine> NVPTXGetTargetMachine(
     return kCompileTimeCudaVersion;
   }();
 
-  nvptx::Version ptx_version =
-      nvptx::DetermineHighestSupportedPtxVersionFromCudaVersion(
-          highest_supported_cuda_version);
+  auto ptx_version = nvptx::DetermineHighestSupportedPtxVersionFromCudaVersion(
+      highest_supported_cuda_version);
   int highest_supported_ptx_version =
-      ptx_version.first * 10 + ptx_version.second;
+      ptx_version.major() * 10 + ptx_version.minor();
 
   VLOG(1) << "Targeting PTX version: " << highest_supported_ptx_version;
   std::string feature_str =
@@ -689,11 +688,12 @@ absl::StatusOr<std::string> CompileToPtx(
 }
 
 namespace {
-constexpr nvptx::Version kFallbackPtxVersion{6, 5};
-constexpr nvptx::Version kMaxPtxVersion{8, 5};
+constexpr stream_executor::SemanticVersion kFallbackPtxVersion{6, 5, 0};
+constexpr stream_executor::SemanticVersion kMaxPtxVersion{8, 5, 0};
 }  // namespace
 
-Version DetermineHighestSupportedPtxVersionFromCudaVersion(
+stream_executor::SemanticVersion
+DetermineHighestSupportedPtxVersionFromCudaVersion(
     stream_executor::SemanticVersion cuda_version) {
   if (cuda_version < stream_executor::SemanticVersion{11, 0, 0}) {
     // For everything below CUDA 11 we just fall back to PTX 6.5.
@@ -710,7 +710,7 @@ Version DetermineHighestSupportedPtxVersionFromCudaVersion(
   // CUDA 12.4 -> PTX 8.4
   // This versioning scheme is valid until CUDA 12.6
   if (cuda_version < stream_executor::SemanticVersion{12, 6, 0}) {
-    return {cuda_version.major() - 4, cuda_version.minor()};
+    return {cuda_version.major() - 4, cuda_version.minor(), 0};
   }
 
   // Return maximum known PTX version.
