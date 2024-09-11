@@ -33,8 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/register_common_dialects.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/testing/utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/monitoring/cell_reader.h"
-#include "tensorflow/core/platform/resource_loader.h"
 
 namespace tensorflow {
 namespace tf2xla {
