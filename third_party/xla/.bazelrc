@@ -41,7 +41,6 @@
 #     cuda_clang    Build with CUDA Clang support.
 #     rocm:         Build with AMD GPU support (rocm)
 #     mkl:          Enable full mkl support.
-#     tensorrt:     Enable Tensorrt support.
 #     nogcp:        Disable GCS support.
 #     nonccl:       Disable nccl support.
 #
@@ -282,8 +281,6 @@ build:tpu --define=with_tpu_support=true
 build:tpu --define=framework_shared_object=true
 build:tpu --copt=-DLIBTPU_ON_GCE
 build:tpu --define=enable_mlir_bridge=true
-
-build:tensorrt --repo_env TF_NEED_TENSORRT=1
 
 build:rocm --crosstool_top=@local_config_rocm//crosstool:toolchain
 build:rocm --define=using_rocm_hipcc=true

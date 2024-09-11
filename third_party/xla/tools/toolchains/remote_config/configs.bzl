@@ -87,10 +87,7 @@ def initialize_rbe_configs():
             "GCC_HOST_COMPILER_PREFIX": "/usr/bin",
             "HOST_CXX_COMPILER": "/dt9/usr/bin/gcc",
             "HOST_C_COMPILER": "/dt9/usr/bin/gcc",
-            "TENSORRT_INSTALL_PATH": "/usr/lib/x86_64-linux-gnu",
             "TF_ENABLE_XLA": "1",
-            "TF_NEED_TENSORRT": "0",
-            "TF_TENSORRT_VERSION": "8.6",
         },
     )
 
@@ -117,10 +114,7 @@ def initialize_rbe_configs():
             "CLEAR_CACHE": "1",
             "HOST_CXX_COMPILER": "/usr/lib/llvm-17/bin/clang",
             "HOST_C_COMPILER": "/usr/lib/llvm-17/bin/clang",
-            "TENSORRT_INSTALL_PATH": "/usr/lib/x86_64-linux-gnu",
             "TF_ENABLE_XLA": "1",
-            "TF_NEED_TENSORRT": "0",
-            "TF_TENSORRT_VERSION": "8.6",
         },
     )
 
@@ -149,14 +143,7 @@ def initialize_rbe_configs():
             "GCC_HOST_COMPILER_PREFIX": "/usr/bin",
             "HOST_CXX_COMPILER": "/dt9/usr/bin/gcc",
             "HOST_C_COMPILER": "/dt9/usr/bin/gcc",
-            "PYTHON_BIN_PATH": "/usr/bin/python3",
-            "TF_CUDA_CLANG": "0",
-            "TF_CUDA_COMPUTE_CAPABILITIES": "3.5,6.0",
-            "TF_CUDA_VERSION": "12.3.2",
-            "TF_CUDNN_VERSION": "8.9.7.29",
             "TF_ENABLE_XLA": "1",
-            "TF_NEED_TENSORRT": "0",
-            "TF_TENSORRT_VERSION": "8.6",
         },
     )
 
@@ -183,14 +170,7 @@ def initialize_rbe_configs():
             "CLEAR_CACHE": "1",
             "HOST_CXX_COMPILER": "/usr/lib/llvm-18/bin/clang",
             "HOST_C_COMPILER": "/usr/lib/llvm-18/bin/clang",
-            "PYTHON_BIN_PATH": "/usr/bin/python3",
-            "TF_CUDA_CLANG": "1",
-            "TF_CUDA_COMPUTE_CAPABILITIES": "3.5,6.0",
-            "TF_CUDA_VERSION": "12.3.2",
-            "TF_CUDNN_VERSION": "8.9.7.29",
             "TF_ENABLE_XLA": "1",
-            "TF_NEED_TENSORRT": "0",
-            "TF_TENSORRT_VERSION": "8.6",
         },
     )
 
@@ -218,7 +198,5 @@ def initialize_rbe_configs():
             "HOST_CXX_COMPILER": "/usr/lib/llvm-18/bin/clang",
             "HOST_C_COMPILER": "/usr/lib/llvm-18/bin/clang",
             "TF_ENABLE_XLA": "1",
-            "TF_NEED_TENSORRT": "0",
-            "TF_TENSORRT_VERSION": "10.0",
         },
     )
