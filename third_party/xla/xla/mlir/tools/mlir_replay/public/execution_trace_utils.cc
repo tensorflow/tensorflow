@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/mlir/tools/mlir_interpreter/framework/interpreter_value.h"
 #include "xla/mlir/tools/mlir_interpreter/framework/tensor_or_memref.h"
 #include "xla/mlir/tools/mlir_replay/public/execution_trace.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
 namespace mlir {
