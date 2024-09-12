@@ -46,7 +46,6 @@ bool SupportsBF16(const stream_executor::GpuComputeCapability& cc);
 
 absl::Status CreateTritonIrAndFileCheck(
     HloTestBase* test, absl::string_view hlo_text,
-    const BlockLevelParameters& block_level_parameters,
     absl::string_view triton_fusion_name, absl::string_view filecheck_pattern);
 
 absl::Status CreateTritonIrAndFileCheck(

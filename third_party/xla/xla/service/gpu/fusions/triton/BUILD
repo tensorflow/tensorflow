@@ -297,6 +297,7 @@ cc_library(
         "//xla/hlo/utils:hlo_query",
         "//xla/service:float_normalization",
         "//xla/service:hlo_pass_pipeline",
+        "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:gpu_float_support",
         "//xla/service/gpu:ir_emission_utils",
