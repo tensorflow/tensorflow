@@ -29,23 +29,24 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/array.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_device_mesh.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_wrapper.h"
 #include "xla/hlo/experimental/auto_sharding/cluster_environment.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
@@ -123,6 +124,77 @@ ComputeSliceShardingAndCommunicationCostFromOperand(
         cluster_env.ReduceScatterCost(num_bytes_to_transfer, mesh_dim);
   }
   return std::make_pair(result, communication_cost);
+}
+
+// Generates strategies for scatter ops, given the shardings for its operands.
+// This implementation is a simplified/modified version of the handling of
+// scatter ops in ShardingPropagation::InferShardingFromOperands. This
+// implementation currently does not support tuple-shaped scatter ops (nor did
+// the original implementation), but it should be easy to generalize if needed.
+void GenerateScatterShardingFromOperands(
+    const HloScatterInstruction* scatter, const HloSharding& data_sharding,
+    const HloSharding& indices_sharding, const HloSharding& update_sharding,
+    const CallGraph& call_graph,
+    absl::FunctionRef<void(const HloSharding& data_sharding,
+                           const HloSharding& indices_sharding,
+                           const HloSharding& update_sharding,
+                           const HloSharding& scatter_sharding)>
+        yield_sharding) {
+  CHECK_EQ(scatter->scatter_operand_count(), 1);
+  const HloInstruction* scatter_data = scatter->scatter_operands()[0];
+  const HloInstruction* scatter_indices = scatter->scatter_indices();
+  const HloInstruction* scatter_update = scatter->scatter_updates()[0];
+
+  yield_sharding(data_sharding, indices_sharding, update_sharding,
+                 data_sharding);
+
+  if (std::optional<HloSharding> maybe_from_update =
+          hlo_sharding_util::ScatterOutputShardingFromUpdate(update_sharding,
+                                                             *scatter)) {
+    yield_sharding(data_sharding, indices_sharding, update_sharding,
+                   *maybe_from_update);
+  }
+
+  std::optional<hlo_sharding_util::GatherScatterParallelDims>
+      scatter_parallel_dims =
+          hlo_sharding_util::GetScatterParallelBatchDims(*scatter, call_graph);
+  if (!scatter_parallel_dims) {
+    return;
+  }
+
+  absl::InlinedVector<int64_t, 1> aligned_operand_parallel_dims =
+      hlo_sharding_util::IndexAlignedOperandParallelDims(
+          *scatter_parallel_dims);
+  absl::InlinedVector<int64_t, 1> update_parallel_dims =
+      hlo_sharding_util::GetScatterParallelUpdateDims(*scatter,
+                                                      *scatter_parallel_dims);
+  const absl::InlinedVector<int64_t, 1>& output_parallel_dims =
+      aligned_operand_parallel_dims;
+  // Infer output sharding from scatter operand sharding.
+  const Shape& shape = scatter->shape();
+  yield_sharding(
+      data_sharding, indices_sharding, update_sharding,
+      hlo_sharding_util::InferGatherScatterParallelShardingFromOperandSharding(
+          data_sharding, scatter_data->shape(), shape,
+          absl::MakeConstSpan(aligned_operand_parallel_dims),
+          absl::MakeConstSpan(output_parallel_dims)));
+
+  // Infer output sharding from scatter indices sharding.
+  HloSharding parallel_sharding_from_indices =
+      hlo_sharding_util::InferGatherScatterParallelShardingFromOperandSharding(
+          scatter_indices->sharding(), scatter_indices->shape(), shape,
+          absl::MakeConstSpan(scatter_parallel_dims->indices_parallel_dims),
+          absl::MakeConstSpan(output_parallel_dims));
+  yield_sharding(data_sharding, indices_sharding, update_sharding,
+                 parallel_sharding_from_indices);
+
+  // Infer output sharding from scatter update sharding.
+  yield_sharding(
+      data_sharding, indices_sharding, update_sharding,
+      hlo_sharding_util::InferGatherScatterParallelShardingFromOperandSharding(
+          update_sharding, scatter_update->shape(), shape,
+          absl::MakeConstSpan(update_parallel_dims),
+          absl::MakeConstSpan(output_parallel_dims)));
 }
 
 // NOLINTBEGIN(readability/fn_size)
@@ -256,34 +328,46 @@ BuildStrategyAndCost(
       case HloOpcode::kScatter: {
         strategy_group = CreateLeafStrategyGroup(instruction_id, ins,
                                                  strategy_map, strategy_groups);
-        // We follow the first operand (the array we're scattering into)
-        auto src_strategy_group = strategy_map.at(ins->operand(0)).get();
-        CHECK(!src_strategy_group->is_tuple);
-        for (int64_t sid = 0; sid < src_strategy_group->strategies.size();
-             ++sid) {
-          HloSharding output_spec =
-              src_strategy_group->strategies[sid].output_sharding;
-          std::string name = ToStringSimple(output_spec);
+        auto add_scatter_sharding = [&](const HloSharding& data_sharding,
+                                        const HloSharding& indices_sharding,
+                                        const HloSharding& update_sharding,
+                                        const HloSharding& scatter_sharding) {
+          std::string name = ToStringSimple(scatter_sharding);
           double compute_cost = 0, communication_cost = 0;
           double memory_cost =
-              ByteSizeOfShapeWithSharding(ins->shape(), output_spec);
+              ByteSizeOfShapeWithSharding(ins->shape(), scatter_sharding);
 
           std::vector<std::optional<HloSharding>> input_shardings_optional(
-              {output_spec, std::nullopt, std::nullopt});
+              {data_sharding, indices_sharding, update_sharding});
           std::pair<ReshardingCosts, ReshardingCosts> resharding_costs =
               GenerateReshardingCostsAndMissingShardingsForAllOperands(
-                  ins, output_spec, strategy_map, cluster_env, call_graph,
+                  ins, scatter_sharding, strategy_map, cluster_env, call_graph,
                   input_shardings_optional);
 
-          for (const auto& sharding_optional : input_shardings_optional) {
-            CHECK(sharding_optional.has_value());
-          }
-
           strategy_group->strategies.push_back(ShardingStrategy(
-              {name, output_spec, compute_cost, communication_cost, memory_cost,
-               std::move(resharding_costs.first),
+              {name, scatter_sharding, compute_cost, communication_cost,
+               memory_cost, std::move(resharding_costs.first),
                std::move(resharding_costs.second), input_shardings_optional}));
-        }
+        };
+
+        const HloScatterInstruction* scatter = Cast<HloScatterInstruction>(ins);
+        const HloInstruction* scatter_data = scatter->scatter_operands()[0];
+        const HloInstruction* scatter_indices = scatter->scatter_indices();
+        const HloInstruction* scatter_update = scatter->scatter_updates()[0];
+
+        ForEachInCartesianProduct<ShardingStrategy>(
+            {strategy_map.at(scatter_data)->strategies,
+             strategy_map.at(scatter_indices)->strategies,
+             strategy_map.at(scatter_update)->strategies},
+            [&](const std::vector<ShardingStrategy>& operand_shardings) {
+              LOG(INFO) << " COMB " << operand_shardings.size();
+              GenerateScatterShardingFromOperands(
+                  scatter, operand_shardings[0].output_sharding,
+                  operand_shardings[1].output_sharding,
+                  operand_shardings[2].output_sharding, call_graph,
+                  add_scatter_sharding);
+            });
+
         break;
       }
       case HloOpcode::kGather: {

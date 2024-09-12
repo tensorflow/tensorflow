@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -366,6 +367,29 @@ inline bool IsInstructionBeforeSPMDFullToShardShapeCustomCall(
     }
   }
   return false;
+}
+
+// Computes the cartesian product of N vectors
+template <typename T>
+void ForEachInCartesianProduct(
+    const std::vector<std::vector<T>>& sets,
+    absl::FunctionRef<void(const std::vector<T>&)> fn) {
+  std::vector<std::vector<T>> elements(1, std::vector<T>());
+  std::vector<std::vector<T>> temp_elements;
+  for (int i = 0; i < sets.size(); i++) {
+    temp_elements.clear();
+    for (const std::vector<T>& product : elements) {
+      for (const T& element : sets[i]) {
+        std::vector<T> product_copy = product;
+        product_copy.push_back(element);
+        temp_elements.push_back(product_copy);
+      }
+    }
+    std::swap(elements, temp_elements);
+  }
+  for (const std::vector<T>& element : elements) {
+    fn(element);
+  }
 }
 
 // Propagate sharding for dim-wise operations (e.g., slice, pad) which works
