@@ -37,8 +37,7 @@ class HloFusionAdaptor;
 // Treats HloInstructions as if they were unfused.
 class HloInstructionAdaptor {
  public:
-  // Needed for UnionFind used in GroupDisjointReductions.
-  HloInstructionAdaptor() = default;
+  HloInstructionAdaptor() = delete;
   HloInstructionAdaptor(const HloInstruction& instruction,
                         const HloFusionAdaptor* parent);
 
@@ -63,10 +62,10 @@ class HloInstructionAdaptor {
   const HloFusionAdaptor& parent() const { return *parent_; }
 
  private:
-  const HloInstruction* instruction_ = nullptr;
+  const HloInstruction* instruction_;
 
-  // Pointer to the parent fusion adaptor.
-  const HloFusionAdaptor* parent_ = nullptr;
+  // Pointer to the parent fusion adaptor. Is never null.
+  const HloFusionAdaptor* parent_;
 };
 
 template <typename H>

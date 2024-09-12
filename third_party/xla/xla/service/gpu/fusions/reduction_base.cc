@@ -151,7 +151,7 @@ ReductionGroups GroupDisjointReductions(const HloFusionAnalysis& analysis,
   // TODO(b/249976438): we currently do not treat properly
   // aliasing between inputs and outputs of the fusion, so for now put all
   // non-reduction roots into one group to avoid read-after-write conflicts.
-  std::optional<HloInstructionAdaptor> first_non_reduction_root = std::nullopt;
+  UnionFind<HloInstructionAdaptor>* first_non_reduction_root = nullptr;
 
   absl::node_hash_map<HloInstructionAdaptor,
                       absl::flat_hash_set<HloInstructionAdaptor>>
@@ -165,16 +165,17 @@ ReductionGroups GroupDisjointReductions(const HloFusionAnalysis& analysis,
   for (auto [root, hero] : llvm::zip(roots, analysis.fusion_heroes())) {
     int index = root_indices.size();
     root_indices[&root.instruction()] = index;
-    disjoint_sets[root].Get() = root;
+    auto [it, inserted] = disjoint_sets.try_emplace(root, root);
+    CHECK(inserted) << "Duplicate root " << root.ToString();  // Crash OK
     reachable_outputs[root].insert(root);
     result.is_reduction_root.push_back(
         IsRealReductionHero(root.instruction(), hero.instruction()));
     if (result.is_reduction_root.back()) {
       roots_with_reduction.insert(root);
-    } else if (first_non_reduction_root) {
-      disjoint_sets[*first_non_reduction_root].Merge(&disjoint_sets[root]);
+    } else if (first_non_reduction_root != nullptr) {
+      first_non_reduction_root->Merge(&it->second);
     } else {
-      first_non_reduction_root = root;
+      first_non_reduction_root = &it->second;
     }
   }
 
@@ -232,16 +233,16 @@ ReductionGroups GroupDisjointReductions(const HloFusionAnalysis& analysis,
         }
       }
     }
+    auto& first_reached_output = disjoint_sets.at(reached_output_ids.front());
     for (size_t j = 1; j < reached_output_ids.size(); ++j) {
-      disjoint_sets[reached_output_ids[0]].Merge(
-          &disjoint_sets[reached_output_ids[j]]);
+      first_reached_output.Merge(&disjoint_sets.at(reached_output_ids[j]));
     }
   }
 
   // Place output instructions in the same set into the same group.
   ConstHloInstructionMap<std::vector<const HloInstruction*>> group_map;
   for (auto root : roots) {
-    group_map[&disjoint_sets[root].Get().instruction()].push_back(
+    group_map[&disjoint_sets.at(root).Get().instruction()].push_back(
         &root.instruction());
   }
 

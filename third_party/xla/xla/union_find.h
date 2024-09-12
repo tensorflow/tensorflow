@@ -25,7 +25,8 @@ namespace xla {
 template <typename T>
 class UnionFind {
  public:
-  UnionFind() : rank_(0), size_(1), parent_(nullptr) {}
+  explicit UnionFind(const T& value = T())
+      : rank_(0), size_(1), parent_(nullptr), value_(value) {}
 
   // Returns the number of elements in a cluster.
   int Size() { return FindRoot()->size_; }
