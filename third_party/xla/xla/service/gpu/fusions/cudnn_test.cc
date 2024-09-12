@@ -299,6 +299,72 @@ ENTRY e {
                             ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
+TEST_F(CuDnnFusionFileCheckTest, VectorTensorMultiplicationWorksCorrectly) {
+  const std::string kHloText = R"(
+f {
+  p0 = bf16[64,1] parameter(0)
+  p1 = s8[64,128] parameter(1)
+  p1c = bf16[64,128] convert(p1)
+  ROOT out = bf16[1,128] dot(p0, p1c),
+    lhs_contracting_dims={0}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = bf16[64,1] parameter(0)
+  p1 = s8[64,128] parameter(1)
+  ROOT r = bf16[1,128] fusion(p0, p1), kind=kCustom, calls=f,
+    backend_config={"fusion_backend_config":{"kind":"__cudnn$fusion"}}
+})";
+
+  EXPECT_TRUE(*RunCuDnnFileCheck(kHloText, R"(
+CHECK: "tensors"
+CHECK: "out"
+CHECK: "dim": [1,1,128]
+CHECK: "stride": [1,128,1]
+CHECK: "p0"
+CHECK: "dim": [1,1,64]
+CHECK: "stride": [1,64,1]
+CHECK: "p1"
+CHECK: "dim": [1,64,128]
+CHECK: "stride": [1,128,1]
+  )"));
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_F(CuDnnFusionFileCheckTest, TensorVectorMultiplicationWorksCorrectly) {
+  const std::string kHloText = R"(
+f {
+  p0 = bf16[64,256] parameter(0)
+  p1 = s8[64,1] parameter(1)
+  p1c = bf16[64,1] convert(p1)
+  ROOT out = bf16[256,1] dot(p0, p1c),
+    lhs_contracting_dims={0}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = bf16[64,256] parameter(0)
+  p1 = s8[64,1] parameter(1)
+  ROOT r = bf16[256,1] fusion(p0, p1), kind=kCustom, calls=f,
+    backend_config={"fusion_backend_config":{"kind":"__cudnn$fusion"}}
+})";
+
+  EXPECT_TRUE(*RunCuDnnFileCheck(kHloText, R"(
+CHECK: "tensors"
+CHECK: "out"
+CHECK: "dim": [1,256,1]
+CHECK: "stride": [1,1,256]
+CHECK: "p0"
+CHECK: "dim": [1,256,64]
+CHECK: "stride": [1,1,256]
+CHECK: "p1"
+CHECK: "dim": [1,64,1]
+CHECK: "stride": [1,1,64]
+  )"));
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
 TEST_F(CuDnnFusionExecutionTest, DotBF16WithCopyExecutesCorrectly) {
   EXPECT_TRUE(RunAndCompare(R"(
 fusion1 {
