@@ -1938,7 +1938,7 @@ AutoShardingSolverResult CallSolver(
     const std::vector<NodeStrategyIdx>& s_hint, const bool compute_iis,
     const int64_t solver_timeout_in_seconds, const AutoShardingOption& option,
     std::optional<double> max_cost, absl::string_view request_name,
-    const absl::flat_hash_map<std::string, const HloInstruction*>&
+    const absl::flat_hash_map<std::string, HloSharding>&
         sharding_propagation_solution,
     bool deterministic_mode) {
   // Serialize edges and edge costs to 1d numpy arrays.
@@ -2010,10 +2010,9 @@ AutoShardingSolverResult CallSolver(
     std::optional<HloSharding> default_strategy;
     auto iter = sharding_propagation_solution.find(instruction_name);
     if (iter != sharding_propagation_solution.end()) {
-      CHECK(iter->second->has_sharding()) << iter->second->ToString();
-      default_strategy = iter->second->sharding();
+      default_strategy = iter->second;
       if (strategy_group->tuple_element_idx) {
-        const auto& tuple_elements = iter->second->sharding().tuple_elements();
+        const auto& tuple_elements = iter->second.tuple_elements();
         CHECK_LT(*strategy_group->tuple_element_idx, tuple_elements.size());
         default_strategy =
             tuple_elements.at(*strategy_group->tuple_element_idx);
@@ -3849,7 +3848,7 @@ absl::StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
     HloModule* module,
     const absl::flat_hash_set<std::string>& replicated_small_tensors,
     const absl::flat_hash_set<absl::string_view>& execution_threads,
-    const absl::flat_hash_map<std::string, const HloInstruction*>&
+    const absl::flat_hash_map<std::string, HloSharding>&
         sharding_propagation_solution) {
   if (!option_.enable) {
     return AutoShardingResult::kModuleUnchanged;
@@ -4410,8 +4409,7 @@ absl::StatusOr<bool> AutoSharding::Run(
             module->config().allow_spmd_sharding_propagation_to_output()));
   }
 
-  absl::flat_hash_map<std::string, const HloInstruction*>
-      sharding_propagation_solution;
+  absl::flat_hash_map<std::string, HloSharding> sharding_propagation_solution;
   if (option_.use_sharding_propagation_for_default_shardings) {
     std::unique_ptr<HloModule> module_with_default_solution =
         CloneModule(module);
@@ -4432,7 +4430,8 @@ absl::StatusOr<bool> AutoSharding::Run(
          module_with_default_solution->computations()) {
       for (const auto instruction : computation->instructions()) {
         if (instruction->has_sharding()) {
-          sharding_propagation_solution[instruction->name()] = instruction;
+          sharding_propagation_solution.insert(
+              {std::string(instruction->name()), instruction->sharding()});
         }
       }
     }
