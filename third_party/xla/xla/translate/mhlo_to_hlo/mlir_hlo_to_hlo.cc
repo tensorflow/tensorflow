@@ -3845,9 +3845,17 @@ absl::Status PrepareForExport(mlir::ModuleOp module) {
         mhlo::createSymbolicShapeOptimizationPass());
     pm.addNestedPass<mlir::func::FuncOp>(mhlo::createShapeLegalizeToHloPass());
   }
-  if (failed(pm.run(module)))
-    return tsl::errors::Internal("Unable to prepare for XLA export");
-  return absl::OkStatus();
+
+  mlir::BaseScopedDiagnosticHandler handler(module.getContext());
+
+  (void)pm.run(module);
+  absl::Status s = handler.ConsumeStatus();
+  if (!s.ok()) {
+    s = absl::Status(
+        s.code(),
+        absl::StrCat("Unable to prepare for XLA export: ", s.message()));
+  }
+  return s;
 }
 
 }  // namespace

@@ -185,6 +185,24 @@ gentbl_cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "mlir_hlo_to_hlo_test",
+    srcs = ["mlir_hlo_to_hlo_test.cc"],
+    deps = [
+        ":mlir_hlo_to_hlo",
+        "//xla/mlir/utils:error_util",
+        "//xla/tsl/lib/core:status_test_util",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:ShapeDialect",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+        "@stablehlo//:register",
+    ],
+)
+
 cc_library(
     name = "translate",
     srcs = ["translate.cc"],
