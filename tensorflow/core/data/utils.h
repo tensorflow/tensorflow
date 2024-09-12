@@ -55,6 +55,9 @@ absl::StatusOr<bool> DisableCompressionAtRuntime(
 // successful
 void LogFilenames(const std::vector<std::string>& files);
 
+// Log filenames using the Cataline `lineage_log` API.
+void LogLineage(const std::vector<std::string>& files);
+
 }  // namespace data
 }  // namespace tensorflow
 
