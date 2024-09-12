@@ -836,10 +836,10 @@ pywrap_tensorflow_macro(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/profiler/rpc:profiler_server_impl",
-        "@local_tsl//tsl/profiler/rpc/client:profiler_client_impl",
         "@local_xla//xla/backends/profiler/cpu:python_tracer",
         "@local_xla//xla/stream_executor:stream_executor_impl",
+        "@local_xla//xla/tsl/profiler/rpc:profiler_server_impl",
+        "@local_xla//xla/tsl/profiler/rpc/client:profiler_client_impl",
         "@local_xla//xla/tsl/python/lib/core:numpy",
     ] + select({
         "//tensorflow/compiler/mlir/python:disable_mlir_config": [],
@@ -953,10 +953,10 @@ filegroup(
         "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
         "@local_tsl//tsl/platform:tensor_float_32_utils",  # tensor_float_32
         "@local_tsl//tsl/profiler/lib:profiler_session_impl",  # profiler
-        "@local_tsl//tsl/profiler/rpc:profiler_server_impl",  # profiler
-        "@local_tsl//tsl/profiler/rpc/client:profiler_client_impl",
         "@local_xla//xla/stream_executor",  # stat_summarizer
         "@local_xla//xla/tsl/profiler/backends/cpu:traceme_recorder_impl",  # profiler
+        "@local_xla//xla/tsl/profiler/rpc:profiler_server_impl",  # profiler
+        "@local_xla//xla/tsl/profiler/rpc/client:profiler_client_impl",
         "@local_xla//xla/tsl/python/lib/core:ml_dtypes_lib",  # bfloat16, float8_e4m3fn, float8_e5m2
         "@local_xla//xla/tsl/python/lib/core:numpy",  # checkpoint_reader
     ] + select({

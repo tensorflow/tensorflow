@@ -12,30 +12,20 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_TSL_PROFILER_RPC_PROFILER_SERVER_H_
-#define TENSORFLOW_TSL_PROFILER_RPC_PROFILER_SERVER_H_
+#ifndef XLA_TSL_PROFILER_RPC_PROFILER_SERVICE_IMPL_H_
+#define XLA_TSL_PROFILER_RPC_PROFILER_SERVICE_IMPL_H_
 
 #include <memory>
 
-#include "grpcpp/grpcpp.h"
-#include "tsl/platform/types.h"
 #include "tsl/profiler/protobuf/profiler_service.grpc.pb.h"
 
 namespace tsl {
 namespace profiler {
 
-class ProfilerServer {
- public:
-  ~ProfilerServer();
-  // Starts a profiler server with a given port.
-  void StartProfilerServer(int32_t port);
-
- private:
-  std::unique_ptr<tensorflow::grpc::ProfilerService::Service> service_;
-  std::unique_ptr<::grpc::Server> server_;
-};
+std::unique_ptr<tensorflow::grpc::ProfilerService::Service>
+CreateProfilerService();
 
 }  // namespace profiler
 }  // namespace tsl
 
-#endif  // TENSORFLOW_TSL_PROFILER_RPC_PROFILER_SERVER_H_
+#endif  // XLA_TSL_PROFILER_RPC_PROFILER_SERVICE_IMPL_H_

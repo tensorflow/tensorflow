@@ -13,17 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/profiler/rpc/profiler_server.h"
+#include "xla/tsl/profiler/rpc/profiler_server.h"
 
 #include <memory>
 #include <string>
 
 #include "absl/strings/str_cat.h"
 #include "grpcpp/grpcpp.h"  // IWYU pragma: keep
+#include "xla/tsl/profiler/rpc/profiler_service_impl.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/types.h"
 #include "tsl/profiler/protobuf/profiler_service.grpc.pb.h"
-#include "tsl/profiler/rpc/profiler_service_impl.h"
 
 namespace tsl {
 namespace profiler {

@@ -13,20 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_PROFILER_RPC_CLIENT_REMOTE_PROFILER_SESSION_MANAGER_H_
-#define TENSORFLOW_TSL_PROFILER_RPC_CLIENT_REMOTE_PROFILER_SESSION_MANAGER_H_
+#ifndef XLA_TSL_PROFILER_RPC_CLIENT_REMOTE_PROFILER_SESSION_MANAGER_H_
+#define XLA_TSL_PROFILER_RPC_CLIENT_REMOTE_PROFILER_SESSION_MANAGER_H_
 
 #include <functional>
 #include <memory>
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "xla/tsl/profiler/rpc/client/profiler_client.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/thread_annotations.h"
 #include "tsl/platform/types.h"
-#include "tsl/profiler/rpc/client/profiler_client.h"
 
 namespace tsl {
 namespace profiler {
@@ -82,4 +82,4 @@ class RemoteProfilerSessionManager {
 }  // namespace profiler
 }  // namespace tsl
 
-#endif  // TENSORFLOW_TSL_PROFILER_RPC_CLIENT_REMOTE_PROFILER_SESSION_MANAGER_H_
+#endif  // XLA_TSL_PROFILER_RPC_CLIENT_REMOTE_PROFILER_SESSION_MANAGER_H_

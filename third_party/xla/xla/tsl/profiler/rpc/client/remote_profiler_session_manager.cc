@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/profiler/rpc/client/remote_profiler_session_manager.h"
+#include "xla/tsl/profiler/rpc/client/remote_profiler_session_manager.h"
 
 #include <cstddef>
 #include <memory>
@@ -22,11 +22,11 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "xla/tsl/profiler/rpc/client/profiler_client.h"
 #include "tsl/platform/env_time.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/types.h"
-#include "tsl/profiler/rpc/client/profiler_client.h"
 #include "tsl/profiler/utils/time_utils.h"
 
 namespace tsl {

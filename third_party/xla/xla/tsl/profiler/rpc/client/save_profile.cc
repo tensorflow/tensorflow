@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/profiler/rpc/client/save_profile.h"
+#include "xla/tsl/profiler/rpc/client/save_profile.h"
 
 #include <memory>
 #include <ostream>

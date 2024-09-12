@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 // GRPC client to perform on-demand profiling
 
-#ifndef TENSORFLOW_TSL_PROFILER_RPC_CLIENT_PROFILER_CLIENT_TEST_UTIL_H_
-#define TENSORFLOW_TSL_PROFILER_RPC_CLIENT_PROFILER_CLIENT_TEST_UTIL_H_
+#ifndef XLA_TSL_PROFILER_RPC_CLIENT_PROFILER_CLIENT_TEST_UTIL_H_
+#define XLA_TSL_PROFILER_RPC_CLIENT_PROFILER_CLIENT_TEST_UTIL_H_
 
 #include <memory>
 #include <string>
@@ -24,13 +24,13 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "xla/tsl/profiler/rpc/profiler_server.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/types.h"
 #include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
 #include "tsl/profiler/protobuf/profiler_service.pb.h"
-#include "tsl/profiler/rpc/profiler_server.h"
 
 namespace tsl {
 namespace profiler {
@@ -80,4 +80,4 @@ inline ::testing::Matcher<absl::Duration> DurationApproxLess(
 }  // namespace profiler
 }  // namespace tsl
 
-#endif  // TENSORFLOW_TSL_PROFILER_RPC_CLIENT_PROFILER_CLIENT_TEST_UTIL_H_
+#endif  // XLA_TSL_PROFILER_RPC_CLIENT_PROFILER_CLIENT_TEST_UTIL_H_

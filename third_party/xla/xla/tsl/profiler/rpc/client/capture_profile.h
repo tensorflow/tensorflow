@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 // GRPC client to perform on-demand profiling
 
-#ifndef TENSORFLOW_TSL_PROFILER_RPC_CLIENT_CAPTURE_PROFILE_H_
-#define TENSORFLOW_TSL_PROFILER_RPC_CLIENT_CAPTURE_PROFILE_H_
+#ifndef XLA_TSL_PROFILER_RPC_CLIENT_CAPTURE_PROFILE_H_
+#define XLA_TSL_PROFILER_RPC_CLIENT_CAPTURE_PROFILE_H_
 
 #include <string>
 #include <variant>
@@ -59,4 +59,4 @@ absl::Status CaptureRemoteTrace(
 }  // namespace profiler
 }  // namespace tsl
 
-#endif  // TENSORFLOW_TSL_PROFILER_RPC_CLIENT_CAPTURE_PROFILE_H_
+#endif  // XLA_TSL_PROFILER_RPC_CLIENT_CAPTURE_PROFILE_H_

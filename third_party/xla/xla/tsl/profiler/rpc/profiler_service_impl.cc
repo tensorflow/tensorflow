@@ -13,13 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/profiler/rpc/profiler_service_impl.h"
+#include "xla/tsl/profiler/rpc/profiler_service_impl.h"
 
 #include <memory>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_replace.h"
 #include "grpcpp/support/status.h"
+#include "xla/tsl/profiler/rpc/client/save_profile.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/env_time.h"
 #include "tsl/platform/errors.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "tsl/profiler/protobuf/profiler_service.grpc.pb.h"
 #include "tsl/profiler/protobuf/profiler_service.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
-#include "tsl/profiler/rpc/client/save_profile.h"
 #include "tsl/profiler/utils/file_system_utils.h"
 #include "tsl/profiler/utils/math_utils.h"
 #include "tsl/profiler/utils/time_utils.h"
