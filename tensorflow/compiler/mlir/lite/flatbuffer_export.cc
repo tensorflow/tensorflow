@@ -115,7 +115,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
-#include "tensorflow/lite/tools/versioning/gpu_compatibility.h"
 #include "tensorflow/lite/tools/versioning/op_version.h"
 #include "tensorflow/lite/tools/versioning/runtime_version.h"
 #include "tsl/platform/fingerprint.h"
@@ -727,9 +726,6 @@ class Translator {
       const mlir::TFL::SparsityParameterAttr& s_attr);
 
   bool EstimateArithmeticCount(int64_t* count);
-
-  // Check compatibility with GPU delegate and returns the compatibility.
-  bool CheckGpuDelegateCompatibility(uint8_t* model_buffer_pointer);
 
   // Append constant and custom op buffers at the end of the flatbuffer and
   // calculate the offsets
@@ -3436,32 +3432,6 @@ std::optional<std::string> Translator::Translate(
   return ret;
 }
 
-bool Translator::CheckGpuDelegateCompatibility(uint8_t* model_buffer_pointer) {
-  bool gpu_compatibile = true;
-  auto model = tflite::GetModel(model_buffer_pointer);
-  auto subgraphs = model->subgraphs();
-
-  for (int i = 0; i < subgraphs->Length(); ++i) {
-    const tflite::SubGraph* subgraph = subgraphs->Get(i);
-    for (int j = 0; j < subgraph->operators()->Length(); ++j) {
-      const tflite::Operator* op = subgraph->operators()->Get(j);
-      const tflite::OperatorCode* op_code =
-          model->operator_codes()->Get(op->opcode_index());
-      auto status =
-          tflite::CheckGpuDelegateCompatibility(op_code, op, subgraph, model);
-      if (!status.ok()) {
-        gpu_compatibile = false;
-        auto inst = subgraph_op_inst_map_[i][j];
-        tfl::AttachErrorCode(
-            inst->emitOpError()
-                << "is not GPU compatible: " << std::string(status.message()),
-            tflite::metrics::ConverterErrorData::ERROR_GPU_NOT_COMPATIBLE);
-      }
-    }
-  }
-  return gpu_compatibile;
-}
-
 std::optional<std::string> Translator::TranslateInternal() {
   // A list of named regions in the module with main function being the first
   // in the list. The main function is required as the first subgraph in the
@@ -3671,11 +3641,6 @@ std::optional<std::string> Translator::TranslateInternal() {
   }
   tflite::UpdateOpVersion(builder_.GetBufferPointer());
   tflite::UpdateMinimumRuntimeVersionForModel(builder_.GetBufferPointer());
-  if (supported_backends_.find("GPU") != supported_backends_.end()) {
-    if (!CheckGpuDelegateCompatibility(builder_.GetBufferPointer())) {
-      return std::nullopt;
-    }
-  }
 
   absl::Cord result;
   auto fbs = absl::string_view(

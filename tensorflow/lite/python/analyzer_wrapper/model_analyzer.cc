@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/tools/versioning/gpu_compatibility.h"
 
 namespace tflite {
 
@@ -459,15 +458,6 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
             model->operator_codes()->Get(op->opcode_index());
         out_stream << "  ";  // indents for operators
         dump_node(out_stream, /*node_no=*/j, op_code, op, i, model);
-        if (check_gpu_compatibility) {
-          auto status =
-              CheckGpuDelegateCompatibility(op_code, op, subgraph, model);
-          if (!status.ok()) {
-            gpu_incompatible_nodes.push_back(j);
-            out_stream << "GPU COMPATIBILITY WARNING: " << status.message()
-                       << "\n";
-          }
-        }
       }
     }
     if (!gpu_incompatible_nodes.empty()) {
