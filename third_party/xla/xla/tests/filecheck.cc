@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,20 +15,22 @@ limitations under the License.
 
 #include "xla/tests/filecheck.h"
 
-#include <cstdlib>
+#include <string>
 
-#include "xla/types.h"
-#include "xla/util.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/platform.h"
 #include "tsl/platform/resource_loader.h"
 #include "tsl/platform/subprocess.h"
 
 namespace xla {
 
-StatusOr<bool> RunFileCheck(const std::string& input,
-                            absl::string_view pattern) {
+absl::StatusOr<bool> RunFileCheck(const std::string& input,
+                                  absl::string_view pattern) {
   // Generate an input file for the FileCheck pattern.
   std::string pattern_path;
   auto env = tsl::Env::Default();
@@ -40,16 +42,34 @@ StatusOr<bool> RunFileCheck(const std::string& input,
   return RunFileCheckWithPatternFile(input, pattern_path);
 }
 
-StatusOr<bool> RunFileCheckWithPatternFile(const std::string& input,
-                                           const std::string& pattern_file) {
+absl::StatusOr<bool> RunFileCheckWithPatternFile(
+    const std::string& input, const std::string& pattern_file) {
   // Invoke FileCheck to check whether input matches `pattern`.
+  std::string binary_name = "FileCheck";
+  tsl::io::AppendDotExeIfWindows(binary_name);
   std::string file_check_path = tsl::GetDataDependencyFilepath(
-      tsl::io::JoinPath("external", "llvm-project", "llvm", "FileCheck"));
+      tsl::kIsOpenSource
+          ? tsl::io::JoinPath("external", "llvm-project", "llvm", binary_name)
+          : tsl::io::JoinPath("llvm", "llvm-project", "llvm", binary_name));
 
   tsl::SubProcess file_check_process;
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  std::string file_check_prefixes;
+#if GOOGLE_CUDA
+  file_check_prefixes = "--check-prefixes=CHECK,CHECK-PTX";
+#endif  // GOOGLE_CUDA
+#if TENSORFLOW_USE_ROCM
+  file_check_prefixes = "--check-prefixes=CHECK,CHECK-GCN";
+#endif  // TENSORFLOW_USE_ROCM
+  file_check_process.SetProgram(
+      file_check_path,
+      {file_check_path, "-v", "-dump-input=fail", "--dump-input-filter=all",
+       file_check_prefixes, "--allow-unused-prefixes", pattern_file});
+#else  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   file_check_process.SetProgram(file_check_path,
                                 {file_check_path, "-v", "-dump-input=fail",
                                  "--dump-input-filter=all", pattern_file});
+#endif
   file_check_process.SetChannelAction(tsl::CHAN_STDIN, tsl::ACTION_PIPE);
   file_check_process.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
   if (!file_check_process.Start()) {
@@ -72,11 +92,11 @@ StatusOr<bool> RunFileCheckWithPatternFile(const std::string& input,
     }
 
     // Log at ERROR level so these show up even if you don't pass --logtostderr.
-    LOG(ERROR) << "FileCheck stderr:\n" << standard_error;
     LOG(ERROR) << "FileCheck input was:\n" << input;
+    LOG(ERROR) << "FileCheck stderr:\n" << standard_error;
   } else if (!standard_error.empty()) {
-    LOG(INFO) << "FileCheck stderr:\n" << standard_error;
     LOG(INFO) << "FileCheck input was:\n" << input;
+    LOG(INFO) << "FileCheck stderr:\n" << standard_error;
   }
   return succeeded;
 }

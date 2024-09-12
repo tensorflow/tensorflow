@@ -46,7 +46,6 @@ limitations under the License.
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
@@ -584,7 +583,7 @@ Status ReplaceEdgeWithSendRecv(Graph* g, const Edge* edge, const string& tensor,
   g->AddControlEdge(edge->src(), recv);
 
   g->RemoveEdge(edge);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Defines a graph to perform the following computation:

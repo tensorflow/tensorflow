@@ -416,8 +416,8 @@ struct ReLUAttributes {
 struct PReLUAttributes {
   // If alpha is linear, then it is sharded across CHANNELS axis, otherwise
   // full shape alpha is required.
-  absl::variant<Tensor<Linear, DataType::FLOAT32>,
-                Tensor<HWC, DataType::FLOAT32>>
+  std::variant<Tensor<Linear, DataType::FLOAT32>,
+               Tensor<HWC, DataType::FLOAT32>>
       alpha;
 };
 

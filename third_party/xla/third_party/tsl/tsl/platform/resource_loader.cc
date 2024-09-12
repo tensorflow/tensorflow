@@ -18,7 +18,9 @@ limitations under the License.
 #include <cstdlib>
 #include <string>
 
+#include "tsl/platform/logging.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/platform.h"
 #include "tsl/platform/test.h"
 
 namespace tsl {
@@ -26,8 +28,16 @@ namespace tsl {
 std::string GetDataDependencyFilepath(const std::string& relative_path) {
   // TODO(ddunleavy): replace this with `TensorFlowSrcRoot()` from `test.h`.
   const char* srcdir = std::getenv("TEST_SRCDIR");
+  if (!srcdir) {
+    LOG(FATAL) << "Environment variable TEST_SRCDIR unset!";  // Crash OK
+  }
+
   const char* workspace = std::getenv("TEST_WORKSPACE");
-  return testing::kIsOpenSource
+  if (!workspace) {
+    LOG(FATAL) << "Environment variable TEST_WORKSPACE unset!";  // Crash OK
+  }
+
+  return kIsOpenSource
              ? io::JoinPath(srcdir, workspace, relative_path)
              : io::JoinPath(srcdir, workspace, "third_party", relative_path);
 }

@@ -28,7 +28,7 @@ namespace tensorflow {
 //
 // Return an InvalidArgument error if some attributes are present but
 // cannot be parsed.
-StatusOr<std::optional<xla::FrontendAttributes>>
+absl::StatusOr<std::optional<xla::FrontendAttributes>>
 GetFrontendAttributesFromAttrSlice(const AttrSlice& attrs);
 
 }  // namespace tensorflow

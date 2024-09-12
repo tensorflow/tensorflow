@@ -19,6 +19,7 @@ from typing import Mapping, Optional
 
 from absl import logging
 
+from tensorflow.compiler.mlir.quantization.stablehlo import quantization_config_pb2 as stablehlo_quant_config_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.python import py_function_lib
 from tensorflow.compiler.mlir.quantization.tensorflow.python import pywrap_quantize_model
@@ -51,10 +52,14 @@ _UnitWiseQuantizationSpec = tf_export.tf_export(
 )(quant_opts_pb2.UnitWiseQuantizationSpec)
 
 _PresetMethod = _QuantizationMethod.PresetMethod
-_CalibrationMethod = quant_opts_pb2.CalibrationOptions.CalibrationMethod
+_CalibrationMethod = (
+    stablehlo_quant_config_pb2.CalibrationOptions.CalibrationMethod
+)
 
 _QuantizationComponent = _QuantizationComponentSpec.QuantizationComponent
 _TensorType = _QuantizationComponentSpec.TensorType
+
+_RepresentativeDatasetFile = quant_opts_pb2.RepresentativeDatasetFile
 
 # Mapping of signature def key -> SignatureDef.
 _SignatureDefMap = Mapping[str, meta_graph_pb2.SignatureDef]
@@ -96,6 +101,57 @@ def _serialize_signature_def_map(
   return signature_def_map_serialized
 
 
+def _save_representative_dataset(
+    representative_dataset: repr_dataset.RepresentativeDatasetOrMapping,
+    signature_def_map: _SignatureDefMap,
+) -> Mapping[str, _RepresentativeDatasetFile]:
+  """Saves the representative dataset to temporary TFRecord files.
+
+  Args:
+    representative_dataset: Representative dataset used for the calibration
+      step. Representative datasets should exist for each signature def key in
+      `signature_def_keys`.
+    signature_def_map: Signature def key -> SignatureDef mapping.
+
+  Returns:
+    A map from signature key to the saved representative dataset file.
+  """
+  if isinstance(representative_dataset, Mapping):
+    if set(signature_def_map.keys()) != set(representative_dataset.keys()):
+      raise ValueError(
+          'The signature keys and the keys of representative dataset map '
+          f'do not match. Signature keys: {set(signature_def_map.keys())}, '
+          f'representative dataset map: {set(representative_dataset.keys())}.'
+      )
+    representative_dataset_map = representative_dataset
+  elif len(signature_def_map.keys()) > 1:
+    raise ValueError(
+        'Representative dataset is not a mapping (got: '
+        f'{type(representative_dataset)}), but there is more than one '
+        'signature key provided. Please provide a map of '
+        '{signature_key -> dataset} with more than one signature key.'
+    )
+  else:
+    representative_dataset_map = {
+        list(signature_def_map.keys())[0]: representative_dataset,
+    }
+
+  # Save the representative dataset to temporary TFRecord files.
+  path_map = {}
+  expected_input_key_map = {}
+  for signature_key, signature_def in signature_def_map.items():
+    # Filepath is the second return value of mkstemp.
+    _, path_map[signature_key] = tempfile.mkstemp(
+        suffix='.tfrecord', prefix=signature_key
+    )
+    expected_input_key_map[signature_key] = signature_def.inputs.keys()
+
+  return repr_dataset.TfRecordRepresentativeDatasetSaver(
+      path_map=path_map,
+      expected_input_key_map=expected_input_key_map,
+  ).save(representative_dataset_map)
+
+
 def _run_static_range_qat(
     src_saved_model_path: str,
     dst_saved_model_path: str,
@@ -114,11 +170,6 @@ def _run_static_range_qat(
   """
   logging.info('Running static-range quantization for QAT model.')
 
-  loader = saved_model_loader.SavedModelLoader(src_saved_model_path)
-  function_aliases = loader.get_meta_graph_def_from_tags(
-      quant_opts.tags
-  ).meta_info_def.function_aliases
-
   pywrap_quantize_model.quantize_qat_model(
       src_saved_model_path,
       dst_saved_model_path,
@@ -127,7 +178,6 @@ def _run_static_range_qat(
       signature_def_map_serialized=_serialize_signature_def_map(
           signature_def_map
       ),
-      function_aliases=dict(function_aliases),
       py_function_library=py_function_lib.PyFunctionLibrary(),
   )
 
@@ -136,7 +186,7 @@ def _run_static_range_ptq(
     src_saved_model_path: str,
     dst_saved_model_path: str,
     quant_opts: _QuantizationOptions,
-    representative_dataset: repr_dataset.RepresentativeDatasetOrMapping,
+    representative_dataset: Mapping[str, _RepresentativeDatasetFile],
     signature_def_map: _SignatureDefMap,
 ) -> None:
   """Runs static-range Post-Training Quantization.
@@ -150,9 +200,8 @@ def _run_static_range_ptq(
     src_saved_model_path: Path to the source SavedModel directory.
     dst_saved_model_path: Path to the destination SavedModel directory.
     quant_opts: Quantization options.
-    representative_dataset: Representative dataset used for the calibration
-      step. Representative datasets should exist for each signature def key in
-      `signature_def_keys`.
+    representative_dataset: A map from signature key to the saved representative
+      dataset file.
     signature_def_map: Signature def key -> SignatureDef mapping.
 
   Raises:
@@ -160,21 +209,22 @@ def _run_static_range_ptq(
   """
   logging.info('Running static-range post-training quantization.')
 
-  loader = saved_model_loader.SavedModelLoader(src_saved_model_path)
-  function_aliases = loader.get_meta_graph_def_from_tags(
-      quant_opts.tags
-  ).meta_info_def.function_aliases
-
   signature_def_map_serialized = _serialize_signature_def_map(signature_def_map)
+
+  # `quantize_ptq_static_range` requires `RepresentativeDatasetFile`s to be
+  # serialized. Serialize the values to match the type.
+  dataset_file_map_serialized = {
+      signature_key: dataset_file.SerializeToString()
+      for signature_key, dataset_file in representative_dataset.items()
+  }
   pywrap_quantize_model.quantize_ptq_static_range(
       src_saved_model_path,
       dst_saved_model_path,
       quantization_options_serialized=quant_opts.SerializeToString(),
       signature_keys=list(quant_opts.signature_keys),
       signature_def_map_serialized=signature_def_map_serialized,
-      function_aliases=dict(function_aliases),
       py_function_library=py_function_lib.PyFunctionLibrary(),
-      representative_dataset=representative_dataset,
+      representative_dataset_file_map_serialized=dataset_file_map_serialized,
   )
 
 
@@ -230,9 +280,24 @@ def _static_range_quantize(
       set(quantization_options.tags),
   )
 
+  if (
+      representative_dataset is not None
+      and quantization_options.representative_datasets
+  ):
+    raise ValueError(
+        'Do not specify both the `representative_dataset` argument and'
+        ' the `representative_datasets` field in `QuantizationOptions`.'
+    )
+
+  saved_representative_dataset = quantization_options.representative_datasets
+  if representative_dataset is not None:
+    saved_representative_dataset = _save_representative_dataset(
+        representative_dataset, signature_def_map
+    )
+
   # Checks if the model is from QAT or method is METHOD_NO_QUANTIZE.
   if (
-      representative_dataset is None
+      not saved_representative_dataset
       and not is_qat_saved_model_or_method_no_quantize
   ):
     raise ValueError(
@@ -258,7 +323,7 @@ def _static_range_quantize(
         src_saved_model_path,
         dst_saved_model_path,
         quantization_options,
-        representative_dataset,
+        saved_representative_dataset,
         signature_def_map,
     )
 
@@ -297,12 +362,6 @@ def _dynamic_range_quantize(
   )
   logging.info('QuantizationOptions: \n%s', quantization_options)
 
-  loader = saved_model_loader.SavedModelLoader(src_saved_model_path)
-
-  function_aliases = loader.get_meta_graph_def_from_tags(
-      quantization_options.tags
-  ).meta_info_def.function_aliases
-
   signature_def_map = save_model.get_signatures_from_saved_model(
       src_saved_model_path,
       quantization_options.signature_keys,
@@ -318,7 +377,6 @@ def _dynamic_range_quantize(
       signature_def_map_serialized=_serialize_signature_def_map(
           signature_def_map
       ),
-      function_aliases=dict(function_aliases),
       py_function_library=py_function_lib.PyFunctionLibrary(),
   )
 
@@ -359,12 +417,6 @@ def _weight_only_quantize(
   )
   logging.info('QuantizationOptions: \n%s', quantization_options)
 
-  loader = saved_model_loader.SavedModelLoader(src_saved_model_path)
-
-  function_aliases = loader.get_meta_graph_def_from_tags(
-      quantization_options.tags
-  ).meta_info_def.function_aliases
-
   signature_def_map = save_model.get_signatures_from_saved_model(
       src_saved_model_path,
       list(quantization_options.signature_keys),
@@ -378,7 +430,6 @@ def _weight_only_quantize(
       signature_def_map_serialized=_serialize_signature_def_map(
           signature_def_map
       ),
-      function_aliases=dict(function_aliases),
       py_function_library=py_function_lib.PyFunctionLibrary(),
   )
 
@@ -556,8 +607,8 @@ def _populate_calibration_options(
       calib_opts.calibration_method
       == _CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE
   ):
-    if not calib_opts.calibration_parameters.initial_num_bins:
-      calib_opts.calibration_parameters.initial_num_bins = 256
+    if not calib_opts.calibration_parameters.num_bins:
+      calib_opts.calibration_parameters.num_bins = 512
     if not calib_opts.calibration_parameters.min_percentile:
       calib_opts.calibration_parameters.min_percentile = 0.001
     if not calib_opts.calibration_parameters.max_percentile:
@@ -581,8 +632,14 @@ def _populate_calibration_options(
           f' methods. calibration_method={calib_opts.calibration_method}'
       )
 
-    if not calib_opts.calibration_parameters.initial_num_bins:
-      calib_opts.calibration_parameters.initial_num_bins = 256
+    if not calib_opts.calibration_parameters.num_bins:
+      calib_opts.calibration_parameters.num_bins = 512
+
+  if calib_opts.calibration_data_dir:
+    save_model.create_empty_output_dir(
+        calib_opts.calibration_data_dir,
+        overwrite=calib_opts.force_regenerate_calibration_data,
+    )
 
 
 def _populate_quantization_options_default_values(
@@ -649,7 +706,9 @@ def _populate_quantization_options_default_values(
         _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS,
     )
 
-  # TODO: b/307900054 - Set the per-channel quantization by default.
+  if not quantization_options.HasField('enable_per_channel_quantization'):
+    quantization_options.enable_per_channel_quantization = False
+
   if quantization_options.enable_per_channel_quantization and not (
       (
           quantization_options.op_set == quant_opts_pb2.OpSet.UNIFORM_QUANTIZED
@@ -657,15 +716,16 @@ def _populate_quantization_options_default_values(
           == _PresetMethod.METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8
       )
       or (
-          quantization_options.op_set == quant_opts_pb2.OpSet.XLA
+          quantization_options.op_set
+          in (quant_opts_pb2.OpSet.XLA, quant_opts_pb2.OpSet.STABLEHLO)
           and quantization_options.quantization_method.preset_method
           == _PresetMethod.METHOD_STATIC_RANGE_INT8
       )
   ):
     raise ValueError(
         'Currently, per-channel quantization is supported for Uniform Quantized'
-        ' opset, weight only quantization, or XLA opset with static range'
-        ' quantization.'
+        ' opset, weight only quantization, or XLA/StableHLO opset with static'
+        ' range quantization.'
     )
 
   if (
@@ -681,39 +741,39 @@ def _populate_quantization_options_default_values(
   if (quantization_options.op_set == quant_opts_pb2.OpSet.STABLEHLO) and (
       quantization_options.quantization_method.preset_method
       != _PresetMethod.METHOD_STATIC_RANGE_INT8
+      and quantization_options.quantization_method.preset_method
+      != _PresetMethod.METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8
   ):
     raise ValueError(
         'StableHLO quantized opset currently only supports static range'
-        ' quantization via TF Quantizer.'
+        ' quantization and weight-only quantizationvia TF Quantizer.'
     )
 
-  if quantization_options.HasField('debugger_options'):
-    # Set `force_graph_mode_calibration` to True to avoid skipping op execution,
-    # which are not connected to return ops, during calibration execution.
-    # Setting `force_graph_mode_calibration` to True enables execution of the
-    # model in graph mode (not eager mode).
-    logging.debug(
-        'Setting `force_graph_mode_calibration = True` to ensure the debugging '
-        'model is executed in graph mode during calibration, rather than eager '
-        'mode.'
-    )
-    quantization_options.force_graph_mode_calibration = True
+  # Set `force_graph_mode_calibration` to True to avoid skipping op execution,
+  # which are not connected to return ops, during calibration execution.
+  # TODO: b/335031954 - Bring back support to run calibration in Eager mode.
+  logging.debug(
+      'Setting `force_graph_mode_calibration = True` to ensure the calibration'
+      ' mode is executed properly.'
+  )
+  quantization_options.force_graph_mode_calibration = True
 
-    if not quantization_options.debugger_options.log_dir_path:
-      quantization_options.debugger_options.log_dir_path = '/tmp/dumps'
+  if quantization_options.HasField('debugger_config'):
+    if not quantization_options.debugger_config.log_dir_path:
+      quantization_options.debugger_config.log_dir_path = '/tmp/dumps'
 
     if (
-        quantization_options.debugger_options.debugger_type
-        == quant_opts_pb2.DebuggerOptions.DebuggerType.DEBUGGER_TYPE_UNSPECIFIED
+        quantization_options.debugger_config.debugger_type
+        == stablehlo_quant_config_pb2.DebuggerConfig.DebuggerType.DEBUGGER_TYPE_UNSPECIFIED
     ):
       raise ValueError(
           'Debugger is enabled but debugger type was not specified.'
       )
 
     if (
-        quantization_options.debugger_options.debugger_type
-        == quant_opts_pb2.DebuggerOptions.DebuggerType.DEBUGGER_TYPE_WHOLE_MODEL
-        and not quantization_options.debugger_options.unquantized_dump_model_path
+        quantization_options.debugger_config.debugger_type
+        == stablehlo_quant_config_pb2.DebuggerConfig.DebuggerType.DEBUGGER_TYPE_WHOLE_MODEL
+        and not quantization_options.debugger_config.unquantized_dump_model_path
     ):
       raise ValueError(
           'Debugger type whole model verify was used but'
@@ -834,20 +894,6 @@ def quantize(
     quantization_options = _QuantizationOptions()
 
   _populate_quantization_options_default_values(quantization_options)
-
-  if (
-      representative_dataset is not None
-      and quantization_options.representative_datasets
-  ):
-    raise ValueError(
-        'Do not specify both the `representative_dataset` argument and'
-        ' the `representative_datasets` field in `QuantizationOptions`.'
-    )
-
-  if quantization_options.representative_datasets:
-    representative_dataset = repr_dataset.RepresentativeDatasetLoader(
-        quantization_options.representative_datasets
-    ).load()
 
   method: _QuantizationMethod = quantization_options.quantization_method
   if (

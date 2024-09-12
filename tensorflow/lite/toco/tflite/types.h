@@ -15,8 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOCO_TFLITE_TYPES_H_
 #define TENSORFLOW_LITE_TOCO_TFLITE_TYPES_H_
 
+#include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
+#include "flatbuffers/vector.h"  // from @flatbuffers
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/toco/model.h"
+#include "tensorflow/lite/toco/runtime/types.h"
 
 namespace toco {
 

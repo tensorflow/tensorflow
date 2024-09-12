@@ -79,7 +79,7 @@ class LookupTableOp : public OpKernel {
                     container->MemoryUsed() + table_.AllocatedBytes());
               }
               *ret = container;
-              return OkStatus();
+              return absl::OkStatus();
             };
 
     lookup::LookupInterface* table = nullptr;
@@ -236,7 +236,7 @@ class HashTable : public InitializableLookupTable {
                            .WithAttr("use_node_name_sharing", true));
     if (table_.empty()) {
       *out = hash_table_node;
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     if (initializer_serializer_ == nullptr) {
@@ -251,7 +251,7 @@ class HashTable : public InitializableLookupTable {
         builder, hash_table_node, &initializer));
     *out = ops::UnaryOp("Identity", hash_table_node,
                         builder->opts().WithControlInput(initializer));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   size_t size() const override {
@@ -282,7 +282,7 @@ class HashTable : public InitializableLookupTable {
       keys_data(i) = it->first;
       values_data(i) = it->second;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   DataType key_dtype() const override { return DataTypeToEnum<K>::v(); }
@@ -297,7 +297,7 @@ class HashTable : public InitializableLookupTable {
     if (size > 0) {
       table_.reserve(size);
     }
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   Status DoLazyPrepare(std::function<int64(void)> size_fn) override {
@@ -317,7 +317,7 @@ class HashTable : public InitializableLookupTable {
             result.first->second, " and trying to add value ", value);
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status DoFind(const Tensor& key, Tensor* value,
@@ -330,7 +330,7 @@ class HashTable : public InitializableLookupTable {
       value_values(i) = gtl::FindWithDefault(
           table_, SubtleMustCopyIfIntegral(key_values(i)), default_val);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   int64_t MemoryUsed() const override {

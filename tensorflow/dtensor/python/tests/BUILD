@@ -36,6 +36,7 @@ pytype_strict_library(
         "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/dtensor:dtensor-users",
         "//tensorflow/tools/pip_package:__pkg__",
+        "//tensorflow/tools/pip_package:__subpackages__",
     ],
     deps = [
         "//tensorflow/dtensor/python:api",
@@ -64,6 +65,7 @@ pytype_strict_library(
         "//tensorflow/python/ops:stateless_random_ops_gen",
         "//tensorflow/python/ops:stateless_random_ops_v2_gen",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/util:numpy_compat",
         "//third_party/py/numpy",
         "@absl_py//absl/flags",
         "@absl_py//absl/testing:parameterized",
@@ -482,6 +484,7 @@ pytype_strict_library(
         "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/dtensor:dtensor-users",
         "//tensorflow/tools/pip_package:__pkg__",
+        "//tensorflow/tools/pip_package:__subpackages__",
     ],
     deps = [
         ":test_util",

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,13 +28,16 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/client/compile_only_client.h"
 #include "xla/client/local_client.h"
 #include "xla/service/compile_only_service.h"
 #include "xla/service/local_service.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"
 
@@ -83,10 +86,10 @@ class ClientLibrary {
   //     null then default platform is used.
   //   device_set: Set of device IDs for which the stream executor will be
   //   created, for the given platform.
-  static StatusOr<LocalClient*> GetOrCreateLocalClient(
+  static absl::StatusOr<LocalClient*> GetOrCreateLocalClient(
       se::Platform* platform = nullptr,
       const std::optional<std::set<int>>& device_set = std::nullopt);
-  static StatusOr<LocalClient*> GetOrCreateLocalClient(
+  static absl::StatusOr<LocalClient*> GetOrCreateLocalClient(
       const LocalClientOptions& options);
 
   // Convenience "or-die" wrapper around the above which returns the existing
@@ -101,7 +104,7 @@ class ClientLibrary {
   //
   //   platform : The platform the underlying XLA service should target. If
   //     null then default platform is used.
-  static StatusOr<CompileOnlyClient*> GetOrCreateCompileOnlyClient(
+  static absl::StatusOr<CompileOnlyClient*> GetOrCreateCompileOnlyClient(
       se::Platform* platform = nullptr);
 
   // Clears the local instance and compile only instance caches. The client

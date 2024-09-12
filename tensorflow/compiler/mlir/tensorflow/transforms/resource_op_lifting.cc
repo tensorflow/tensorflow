@@ -74,14 +74,14 @@ struct ResourceOpLiftingPass
 };
 
 bool IsResource(Value value) {
-  return getElementTypeOrSelf(value.getType()).isa<TF::ResourceType>();
+  return mlir::isa<TF::ResourceType>(getElementTypeOrSelf(value.getType()));
 }
 
 // Get the type of the data contained in a resource. Returns null if there is
 // no single type in the resource.
 Type GetResourceSubtype(Value value) {
   auto resource_type =
-      getElementTypeOrSelf(value.getType()).dyn_cast<TF::ResourceType>();
+      mlir::dyn_cast<TF::ResourceType>(getElementTypeOrSelf(value.getType()));
   auto subtypes = resource_type.getSubtypes();
   if (subtypes.size() == 1) return subtypes[0];
   return nullptr;
@@ -691,7 +691,7 @@ void RemoveUnusedResourceArgumentsAndForwardedRetvals(
   int64_t skipped_retvals = 0;
   for (auto entry : llvm::enumerate(old_return_vals)) {
     auto return_val = entry.value();
-    if (auto arg = return_val.dyn_cast<BlockArgument>()) {
+    if (auto arg = mlir::dyn_cast<BlockArgument>(return_val)) {
       auto it = infos.find(arg.getArgNumber());
       if (it != infos.end() && !it->getSecond().used) {
         return_op->eraseOperand(entry.index() - skipped_retvals++);
@@ -747,7 +747,7 @@ LogicalResult LiftArgRetResourcesForFunction(
   // with type replaced.
   llvm::SmallVector<Value, 4> skipped_args;
   for (auto& it : hoister.GetResources()) {
-    BlockArgument arg = it.first.dyn_cast<BlockArgument>();
+    BlockArgument arg = mlir::dyn_cast<BlockArgument>(it.first);
     assert(arg && "Expect resources for FuncOp to be its arguments");
     auto type_iter = resource_data_types.find(arg.getArgNumber());
     if (type_iter == resource_data_types.end()) {
@@ -772,7 +772,7 @@ LogicalResult LiftArgRetResourcesForFunction(
     Value resource = assign_variable_op.getResource();
     if (!hoister.Contains(resource)) continue;
 
-    auto arg = resource.dyn_cast<BlockArgument>();
+    auto arg = mlir::dyn_cast<BlockArgument>(resource);
     handle_updated_arg_value(arg.getArgNumber(), assign_variable_op.getValue());
     assign_variable_op.erase();
   }
@@ -1018,11 +1018,11 @@ LogicalResult HandlePartitionedCallOpCallee(
   for (auto entry :
        llvm::enumerate(callee.front().getTerminator()->getOperands())) {
     auto retval = entry.value();
-    if (!getElementTypeOrSelf(retval.getType()).isa<TF::ResourceType>()) {
+    if (!mlir::isa<TF::ResourceType>(getElementTypeOrSelf(retval.getType()))) {
       result->old_to_new_output_indices.push_back(non_resource_results++);
       continue;
     }
-    auto aliasing_arg = retval.dyn_cast<BlockArgument>();
+    auto aliasing_arg = mlir::dyn_cast<BlockArgument>(retval);
     if (!aliasing_arg) {
       return callee.emitOpError("unsupported function call: ")
              << "resource return value does not alias an input.";
@@ -1063,7 +1063,7 @@ LogicalResult HandlePartitionedCallOpCallee(
   llvm::SmallVector<int64_t, 4> retval_indices_to_preserve;
   for (auto& val : callee.front().getTerminator()->getOpOperands()) {
     // Store indices of results that are not resources.
-    if (!getElementTypeOrSelf(val.get().getType()).isa<TF::ResourceType>())
+    if (!mlir::isa<TF::ResourceType>(getElementTypeOrSelf(val.get().getType())))
       retval_indices_to_preserve.push_back(val.getOperandNumber());
   }
   int64_t num_retvals = retval_indices_to_preserve.size();

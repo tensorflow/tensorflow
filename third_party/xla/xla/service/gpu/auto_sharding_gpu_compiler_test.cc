@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,10 +17,12 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
+#include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/logging.h"
 
@@ -29,6 +31,8 @@ namespace gpu {
 namespace {
 
 namespace m = ::xla::match;
+
+using ::testing::Conditional;
 
 class AutoShardingTest : public HloTestBase {
  protected:
@@ -60,18 +64,31 @@ ENTRY matmul {
 };
 
 TEST_F(AutoShardingTest, MatMulWithAutosharding) {
-  auto compiled_module = CompileMatMul(true, 4);
-  auto* instruction = FindInstruction(compiled_module.get(), "param");
-  VLOG(2) << instruction->ToString();
+  std::unique_ptr<HloModule> compiled_module = CompileMatMul(true, 4);
+  const HloInstruction* parameter1 =
+      compiled_module->entry_computation()->parameter_instruction(0);
+  const HloInstruction* parameter2 =
+      compiled_module->entry_computation()->parameter_instruction(1);
+
+  // Check that at least one of the parameters is sharded, thereby telling us
+  // that the dot is as well.
+  VLOG(2) << parameter1->ToString();
   EXPECT_THAT(
-      instruction,
-      AnyOf(GmockMatch(m::Op().WithSharding("{devices=[1,4]0,1,2,3}")),
-            GmockMatch(m::Op().WithSharding("{devices=[4,1]0,1,2,3}"))));
+      parameter1,
+      AnyOf(GmockMatch(m::Op().WithShape(PrimitiveType::F32, {8, 64})),
+            GmockMatch(m::Op().WithShape(PrimitiveType::F32, {32, 16}))));
+
+  VLOG(2) << parameter2->ToString();
+  EXPECT_THAT(
+      parameter2,
+      AnyOf(GmockMatch(m::Op().WithShape(PrimitiveType::F32, {16, 128})),
+            GmockMatch(m::Op().WithShape(PrimitiveType::F32, {64, 32}))));
 }
 
 TEST_F(AutoShardingTest, MatMulWithoutAutosharding) {
   auto compiled_module = CompileMatMul(false, 4);
-  auto* instruction = FindInstruction(compiled_module.get(), "param");
+  auto* instruction =
+      compiled_module->entry_computation()->parameter_instruction(0);
   VLOG(2) << instruction->ToString();
   EXPECT_THAT(instruction, GmockMatch(m::Op().WithSharding("{replicated}")));
 }

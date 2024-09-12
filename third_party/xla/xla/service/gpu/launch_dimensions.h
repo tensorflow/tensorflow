@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,9 +16,11 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_LAUNCH_DIMENSIONS_H_
 #define XLA_SERVICE_GPU_LAUNCH_DIMENSIONS_H_
 
+#include <cstdint>
 #include <ostream>
 #include <string>
 
+#include "absl/strings/str_cat.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -74,44 +76,15 @@ class LaunchDimensions {
                         thread_counts_per_block_.z, "}");
   }
 
-  bool operator==(const LaunchDimensions& other) const {
-    return block_counts_ == other.block_counts_ &&
-           thread_counts_per_block_ == other.thread_counts_per_block_;
-  }
-
-  bool operator!=(const LaunchDimensions& other) const {
-    return !(*this == other);
-  }
-
  private:
   se::BlockDim block_counts_;
   se::ThreadDim thread_counts_per_block_;
 };
 
-std::ostream& operator<<(std::ostream& out,
-                         const LaunchDimensions& launch_dims);
-
 struct LaunchDimensionsConfig {
   // The kernel implementation will be unrolled if `unroll_factor` is
   // greater than one.
   int unroll_factor = 1;
-  // A wave is a group of blocks that execute at the same time on the
-  // GPU. If there are more blocks then the number that can run
-  // concurrently, there are multiple waves of blocks running
-  // sequentially.  If `few_waves` is true, each thread will loop over
-  // a block of unroll_factor elements. Otherwise each thread will
-  // handle only unroll_factor.
-  bool few_waves = false;
-  // If `row_optimized` is true, then the block size will equal to
-  // `hlo.shape().dimensions().back()/unroll_factor`.
-  // Currently few_waves and row_vectorized do not work together.
-  bool row_vectorized = false;
-
-  std::string ToString() {
-    return absl::StrCat("unroll_factor=", unroll_factor,
-                        ", few_waves=", few_waves,
-                        ", row_vectorized=", row_vectorized);
-  }
 };
 
 // Returns -1 if the shape doesn't allow the row vectorization code path.
@@ -121,7 +94,7 @@ int64_t ThreadsPerBlockRowVectorized(
     LaunchDimensionsConfig dim_config);
 
 // Calculates the launch dimensions used to invoke `hlo`.
-StatusOr<LaunchDimensions> CalculateLaunchDimensions(
+LaunchDimensions CalculateLaunchDimensions(
     const Shape& shape, const se::DeviceDescription& gpu_device_info,
     LaunchDimensionsConfig dim_config = {});
 

@@ -108,6 +108,7 @@ tf_python_pybind_extension(
     visibility = [
         "//perftools/accelerators/xprof/xprofilez/integration_tests:__pkg__",
         "//tensorflow/python/profiler:__subpackages__",
+        "//tensorflow/tools/pip_package:__subpackages__",
     ],
     deps = [
         "@local_xla//xla/python/profiler/internal:traceme_wrapper",
@@ -127,6 +128,7 @@ tf_python_pybind_extension(
         "//tensorflow/core/profiler:internal",
         "//tensorflow/python/eager:__pkg__",
         "//tensorflow/python/profiler:__pkg__",
+        "//tensorflow/tools/pip_package:__subpackages__",
     ],
     deps = [
         ":profiler_pywrap_impl",
@@ -147,9 +149,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tf_profiler_copts() + ["-fexceptions"],
     features = ["-use_header_modules"],  # Incompatible with -fexceptions.
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
@@ -165,9 +165,7 @@ cc_library(
     name = "profiler_pywrap_impl",
     srcs = ["profiler_pywrap_impl.cc"],
     hdrs = ["profiler_pywrap_impl.h"],
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -181,8 +179,8 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:variant",
-        "@local_tsl//tsl/profiler/convert:xplane_to_trace_events",
-        "@local_tsl//tsl/profiler/rpc/client:capture_profile",
         "@local_tsl//tsl/profiler/utils:session_manager",
+        "@local_xla//xla/tsl/profiler/convert:xplane_to_trace_events",
+        "@local_xla//xla/tsl/profiler/rpc/client:capture_profile",
     ],
 )

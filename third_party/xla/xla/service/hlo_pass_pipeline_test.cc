@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,8 +20,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/util.h"
-#include "tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -32,7 +32,7 @@ using ::testing::StrEq;
 
 class HloPassPipelineTest : public HloTestBase {
  protected:
-  StatusOr<HloModuleGroup> ParseModuleGroup(
+  absl::StatusOr<HloModuleGroup> ParseModuleGroup(
       absl::Span<const std::string> hlo_strings) {
     HloModuleGroup group(TestName());
     for (const std::string& hlo_string : hlo_strings) {
@@ -49,9 +49,9 @@ class FooToBarModulePass : public HloModulePass {
   absl::string_view name() const override { return "foo2bar"; }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(HloModule* module,
-                     const absl::flat_hash_set<absl::string_view>&
-                         execution_threads) override {
+  absl::StatusOr<bool> Run(HloModule* module,
+                           const absl::flat_hash_set<absl::string_view>&
+                               execution_threads) override {
     bool changed = false;
     for (HloComputation* computation :
          module->computations(execution_threads)) {
@@ -72,9 +72,9 @@ class ReverseStringModulePass : public HloModulePass {
   absl::string_view name() const override { return "reverse"; }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(HloModule* module,
-                     const absl::flat_hash_set<absl::string_view>&
-                         execution_threads) override {
+  absl::StatusOr<bool> Run(HloModule* module,
+                           const absl::flat_hash_set<absl::string_view>&
+                               execution_threads) override {
     bool changed = false;
     for (HloComputation* computation :
          module->computations(execution_threads)) {
@@ -93,9 +93,10 @@ class BazToQuxModuleGroupPass : public HloModuleGroupPass {
   absl::string_view name() const override { return "baz2qux"; }
 
   using HloPassInterface::RunOnModuleGroup;
-  StatusOr<bool> RunOnModuleGroup(HloModuleGroup* module_group,
-                                  const absl::flat_hash_set<absl::string_view>&
-                                      execution_threads) override {
+  absl::StatusOr<bool> RunOnModuleGroup(
+      HloModuleGroup* module_group,
+      const absl::flat_hash_set<absl::string_view>& execution_threads)
+      override {
     bool changed = false;
     for (HloModule* module : module_group->modules()) {
       for (HloComputation* computation :
@@ -118,14 +119,14 @@ class BarBlowerUpper : public HloModulePass {
   absl::string_view name() const override { return "bar-blower-upper"; }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(HloModule* module,
-                     const absl::flat_hash_set<absl::string_view>&
-                         execution_threads) override {
+  absl::StatusOr<bool> Run(HloModule* module,
+                           const absl::flat_hash_set<absl::string_view>&
+                               execution_threads) override {
     for (HloComputation* computation :
          module->computations(execution_threads)) {
       for (HloInstruction* instruction : computation->instructions()) {
         if (instruction->name() == "bar") {
-          return InternalError("Module has instruction named bar");
+          return Internal("Module has instruction named bar");
         }
       }
     }
@@ -318,7 +319,7 @@ ENTRY main {
     pipeline.AddInvariantChecker<BarBlowerUpper>();
     pipeline.AddPass<FooToBarModulePass>();
 
-    Status status = pipeline.Run(module.get()).status();
+    absl::Status status = pipeline.Run(module.get()).status();
     ASSERT_IS_NOT_OK(status);
     EXPECT_THAT(status.message(),
                 ::testing::HasSubstr("Module has instruction named bar"));
@@ -330,7 +331,7 @@ ENTRY main {
     HloPassPipeline pipeline(TestName());
     pipeline.AddInvariantChecker<BarBlowerUpper>();
 
-    Status status = pipeline.Run(module.get()).status();
+    absl::Status status = pipeline.Run(module.get()).status();
     ASSERT_IS_NOT_OK(status);
     EXPECT_THAT(status.message(),
                 ::testing::HasSubstr("Module has instruction named bar"));
@@ -355,7 +356,7 @@ ENTRY main {
   HloPassPipeline pipeline(TestName());
   pipeline.AddPass<BazToQuxModuleGroupPass>();
 
-  Status status = pipeline.Run(module.get()).status();
+  absl::Status status = pipeline.Run(module.get()).status();
   ASSERT_IS_NOT_OK(status);
   EXPECT_THAT(
       status.message(),

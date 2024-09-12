@@ -36,7 +36,7 @@ class TestEagerOpRewrite : public EagerOpRewrite {
         new tensorflow::EagerOperation(&orig_op->EagerContext());
     TF_RETURN_IF_ERROR(op->Reset("NoOp", nullptr, false, &executor_));
     out_op->reset(op);
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -59,7 +59,7 @@ TEST(EagerOpRewriteRegistryTest, RegisterRewritePass) {
       /*run_eager_op_as_function=*/true);
   EagerOperation orig_op(ctx);
   std::unique_ptr<tensorflow::EagerOperation> out_op;
-  EXPECT_EQ(OkStatus(),
+  EXPECT_EQ(absl::OkStatus(),
             EagerOpRewriteRegistry::Global()->RunRewrite(
                 EagerOpRewriteRegistry::PRE_EXECUTION, &orig_op, &out_op));
   EXPECT_EQ(2, TestEagerOpRewrite::count_);

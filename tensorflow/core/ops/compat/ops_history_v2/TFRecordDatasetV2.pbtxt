@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "TFRecordDatasetV2"
   input_arg {
     name: "filenames"

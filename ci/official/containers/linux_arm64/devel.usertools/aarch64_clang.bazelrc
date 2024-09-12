@@ -60,7 +60,7 @@ test --test_summary=short
 test:nonpip_filters --test_tag_filters=-no_oss,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_aarch64,-no_oss_py38,-no_oss_py39,-no_oss_py310
 test:nonpip_filters --build_tag_filters=-no_oss,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_aarch64,-no_oss_py38,-no_oss_py39,-no_oss_py310
 test:nonpip_filters --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium
-test:nonpip --config=nonpip_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
+test:nonpip --config=nonpip_filters -- //tensorflow/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
 
 # "pip tests" run a similar suite of tests the "nonpip" tests, but do something
 # odd to attempt to validate the quality of the pip package. The wheel is
@@ -94,4 +94,4 @@ build:libtensorflow_build -- //tensorflow/tools/lib_package:libtensorflow.tar.gz
 test:pycpp_filters --test_tag_filters=-no_oss,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_aarch64,-no_oss_py38,-no_oss_py39,-no_oss_py310
 test:pycpp_filters --build_tag_filters=-no_oss,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_aarch64,-no_oss_py38,-no_oss_py39,-no_oss_py310
 test:pycpp_filters --test_lang_filters=cc,py --flaky_test_attempts=3 --test_size_filters=small,medium
-test:pycpp --config=pycpp_filters -- //tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
+test:pycpp --config=pycpp_filters -- //tensorflow/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...

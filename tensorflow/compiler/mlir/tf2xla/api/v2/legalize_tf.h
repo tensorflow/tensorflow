@@ -50,7 +50,7 @@ namespace v2 {
 //  arg_core_mapping - Which args go on which cores.
 //  per_core_arg_shapes - For each core, the shapes for each argument.
 //  client - The Xla Compilation client.
-tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
+absl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
     const std::variant<tpu::MlirToHloArgs, tpu::FunctionToHloArgs>& computation,
     const tpu::TPUCompileMetadataProto& metadata, bool use_tuple_args,
     llvm::StringRef device_type,

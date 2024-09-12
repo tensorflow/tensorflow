@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "xla/stream_executor/event.h"
-#include "xla/stream_executor/multi_platform_manager.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_factory.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -166,8 +166,8 @@ TEST_F(WhileOpTest, WhileOpCPUBuildWithPluggableDevice) {
           std::move(platform_fns_),
           stream_executor::test_util::DestroyPlatformFns,
           std::move(device_fns_), std::move(se_), std::move(timer_fns_)));
-  TF_CHECK_OK(stream_executor::MultiPlatformManager::RegisterPlatform(
-      std::move(cplatform)));
+  TF_CHECK_OK(
+      stream_executor::PlatformManager::RegisterPlatform(std::move(cplatform)));
 
   DeviceFactory::Register(
       platform_type, new PluggableDeviceFactory(platform_type, platform_name),

@@ -38,7 +38,7 @@ class Master;
 // for cancellation.
 class LocalMaster : public MasterInterface {
  public:
-  ~LocalMaster() {}
+  ~LocalMaster() override {}
 
   Status CreateSession(CallOptions* call_options,
                        const CreateSessionRequest* request,

@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -34,7 +34,7 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<bool> ReduceScatterDecomposer::Run(
+absl::StatusOr<bool> ReduceScatterDecomposer::Run(
     HloModule *module,
     const absl::flat_hash_set<absl::string_view> &execution_threads) {
   bool changed = false;
@@ -53,14 +53,18 @@ StatusOr<bool> ReduceScatterDecomposer::Run(
       if (rs->channel_id()) {
         channel_id = next_channel_id++;
       }
+      if (should_decompose_ && !should_decompose_(rs)) {
+        continue;
+      }
 
+      VLOG(2) << "Decompose: " << rs->ToString();
       // Create an all-reduce
       HloComputation *apply_clone = module->AddComputationAndUnifyNamesAndIds(
           rs->to_apply()->Clone(), /*is_entry=*/false);
       HloInstruction *ar =
           computation->AddInstruction(HloInstruction::CreateAllReduce(
               rs->operand(0)->shape(), rs->operands(), apply_clone,
-              rs->replica_groups(), rs->constrain_layout(), channel_id,
+              rs->device_list(), rs->constrain_layout(), channel_id,
               rs->use_global_device_ids()));
       apply_clone->SetCollectiveCallInstruction(ar);
 

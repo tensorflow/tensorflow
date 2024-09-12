@@ -287,8 +287,8 @@ func.func @testConcatCwiseBinaryNegativeAxis(%arg0: tensor<f32>,
 // Synthesize binary ops when 1 of the 3 concat inputs is a non-binary op.
 // CHECK-LABEL: testConcatCwiseBinarySynthMulOp3Inputs
 func.func @testConcatCwiseBinarySynthMulOp3Inputs(%arg0: tensor<?x1xf32>, %arg1: tensor<?x1xf32>, %arg2: tensor<?x1xf32>) -> tensor<?x3xf32> {
-  // CHECK: %[[CONST:.*]] = "tf.Const"() <{value = dense<1> : tensor<i32>}> : () -> tensor<i32>
-  // CHECK-NEXT: %[[CONST0:.*]] = "tf.Const"() <{value = dense<[2.000000e+00, 3.000000e+00, 1.000000e+00]>
+  // CHECK-DAG: %[[CONST:.*]] = "tf.Const"() <{value = dense<1> : tensor<i32>}> : () -> tensor<i32>
+  // CHECK-DAG: %[[CONST0:.*]] = "tf.Const"() <{value = dense<[2.000000e+00, 3.000000e+00, 1.000000e+00]>
   // CHECK: %[[CONCAT:.*]] = "tf.ConcatV2"(%arg0, %arg1, %arg2, %[[CONST]]) {device = "/job:localhost/replica:0/task:0/device:GPU:0"}
   // CHECK: "tf.Mul"(%[[CONCAT]], %[[CONST0]]) {device = "/job:localhost/replica:0/task:0/device:GPU:0"}
   %axis = "tf.Const"() { value = dense<1> : tensor<i32> } : () -> tensor<i32>
@@ -1924,8 +1924,8 @@ func.func @testFoldEnsureShapeOp(%arg0: tensor<10x20xf32>) -> (tensor<10x20xf32>
 func.func @testConvertPackToReshapeAxis0(%arg0: tensor<2x3xf32>) -> tensor<1x2x3xf32> {
   %0 = "tf.Pack"(%arg0) {axis = 0 : i64, _xla_outside_compilation = "1", device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<2x3xf32>) -> tensor<1x2x3xf32>
   func.return %0 : tensor<1x2x3xf32>
-  // CHECK: %[[SHAPE:.*]] = "tf.Const"() <{value = dense<[1, 2, 3]> : tensor<3xi64>}> : () -> tensor<3xi64>
-  // CHECK: %[[RESHAPE:.*]] = "tf.Reshape"(%arg0, %[[SHAPE]]) {_xla_outside_compilation = "1", device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<2x3xf32>, tensor<3xi64>) -> tensor<1x2x3xf32>
+  // CHECK: %[[SHAPE:.*]] = "tf.Const"() <{value = dense<[1, 2, 3]> : tensor<3xi32>}> : () -> tensor<3xi32>
+  // CHECK: %[[RESHAPE:.*]] = "tf.Reshape"(%arg0, %[[SHAPE]]) {_xla_outside_compilation = "1", device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<2x3xf32>, tensor<3xi32>) -> tensor<1x2x3xf32>
   // CHECK: return %[[RESHAPE]] : tensor<1x2x3xf32>
 }
 
@@ -1933,8 +1933,8 @@ func.func @testConvertPackToReshapeAxis0(%arg0: tensor<2x3xf32>) -> tensor<1x2x3
 func.func @testConvertPackToReshapeAxis1(%arg0: tensor<2x3xf32>) -> tensor<2x1x3xf32> {
   %0 = "tf.Pack"(%arg0) {axis = 1 : i64, device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<2x3xf32>) -> tensor<2x1x3xf32>
   func.return %0 : tensor<2x1x3xf32>
-  // CHECK: %[[SHAPE:.*]] = "tf.Const"() <{value = dense<[2, 1, 3]> : tensor<3xi64>}> : () -> tensor<3xi64>
-  // CHECK: %[[RESHAPE:.*]] = "tf.Reshape"(%arg0, %[[SHAPE]]) {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<2x3xf32>, tensor<3xi64>) -> tensor<2x1x3xf32>
+  // CHECK: %[[SHAPE:.*]] = "tf.Const"() <{value = dense<[2, 1, 3]> : tensor<3xi32>}> : () -> tensor<3xi32>
+  // CHECK: %[[RESHAPE:.*]] = "tf.Reshape"(%arg0, %[[SHAPE]]) {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<2x3xf32>, tensor<3xi32>) -> tensor<2x1x3xf32>
   // CHECK: return %[[RESHAPE]] : tensor<2x1x3xf32>
 }
 
@@ -2060,9 +2060,9 @@ func.func @testDivNoNanAndMulNoNanWithConstantY(%arg0: tensor<2xf32>) -> (tensor
 // CHECK-LABEL: testComplexDivNoNanAndMulNoNanWithConstantY
 // CHECK-SAME: (%[[ARG0:.*]]: tensor<2xcomplex<f32>>)
 func.func @testComplexDivNoNanAndMulNoNanWithConstantY(%arg0: tensor<2xcomplex<f32>>) -> (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) {
-  // CHECK-NEXT: %[[COMP2:.*]] = "tf.Const"() <{value = dense<[(0.000000e+00,0.000000e+00), (2.000000e+00,0.000000e+00)]> : tensor<2xcomplex<f32>>}> : () -> tensor<2xcomplex<f32>>
-  // CHECK-NEXT: %[[COMP1:.*]] = "tf.Const"() <{value = dense<[(1.000000e+00,3.000000e+00), (2.000000e+00,4.000000e+00)]> : tensor<2xcomplex<f32>>}> : () -> tensor<2xcomplex<f32>>
-  // CHECK-NEXT: %[[COMP3:.*]] = "tf.Const"() <{value = dense<(0.000000e+00,0.000000e+00)> : tensor<2xcomplex<f32>>}> : () -> tensor<2xcomplex<f32>>
+  // CHECK-DAG: %[[COMP2:.*]] = "tf.Const"() <{value = dense<[(0.000000e+00,0.000000e+00), (2.000000e+00,0.000000e+00)]> : tensor<2xcomplex<f32>>}> : () -> tensor<2xcomplex<f32>>
+  // CHECK-DAG: %[[COMP1:.*]] = "tf.Const"() <{value = dense<[(1.000000e+00,3.000000e+00), (2.000000e+00,4.000000e+00)]> : tensor<2xcomplex<f32>>}> : () -> tensor<2xcomplex<f32>>
+  // CHECK-DAG: %[[COMP3:.*]] = "tf.Const"() <{value = dense<(0.000000e+00,0.000000e+00)> : tensor<2xcomplex<f32>>}> : () -> tensor<2xcomplex<f32>>
   // CHECK-NEXT: %[[RES1:.*]] = "tf.Mul"(%[[ARG0]], %[[COMP1]]) {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
   // CHECK-NEXT: %[[RES2:.*]] = "tf.DivNoNan"(%[[ARG0]], %[[COMP2]]) : (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
   // CHECK-NEXT: return %[[RES1]], %[[RES2]], %[[COMP3]] : tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>

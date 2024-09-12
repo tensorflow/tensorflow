@@ -152,7 +152,7 @@ func.func @compare_large_constants() -> tensor<65537xi1> {
 func.func @concatenate_small_constants() -> tensor<65536xi32> {
   // CHECK-NOT: mhlo.concatenate
   %0 = mhlo.constant dense<0> : tensor<32768xi32>
-  %1 = "mhlo.concatenate"(%0, %0) {dimension = 0 : i64} : (tensor<32768xi32>, tensor<32768xi32>) -> tensor<65536xi32>
+  %1 = "mhlo.concatenate"(%0, %0) <{dimension = 0 : i64}> : (tensor<32768xi32>, tensor<32768xi32>) -> tensor<65536xi32>
   func.return %1 : tensor<65536xi32>
 }
 
@@ -160,7 +160,7 @@ func.func @concatenate_small_constants() -> tensor<65536xi32> {
 func.func @concatenate_large_constants() -> tensor<65538xi32> {
   // CHECK: mhlo.concatenate
   %0 = mhlo.constant dense<0> : tensor<32769xi32>
-  %1 = "mhlo.concatenate"(%0, %0) {dimension = 0 : i64} : (tensor<32769xi32>, tensor<32769xi32>) -> tensor<65538xi32>
+  %1 = "mhlo.concatenate"(%0, %0) <{dimension = 0 : i64}> : (tensor<32769xi32>, tensor<32769xi32>) -> tensor<65538xi32>
   func.return %1 : tensor<65538xi32>
 }
 

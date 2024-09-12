@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/sparsecore/sparsecore_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/passes/clustering_passes.h"
 
 namespace tensorflow {
@@ -34,12 +35,10 @@ namespace internal {
 using mlir::OpPassManager;
 using mlir::func::FuncOp;
 
-// LINT.IfChange(tpu_bridge_passes)
-
-// Adds Bridge clustering pipeline passes to the given pass_manager. Does not
-// run them.
-void AddBridgeClusteringPipelinePasses(OpPassManager& pm,
-                                       llvm::StringRef module_name) {
+// Adds replicated Bridge clustering pipeline passes to the given pass_manager.
+// Does not run them.
+void AddReplicatedBridgeClusteringPipelinePasses(OpPassManager& pm,
+                                                 llvm::StringRef module_name) {
   // The following ops must be preserved regardless of reachability. Ideally,
   // all graphs should have control dependencies to enforce this but this is
   // currently not the case (see b/177478741).
@@ -143,10 +142,15 @@ void AddBridgeClusteringPipelinePasses(OpPassManager& pm,
 
   pm.addNestedPass<FuncOp>(mlir::TFDevice::CreateClusterConstantSinkingPass());
   pm.addPass(mlir::TF::CreateResourceDeviceInferencePass());
+  pm.addNestedPass<FuncOp>(
+      tensorflow::tf2xla::internal::CreateHoistBroadcastReadPass());
+  pm.addNestedPass<FuncOp>(
+      tensorflow::tf2xla::internal::CreateXlaBroadcastPass());
   pm.addPass(mlir::TFDevice::CreateClusterOutliningPass());
   pm.addPass(mlir::TFTPU::CreateTPUResourceReadForWritePass());
   pm.addPass(mlir::TFDevice::CreateMarkInputOutputAliasesPass());
-  pm.addPass(mlir::TFTPU::CreateTPUShardingIdentificationPass());
+  pm.addPass(
+      tensorflow::tf2xla::internal::CreateTPUShardingIdentificationPass());
   pm.addNestedPass<FuncOp>(
       mlir::TFTPU::CreateTPUResourceReadsWritesPartitioningPass());
   pm.addPass(mlir::TFDevice::CreateAnnotateParameterReplicationPass());
@@ -158,21 +162,18 @@ void AddBridgeClusteringPipelinePasses(OpPassManager& pm,
   pm.addNestedPass<FuncOp>(
       tensorflow::tf2xla::internal::CreateVerifyClusteringPass());
 }
-// LINT.ThenChange(:non_tpu_bridge_passes)
 
 void NoCanonicalization(OpPassManager& pm) {}
 
-// LINT.IfChange(non_tpu_bridge_passes)
-void AddNonTPUBridgeClusteringPipelinePasses(OpPassManager& pm) {
+// Same as above but for non-replicated Bridge.
+void AddNonReplicatedBridgeClusteringPipelinePasses(OpPassManager& pm) {
   // The following ops must be preserved regardless of reachability. Ideally,
   // all graphs should have control dependencies to enforce this.
   VLOG(2) << "Create TF XLA Bridge pipeline";
   pm.addPass(mlir::TFDevice::CreateXlaValidateInputsPass());
   pm.addNestedPass<FuncOp>(
       mlir::TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
-  const llvm::SmallVector<std::string, 4> ops_to_preserve = {
-      "tf.TPUReplicateMetadata", "tf.TPUCompilationResult",
-      "tf.TPUReplicatedOutput"};
+  const llvm::SmallVector<std::string, 4> ops_to_preserve = {};
   pm.addNestedPass<FuncOp>(
       mlir::tf_executor::CreateTFExecutorGraphPruningPass(ops_to_preserve));
   // It is assumed at this stage there are no V1 control flow ops as Graph
@@ -184,16 +185,6 @@ void AddNonTPUBridgeClusteringPipelinePasses(OpPassManager& pm) {
   // inference.
   pm.addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
-  // The following passe are addded to match TPU pipeline and expected to be
-  // no-op.
-  pm.addNestedPass<FuncOp>(mlir::TFTPU::CreateTPUPartitionedOpConversionPass());
-  pm.addNestedPass<FuncOp>(
-      mlir::TFTPU::CreateTPUReorderReplicateAndPartitionedInputsPass());
-  pm.addNestedPass<FuncOp>(mlir::TF::CreateDecomposeReduceDatasetPass());
-  pm.addPass(mlir::TFDevice::CreateEmbeddingPipeliningPass());
-  pm.addPass(mlir::TFDevice::CreateEmbeddingSequencingPass());
-  pm.addPass(
-      tensorflow::tf2xla::internal::CreateXlaOutlineEntryFunctionsPass());
   // Encapsulate PartitionedCall ops within a cluster so that the composite
   // resource ops can be decomposed.
   pm.addPass(tensorflow::tf2xla::internal::CreateXlaClusterFormationPass());
@@ -203,12 +194,6 @@ void AddNonTPUBridgeClusteringPipelinePasses(OpPassManager& pm) {
   pm.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
   // Decompose resource ops.
   pm.addPass(mlir::TFDevice::CreateDecomposeResourceOpsInClusterPass());
-  // TODO(b/267193636): Remove this flag when outside compilation
-  // for generic pipeline is landed.
-  if (tensorflow::GetMlirCommonFlags()
-          ->tf_mlir_enable_generic_outside_compilation) {
-    pm.addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
-  }
   // Run another shape inference pass because resource decomposition might have
   // created new partial types. Also, after dropping `shape_invariant` attribute
   // from While/WhileRegion ops within cluster would lead to more precise
@@ -223,24 +208,12 @@ void AddNonTPUBridgeClusteringPipelinePasses(OpPassManager& pm) {
   // Lift resource operations out of device computation. This step needs to be
   // done after inlining.
   pm.addPass(mlir::TFDevice::CreateResourceOpLiftingPass());
-  // TODO(b/267193636): Remove this flag when outside compilation
-  // for generic pipeline is landed.
-  if (tensorflow::GetMlirCommonFlags()
-          ->tf_mlir_enable_generic_outside_compilation) {
-    pm.addPass(
-        tensorflow::tf2xla::internal::CreateMarkOpsForOutsideCompilationPass());
-    pm.addPass(tensorflow::tf2xla::internal::
-                   CreateExtractHeadTailOutsideCompilationPass());
-    pm.addPass(
-        tensorflow::tf2xla::internal::CreateExtractOutsideCompilationPass());
-  }
   // Outline clusters into cluster functions.
   pm.addPass(mlir::TFDevice::CreateClusterOutliningPass());
   // Verifies clustering has conformed with the expected invariants
   pm.addNestedPass<FuncOp>(
       tensorflow::tf2xla::internal::CreateVerifyClusteringPass());
 }
-// LINT.ThenChange(:tpu_bridge_passes)
 
 };  // namespace internal
 };  // namespace tf2xla

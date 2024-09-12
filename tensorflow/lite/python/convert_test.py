@@ -15,11 +15,10 @@
 """TensorFlow Lite Python Interface: Sanity check."""
 from unittest import mock
 import numpy as np
-
+from tensorflow.compiler.mlir.lite.metrics import converter_error_data_pb2
 from tensorflow.lite.python import convert
 from tensorflow.lite.python import op_hint
 from tensorflow.lite.python.interpreter import Interpreter
-from tensorflow.lite.python.metrics import converter_error_data_pb2
 from tensorflow.lite.python.metrics.wrapper import metrics_wrapper
 from tensorflow.lite.toco import toco_flags_pb2 as _conversion_flags_pb2
 from tensorflow.python.client import session
@@ -35,7 +34,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-def _mock_wrapped_toco_convert(
+def _mock_wrapped_convert(
     unused_model_flags_str="",
     conversion_flags_str="",
     unused_input_data_str="",
@@ -100,7 +99,7 @@ class ConvertTest(test_util.TensorFlowTestCase):
     mock_func.assert_called_once()
 
   @mock.patch.object(
-      convert.wrap_toco, "wrapped_toco_convert", new=_mock_wrapped_toco_convert
+      convert.wrap_converter, "wrapped_convert", new=_mock_wrapped_convert
   )
   @mock.patch.object(
       metrics_wrapper, "retrieve_collected_errors", new=_mock_retrieve_errors

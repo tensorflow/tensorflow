@@ -208,7 +208,7 @@ class OutputWriterImpl : public OutputWriter {
   void WriteCombination(int64_t batch_index,
                         const std::vector<int>& combination, tstring* out) {
     static const auto k_feature_separator = "_X_";
-    gtl::InlinedVector<tstring, 6> cross_vec(features_.size());
+    absl::InlinedVector<tstring, 6> cross_vec(features_.size());
     for (int i = 0; i < combination.size(); ++i) {
       features_[i]->ReadValue(batch_index, combination[i], &cross_vec[i]);
     }
@@ -439,7 +439,7 @@ class RaggedCrossOp : public OpKernel {
       }
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Calculate the batch size from any input tensor.  (We check that all input
@@ -518,7 +518,7 @@ class RaggedCrossOp : public OpKernel {
       }
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Builds a RaggedReatureReader
@@ -552,7 +552,7 @@ class RaggedCrossOp : public OpKernel {
             new RaggedFeatureReader<tstring, int32>(values, splits));
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Builds a DenseFaggedReatureReader.
@@ -567,7 +567,7 @@ class RaggedCrossOp : public OpKernel {
                                      (features->size() + 1), ": ",
                                      values.dtype());
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Builds a SparseFaggedReatureReader.
@@ -586,7 +586,7 @@ class RaggedCrossOp : public OpKernel {
                                      (features->size() + 1), ": ",
                                      values.dtype());
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Allocates output tensors with proper size, and populates row_splits_out.
@@ -612,7 +612,7 @@ class RaggedCrossOp : public OpKernel {
     TF_RETURN_IF_ERROR(context->allocate_output(
         0, TensorShape({cross_count_total}), values_out));
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Returns number of crosses for a given batch_index

@@ -14,10 +14,20 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/data/dataset_test_base.h"
-#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/serialization_utils.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/framework/variant_tensor_data.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace data {
@@ -59,7 +69,7 @@ class WindowDatasetParams : public DatasetParams {
     input_names->emplace_back(WindowDatasetOp::kShift);
     input_names->emplace_back(WindowDatasetOp::kStride);
     input_names->emplace_back(WindowDatasetOp::kDropRemainder);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -67,7 +77,7 @@ class WindowDatasetParams : public DatasetParams {
     attr_vector->emplace_back("output_types", output_dtypes_);
     attr_vector->emplace_back("output_shapes", output_shapes_);
     attr_vector->emplace_back("metadata", "");
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   string dataset_type() const override { return WindowDatasetOp::kDatasetType; }

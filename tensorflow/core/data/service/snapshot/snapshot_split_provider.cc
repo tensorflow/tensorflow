@@ -49,8 +49,9 @@ constexpr char kNextSplitIndex[] = "next_split_index";
 constexpr char kRepetitionIndex[] = "repetition_index";
 
 absl::StatusOr<int64_t> GetRepetitionIndex(const std::string& split_file) {
-  tsl::StringPiece repetition_dir_path = tsl::io::Dirname(split_file);
-  tsl::StringPiece repetition_dir_name = tsl::io::Basename(repetition_dir_path);
+  absl::string_view repetition_dir_path = tsl::io::Dirname(split_file);
+  absl::string_view repetition_dir_name =
+      tsl::io::Basename(repetition_dir_path);
   return ParseRepetitionDirectoryName(repetition_dir_name);
 }
 }  // namespace

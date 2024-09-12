@@ -21,7 +21,6 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "absl/status/status.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
@@ -35,7 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/test_utils.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
@@ -44,7 +43,6 @@ namespace mhlo {
 
 using func::FuncOp;
 using mlir::ModuleOp;
-using tsl::Status;
 
 static constexpr char kMlirModuleStr[] = R"(
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 1442 : i32}} {
@@ -56,15 +54,15 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
 class LegalizationOpConfigTest : public ::testing::Test {
  public:
-  Status CreateMlirModule(std::string module_string = kMlirModuleStr) {
+  absl::Status CreateMlirModule(std::string module_string = kMlirModuleStr) {
     TF_ASSIGN_OR_RETURN(
         module_, test::GetMlirModuleFromString(module_string, &context_));
 
     context_.loadAllAvailableDialects();
-    return tsl::OkStatus();
+    return absl::OkStatus();
   }
 
-  tsl::StatusOr<FuncOp> GetMain() {
+  absl::StatusOr<FuncOp> GetMain() {
     func::FuncOp main = module_->lookupSymbol<mlir::func::FuncOp>("main");
     if (!main) {
       return absl::NotFoundError("Could not find main function");
@@ -102,6 +100,12 @@ TEST_F(LegalizationOpConfigTest, ExpectsTrueForTF2XLATypeID) {
   EXPECT_FALSE(IsTypeLegalizedWithMlir(TypeID::get<TF::AllOp>()));
 }
 
+TEST_F(LegalizationOpConfigTest, ChecksDynamicPadderOps) {
+  EXPECT_TRUE(
+      IsDynamicPadderOp(TypeID::get<TF::XlaSetDynamicDimensionSizeOp>()));
+  EXPECT_FALSE(IsDynamicPadderOp(TypeID::get<TF::ConstOp>()));
+}
+
 // This test is kind of odd. We go through all the Tensorflow types and check
 // whether they are legalized with MLIR, TF2XLA, or both. Ideally the sets are
 // disjoint, but until that happens, this tests ensures that the set doesn't
@@ -131,8 +135,8 @@ TEST_F(LegalizationOpConfigTest, CountLoweringsSet) {
   // from MLIR to TF2XLA), these numbers should change. Or if TF Dialect adds
   // a new op, we should expect these to change too.
   EXPECT_EQ(mlir_lowering_count, 67);
-  EXPECT_EQ(tf2xla_fallback_count, 316);
-  EXPECT_EQ(non_categorized_count, 421);
+  EXPECT_EQ(tf2xla_fallback_count, 323);
+  EXPECT_EQ(non_categorized_count, 430);
 }
 
 // Just a counter test to see which ops have duplicate lowerings. This isn't a
@@ -183,7 +187,7 @@ TEST_F(LegalizationOpConfigTest, CountAllMlirLoweringPatterns) {
     }
   }
 
-  EXPECT_EQ(mlir_only_patterns, 64);
+  EXPECT_EQ(mlir_only_patterns, 63);
 }
 
 // Counts which ops have lowerings without XlaOpKernels. This isn't a
@@ -224,7 +228,7 @@ TEST_F(LegalizationOpConfigTest, MlirLoweringWithoutXlaKernel) {
     }
   }
 
-  EXPECT_EQ(mlir_without_xla_count, 14);
+  EXPECT_EQ(mlir_without_xla_count, 13);
 }
 
 }  // namespace mhlo

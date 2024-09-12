@@ -66,7 +66,7 @@ Status EagerKernelArgs::GetLocalArg(const FunctionArgIndex& index,
   Tensor* arg = tensor_args_.at(index.index).tensor;
   if (arg) {
     *val = *arg;
-    return OkStatus();
+    return absl::OkStatus();
   } else {
     return errors::NotFound("Argument ", index.index, " has no local tensor.");
   }
@@ -144,7 +144,7 @@ Status KernelAndDeviceOp::Init(
                                        tensorflow::HOST_MEMORY);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status KernelAndDeviceFunc::InstantiateFunc(
@@ -336,7 +336,7 @@ Status KernelAndDeviceOp::Run(
     // time on device of the OpKernel.
     profiler::AnnotatedTraceMe activity(
         [&] { return kernel_->TraceString(context, /*verbose=*/false); },
-        profiler::TraceMeLevel::kInfo);
+        tsl::profiler::TraceMeLevel::kInfo);
     device_->Compute(kernel_.get(), &context);
   }
 
@@ -364,7 +364,7 @@ Status KernelAndDeviceOp::Run(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::shared_ptr<FunctionLibraryRuntime::Options>
@@ -436,8 +436,8 @@ Status KernelAndDeviceFunc::Run(
     const absl::optional<EagerFunctionParams>& eager_func_params,
     const absl::optional<ManagedStackTrace>& stack_trace,
     tsl::CoordinationServiceAgent* coordination_service_agent) {
-  profiler::TraceMe activity("KernelAndDeviceFunc::Run",
-                             profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity("KernelAndDeviceFunc::Run",
+                                  tsl::profiler::TraceMeLevel::kInfo);
   // Don't try to handle packed or remote inputs synchronously.
   if (inputs.HasRemoteOrPackedInputs() || eager_func_params.has_value()) {
     Notification n;
@@ -481,12 +481,12 @@ void KernelAndDeviceFunc::RunAsync(
     const absl::optional<EagerFunctionParams>& eager_func_params,
     tsl::CoordinationServiceAgent* coordination_service_agent,
     std::function<void(const Status&)> done) {
-  profiler::TraceMe activity(
+  tsl::profiler::TraceMe activity(
       [] {
-        return profiler::TraceMeEncode("KernelAndDeviceFunc::RunAsync",
-                                       {{"_r", 1}});
+        return tsl::profiler::TraceMeEncode("KernelAndDeviceFunc::RunAsync",
+                                            {{"_r", 1}});
       },
-      profiler::TraceMeLevel::kInfo);
+      tsl::profiler::TraceMeLevel::kInfo);
   tsl::core::RefCountPtr<Rendezvous> created_rendezvous;
   std::shared_ptr<FunctionLibraryRuntime::Options> opts = PrepareForRun(
       step_container, outputs, cancellation_manager, eager_func_params,

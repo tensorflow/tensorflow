@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_TRANSLATE_HLO_TO_MHLO_LOCATION_IMPORTER_H_
 #define XLA_TRANSLATE_HLO_TO_MHLO_LOCATION_IMPORTER_H_
 
-#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/Location.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 
 namespace mlir {

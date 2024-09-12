@@ -110,7 +110,7 @@ void ApplyTacFilter(ModuleOp module, const TacFilter& tac_filter,
 
   llvm::Regex op_regex(tac_filter.op_filter().op_name_pattern());
   module.walk([&](Operation* op) {
-    auto named_loc = op->getLoc().dyn_cast<NameLoc>();
+    auto named_loc = mlir::dyn_cast<NameLoc>(op->getLoc());
     if (!named_loc) {
       return;
     }

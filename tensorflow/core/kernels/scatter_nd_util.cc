@@ -61,7 +61,7 @@ Status ValidateScatterNdUpdateShape(const TensorShape& params_shape,
       return shape_err_suffix();
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

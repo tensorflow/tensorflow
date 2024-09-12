@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,12 +20,14 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_INFEED_MANAGER_H_
 #define XLA_SERVICE_GPU_INFEED_MANAGER_H_
 
-#include "absl/base/thread_annotations.h"
+#include <memory>
+
+#include "absl/status/status.h"
 #include "xla/literal.h"
 #include "xla/service/gpu/xfeed_queue.h"
 #include "xla/shape_tree.h"
+#include "xla/stream_executor/device_memory_handle.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/types.h"
 
 namespace xla {
 namespace gpu {
@@ -44,12 +46,12 @@ namespace gpu {
 
 // Client-side class used to enqueue infeed buffers.
 class InfeedManager
-    : public BlockingXfeedQueue<ShapeTree<se::ScopedDeviceMemory<uint8_t>>> {
+    : public BlockingXfeedQueue<ShapeTree<se::DeviceMemoryHandle>> {
  public:
   explicit InfeedManager(se::StreamExecutor* executor);
 
-  Status TransferLiteralToInfeed(se::StreamExecutor* executor,
-                                 const LiteralSlice& literal);
+  absl::Status TransferLiteralToInfeed(se::StreamExecutor* executor,
+                                       const LiteralSlice& literal);
 
  private:
   se::Stream* stream() const { return stream_.get(); }
@@ -57,9 +59,6 @@ class InfeedManager
   // Stream used to enqueue infeed device copies.
   std::unique_ptr<se::Stream> stream_;
 };
-
-// Returns the GPU infeed manager for the given stream executor,
-InfeedManager* GetOrCreateInfeedManager(se::StreamExecutor* executor);
 
 }  // namespace gpu
 }  // namespace xla

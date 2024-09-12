@@ -118,7 +118,7 @@ Status DynamicDeviceMgr::LookupDevice(StringPiece name, Device** device) const {
     return errors::InvalidArgument(name, " unknown device.");
   }
   *device = iter->second;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool DynamicDeviceMgr::ContainsDevice(int64_t device_incarnation) const {
@@ -127,7 +127,7 @@ bool DynamicDeviceMgr::ContainsDevice(int64_t device_incarnation) const {
 }
 
 void DynamicDeviceMgr::ClearContainers(
-    gtl::ArraySlice<string> containers) const {
+    absl::Span<const string> containers) const {
   Status s;
   tf_shared_lock l(devices_mu_);
   for (const auto& it : dynamic_devices_) {
@@ -181,7 +181,7 @@ Status DynamicDeviceMgr::AddDevices(
     device_incarnation_set_.insert(d->attributes().incarnation());
     dynamic_devices_.emplace(d.get(), std::move(d));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DynamicDeviceMgr::RemoveDevices(const std::vector<Device*>& devices) {
@@ -221,7 +221,7 @@ Status DynamicDeviceMgr::RemoveDevices(const std::vector<Device*>& devices) {
     stale_devices_.add(std::move(it->second));
     dynamic_devices_.erase(it);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DynamicDeviceMgr::RemoveDevicesByName(

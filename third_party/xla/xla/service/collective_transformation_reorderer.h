@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,19 +16,26 @@ limitations under the License.
 #ifndef XLA_SERVICE_COLLECTIVE_TRANSFORMATION_REORDERER_H_
 #define XLA_SERVICE_COLLECTIVE_TRANSFORMATION_REORDERER_H_
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_pass_interface.h"
-#include "xla/statusor.h"
 
 namespace xla {
 
-// Transforms all-gather + reshape into reshape + all-gather when the reshape
-// only changes the shape of the all-gather shards, i.e., it does not reshape
-// across the all-gather dimension.
+// Transforms
+//  -- all-gather + reshape into reshape + all-gather and
+//  -- reshape + all-reduce into all-reduce + reshape.
+// Both transformations require that there are no other users affected, i.e.,
+// reshape user count should be 1.
+// all-gather transformation requires the reshape to only change the shape of
+// the all-gather shards, i.e., not reshaping across the all-gather dimension.
+// all-reduce transformation requires all-reduce to be not layout constrained.
 
-// Generally speaking,
+// all-gather + reshape example:
 
 // input = [C_0, C_1, ..., C_i, ..., C_{n-1}, C_n] ...
 // all-gather = [C_0, C_1, ..., P*C_i, ... C_{n-1}, C_n] all-gather(input)
@@ -48,16 +55,18 @@ class CollectiveTransformationReorder : public HloModulePass {
   CollectiveTransformationReorder() = default;
   ~CollectiveTransformationReorder() override = default;
   absl::string_view name() const override {
-    static constexpr absl::string_view kName =
-        "collective-transformation-reorderer";
-    return kName;
+    return "collective-transformation-reorderer";
   }
-  StatusOr<bool> Run(
+  using HloPassInterface::Run;
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  StatusOr<bool> ReorderAllGatherTransformations(
+  absl::StatusOr<bool> ReorderAllGatherTransformations(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
+  absl::StatusOr<bool> ReorderAllReduceTransformations(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 };

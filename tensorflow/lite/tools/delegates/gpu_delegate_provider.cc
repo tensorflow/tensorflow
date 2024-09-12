@@ -154,6 +154,9 @@ TfLiteDelegatePtr GpuDelegateProvider::CreateTfLiteDelegate(
     gpu_opts.last_delegate_node_index =
         params.Get<int>("last_delegate_node_index");
 #endif  // TFLITE_DEBUG_DELEGATE
+#ifdef TFLITE_GPU_ENABLE_INVOKE_LOOP
+    gpu_opts.gpu_invoke_loop_times = params.Get<int>("gpu_invoke_loop_times");
+#endif  // TFLITE_GPU_ENABLE_INVOKE_LOOP
 
     // Serialization.
     std::string serialize_dir =

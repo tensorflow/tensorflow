@@ -33,7 +33,7 @@ limitations under the License.
 namespace tensorflow {
 namespace cc_op {
 
-tsl::StatusOr<ApiDefMap> LoadOpsAndApiDefs(
+absl::StatusOr<ApiDefMap> LoadOpsAndApiDefs(
     OpList& ops, bool include_internal,
     const std::vector<string>& api_def_dirs);
 

@@ -121,6 +121,9 @@ message CreateContextRequest {
   // target devices after function instantiation to avoid redundant copies.
   bool lazy_copy_remote_function_inputs = 9;
 
+  // If true, clears resource managers created in the worker environment.
+  bool clear_existing_contexts = 10;
+
   reserved 5;
 }
 

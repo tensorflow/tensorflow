@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -80,9 +80,13 @@ T GetInitialValue(ReductionKind reduction_kind) {
     case ReductionKind::PRODUCT:
       return static_cast<T>(1);
     case ReductionKind::MIN:
-      return std::numeric_limits<T>::max();
+      return std::numeric_limits<T>::has_infinity
+                 ? std::numeric_limits<T>::infinity()
+                 : std::numeric_limits<T>::max();
     case ReductionKind::MAX:
-      return std::numeric_limits<T>::min();
+      return std::numeric_limits<T>::has_infinity
+                 ? -std::numeric_limits<T>::infinity()
+                 : std::numeric_limits<T>::lowest();
   }
 }
 

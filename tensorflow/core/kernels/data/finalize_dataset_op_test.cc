@@ -42,14 +42,14 @@ class FinalizeDatasetParams : public DatasetParams {
 
   Status GetInputNames(std::vector<string>* input_names) const override {
     input_names->emplace_back(FinalizeDatasetOp::kInputDataset);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
     *attr_vector = {{FinalizeDatasetOp::kHasCapturedRef, has_captured_ref_},
                     {FinalizeDatasetOp::kOutputTypes, output_dtypes_},
                     {FinalizeDatasetOp::kOutputShapes, output_shapes_}};
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   string dataset_type() const override { return "Finalize"; }

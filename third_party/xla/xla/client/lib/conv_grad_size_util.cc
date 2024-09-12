@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,14 +17,17 @@ limitations under the License.
 
 #include <algorithm>
 
-#include "xla/status_macros.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "xla/client/padding.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
 namespace {
 
-StatusOr<SpatialDimensionOutputSizeAndPadding> GetWindowedOutputSize(
+absl::StatusOr<SpatialDimensionOutputSizeAndPadding> GetWindowedOutputSize(
     int64_t input_size, int64_t filter_size, int64_t dilation_rate,
     int64_t stride, Padding padding_type) {
   if (stride <= 0) {
@@ -65,7 +68,7 @@ StatusOr<SpatialDimensionOutputSizeAndPadding> GetWindowedOutputSize(
 
 }  // namespace
 
-StatusOr<SpatialDimensionOutputSizeAndPadding>
+absl::StatusOr<SpatialDimensionOutputSizeAndPadding>
 ConvGradExtractAndVerifyDimension(int64_t input_size, int64_t filter_size,
                                   int64_t output_size, int64_t dilation,
                                   int64_t stride, Padding padding) {

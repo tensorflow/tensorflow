@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -47,6 +47,13 @@ void MemCopyP2PImplicit();
 
 // Copies a few bytes of memory from device 0 to device 1.
 void MemCopyP2PExplicit();
+
+// Creates a simple cuda graph, clones it, instantiates it and executes it.
+void CudaGraphCreateAndExecute();
+
+// Return true if the cuda version is new enough so cuda graph activity trace
+// is supported by its CUPTI.
+bool IsCudaNewEnoughForGraphTraceTest();
 
 }  // namespace test
 }  // namespace profiler

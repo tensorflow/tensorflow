@@ -52,6 +52,10 @@ struct TfLiteTypeToType {};  // Specializations below
     return TFLITE_TYPE_ENUM;                                   \
   }                                                            \
   template <>                                                  \
+  constexpr TfLiteType typeToTfLiteType<const CPP_TYPE>() {    \
+    return TFLITE_TYPE_ENUM;                                   \
+  }                                                            \
+  template <>                                                  \
   struct TfLiteTypeToType<TFLITE_TYPE_ENUM> {                  \
     using Type = CPP_TYPE;                                     \
   }

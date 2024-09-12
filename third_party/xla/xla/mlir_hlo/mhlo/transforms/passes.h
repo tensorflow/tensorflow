@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,9 +31,6 @@ class Pass;
 namespace func {
 class FuncOp;
 }  // namespace func
-namespace lmhlo {
-class FusionOp;
-}  // namespace lmhlo
 
 namespace mhlo {
 
@@ -48,10 +45,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeSortPass();
 
 /// Lowers from HLO dialect to Standard dialect.
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeToStdPass();
-
-/// Lowers from the CHLO dialect to the HLO dialect.
-std::unique_ptr<OperationPass<func::FuncOp>> createChloLegalizeToHloPass(
-    bool legalizeBroadcasts = true, bool expandCompositions = true);
 
 // Lowers from sparse ops in CHLO dialect to Linalg dialect.
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeSparseOperationsPass(
@@ -84,10 +77,6 @@ std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToMemrefPass();
 
 /// Lowers from HLO dialect to Arithmetic dialect.
 std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToArithmeticPass();
-
-// Lowers shape operations from HLO dialect to Standard dialect.
-std::unique_ptr<OperationPass<func::FuncOp>>
-createLegalizeHloShapeOpsToStandardPass();
 
 /// Lowers from MHLO dialect to THLO dialect.
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeMHLOToTHLOPass(
@@ -143,15 +132,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> createConstraintFusionPass();
 // them through equivalent 1D or 2D reductions.
 std::unique_ptr<OperationPass<func::FuncOp>> createGroupReductionDimensionsPass(
     bool preferColumnsReductions = true);
-
-/// Rank specialization passes:
-///   - Find compatible operations and group them together in one rank
-///     specialization cluster.
-///   - Lower rank specialization clusters to SCF and ranked operations.
-std::unique_ptr<OperationPass<func::FuncOp>>
-createRankSpecializationClusterPass();
-std::unique_ptr<OperationPass<func::FuncOp>> createRankSpecializationToSCFPass(
-    int64_t maxTargetRank = 5);
 
 std::unique_ptr<OperationPass<func::FuncOp>> createOptimizeMhloPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createLowerComplexPass();

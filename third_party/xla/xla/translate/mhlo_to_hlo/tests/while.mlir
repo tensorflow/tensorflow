@@ -143,7 +143,7 @@ func.func @main(%arg0: tensor<3xf32>) -> tensor<3xf32> {
     "mhlo.return"(%7) : (tensor<i1>) -> ()
   },  {
   ^bb0(%arg1: tensor<1xi32>, %arg2: tensor<2xi32>, %arg3: tensor<1xf32>, %arg4: tensor<3xf32>):
-    %4 = "mhlo.broadcast_in_dim"(%arg3) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<1xf32>) -> tensor<3xf32>
+    %4 = "mhlo.broadcast_in_dim"(%arg3) <{broadcast_dimensions = dense<0> : tensor<1xi64>}> : (tensor<1xf32>) -> tensor<3xf32>
     %5 = mhlo.add %arg4, %4 : tensor<3xf32>
     "mhlo.return"(%arg1, %arg2, %arg3, %5) : (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>) -> ()
   }) : (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>) -> (tensor<1xi32>, tensor<2xi32>, tensor<1xf32>, tensor<3xf32>)
@@ -259,7 +259,7 @@ func.func @main(%arg0: tensor<3x3xf32>) -> tensor<3x3xf32> {
   ^bb0(%arg1: tensor<3x3xf32>):
     %2 = mhlo.constant dense<false> : tensor<i1>
     %3 = mhlo.constant dense<2.000000e+00> : tensor<f32>
-    %4 = "mhlo.broadcast_in_dim"(%3) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>) -> tensor<3x3xf32>
+    %4 = "mhlo.broadcast_in_dim"(%3) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<f32>) -> tensor<3x3xf32>
     %5 = mhlo.add %arg1, %4 : tensor<3x3xf32>
     "mhlo.return"(%5) : (tensor<3x3xf32>) -> ()
   }) : (tensor<3x3xf32>) -> tensor<3x3xf32>

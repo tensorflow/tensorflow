@@ -19,9 +19,9 @@ limitations under the License.
 #include "tsl/platform/platform.h"
 
 #if TSL_IS_IN_OSS
-#include "re2/re2.h"
+#include "re2/re2.h"  // IWYU pragma: export
 #else
-#include "third_party/re2/re2.h"
-#endif  // TSL_IS_IN_OSS
+#include "third_party/re2/re2.h"  // IWYU pragma: export
+#endif                            // TSL_IS_IN_OSS
 
 #endif  // TENSORFLOW_TSL_PLATFORM_REGEXP_H_

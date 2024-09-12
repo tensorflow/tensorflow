@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -83,10 +84,10 @@ class ValueMapManager {
     }
     base_operation.push_back(op->getResult(1));
     base_operation.push_back(op->getResult(0));
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
-  tensorflow::StatusOr<Value> GetValueOrCreatePlaceholder(StringRef full_name) {
+  absl::StatusOr<Value> GetValueOrCreatePlaceholder(StringRef full_name) {
     StringRef node_name;
     StringRef output_name = "";
     bool is_control_dep = full_name[0] == '^';
@@ -230,11 +231,11 @@ Status ImportNodes(ValueMapManager value_manager,
           op.getAttrOfType<StringAttr>(name_attr).getValue().str()));
     }
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
-tensorflow::StatusOr<NamedAttrList> ConvertArgDefAttributes(
-    const OpDef::ArgDef& arg, Builder builder) {
+absl::StatusOr<NamedAttrList> ConvertArgDefAttributes(const OpDef::ArgDef& arg,
+                                                      Builder builder) {
   NamedAttrList input_attrs;
   StringAttr arg_name = builder.getStringAttr(arg.name());
   input_attrs.set("tfg.name", arg_name);
@@ -504,7 +505,7 @@ Status ImportGenericFunction(
     }
     TF_ASSIGN_OR_RETURN(Value result, value_manager.GetValueOrCreatePlaceholder(
                                           (Twine("^") + ret_val.second).str()));
-    if (!result.getType().isa<ControlType>())
+    if (!mlir::isa<ControlType>(result.getType()))
       return InvalidArgument("failed to map returned value ", ret_val.second,
                              ", isn't a control output");
     ret_vals[func.ret_size() + position->second] = result;
@@ -534,7 +535,7 @@ Status ImportGenericFunction(
                      arg_types_with_ctl, ret_op.getOperandTypes())));
   }
   func_op->setAttrs(attrs);
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

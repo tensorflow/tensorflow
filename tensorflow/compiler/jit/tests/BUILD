@@ -1,5 +1,5 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 licenses(["notice"])
 
@@ -28,9 +28,9 @@ cc_library(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/tools/optimization:optimization_pass_runner_lib",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@local_xla//xla:status_macros",
-        "@local_xla//xla:statusor",
     ],
 )
 
@@ -88,9 +88,6 @@ tf_cc_test(
     srcs = [
         "device_compiler_serialize_test.cc",
     ],
-    env = {
-        "XLA_FLAGS": "--xla_gpu_enable_xla_runtime_executable",
-    },
     tags = [
         "config-cuda-only",
         "no_oss",  # This test only runs with GPU.
@@ -110,9 +107,6 @@ tf_cc_test(
     srcs = [
         "device_compiler_serialize_options_test.cc",
     ],
-    env = {
-        "XLA_FLAGS": "--xla_gpu_enable_xla_runtime_executable",
-    },
     tags = [
         "config-cuda-only",
         "no_oss",  # This test only runs with GPU.

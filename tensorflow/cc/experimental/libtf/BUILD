@@ -1,16 +1,16 @@
 #include "third_party/absl/strings/str_cat.h"
 #TODO(aselle) : describe this package.
 
-load(
-    "//tensorflow/core/platform:rules_cc.bzl",
-    "cc_library",
-)
+load("//tensorflow:strict.default.bzl", "py_strict_binary")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
 )
 load("//tensorflow:tensorflow.default.bzl", "filegroup")
-load("//tensorflow:strict.default.bzl", "py_strict_binary")
+load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

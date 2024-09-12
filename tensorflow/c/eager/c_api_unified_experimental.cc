@@ -52,7 +52,7 @@ Status SetDefaultTracingEngine(const char* name) {
   auto entry = GetFactories().find(name);
   if (entry != GetFactories().end()) {
     default_factory = GetFactories().find(name)->second;
-    return OkStatus();
+    return absl::OkStatus();
   }
   string msg = absl::StrCat(
       "No tracing engine factory has been registered with the key '", name,
@@ -216,7 +216,7 @@ void TF_AbstractOpSetAttrType(TF_AbstractOp* op, const char* const attr_name,
   Status status =
       unwrap(op)->SetAttrType(attr_name, static_cast<DataType>(value));
   TF_SetStatus(s, static_cast<TF_Code>(status.code()),
-               tsl::NullTerminatedMessage(status));
+               absl::StatusMessageAsCStr(status));
 }
 
 void TF_ExecuteOperation(TF_AbstractOp* op, int num_inputs,

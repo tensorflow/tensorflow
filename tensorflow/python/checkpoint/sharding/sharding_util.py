@@ -30,8 +30,11 @@ from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.util import tf_export
 
 
-TensorSlice = MutableMapping[tensor_spec.TensorSpec, tensor_lib.Tensor]
-TensorSliceDict = MutableMapping[str, TensorSlice]
+TensorSlices = MutableMapping[tensor_spec.TensorSpec, tensor_lib.Tensor]
+# A mapping from a checkpoint key (full tensor name) to the corresponding tensor
+# slices of the full tensor. It represents the collection of tensors stored in a
+# checkpoint shard data file.
+Shard = MutableMapping[str, TensorSlices]
 
 
 @tf_export.tf_export("train.experimental.ShardableTensor")
@@ -134,17 +137,18 @@ class ShardingCallback(abc.ABC):
   ```
 
   """
-  description: str
 
   @property
   @abc.abstractmethod
   def description(self) -> str:
+    """Returns a text description of the sharding policy."""
     pass
 
   @abc.abstractmethod
   def __call__(
       self, shardable_tensors: Sequence[ShardableTensor]
-  ) -> Sequence[TensorSliceDict]:
+  ) -> Sequence[Shard]:
+    """Returns a list of shards for the given shardable tensors."""
     pass
 
   def __hash__(self) -> int:
@@ -159,7 +163,7 @@ class ShardingCallback(abc.ABC):
 
 
 def validate_shards(
-    shards: Sequence[TensorSliceDict],
+    shards: Sequence[Shard],
     shardable_tensors: Sequence[ShardableTensor],
     callback_description: str
 ) -> None:
@@ -221,12 +225,33 @@ def validate_shards(
               f"  original tensor_dtype: {target_dtype}\n"
               f"  new tensor_dtype: {shard_tensor.dtype}\n")
 
-        # Validate same task in shard.
+        # Validate no task change.
+        target_task = device_lib.DeviceSpec.from_string(
+            unseen_tensor_dict[checkpoint_key][slice_spec].device).task
+        shard_tensor_task = device_lib.DeviceSpec.from_string(
+            shard_tensor.device).task
+        if shard_tensor_task != target_task:
+          raise RuntimeError(
+              "After executing the checkpoint sharding callback, a tensor "
+              "was found with an altered task:\n"
+              f"  callback_description: {callback_description}\n"
+              f"  checkpoint_key: {checkpoint_key}\n"
+              f"  slice_spec: {slice_spec}\n"
+              f"  original tensor_task: {target_task}\n"
+              f"  new tensor_task: {shard_tensor_task}\n")
+
+        # Validate tensors in shard have the same task.
         if task_tensor is None:
-          task_tensor = ShardableTensor
-          task_tensor.device = shard_tensor.device
-          task_tensor.checkpoint_key = checkpoint_key
-          task_tensor.slice_spec = slice_spec
+          task_tensor = ShardableTensor(
+              _tensor_save_spec=None,
+              tensor=None,
+              dtype=None,
+              device=shard_tensor.device,
+              name=None,
+              shape=None,
+              slice_spec=slice_spec,
+              checkpoint_key=checkpoint_key,
+              trackable=None)
         else:
           task1 = device_lib.DeviceSpec.from_string(task_tensor.device).task
           task2 = device_lib.DeviceSpec.from_string(shard_tensor.device).task

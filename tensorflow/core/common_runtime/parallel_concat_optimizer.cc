@@ -30,7 +30,7 @@ class ParallelConcatRemovePass : public GraphOptimizationPass {
     if (options.graph == nullptr) {
       // TODO(apassos) returning OK feels weird here as we can't do anything
       // without a graph, but some tests require this.
-      return OkStatus();
+      return absl::OkStatus();
     }
     Graph* g = options.graph->get();
     if (g == nullptr) {
@@ -38,7 +38,7 @@ class ParallelConcatRemovePass : public GraphOptimizationPass {
           "Parallel concat removal should happen before partitioning and a "
           "graph should be available.");
     }
-    gtl::InlinedVector<Node*, 2> matches;
+    absl::InlinedVector<Node*, 2UL> matches;
     for (Node* n : g->op_nodes()) {
       if (n->type_string() == "ParallelConcat") {
         matches.push_back(n);
@@ -110,7 +110,7 @@ class ParallelConcatRemovePass : public GraphOptimizationPass {
       }
       g->RemoveNode(n);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 10,

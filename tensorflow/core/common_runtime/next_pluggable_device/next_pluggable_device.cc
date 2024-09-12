@@ -105,7 +105,7 @@ void NextPluggableDevice::ComputeAsync(AsyncOpKernel* op_kernel,
 }
 
 // TODO(chuanhao): implement NextPluggableDevice::Sync().
-Status NextPluggableDevice::Sync() { return OkStatus(); }
+Status NextPluggableDevice::Sync() { return absl::OkStatus(); }
 
 // TODO(chuanhao): implement NextPluggableDevice::Sync().
 void NextPluggableDevice::Sync(const DoneCallback& done) { done(Sync()); }
@@ -113,7 +113,7 @@ void NextPluggableDevice::Sync(const DoneCallback& done) { done(Sync()); }
 Status NextPluggableDevice::TryGetDeviceContext(DeviceContext** out_context) {
   *out_context = device_context_.get();
   (*out_context)->Ref();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status NextPluggableDevice::MakeTensorFromProto(
@@ -195,7 +195,7 @@ Status NextPluggableDevice::MakeTensorFromProto(
     device_context_->CopyCPUTensorToDevice(&from, this, copy_dst,
                                            std::move(wrapped_done),
                                            true /*sync_dst_compute*/);
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   Status s;

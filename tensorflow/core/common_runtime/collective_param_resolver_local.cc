@@ -127,7 +127,7 @@ Status CheckUserSpecifiedRanks(const std::vector<CollGroupMember> members) {
         "Duplicate ranks specified for group members. Received ranks: ",
         received_ranks);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -644,7 +644,7 @@ Status CollectiveParamResolverLocal::LookupGroup(int32_t group_key,
         group_rec->second->status.ToString());
   }
   *group = group_rec->second->group;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void CollectiveParamResolverLocal::CompleteParamsAsync(

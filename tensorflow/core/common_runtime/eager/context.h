@@ -18,30 +18,25 @@ limitations under the License.
 #include <algorithm>
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
-#include <map>
 #include <memory>
-#include <queue>
 #include <string>
-#include <thread>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/types/optional.h"
 #include "tensorflow/c/eager/immediate_execution_context.h"
+#include "tensorflow/c/tensor_interface.h"
 #include "tensorflow/core/common_runtime/composite_device.h"
-#include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/custom_device.h"
 #include "tensorflow/core/common_runtime/eager/custom_device_op_handler.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/eager/rendezvous_cache.h"
-#include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/example/example.pb.h"
@@ -53,20 +48,15 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/platform.h"
+#include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/threadpool.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tsl/platform/refcount.h"
 
@@ -88,6 +78,11 @@ namespace eager {
 // TODO(fishx): Remove this once we remove Context dependency in TensorHandle.
 class RemoteMgr;
 }  // namespace eager
+
+// Check the value of the environment variable,
+// `TF_REMOTE_HANDLE_SKIP_WAIT_FOR_READY` from its cached copy in memory and if
+// not cached, reads from the environment variable.
+bool SkipRemoteHandleWaitReady();
 
 class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
  public:
@@ -251,6 +246,14 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
                         bool add_to_local_only = false,
                         const StackTracesMap& stack_traces = {});
 
+  // `library` contains all FunctionDefs and GradientDefs to expand `fdef`. Add
+  // it to the local FunctionLibraryDefinition as well, but no need to add it
+  // to the KernelAndDevice cache since they won't be executed as
+  // KernelAndDevices.
+  Status AddFunctionRecord(core::RefCountPtr<FunctionRecord> func_record,
+                           const FunctionDefLibrary& library,
+                           bool add_to_local_only = false);
+
   // Adds a component function (i.e. containing a subgraph of a multi-process
   // function) implemented as `fdef`.
   //
@@ -280,7 +283,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   core::RefCountPtr<KernelAndDevice> GetCachedKernel(Fprint128 cache_key);
   Device* GetCachedDevice(Fprint128 device_cache_key);
 
-  void AddKernelToCache(Fprint128 cache_key, KernelAndDevice* kernel);
+  core::RefCountPtr<KernelAndDevice> AddKernelToCache(
+      Fprint128 cache_key, core::RefCountPtr<KernelAndDevice> kernel);
   void AddDeviceToCache(Fprint128 device_cache_key, Device* device);
 
   bool LogDevicePlacement() const { return log_device_placement_; }
@@ -341,7 +345,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
                                         tsl::core::RefCountPtr<Rendezvous>* r) {
         mutex_lock l(global_rendezvous_mu_);
         *r = global_rendezvous_for_functions_.GetNewRef();
-        return OkStatus();
+        return absl::OkStatus();
       }};
     } else {
       return CreateRendezvousFactory();
@@ -624,7 +628,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
                                         tsl::core::RefCountPtr<Rendezvous>* r) {
         VLOG(6) << "Creating rendezvous using the rendezvous_creator_.";
         *r = rendezvous_creator_(step_id);
-        return OkStatus();
+        return absl::OkStatus();
       }};
     }
 
@@ -638,7 +642,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
         auto remote_r = worker_env_->rendezvous_mgr->Find(step_id);
         remote_r->Initialize(worker_session_.get()).IgnoreError();
         *r = std::move(remote_r);
-        return OkStatus();
+        return absl::OkStatus();
       }};
     }
 #endif
@@ -649,7 +653,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
                                         tsl::core::RefCountPtr<Rendezvous>* r) {
         VLOG(6) << "Creating rendezvous using local_device_mgr.";
         *r = local_rendezvous_cache_.FindOrCreate(step_id, local_device_mgr());
-        return OkStatus();
+        return absl::OkStatus();
       }};
     }
 
@@ -895,6 +899,32 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   std::function<void()> resource_deallocator_ = nullptr;
   bool run_eager_op_as_function_;
   bool jit_compile_rewrite_;
+
+  // Controls the behavior of
+  // `EagerContext::RegisterFunction(AbstractFunction*)` in distributed
+  // settings.
+  //
+  // By default, each abstract function will be registered on all workers in
+  // a cluster. If the environment variable
+  // `TF_EAGER_REGISTER_ABSTRACT_FUNCTIONS_LOCAL_ONLY=1` is set, each abstract
+  // function will be registered on the local worker only.
+  //
+  // In the common case that all functions are initially dispatched to
+  // a local device, the `ProcessFunctionLibraryRuntime`
+  // will ensure that the precise dependencies of that function are shipped to
+  // the remote device. Since PFLR instantiation often involves optimization,
+  // passes such as lowering control flow and inlining function calls, this will
+  // result in (1) sending a substantially smaller set of functions to each
+  // worker, and (2) the unoptimized functions never being called.
+  //
+  // Therefore setting `TF_EAGER_REGISTER_ABSTRACT_FUNCTIONS_LOCAL_ONLY=1` can
+  // significantly reduce both the startup time and the memory footprint on
+  // remote workers by avoiding the shipping of unneeded functions.
+  //
+  // TODO(b/326251557): Infer automatically when it is necessary to register a
+  // function or its dependencies on remote hosts; then remove the environment
+  // variable.
+  bool register_abstract_functions_local_only_;
 };
 
 inline EagerContext* ContextFromInterface(ImmediateExecutionContext* context) {

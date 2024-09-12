@@ -1,4 +1,4 @@
-# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The OpenXLA Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -33,9 +33,20 @@ from xla.python import xla_client
 
 # pylint: disable=g-import-not-at-top
 try:
-  from xla.python import custom_call_for_test
+  from xla.python import custom_calls_testlib
 except ImportError:
-  custom_call_for_test = None
+  custom_calls_testlib = None
+
+try:
+  from xla.python import xla_extension
+  from xla.python import xla_gpu_extension
+
+  if not hasattr(xla_extension, "GpuAllocatorConfig"):
+    xla_extension.GpuAllocatorConfig = xla_gpu_extension.GpuAllocatorConfig
+  if not hasattr(xla_extension, "get_gpu_client"):
+    xla_extension.get_gpu_client = xla_gpu_extension.get_gpu_client
+except ImportError:
+  pass
 
 xla_client._xla.jax_jit.set_thread_local_state_initialization_callback(
     lambda: None
@@ -54,8 +65,12 @@ xla_computation_to_mlir_module = (
 
 
 # pylint: disable=invalid-name
-def jax_array_convert_to_array(self):
-  return self._single_device_array_to_np_array()
+def jax_array_convert_to_array(self, dtype=None, copy=None):
+  del copy
+  out = self._single_device_array_to_np_array()
+  if dtype is not None:
+    out = out.astype(dtype)
+  return out
 
 
 def jax_array_device(self):
@@ -81,6 +96,30 @@ FLAGS = flags.FLAGS
 # We choose to ignore pylint's complaints about complex comprehensions, which we
 # use widely for parameterizing tests.
 # pylint: disable=g-complex-comprehension
+
+_CUSTOM_CALLS_REGISTERED = False
+
+
+# Return a copy of `x` with the given alignment. Does nothing if `x` is already
+# aligned. We do this manually, because numpy doesn't support custom alignment
+# value.
+def _Aligned(x, alignment=128):
+  if (x.ctypes.data % alignment) == 0:
+    return x
+
+  # Create temporary buffer with extra space for alignment.
+  assert alignment % x.itemsize == 0
+  extra = alignment // x.itemsize
+  buf = np.empty(x.size + extra, dtype=x.dtype)
+
+  # Create a view of the temporary buffer with such an offset, that the result
+  # buffer is aligned.
+  offset = (-buf.ctypes.data % alignment) // x.itemsize
+  result = buf[offset : offset + x.size].reshape(x.shape)
+
+  # Copy the data to the result buffer and return it.
+  np.copyto(result, x)
+  return result
 
 
 def TestFactory(xla_backend,
@@ -108,6 +147,14 @@ def TestFactory(xla_backend,
     def setUp(self):
       super(ComputationTest, self).setUp()
       self.backend = xla_backend()
+
+      global _CUSTOM_CALLS_REGISTERED
+      if self.backend.platform == "cpu" and not _CUSTOM_CALLS_REGISTERED:
+        for name, fn in custom_calls_testlib.registrations().items():
+          xla_client.register_custom_call_target(
+              name, {"execute": fn}, platform="cpu", api_version=1
+          )
+        _CUSTOM_CALLS_REGISTERED = True
 
     def _NewComputation(self, name=None):
       if name is None:
@@ -223,8 +270,9 @@ def TestFactory(xla_backend,
       executable = self.backend.compile(
           xla_computation_to_mlir_module(computation))
       fingerprint = executable.fingerprint
-      if self.backend.platform == "tpu" and not (cloud_tpu or pathways or
-                                                 pathways_ifrt):
+      if (
+          self.backend.platform == "tpu" or self.backend.platform == "gpu"
+      ) and not (cloud_tpu or pathways or pathways_ifrt):
         logging.info("fingerprint: %s", fingerprint)
         self.assertNotEmpty(fingerprint)
       else:
@@ -402,11 +450,9 @@ def TestFactory(xla_backend,
       if self.backend.platform != "cpu":
         self.skipTest("Test requires cpu platform")
       c = self._NewComputation()
-      for name, fn in custom_call_for_test.cpu_custom_call_targets.items():
-        xla_client.register_custom_call_target(name, fn, platform="cpu")
       ops.CustomCallWithLayout(
           c,
-          b"test_subtract_f32",
+          b"subtract_f32",
           operands=[
               ops.Constant(c, np.float32(1.25)),
               ops.Constant(c, np.float32(0.5))
@@ -418,35 +464,119 @@ def TestFactory(xla_backend,
               xla_client.Shape.array_shape(np.dtype(np.float32), (), ()),
           ],
           api_version=xla_client.ops.CustomCallApiVersion
-          .API_VERSION_STATUS_RETURNING)
+          .API_VERSION_TYPED_FFI)
       self._ExecuteAndCompareClose(c, expected=[0.75])
 
-    def testCustomCallWithUnifiedApi(self):
+    def testCustomCallWithUnifiedApiUnknownTarget(self):
       if self.backend.platform != "cpu":
         self.skipTest("Test requires cpu platform")
       c = self._NewComputation()
-      for name, fn in custom_call_for_test.cpu_custom_call_targets.items():
-        xla_client.register_custom_call_target(name, fn, platform="cpu")
 
-      opaque_str = b"foo"
       ops.CustomCallWithLayout(
           c,
-          b"test_add_input_and_opaque_len",
-          operands=[
-              ops.Constant(c, np.float32(1.25)),
-              ops.Constant(c, np.float32(0.5))
-          ],
+          b"not_existing",
+          operands=[],
           shape_with_layout=xla_client.Shape.array_shape(
-              np.dtype(np.float32), (), ()),
+              np.dtype(np.float32), (), ()
+          ),
+          operand_shapes_with_layout=[],
+          api_version=xla_client.ops.CustomCallApiVersion
+          .API_VERSION_STATUS_RETURNING_UNIFIED,
+      )
+      with self.assertRaisesRegex(
+          xla_client.XlaRuntimeError, expected_regex="NOT_FOUND"
+      ):
+        self._Execute(c, arguments=())
+
+    def testCustomCallTypedFfiUnknownTarget(self):
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
+      c = self._NewComputation()
+
+      ops.CustomCallWithLayout(
+          c,
+          b"not_existing",
+          operands=[],
+          shape_with_layout=xla_client.Shape.array_shape(
+              np.dtype(np.float32), (), ()
+          ),
+          operand_shapes_with_layout=[],
+          api_version=xla_client.ops.CustomCallApiVersion.API_VERSION_TYPED_FFI,
+      )
+      with self.assertRaises(xla_client.XlaRuntimeError):
+        self._Execute(c, arguments=())
+
+    def testCustomCallTypedFfiAlwaysFail(self):
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
+      c = self._NewComputation()
+
+      ops.CustomCallWithLayout(
+          c,
+          b"always_fail",
+          operands=[],
+          shape_with_layout=xla_client.Shape.array_shape(
+              np.dtype(np.float32), (), ()
+          ),
+          operand_shapes_with_layout=[],
+          api_version=xla_client.ops.CustomCallApiVersion.API_VERSION_TYPED_FFI,
+      )
+
+      with self.assertRaisesRegex(
+          Exception, expected_regex="Failed intentionally"
+      ):
+        self._Execute(c, arguments=())
+
+    def testCustomCallTypedFfiAlwaysSucceed(self):
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
+      c = self._NewComputation()
+
+      ops.CustomCallWithLayout(
+          c,
+          b"always_succeed",
+          operands=[],
+          shape_with_layout=xla_client.Shape.array_shape(
+              np.dtype(np.float32), (), ()
+          ),
+          operand_shapes_with_layout=[],
+          api_version=xla_client.ops.CustomCallApiVersion.API_VERSION_TYPED_FFI,
+      )
+
+      self._Execute(c, arguments=())
+
+    def testCustomCallTypedFfiSubtract(self):
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
+      c = self._NewComputation()
+
+      ops.CustomCallWithLayout(
+          c,
+          b"subtract_f32_cst",
+          operands=[ops.Constant(c, np.float32(1.25))],
+          shape_with_layout=xla_client.Shape.array_shape(
+              np.dtype(np.float32), (), ()
+          ),
           operand_shapes_with_layout=[
               xla_client.Shape.array_shape(np.dtype(np.float32), (), ()),
-              xla_client.Shape.array_shape(np.dtype(np.float32), (), ()),
           ],
-          # With opaque length = 3.0
-          opaque=opaque_str,
-          api_version=xla_client.ops.CustomCallApiVersion
-          .API_VERSION_STATUS_RETURNING_UNIFIED)
-      self._ExecuteAndCompareClose(c, expected=[1.25 + len(opaque_str)])
+          opaque=b"{cst = 3.0 : f32}",
+          api_version=xla_client.ops.CustomCallApiVersion.API_VERSION_TYPED_FFI,
+      )
+      self._ExecuteAndCompareClose(c, expected=[-1.75])
+
+    def testCustomCallLookup(self):
+      if self.backend.platform != "cpu":
+        self.skipTest("Test requires cpu platform")
+      if xla_client._version < 241:
+        self.skipTest("Test requires jaxlib version 241")
+
+      self.assertTrue(_CUSTOM_CALLS_REGISTERED)
+      xla_client.make_cpu_client()
+      self.assertContainsSubset(
+          list(custom_calls_testlib.registrations().keys()),
+          xla_client.custom_call_targets("Host").keys(),
+      )
 
   tests.append(ComputationsWithConstantsTest)
 
@@ -482,7 +612,10 @@ def TestFactory(xla_backend,
     def testScalarTimesVector(self, dtype):
       c = self._NewComputation()
       arg0 = np.array(3, dtype=dtype)
-      arg1 = np.array([10, 15, -2, 7], dtype=dtype)
+      if np.issubdtype(dtype, np.unsignedinteger):
+        arg1 = np.array([10, 15, 2, 7], dtype=dtype)
+      else:
+        arg1 = np.array([10, 15, -2, 7], dtype=dtype)
       p0 = ops.Parameter(c, 0, xla_client.shape_from_pyval(arg0))
       p1 = ops.Parameter(c, 1, xla_client.shape_from_pyval(arg1))
       ops.Mul(p0, p1)
@@ -512,6 +645,12 @@ def TestFactory(xla_backend,
   class LayoutsTest(ComputationTest):
     """Tests related to getting and setting on-device memory layouts."""
 
+    def _minor_to_major(self, layout: xla_client.PjRtLayout):  # pylint: disable=invalid-name
+      m2m_str = re.search("{([0-9,]*)", str(layout)).group(1)
+      if not m2m_str:
+        return ()
+      return tuple(int(x) for x in m2m_str.split(","))
+
     @unittest.skipIf(pathways, "not implemented")
     def testGetArgumentLayouts(self):
       # Create computation with a few parameters.
@@ -536,9 +675,9 @@ def TestFactory(xla_backend,
       # Test that compiled executable returns plausible layouts.
       layouts: Sequence[xla_client.Layout] = executable.get_parameter_layouts()
       self.assertLen(layouts, 3)
-      self.assertLen(layouts[0].minor_to_major(), 3)
-      self.assertLen(layouts[1].minor_to_major(), 2)
-      self.assertEmpty(layouts[2].minor_to_major())
+      self.assertLen(self._minor_to_major(layouts[0]), 3)
+      self.assertLen(self._minor_to_major(layouts[1]), 2)
+      self.assertEmpty(self._minor_to_major(layouts[2]))
 
     @unittest.skipIf(pathways, "not implemented")
     def testGetArgumentLayoutsTupled(self):
@@ -569,9 +708,9 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       # Test that compiled executable returns plausible layouts.
       layouts: Sequence[xla_client.Layout] = executable.get_parameter_layouts()
       self.assertLen(layouts, 3)
-      self.assertLen(layouts[0].minor_to_major(), 3)
-      self.assertEmpty(layouts[1].minor_to_major())
-      self.assertLen(layouts[2].minor_to_major(), 1)
+      self.assertLen(self._minor_to_major(layouts[0]), 3)
+      self.assertEmpty(self._minor_to_major(layouts[1]))
+      self.assertLen(self._minor_to_major(layouts[2]), 1)
 
     @unittest.skipIf(pathways, "not implemented")
     def testGetOutputLayouts(self):
@@ -595,9 +734,9 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       # Test that compiled executable returns plausible layouts.
       layouts: Sequence[xla_client.Layout] = executable.get_output_layouts()
       self.assertLen(layouts, 3)
-      self.assertLen(layouts[0].minor_to_major(), 2)
-      self.assertEmpty(layouts[1].minor_to_major())
-      self.assertLen(layouts[2].minor_to_major(), 1)
+      self.assertLen(self._minor_to_major(layouts[0]), 2)
+      self.assertEmpty(self._minor_to_major(layouts[1]))
+      self.assertLen(self._minor_to_major(layouts[2]), 1)
 
     @unittest.skipIf(pathways, "not implemented")
     def testSetArgumentLayouts(self):
@@ -631,9 +770,9 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       # Check input layouts.
       input_layouts = executable.get_parameter_layouts()
       self.assertLen(input_layouts, 3)
-      self.assertEqual(input_layouts[0].minor_to_major(), (0, 1, 2))
-      self.assertEqual(input_layouts[1].minor_to_major(), ())
-      self.assertEqual(input_layouts[2].minor_to_major(), (0,))
+      self.assertEqual(self._minor_to_major(input_layouts[0]), (0, 1, 2))
+      self.assertEqual(self._minor_to_major(input_layouts[1]), ())
+      self.assertEqual(self._minor_to_major(input_layouts[2]), (0,))
 
       # Compile a version with default arg0 layout so we can make sure we
       # actually set it above.
@@ -641,8 +780,9 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
           module_str.replace('"{0,1,2}"', '"default"')
       )
       self.assertNotEqual(
-          input_layouts[0].minor_to_major(),
-          default_executable.get_parameter_layouts()[0].minor_to_major())
+          self._minor_to_major(input_layouts[0]),
+          self._minor_to_major(default_executable.get_parameter_layouts()[0]),
+      )
 
     @unittest.skipIf(pathways or pathways_ifrt, "not implemented")
     def testSetArgumentLayoutsLegacy(self):
@@ -685,8 +825,10 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
           executable.get_parameter_layouts())
       self.assertEqual(len(actual_layouts), len(expected_layouts))
       for actual, expected in zip(actual_layouts, expected_layouts):
-        self.assertEqual(actual.minor_to_major(),
-                         expected.layout().minor_to_major())
+        self.assertEqual(
+            self._minor_to_major(actual),
+            expected.layout().minor_to_major(),
+        )
 
     @unittest.skipIf(pathways, "not implemented")
     def testSetOutputLayouts(self):
@@ -720,9 +862,9 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       # Check output layouts.
       output_layouts = executable.get_output_layouts()
       self.assertLen(output_layouts, 3)
-      self.assertEqual(output_layouts[0].minor_to_major(), (0, 1, 2))
-      self.assertEqual(output_layouts[1].minor_to_major(), ())
-      self.assertEqual(output_layouts[2].minor_to_major(), (0,))
+      self.assertEqual(self._minor_to_major(output_layouts[0]), (0, 1, 2))
+      self.assertEqual(self._minor_to_major(output_layouts[1]), ())
+      self.assertEqual(self._minor_to_major(output_layouts[2]), (0,))
 
       # Compile a version with default first output layout so we can make sure
       # we actually set it above.
@@ -730,8 +872,9 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
           module_str.replace('"{0,1,2}"', '"default"')
       )
       self.assertNotEqual(
-          output_layouts[0].minor_to_major(),
-          default_executable.get_output_layouts()[0].minor_to_major())
+          self._minor_to_major(output_layouts[0]),
+          self._minor_to_major(default_executable.get_output_layouts()[0]),
+      )
 
     @unittest.skipIf(pathways, "not implemented")
     def SetLayoutsSharded(self):
@@ -767,13 +910,13 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 8 : i32,
       # Check input layouts.
       input_layouts = executable.get_parameter_layouts()
       self.assertLen(input_layouts, 2)
-      self.assertEqual(input_layouts[0].minor_to_major(), (0, 1))
-      self.assertEqual(input_layouts[1].minor_to_major(), ())
+      self.assertEqual(self._minor_to_major(input_layouts[0]), (0, 1))
+      self.assertEqual(self._minor_to_major(input_layouts[1]), ())
 
       # Check output layout.
       output_layouts = executable.get_output_layouts()
       self.assertLen(output_layouts, 1)
-      self.assertEqual(input_layouts[0].minor_to_major(), (0, 1))
+      self.assertEqual(self._minor_to_major(input_layouts[0]), (0, 1))
 
       # Compile a version with default layouts so we can make sure we actually
       # set it above.
@@ -781,11 +924,13 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 8 : i32,
           module_str.replace('"{0,1}"', '"default"')
       )
       self.assertNotEqual(
-          input_layouts[0].minor_to_major(),
-          default_executable.get_parameter_layouts()[0].minor_to_major())
+          self._minor_to_major(input_layouts[0]),
+          self._minor_to_major(default_executable.get_parameter_layouts()[0]),
+      )
       self.assertNotEqual(
-          output_layouts[0].minor_to_major(),
-          default_executable.get_output_layouts()[0].minor_to_major())
+          self._minor_to_major(output_layouts[0]),
+          self._minor_to_major(default_executable.get_output_layouts()[0]),
+      )
 
     @unittest.skipIf(pathways, "not implemented")
     def testAutoArgumentLayouts(self):
@@ -817,8 +962,8 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
 
       # Check input layouts.
       input_layouts = executable.get_parameter_layouts()
-      self.assertEqual(input_layouts[0].minor_to_major(), (1, 0))
-      self.assertEqual(input_layouts[1].minor_to_major(), (2, 0, 1))
+      self.assertEqual(self._minor_to_major(input_layouts[0]), (1, 0))
+      self.assertEqual(self._minor_to_major(input_layouts[1]), (2, 0, 1))
 
       # Compile a version with default layouts so we can make sure the compiler
       # is actually choosing above.
@@ -828,8 +973,8 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       # We expect the compiler to choose a non-default layout for the second
       # (1024,8,128) argument.
       self.assertNotEqual(
-          input_layouts[1].minor_to_major(),
-          default_executable.get_parameter_layouts()[1].minor_to_major(),
+          self._minor_to_major(input_layouts[1]),
+          self._minor_to_major(default_executable.get_parameter_layouts()[1]),
       )
 
     @unittest.skipIf(pathways, "not implemented")
@@ -860,7 +1005,7 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
 
       # Check output layout
       output_layout, = executable.get_output_layouts()
-      self.assertEqual(output_layout.minor_to_major(), (2, 0, 1))
+      self.assertEqual(self._minor_to_major(output_layout), (2, 0, 1))
 
       # Compile a version with default layouts so we can make sure the compiler
       # is actually choosing above.
@@ -869,8 +1014,8 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       )
       # We expect the compiler to choose a non-default output layout.
       self.assertNotEqual(
-          output_layout.minor_to_major(),
-          default_executable.get_output_layouts()[0].minor_to_major(),
+          self._minor_to_major(output_layout),
+          self._minor_to_major(default_executable.get_output_layouts()[0]),
       )
 
   tests.append(LayoutsTest)
@@ -2512,6 +2657,12 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       for device in self.backend.local_devices():
         self.assertEqual(device.platform, self.backend.platform)
 
+    def testCoreCount(self):
+      if self.backend.platform != "gpu":
+        self.skipTest("core_count is only supported on GPU")
+      for device in self.backend.local_devices():
+        self.assertGreater(device.core_count, 0)
+
     def testLocalHardwareId(self):
       for device in self.backend.devices():
         local_hardware_id = device.local_hardware_id
@@ -2527,6 +2678,7 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
           self.assertEqual(lookup_device, device)
 
     @unittest.skipIf(pathways, "not implemented")
+    @unittest.skipIf(pathways_ifrt, "not implemented")
     def testMemoryStats(self):
       for device in self.backend.local_devices():
         stats = device.memory_stats()
@@ -2756,15 +2908,20 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
                                     for shape in testcase_shapes)
     def testRoundTrip(self, dtype, shape):
       x = np.array(np.random.rand(*shape) * 100, dtype=dtype)
+
+      # XLA' alignment is 16 bytes at the moment, but it should match what Eigen
+      # supports, and that can go up to 128 bytes on hardware with HVX. Align
+      # the input buffer to 128 bytes to be safe.
+      x = _Aligned(x, alignment=128)
       x_ptr = x.__array_interface__["data"][0]
       buffer = self.backend.buffer_from_pyval(
           x, host_buffer_semantics=xla_client.HostBufferSemantics.ZERO_COPY)
       y = np.array(buffer, copy=False)
       y_ptr = y.__array_interface__["data"][0]
       np.testing.assert_array_equal(x, y)
-      # If the input was sufficiently aligned, the input and output should
-      # alias.
-      self.assertTrue((x_ptr & 15) != 0 or x_ptr == y_ptr)
+
+      # The input was sufficiently aligned, so input and output should alias.
+      self.assertEqual(x_ptr, y_ptr)
       self.assertEqual(y_ptr, buffer.unsafe_buffer_pointer())
 
       during_call = xla_client.HostBufferSemantics.IMMUTABLE_ONLY_DURING_CALL
@@ -2867,6 +3024,49 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       for frame, _ in traceback.walk_tb(python_tb):
         _ = frame.f_locals  # should not crash
 
+    def testTracebackFromFrames(self):
+      def FooFn(x):
+        return x + 1
+
+      def BarFn(y):
+        y = y + 1
+        y = y + 2
+        return y * 2
+
+      frame_foo = xla_client.Frame(
+          __file__,
+          FooFn.__code__.co_name,
+          FooFn.__code__.co_firstlineno,
+          FooFn.__code__.co_firstlineno + 1,
+      )
+      frame_bar = xla_client.Frame(
+          __file__,
+          BarFn.__code__.co_name,
+          BarFn.__code__.co_firstlineno,
+          BarFn.__code__.co_firstlineno + 2,
+      )
+      frames = [frame_foo, frame_bar]
+      tb = xla_client.Traceback.traceback_from_frames(frames)
+
+      with self.subTest("WalkDoesNotError"):
+        for frame, _ in traceback.walk_tb(tb):
+          _ = frame.f_locals  # should not crash
+
+      with self.subTest("TracebackCorrectness"):
+        tb_string = traceback.format_tb(tb)
+        # The traceback should have the format:
+        # File <this file>, line N in BarFn
+        #   y = y + 2
+        # File <this file>, line N in FooFn
+        #   return x + 1
+        self.assertLen(tb_string, len(frames))
+        bar_frame = tb_string[0].split("\n")
+        self.assertEndsWith(bar_frame[0], "BarFn")
+        self.assertEqual(bar_frame[1].strip(), "y = y + 2")
+        foo_frame = tb_string[1].split("\n")
+        self.assertEndsWith(foo_frame[0], "FooFn")
+        self.assertEqual(foo_frame[1].strip(), "return x + 1")
+
   tests.append(TracebackTest)
 
   class ClientTest(ComputationTest):
@@ -2907,6 +3107,34 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       with self.assertRaises(AttributeError):
         self.backend.pjrt_c_api_minor_version  # pylint: disable=pointless-statement
 
+    @unittest.skipIf(pathways or pathways_ifrt, "has different behavior")
+    def testPluginProgramDoesNotCompile(self):
+      program = xla_client.ifrt_programs.make_plugin_program("foobar")
+      options = xla_client.ifrt_programs.make_plugin_compile_options()
+      with self.assertRaisesRegex(
+          xla_client.XlaRuntimeError, "PjRtCompiler requires an HloProgram"
+      ):
+        self.backend.compile_ifrt_program(program, options)
+
+    @unittest.skipIf(pathways, "does not work with non-ifrt legacy pathways")
+    def testHloProgramViaIfrtProgram(self):
+      c = self._NewComputation()
+      ops.Iota(c, xla_client.PrimitiveType.F32, 10)
+      program = xla_client.ifrt_programs.make_hlo_program(
+          xla_computation_to_mlir_module(c.build())
+      )
+      options = xla_client.ifrt_programs.make_xla_compile_options(
+          xla_client.CompileOptions(), []
+      )
+
+      compiled_c = self.backend.compile_ifrt_program(program, options)
+      results = xla_client.execute_with_python_values(
+          compiled_c, arguments=(), backend=self.backend
+      )
+
+      self.assertLen(results, 1)
+      np.testing.assert_equal(results[0], np.arange(10, dtype=np.float32))
+
     @unittest.skipIf(cloud_tpu or pathways or pathways_ifrt or tfrt_tpu,
                      "not implemented")
     def testExecutableSerialization(self):
@@ -2943,6 +3171,15 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
       executable_build_options.num_partitions = 2
       executable_build_options.debug_options.xla_cpu_enable_fast_math = True
       executable_build_options.debug_options.xla_test_all_input_layouts = True
+      executable_build_options.debug_options.xla_gpu_kernel_cache_file = (
+          "/foo/bar"
+      )
+      executable_build_options.debug_options.xla_gpu_enable_llvm_module_compilation_parallelism = (
+          True
+      )
+      executable_build_options.debug_options.xla_gpu_per_fusion_autotune_cache_dir = (
+          "/bar/foo/"
+      )
 
       b = options.SerializeAsString()
       restored = xla_client.CompileOptions.ParseFromString(b)
@@ -2957,7 +3194,13 @@ module @jit__lambda_ attributes {mhlo.num_partitions = 1 : i32,
                          getattr(restored.executable_build_options, name),
                          msg=name)
 
-      for name in ("xla_cpu_enable_fast_math", "xla_test_all_input_layouts"):
+      for name in (
+          "xla_cpu_enable_fast_math",
+          "xla_test_all_input_layouts",
+          "xla_gpu_kernel_cache_file",
+          "xla_gpu_enable_llvm_module_compilation_parallelism",
+          "xla_gpu_per_fusion_autotune_cache_dir",
+      ):
         self.assertEqual(
             getattr(options.executable_build_options.debug_options, name),
             getattr(restored.executable_build_options.debug_options, name),

@@ -31,6 +31,21 @@ COMPLEX64 = dtypes.complex64
 TENSORFLOW_GRAPHDEF = _toco_flags_pb2.TENSORFLOW_GRAPHDEF
 TFLITE = _toco_flags_pb2.TFLITE
 GRAPHVIZ_DOT = _toco_flags_pb2.GRAPHVIZ_DOT
+UNSET = _toco_flags_pb2.TocoFlags.ModelOriginFramework.Name(
+    _toco_flags_pb2.TocoFlags.UNSET
+)
+TENSORFLOW = _toco_flags_pb2.TocoFlags.ModelOriginFramework.Name(
+    _toco_flags_pb2.TocoFlags.TENSORFLOW
+)
+KERAS = _toco_flags_pb2.TocoFlags.ModelOriginFramework.Name(
+    _toco_flags_pb2.TocoFlags.KERAS
+)
+JAX = _toco_flags_pb2.TocoFlags.ModelOriginFramework.Name(
+    _toco_flags_pb2.TocoFlags.JAX
+)
+PYTORCH = _toco_flags_pb2.TocoFlags.ModelOriginFramework.Name(
+    _toco_flags_pb2.TocoFlags.PYTORCH
+)
 
 _tf_export(v1=["lite.constants.FLOAT"]).export_constant(__name__, "FLOAT")
 _tf_export(v1=["lite.constants.FLOAT16"]).export_constant(__name__, "FLOAT16")
@@ -65,6 +80,11 @@ _allowed_symbols = [
     "TENSORFLOW_GRAPHDEF",
     "TFLITE",
     "GRAPHVIZ_DOT",
+    "UNSET",
+    "TENSORFLOW",
+    "KERAS",
+    "JAX",
+    "PYTORCH",
     "EXPERIMENTAL_USE_TOCO_API_DIRECTLY",
 ]
 remove_undocumented(__name__, _allowed_symbols)

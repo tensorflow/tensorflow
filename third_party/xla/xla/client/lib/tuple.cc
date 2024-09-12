@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,16 +18,16 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/status/statusor.h"
 #include "xla/client/xla_builder.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 
-StatusOr<ShapeTree<XlaOp>> DisassembleTuple(XlaOp tuple) {
+absl::StatusOr<ShapeTree<XlaOp>> DisassembleTuple(XlaOp tuple) {
   TF_ASSIGN_OR_RETURN(Shape shape, tuple.builder()->GetShape(tuple));
   ShapeTree<XlaOp> result(shape);
   result.ForEachMutableElement([&](ShapeIndexView index, XlaOp* element) {

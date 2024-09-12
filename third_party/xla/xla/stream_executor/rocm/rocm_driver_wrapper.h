@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ limitations under the License.
 #define __HIP_DISABLE_CPP_FUNCTIONS__
 
 #include "rocm/include/hip/hip_runtime.h"
+#include "rocm/rocm_config.h"
 #include "xla/stream_executor/platform/dso_loader.h"
 #include "xla/stream_executor/platform/port.h"
 #include "tsl/platform/env.h"
@@ -53,7 +54,7 @@ namespace wrap {
     static FuncPtrT loaded = []() -> FuncPtrT {                            \
       static const char *kName = TO_STR(hipSymbolName);                    \
       void *f;                                                             \
-      auto s = tsl::Env::Default() -> GetSymbolFromLibrary(                \
+      auto s = tsl::Env::Default()->GetSymbolFromLibrary(                  \
           stream_executor::internal::CachedDsoLoader::GetHipDsoHandle()    \
               .value(),                                                    \
           kName, &f);                                                      \
@@ -79,6 +80,7 @@ namespace wrap {
   __macro(hipDeviceGetName)                         \
   __macro(hipDeviceGetPCIBusId)                     \
   __macro(hipDeviceGetSharedMemConfig)              \
+  __macro(hipDeviceGetStreamPriorityRange)          \
   __macro(hipDeviceGraphMemTrim)                    \
   __macro(hipDevicePrimaryCtxGetState)              \
   __macro(hipDevicePrimaryCtxSetFlags)              \
@@ -104,18 +106,19 @@ namespace wrap {
   __macro(hipGetErrorString)                        \
   __macro(hipGraphAddKernelNode)                    \
   __macro(hipGraphAddChildGraphNode)                \
+  __macro(hipGraphAddEmptyNode)                     \
   __macro(hipGraphAddMemAllocNode)                  \
-  __macro(hipGraphAddMemcpyNode)                    \
   __macro(hipGraphAddMemcpyNode1D)                  \
   __macro(hipGraphAddMemsetNode)                    \
   __macro(hipGraphAddMemFreeNode)                   \
   __macro(hipGraphCreate)                           \
   __macro(hipGraphDebugDotPrint)                    \
   __macro(hipGraphDestroy)                          \
+  __macro(hipGraphGetNodes)                         \
   __macro(hipGraphExecChildGraphNodeSetParams)      \
   __macro(hipGraphExecDestroy)                      \
   __macro(hipGraphExecKernelNodeSetParams)          \
-  __macro(hipGraphExecMemcpyNodeSetParams)          \
+  __macro(hipGraphExecMemcpyNodeSetParams1D)        \
   __macro(hipGraphExecMemsetNodeSetParams)          \
   __macro(hipGraphExecUpdate)                       \
   __macro(hipGraphInstantiate)                      \
@@ -132,6 +135,7 @@ namespace wrap {
   __macro(hipLaunchHostFunc)                        \
   __macro(hipLaunchKernel)                          \
   __macro(hipMalloc)                                \
+  __macro(hipMallocManaged)                         \
   __macro(hipMemGetAddressRange)                    \
   __macro(hipMemGetInfo)                            \
   __macro(hipMemcpyDtoD)                            \
@@ -153,10 +157,12 @@ namespace wrap {
   __macro(hipModuleLaunchKernel)                    \
   __macro(hipModuleLoadData)                        \
   __macro(hipModuleUnload)                          \
+  __macro(hipModuleOccupancyMaxActiveBlocksPerMultiprocessor) \
+  __macro(hipModuleOccupancyMaxPotentialBlockSize)  \
   __macro(hipPointerGetAttribute)                   \
   __macro(hipPointerGetAttributes)                  \
+  __macro(hipRuntimeGetVersion)                     \
   __macro(hipSetDevice)                             \
-  __macro(hipDeviceGetStreamPriorityRange)          \
   __macro(hipStreamAddCallback)                     \
   __macro(hipStreamBeginCapture)                    \
   __macro(hipStreamCreateWithFlags)                 \
@@ -169,6 +175,19 @@ namespace wrap {
   __macro(hipStreamWaitEvent)  // clang-format on
 
 HIP_ROUTINE_EACH(STREAM_EXECUTOR_HIP_WRAP)
+
+#if TF_ROCM_VERSION >= 60200
+
+// clang-format off
+#define HIP_ROUTINE_EACH_62(__macro)            \
+  __macro(hipGetFuncBySymbol)                   \
+  __macro(hipStreamBeginCaptureToGraph)
+// clang-format on
+
+HIP_ROUTINE_EACH_62(STREAM_EXECUTOR_HIP_WRAP)
+
+#undef HIP_ROUTINE_EACH_62
+#endif  // TF_ROCM_VERSION >= 60200
 
 #undef HIP_ROUTINE_EACH
 #undef STREAM_EXECUTOR_HIP_WRAP

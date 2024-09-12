@@ -160,7 +160,7 @@ StatusOr<std::optional<std::vector<Layout>>> GetResourceLayouts(
     std::vector<Layout> layouts;
     layouts.reserve(attrs.size());
     for (mlir::Attribute attr : attrs) {
-      auto string_attr = attr.cast<mlir::StringAttr>();
+      auto string_attr = mlir::cast<mlir::StringAttr>(attr);
       auto layout = Layout::FromString(string_attr.str());
       if (layout.ok()) {
         layouts.emplace_back(std::move(layout.value()));
@@ -175,7 +175,8 @@ StatusOr<std::optional<std::vector<Layout>>> GetResourceLayouts(
 }
 
 bool IsResource(mlir::Value value) {
-  return getElementTypeOrSelf(value.getType()).isa<mlir::TF::ResourceType>();
+  return mlir::isa<mlir::TF::ResourceType>(
+      getElementTypeOrSelf(value.getType()));
 }
 
 StatusOr<std::optional<Layout>> FindResourceLayout(mlir::BlockArgument arg) {
@@ -298,8 +299,7 @@ mlir::LogicalResult RewriteTPUFunction(mlir::func::FuncOp func,
         mappings[dev_idx].map(argument, expanded_arguments->at(dev_idx));
       }
     } else {
-      func->emitOpError(
-          tsl::NullTerminatedMessage(expanded_arguments.status()));
+      func->emitOpError(absl::StatusMessageAsCStr(expanded_arguments.status()));
       return mlir::failure();
     }
   }
@@ -417,11 +417,11 @@ mlir::LogicalResult ExpandTPUOperation(
 
   llvm::SmallVector<mlir::Value, 8> operands;
   for (const mlir::Value& operand : op->getOperands()) {
-    if (const auto arg = operand.dyn_cast_or_null<mlir::BlockArgument>()) {
+    if (const auto arg = mlir::dyn_cast_or_null<mlir::BlockArgument>(operand)) {
       const StatusOr<absl::Span<mlir::Value>> new_args = GetExpandedArguments(
           builder, target_func, expanded_arguments, arg, &target_mesh);
       if (!new_args.ok()) {
-        op->emitOpError(tsl::NullTerminatedMessage(new_args.status()));
+        op->emitOpError(absl::StatusMessageAsCStr(new_args.status()));
         return mlir::failure();
       } else if (new_args->empty()) {
         operands.push_back(operand);
@@ -481,11 +481,12 @@ mlir::LogicalResult ExpandOperation(
   for (size_t i = 0; i < num_devices; ++i) {
     llvm::SmallVector<mlir::Value, 8> operands;
     for (const mlir::Value& operand : op->getOperands()) {
-      if (const auto arg = operand.dyn_cast_or_null<mlir::BlockArgument>()) {
+      if (const auto arg =
+              mlir::dyn_cast_or_null<mlir::BlockArgument>(operand)) {
         const StatusOr<absl::Span<mlir::Value>> new_args = GetExpandedArguments(
             builder, target_func, expanded_arguments, arg, &target_mesh);
         if (!new_args.ok()) {
-          op->emitOpError(tsl::NullTerminatedMessage(new_args.status()));
+          op->emitOpError(absl::StatusMessageAsCStr(new_args.status()));
           return mlir::failure();
         } else if (new_args->empty()) {
           operands.push_back(operand);
@@ -609,7 +610,7 @@ StatusOr<absl::Span<mlir::Value>> GetExpandedArguments(
         }
       } else {
         mlir::TensorType tensor_type =
-            arg.getType().dyn_cast_or_null<mlir::TensorType>();
+            mlir::dyn_cast_or_null<mlir::TensorType>(arg.getType());
         if (!tensor_type) {
           return errors::InvalidArgument("Could not determine tensor type.");
         }
@@ -747,7 +748,7 @@ mlir::LogicalResult BuildOuterMainFunc(
 Status ExtractResultLayouts(mlir::Operation* op, mlir::func::ReturnOp return_op,
                             std::vector<ExpandedResults>& expanded_results) {
   if (!return_op || (return_op.getNumOperands() == 0)) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   TF_ASSIGN_OR_RETURN(std::vector<std::optional<Layout>> layouts,
                       ExtractLayoutFromOp(op));
@@ -760,7 +761,7 @@ Status ExtractResultLayouts(mlir::Operation* op, mlir::func::ReturnOp return_op,
     size_t result_index = std::distance(operands.begin(), search);
     expanded_results[result_index].layout = layouts[layout_index];
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 struct DTensorMultiDeviceExpansion
@@ -807,7 +808,7 @@ struct DTensorMultiDeviceExpansion
                                main_func.getArgument(i));
       if (!expanded_arguments.ok()) {
         main_func->emitOpError(
-            tsl::NullTerminatedMessage(expanded_arguments.status()));
+            absl::StatusMessageAsCStr(expanded_arguments.status()));
         return;
       }
     }

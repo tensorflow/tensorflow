@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "UnwrapDatasetVariant"
   input_arg {
     name: "input_handle"

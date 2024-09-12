@@ -14,17 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
 
-#include <algorithm>
-#include <iterator>
 #include <memory>
 #include <optional>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "llvm/Support/Casting.h"
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -55,7 +56,7 @@ bool IsOpWithInt8TypeOperand(Operation* op) {
 }
 
 bool IsValueWithQuantizablePrecision(Value val) {
-  auto type = val.getType().dyn_cast<ShapedType>();
+  auto type = mlir::dyn_cast<ShapedType>(val.getType());
   if (!type) return false;
   // Supported original tensor data types.
   if (type.getElementType().isF32() || type.getElementType().isBF16())
@@ -81,7 +82,7 @@ std::unique_ptr<OpQuantSpec> GetTFOpQuantSpec(Operation* op) {
   auto spec = std::make_unique<OpQuantSpec>();
   if (auto call_op = dyn_cast<TF::PartitionedCallOp>(op)) {
     StringRef function_name =
-        call_op.getFAttr().cast<FlatSymbolRefAttr>().getValue();
+        mlir::cast<FlatSymbolRefAttr>(call_op.getFAttr()).getValue();
     if (!function_name.starts_with("composite_")) {
       return spec;
     }

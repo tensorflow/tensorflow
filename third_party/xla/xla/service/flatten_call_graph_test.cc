@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,17 +15,23 @@ limitations under the License.
 
 #include "xla/service/flatten_call_graph.h"
 
+#include <cstdint>
+#include <memory>
+#include <string>
+
+#include "absl/status/statusor.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_computation.h"
-#include "xla/literal.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal_util.h"
 #include "xla/service/call_graph.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
 #include "xla/test.h"
-#include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -87,7 +93,7 @@ class FlattenCallGraphTest : public HloTestBase {
     return builder.Build();
   }
 
-  StatusOr<bool> RunFlattenCallGraph(HloModule* module) {
+  absl::StatusOr<bool> RunFlattenCallGraph(HloModule* module) {
     FlattenCallGraph flatten;
     TF_ASSIGN_OR_RETURN(bool result, flatten.Run(module));
     return result;
@@ -264,20 +270,14 @@ HloModule AsyncCall
   ROOT %result.1 = f32[4096]{0} add(f32[4096]{0} %param_0, f32[4096]{0} %param_1)
 }
 
-%async_wrapped (async_param: f32[4096], async_param.1: f32[4096]) -> f32[4096] {
-  %async_param = f32[4096]{0} parameter(0)
-  %async_param.1 = f32[4096]{0} parameter(1)
-  ROOT %call = f32[4096]{0} call(f32[4096]{0} %async_param, f32[4096]{0} %async_param.1), to_apply=%called_computation
-}
-
 ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
   %a = f32[4096]{0} parameter(0)
   %b = f32[4096]{0} parameter(1)
-  %async-start.0 = ((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) async-start(f32[4096]{0} %a, f32[4096]{0} %b), async_group_id=0, calls=%async_wrapped
-  %async-done.0 = f32[4096]{0} async-done(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %async-start.0), async_group_id=0, calls=%async_wrapped
-  %async-start.1 = ((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) async-start(f32[4096]{0} %async-done.0, f32[4096]{0} %b), async_group_id=1, calls=%async_wrapped
-  %async-done.1 = f32[4096]{0} async-done(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %async-start.1), async_group_id=1, calls=%async_wrapped
-  ROOT %add_1 = f32[4096]{0} add(f32[4096]{0} %a, f32[4096]{0} %async-done.1)
+  %call-start.0 = ((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) call-start(f32[4096]{0} %a, f32[4096]{0} %b), to_apply=%called_computation
+  %call-done.0 = f32[4096]{0} call-done(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %call-start.0)
+  %call-start.1 = ((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) call-start(f32[4096]{0} %call-done.0, f32[4096]{0} %b), to_apply=%called_computation
+  %call-done.1 = f32[4096]{0} call-done(((f32[4096]{0}, f32[4096]{0}), f32[4096]{0}, u32[]) %call-start.1)
+  ROOT %add_1 = f32[4096]{0} add(f32[4096]{0} %a, f32[4096]{0} %call-done.1)
 }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -290,18 +290,24 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
   // called_computation computations.
   EXPECT_EQ(5, module->computation_count());
 
-  EXPECT_EQ(FindInstruction(module.get(), "async-start.0")
+  EXPECT_EQ(FindInstruction(module.get(), "call-start.0")
                 ->async_wrapped_computation(),
-            FindInstruction(module.get(), "async-done.0")
+            FindInstruction(module.get(), "call-done.0")
                 ->async_wrapped_computation());
-  EXPECT_EQ(FindInstruction(module.get(), "async-start.1")
+  EXPECT_EQ(FindInstruction(module.get(), "call-start.1")
                 ->async_wrapped_computation(),
-            FindInstruction(module.get(), "async-done.1")
+            FindInstruction(module.get(), "call-done.1")
                 ->async_wrapped_computation());
-  EXPECT_NE(FindInstruction(module.get(), "async-start.0")
+  EXPECT_NE(FindInstruction(module.get(), "call-start.0")
                 ->async_wrapped_computation(),
-            FindInstruction(module.get(), "async-start.1")
+            FindInstruction(module.get(), "call-start.1")
                 ->async_wrapped_computation());
+  EXPECT_NE(FindInstruction(module.get(), "call-start.0")
+                ->async_wrapped_instruction()
+                ->called_computations()[0],
+            FindInstruction(module.get(), "call-start.1")
+                ->async_wrapped_instruction()
+                ->called_computations()[0]);
 }
 
 }  // namespace

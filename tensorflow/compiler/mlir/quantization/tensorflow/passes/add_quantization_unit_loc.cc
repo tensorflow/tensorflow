@@ -69,17 +69,17 @@ class AddQuantizationUnitLocPass
 // tensorflow/compiler/mlir/tensorflow/translate/import_model.cc for more
 // details.
 bool IsImportLocPattern(FusedLoc loc) {
-  ArrayRef<Location> locations = loc.cast<FusedLoc>().getLocations();
+  ArrayRef<Location> locations = mlir::cast<FusedLoc>(loc).getLocations();
   if (locations.size() < 2 || !isa<NameLoc>(locations.front())) return false;
 
   StringRef op_type_with_suffix =
-      locations.front().cast<NameLoc>().getName().strref();
+      mlir::cast<NameLoc>(locations.front()).getName().strref();
   if (!op_type_with_suffix.ends_with(":")) return false;
 
   return absl::c_all_of(locations, [](Location loc) {
     return isa<NameLoc>(loc) ||
            (isa<CallSiteLoc>(loc) &&
-            isa<NameLoc>(loc.cast<CallSiteLoc>().getCallee()));
+            isa<NameLoc>(mlir::cast<CallSiteLoc>(loc).getCallee()));
   });
 }
 
@@ -99,23 +99,23 @@ void FindQuantizationUnitsRecursively(Location loc,
     }
   };
 
-  ArrayRef<Location> locations = loc.cast<FusedLoc>().getLocations();
-  if (IsImportLocPattern(loc.cast<FusedLoc>())) {
+  ArrayRef<Location> locations = mlir::cast<FusedLoc>(loc).getLocations();
+  if (IsImportLocPattern(mlir::cast<FusedLoc>(loc))) {
     QuantizationUnit new_unit;
     // Op type is a NameLoc with the ":" suffix.
     StringRef op_type_with_suffix =
-        locations.front().cast<NameLoc>().getName().strref();
+        mlir::cast<NameLoc>(locations.front()).getName().strref();
     StringRef op_type =
         op_type_with_suffix.substr(0, op_type_with_suffix.size() - 1);
     new_unit.set_op_type(op_type.str());
 
     if (isa<NameLoc>(locations.back())) {
       StringRef name_loc_id =
-          locations.back().cast<NameLoc>().getName().strref();
+          mlir::cast<NameLoc>(locations.back()).getName().strref();
       set_node_and_func_name(new_unit, name_loc_id);
     } else {
-      Location callee = locations.back().cast<CallSiteLoc>().getCallee();
-      StringRef name_loc_id = callee.cast<NameLoc>().getName().strref();
+      Location callee = mlir::cast<CallSiteLoc>(locations.back()).getCallee();
+      StringRef name_loc_id = mlir::cast<NameLoc>(callee).getName().strref();
       set_node_and_func_name(new_unit, name_loc_id);
     }
     units.push_back(new_unit);

@@ -53,7 +53,7 @@ class TPUAnnotateDynamicShapeInputsPass
 // Finds op that created a given value. If the value is a BlockArgument, this
 // returns the owner of the Block.
 Operation* GetOpOfValue(Value value) {
-  if (auto block_arg = value.dyn_cast<BlockArgument>())
+  if (auto block_arg = mlir::dyn_cast<BlockArgument>(value))
     return block_arg.getOwner()->getParentOp();
 
   return value.getDefiningOp();
@@ -98,7 +98,7 @@ void TPUAnnotateDynamicShapeInputsPass::runOnOperation() {
     // Update the marked argument with dynamic shapes.
     for (int index : dynamic_shape_arg_index) {
       BlockArgument arg = func.getArgument(index);
-      auto inputType = arg.getType().dyn_cast<RankedTensorType>();
+      auto inputType = mlir::dyn_cast<RankedTensorType>(arg.getType());
       // Only rank 1 tensor is supported for now.
       if (!inputType || inputType.getRank() != 1) continue;
       auto shape = llvm::to_vector<4>(inputType.getShape());

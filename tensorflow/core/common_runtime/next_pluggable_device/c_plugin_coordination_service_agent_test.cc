@@ -24,11 +24,11 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/time/time.h"
+#include "xla/tsl/distributed_runtime/call_options.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/status.h"
-#include "tsl/distributed_runtime/call_options.h"
-#include "tsl/distributed_runtime/coordination/coordination_client.h"
-#include "tsl/distributed_runtime/coordination/coordination_service_agent.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/test.h"
 #include "tsl/protobuf/coordination_config.pb.h"
@@ -167,6 +167,12 @@ class TestCoordinationClient : public CoordinationClient {
                               StatusCallback done) override {
     done(absl::UnimplementedError("ReportErrorToTaskAsync"));
   }
+  void PollForErrorAsync(CallOptions* call_opts,
+                         const PollForErrorRequest* request,
+                         PollForErrorResponse* response,
+                         StatusCallback done) override {
+    done(absl::UnimplementedError("PollForErrorAsync"));
+  }
 };
 
 class CPluginCoordinationServiceAgentTest : public ::testing::Test {
@@ -208,7 +214,7 @@ TEST_F(CPluginCoordinationServiceAgentTest, GetKeyValue_Simple_Success) {
   kv->set_value(test_value);
   ON_CALL(*GetClient(), GetKeyValueAsync(_, _, _, _))
       .WillByDefault(DoAll(SetArgPointee<2>(mocked_response),
-                           InvokeArgument<3>(OkStatus())));
+                           InvokeArgument<3>(absl::OkStatus())));
   // Initialize coordination agent.
   InitializeAgent();
 
@@ -228,7 +234,7 @@ TEST_F(CPluginCoordinationServiceAgentTest, GetKeyValue_WithTimeout_Success) {
   kv->set_value(test_value);
   ON_CALL(*GetClient(), GetKeyValueAsync(_, _, _, _))
       .WillByDefault(DoAll(SetArgPointee<2>(mocked_response),
-                           InvokeArgument<3>(OkStatus())));
+                           InvokeArgument<3>(absl::OkStatus())));
   // Initialize coordination agent.
   InitializeAgent();
 
@@ -256,6 +262,22 @@ TEST_F(CPluginCoordinationServiceAgentTest, GetKeyValue_Timeout_ReturnError) {
   owned_done(absl::CancelledError("error"));
 }
 
+TEST_F(CPluginCoordinationServiceAgentTest,
+       GetKeyValue_ZeroTimeout_ReturnError) {
+  const std::string test_key = "test_key";
+  auto result = agent_->GetKeyValue(test_key, /*timeout=*/absl::ZeroDuration());
+
+  EXPECT_EQ(result.status().code(), error::INVALID_ARGUMENT);
+}
+
+TEST_F(CPluginCoordinationServiceAgentTest,
+       GetKeyValue_NegativeTimeout_ReturnError) {
+  const std::string test_key = "test_key";
+  auto result = agent_->GetKeyValue(test_key, /*timeout=*/absl::Seconds(-1));
+
+  EXPECT_EQ(result.status().code(), error::INVALID_ARGUMENT);
+}
+
 TEST_F(CPluginCoordinationServiceAgentTest, InsertKeyValue_Success) {
   const std::string test_key = "test_key";
   const std::string test_value = "test_value";
@@ -266,7 +288,7 @@ TEST_F(CPluginCoordinationServiceAgentTest, InsertKeyValue_Success) {
 
   EXPECT_CALL(*GetClient(),
               InsertKeyValueAsync(Pointee(EqualsProto(expected_input)), _, _))
-      .WillOnce(InvokeArgument<2>(OkStatus()));
+      .WillOnce(InvokeArgument<2>(absl::OkStatus()));
   InitializeAgent();
 
   TF_ASSERT_OK(agent_->InsertKeyValue(test_key, test_value));
@@ -280,7 +302,7 @@ TEST_F(CPluginCoordinationServiceAgentTest, DeleteKeyValue_Success) {
 
   EXPECT_CALL(*GetClient(),
               DeleteKeyValueAsync(Pointee(EqualsProto(expected_input)), _, _))
-      .WillOnce(InvokeArgument<2>(OkStatus()));
+      .WillOnce(InvokeArgument<2>(absl::OkStatus()));
   InitializeAgent();
 
   TF_ASSERT_OK(agent_->DeleteKeyValue(test_key));
@@ -296,7 +318,7 @@ TEST_F(CPluginCoordinationServiceAgentTest, TryGetKeyValue_Simple_Success) {
   kv->set_value(test_value);
   ON_CALL(*GetClient(), TryGetKeyValueAsync(_, _, _))
       .WillByDefault(DoAll(SetArgPointee<1>(mocked_response),
-                           InvokeArgument<2>(OkStatus())));
+                           InvokeArgument<2>(absl::OkStatus())));
 
   // Initialize coordination agent.
   InitializeAgent();

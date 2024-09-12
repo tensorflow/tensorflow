@@ -15,6 +15,7 @@ tf_cc_fuzz_test(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_types_hdr",
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/framework:function_proto_cc",
         "//tensorflow/core/framework:tensor",

@@ -38,6 +38,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "stablehlo/dialect/VhloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_import.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
@@ -84,6 +85,7 @@ static opt<std::string> output_arrays_flag(
     llvm::cl::desc(
         "List of output tensors, if different from the default outputs"),
     llvm::cl::init(""));
+
 using llvm::cl::opt;
 
 // These command line flags enable control of the translation implementation.
@@ -94,6 +96,7 @@ bool lower_tensor_list_ops;
 bool strip_debug_info;
 bool use_buffer_offset;
 bool emit_stablehlo_ops;
+bool disable_vhlo_to_stablehlo;
 
 // NOLINTNEXTLINE
 static opt<bool, true> emit_builtin_tflite_ops_flag(
@@ -138,6 +141,15 @@ static opt<bool, true> emit_stablehlo_ops_flag(
     llvm::cl::desc("Wether serialize stablehlo ops or not"),
     llvm::cl::location(emit_stablehlo_ops), llvm::cl::init(false));
 
+// Flatbuffer import by default will also perform vhlo to stablehlo legalization
+// to hide serialization detail from user, but for debug purpose we need to be
+// able to dump raw vhlo ops as well
+// NOLINTNEXTLINE
+static opt<bool, true> disable_vhlo_to_stablehlo_flag(
+    "disable-vhlo-to-stablehlo",
+    llvm::cl::desc("Wether to deserialize to stablehlo ops or not"),
+    llvm::cl::location(disable_vhlo_to_stablehlo), llvm::cl::init(false));
+
 namespace mlir {
 namespace {
 static OwningOpRef<mlir::ModuleOp> FlatBufferFileToMlirTrans(
@@ -167,7 +179,8 @@ static OwningOpRef<mlir::ModuleOp> FlatBufferFileToMlirTrans(
   return tflite::FlatBufferToMlir(
       absl::string_view(input->getBufferStart(), input->getBufferSize()),
       context, loc, use_external_constant, inputs, outputs,
-      experimental_prune_unreachable_nodes_unconditionally);
+      experimental_prune_unreachable_nodes_unconditionally,
+      disable_vhlo_to_stablehlo);
 }
 
 static LogicalResult MlirToFlatBufferFileTranslateFunction(
@@ -213,6 +226,7 @@ static TranslateFromMLIRRegistration MLIRToFlatBufferTranslate(
       registry.insert<TFL::TensorFlowLiteDialect>();
       registry.insert<arith::ArithDialect>();
       registry.insert<func::FuncDialect>();
+      registry.insert<mlir::vhlo::VhloDialect>();
       registry.insert<mlir::stablehlo::StablehloDialect>();
     });
 }  // namespace mlir

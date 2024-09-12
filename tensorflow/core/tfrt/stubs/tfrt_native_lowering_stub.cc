@@ -17,6 +17,11 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/status/statusor.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "tensorflow/core/tfrt/graph_executor/executable_context.h"
+#include "tensorflow/core/tfrt/graph_executor/sync_resource_state.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/context.h"
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 

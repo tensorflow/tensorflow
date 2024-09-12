@@ -59,7 +59,7 @@ message DispatcherConfig {
 }
 
 // Configuration for a tf.data service WorkerServer.
-// Next id: 13
+// Next id: 14
 message WorkerConfig {
   // The port for the worker to bind to. A value of 0 indicates that the
   // worker may bind to any available port.
@@ -84,11 +84,19 @@ message WorkerConfig {
   // an error. A value of 0 indicates that the decision should be left up to the
   // runtime.
   int64 dispatcher_timeout_ms = 6;
-  // The protocol for the worker to use when transferring data to clients.
+  // If set, the name of an alternative data transfer protocol for which the
+  // worker starts an additional server ("data transfer server"); the trainer
+  // can then get data from this server. If not set, no such server is started,
+  // and the trainer can only get data from the regular worker server over
+  // `protocol`.
   string data_transfer_protocol = 7;
-  // The data transfer address of the worker server. The substring "%port%", if
-  // specified, will be replaced with the worker's bound port. This is useful
-  // when the port is set to `0`.
+  // If `data_transfer_protocol` is set, the port to which the data transfer
+  // server binds. If set to `0`, the server binds to any available port.
+  int64 data_transfer_port = 13;
+  // If `data_transfer_protocol` is set, the address of the data transfer
+  // server. The substring "%dts_port%" can be used to represent -- and is
+  // replaced with -- the bound port of the data transfer server; this is useful
+  // when `data_transfer_port` is set to `0`.
   string data_transfer_address = 8;
   // Maximum size of the cross-trainer cache in bytes. If enabled, make sure
   // your training job provides sufficient memory resources.

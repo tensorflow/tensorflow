@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,6 +16,12 @@ limitations under the License.
 #include "xla/client/sharding_builder.h"
 
 #include <vector>
+
+#include "absl/log/check.h"
+#include "xla/shape.h"
+#include "xla/shape_tree.h"
+#include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace sharding_builder {

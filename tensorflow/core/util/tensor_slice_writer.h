@@ -86,7 +86,8 @@ class TensorSliceWriter {
 
   const string filename_;
   const CreateBuilderFunction create_builder_;
-  const string tmpname_;
+  string data_filename_;
+  bool use_temp_file_;
 
   // A mapping from the tensor names to their index in meta_.saved_slice_meta()
   std::unordered_map<string, int> name_to_index_;
@@ -162,7 +163,7 @@ Status TensorSliceWriter::Add(const string& name, const TensorShape& shape,
     data_.insert(key_value);
   }
   ++slices_;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename T>
@@ -185,7 +186,7 @@ Status TensorSliceWriter::SaveData(const T* data, int64_t num_elements,
   Fill(data, num_elements, ss->mutable_data());
   DCHECK_GE(ss->ByteSize(), 0);
   DCHECK_LE(ss->ByteSize(), size_bound);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <>

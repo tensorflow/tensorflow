@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ResourceAccumulatorApplyGradient"
   input_arg {
     name: "handle"

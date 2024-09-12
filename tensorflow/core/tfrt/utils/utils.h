@@ -41,8 +41,8 @@ class BEFFile;
 class ExecutionContext;
 class HostContext;
 
-typedef tensorflow::gtl::InlinedVector<tfrt::DType, 4> TfrtDataTypeVector;
-typedef tensorflow::gtl::ArraySlice<tfrt::DType> TfrtDataTypeSlice;
+typedef absl::InlinedVector<tfrt::DType, 4UL> TfrtDataTypeVector;
+typedef absl::Span<const tfrt::DType> TfrtDataTypeSlice;
 
 DType ConvertTfDTypeToTfrtDType(tensorflow::DataType dtype);
 
@@ -69,7 +69,7 @@ void AddDummyTfrtDevices(const std::vector<std::string>& device_names,
 
 // Creates a BEF file from a BEF buffer. `runtime` is used to provide host
 // context for opening `bef`.
-tensorflow::StatusOr<RCReference<tfrt::BEFFile>> CreateBefFileFromBefBuffer(
+absl::StatusOr<RCReference<tfrt::BEFFile>> CreateBefFileFromBefBuffer(
     const tensorflow::tfrt_stub::Runtime& runtime, const tfrt::BefBuffer& bef);
 
 // Returns a unique integer within this process.

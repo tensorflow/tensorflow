@@ -83,7 +83,7 @@ TfLiteStatus EvalReal(TfLiteContext* context, TfLiteNode* node) {
     default: {
       TF_LITE_KERNEL_LOG(context,
                          "Unsupported input type, Real op only supports "
-                         "complex input, but got: ",
+                         "complex input, but got: %s",
                          TfLiteTypeGetName(input->type));
       return kTfLiteError;
     }
@@ -115,7 +115,7 @@ TfLiteStatus EvalImag(TfLiteContext* context, TfLiteNode* node) {
     default: {
       TF_LITE_KERNEL_LOG(context,
                          "Unsupported input type, Imag op only supports "
-                         "complex input, but got: ",
+                         "complex input, but got: %s",
                          TfLiteTypeGetName(input->type));
       return kTfLiteError;
     }
@@ -146,7 +146,7 @@ TfLiteStatus EvalAbs(TfLiteContext* context, TfLiteNode* node) {
     default: {
       TF_LITE_KERNEL_LOG(context,
                          "Unsupported input type, ComplexAbs op only supports "
-                         "complex input, but got: ",
+                         "complex input, but got: %s",
                          TfLiteTypeGetName(input->type));
       return kTfLiteError;
     }

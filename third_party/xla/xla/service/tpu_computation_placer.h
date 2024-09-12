@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef XLA_SERVICE_TPU_COMPUTATION_PLACER_H_
 #define XLA_SERVICE_TPU_COMPUTATION_PLACER_H_
 
+#include "absl/status/statusor.h"
 #include "xla/service/computation_placer.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/tpu/tpu_executor_c_api.h"
 #include "xla/stream_executor/tpu/tpu_topology.h"
 
@@ -26,19 +26,16 @@ namespace tpu {
 
 class TpuComputationPlacer : public xla::ComputationPlacer {
  public:
-  template <typename T>
-  using StatusOr = xla::StatusOr<T>;
-
   TpuComputationPlacer();
   ~TpuComputationPlacer() override;
 
-  StatusOr<int> DeviceId(int replica, int computation, int replica_count,
-                         int computation_count) override;
+  absl::StatusOr<int> DeviceId(int replica, int computation, int replica_count,
+                               int computation_count) override;
 
-  StatusOr<xla::DeviceAssignment> AssignDevices(int replica_count,
-                                                int computation_count) override;
+  absl::StatusOr<xla::DeviceAssignment> AssignDevices(
+      int replica_count, int computation_count) override;
 
-  static StatusOr<xla::DeviceAssignment> AssignLocalDevices(
+  static absl::StatusOr<xla::DeviceAssignment> AssignLocalDevices(
       TpuHostLocationExternal host_location, int replica_count,
       int computation_count);
 

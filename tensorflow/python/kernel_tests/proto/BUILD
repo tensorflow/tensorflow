@@ -1,11 +1,12 @@
 # Tests of tf.io.*proto.
 
-# Placeholder: load py_proto_library
 load("//tensorflow:strict.default.bzl", "py_strict_library")
+
+# Placeholder: load py_proto_library
 load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
 load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
-load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("//tensorflow/core/platform:build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
+load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -111,7 +112,6 @@ py_strict_library(
 tf_proto_library(
     name = "test_example_proto",
     srcs = ["test_example.proto"],
-    cc_api_version = 2,
     protodeps = tf_additional_all_protos(),
 )
 

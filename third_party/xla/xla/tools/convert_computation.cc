@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,15 +16,15 @@ limitations under the License.
 // Usage: convert_computation <txt2bin|bin2txt> serialized_computation_proto
 //
 // bin2txt spits out the result to stdout. txt2bin modifies the file in place.
-
-#include <stdio.h>
+#include "tsl/platform/status.h"
+#ifndef _WIN32
 #include <unistd.h>
+#endif
+#include <stdio.h>
 
 #include <string>
 
 #include "xla/service/hlo.pb.h"
-#include "xla/statusor.h"
-#include "xla/types.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/logging.h"

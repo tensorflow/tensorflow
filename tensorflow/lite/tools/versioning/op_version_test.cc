@@ -709,6 +709,16 @@ TEST(OpVersionTest, VersioningFullyConnectedTest) {
   };
   fully_connected_params.quantized_bias_type = kTfLiteInt32;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 11);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_FULLY_CONNECTED,
+      .inputs = CreateOpSignatureTensorSpecs(
+          std::vector<TfLiteType>{kTfLiteFloat32, kTfLiteInt8}),
+      .outputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32),
+      .builtin_data = reinterpret_cast<void*>(&fully_connected_params),
+  };
+  fake_op_sig.ext_options.fully_connected.is_per_channel_quantized = true;
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 12);
 }
 
 TEST(OpVersionTest, VersioningDequantizeTest) {
@@ -1397,6 +1407,7 @@ TEST(OpVersionTest, VersioningExpTest) {
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 }
+
 TEST(OpVersionTest, VersioningLogTest) {
   OpSignature fake_op_sig = {};
   fake_op_sig.op = BuiltinOperator_LOG;
@@ -1407,6 +1418,18 @@ TEST(OpVersionTest, VersioningLogTest) {
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 
   fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt16);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+}
+
+TEST(OpVersionTest, VersioningDynamicUpdateSliceTest) {
+  OpSignature fake_op_sig = {};
+  fake_op_sig.op = BuiltinOperator_DYNAMIC_UPDATE_SLICE;
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(
+      std::vector<TfLiteType>{kTfLiteFloat32, kTfLiteFloat32, kTfLiteInt32});
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(
+      std::vector<TfLiteType>{kTfLiteFloat32, kTfLiteFloat32, kTfLiteInt64});
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 }
 }  // namespace tflite

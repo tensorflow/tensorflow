@@ -20,8 +20,8 @@ func.func @simple_test(%arg0: tensor<4x384x32xf32>, %arg1: tensor<3xi32>, %arg2:
 }
 
 // PARTIAL:       func @simple_test(%[[VAL_0:.*]]: tensor<4x384x32xf32>, %[[VAL_1:.*]]: tensor<3xi32>, %[[VAL_2:.*]]: tensor<3xi32>) -> tensor<1x384x32xf32> attributes {tac.interface_name = "func1"} {
-// PARTIAL:           %[[VAL_3:.*]] = "tfl.pseudo_const"() {value = dense<[1, 384, 32]> : tensor<3xi32>} : () -> tensor<3xi32>
-// PARTIAL:           %[[VAL_4:.*]] = "tfl.pseudo_const"() {value = dense<0> : tensor<3xi32>} : () -> tensor<3xi32>
+// PARTIAL:           %[[VAL_3:.*]] = "tfl.pseudo_const"() <{value = dense<[1, 384, 32]> : tensor<3xi32>}> : () -> tensor<3xi32>
+// PARTIAL:           %[[VAL_4:.*]] = "tfl.pseudo_const"() <{value = dense<0> : tensor<3xi32>}> : () -> tensor<3xi32>
 // PARTIAL:           %[[VAL_5:.*]] = "tfl.slice"(%[[VAL_0]], %[[VAL_4]], %[[VAL_3]]) : (tensor<4x384x32xf32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x384x32xf32>
 // PARTIAL:           return %[[VAL_5]] : tensor<1x384x32xf32>
 // PARTIAL:         }
@@ -52,15 +52,15 @@ func.func @arg_reuse_test_2(%arg0: tensor<4x384x32xf32>, %arg1: tensor<3xi32>, %
 }
 
 // PARTIAL:       func @arg_reuse_test_1(%[[VAL_0:.*]]: tensor<4x384x32xf32>, %[[VAL_1:.*]]: tensor<3xi32>, %[[VAL_2:.*]]: tensor<3xi32>) -> tensor<1x384x32xf32> attributes {tac.interface_name = "func1"} {
-// PARTIAL:           %[[VAL_3:.*]] = "tfl.pseudo_const"() {value = dense<[1, 384, 32]> : tensor<3xi32>} : () -> tensor<3xi32>
-// PARTIAL:           %[[VAL_4:.*]] = "tfl.pseudo_const"() {value = dense<0> : tensor<3xi32>} : () -> tensor<3xi32>
+// PARTIAL:           %[[VAL_3:.*]] = "tfl.pseudo_const"() <{value = dense<[1, 384, 32]> : tensor<3xi32>}> : () -> tensor<3xi32>
+// PARTIAL:           %[[VAL_4:.*]] = "tfl.pseudo_const"() <{value = dense<0> : tensor<3xi32>}> : () -> tensor<3xi32>
 // PARTIAL:           %[[VAL_5:.*]] = "tfl.slice"(%[[VAL_0]], %[[VAL_4]], %[[VAL_3]]) : (tensor<4x384x32xf32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x384x32xf32>
 // PARTIAL:           return %[[VAL_5]] : tensor<1x384x32xf32>
 // PARTIAL:         }
 
 // PARTIAL:       func @arg_reuse_test_2(%[[VAL_6:.*]]: tensor<4x384x32xf32>, %[[VAL_7:.*]]: tensor<3xi32>, %[[VAL_8:.*]]: tensor<3xi32>) -> tensor<1x384x32xf32> attributes {tac.interface_name = "func2"} {
-// PARTIAL:           %[[VAL_9:.*]] = "tfl.pseudo_const"() {value = dense<[1, 384, 32]> : tensor<3xi32>} : () -> tensor<3xi32>
-// PARTIAL:           %[[VAL_10:.*]] = "tfl.pseudo_const"() {value = dense<0> : tensor<3xi32>} : () -> tensor<3xi32>
+// PARTIAL:           %[[VAL_9:.*]] = "tfl.pseudo_const"() <{value = dense<[1, 384, 32]> : tensor<3xi32>}> : () -> tensor<3xi32>
+// PARTIAL:           %[[VAL_10:.*]] = "tfl.pseudo_const"() <{value = dense<0> : tensor<3xi32>}> : () -> tensor<3xi32>
 // PARTIAL:           %[[VAL_11:.*]] = "tfl.slice"(%[[VAL_6]], %[[VAL_10]], %[[VAL_9]]) : (tensor<4x384x32xf32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x384x32xf32>
 // PARTIAL:           return %[[VAL_11]] : tensor<1x384x32xf32>
 // PARTIAL:         }
@@ -84,8 +84,8 @@ func.func @quantization_test(%arg0: tensor<384x512x!quant.uniform<i8:f32, 0.1>>,
 }
 
 // PARTIAL:   func @quantization_test(%[[VAL_0:.*]]: tensor<384x512x!quant.uniform<i8:f32, 1.000000e-01>>, %[[VAL_1:.*]]: tensor<128x512x!quant.uniform<i8<-127:127>:f32, 1.000000e-02>>, %[[VAL_2:.*]]: tensor<128x!quant.uniform<i32:f32, 0.69999999999999996>>) -> tensor<384x128x!quant.uniform<i8:f32, 0.089999999999999996:-4>> {
-// PARTIAL:           %[[VAL_3:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<128x!quant.uniform<i32:f32, 0.69999999999999996>>, value = dense<0> : tensor<128xi32>} : () -> tensor<128x!quant.uniform<i32:f32, 0.69999999999999996>>
-// PARTIAL:           %[[VAL_4:.*]] = "tfl.fully_connected"(%[[VAL_0]], %[[VAL_1]], %[[VAL_3]]) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<384x512x!quant.uniform<i8:f32, 1.000000e-01>>, tensor<128x512x!quant.uniform<i8<-127:127>:f32, 1.000000e-02>>, tensor<128x!quant.uniform<i32:f32, 0.69999999999999996>>) -> tensor<384x128x!quant.uniform<i8:f32, 0.089999999999999996:-4>>
+// PARTIAL:           %[[VAL_3:.*]] = "tfl.pseudo_qconst"() <{qtype = tensor<128x!quant.uniform<i32:f32, 0.69999999999999996>>, value = dense<0> : tensor<128xi32>}> : () -> tensor<128x!quant.uniform<i32:f32, 0.69999999999999996>>
+// PARTIAL:           %[[VAL_4:.*]] = "tfl.fully_connected"(%[[VAL_0]], %[[VAL_1]], %[[VAL_3]]) <{fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"}> : (tensor<384x512x!quant.uniform<i8:f32, 1.000000e-01>>, tensor<128x512x!quant.uniform<i8<-127:127>:f32, 1.000000e-02>>, tensor<128x!quant.uniform<i32:f32, 0.69999999999999996>>) -> tensor<384x128x!quant.uniform<i8:f32, 0.089999999999999996:-4>>
 // PARTIAL:           return %[[VAL_4]] : tensor<384x128x!quant.uniform<i8:f32, 0.089999999999999996:-4>>
 // PARTIAL:         }
 
@@ -108,9 +108,9 @@ func.func @fold_all_test(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<16x3x3x3x
 }
 
 // ALL: func @fold_all_test(%[[VAL_0:.*]]: tensor<256x32x32x3xf32>, %[[VAL_1:.*]]: tensor<16x3x3x3xf32>, %[[VAL_2:.*]]: tensor<16xf32>) -> tensor<256x30x30x16xf32> {
-// ALL:           %[[VAL_3:.*]] = "tfl.pseudo_const"() {value = dense<1.000000e+00> : tensor<16xf32>} : () -> tensor<16xf32>
-// ALL:           %[[VAL_4:.*]] = "tfl.pseudo_const"() {value = dense<1.000000e+00> : tensor<16x3x3x3xf32>} : () -> tensor<16x3x3x3xf32>
-// ALL:           %[[VAL_5:.*]] = "tfl.conv_2d"(%[[VAL_0]], %[[VAL_4]], %[[VAL_3]]) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32, tac.device = "GPU", tac.inference_type = "FLOAT"} : (tensor<256x32x32x3xf32>, tensor<16x3x3x3xf32>, tensor<16xf32>) -> tensor<256x30x30x16xf32>
+// ALL:           %[[VAL_3:.*]] = "tfl.pseudo_const"() <{value = dense<1.000000e+00> : tensor<16xf32>}> : () -> tensor<16xf32>
+// ALL:           %[[VAL_4:.*]] = "tfl.pseudo_const"() <{value = dense<1.000000e+00> : tensor<16x3x3x3xf32>}> : () -> tensor<16x3x3x3xf32>
+// ALL:           %[[VAL_5:.*]] = "tfl.conv_2d"(%[[VAL_0]], %[[VAL_4]], %[[VAL_3]]) <{dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32}> {tac.device = "GPU", tac.inference_type = "FLOAT"} : (tensor<256x32x32x3xf32>, tensor<16x3x3x3xf32>, tensor<16xf32>) -> tensor<256x30x30x16xf32>
 // ALL:           return %[[VAL_5]] : tensor<256x30x30x16xf32>
 // ALL:         }
 }

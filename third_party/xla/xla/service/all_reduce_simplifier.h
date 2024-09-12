@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef XLA_SERVICE_ALL_REDUCE_SIMPLIFIER_H_
 #define XLA_SERVICE_ALL_REDUCE_SIMPLIFIER_H_
 
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo_pass_interface.h"
-#include "xla/statusor.h"
 
 namespace xla {
 
@@ -36,7 +36,7 @@ class AllReduceSimplifier : public HloModulePass {
   // Run all-reduce simplification on the given computation. Returns whether the
   // computation was changed.
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

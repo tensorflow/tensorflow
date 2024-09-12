@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -61,7 +61,7 @@ TFTPU_CAPI_EXPORT void TpuProfiler_CollectData(TpuProfiler* tpu_profiler,
                                                uint8_t* buffer,
                                                size_t* size_in_bytes);
 
-// Status helpers to create TFStatus for Profiler.
+// absl::Status helpers to create TFStatus for Profiler.
 TF_Status* TpuStatus_New();
 void TpuStatus_Free(TF_Status* status);
 const char* TpuStatus_Message(TF_Status* status);

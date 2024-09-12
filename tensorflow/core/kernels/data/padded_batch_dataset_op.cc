@@ -123,7 +123,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -178,7 +178,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
          {kToutputTypes, output_types},
          {kNumPaddedShapes, N}},
         output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -203,7 +203,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
         mutex_lock l(mu_);
         if (!input_impl_) {
           *end_of_sequence = true;
-          return OkStatus();
+          return absl::OkStatus();
         } else {
           *end_of_sequence = false;
           batch_elements.reserve(dataset()->batch_size_);
@@ -224,18 +224,18 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
 
       if (batch_elements.empty()) {
         DCHECK(*end_of_sequence);
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       if (dataset()->drop_remainder_ &&
           batch_elements.size() < dataset()->batch_size_) {
         *end_of_sequence = true;
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       TF_RETURN_IF_ERROR(CopyBatch(ctx, batch_elements, out_tensors));
       *end_of_sequence = false;
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    protected:
@@ -252,7 +252,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
       if (input_impl_) {
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -268,7 +268,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
             dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     TraceMeMetadata GetTraceMeMetadata() const override {
@@ -365,7 +365,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
                 batch_elements[index][component_index], &batch_component,
                 index));
           }
-          return OkStatus();
+          return absl::OkStatus();
         };
 
         if (dataset()->parallel_copy_ && (batch_component.AllocatedBytes() /
@@ -403,7 +403,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
           }
         }
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     mutex mu_;

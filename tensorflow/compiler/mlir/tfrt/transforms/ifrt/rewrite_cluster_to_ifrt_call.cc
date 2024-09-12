@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/rewrite_cluster_to_ifrt_call.h"
-
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -23,32 +21,32 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/CommandLine.h"
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Support/TypeID.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/host_runtime/tfrt_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tfrt_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/host_runtime/tpu_metadata_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_constants.h"
 #include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tsl/platform/protobuf.h"
@@ -57,51 +55,16 @@ namespace tensorflow {
 namespace ifrt_serving {
 namespace {
 
+#define GEN_PASS_DECL_REWRITECLUSTERTOIFRTCALLPASS
+#define GEN_PASS_DEF_REWRITECLUSTERTOIFRTCALLPASS
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/passes.h.inc"  // IWYU pragma: keep
+
 // A pass that inserts tf.ifrt_call and create its callee as a Ifrt
 // Program.
-// TODO(b/316179709): define pass using td file if allowed in oss build.
 class RewriteClusterToIfrtCallPass
-    : public mlir::PassWrapper<RewriteClusterToIfrtCallPass,
-                               mlir::OperationPass<mlir::ModuleOp>> {
+    : public impl::RewriteClusterToIfrtCallPassBase<
+          RewriteClusterToIfrtCallPass> {
  public:
-  RewriteClusterToIfrtCallPass()
-      : mlir::PassWrapper<RewriteClusterToIfrtCallPass,
-                          mlir::OperationPass<mlir::ModuleOp>>() {}
-  RewriteClusterToIfrtCallPass(const RewriteClusterToIfrtCallPass &other)
-      : mlir::PassWrapper<RewriteClusterToIfrtCallPass,
-                          mlir::OperationPass<mlir::ModuleOp>>(other){};
-  RewriteClusterToIfrtCallPass &operator=(
-      const RewriteClusterToIfrtCallPass &) = delete;
-
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(RewriteClusterToIfrtCallPass)
-
- protected:
-  mlir::Pass::Option<bool> tpu_compile_metadata_debug_{
-      *this, "tpu-compile-metadata-debug",
-      llvm::cl::desc(
-          "if enabled, output compile metadata as readable string in "
-          "an extra __tpu_compile_metadata_debug attribute for debug"),
-      llvm::cl::init(false)};
-
- private:
-  // Returns a new unique program id.
-  static int64_t NewProgramId() {
-    const uint64_t id = static_cast<int64_t>(tensorflow::random::New64());
-    // We use a signed int for program ids since TensorFlow doesn't
-    // support uint64_t attributes.
-    return absl::bit_cast<int64_t>(id);
-  }
-
-  void getDependentDialects(mlir::DialectRegistry &registry) const override {}
-
-  llvm::StringRef getArgument() const final {
-    return "rewrite-cluster-to-ifrt-call";
-  }
-
-  llvm::StringRef getDescription() const final {
-    return "Convert tf_device.cluster_func to tf.ifrt_proram_call";
-  }
-
   void runOnOperation() override {
     mlir::ModuleOp module = getOperation();
     mlir::SymbolTable symbol_table(module);
@@ -138,6 +101,15 @@ class RewriteClusterToIfrtCallPass
     }
   }
 
+ private:
+  // Returns a new unique program id.
+  static int64_t NewProgramId() {
+    const uint64_t id = static_cast<int64_t>(tensorflow::random::New64());
+    // We use a signed int for program ids since TensorFlow doesn't
+    // support uint64_t attributes.
+    return absl::bit_cast<int64_t>(id);
+  }
+
   mlir::LogicalResult GetTpuCompileMetadata(
       mlir::tf_device::ClusterFuncOp cluster_func,
       mlir::TF::RuntimeDevices &devices,
@@ -157,38 +129,9 @@ class RewriteClusterToIfrtCallPass
              << " is missing";
     int num_cores_per_replica = num_cores_per_replica_attr.getInt();
 
-    std::optional<xla::DeviceAssignmentProto> xla_device_assignment;
-    auto topology_attr = cluster_func->getAttrOfType<mlir::StringAttr>(
-        tensorflow::kTopologyAttr);
-    // Get device assignment.
-    auto device_assignment_attr = cluster_func->getAttrOfType<mlir::ArrayAttr>(
-        tensorflow::kDeviceAssignmentAttr);
-    if (topology_attr && device_assignment_attr && !topology_attr.empty() &&
-        !device_assignment_attr.empty()) {
-      auto device_coordinates =
-          tensorflow::GetDeviceCoordinates(device_assignment_attr);
-      if (!device_coordinates.ok())
-        return cluster_func.emitError()
-               << "error in parsing tpu device coordinates: "
-               << device_coordinates.status().message();
-
-      auto device_assignment = tensorflow::GetTPUCompilationAndExecutionDevices(
-          devices.device_names(), num_replicas, num_cores_per_replica,
-          topology_attr.getValue(), *device_coordinates);
-      if (!device_assignment.ok())
-        return cluster_func.emitError()
-               << "error in parsing TPU compilation/execution devices: "
-               << device_assignment.status().message();
-      if (!device_assignment->xla_device_assignment) {
-        return cluster_func.emitError()
-               << "Unexpected empty xla_device_assignment";
-      }
-      xla_device_assignment = device_assignment->xla_device_assignment;
-    }
-
     return mlir::TFTPU::SetMetadataProtoFromClusterFuncOp(
         cluster_func, num_replicas, num_cores_per_replica,
-        std::move(xla_device_assignment), metadata);
+        /*xla_device_assignment=*/std::nullopt, metadata);
   }
 
   void Rewrite(mlir::SymbolTable &symbol_table,
@@ -220,9 +163,22 @@ class RewriteClusterToIfrtCallPass
         return signalPassFailure();
       }
 
+      auto metadata_attr =
+          ifrt_program->getAttrOfType<mlir::StringAttr>(kMetadataTextAttrName);
+      auto device_assignment_attr =
+          ifrt_program->getAttrOfType<mlir::ArrayAttr>(kDeviceAssignmentAttr);
+      if (!metadata_attr || !device_assignment_attr) {
+        return signalPassFailure();
+      }
+
+      // For better debuggability, attach attributes such as
+      // tpu_compile_metadata and device_assignment to IfrtCallOp.
+      ifrt_call_op->setAttr(kMetadataTextAttrName, metadata_attr);
+      ifrt_call_op->setAttr(kDeviceAssignmentAttr, device_assignment_attr);
+
       // TODO(b/304839793): populate variable names after adding a variable
       // hoisting pass.
-      ifrt_call_op.setVariableNamesAttr(builder.getArrayAttr({}));
+      ifrt_call_op.setVariableArgIndicesAttr(builder.getI32ArrayAttr({}));
       ifrt_call_op.setProgramId(program_id);
 
       cluster_func->replaceAllUsesWith(ifrt_call_op.getResults());
@@ -243,25 +199,30 @@ class RewriteClusterToIfrtCallPass
     if (mlir::failed(GetTpuCompileMetadata(cluster_func, devices, &metadata))) {
       return signalPassFailure();
     }
+    std::string serialized_metadata;
+    tsl::protobuf::TextFormat::Printer printer;
+    printer.SetSingleLineMode(true);
+    printer.PrintToString(metadata, &serialized_metadata);
 
-    cloned_ifrt_program->setAttr(
-        "tpu_compile_metadata",
-        builder.getStringAttr(metadata.SerializeAsString()));
+    cloned_ifrt_program->setAttr(kMetadataTextAttrName,
+                                 builder.getStringAttr(serialized_metadata));
 
-    if (tpu_compile_metadata_debug_) {
-      std::string serialized_metadata;
-      tsl::protobuf::TextFormat::Printer printer;
-      printer.SetSingleLineMode(true);
-      printer.PrintToString(metadata, &serialized_metadata);
-
-      cloned_ifrt_program->setAttr("__tpu_compile_metadata_debug",
-                                   builder.getStringAttr(serialized_metadata));
+    auto device_assignment_attr =
+        cluster_func->getAttrOfType<mlir::ArrayAttr>(kDeviceAssignmentAttr);
+    if (!device_assignment_attr) {
+      device_assignment_attr = builder.getArrayAttr({});
     }
+    cloned_ifrt_program->setAttr(kDeviceAssignmentAttr, device_assignment_attr);
+
     cloned_ifrt_program.setName(ifrt_program_name);
 
     int64_t program_id = NewProgramId();
     cloned_ifrt_program->setAttr("tfrt_ifrt_serving.program_id",
                                  builder.getI64IntegerAttr(program_id));
+
+    // Make clonet ifrt program public so that it does not get dropped by
+    // inliner.
+    cloned_ifrt_program.setPublic();
 
     builder.setInsertionPoint(cluster_func);
 
@@ -271,8 +232,13 @@ class RewriteClusterToIfrtCallPass
 
     // TODO(b/304839793): populate variable names after adding a variable
     // hoisting pass.
-    ifrt_call_op.setVariableNamesAttr(builder.getArrayAttr({}));
+    ifrt_call_op.setVariableArgIndicesAttr(builder.getI32ArrayAttr({}));
     ifrt_call_op.setProgramId(program_id);
+    // For better debuggability, attach attributes such as tpu_compile_metadata
+    // and device_assignment to IfrtCallOp.
+    ifrt_call_op->setAttr(kMetadataTextAttrName,
+                          builder.getStringAttr(serialized_metadata));
+    ifrt_call_op->setAttr(kDeviceAssignmentAttr, device_assignment_attr);
 
     cluster_func->replaceAllUsesWith(ifrt_call_op.getResults());
     cluster_func->erase();

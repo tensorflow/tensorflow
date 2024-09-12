@@ -120,7 +120,7 @@ func.func @float_constant() -> (tensor<f32>, tensor<2x3xf32>, tensor<2x3xf32>) {
 // CHECK-LABEL: func @iota.const.1() -> tensor<4xi32> {
 func.func @iota.const.1() -> tensor<4xi32> {
   // CHECK-NEXT: %[[CST:.*]] = arith.constant dense<[0, 1, 2, 3]> : tensor<4xi32>
-  %0 = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<4xi32>
+  %0 = "mhlo.iota"() <{iota_dimension = 0 : i64}> : () -> tensor<4xi32>
   // CHECK-NEXT: return %[[CST]] : tensor<4xi32>
   func.return %0 : tensor<4xi32>
 }
@@ -128,7 +128,7 @@ func.func @iota.const.1() -> tensor<4xi32> {
 // CHECK-LABEL: func @iota.const.2() -> tensor<2x4xi32> {
 func.func @iota.const.2() -> tensor<2x4xi32> {
   // CHECK-NEXT: %[[CST:.*]] = arith.constant dense<{{\[\[}}0, 0, 0, 0], [1, 1, 1, 1]]> : tensor<2x4xi32>
-  %0 = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<2x4xi32>
+  %0 = "mhlo.iota"() <{iota_dimension = 0 : i64}> : () -> tensor<2x4xi32>
   // CHECK-NEXT: return %[[CST]] : tensor<2x4xi32>
   func.return %0 : tensor<2x4xi32>
 }
@@ -136,7 +136,7 @@ func.func @iota.const.2() -> tensor<2x4xi32> {
 // CHECK-LABEL: func @iota.const.3() -> tensor<2x4xi32> {
 func.func @iota.const.3() -> tensor<2x4xi32> {
   // CHECK-NEXT: %[[CST:.*]] = arith.constant dense<{{\[\[}}0, 1, 2, 3], [0, 1, 2, 3]]> : tensor<2x4xi32>
-  %0 = "mhlo.iota"() {iota_dimension = 1 : i64} : () -> tensor<2x4xi32>
+  %0 = "mhlo.iota"() <{iota_dimension = 1 : i64}> : () -> tensor<2x4xi32>
   // CHECK-NEXT: return %[[CST]] : tensor<2x4xi32>
   func.return %0 : tensor<2x4xi32>
 }
@@ -144,7 +144,7 @@ func.func @iota.const.3() -> tensor<2x4xi32> {
 // CHECK-LABEL: func @iota.const.4() -> tensor<2x3x4xi32> {
 func.func @iota.const.4() -> tensor<2x3x4xi32> {
   // CHECK-NEXT: %[[CST:.*]] = arith.constant dense<{{\[\[\[}}0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0{{\]\]}}, {{\[\[}}1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]]]> : tensor<2x3x4xi32>
-  %0 = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<2x3x4xi32>
+  %0 = "mhlo.iota"() <{iota_dimension = 0 : i64}> : () -> tensor<2x3x4xi32>
   // CHECK-NEXT: return %[[CST]] : tensor<2x3x4xi32>
   func.return %0 : tensor<2x3x4xi32>
 }
@@ -152,7 +152,7 @@ func.func @iota.const.4() -> tensor<2x3x4xi32> {
 // CHECK-LABEL: func @iota.const.5() -> tensor<2x3x4xi32> {
 func.func @iota.const.5() -> tensor<2x3x4xi32> {
   // CHECK-NEXT: %[[CST:.*]] = arith.constant dense<{{\[\[\[}}0, 0, 0, 0], [1, 1, 1, 1], [2, 2, 2, 2{{\]\]}}, {{\[\[}}0, 0, 0, 0], [1, 1, 1, 1], [2, 2, 2, 2]]]> : tensor<2x3x4xi32>
-  %0 = "mhlo.iota"() {iota_dimension = 1 : i64} : () -> tensor<2x3x4xi32>
+  %0 = "mhlo.iota"() <{iota_dimension = 1 : i64}> : () -> tensor<2x3x4xi32>
   // CHECK-NEXT: return %[[CST]] : tensor<2x3x4xi32>
   func.return %0 : tensor<2x3x4xi32>
 }
@@ -160,7 +160,7 @@ func.func @iota.const.5() -> tensor<2x3x4xi32> {
 // CHECK-LABEL: func @iota.const.6() -> tensor<2x3x4xi32> {
 func.func @iota.const.6() -> tensor<2x3x4xi32> {
   // CHECK-NEXT: %[[CST:.*]] = arith.constant dense<{{\[\[\[}}0, 1, 2, 3], [0, 1, 2, 3], [0, 1, 2, 3{{\]\]}}, {{\[\[}}0, 1, 2, 3], [0, 1, 2, 3], [0, 1, 2, 3]]]> : tensor<2x3x4xi32>
-  %0 = "mhlo.iota"() {iota_dimension = 2 : i64} : () -> tensor<2x3x4xi32>
+  %0 = "mhlo.iota"() <{iota_dimension = 2 : i64}> : () -> tensor<2x3x4xi32>
   // CHECK-NEXT: return %[[CST]] : tensor<2x3x4xi32>
   func.return %0 : tensor<2x3x4xi32>
 }
@@ -168,7 +168,7 @@ func.func @iota.const.6() -> tensor<2x3x4xi32> {
 // CHECK-LABEL: func @iota.const.f32
 func.func @iota.const.f32() -> tensor<4xf32> {
   // CHECK-NEXT: %[[CST:.*]] = arith.constant dense<[0.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00]> : tensor<4xf32>
-  %0 = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<4xf32>
+  %0 = "mhlo.iota"() <{iota_dimension = 0 : i64}> : () -> tensor<4xf32>
   // CHECK-NEXT: return %[[CST]] : tensor<4xf32>
   func.return %0 : tensor<4xf32>
 }
@@ -176,7 +176,7 @@ func.func @iota.const.f32() -> tensor<4xf32> {
 // CHECK-LABEL: func @iota.const.f64
 func.func @iota.const.f64() -> tensor<4xf64> {
   // CHECK-NEXT: %[[CST:.*]] = arith.constant dense<[0.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00]> : tensor<4xf64>
-  %0 = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<4xf64>
+  %0 = "mhlo.iota"() <{iota_dimension = 0 : i64}> : () -> tensor<4xf64>
   // CHECK-NEXT: return %[[CST]] : tensor<4xf64>
   func.return %0 : tensor<4xf64>
 }
@@ -184,7 +184,7 @@ func.func @iota.const.f64() -> tensor<4xf64> {
 // CHECK-LABEL: func @iota.const.bf16
 func.func @iota.const.bf16() -> tensor<4xbf16> {
   // CHECK-NEXT: %[[CST:.*]] = arith.constant dense<[0.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00]> : tensor<4xbf16>
-  %0 = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<4xbf16>
+  %0 = "mhlo.iota"() <{iota_dimension = 0 : i64}> : () -> tensor<4xbf16>
   // CHECK-NEXT: return %[[CST]] : tensor<4xbf16>
   func.return %0 : tensor<4xbf16>
 }
@@ -194,7 +194,7 @@ func.func @iota.const.complex.f32() -> tensor<4xcomplex<f32>> {
   // CHECK-NEXT: [[REAL:%.*]] = arith.constant dense<[0.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00]> : tensor<4xf32>
   // CHECK-NEXT: [[IMAG:%.*]] = arith.constant dense<0.000000e+00> : tensor<4xf32>
   // CHECK-NEXT: [[COMPLEX:%.*]] = mhlo.complex [[REAL]], [[IMAG]]
-  %0 = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<4xcomplex<f32>>
+  %0 = "mhlo.iota"() <{iota_dimension = 0 : i64}> : () -> tensor<4xcomplex<f32>>
   // CHECK-NEXT: return [[COMPLEX]] : tensor<4xcomplex<f32>>
   func.return %0 : tensor<4xcomplex<f32>>
 }
@@ -204,7 +204,7 @@ func.func @iota.const.complex.f64() -> tensor<4xcomplex<f64>> {
   // CHECK-NEXT: [[REAL:%.*]] = arith.constant dense<[0.000000e+00, 1.000000e+00, 2.000000e+00, 3.000000e+00]> : tensor<4xf64>
   // CHECK-NEXT: [[IMAG:%.*]] = arith.constant dense<0.000000e+00> : tensor<4xf64>
   // CHECK-NEXT: [[COMPLEX:%.*]] = mhlo.complex [[REAL]], [[IMAG]]
-  %0 = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<4xcomplex<f64>>
+  %0 = "mhlo.iota"() <{iota_dimension = 0 : i64}> : () -> tensor<4xcomplex<f64>>
   // CHECK-NEXT: return [[COMPLEX]] : tensor<4xcomplex<f64>>
   func.return %0 : tensor<4xcomplex<f64>>
 }

@@ -68,16 +68,19 @@ bool IsAutotuneNode(const string& node_name, const MutableGraphView& graph) {
 // `determistic` attr value.
 bool SameDeterministicAttr(const NodeDef& parallel_map_node,
                            const NodeDef& parent_parallel_map_node) {
-  const auto* first_deterministic_val =
+  const auto* first_deterministic_attr =
       gtl::FindOrNull(parallel_map_node.attr(), kDeterministicAttr);
-  const auto* second_deterministic_val =
+  const auto* second_deterministic_attr =
       gtl::FindOrNull(parent_parallel_map_node.attr(), kDeterministicAttr);
-
-  if (first_deterministic_val && second_deterministic_val) {
-    return first_deterministic_val->s() == second_deterministic_val->s();
-  }
-
-  return false;
+  const bool first_deterministic_val =
+      (first_deterministic_attr == nullptr) ||
+      (first_deterministic_attr->s() == "true" ||
+       first_deterministic_attr->s() == "default");
+  const bool second_deterministic_val =
+      (second_deterministic_attr == nullptr) ||
+      (second_deterministic_attr->s() == "true" ||
+       second_deterministic_attr->s() == "default");
+  return first_deterministic_val == second_deterministic_val;
 }
 
 // Returns a name for a new node or function that fuses the inputs.
@@ -164,7 +167,7 @@ Status MapFusion::OptimizeAndCollectStats(Cluster* cluster,
   if (!autotune_) {
     VLOG(1) << "The optimization map_fusion is not applied if "
                "autotune is off.";
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   MutableGraphView graph(output);
@@ -213,10 +216,22 @@ Status MapFusion::OptimizeAndCollectStats(Cluster* cluster,
   for (const NodeDef& node : sorted_old_graph.node()) {
     const NodeDef* map_node = get_map_node(node);
     if (!map_node) continue;
+    // Do not fuse ParallelMap node that uses the unbounded thread pool.
+    if (map_node->attr().find("use_unbounded_threadpool") !=
+            map_node->attr().end() &&
+        map_node->attr().at("use_unbounded_threadpool").b()) {
+      continue;
+    }
 
     const NodeDef* parent_map_node =
         get_map_node(*graph_utils::GetInputNode(*map_node, graph));
     if (!parent_map_node) continue;
+    // Do not fuse ParallelMap node that uses the unbounded thread pool.
+    if (parent_map_node->attr().find("use_unbounded_threadpool") !=
+            parent_map_node->attr().end() &&
+        parent_map_node->attr().at("use_unbounded_threadpool").b()) {
+      continue;
+    }
 
     // TODO(b/148614504): Support fusing different types of map operations.
     if (parent_map_node->op() != map_node->op()) continue;
@@ -244,7 +259,7 @@ Status MapFusion::OptimizeAndCollectStats(Cluster* cluster,
   }
 
   TF_RETURN_IF_ERROR(graph.DeleteNodes(nodes_to_delete));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(MapFusion, "map_fusion");

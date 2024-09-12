@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -27,6 +27,9 @@ MLIR_CAPI_EXPORTED MlirAttribute mlirMhloScatterDimensionNumbersGet(
     MlirContext ctx,                                                  //
     intptr_t nUpdateWindowDims, const int64_t *updateWindowDims,      //
     intptr_t nInsertedWindowDims, const int64_t *insertedWindowDims,  //
+    intptr_t nInputBatchingDims, const int64_t *inputBatchingDims,    //
+    intptr_t nScatterIndicesBatchingDims,                             //
+    const int64_t *scatterIndicesBatchingDims,                        //
     intptr_t nScatteredDimsToOperandDims,                             //
     const int64_t *scatteredDimsToOperandDims,                        //
     int64_t indexVectorDim);
@@ -47,6 +50,17 @@ MLIR_CAPI_EXPORTED int64_t
 mlirMhloScatterDimensionNumbersGetInsertedWindowDimsElem(MlirAttribute attr,
                                                          intptr_t pos);
 MLIR_CAPI_EXPORTED intptr_t
+mlirMhloScatterDimensionNumbersGetInputBatchingDimsSize(MlirAttribute attr);
+MLIR_CAPI_EXPORTED int64_t
+mlirMhloScatterDimensionNumbersGetInputBatchingDimsElem(MlirAttribute attr,
+                                                        intptr_t pos);
+MLIR_CAPI_EXPORTED intptr_t
+mlirMhloScatterDimensionNumbersGetScatterIndicesBatchingDimsSize(
+    MlirAttribute attr);
+MLIR_CAPI_EXPORTED int64_t
+mlirMhloScatterDimensionNumbersGetScatterIndicesBatchingDimsElem(
+    MlirAttribute attr, intptr_t pos);
+MLIR_CAPI_EXPORTED intptr_t
 mlirMhloScatterDimensionNumbersGetScatteredDimsToOperandDimsSize(
     MlirAttribute attr);
 MLIR_CAPI_EXPORTED int64_t
@@ -58,9 +72,13 @@ mlirMhloDimensionNumbersGetIndexVectorDim(MlirAttribute attr);
 // Creates a new GatherDimensionNumbers attribute with the given parameters. The
 // first three pairs of arguments are interpreted as arrays.
 MLIR_CAPI_EXPORTED MlirAttribute mlirMhloGatherDimensionNumbersGet(
-    MlirContext ctx, intptr_t nOffsetDims, const int64_t *offsetDims,
-    intptr_t nCollapsedSliceDims, const int64_t *collapsedSliceDims,
-    intptr_t nStartIndexMap, const int64_t *startIndexMap,
+    MlirContext ctx,                                                    //
+    intptr_t nOffsetDims, const int64_t *offsetDims,                    //
+    intptr_t nCollapsedSliceDims, const int64_t *collapsedSliceDims,    //
+    intptr_t nOperandBatchingDims, const int64_t *operandBatchingDims,  //
+    intptr_t nStartIndicesBatchingDims,
+    const int64_t *startIndicesBatchingDims,                //
+    intptr_t nStartIndexMap, const int64_t *startIndexMap,  //
     int64_t indexVectorDim);
 
 // Returns true if the given attribute is a GatherDimensionNumbers attribute.
@@ -77,6 +95,17 @@ mlirMhloGatherDimensionNumbersGetCollapsedSliceDimsSize(MlirAttribute attr);
 MLIR_CAPI_EXPORTED int64_t
 mlirMhloGatherDimensionNumbersGetCollapsedSliceDimsElem(MlirAttribute attr,
                                                         intptr_t pos);
+MLIR_CAPI_EXPORTED intptr_t
+mlirMhloGatherDimensionNumbersGetOperandBatchingDimsSize(MlirAttribute attr);
+MLIR_CAPI_EXPORTED int64_t
+mlirMhloGatherDimensionNumbersGetOperandBatchingDimsElem(MlirAttribute attr,
+                                                         intptr_t pos);
+MLIR_CAPI_EXPORTED intptr_t
+mlirMhloGatherDimensionNumbersGetStartIndicesBatchingDimsSize(
+    MlirAttribute attr);
+MLIR_CAPI_EXPORTED int64_t
+mlirMhloGatherDimensionNumbersGetStartIndicesBatchingDimsElem(
+    MlirAttribute attr, intptr_t pos);
 MLIR_CAPI_EXPORTED intptr_t
 mlirMhloGatherDimensionNumbersGetStartIndexMapSize(MlirAttribute attr);
 MLIR_CAPI_EXPORTED int64_t mlirMhloGatherDimensionNumbersGetStartIndexMapElem(
@@ -380,6 +409,23 @@ MLIR_CAPI_EXPORTED intptr_t
 mlirMhloTypeExtensionsGetBoundsSize(MlirAttribute attr);
 MLIR_CAPI_EXPORTED int64_t
 mlirMhloTypeExtensionsGetBoundsElem(MlirAttribute attr, intptr_t pos);
+
+//
+// SparsityDescriptor
+//
+// Creates a SparseDescriptor attribute with the given sparsity configurations.
+MLIR_CAPI_EXPORTED MlirAttribute mlirMhloSparsityDescriptorGet(
+    MlirContext ctx, int64_t dimension, int64_t n, int64_t m);
+
+// Returns true if the given attribute is a SparsityDescriptor attribute.
+MLIR_CAPI_EXPORTED bool mlirMhloAttributeIsASparsityDescriptor(
+    MlirAttribute attr);
+
+// Returns the dimension and N:M sparsity configurations.
+MLIR_CAPI_EXPORTED int64_t
+mlirMhloSparsityDescriptorGetDimension(MlirAttribute attr);
+MLIR_CAPI_EXPORTED int64_t mlirMhloSparsityDescriptorGetN(MlirAttribute attr);
+MLIR_CAPI_EXPORTED int64_t mlirMhloSparsityDescriptorGetM(MlirAttribute attr);
 
 #ifdef __cplusplus
 }

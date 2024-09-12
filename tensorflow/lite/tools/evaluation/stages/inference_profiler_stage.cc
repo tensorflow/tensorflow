@@ -21,8 +21,11 @@ limitations under the License.
 
 #include "fp16.h"  // from @FP16
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/tools/evaluation/evaluation_delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
+#include "tensorflow/lite/tools/evaluation/stages/tflite_inference_stage.h"
 
 namespace tflite {
 namespace evaluation {

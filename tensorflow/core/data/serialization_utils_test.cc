@@ -183,7 +183,7 @@ class ParameterizedIteratorStateVariantTest
     return data;
   }
 
-  StatusOr<VariantTensorData> EncodeAndDecode(
+  absl::StatusOr<VariantTensorData> EncodeAndDecode(
       const VariantTensorData& data) const {
     IteratorStateVariant encoder;
     TF_RETURN_IF_ERROR(encoder.InitializeFromVariantData(
@@ -196,7 +196,7 @@ class ParameterizedIteratorStateVariantTest
     return *decoder.GetData();
   }
 
-  StatusOr<VariantTensorData> DecodeUncompressed(
+  absl::StatusOr<VariantTensorData> DecodeUncompressed(
       const VariantTensorData& data) const {
     IteratorStateVariant decoder;
     decoder.Decode(data);

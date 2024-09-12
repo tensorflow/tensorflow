@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -63,7 +63,7 @@ void OnMiscompare(const LiteralSlice& expected, const LiteralSlice& actual,
   WriteLiteralToTempFile(mismatches, "mismatches");
 }
 
-::testing::AssertionResult StatusToAssertion(const Status& s) {
+::testing::AssertionResult StatusToAssertion(const absl::Status& s) {
   if (s.ok()) {
     return ::testing::AssertionSuccess();
   }

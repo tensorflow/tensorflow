@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,11 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
+#include <string>
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/op_expander_pass.h"
-#include "xla/statusor.h"
 
 #ifndef XLA_SERVICE_BITCAST_DTYPES_EXPANDER_H_
 #define XLA_SERVICE_BITCAST_DTYPES_EXPANDER_H_
@@ -33,7 +36,7 @@ class BitcastDtypesExpander : public OpExpanderPass {
  protected:
   bool InstructionMatchesPattern(HloInstruction* instruction) override;
 
-  StatusOr<HloInstruction*> ExpandInstruction(
+  absl::StatusOr<HloInstruction*> ExpandInstruction(
       HloInstruction* instruction) override;
 
  private:

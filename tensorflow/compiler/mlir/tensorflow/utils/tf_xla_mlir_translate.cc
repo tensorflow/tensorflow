@@ -37,6 +37,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
@@ -151,7 +152,7 @@ Status ParseArgumentShapes(
         *shape.value(), &arg_shapes[shape.index()].shape));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ParseDataTypes(absl::string_view data_types_str,
@@ -174,14 +175,14 @@ Status ParseDataTypes(absl::string_view data_types_str,
                                      data_type.value());
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ParseArgumentKinds(
     absl::string_view input_types_str,
     llvm::SmallVectorImpl<XlaArgument::Kind>& argument_kinds) {
   argument_kinds.clear();
-  if (input_types_str.empty()) return OkStatus();
+  if (input_types_str.empty()) return absl::OkStatus();
 
   std::vector<absl::string_view> argument_kind_strs =
       absl::StrSplit(input_types_str, ',');
@@ -199,7 +200,7 @@ Status ParseArgumentKinds(
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ParseXlaArguments(absl::string_view input_shapes_str,
@@ -248,7 +249,7 @@ Status ParseXlaArguments(absl::string_view input_shapes_str,
     arg.kind = std::get<3>(arg_components);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // anonymous namespace
@@ -396,11 +397,11 @@ SerializedMlirStringAttrToMlirModuleTranslate(llvm::StringRef input,
   // an output parameter is provided for returning the number of chars read.
   size_t numRead;
   mlir::Attribute attr = mlir::parseAttribute(input, context, {}, &numRead);
-  if (!attr || !attr.isa<mlir::StringAttr>()) {
+  if (!attr || !mlir::isa<mlir::StringAttr>(attr)) {
     LOG(ERROR) << "Input is not parsable as a MLIR StringAttr.";
     return nullptr;
   }
-  auto str_attr = attr.cast<mlir::StringAttr>();
+  auto str_attr = mlir::cast<mlir::StringAttr>(attr);
 
   mlir::DialectRegistry registry;
   RegisterMlirInputDialects(registry);

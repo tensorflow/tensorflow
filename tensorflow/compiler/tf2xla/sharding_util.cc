@@ -55,7 +55,7 @@ Status CoreOutOfRangeError(int core, int num_cores_per_replica) {
 }
 }  // namespace
 
-StatusOr<std::optional<xla::OpSharding>> ParseShardingFromDevice(
+absl::StatusOr<std::optional<xla::OpSharding>> ParseShardingFromDevice(
     const string& device_name, int num_cores_per_replica,
     std::optional<xla::OpSharding> explicit_sharding,
     std::optional<xla::OpMetadata> metadata) {
@@ -87,7 +87,7 @@ StatusOr<std::optional<xla::OpSharding>> ParseShardingFromDevice(
   }
 }
 
-StatusOr<std::optional<xla::OpSharding>> ParseShardingFromDevice(
+absl::StatusOr<std::optional<xla::OpSharding>> ParseShardingFromDevice(
     const NodeDef& node_def, int num_cores_per_replica, bool add_metadata) {
   const string& device_name = node_def.device();
   TF_ASSIGN_OR_RETURN(std::optional<xla::OpSharding> sharding,
@@ -99,7 +99,7 @@ StatusOr<std::optional<xla::OpSharding>> ParseShardingFromDevice(
                    : std::nullopt);
 }
 
-StatusOr<std::optional<xla::OpSharding>> ParseShardingFromDevice(
+absl::StatusOr<std::optional<xla::OpSharding>> ParseShardingFromDevice(
     const Node& node, int num_cores_per_replica, bool add_metadata) {
   string device_name = node.assigned_device_name();
   if (device_name.empty()) {
@@ -114,7 +114,7 @@ StatusOr<std::optional<xla::OpSharding>> ParseShardingFromDevice(
                    : std::nullopt);
 }
 
-StatusOr<std::optional<xla::OpSharding>> ParseShardingFromEdgeSource(
+absl::StatusOr<std::optional<xla::OpSharding>> ParseShardingFromEdgeSource(
     const Edge& edge, int num_cores_per_replica, bool add_metadata) {
   if (edge.src() == nullptr) {
     return tensorflow::errors::InvalidArgument(
@@ -151,7 +151,7 @@ void SetShardingDeviceAssignmentFromNode(const Node& src, Node* dst) {
 
 namespace {
 
-StatusOr<std::optional<xla::OpSharding>> GetShardingFromNodeDefInternal(
+absl::StatusOr<std::optional<xla::OpSharding>> GetShardingFromNodeDefInternal(
     const NodeDef& node_def, bool add_metadata, const char* attribute) {
   if (!HasNodeAttr(node_def, attribute)) {
     return std::optional<xla::OpSharding>();
@@ -173,7 +173,7 @@ StatusOr<std::optional<xla::OpSharding>> GetShardingFromNodeDefInternal(
 
 }  // namespace
 
-xla::StatusOr<std::optional<xla::OpSharding>> GetShardingFromNodeDef(
+absl::StatusOr<std::optional<xla::OpSharding>> GetShardingFromNodeDef(
     const NodeDef& node_def, bool add_metadata) {
   if (node_def.op() == "XlaSharding") {
     TF_ASSIGN_OR_RETURN(auto sharding,

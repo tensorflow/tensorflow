@@ -29,6 +29,7 @@ limitations under the License.
 #include <limits>
 #include <map>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <tuple>
@@ -59,11 +60,36 @@ limitations under the License.
 
 namespace tflite {
 
-// A gmock matcher that check that elements of a float vector match to a given
-// tolerance.
-std::vector<::testing::Matcher<float>> ArrayFloatNear(
-    const std::vector<float>& values, float max_abs_error = 1e-5);
+// This constant indicates the error bound is derived automatically in functions
+// like ArrayFloatNear.
+constexpr float kFpErrorAuto = -1;
 
+// Returns whether we allow FP16 precision for FP32 operations, i.e. in FP16
+// mode.
+bool AllowFp16PrecisionForFp32();
+
+// It checks if the actual number almost equals the expected number with the
+// tolerance of 4 FP16 ULPs in FP16 mode; 4 FP32 ULPs in FP32 mode.
+// Given float x, 2^e <= |x| <= 2^(e+1), then ULP(x) = 2^(max(e, e_min)-p+1)
+// where e_min is -24 for FP16, -126 for FP32; p is 10 for FP16, 23 for FP32.
+::testing::Matcher<std::tuple<float, float>> FloatingPointAlmostEq();
+
+// In FP32 mode, it equals to Eq(), which means the error bound is zero (no
+// error allowed); in FP16 mode, it checks if the actual number almost equals
+// the expected number with the tolerance of 4 FP16 ULPs.
+::testing::Matcher<std::tuple<float, float>> FloatingPointEq();
+
+// A gmock matcher that check that elements of a float vector match to a given
+// tolerance. In FP32 mode, the tolerance is max(max_abs_err, value *
+// max_rel_err). In FP16 mode, the tolerance is max(fp16_max_abs_err, value *
+// fp16_max_rel_err). If fp16_max_abs_err is kFpErrorAuto, it is set to
+// std::max(max_abs_err, sqrt(max_abs_err)) automatically.
+std::vector<::testing::Matcher<float>> ArrayFloatNear(
+    const std::vector<float>& values, float max_abs_err = 1e-5,
+    float fp16_max_abs_err = kFpErrorAuto, float max_rel_err = 0,
+    float fp16_max_rel_err = 0.01);
+
+// TODO(b/280061335): Add FP16 logic as ArrayFloatNear does.
 // A gmock matcher that check that elements of a complex vector match to a given
 // tolerance.
 std::vector<::testing::Matcher<std::complex<float>>> ArrayComplex64Near(
@@ -425,7 +451,10 @@ class SingleOpModel {
       buffer_id = buffers_.size();
       // When the quantization parameter is set for the added tensor, we
       // quantize the given data.
-      bool is_quantized = (t.min != 0 || t.max != 0 || t.scale != 0);
+      bool is_quantized = (t.min != 0 || t.max != 0 || t.scale != 0 ||
+                           (t.per_channel_quantization &&
+                            !t.per_channel_quantization_scales.empty() &&
+                            !t.per_channel_quantization_offsets.empty()));
       if (symmetric_quantize) {
         const int length = sparse_data.size();
         std::vector<int8_t> q(length);
@@ -443,14 +472,43 @@ class SingleOpModel {
       } else if (is_quantized) {
         CHECK_EQ(t.type, TensorType_INT8)
             << "The INT8 quantization is only supported for sparsified tensor";
-        auto q = Quantize<int8_t>(sparse_data, t.scale, t.zero_point);
-        std::vector<float> scales{t.scale};
-        std::vector<int64_t> zero_points{0};
+        std::vector<int8_t> quantized_output(sparse_data.size());
+        std::vector<float> scales;
+        std::vector<int64_t> zero_points;
+        if (t.per_channel_quantization) {
+          CHECK_EQ(t.per_channel_quantization_scales.size(),  // NOLINT
+                   t.per_channel_quantization_offsets.size())
+              << "Per channel quantization scales and offsets should have the "
+                 "same size";
+          std::vector<int8_t> temp_data(dense_data.size());
+          const int32_t num_channel = t.shape[t.channel_index];
+          std::vector<float> scales_inv(num_channel);
+          for (int i = 0; i < num_channel; ++i) {
+            scales_inv[i] = 1.0f / t.per_channel_quantization_scales[i];
+          }
+          optimize::utils::SymmetricPerChannelQuantizeValues(
+              dense_data.data(), scales_inv, t.shape, t.channel_index,
+              &temp_data, kTfLiteInt8);
+
+          tflite::internal::sparsity::FormatConverter<int8_t> quant_converter(
+              t.shape, t.traversal_order, t.format, t.block_size, t.block_map);
+          quant_converter.DenseToSparse(temp_data.data());
+          quantized_output = std::move(quant_converter.GetData());
+          scales = t.per_channel_quantization_scales;
+          zero_points = t.per_channel_quantization_offsets;
+
+        } else {
+          quantized_output =
+              std::move(Quantize<int8_t>(sparse_data, t.scale, t.zero_point));
+          scales = {t.scale};
+          zero_points = {0};
+        }
         q_params = CreateQuantizationParameters(
             builder_, t.min, t.max, builder_.CreateVector<float>(scales),
             builder_.CreateVector<int64_t>(zero_points));
         auto data_buffer = builder_.CreateVector(
-            reinterpret_cast<const uint8_t*>(q.data()), q.size());
+            reinterpret_cast<const uint8_t*>(quantized_output.data()),
+            quantized_output.size());
         buffers_.push_back(CreateBuffer(builder_, data_buffer));
       } else {
         auto data_buffer = builder_.CreateVector(
@@ -715,6 +773,13 @@ class SingleOpModel {
   int CountOpsExecutedByCpuKernel();
   int CountNumberOfDelegatedPartitions() const;
   int GetNumberOfAppliedDelegates() const { return num_applied_delegates_; }
+  // Return the most recent return status of ApplyDelegate.
+  std::optional<TfLiteStatus> GetDelegateApplicationStatus() const {
+    return delegate_application_status_;
+  }
+  void SetDelegateApplicationStatus(std::optional<TfLiteStatus> status) {
+    delegate_application_status_ = status;
+  }
 
   // Tell TF Lite runtime to apply default delegates (i.e. XNNPACK delegate)
   // when handling this op-level model.
@@ -1050,6 +1115,7 @@ class SingleOpModel {
   std::vector<flatbuffers::Offset<Tensor>> tensors_;
   std::vector<flatbuffers::Offset<Buffer>> buffers_;
   TfLiteDelegate* delegate_ = nullptr;  // not own the memory.
+  std::optional<TfLiteStatus> delegate_application_status_ = std::nullopt;
   std::vector<std::vector<int>> input_shapes_;
   int num_applied_delegates_ = 0;
   bool allow_fp32_relax_to_fp16_ = false;

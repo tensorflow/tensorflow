@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,6 +31,8 @@ def MHLO_ScatterDimensionNumbers : AttrDef<MHLO_Dialect, "ScatterDimensionNumber
   let parameters = (ins
       MHLO_Dims:$updateWindowDims,
       MHLO_Dims:$insertedWindowDims,
+      MHLO_Dims:$inputBatchingDims,
+      MHLO_Dims:$scatterIndicesBatchingDims,
       MHLO_Dims:$scatterDimsToOperandDims,
       "int64_t":$indexVectorDim
   );
@@ -43,10 +45,38 @@ def MHLO_GatherDimensionNumbers : AttrDef<MHLO_Dialect, "GatherDimensionNumbers"
   let parameters = (ins
       MHLO_Dims:$offsetDims,
       MHLO_Dims:$collapsedSliceDims,
+      MHLO_Dims:$operandBatchingDims,
+      MHLO_Dims:$startIndicesBatchingDims,
       MHLO_Dims:$startIndexMap,
       "int64_t":$indexVectorDim
   );
   let hasCustomAssemblyFormat = 1;
+}
+
+def MHLO_DotAlgorithmAttr : AttrDef<MHLO_Dialect, "DotAlgorithm"> {
+  let mnemonic = "dot_algorithm";
+  let summary = "Attribute that models the algorithm constraints to use for computing dot.";
+  let parameters = (ins
+      "Type":$lhsPrecisionType,
+      "Type":$rhsPrecisionType,
+      "Type":$accumulationType,
+      "int64_t":$lhsComponentCount,
+      "int64_t":$rhsComponentCount,
+      "int64_t":$numPrimitiveOperations,
+      "bool":$allowImpreciseAccumulation
+  );
+  let assemblyFormat = [{
+    `<`
+      `lhs_precision_type` `=` $lhsPrecisionType `,`
+      `rhs_precision_type` `=` $rhsPrecisionType `,`
+      `accumulation_type` `=` $accumulationType `,`
+      `lhs_component_count` `=` $lhsComponentCount `,`
+      `rhs_component_count` `=` $rhsComponentCount `,`
+      `num_primitive_operations` `=` $numPrimitiveOperations `,`
+      `allow_imprecise_accumulation` `=` $allowImpreciseAccumulation
+    `>`
+  }];
+  let genVerifyDecl = 1;
 }
 
 def MHLO_DotDimensionNumbers : AttrDef<MHLO_Dialect, "DotDimensionNumbers"> {
@@ -237,7 +267,7 @@ def MHLO_TypeExtensions : AttrDef<MHLO_Dialect, "TypeExtensions", [
 // A layout attribute (1D tensor of index type)
 def MHLO_LayoutAttr : Attr<
   And<[IndexElementsAttr.predicate,
-       CPred<[{$_self.cast<::mlir::DenseIntElementsAttr>().getType().getRank()
+       CPred<[{mlir::cast<::mlir::DenseIntElementsAttr>($_self).getType().getRank()
                == 1}]>]>,
   "A 1D tensor of index type (layout)"> {
   let storageType = IndexElementsAttr.storageType;
@@ -256,38 +286,39 @@ def MHLO_FlatSymbolRefArrayAttr :
   let constBuilderCall = "::mlir::ArrayAttr::get($_builder.getContext(), $0)";
 }
 
+// Sparsity descriptor attribute
+def MHLO_SparsityDescriptor : AttrDef<MHLO_Dialect, "SparsityDescriptor"> {
+  let mnemonic = "sparsity";
+  let summary = "Describes structured (N:M) sparsity configuration";
+  let description = [{
+    This attribute is defined for a sparse dot operation with a structured
+    sparse input tensor. With (N=2,M=4), every 4 consecutive logical elements
+    have exactly 2 non-zero physical elements in the input tensor.
+
+    $dimension defines the index of the contracting dimension that is sparse
+    (it has to be the most minor dimension). The additional metadata operand
+    in the sparse dot operation defines which logical elements are zeroed out.
+  }];
+  let parameters = (ins
+    "int64_t":$dimension,
+    "int64_t":$n,
+    "int64_t":$m);
+  let assemblyFormat = "`<` struct(params) `>`";
+}
+
 //===----------------------------------------------------------------------===//
 // Common convolution attributes
 //===----------------------------------------------------------------------===//
 
 def MHLO_BoolElementsAttr :
     ElementsAttrBase<
-      And<[CPred<"$_self.isa<::mlir::DenseIntOrFPElementsAttr>()">,
-           CPred<"$_self.cast<::mlir::DenseIntOrFPElementsAttr>().getType().getElementType().isInteger(1)">]>,
+      And<[CPred<"mlir::isa<::mlir::DenseIntOrFPElementsAttr>($_self)">,
+           CPred<"mlir::cast<::mlir::DenseIntOrFPElementsAttr>($_self).getType().getElementType().isInteger(1)">]>,
       "constant boolean vector/tensor attribute"> {
   let storageType = [{ ::mlir::DenseElementsAttr }];
   let returnType = [{ ::mlir::DenseElementsAttr }];
 
   let convertFromStorage = "$_self";
-}
-
-def MHLO_ConvolutionAttributes {
-  dag attributes = (ins
-    // Default value: one for each of the spatial dimension.
-    OptionalAttr<I64ElementsAttr>:$window_strides,
-    // Default value: two zeros for each of the spatial dimension.
-    OptionalAttr<I64ElementsAttr>:$padding,
-    // Default value: one for each of the spatial dimension.
-    OptionalAttr<I64ElementsAttr>:$lhs_dilation,
-    // Default value: one for each of the spatial dimension.
-    OptionalAttr<I64ElementsAttr>:$rhs_dilation,
-    // Default value: false for each of the spatial dimension.
-    OptionalAttr<MHLO_BoolElementsAttr>:$window_reversal,
-    MHLO_ConvDimensionNumbers:$dimension_numbers,
-    I64Attr:$feature_group_count,
-    I64Attr:$batch_group_count,
-    MHLO_PrecisionConfigAttr:$precision_config
-  );
 }
 
 #endif // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_ATTRS

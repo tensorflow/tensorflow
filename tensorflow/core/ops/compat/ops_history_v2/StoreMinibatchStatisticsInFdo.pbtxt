@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "StoreMinibatchStatisticsInFdo"
   input_arg {
     name: "program_key"

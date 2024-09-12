@@ -23,8 +23,9 @@ IMPORTANT: For bazel invocations that uploaded to ResultStore (e.g. RBE), you
 can view more detailed results that are probably easier to read than this log.
 Try the links below:
 EOF
-  # Find any "Streaming build results to" line, then print the last word in it,
-  # and don't print duplicates
+  # Find any "Streaming build results to" lines,
+  # de-duplicate,
+  # and print the last word from each
   awk '/Streaming build results to/ {print $NF}' "$TFCI_OUTPUT_DIR/script.log" | uniq
 }
 
@@ -32,14 +33,15 @@ EOF
 # Each failed target there will have its own representation, making failures
 # easier to find and read.
 function resultstore_extract {
-  local \
-    XML_PATH="$TFCI_OUTPUT_DIR/Bazel_Test_and_Build_Results/sponge_log.xml"
+  local PYTHON_BIN XML_PATH
+  PYTHON_BIN=$(which python3 2>/dev/null || which python)
+  XML_PATH="$TFCI_OUTPUT_DIR/Bazel_Test_and_Build_Results/sponge_log.xml"
 
-  python3 \
+  "$PYTHON_BIN" \
     "$TFCI_GIT_DIR/ci/official/utilities/extract_resultstore_links.py" \
     "$TFCI_OUTPUT_DIR/script.log" \
     --print \
-    --xml-out-path "$XML_PATH" || resultstore_extract_fallback
+    --xml-out-path "$XML_PATH"
 }
 
 if grep -q "Streaming build results to" "$TFCI_OUTPUT_DIR/script.log"; then

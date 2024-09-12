@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,18 +15,89 @@ limitations under the License.
 
 #include "xla/service/while_loop_analysis.h"
 
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_replace.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/hlo_parser.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
-class WhileLoopAnalysisTest : public HloTestBase {};
+class WhileLoopAnalysisTest : public HloTestBase {
+ protected:
+  [[nodiscard]] absl::StatusOr<int64_t> MakeWhileLoopAndGetTripCount(
+      int init, int limit, int step, ComparisonDirection dir);
+};
+
+absl::StatusOr<int64_t> WhileLoopAnalysisTest::MakeWhileLoopAndGetTripCount(
+    int init, int limit, int step, ComparisonDirection dir) {
+  std::string hlo_string_template = R"(
+  HloModule ModuleWithWhile
+
+    body {
+      p_body = (f32[2], s32[]) parameter(0)
+      val = f32[2] get-tuple-element(p_body), index=0
+      index = s32[] get-tuple-element(p_body), index=1
+      one = s32[] constant({{STEP}})
+      inc = s32[] add(index, one)
+      ROOT root = (f32[2], s32[]) tuple(val, inc)
+    }
+
+    condition {
+      p_cond = (f32[2], s32[]) parameter(0)
+      gte = s32[] get-tuple-element(p_cond), index=1
+      const = s32[] constant({{LIMIT}})
+      ROOT result = pred[] compare(gte, const), direction={{COMP_DIR}}
+    }
+
+    ENTRY entry {
+      param.0 = f32[2] parameter(0)
+      param.1 = s32[] constant({{INIT}})
+      while_init = (f32[2], s32[]) tuple(param.0, param.1)
+      ROOT while = (f32[2], s32[]) while(while_init), condition=condition, body=body
+    }
+  )";
+
+  std::string hlo_string =
+      absl::StrReplaceAll(hlo_string_template,
+                          {{"{{INIT}}", absl::StrCat(init)},
+                           {"{{LIMIT}}", absl::StrCat(limit)},
+                           {"{{STEP}}", absl::StrCat(step)},
+                           {"{{COMP_DIR}}", ComparisonDirectionToString(dir)}});
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                      ParseAndReturnVerifiedModule(hlo_string));
+
+  HloInstruction* while_op = module->entry_computation()->root_instruction();
+  std::optional<int64_t> trip_count = MatchTrivialLoopTripCount(
+      while_op, 1,
+      Cast<HloConstantInstruction>(
+          module->GetComputationWithName("entry")->GetInstructionWithName(
+              "param.1"))
+          ->literal());
+
+  CHECK(trip_count.has_value());
+
+  return *trip_count;
+}
 
 TEST_F(WhileLoopAnalysisTest, SingleIterationUpperBound) {
   const char* const kHloModule = R"(
@@ -57,6 +128,71 @@ TEST_F(WhileLoopAnalysisTest, SingleIterationUpperBound) {
 
   HloInstruction* while_op = module->entry_computation()->root_instruction();
   EXPECT_EQ(*ComputeWhileLoopTripCountUpperBound(while_op), 1);
+}
+
+TEST_F(WhileLoopAnalysisTest, SimpleLoopWithCustomCallNonTuple) {
+  std::string hlo_string = R"(
+  HloModule SimpleLoop
+  SimpleLoop.body {
+    loop_var.1 = (s32[]{:T(128)}, s32[3]{0}) parameter(0)
+    custom-call.1 = (s32[]{:T(128)}, s32[3]{0}) custom-call(loop_var.1), custom_call_target="CustomCallStart"
+    get-tuple-element.1 = s32[]{:T(128)} get-tuple-element(custom-call.1), index=0
+    constant.1 = s32[]{:T(128)} constant(1)
+    idx = s32[]{:T(128)} add(get-tuple-element.1, constant.1)
+    get-tuple-element.2 = s32[3]{0} get-tuple-element(custom-call.1), index=1
+    output = s32[3]{0} add(get-tuple-element.2, get-tuple-element.2)
+    ROOT custom-call.2 = (s32[]{:T(128)}, s32[3]{0}) custom-call(idx, output), custom_call_target="CustomCallEnd"
+  }
+  SimpleLoop.condition {
+    loop_var.2 = (s32[]{:T(128)}, s32[3]{0}) parameter(0)
+    get-tuple-element.5 = s32[] get-tuple-element(loop_var.2), index=0
+    constant.2 = s32[]{:T(128)} constant(5)
+    ROOT less-than = pred[] compare(get-tuple-element.5, constant.2), direction=LT
+  }
+  ENTRY SimpleLoop {
+    constant.3 = s32[]{:T(128)} constant(0)
+    constant.4 = s32[3]{0} constant({0, 1, 2})
+    tuple.1 = (s32[]{:T(128)}, s32[3]{0}) tuple(constant.3, constant.4)
+    ROOT while = (s32[]{:T(128)}, s32[3]{0}) while(tuple.1), condition=
+      SimpleLoop.condition, body=SimpleLoop.body
+  }
+  )";
+  auto m = ParseAndReturnVerifiedModule(hlo_string).value();
+  HloInstruction* while_op = m->entry_computation()->root_instruction();
+  EXPECT_EQ(*ComputeWhileLoopTripCountUpperBound(while_op), 5);
+}
+
+TEST_F(WhileLoopAnalysisTest, SimpleLoopWithCustomCall) {
+  std::string hlo_string = R"(
+  HloModule SimpleLoop
+  SimpleLoop.body {
+    loop_var.1 = (s32[]{:T(128)}, s32[3]{0}) parameter(0)
+    custom-call.1 = (s32[]{:T(128)}, s32[3]{0}) custom-call(loop_var.1), custom_call_target="CustomCallStart"
+    get-tuple-element.1 = s32[]{:T(128)} get-tuple-element(custom-call.1), index=0
+    constant.1 = s32[]{:T(128)} constant(1)
+    idx = s32[]{:T(128)} add(get-tuple-element.1, constant.1)
+    get-tuple-element.2 = s32[3]{0} get-tuple-element(custom-call.1), index=1
+    output = s32[3]{0} add(get-tuple-element.2, get-tuple-element.2)
+    tuple = (s32[]{:T(128)}, s32[3]{0}) tuple(idx, output)
+    ROOT custom-call.2 = (s32[]{:T(128)}, s32[3]{0}) custom-call(tuple), custom_call_target="CustomCallEnd"
+  }
+  SimpleLoop.condition {
+    loop_var.2 = (s32[]{:T(128)}, s32[3]{0}) parameter(0)
+    get-tuple-element.3 = s32[] get-tuple-element(loop_var.2), index=0
+    constant.2 = s32[]{:T(128)} constant(5)
+    ROOT less-than = pred[] compare(get-tuple-element.3, constant.2), direction=LT
+  }
+  ENTRY SimpleLoop {
+    constant.3 = s32[]{:T(128)} constant(0)
+    constant.4 = s32[3]{0} constant({0, 1, 2})
+    tuple.1 = (s32[]{:T(128)}, s32[3]{0}) tuple(constant.3, constant.4)
+    ROOT while = (s32[]{:T(128)}, s32[3]{0}) while(tuple.1), condition=
+      SimpleLoop.condition, body=SimpleLoop.body
+  }
+  )";
+  auto m = ParseAndReturnVerifiedModule(hlo_string).value();
+  HloInstruction* while_op = m->entry_computation()->root_instruction();
+  EXPECT_EQ(*ComputeWhileLoopTripCountUpperBound(while_op), 5);
 }
 
 TEST_F(WhileLoopAnalysisTest, NoUpperBound) {
@@ -90,77 +226,51 @@ TEST_F(WhileLoopAnalysisTest, NoUpperBound) {
   EXPECT_EQ(ComputeWhileLoopTripCountUpperBound(while_op), std::nullopt);
 }
 
-TEST_F(WhileLoopAnalysisTest, ExactBoundTrivialTripCount) {
-  const char* const kHloModule = R"(
-    HloModule ModuleWithWhile
-
-    body {
-      p_body = (f32[2], s32[]) parameter(0)
-      val = f32[2] get-tuple-element(p_body), index=0
-      index = s32[] get-tuple-element(p_body), index=1
-      one = s32[] constant(1)
-      inc = s32[] add(index, one)
-      ROOT root = (f32[2], s32[]) tuple(val, inc)
+int CalculateTripCount(int init, int limit, int step, ComparisonDirection dir) {
+  int trip_count = 0;
+  if (dir == ComparisonDirection::kLt) {
+    for (int i = init; i < limit; i += step) {
+      trip_count++;
     }
-
-    condition {
-      p_cond = (f32[2], s32[]) parameter(0)
-      gte = s32[] get-tuple-element(p_cond), index=1
-      const = s32[] constant(42)
-      ROOT result = pred[] compare(gte, const), direction=LT
+  } else if (dir == ComparisonDirection::kLe) {
+    for (int i = init; i <= limit; i += step) {
+      trip_count++;
     }
-
-    ENTRY entry {
-      param.0 = f32[2] parameter(0)
-      param.1 = s32[] constant(0)
-      while_init = (f32[2], s32[]) tuple(param.0, param.1)
-      ROOT while = (f32[2], s32[]) while(while_init), condition=condition, body=body
-    })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-
-  HloInstruction* while_op = module->entry_computation()->root_instruction();
-
-  EXPECT_EQ(
-      *MatchTrivialLoopTripCount(
-          while_op, 1,
-          Cast<HloConstantInstruction>(module->GetComputationWithName("entry")
-                                           ->GetInstructionWithName("param.1"))
-              ->literal()),
-      42);
+  } else {
+    LOG(FATAL) << "Unknown comparison direction: "
+               << ComparisonDirectionToString(dir);
+  }
+  return trip_count;
 }
 
-TEST_F(WhileLoopAnalysisTest, ExactBound) {
-  const char* const kHloModule = R"(
-    HloModule ModuleWithWhile
+TEST_F(WhileLoopAnalysisTest, ExactBoundTrivialTripCount) {
+  // LT cases
+  EXPECT_EQ(
+      MakeWhileLoopAndGetTripCount(0, 42, 1, ComparisonDirection::kLt).value(),
+      CalculateTripCount(0, 42, 1, ComparisonDirection::kLt));
+  EXPECT_EQ(
+      MakeWhileLoopAndGetTripCount(0, 42, 2, ComparisonDirection::kLt).value(),
+      CalculateTripCount(0, 42, 2, ComparisonDirection::kLt));
+  EXPECT_EQ(
+      MakeWhileLoopAndGetTripCount(0, 42, 5, ComparisonDirection::kLt).value(),
+      CalculateTripCount(0, 42, 5, ComparisonDirection::kLt));
+  EXPECT_EQ(
+      MakeWhileLoopAndGetTripCount(0, 40, 5, ComparisonDirection::kLt).value(),
+      CalculateTripCount(0, 40, 5, ComparisonDirection::kLt));
 
-    body {
-      p_body = (f32[2], s32[]) parameter(0)
-      val = f32[2] get-tuple-element(p_body), index=0
-      index = s32[] get-tuple-element(p_body), index=1
-      one = s32[] constant(1)
-      inc = s32[] add(index, one)
-      ROOT root = (f32[2], s32[]) tuple(val, inc)
-    }
-
-    condition {
-      p_cond = (f32[2], s32[]) parameter(0)
-      gte = s32[] get-tuple-element(p_cond), index=1
-      const = s32[] constant(42)
-      ROOT result = pred[] compare(gte, const), direction=LT
-    }
-
-    ENTRY entry {
-      param.0 = f32[2] parameter(0)
-      param.1 = s32[] constant(0)
-      while_init = (f32[2], s32[]) tuple(param.0, param.1)
-      ROOT while = (f32[2], s32[]) while(while_init), condition=condition, body=body
-    })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-
-  HloInstruction* while_op = module->entry_computation()->root_instruction();
-  EXPECT_EQ(*ComputeWhileLoopTripCountUpperBound(while_op), 42);
+  // LE cases
+  EXPECT_EQ(
+      MakeWhileLoopAndGetTripCount(0, 42, 1, ComparisonDirection::kLe).value(),
+      CalculateTripCount(0, 42, 1, ComparisonDirection::kLe));
+  EXPECT_EQ(
+      MakeWhileLoopAndGetTripCount(0, 42, 2, ComparisonDirection::kLe).value(),
+      CalculateTripCount(0, 42, 2, ComparisonDirection::kLe));
+  EXPECT_EQ(
+      MakeWhileLoopAndGetTripCount(0, 42, 5, ComparisonDirection::kLe).value(),
+      CalculateTripCount(0, 42, 5, ComparisonDirection::kLe));
+  EXPECT_EQ(
+      MakeWhileLoopAndGetTripCount(0, 40, 5, ComparisonDirection::kLe).value(),
+      CalculateTripCount(0, 40, 5, ComparisonDirection::kLe));
 }
 
 TEST_F(WhileLoopAnalysisTest, NoAIVNoConstChain) {

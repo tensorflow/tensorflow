@@ -13,7 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 import functools
-import sys
 
 from absl.testing import parameterized
 import numpy as np
@@ -1650,10 +1649,6 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
 
   @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testRecomputeGradWithDifferentShape(self):
-    if sys.version_info.major == 3 and sys.version_info.minor in (11, 12):
-      # TODO(b/264947738)
-      self.skipTest('Not working in Python 3.11+')
-
     @custom_gradient.recompute_grad
     def outer(x):
       return [x[0] + 1, x[1] + 1]
@@ -1683,10 +1678,6 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
   @parameterized.parameters([(True), (False)])
   @test_util.assert_no_new_pyobjects_executing_eagerly()
   def testRecomputeGradWithNestedFunctionAndWhileLoop(self, reduce_retracing):
-    if sys.version_info.major == 3 and sys.version_info.minor in (11, 12):
-      # TODO(b/264947738)
-      self.skipTest('Not working in Python 3.11+')
-
     @custom_gradient.recompute_grad
     @def_function.function(reduce_retracing=reduce_retracing)
     def outer(x):

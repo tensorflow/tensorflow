@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ limitations under the License.
 #include "xla/client/xla_builder.h"
 #include "xla/execution_options_util.h"
 #include "xla/literal_util.h"
+#include "xla/service/service.h"
 #include "xla/status_macros.h"
 #include "xla/test.h"
 #include "xla/tests/client_library_test_base.h"
@@ -778,7 +779,7 @@ XLA_TEST_F(GatherClientLibraryTest,
   xla::ExecutionOptions execution_options = CreateDefaultExecutionOptions();
   *execution_options.add_device_handles() = devices[0];
   TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation, builder.Build());
-  std::vector<xla::Client::XlaComputationInstance> computation_instances = {
+  std::vector<xla::XlaComputationInstance> computation_instances = {
       {computation,
        {operand_arg.get(), indices_arg.get()},
        execution_options,

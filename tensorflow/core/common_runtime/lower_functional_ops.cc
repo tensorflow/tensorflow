@@ -105,7 +105,7 @@ Status LowerFunctionalOpsPass::Run(
         "Lowering If/While ops should happen before partitioning.");
   }
   if (options.graph == nullptr) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Graph* g = options.graph->get();
@@ -209,7 +209,7 @@ Status LowerFunctionalOpsPass::Run(
       },
       IsPropagatableDevice, g);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 10,

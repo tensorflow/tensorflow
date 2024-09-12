@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
+#include "tensorflow/core/profiler/utils/hlo_proto_map.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
@@ -35,6 +36,10 @@ struct OpStatsOptions {
 // NOTE: call GroupTfEvents before if OpStats.step_db needs to be generated.
 OpStats ConvertXSpaceToOpStats(const XSpace& space,
                                const OpStatsOptions& options);
+
+// Populates the program_id_to_name map in OpStats.
+void SetProgramIdToNameMap(const HloProtoMap& hlo_proto_map,
+                           tensorflow::profiler::OpStats& op_stats);
 
 // Populates the given RunEnvironment with data from XSpace.
 void SetRunEnvironment(const XSpace& space, RunEnvironment* env);

@@ -91,8 +91,7 @@ class RunHandlerThreadWorkQueue
         " complementary threads)");
   }
 
-  tensorflow::StatusOr<
-      std::unique_ptr<tensorflow::tfrt_stub::WorkQueueInterface>>
+  absl::StatusOr<std::unique_ptr<tensorflow::tfrt_stub::WorkQueueInterface>>
   InitializeRequest(int64_t request_id) const override;
 
   int GetParallelismLevel() const override {

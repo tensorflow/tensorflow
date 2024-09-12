@@ -176,7 +176,7 @@ void EventMgr::QueueInUse(se::Stream* stream, InUse in_use) {
   }
   se::Event* e = free_events_.back();
   free_events_.pop_back();
-  stream->ThenRecordEvent(e);
+  stream->RecordEvent(e).IgnoreError();
   in_use.event = e;
   bool was_empty = used_events_.empty();
   used_events_.push_back(in_use);

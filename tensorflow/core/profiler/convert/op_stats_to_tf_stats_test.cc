@@ -139,15 +139,16 @@ occ_pct:100)MULTI";
   EXPECT_EQ(kTfOp1, record_0.op_name());
   EXPECT_EQ(kTfOp1, record_0.op_type());
   EXPECT_EQ(2, record_0.occurrences());
-  EXPECT_EQ(
-      NanoToMicro(kKernel1DurationNs) * 2 + NanoToMicro(kKernel2DurationNs) * 2,
-      record_0.total_self_time_in_us());
+  EXPECT_EQ(tsl::profiler::NanoToMicro(kKernel1DurationNs) * 2 +
+                tsl::profiler::NanoToMicro(kKernel2DurationNs) * 2,
+            record_0.total_self_time_in_us());
 
   const TfStatsRecord& record_1 = tf_stats.with_idle().tf_stats_record(1);
   EXPECT_EQ(kTfOp3, record_1.op_name());
   EXPECT_EQ(kTfOp3, record_1.op_type());
   EXPECT_EQ(1, record_1.occurrences());
-  EXPECT_EQ(NanoToMicro(kKernel4DurationNs) + NanoToMicro(kKernel5DurationNs),
+  EXPECT_EQ(tsl::profiler::NanoToMicro(kKernel4DurationNs) +
+                tsl::profiler::NanoToMicro(kKernel5DurationNs),
             record_1.total_self_time_in_us());
   // GPU TensorCore utilization is 0.5 because kernel4 is using TensorCore and
   // kernel5 is not using TensorCore, and they have the same duration.
@@ -157,7 +158,8 @@ occ_pct:100)MULTI";
   EXPECT_EQ(kTfOp2, record_2.op_name());
   EXPECT_EQ(kTfOp2, record_2.op_type());
   EXPECT_EQ(1, record_2.occurrences());
-  EXPECT_EQ(NanoToMicro(kKernel3DurationNs), record_2.total_self_time_in_us());
+  EXPECT_EQ(tsl::profiler::NanoToMicro(kKernel3DurationNs),
+            record_2.total_self_time_in_us());
 }
 
 }  // namespace

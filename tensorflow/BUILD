@@ -2,7 +2,6 @@
 # TensorFlow is a computational framework, primarily for use in machine
 # learning applications.
 
-load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
@@ -26,6 +25,10 @@ load(
     "tf_cc_shared_library",
 )
 load(
+    "@local_xla//xla/tsl/mkl:build_defs.bzl",
+    "if_mkl_ml",
+)
+load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_binary_deps",
 )
@@ -35,16 +38,14 @@ load(
     "tf_additional_plugin_deps",
     "tf_additional_profiler_deps",
 )
-load(
-    "//third_party/mkl:build_defs.bzl",
-    "if_mkl_ml",
-)
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
+# Do not sort: Copybara rule
 # copybara:uncomment_begin
 # # buildifier: disable=out-of-order-load
 # load("//devtools/build_cleaner/skylark:action_config_test.bzl", "action_config_test")
 # load("//devtools/copybara/rules:copybara.bzl", "copybara_config_test")
-# load("//tools/build_defs/license:license.bzl", "license")
+# load("@rules_license//rules:license.bzl", "license")
 # # buildifier: enable=out-of-order-load
 # copybara:uncomment_end
 
@@ -68,7 +69,6 @@ load("//tensorflow/python/tools/api/generator2:generate_api.bzl", "generate_apis
 
 PACKAGE_STATIC_DEPS = [
     "//:__subpackages__",
-    "@cudnn_frontend_archive//:__subpackages__",
     "@gif//:__subpackages__",
     "@highwayhash//:__subpackages__",
     "@hwloc//:__subpackages__",
@@ -333,7 +333,7 @@ config_setting(
 config_setting(
     name = "emscripten",
     constraint_values = if_google(
-        ["//third_party/bazel_platforms/cpu:wasm32"],
+        ["//third_party/bazel_platforms/os:emscripten"],
         [],
     ),
     values = if_oss(
@@ -1053,7 +1053,7 @@ package_group(
         "//learning/serving/experimental/remote_predict/...",
         "//perftools/accelerators/xprof/convert/...",
         "//perftools/accelerators/xprof/integration_tests/...",
-        "//smartass/brain/configure/...",
+        "//smartass/brain/...",
         "//tensorflow/...",
         "//tensorflow_decision_forests/...",
         "//tensorflow_federated/...",
@@ -1067,7 +1067,9 @@ package_group(
         "//third_party/py/keras/...",
         "//third_party/py/tf_keras/...",
         "//third_party/yggdrasil_decision_forests/...",
+        "//waymo/accelerator/...",
         "//waymo/ml/cn/...",
+        "//waymo/ml/models/...",
     ],
 )
 
@@ -1094,7 +1096,7 @@ filegroup(
     name = "intel_binary_blob",
     data = if_mkl_ml(
         [
-            "//third_party/mkl:intel_binary_blob",
+            "@local_xla//xla/tsl/mkl:intel_binary_blob",
         ],
     ),
 )
@@ -1108,15 +1110,15 @@ bzl_library(
         "//tensorflow/core/platform:rules_cc_bzl",
         "//third_party/compute_library:build_defs_bzl",
         "//third_party/llvm_openmp:openmp_bzl",
-        "//third_party/mkl:build_defs_bzl",
-        "//third_party/mkl_dnn:build_defs_bzl",
         "@bazel_skylib//lib:new_sets",
         "@bazel_skylib//rules:common_settings",
         "@local_config_cuda//cuda:build_defs_bzl",
         "@local_config_rocm//rocm:build_defs_bzl",
         "@local_config_tensorrt//:build_defs_bzl",
-        "@local_tsl//tsl:tsl_bzl",
         "@local_tsl//tsl/platform/default:cuda_build_defs_bzl",
+        "@local_xla//xla/tsl:tsl_bzl",
+        "@local_xla//xla/tsl/mkl:build_defs_bzl",
+        "@rules_java//java:rules",
     ],
 )
 
@@ -1219,8 +1221,8 @@ tf_cc_shared_library(
                 "//tensorflow/core/util:determinism",  # Must be linked and exported to libtensorflow_framework.so.
                 "//tensorflow/lite/kernels/shim:tf_kernel_shim",
                 "@local_xla//xla/stream_executor:stream_executor_impl",
-                "@local_tsl//tsl/framework:bfc_allocator",
-                "@local_tsl//tsl/framework:metrics",
+                "@local_xla//xla/tsl/framework:bfc_allocator",
+                "@local_xla//xla/tsl/framework:metrics",
             ] + tf_additional_binary_deps() +
             # TODO(b/259305727): Remove this select and include captured_function in macos builds.
             select({
@@ -1348,7 +1350,7 @@ tf_cc_shared_library(
         "//tensorflow/core:tensorflow",
         "//tensorflow/core/data:standalone",
         # Exports for pywrap_tensorflow_internal. Many of these are transitive
-        # depedencies of the above, but must be explicitly listed for
+        # dependencies of the above, but must be explicitly listed for
         # cc_shared_library to work.
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/eager:c_api_internal",
@@ -1375,15 +1377,16 @@ tf_cc_shared_library(
         "//tensorflow/compiler/mlir/lite/python:jax_to_tfl_flatbuffer",
         "//tensorflow/compiler/mlir/lite/python:saved_model_to_tfl_flatbuffer",
         "//tensorflow/compiler/mlir/lite/quantization/lite:quantize_model",
-        "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
+        "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
         "//tensorflow/compiler/mlir/lite/sparsity:sparsify_model",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/python:pywrap_quantization_lib_impl",
+        "//tensorflow/compiler/mlir/tensorflow_to_stablehlo/python:pywrap_tensorflow_to_stablehlo_lib_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:custom_aggregator_op",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:quantize_model_cc_impl",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
-        "//tensorflow/compiler/mlir/tensorflow:export_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:mlir_import_options",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
@@ -1411,6 +1414,7 @@ tf_cc_shared_library(
         "//tensorflow/core/grappler:grappler_item_builder",
         "//tensorflow/core/kernels:data_service_ops",
         "//tensorflow/core/kernels:dataset_ops",
+        "//tensorflow/core/tpu/kernels:sparse_core_layout",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:stacktrace_handler",
@@ -1441,7 +1445,7 @@ tf_cc_shared_library(
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:reference_ops",
-        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/lite/toco/logging:conversion_log_util",
         "//tensorflow/lite/toco/logging:toco_conversion_log_proto_cc",
         "//tensorflow/lite/toco:model_flags_proto_cc",
@@ -1607,7 +1611,6 @@ genrule(
         "//tensorflow/c/eager:headers",
         "//tensorflow/cc:headers",
         "//tensorflow/core:headers",
-        "@local_xla//xla/stream_executor:stream_executor_install_hdrs",
     ],
     outs = ["include"],
     cmd = """
@@ -1630,6 +1633,7 @@ genrule(
 
         d="$${d#*external/farmhash_archive/src}"
         d="$${d#*external/$${extname}/}"
+        d="$${d#_virtual_includes/*/}"
       fi
 
       mkdir -p "$@/$${d}"
@@ -1709,7 +1713,6 @@ py_library(
         "//tensorflow/lite/python:analyzer",
         "//tensorflow/lite/python:lite",
         "//tensorflow/lite/python/authoring",
-        "//tensorflow/python/estimator:estimator_py",
     ],
 )
 

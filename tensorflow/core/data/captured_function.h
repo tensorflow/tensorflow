@@ -45,7 +45,7 @@ class InstantiatedCapturedFunction;
 // Creates an iterator for a dataset which is created by applying the given
 // function to the given input element.
 Status MakeIteratorFromInputElement(
-    IteratorContext* ctx, const IteratorBase* parent,
+    IteratorContext* ctx, const DatasetBaseIterator* parent,
     const std::vector<Tensor>& input_element, int64_t thread_index,
     const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
     std::unique_ptr<IteratorBase>* out_iterator);
@@ -54,7 +54,7 @@ Status MakeIteratorFromInputElement(
 // function to the given input element. Pass non-null `node` to record
 // processing time for modeling Iterator's GetNext() resource usage.
 Status MakeIteratorFromInputElement(
-    IteratorContext* ctx, const IteratorBase* parent,
+    IteratorContext* ctx, const DatasetBaseIterator* parent,
     const std::vector<Tensor>& input_element, int64_t thread_index,
     const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
     std::unique_ptr<IteratorBase>* out_iterator,
@@ -287,6 +287,18 @@ class InstantiatedCapturedFunction {
   // thread has previously called `DatasetBaseIterator::RecordStart().
   void RunAsync(IteratorContext* ctx, std::vector<Tensor>&& args,
                 std::vector<Tensor>* rets,
+                FunctionLibraryRuntime::DoneCallback done,
+                const std::shared_ptr<model::Node>& node) const {
+    RunAsync(*(ctx->runner()), ctx->cancellation_manager(),
+             ctx->collective_executor(), std::move(args), rets, done, node);
+  }
+
+  // A version of `RunAsync` that does not take an `IteratorContext` but a
+  // runner, a cancellation manager, and a collective executor.
+  void RunAsync(std::function<void(std::function<void()>)> runner,
+                CancellationManager* parent_cancellation_manager,
+                CollectiveExecutor* collective_executor,
+                std::vector<Tensor>&& args, std::vector<Tensor>* rets,
                 FunctionLibraryRuntime::DoneCallback done,
                 const std::shared_ptr<model::Node>& node) const;
 

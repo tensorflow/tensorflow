@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,21 +17,21 @@ limitations under the License.
 
 #include <stdarg.h>
 
-#include <cmath>
+#include <algorithm>
+#include <cstddef>
+#include <iterator>
 #include <limits>
-#include <memory>
 #include <numeric>
-#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
-#include "absl/container/flat_hash_map.h"
+#include "absl/base/log_severity.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -41,7 +41,6 @@ limitations under the License.
 #include "tsl/platform/env.h"
 #include "tsl/platform/numbers.h"
 #include "tsl/platform/stacktrace.h"
-#include "tsl/platform/threadpool.h"
 
 namespace xla {
 
@@ -68,7 +67,7 @@ std::vector<int64_t> ToMixedRadix(const int64_t n,
   return digits;
 }
 
-Status WithLogBacktrace(const Status& status) {
+absl::Status WithLogBacktrace(const absl::Status& status) {
   CHECK(!status.ok());
   VLOG(1) << status.ToString();
   VLOG(2) << tsl::CurrentStackTrace();
@@ -113,14 +112,16 @@ void ScopedLoggingTimer::StopAndLog() {
 
 ScopedLoggingTimer::~ScopedLoggingTimer() { StopAndLog(); }
 
-Status AddStatus(Status prior, absl::string_view context) {
+absl::Status AddStatus(absl::Status prior, absl::string_view context) {
   CHECK(!prior.ok());
-  return Status{prior.code(), absl::StrCat(context, ": ", prior.message())};
+  return absl::Status{prior.code(),
+                      absl::StrCat(context, ": ", prior.message())};
 }
 
-Status AppendStatus(Status prior, absl::string_view context) {
+absl::Status AppendStatus(absl::Status prior, absl::string_view context) {
   CHECK(!prior.ok());
-  return Status{prior.code(), absl::StrCat(prior.message(), ": ", context)};
+  return absl::Status{prior.code(),
+                      absl::StrCat(prior.message(), ": ", context)};
 }
 
 std::string Reindent(absl::string_view original,
@@ -182,7 +183,7 @@ std::string RoundTripFpToString(tsl::float8_e4m3fn value) {
   return result;
 }
 
-std::string RoundTripFpToString(tsl::float8_e4m3b11 value) {
+std::string RoundTripFpToString(tsl::float8_e4m3b11fnuz value) {
   std::string result = GenericRoundTripFpToString(value);
   return result;
 }
@@ -282,10 +283,11 @@ std::string HumanReadableNumTranscendentalOps(double trops,
   return HumanReadableNumOps(trops, nanoseconds, "TR");
 }
 
-void LogLines(int sev, absl::string_view text, const char* fname, int lineno) {
-  const int orig_sev = sev;
-  if (sev == tsl::FATAL) {
-    sev = tsl::ERROR;
+void LogLines(absl::LogSeverity sev, absl::string_view text, const char* fname,
+              int lineno) {
+  const absl::LogSeverity orig_sev = sev;
+  if (sev == absl::LogSeverity::kFatal) {
+    sev = absl::LogSeverity::kError;
   }
 
   // Protect calls with a mutex so we don't interleave calls to LogLines from
@@ -305,7 +307,7 @@ void LogLines(int sev, absl::string_view text, const char* fname, int lineno) {
     cur = eol + 1;
   }
 
-  if (orig_sev == tsl::FATAL) {
+  if (orig_sev == absl::LogSeverity::kFatal) {
     tsl::internal::LogString(fname, lineno, orig_sev,
                              "Aborting due to errors.");
   }
@@ -314,6 +316,15 @@ void LogLines(int sev, absl::string_view text, const char* fname, int lineno) {
 int64_t Product(absl::Span<const int64_t> xs) {
   return std::accumulate(xs.begin(), xs.end(), static_cast<int64_t>(1),
                          std::multiplies<int64_t>());
+}
+
+std::vector<int64_t> ElemwiseProduct(absl::Span<const int64_t> a,
+                                     absl::Span<const int64_t> b) {
+  CHECK_EQ(a.size(), b.size());
+  std::vector<int64_t> result;
+  std::transform(a.begin(), a.end(), b.begin(), std::back_inserter(result),
+                 std::multiplies<int64_t>());
+  return result;
 }
 
 absl::InlinedVector<std::pair<int64_t, int64_t>, 8> CommonFactors(
@@ -455,134 +466,5 @@ bool DistinctNumbersAreConsecutiveIfSorted(absl::Span<const int64_t> seq) {
   return *absl::c_max_element(seq) - *absl::c_min_element(seq) ==
          seq.size() - 1;
 }
-
-// Utility function to split a double-precision float (F64) into a pair of F32s.
-// For a p-bit number, and a splitting point (p/2) <= s <= (p - 1), the
-// algorithm produces a (p - s)-bit value 'hi' and a non-overlapping (s - 1)-bit
-// value 'lo'. See Theorem 4 in [1] (attributed to Dekker) or [2] for the
-// original theorem by Dekker.
-//
-// For double-precision F64s, which contain a 53 bit mantissa (52 of them
-// explicit), we can represent the most significant 49 digits as the unevaluated
-// sum of two single-precision floats 'hi' and 'lo'. The 'hi' float stores the
-// most significant 24 bits and the sign bit of 'lo' together with its mantissa
-// store the remaining 25 bits. The exponent of the resulting representation is
-// still restricted to 8 bits of F32.
-//
-// References:
-// [1] A. Thall, Extended-Precision Floating-Point Numbers for GPU Computation,
-//     SIGGRAPH Research Posters, 2006.
-//     (http://andrewthall.org/papers/df64_qf128.pdf)
-// [2] T. J. Dekker, A floating point technique for extending the available
-//     precision, Numerische Mathematik, vol. 18, pp. 224–242, 1971.
-std::pair<float, float> SplitF64ToF32(double x) {
-  const float x_f32 = static_cast<float>(x);
-
-  // Early return if x is an infinity or NaN.
-  if (!std::isfinite(x_f32)) {
-    // Only values within the range of F32 are supported, unless it is infinity.
-    // Small values with large negative exponents would be rounded to zero.
-    if (std::isfinite(x)) {
-      LOG(WARNING) << "Out of range F64 constant detected: " << x;
-    }
-    return std::make_pair(x_f32, 0.0f);
-  }
-
-  // The high float is simply the double rounded to the nearest float. Because
-  // we are rounding to nearest with ties to even, the error introduced in
-  // rounding is less than half an ULP in the high ULP.
-  const float hi = x_f32;
-  // We can compute the low term using Sterbenz' lemma: If a and b are two
-  // positive floating point numbers and a/2 ≤ b ≤ 2a, then their difference can
-  // be computed exactly.
-  // Note: the difference is computed exactly but is rounded to the nearest
-  // float which will introduce additional error.
-  const float lo = static_cast<float>(x - static_cast<double>(hi));
-  return std::make_pair(hi, lo);
-}
-
-void PackInt4(absl::Span<const char> input, absl::Span<char> output) {
-  CHECK_EQ(output.size(), CeilOfRatio(input.size(), size_t{2}));
-  for (size_t i = 0; i < input.size(); ++i) {
-    // Mask out the high-order 4 bits in case they have extraneous data.
-    char val = input[i] & 0xf;
-    if (i % 2 == 0) {
-      output[i / 2] = val << 4;
-    } else {
-      output[i / 2] |= val;
-    }
-  }
-}
-
-void UnpackInt4(absl::Span<const char> input, absl::Span<char> output) {
-  CHECK_EQ(input.size(), CeilOfRatio(output.size(), size_t{2}));
-  for (size_t i = 0; i < output.size(); ++i) {
-    if (i % 2 == 0) {
-      output[i] = (input[i / 2] >> 4) & 0xf;
-    } else {
-      output[i] = input[i / 2] & 0xf;
-    }
-  }
-}
-
-/*static*/ MaybeOwningThreadPool MaybeOwningThreadPool::GetOrCreate(
-    int parallelism, tsl::thread::ThreadPool* default_thread_pool,
-    int default_parallelism) {
-  CHECK_GE(parallelism, 0);
-  CHECK_GE(default_parallelism, 1);
-
-  auto create_thread_pool = [&](int num_threads) {
-    CHECK_GE(num_threads, 1);
-    return std::make_unique<tsl::thread::ThreadPool>(tsl::Env::Default(), "",
-                                                     num_threads);
-  };
-
-  switch (parallelism) {
-    case 0:
-      if (default_thread_pool == nullptr && default_parallelism > 1) {
-        return MaybeOwningThreadPool(create_thread_pool(default_parallelism));
-      }
-      return MaybeOwningThreadPool(default_thread_pool);
-    case 1:
-      return MaybeOwningThreadPool(nullptr);
-    default:
-      return MaybeOwningThreadPool(create_thread_pool(parallelism));
-  }
-}
-
-MaybeOwningThreadPool::MaybeOwningThreadPool() : thread_pool_(nullptr) {}
-
-MaybeOwningThreadPool::MaybeOwningThreadPool(
-    tsl::thread::ThreadPool* thread_pool)
-    : thread_pool_(thread_pool) {}
-
-MaybeOwningThreadPool::MaybeOwningThreadPool(
-    std::unique_ptr<tsl::thread::ThreadPool> thread_pool)
-    : thread_pool_(std::move(thread_pool)) {}
-
-tsl::thread::ThreadPool* MaybeOwningThreadPool::get() {
-  if (std::holds_alternative<tsl::thread::ThreadPool*>(thread_pool_)) {
-    return std::get<tsl::thread::ThreadPool*>(thread_pool_);
-  }
-  return std::get<std::unique_ptr<tsl::thread::ThreadPool>>(thread_pool_).get();
-}
-
-const tsl::thread::ThreadPool* MaybeOwningThreadPool::get() const {
-  return const_cast<MaybeOwningThreadPool*>(this)->get();
-}
-
-tsl::thread::ThreadPool* MaybeOwningThreadPool::operator->() {
-  tsl::thread::ThreadPool* thread_pool = get();
-  CHECK_NE(thread_pool, nullptr);
-  return thread_pool;
-}
-
-const tsl::thread::ThreadPool* MaybeOwningThreadPool::operator->() const {
-  return const_cast<MaybeOwningThreadPool*>(this)->operator->();
-}
-
-MaybeOwningThreadPool::operator bool() const { return get() != nullptr; }
-
-bool MaybeOwningThreadPool::operator!() const { return get() == nullptr; }
 
 }  // namespace xla

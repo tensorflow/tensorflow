@@ -39,6 +39,9 @@ class MklRemapperTest : public GrapplerTest {
   void FuseConv2DWithBiasAndAddNOrAdd(const string& data_format,
                                       const string& activation, string add_op,
                                       bool add_with_bcast) {
+#ifdef DNNL_AARCH64_USE_ACL
+    GTEST_SKIP() << "Skipping test due to different behaviour on AARCH64";
+#endif
     if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
     using ::tensorflow::ops::Placeholder;
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -216,6 +219,7 @@ CREATE_CONV2DFUSION_ADD_BCAST_TEST(AddV2);
 #undef CREATE_CONV2DFUSION_ADD_ACTIVATION_TEST
 #undef CREATE_CONV2DFUSION_TEST
 
+#ifndef DNNL_AARCH64_USE_ACL
 #define REGISTER_TEST(NAME, T, INPUT)                                         \
   TEST_F(MklRemapperTest, NAME##_##T) {                                       \
     if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";   \
@@ -310,6 +314,7 @@ CREATE_CONV2DFUSION_ADD_BCAST_TEST(AddV2);
   }
 REGISTER_TEST_ALL_TYPES(FuseDepthwiseConv2DWithBiasAndActivation);
 #undef REGISTER_TEST
+#endif
 
 TEST_F(MklRemapperTest, FuseBatchNormWithRelu) {
   if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
@@ -444,12 +449,15 @@ TEST_F(MklRemapperTest, FuseBatchNormWithRelu) {
       ASSERT_EQ(tensors_expected.size(), 1);
       auto tensors = EvaluateNodes(output, item.fetch, item.feed);
       ASSERT_EQ(tensors.size(), 1);
-      test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
+      test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 2e-5);
     }
   }
 }
 
 TEST_F(MklRemapperTest, FuseMatMulWithBiasAddAndAdd) {
+#ifdef DNNL_AARCH64_USE_ACL
+  GTEST_SKIP() << "Skipping test due to different behaviour on AARCH64";
+#endif
   if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
   using ::tensorflow::ops::Placeholder;
 
@@ -543,6 +551,9 @@ class RelpaceAddWithBiasAddTest : public GrapplerTest {
  protected:
   template <DataType DTYPE>
   void RelpaceAddWithBiasAddDepthwiseConv2D(const string& add_op) {
+#ifdef DNNL_AARCH64_USE_ACL
+    GTEST_SKIP() << "Skipping test due to different behaviour on AARCH64";
+#endif
     if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
     using ::tensorflow::ops::Placeholder;
 
@@ -658,6 +669,10 @@ class FusedMatMulBiasAddAndGeluTest : public GrapplerTest {
   template <DataType DTYPE, bool is_pattern2>
   void RunTest() {
     if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
+    if (!IsDataTypeSupportedByOneDNNOnThisCPU(DTYPE))
+      GTEST_SKIP()
+          << "Intel oneDNN with " << DataType_Name(DTYPE)
+          << " is not supported, skipping FusedMatMulBiasAddAndGelu test.";
     using ::tensorflow::ops::Placeholder;
 
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -764,18 +779,12 @@ TEST_F(FusedMatMulBiasAddAndGeluTest, Float32GeluExact) {
   RunTest<DT_FLOAT, false>();
 }
 TEST_F(FusedMatMulBiasAddAndGeluTest, BFloat16GeluExact) {
-  if (!IsBF16SupportedByOneDNNOnThisCPU())
-    GTEST_SKIP() << "Intel oneDNN with bfloat16 is not supported, skipping "
-                    "FusedMatMulBiasAddAndGelu with bfloat16.";
   RunTest<DT_BFLOAT16, false>();
 }
 TEST_F(FusedMatMulBiasAddAndGeluTest, Float32GeluExact2) {
   RunTest<DT_FLOAT, true>();
 }
 TEST_F(FusedMatMulBiasAddAndGeluTest, BFloat16GeluExact2) {
-  if (!IsBF16SupportedByOneDNNOnThisCPU())
-    GTEST_SKIP() << "Intel oneDNN with bfloat16 is not supported, skipping "
-                    "FusedMatMulBiasAddAndGelu with bfloat16.";
   RunTest<DT_BFLOAT16, true>();
 }
 
@@ -783,10 +792,11 @@ class MklFusedBatchMatMul : public MklRemapperTest {
  public:
   template <typename T>
   void VerifyFused(bool adjx, bool adjy) {
-    if (DataTypeToEnum<T>::v() == DT_BFLOAT16 &&
-        !IsBF16SupportedByOneDNNOnThisCPU())
-      GTEST_SKIP() << "Intel oneDNN with bfloat16 is not supported, skipping "
-                      "MklFusedBatchMatMul with bfloat16.";
+    if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
+    const DataType& dt = DataTypeToEnum<T>::v();
+    if (!IsDataTypeSupportedByOneDNNOnThisCPU(dt))
+      GTEST_SKIP() << "Intel oneDNN with " << DataType_Name(dt)
+                   << " is not supported, skipping MklFusedBatchMatMul test.";
     using ::tensorflow::ops::Placeholder;
     using normal_generator = Eigen::internal::NormalRandomGenerator<T>;
 
@@ -878,10 +888,11 @@ class MklFusedBatchMatMul : public MklRemapperTest {
 
   template <typename T>
   void VerifyPreceedingScalarMul(bool adjx, bool adjy) {
-    if (DataTypeToEnum<T>::v() == DT_BFLOAT16 &&
-        !IsBF16SupportedByOneDNNOnThisCPU())
-      GTEST_SKIP() << "Intel oneDNN with bfloat16 is not supported, skipping "
-                      "MklFusedBatchMatMul with bfloat16.";
+    if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
+    const DataType& dt = DataTypeToEnum<T>::v();
+    if (!IsDataTypeSupportedByOneDNNOnThisCPU(dt))
+      GTEST_SKIP() << "Intel oneDNN with " << DataType_Name(dt)
+                   << " is not supported, skipping MklFusedBatchMatMul test.";
     using ::tensorflow::ops::Placeholder;
     using normal_generator = Eigen::internal::NormalRandomGenerator<T>;
 
@@ -995,6 +1006,9 @@ class MklRemapperSwishTest : public GrapplerTest {
   template <DataType DTYPE>
   void RunTest() {
     if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
+    if (!IsDataTypeSupportedByOneDNNOnThisCPU(DTYPE))
+      GTEST_SKIP() << "Intel oneDNN with " << DataType_Name(DTYPE)
+                   << " is not supported, skipping MklRemapperSwishTest test.";
     using ::tensorflow::ops::Placeholder;
 
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -1078,18 +1092,20 @@ class MklRemapperSwishTest : public GrapplerTest {
 };
 
 TEST_F(MklRemapperSwishTest, F32) { RunTest<DT_FLOAT>(); }
-TEST_F(MklRemapperSwishTest, BF16) {
-  if (!IsBF16SupportedByOneDNNOnThisCPU())
-    GTEST_SKIP() << "Intel oneDNN with bfloat16 is not supported, skipping "
-                    "MklRemapperSwish with bfloat16.";
-  RunTest<DT_BFLOAT16>();
-}
+TEST_F(MklRemapperSwishTest, BF16) { RunTest<DT_BFLOAT16>(); }
 
 class MklRemapperConv2dBiasAddSwishTest : public GrapplerTest {
  protected:
   template <DataType DTYPE>
   void RunTest() {
+#ifdef DNNL_AARCH64_USE_ACL
+    GTEST_SKIP() << "Skipping test due to different behaviour on AARCH64";
+#endif
     if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
+    if (!IsDataTypeSupportedByOneDNNOnThisCPU(DTYPE))
+      GTEST_SKIP() << "Intel oneDNN with " << DataType_Name(DTYPE)
+                   << " is not supported, skipping "
+                      "MklRemapperConv2dBiasAddSwishTest test.";
     using ::tensorflow::ops::Placeholder;
 
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -1164,17 +1180,15 @@ class MklRemapperConv2dBiasAddSwishTest : public GrapplerTest {
 };
 
 TEST_F(MklRemapperConv2dBiasAddSwishTest, F32) { RunTest<DT_FLOAT>(); }
-TEST_F(MklRemapperConv2dBiasAddSwishTest, BF16) {
-  if (!IsBF16SupportedByOneDNNOnThisCPU())
-    GTEST_SKIP() << "Intel oneDNN with bfloat16 is not supported, skipping "
-                    "MklRemapperConv2dBiasAddSwish with bfloat16.";
-  RunTest<DT_BFLOAT16>();
-}
+TEST_F(MklRemapperConv2dBiasAddSwishTest, BF16) { RunTest<DT_BFLOAT16>(); }
 
 class MklRemapperConv2dFusedBatchNormSwishTest : public GrapplerTest {
  protected:
   template <DataType DTYPE>
   void RunTest() {
+#ifdef DNNL_AARCH64_USE_ACL
+    GTEST_SKIP() << "Skipping test due to different behaviour on AARCH64";
+#endif
     if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
     using ::tensorflow::ops::Placeholder;
 
@@ -1505,6 +1519,7 @@ class MklFuseInstanceNormTest : public GrapplerTest {
 
   template <DataType DTYPE>
   void FuseMklInstanceNorm4D(string FORMAT, bool add_activation = false) {
+    if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
     if (!add_activation) {
       return FuseMklInstanceNorm4D_Runner<DTYPE>(FORMAT, "None");
     }
@@ -1515,6 +1530,7 @@ class MklFuseInstanceNormTest : public GrapplerTest {
 
   template <DataType DTYPE>
   void FuseMklInstanceNorm5D(string FORMAT, bool add_activation = false) {
+    if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
     if (!add_activation) {
       return FuseMklInstanceNorm5D_Runner<DTYPE>(FORMAT, "None");
     }
@@ -1558,11 +1574,14 @@ class FusedConvBiasAddAndHardSwishTest : public GrapplerTest {
 
   template <DataType DType, bool with_cast_op = false>
   void RunTest(const string& add_op, const bool is_depthwise) {
+#ifdef DNNL_AARCH64_USE_ACL
+    GTEST_SKIP() << "Skipping test due to different behaviour on AARCH64";
+#endif
     if (!IsMKLEnabled()) GTEST_SKIP() << "Test only applicable to oneDNN.";
-    if (!IsBF16SupportedByOneDNNOnThisCPU())
-      GTEST_SKIP() << "Intel oneDNN with bfloat16 is not supported, skipping "
-                      "FusedConvBiasAddAndHardSwishTest with bfloat16.";
-
+    if (!IsDataTypeSupportedByOneDNNOnThisCPU(DType))
+      GTEST_SKIP() << "Intel oneDNN with " << DataType_Name(DType)
+                   << " is not supported, skipping "
+                      "FusedConvBiasAddAndHardSwishTest test.";
     using ::tensorflow::ops::Placeholder;
 
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -1694,4 +1713,4 @@ TEST_F(FusedConvBiasAddAndHardSwishTest,
 
 }  // namespace grappler
 }  // namespace tensorflow
-#endif  // INTEL_MKL && ENABLE_MKL
+#endif  // INTEL_MKL

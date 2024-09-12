@@ -17,11 +17,11 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/graph_transformations/remove_trivial_passthrough.h"
 #include "tensorflow/lite/toco/model.h"
-#include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -32,13 +32,13 @@ namespace toco {
   const auto concat_it = model->operators.begin() + op_index;
   auto* concat_op = concat_it->get();
   if (concat_op->type != OperatorType::kConcatenation) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   if (concat_op->inputs.size() != 1) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   *modified = RemoveTrivialPassthroughOp(this, model, op_index);
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

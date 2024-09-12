@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "BoostedTreesCalculateBestFeatureSplitV2"
   input_arg {
     name: "node_id_range"

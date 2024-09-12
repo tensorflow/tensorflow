@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,8 +17,8 @@ limitations under the License.
 #define XLA_PYTHON_IFRT_IR_TRANSFORMS_SPMD_EXPANDERS_UNIMPLEMENTED_IFRT_SPMD_EXPANDER_H_
 
 #include "llvm/ADT/DenseMap.h"
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"
+#include "mlir/Support/LogicalResult.h"
 #include "xla/python/ifrt/ir/ifrt_interfaces.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 

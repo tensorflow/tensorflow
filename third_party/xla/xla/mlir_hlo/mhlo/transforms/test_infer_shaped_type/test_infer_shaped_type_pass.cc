@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -46,8 +46,9 @@ struct InferReturnTypesPattern : public RewritePattern {
     SmallVector<Type, 4> types;
     if (failed(definingOpInt.inferReturnTypes(
             op->getContext(), op->getLoc(), definingOp->getOperands(),
-            definingOp->getAttrDictionary(), op->getPropertiesStorage(),
-            definingOp->getRegions(), types))) {
+            definingOpInt->getAttrDictionary(),
+            definingOpInt->getPropertiesStorage(), definingOpInt->getRegions(),
+            types))) {
       return failure();
     }
 

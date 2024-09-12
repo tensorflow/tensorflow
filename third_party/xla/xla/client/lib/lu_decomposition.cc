@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,15 +18,19 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
+#include "absl/status/statusor.h"
+#include "xla/client/xla_builder.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
-#include "xla/types.h"
+#include "xla/status_macros.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
 LuDecompositionResult LuDecomposition(XlaOp a) {
   XlaBuilder* builder = a.builder();
-  XlaOp result = builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  XlaOp result = builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
     const int ndims = a_shape.rank();
     TF_RET_CHECK(ndims >= 2);

@@ -1,7 +1,7 @@
 load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
-load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_strict_test")
 load("//tensorflow:tensorflow.bzl", "check_deps")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test", "tf_python_pybind_extension")
+load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_strict_test")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_rpc_deps",
@@ -80,7 +80,7 @@ cc_library(
         "@com_google_absl//absl/types:variant",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/profiler/lib:traceme",
-        "@local_tsl//tsl/python/lib/core:numpy",
+        "@local_xla//xla/tsl/python/lib/core:numpy",
         "@pybind11",
     ],
 )
@@ -207,6 +207,7 @@ py_strict_library(
     srcs = ["context.py"],
     srcs_version = "PY3",
     visibility = [
+        "//smartass/brain/ops:__subpackages__",
         "//tensorflow:internal",
         "//third_party/py/jax_tpu_embedding:__subpackages__",
     ],
@@ -302,9 +303,9 @@ cuda_py_strict_test(
 )
 
 tpu_py_strict_test(
-    name = "context_platform_test",
+    name = "context_tpu_platform_test",
     size = "small",
-    srcs = ["context_platform_test.py"],
+    srcs = ["context_tpu_platform_test.py"],
     python_version = "PY3",
     tags = [
         "no_oss",
@@ -320,9 +321,9 @@ tpu_py_strict_test(
 )
 
 cuda_py_strict_test(
-    name = "context_cross_platform_test",
+    name = "context_cross_platform_gpu_test",
     size = "small",
-    srcs = ["context_cross_platform_test.py"],
+    srcs = ["context_cross_platform_gpu_test.py"],
     python_version = "PY3",
     tags = [
         "no_oss",
@@ -333,6 +334,23 @@ cuda_py_strict_test(
         ":def_function",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tpu_py_strict_test(
+    name = "context_cross_platform_tpu_test",
+    size = "small",
+    srcs = ["context_cross_platform_tpu_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_oss",
+    ],
+    deps = [
+        ":def_function",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],

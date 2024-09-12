@@ -1,2 +1,0 @@
-# Disable Docker
-TFCI_DOCKER_ENABLE=0

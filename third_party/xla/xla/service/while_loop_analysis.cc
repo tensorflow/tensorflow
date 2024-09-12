@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,8 +15,13 @@ limitations under the License.
 
 #include "xla/service/while_loop_analysis.h"
 
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -25,6 +30,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/shape_util.h"
 
 namespace xla {
 
@@ -54,8 +60,8 @@ static const HloInstruction* NonConstantOperand(const HloInstruction* instr) {
 // for the same value N, returns N.  Otherwise, returns nullopt.
 static optional<int64_t> GetGTEOperandIndex(const HloInstruction* instr,
                                             const HloInstruction* gte_operand) {
-  VLOG(2) << "GetGTEOperandIndex(" << instr->ToString() << ", "
-          << gte_operand->ToString() << ")";
+  VLOG(2) << "GetGTEOperandIndex(" << instr->ToString()
+          << ", GTE Operand: " << gte_operand->ToString() << ")";
 
   // All operands of `instr` must be either constants or of the form
   //   get-tuple-element(gte_operand, tuple_idx)
@@ -77,7 +83,9 @@ static optional<int64_t> GetGTEOperandIndex(const HloInstruction* instr,
     }
 
     if (!Match(possibly_gte_operand,
-               m::GetTupleElement(m::Op().Is(gte_operand)))) {
+               m::GetTupleElement(m::Op().Is(gte_operand))) &&
+        !Match(possibly_gte_operand,
+               m::GetTupleElement(m::CustomCall(m::Op().Is(gte_operand))))) {
       return nullopt;
     }
 
@@ -274,22 +282,68 @@ optional<int64_t> GetLoopInductionVarTupleIdx(const HloInstruction* while_op) {
     return nullopt;
   }
 
-  // The while_body computation should have the form
+  // The while_body computation should have one of the following forms:
   //
+  // Form 1:
   //   while_body_inc =
   //       op(constants, get-tuple-elem(while_body_param, N), constants)
   //   while_body_root = tuple(..., while_body_inc, ...)
   //
   // where while_body_inc is operand N of while_body_root.
+  //
+  // Form 2:
+  //   while_body_inc =
+  //       op(constants, get-tuple-elem(while_body_param, N), constants)
+  //   tuple = tuple(..., while_body_inc, ...)
+  //   while_body_root = custom-call(tuple)
+  //
+  // where while_body_inc is operand N of the tuple, and the tuple is the
+  // operand of the while_body_root custom-call instruction.
+  //
+  // Form 3:
+  //   while_body_inc =
+  //       op(constants, get-tuple-elem(while_body_param, N), constants)
+  //   while_body_root = custom-call(input1, ..., while_body_inc, ...)
+  //
+  // where while_body_inc is an operand of the while_body_root custom-call
+  // instruction, and the custom-call instruction does not have a tuple operand.
   auto* while_body = while_op->while_body();
   auto* while_body_root = while_body->root_instruction();
-  if (while_body_root->opcode() != HloOpcode::kTuple) {
-    VLOG(2) << "While body's root is not a tuple instruction: "
+  if (while_body_root->opcode() != HloOpcode::kTuple &&
+      while_body_root->opcode() != HloOpcode::kCustomCall) {
+    VLOG(2) << "While body's root is not a tuple or custom-call instruction: "
             << while_body_root->ToString();
     return nullopt;
   }
-
-  auto* while_body_inc = while_body_root->operand(*indvar_tuple_idx);
+  const HloInstruction* while_body_inc;
+  if (while_body_root->opcode() == HloOpcode::kTuple) {
+    while_body_inc = while_body_root->operand(*indvar_tuple_idx);
+  } else {
+    // Custom-call cases
+    if (while_body_root->operand_count() == 1 &&
+        while_body_root->operand(0)->opcode() == HloOpcode::kTuple) {
+      // Custom-call case
+      // Single tuple operand.
+      auto* while_body_root_input_tuple = while_body_root->operand(0);
+      if (*indvar_tuple_idx >= while_body_root_input_tuple->operand_count()) {
+        VLOG(2) << "Cannot find the induction variable in the output root "
+                   "custom-call "
+                << while_body_root->ToString();
+        return std::nullopt;
+      }
+      while_body_inc = while_body_root_input_tuple->operand(*indvar_tuple_idx);
+    } else {
+      // Custom-call case
+      // Operand is not single tuple.
+      if (*indvar_tuple_idx >= while_body_root->operand_count()) {
+        VLOG(2) << "Cannot find the induction variable in the output root "
+                   "custom-call "
+                << while_body_root->ToString();
+        return std::nullopt;
+      }
+      while_body_inc = while_body_root->operand(*indvar_tuple_idx);
+    }
+  }
   auto* while_body_param = while_body->parameter_instruction(0);
   optional<int64_t> while_body_indvar_tuple_idx =
       GetGTEOperandIndex(while_body_inc, while_body_param);
@@ -348,7 +402,7 @@ optional<int64_t> CheckedSubtract(int64_t a, int64_t b) {
 optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
                                             int64_t indvar_tuple_idx,
                                             const Literal& indvar_init) {
-  // First, find the scalar constant K that `i` is initialized to.
+  // First, find the scalar constant init that `i` is initialized to.
   optional<int64_t> indvar_init_val =
       LiteralUtil::LiteralAsScalarInt64(indvar_init);
   if (!indvar_init_val) {
@@ -358,21 +412,71 @@ optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
     return nullopt;
   }
 
-  // Check that `i` goes as `i++` in the while body.
-  //
-  // TODO(jlebar): We could also handle i-- and other idioms.
+  // Check that `i` goes as `i += k` in the while body where k is a natural
+  // number.
   auto* while_body = while_op->while_body();
-  auto* while_body_indvar_update =
-      while_body->root_instruction()->operand(indvar_tuple_idx);
+  auto* while_body_root = while_body->root_instruction();
+  HloInstruction* while_body_indvar_update;
+
+  if (while_body_root->opcode() == HloOpcode::kCustomCall) {
+    // We know it must be a custom-call.
+    if (while_body_root->operand_count() == 1 &&
+        while_body_root->operand(0)->opcode() == HloOpcode::kTuple) {
+      // Custom-call case
+      // Single tuple operand.
+      auto* while_body_root_input_tuple = while_body_root->mutable_operand(0);
+      while_body_indvar_update =
+          while_body_root_input_tuple->mutable_operand(indvar_tuple_idx);
+    } else {
+      // Custom-call case
+      // Operand is not single tuple.
+      while_body_indvar_update =
+          while_body_root->mutable_operand(indvar_tuple_idx);
+    }
+  } else {
+    while_body_indvar_update =
+        while_body_root->mutable_operand(indvar_tuple_idx);
+  }
   auto* while_body_indvar = NonConstantOperand(while_body_indvar_update);
+  HloInstruction* trip_count_increase_step_instr = nullptr;
+  int64_t trip_count_step = 0;
   if (!Match(while_body_indvar_update,
              m::AddAnyOrder(m::Op().Is(while_body_indvar),
-                            m::ConstantEffectiveScalar(1)))) {
-    VLOG(2) << "Pattern-match failed: induction variable does not go as i++: "
-            << while_body_indvar_update->ToString();
-    return nullopt;
+                            m::Op(&trip_count_increase_step_instr)))) {
+    if (trip_count_increase_step_instr == nullptr) {
+      VLOG(2) << "Pattern-match failed: induction variable is not getting "
+                 "updated by an add operation: "
+              << while_body_indvar_update->ToString();
+      return nullopt;
+    }
+    if (!trip_count_increase_step_instr->IsConstant() ||
+        !ShapeUtil::IsEffectiveScalar(
+            trip_count_increase_step_instr->shape())) {
+      VLOG(2) << "Pattern-match failed: induction variable is not getting "
+                 "incremented by constant: "
+              << while_body_indvar_update->ToString();
+      return nullopt;
+    }
+    if (!LiteralUtil::LiteralAsScalarInt64(
+             trip_count_increase_step_instr->literal())
+             .has_value()) {
+      VLOG(2)
+          << "Pattern-match failed: trip count step is not an integral type: "
+          << trip_count_increase_step_instr->shape().ToString();
+      return nullopt;
+    }
+    VLOG(2) << "Pattern-match for trip count step failed: "
+            << trip_count_increase_step_instr->ToString();
   }
 
+  trip_count_step = LiteralUtil::LiteralAsScalarInt64(
+                        trip_count_increase_step_instr->literal())
+                        .value();
+  if (trip_count_step <= 0) {
+    VLOG(2) << "Pattern-match failed: trip count step is not a natural number: "
+            << trip_count_step;
+    return nullopt;
+  }
   // Check that we do op(i, N) or op(N, i) as the while condition.  Capture the
   // value N.
   auto* while_cond = while_op->while_condition();
@@ -397,7 +501,7 @@ optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
     return nullopt;
   }
 
-  // Handle `i = K; i < N; ++i`.
+  // Handle `i = init; i < N; i+=k`.
   if (Match(while_cond_root,
             m::Op()
                 .WithComparisonDirection(ComparisonDirection::kLt)
@@ -407,14 +511,26 @@ optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
     optional<int64_t> trips =
         CheckedSubtract(*while_cond_bound_val, *indvar_init_val);
     if (trips) {
-      return std::max(int64_t{0}, *trips);
-    } else {
-      VLOG(2) << "Pattern-match failed: Trip count exceeds INT64_MAX.";
-      return nullopt;
+      const int64_t remainder = std::remainder(*trips, trip_count_step);
+      const int64_t div = std::floor(*trips / trip_count_step);
+      if (remainder == 0) {
+        return std::max(int64_t{0}, div);
+      }
+      trips = CheckedAdd(div, 1);
+      if (!trips) {
+        VLOG(2) << "Pattern-match failed: Trip count exceeds INT64_MAX.";
+        return nullopt;
+      }
+      if (*trips < *while_cond_bound_val) {
+        return std::max(int64_t{0}, *trips);
+      }
+      return std::max(int64_t{0}, div);
     }
+    VLOG(2) << "Pattern-match failed: Trip count exceeds INT64_MAX.";
+    return nullopt;
   }
 
-  // Handle `i = K; i <= N; ++i`.
+  // Handle `i = init; i <= N; i+=k`.
   if (Match(while_cond_root,
             m::Op()
                 .WithComparisonDirection(ComparisonDirection::kLe)
@@ -427,7 +543,7 @@ optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
       VLOG(2) << "Pattern-match failed: Trip count exceeds INT64_MAX";
       return nullopt;
     }
-    trips = CheckedAdd(*trips, 1);
+    trips = CheckedAdd(std::floor(*trips / trip_count_step), 1);
     if (!trips) {
       VLOG(2) << "Pattern-match failed: Trip count exceeds INT64_MAX";
       return nullopt;
@@ -460,7 +576,7 @@ optional<int64_t> ComputeWhileLoopTripCount(const HloInstruction* while_op,
   HloEvaluator evaluator(/*max_loop_iterations=*/0);
   auto* while_init = while_op->operand(0);
   auto* indvar_init = while_init->operand(*indvar_tuple_idx);
-  StatusOr<Literal> indvar_init_result = evaluator.Evaluate(indvar_init);
+  absl::StatusOr<Literal> indvar_init_result = evaluator.Evaluate(indvar_init);
   if (!indvar_init_result.ok()) {
     VLOG(2) << "Couldn't evaluate induction variable init, "
             << indvar_init_result.status() << ", " << indvar_init->ToString();
@@ -486,7 +602,7 @@ optional<int64_t> ComputeWhileLoopTripCount(const HloInstruction* while_op,
 
   for (int64_t trip_count = 0; trip_count != max_brute_force_iters + 1;
        ++trip_count) {
-    StatusOr<Literal> result = evaluator.EvaluateWithSubstitutions(
+    absl::StatusOr<Literal> result = evaluator.EvaluateWithSubstitutions(
         while_cond_root, {{while_cond_indvar, &indvar_iter_val}});
     if (!result.ok()) {
       VLOG(2) << "Couldn't evaluate while cond: " << result.status();
@@ -499,8 +615,9 @@ optional<int64_t> ComputeWhileLoopTripCount(const HloInstruction* while_op,
 
     // Calculate the value of the induction variable after one iteration of the
     // loop, and check whether the while condition is true with this new value.
-    StatusOr<Literal> indvar_next_result = evaluator.EvaluateWithSubstitutions(
-        while_body_indvar_update, {{while_body_indvar, &indvar_iter_val}});
+    absl::StatusOr<Literal> indvar_next_result =
+        evaluator.EvaluateWithSubstitutions(
+            while_body_indvar_update, {{while_body_indvar, &indvar_iter_val}});
     if (!indvar_next_result.ok()) {
       VLOG(2) << "Couldn't evaluate induction variable update: "
               << indvar_next_result.status();
@@ -596,7 +713,7 @@ optional<int64_t> ComputeWhileLoopTripCountUpperBound(
   TF_CHECK_OK(fake_input.CopyFrom(while_body_indvar->literal(),
                                   /*dest_shape_index=*/{0},
                                   /*src_shape_index=*/{}));
-  StatusOr<Literal> eval_result =
+  absl::StatusOr<Literal> eval_result =
       evaluator.Evaluate(*new_computation, {std::move(fake_input)});
 
   if (!eval_result.ok()) {

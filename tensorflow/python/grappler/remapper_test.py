@@ -170,15 +170,24 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
 
     device = '/device:GPU:0' if mode == 'cuda' else '/device:CPU:0'
     config = []
+    use_fp16 = True
+    if (
+        test_util.IsMklEnabled()
+        and not _pywrap_utils.IsDataTypeSupportedByOneDNNOnThisCPU(
+            dtypes.float16
+        )
+    ):
+      use_fp16 = False
     if mode == 'mkl':
       config.append((dtypes.float32, gelu_exact, b'GeluExact'))
       config.append((dtypes.float32, gelu_approximate, b'GeluApproximate'))
-      if _pywrap_utils.IsBF16SupportedByOneDNNOnThisCPU():
+      if _pywrap_utils.IsDataTypeSupportedByOneDNNOnThisCPU(dtypes.bfloat16):
         config.append((dtypes.bfloat16, gelu_approximate, b'GeluApproximate'))
         config.append((dtypes.bfloat16, gelu_exact, b'GeluExact'))
     elif mode == 'cuda':
       config.append((dtypes.float32, gelu_approximate, b'GeluApproximate'))
-      config.append((dtypes.float16, gelu_approximate, b'GeluApproximate'))
+      if use_fp16:
+        config.append((dtypes.float16, gelu_approximate, b'GeluApproximate'))
       # Gelu exact fusion is supported by cuDNN frontend APIs and performant
       # with fp16 and on Ampere GPUs and later.
       if (test_util.is_gpu_available(
@@ -245,6 +254,14 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
     for precision in ('float16', 'float32'):
       for act_fn, act_name in zip(act_fns, act_names):
         use_fp16 = precision == 'float16'
+        if (
+            test_util.IsMklEnabled()
+            and use_fp16
+            and not _pywrap_utils.IsDataTypeSupportedByOneDNNOnThisCPU(
+                dtypes.float16
+            )
+        ):
+          continue
         # The runtime fusion (when the activation is not relu) only supports
         # fp16 at this moment.
         if not use_fp16 and act_name != b'Relu':

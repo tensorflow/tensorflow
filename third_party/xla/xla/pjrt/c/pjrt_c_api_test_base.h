@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -64,7 +64,7 @@ class PjrtCApiTestBase : public ::testing::Test {
       PJRT_Device* device = nullptr);
 
   std::pair<std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter>,
-            xla::PjRtFuture<absl::Status>>
+            xla::PjRtFuture<>>
   create_buffer(PJRT_Device* device = nullptr);
 
   std::unique_ptr<PJRT_Error, ::pjrt::PJRT_ErrorDeleter> ToUniquePtr(

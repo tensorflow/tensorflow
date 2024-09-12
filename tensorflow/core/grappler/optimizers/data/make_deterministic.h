@@ -62,7 +62,7 @@ class MakeDeterministic : public TFDataOptimizerBase {
 
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status OptimizeAndCollectStats(Cluster* cluster, const GrapplerItem& item,

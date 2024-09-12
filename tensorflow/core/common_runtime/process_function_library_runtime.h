@@ -95,7 +95,7 @@ class ProcessFunctionLibraryRuntime {
   static Status SendTensors(const string& source_device,
                             const string& target_device,
                             const string& key_prefix, int64_t src_incarnation,
-                            gtl::ArraySlice<Tensor> tensors_to_send,
+                            absl::Span<const Tensor> tensors_to_send,
                             DeviceContext* device_context,
                             const std::vector<AllocatorAttributes>& alloc_attrs,
                             RendezvousInterface* rendezvous);
@@ -181,7 +181,7 @@ class ProcessFunctionLibraryRuntime {
   // Runs the function with given `handle`. Function could have been
   // instantiated on any device. More details in framework/function.h
   void Run(const FunctionLibraryRuntime::Options& opts,
-           FunctionLibraryRuntime::Handle handle, gtl::ArraySlice<Tensor> args,
+           FunctionLibraryRuntime::Handle handle, absl::Span<const Tensor> args,
            std::vector<Tensor>* rets,
            FunctionLibraryRuntime::DoneCallback done) const;
   void Run(const FunctionLibraryRuntime::Options& opts,
@@ -195,7 +195,8 @@ class ProcessFunctionLibraryRuntime {
 
   Status RunSync(const FunctionLibraryRuntime::Options& opts,
                  FunctionLibraryRuntime::Handle handle,
-                 gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets) const;
+                 absl::Span<const Tensor> args,
+                 std::vector<Tensor>* rets) const;
   Status RunSync(const FunctionLibraryRuntime::Options& opts,
                  FunctionLibraryRuntime::Handle handle,
                  CallFrameInterface* frame) const;
@@ -391,7 +392,7 @@ class ProcessFunctionLibraryRuntime {
 
   void RunInternal(const FunctionLibraryRuntime::Options& opts,
                    FunctionLibraryRuntime::Handle handle,
-                   gtl::ArraySlice<FunctionArg> args,
+                   absl::Span<const FunctionArg> args,
                    std::vector<FunctionRet>* rets,
                    std::vector<std::unique_ptr<CleanUpItem>>* cleanup_items,
                    FunctionLibraryRuntime::DoneCallback done) const;
@@ -409,7 +410,7 @@ class ProcessFunctionLibraryRuntime {
   void CleanUp(std::vector<std::unique_ptr<CleanUpItem>>* items,
                FunctionLibraryRuntime::DoneCallback done) const;
 
-  static Status GetComponentArgs(gtl::ArraySlice<Tensor> args,
+  static Status GetComponentArgs(absl::Span<const Tensor> args,
                                  const ComponentFunctionData& comp_data,
                                  InternalArgs* comp_args);
 

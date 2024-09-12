@@ -1,8 +1,13 @@
-# RUN: xla-translate -hlo-to-mlir-hlo %s | FileCheck %s
+# RUN: xla-translate -hlo-to-mlir-hlo %s -o - | FileCheck %s
+# RUN: xla-translate -hlo-to-mlir-hlo -hlo-flatten-computation-args-result %s -o - | FileCheck %s -check-prefix=FLATTEN-CHECK
 
 # CHECK-LABEL: module @main attributes
 # CHECK-SAME: mhlo.spmd_output_sharding = "{devices=[1,2]0,1}"
-# CHECK-SAME: mhlo.spmd_parameters_shardings = ["{devices=[1,2]0,1}"]
+# CHECK-SAME{LITERAL}: mhlo.spmd_parameters_shardings = ["{{devices=[1,2]0,1}, {replicated}}"]
+
+# FLATTEN-CHECK-LABEL: module @main attributes
+# FLATTEN-CHECK-SAME: mhlo.spmd_output_sharding = "{devices=[1,2]0,1}"
+# FLATTEN-CHECK-SAME: mhlo.spmd_parameters_shardings = ["{devices=[1,2]0,1}", "{replicated}"]
 
 hlo_module       {
   name: "main"
@@ -13,15 +18,21 @@ hlo_module       {
       name: "Arg_0.1"
       opcode: "parameter"
       shape {
-        element_type: F32
-        dimensions: 16
-        dimensions: 16
-        layout {
-          minor_to_major: 1
-          minor_to_major: 0
+        element_type: TUPLE
+        tuple_shapes {
+          element_type: F32
+          dimensions: 16
+          dimensions: 16
+          layout {
+            minor_to_major: 1
+            minor_to_major: 0
+          }
+          is_dynamic_dimension: false
+          is_dynamic_dimension: false
         }
-        is_dynamic_dimension: false
-        is_dynamic_dimension: false
+        tuple_shapes {
+          element_type: F32
+        }
       }
       metadata {
       }
@@ -63,15 +74,21 @@ hlo_module       {
     }
     program_shape {
       parameters {
-        element_type: F32
-        dimensions: 16
-        dimensions: 16
-        layout {
-          minor_to_major: 1
-          minor_to_major: 0
+        element_type: TUPLE
+        tuple_shapes {
+          element_type: F32
+          dimensions: 16
+          dimensions: 16
+          layout {
+            minor_to_major: 1
+            minor_to_major: 0
+          }
+          is_dynamic_dimension: false
+          is_dynamic_dimension: false
         }
-        is_dynamic_dimension: false
-        is_dynamic_dimension: false
+        tuple_shapes {
+          element_type: F32
+        }
       }
       result {
         element_type: F32
@@ -91,15 +108,21 @@ hlo_module       {
   }
   host_program_shape {
     parameters {
-      element_type: F32
-      dimensions: 16
-      dimensions: 16
-      layout {
-        minor_to_major: 1
-        minor_to_major: 0
+      element_type: TUPLE
+      tuple_shapes {
+        element_type: F32
+        dimensions: 16
+        dimensions: 16
+        layout {
+          minor_to_major: 1
+          minor_to_major: 0
+        }
+        is_dynamic_dimension: false
+        is_dynamic_dimension: false
       }
-      is_dynamic_dimension: false
-      is_dynamic_dimension: false
+      tuple_shapes {
+        element_type: F32
+      }
     }
     result {
       element_type: F32
@@ -124,10 +147,16 @@ hlo_module       {
     tile_assignment_devices: 1
   }
   spmd_parameters_shardings {
-    type: OTHER
-    tile_assignment_dimensions: 1
-    tile_assignment_dimensions: 2
-    tile_assignment_devices: 0
-    tile_assignment_devices: 1
+    type: TUPLE
+    tuple_shardings {
+      type: OTHER
+      tile_assignment_dimensions: 1
+      tile_assignment_dimensions: 2
+      tile_assignment_devices: 0
+      tile_assignment_devices: 1
+    }
+    tuple_shardings {
+      type: REPLICATED
+    }
   }
 }

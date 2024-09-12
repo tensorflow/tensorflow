@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<bool> Defuser::Run(
+absl::StatusOr<bool> Defuser::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(1) << "Defusing module " << module->name();
@@ -45,7 +45,7 @@ StatusOr<bool> Defuser::Run(
   bool changed = false;
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
   TF_RETURN_IF_ERROR(call_graph->VisitNodes(
-      [&](const CallGraphNode& call_graph_node) -> Status {
+      [&](const CallGraphNode& call_graph_node) -> absl::Status {
         if (call_graph_node.computation()->IsFusionComputation()) {
           TF_RET_CHECK(call_graph_node.caller_callsites().size() == 1);
           HloInstruction* fusion_instruction =
@@ -53,7 +53,7 @@ StatusOr<bool> Defuser::Run(
           TF_RETURN_IF_ERROR(fusion_instruction->Defuse());
           changed = true;
         }
-        return OkStatus();
+        return absl::OkStatus();
       },
       /*visit_unreachable_nodes=*/true));
 

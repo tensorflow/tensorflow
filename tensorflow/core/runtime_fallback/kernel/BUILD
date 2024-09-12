@@ -69,7 +69,9 @@ cc_library(
     hdrs = ["attr_util.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core/runtime_fallback/util:attr_util",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@tf_runtime//:core_runtime",
         "@tf_runtime//:hostcontext",
@@ -216,6 +218,8 @@ cc_library(
     deps = [
         ":kernel_fallback_tensor",
         ":tensor_util",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/runtime_fallback/util:tensor_util",
         "//tensorflow/core/runtime_fallback/util:type_util",
         "@tf_runtime//:dtype",
@@ -400,9 +404,6 @@ cc_library(
     hdrs = ["kernel_fallback_compat_request_state.h"],
     visibility = [
         "//tensorflow/core/runtime_fallback:internal",
-        # JIT compilation kernels need access to fallback state to set up
-        # Eigen thread pool as async runtime worker threads.
-        "//tensorflow/compiler/mlir/tfrt:__pkg__",
         # Sync fallback kernels need access to the fallback state.
         "//learning/brain/experimental/tfrt/native_lowering/kernels:__subpackages__",
         "//tensorflow/core/tfrt/graph_executor:__subpackages__",

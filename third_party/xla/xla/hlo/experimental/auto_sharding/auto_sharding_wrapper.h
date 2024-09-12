@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,15 +20,19 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_cost_graph.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/hlo_cost_analysis.h"
 
@@ -39,13 +43,16 @@ namespace spmd {
 // combinatorial optimization problem & solves it.
 AutoShardingSolverResult CallSolver(
     const HloModule& hlo_module, const HloLiveRange& hlo_live_range,
-    const LivenessNodeSet& liveness_node_set,
-    const LivenessEdgeSet& liveness_edge_set, const StrategyMap& strategy_map,
-    const StrategyGroups& strategy_groups, const CostGraph& cost_graph,
-    const AliasSet& alias_set, const std::vector<NodeStrategyIdx>& s_hint,
-    bool compute_iis, int64_t solver_timeout_in_seconds,
-    const AutoShardingOption& option, std::optional<double> max_cost,
-    const absl::flat_hash_map<std::string, const HloInstruction*>&
+    const StrategyMap& strategy_map, const StrategyGroups& strategy_groups,
+    const CostGraph& cost_graph, const AliasSet& alias_set,
+    const std::vector<std::pair<LivenessIdx, LivenessIdx>>& node_intervals,
+    const std::vector<std::pair<LivenessIdx, LivenessIdx>>& edge_intervals,
+    const std::vector<absl::btree_set<int64_t>>& node_groups,
+    const std::vector<absl::btree_set<int64_t>>& edge_groups,
+    const std::vector<NodeStrategyIdx>& s_hint, bool compute_iis,
+    int64_t solver_timeout_in_seconds, const AutoShardingOption& option,
+    std::optional<double> max_cost, absl::string_view request_name,
+    const absl::flat_hash_map<std::string, HloSharding>&
         sharding_propagation_solution = {},
     bool deterministic_mode = false);
 

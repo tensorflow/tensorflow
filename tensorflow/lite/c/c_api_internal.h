@@ -93,13 +93,13 @@ struct TfLiteOpResolverCallbacks {
                                              int version)>
       find_custom_op_v1;
 
-  // Variant of `find_builtin_op` which returns `TfLiteRegistrationExternal`.
-  std::function<const TfLiteRegistrationExternal*(
-      void* user_data, TfLiteBuiltinOperator op, int version)>
+  // Variant of `find_builtin_op` which returns `TfLiteOperator`.
+  std::function<const TfLiteOperator*(void* user_data, TfLiteBuiltinOperator op,
+                                      int version)>
       find_builtin_op_external;
-  // Variant of `find_custom_op` which returns `TfLiteRegistrationExternal`.
-  std::function<const TfLiteRegistrationExternal*(void* user_data,
-                                                  const char* op, int version)>
+  // Variant of `find_custom_op` which returns `TfLiteOperator`.
+  std::function<const TfLiteOperator*(void* user_data, const char* op,
+                                      int version)>
       find_custom_op_external;
 };
 
@@ -135,9 +135,9 @@ struct TfLiteInterpreterOptions {
   // automatically retried without delegates.
   bool enable_delegate_fallback = false;
 
-  // TfLiteRegistrationExternal objects owned by caller of
-  // `TfLiteInterpreterOptionsAddRegistrationExternal` API.
-  std::vector<TfLiteRegistrationExternal*> op_registrations;
+  // TfLiteOperator objects owned by caller of
+  // `TfLiteInterpreterOptionsAddOperator` API.
+  std::vector<TfLiteOperator*> op_registrations;
 
   // Determines whether to allow to cancel invocations with
   // `Interpreter::Cancel` or `SignatureRunner::Cancel`.

@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -44,6 +44,11 @@ class HloModuleGroup {
   HloModuleGroup(absl::string_view name,
                  std::vector<std::unique_ptr<HloModule>>&& modules);
 
+  HloModuleGroup(const HloModuleGroup& other) = delete;
+  HloModuleGroup(HloModuleGroup&& other) = default;
+  HloModuleGroup& operator=(const HloModuleGroup& other) = delete;
+  HloModuleGroup& operator=(HloModuleGroup&& other) = default;
+
   // Returns the modules contained in the group.
   const std::vector<HloModule*>& modules() const { return module_ptrs_; }
 
@@ -82,7 +87,7 @@ class HloModuleGroup {
 
   // Serialize the module group to/from a proto.
   HloModuleGroupProto ToProto() const;
-  static StatusOr<HloModuleGroup> CreateFromProto(
+  static absl::StatusOr<HloModuleGroup> CreateFromProto(
       const HloModuleGroupProto& proto,
       absl::Span<const HloModuleConfig> module_configs);
 

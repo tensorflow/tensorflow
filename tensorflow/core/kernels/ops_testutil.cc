@@ -149,7 +149,7 @@ Status OpsTestBase::InitOpWithGraphVersion(int graph_def_version) {
       device_->resource_manager(), props, graph_def_version, &kernel));
   kernel_.reset(kernel);
   input_types_ = kernel_->input_types();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 static std::function<void(std::function<void()>)>* GetDefaultRunner() {

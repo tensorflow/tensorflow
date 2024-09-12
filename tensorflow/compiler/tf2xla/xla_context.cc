@@ -195,11 +195,11 @@ Status XlaContext::RecordCollectiveInfoFromNestedCompilationResult(
                                 result.collective_info->group_size)
         .status();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<int64_t> XlaContext::RecordCollectiveInfo(int group_key,
-                                                   int group_size) {
+absl::StatusOr<int64_t> XlaContext::RecordCollectiveInfo(int group_key,
+                                                         int group_size) {
   if (!collective_info_) {
     collective_info_ = {group_key, group_size, 0};
   } else if (collective_info_->group_key != group_key ||

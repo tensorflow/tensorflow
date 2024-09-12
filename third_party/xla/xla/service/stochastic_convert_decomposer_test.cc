@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -93,7 +93,7 @@ ENTRY entry {
   StochasticConvertDecomposer decomposer;
 
   auto result = decomposer.Run(module.get());
-  EXPECT_NE(OkStatus(), result.status());
+  EXPECT_NE(absl::OkStatus(), result.status());
   EXPECT_THAT(result.status().message(), HasSubstr("have same bits"));
 }
 
@@ -113,7 +113,7 @@ ENTRY entry {
   StochasticConvertDecomposer decomposer;
 
   auto result = decomposer.Run(module.get());
-  EXPECT_NE(OkStatus(), result.status());
+  EXPECT_NE(absl::OkStatus(), result.status());
   EXPECT_THAT(result.status().message(),
               HasSubstr("must be unsigned integers"));
 }

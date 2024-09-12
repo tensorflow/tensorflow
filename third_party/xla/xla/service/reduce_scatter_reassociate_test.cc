@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,15 +27,15 @@ namespace m = xla::testing::opcode_matchers;
 
 class ReduceScatterReassociateTest : public HloTestBase {
  public:
-  StatusOr<std::unique_ptr<HloModule>> RunPass(absl::string_view hlo_module,
-                                               bool expect_change) {
+  absl::StatusOr<std::unique_ptr<HloModule>> RunPass(
+      absl::string_view hlo_module, bool expect_change) {
     TF_ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(hlo_module));
     auto changed = ReduceScatterReassociate().Run(module.get());
     if (!changed.ok()) {
       return changed.status();
     }
     EXPECT_EQ(changed.value(), expect_change);
-    return StatusOr<std::unique_ptr<HloModule>>(std::move(module));
+    return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(module));
   }
 
   size_t ReduceScatterCount(std::unique_ptr<HloModule>& module) {

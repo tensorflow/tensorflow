@@ -21,36 +21,40 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/StringSet.h"
-#include "llvm/Support/ToolOutputFile.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
-#include "mlir/Transforms/ViewOpGraph.h"  // from @llvm-project
-#include "tensorflow/cc/saved_model/loader.h"
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/python/tf_tfl_flatbuffer_helpers.h"
-#include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/toco/types.pb.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace tensorflow {
+
+using tensorflow::quantization::PyFunctionLibrary;
 
 Status HandleInputOutputArraysWithModule(
     const toco::ModelFlags& model_flags,
@@ -81,7 +85,7 @@ Status HandleInputOutputArraysWithModule(
   if (!input_attr) {
     return errors::InvalidArgument("no inputs attribute found");
   }
-  auto input_names = input_attr.cast<mlir::StringAttr>().getValue();
+  auto input_names = mlir::cast<mlir::StringAttr>(input_attr).getValue();
   input_names.split(function_input_names, ",", /*MaxSplit=*/-1,
                     /*KeepEmpty=*/false);
   const int function_input_names_size = function_input_names.size();
@@ -107,7 +111,7 @@ Status HandleInputOutputArraysWithModule(
   if (!output_attr) {
     return errors::InvalidArgument("no outputs attribute found");
   }
-  auto output_names = output_attr.cast<mlir::StringAttr>().getValue();
+  auto output_names = mlir::cast<mlir::StringAttr>(output_attr).getValue();
   output_names.split(function_output_names, ",", /*MaxSplit=*/-1,
                      /*KeepEmpty=*/false);
   const int function_output_names_size = function_output_names.size();
@@ -125,13 +129,14 @@ Status HandleInputOutputArraysWithModule(
                                      ") does not exist in the given graph");
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ConvertSavedModelToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
-                                           const toco::TocoFlags& toco_flags,
-                                           string* result) {
-  mlir::MLIRContext context;
+Status ConvertSavedModelToTFLiteFlatBuffer(
+    const toco::ModelFlags& model_flags, toco::TocoFlags& toco_flags,
+    std::string* result,
+    const PyFunctionLibrary* quantization_py_function_lib) {
+  auto context = std::make_unique<mlir::MLIRContext>();
   mlir::quant::QuantizationSpecs quant_specs;
 
   // Parse input arrays.
@@ -168,13 +173,13 @@ Status ConvertSavedModelToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
 
   std::vector<std::string> custom_opdefs(toco_flags.custom_opdefs().begin(),
                                          toco_flags.custom_opdefs().end());
-  auto bundle = std::make_unique<tensorflow::SavedModelBundle>();
   TF_ASSIGN_OR_RETURN(
       auto module,
-      ImportSavedModel(
-          model_flags.saved_model_dir(), model_flags.saved_model_version(),
-          tags, absl::MakeSpan(custom_opdefs), exported_names, specs,
-          !toco_flags.enable_tflite_resource_variables(), &context, &bundle));
+      ImportSavedModel(model_flags.saved_model_dir(),
+                       model_flags.saved_model_version(), tags,
+                       absl::MakeSpan(custom_opdefs), exported_names, specs,
+                       /*enable_variable_lifting=*/true, context.get(),
+                       /*saved_model_bundle=*/nullptr));
 
   if (!model_flags.input_arrays().empty() ||
       !model_flags.output_arrays().empty()) {
@@ -203,11 +208,43 @@ Status ConvertSavedModelToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   pass_config.enable_stablehlo_conversion = toco_flags.convert_to_stablehlo();
   pass_config.legalize_custom_tensor_list_ops =
       toco_flags.legalize_custom_tensor_list_ops();
+  pass_config.enable_stablehlo_quantizer = toco_flags.has_quantization_config();
+  pass_config.enable_composite_direct_lowering =
+      toco_flags.enable_composite_direct_lowering();
+  pass_config.model_origin_framework = toco_flags.model_origin_framework();
+  pass_config.canonicalizing_inf_as_min_max_float =
+      toco_flags.canonicalizing_inf_as_min_max_float();
+
+  if (toco_flags.qdq_conversion_mode() == "STATIC") {
+    pass_config.quant_specs.qdq_conversion_mode =
+        mlir::quant::QDQConversionMode::kQDQStatic;
+  } else if (toco_flags.qdq_conversion_mode() == "DYNAMIC") {
+    pass_config.quant_specs.qdq_conversion_mode =
+        mlir::quant::QDQConversionMode::kQDQDynamic;
+    // Need to set this or else the ops will still use floating point kernels
+    pass_config.quant_specs.inference_type = tensorflow::DT_QINT8;
+  } else if (toco_flags.qdq_conversion_mode() == "NONE") {
+    pass_config.quant_specs.qdq_conversion_mode =
+        mlir::quant::QDQConversionMode::kQDQNone;
+  } else {
+    return errors::InvalidArgument("Unknown QDQ conversion mode: ",
+                                   toco_flags.qdq_conversion_mode());
+  }
+
+  if (toco_flags.has_qdq_conversion_mode() &&
+      toco_flags.qdq_conversion_mode() != "NONE") {
+    // Setting this flag causes
+    // PrepareQuantize::SetInputNodesQuantizationParams() to be false and allows
+    // PrepareQuantizePass to complete. For the most part this step is
+    // unnecessary for non-TF QDQ models.
+    pass_config.quant_specs.disable_set_input_nodes_quantization_params = true;
+  }
 
   // TODO(b/153507667): Pass the session object when importing logic is removed.
   auto status = internal::ConvertMLIRToTFLiteFlatBuffer(
-      model_flags, toco_flags, std::move(module), pass_config, tags, result,
-      bundle ? bundle->GetSession() : nullptr);
+      model_flags, toco_flags, std::move(context), std::move(module),
+      pass_config, tags, result, quantization_py_function_lib);
+
   return status;
 }
 

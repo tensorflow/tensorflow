@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/core/c/c_api_opaque.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
-#include "tensorflow/lite/core/c/registration_external.h"
+#include "tensorflow/lite/core/c/operator.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/profiling/telemetry/c/profiler.h"
 

@@ -42,7 +42,7 @@ Status BuildNoopNode(const Node& source, StringPiece name, const string& device,
   if (!device.empty()) {
     (*node)->set_assigned_device_name(device);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status BuildIdentityNNode(const Node& source, StringPiece name,
@@ -62,7 +62,7 @@ Status BuildIdentityNNode(const Node& source, StringPiece name,
   if (!device.empty()) {
     (*node)->set_assigned_device_name(device);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 const string& RequestedOrAssignedDevice(const Node* n) {
@@ -78,7 +78,7 @@ class DeviceLookup {
  public:
   DeviceLookup() = default;
 
-  static StatusOr<DeviceLookup> FromGraph(Graph* graph) {
+  static absl::StatusOr<DeviceLookup> FromGraph(Graph* graph) {
     DeviceLookup lookup;
     for (Node* n : graph->op_nodes()) {
       string device;
@@ -176,7 +176,7 @@ Status OptimizeCrossHostControlOutputEdges(Graph* graph,
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status OptimizeCrossHostDataOutputEdges(Graph* graph,
@@ -249,7 +249,7 @@ Status OptimizeCrossHostDataOutputEdges(Graph* graph,
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status OptimizeCrossHostControlInputEdges(Graph* graph,
@@ -322,7 +322,7 @@ Status OptimizeCrossHostControlInputEdges(Graph* graph,
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

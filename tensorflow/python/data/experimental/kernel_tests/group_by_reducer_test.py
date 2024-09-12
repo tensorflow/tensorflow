@@ -69,7 +69,7 @@ class GroupByReducerTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def testConcat(self):
-    components = np.array(list("abcdefghijklmnopqrst")).view(np.chararray)
+    components = np.array(list("abcdefghijklmnopqrst")).view(np.char.chararray)
     reducer = grouping.Reducer(
         init_func=lambda x: "",
         reduce_func=lambda x, y: x + y[0],

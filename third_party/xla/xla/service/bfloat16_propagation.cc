@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -708,7 +709,7 @@ void BFloat16Propagation::ResolveInconsistencyOfAliasingBuffers(
   }
 }
 
-Status BFloat16Propagation::ResolveInconsistentFusions(
+absl::Status BFloat16Propagation::ResolveInconsistentFusions(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // We could have changed a fusion computation's root shape to have a different
@@ -768,10 +769,10 @@ Status BFloat16Propagation::ResolveInconsistentFusions(
       fusion_computation->set_root_instruction(copy);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status BFloat16Propagation::ResolveConvertedConstants(
+absl::Status BFloat16Propagation::ResolveConvertedConstants(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // We may have converted some constants from F32 to BF16, so adjust the
@@ -800,10 +801,10 @@ Status BFloat16Propagation::ResolveConvertedConstants(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status BFloat16Propagation::SkipNoopConversions(
+absl::Status BFloat16Propagation::SkipNoopConversions(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   for (auto computation : module->computations(execution_threads)) {
@@ -822,7 +823,7 @@ Status BFloat16Propagation::SkipNoopConversions(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // The algorithm first does a forward pass (parameters to root) to determine a
@@ -831,7 +832,7 @@ Status BFloat16Propagation::SkipNoopConversions(
 // their users. During the backward pass, the potential changes are stored in
 // changes_to_bf16_ which are subject to further adjustments then applied to the
 // HLOs.
-StatusOr<bool> BFloat16Propagation::Run(
+absl::StatusOr<bool> BFloat16Propagation::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   consider_using_bfloat16_.clear();
@@ -967,7 +968,7 @@ StatusOr<bool> BFloat16Propagation::Run(
         tuple_simplifier.Run(module, execution_threads).status());
     HloDCE dce;
     TF_RETURN_IF_ERROR(dce.Run(module, execution_threads).status());
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   if (!changed_) {

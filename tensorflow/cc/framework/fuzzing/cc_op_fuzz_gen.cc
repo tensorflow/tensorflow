@@ -26,14 +26,19 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/cc/framework/cc_op_gen_util.h"
+#include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/hash.h"
 #include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {

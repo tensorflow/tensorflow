@@ -379,10 +379,11 @@ TEST(ConcatenationOpTest, FourInputs) {
   m0.SetInput(3, {1.3f, 3.3f, 4.3f, 7.3f});
   ASSERT_EQ(m0.Invoke(), kTfLiteOk);
   EXPECT_THAT(m0.GetOutput(),
-              ElementsAreArray({
-                  1.0f, 3.0f, 1.1f, 3.1f, 1.2f, 3.2f, 1.3f, 3.3f,  //
-                  4.0f, 7.0f, 4.1f, 7.1f, 4.2f, 7.2f, 4.3f, 7.3f,  //
-              }));
+              Pointwise(FloatingPointEq(),
+                        {
+                            1.0f, 3.0f, 1.1f, 3.1f, 1.2f, 3.2f, 1.3f, 3.3f,  //
+                            4.0f, 7.0f, 4.1f, 7.1f, 4.2f, 7.2f, 4.3f, 7.3f,  //
+                        }));
 }
 
 TEST(ConcatenationOpTest, FourInputsUInt32) {

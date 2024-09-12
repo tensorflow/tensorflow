@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/ascii.h"
 
 namespace tflite {
@@ -53,6 +54,7 @@ GpuVendor GetGpuVendor(const std::string& gpu_description) {
 AdrenoGpu GetAdrenoGpuVersion(const std::string& gpu_description) {
   const std::map<std::string, AdrenoGpu> kMapping = {
       // Adreno 7xx series
+      {"750", AdrenoGpu::kAdreno750},
       {"740", AdrenoGpu::kAdreno740},
       {"730", AdrenoGpu::kAdreno730},
       // Adreno 6xx series
@@ -230,7 +232,8 @@ bool AdrenoInfo::IsAdreno6xx() const {
 
 bool AdrenoInfo::IsAdreno7xx() const {
   return adreno_gpu == AdrenoGpu::kAdreno730 ||
-         adreno_gpu == AdrenoGpu::kAdreno740;
+         adreno_gpu == AdrenoGpu::kAdreno740 ||
+         adreno_gpu == AdrenoGpu::kAdreno750;
 }
 
 bool AdrenoInfo::IsBetterThan(AdrenoGpu gpu) const {
@@ -301,6 +304,8 @@ int AdrenoInfo::GetComputeUnitsCount() const {
   // can provide not correct numbers.
   switch (adreno_gpu) {
     // Adreno 7xx series
+    case AdrenoGpu::kAdreno750:
+      return 6;
     case AdrenoGpu::kAdreno740:
       return 6;
     case AdrenoGpu::kAdreno730:
@@ -397,6 +402,7 @@ AppleInfo::AppleInfo(const std::string& gpu_description) {
       {"apple a14 gpu", AppleGpu::kA14},
       {"apple a15 gpu", AppleGpu::kA15},
       {"apple a16 gpu", AppleGpu::kA16},
+      {"apple a17 pro gpu", AppleGpu::kA17Pro},
       // on tablets we have metal device name "apple m1 gpu"
       // and on notebooks "apple m1"
       {"apple m1 gpu", AppleGpu::kM1},
@@ -412,15 +418,82 @@ AppleInfo::AppleInfo(const std::string& gpu_description) {
   } else {
     gpu_type = AppleGpu::kUnknown;
   }
+  gpu_family = GetGpuFamily();
 }
 
-bool AppleInfo::IsA7GenerationGpu() const { return gpu_type == AppleGpu::kA7; }
-bool AppleInfo::IsA8GenerationGpu() const {
-  return gpu_type == AppleGpu::kA8 || gpu_type == AppleGpu::kA8X;
+AppleInfo::Family AppleInfo::GetGpuFamily() const {
+  if (gpu_type == AppleGpu::kA7) {
+    return AppleInfo::Family::kApple1;
+  } else if (gpu_type == AppleGpu::kA8 || gpu_type == AppleGpu::kA8X) {
+    return AppleInfo::Family::kApple2;
+  } else if (gpu_type == AppleGpu::kA9 || gpu_type == AppleGpu::kA9X ||
+             gpu_type == AppleGpu::kA10 || gpu_type == AppleGpu::kA10X) {
+    return AppleInfo::Family::kApple3;
+  } else if (gpu_type == AppleGpu::kA11) {
+    return AppleInfo::Family::kApple4;
+  } else if (gpu_type == AppleGpu::kA12 || gpu_type == AppleGpu::kA12X ||
+             gpu_type == AppleGpu::kA12Z) {
+    return AppleInfo::Family::kApple5;
+  } else if (gpu_type == AppleGpu::kA13) {
+    return AppleInfo::Family::kApple6;
+  } else if (gpu_type == AppleGpu::kA14 || IsM1Series()) {
+    return AppleInfo::Family::kApple7;
+  } else if (gpu_type == AppleGpu::kA15 || gpu_type == AppleGpu::kA16 ||
+             gpu_type == AppleGpu::kM2) {
+    return AppleInfo::Family::kApple8;
+  } else if (gpu_type == AppleGpu::kA17Pro) {
+    return AppleInfo::Family::kApple9;
+  }
+  return AppleInfo::Family::kApple1;
+}
+
+bool AppleInfo::IsFamilyApple1() const {
+  return gpu_family == AppleInfo::Family::kApple1;
+}
+
+bool AppleInfo::IsFamilyApple2() const {
+  return gpu_family == AppleInfo::Family::kApple2;
+}
+
+bool AppleInfo::IsFamilyApple3() const {
+  return gpu_family == AppleInfo::Family::kApple3;
+}
+
+bool AppleInfo::IsFamilyApple4() const {
+  return gpu_family == AppleInfo::Family::kApple4;
+}
+
+bool AppleInfo::IsFamilyApple5() const {
+  return gpu_family == AppleInfo::Family::kApple5;
+}
+
+bool AppleInfo::IsFamilyApple6() const {
+  return gpu_family == AppleInfo::Family::kApple6;
+}
+
+bool AppleInfo::IsFamilyApple7() const {
+  return gpu_family == AppleInfo::Family::kApple7;
+}
+
+bool AppleInfo::IsFamilyApple8() const {
+  return gpu_family == AppleInfo::Family::kApple8;
+}
+
+bool AppleInfo::IsFamilyApple9() const {
+  return gpu_family == AppleInfo::Family::kApple9;
+}
+
+bool AppleInfo::IsFamilyOrLower(AppleInfo::Family family) const {
+  return gpu_family <= family;
 }
 
 bool AppleInfo::IsLocalMemoryPreferredOverGlobal() const {
-  return IsA7GenerationGpu() || IsA8GenerationGpu();
+  return IsFamilyOrLower(AppleInfo::Family::kApple2);
+}
+
+bool AppleInfo::IsM1Series() const {
+  return gpu_type == AppleGpu::kM1 || gpu_type == AppleGpu::kM1Pro ||
+         gpu_type == AppleGpu::kM1Max || gpu_type == AppleGpu::kM1Ultra;
 }
 
 bool AppleInfo::IsBionic() const {
@@ -428,21 +501,22 @@ bool AppleInfo::IsBionic() const {
          gpu_type == AppleGpu::kA12X || gpu_type == AppleGpu::kA12Z ||
          gpu_type == AppleGpu::kA13 || gpu_type == AppleGpu::kA14 ||
          gpu_type == AppleGpu::kA15 || gpu_type == AppleGpu::kA16 ||
+         gpu_type == AppleGpu::kA17Pro || gpu_type == AppleGpu::kM1 ||
+         gpu_type == AppleGpu::kM1Pro || gpu_type == AppleGpu::kM1Max ||
+         gpu_type == AppleGpu::kM1Ultra || gpu_type == AppleGpu::kM2;
+}
+
+bool AppleInfo::IsSIMDMatMulSupported() const {
+  return gpu_type == AppleGpu::kA14 || gpu_type == AppleGpu::kA15 ||
+         gpu_type == AppleGpu::kA16 || gpu_type == AppleGpu::kA17Pro ||
          gpu_type == AppleGpu::kM1 || gpu_type == AppleGpu::kM1Pro ||
          gpu_type == AppleGpu::kM1Max || gpu_type == AppleGpu::kM1Ultra ||
          gpu_type == AppleGpu::kM2;
 }
 
-bool AppleInfo::IsSIMDMatMulSupported() const {
-  return gpu_type == AppleGpu::kA14 || gpu_type == AppleGpu::kA15 ||
-         gpu_type == AppleGpu::kA16 || gpu_type == AppleGpu::kM1 ||
-         gpu_type == AppleGpu::kM1Pro || gpu_type == AppleGpu::kM1Max ||
-         gpu_type == AppleGpu::kM1Ultra || gpu_type == AppleGpu::kM2;
-}
-
 bool AppleInfo::IsSIMDMatMulFp32Perf2x() const {
   return gpu_type == AppleGpu::kA15 || gpu_type == AppleGpu::kA16 ||
-         gpu_type == AppleGpu::kM2;
+         gpu_type == AppleGpu::kA17Pro || gpu_type == AppleGpu::kM2;
 }
 
 bool AppleInfo::IsRoundToNearestSupported() const { return IsBionic(); }
@@ -484,6 +558,8 @@ int AppleInfo::GetComputeUnitsCount() const {
       return 5;
     case AppleGpu::kA16:
       return 5;
+    case AppleGpu::kA17Pro:
+      return 6;
     case AppleGpu::kM1:
       // approximate, can be 7 or 8
       return 8;
@@ -904,6 +980,17 @@ bool GpuInfo::SupportsSubGroupWithSize(int sub_group_size) const {
     }
   }
   return false;
+}
+
+absl::Status GpuInfo::GetMinSubGroupSize(int& min_sub_group_size) const {
+  auto begin = supported_subgroup_sizes.begin();
+  auto end = supported_subgroup_sizes.end();
+  auto min = std::min_element(begin, end);
+  if (min == end) {
+    return absl::InternalError("No supported subgroup sizes");
+  }
+  min_sub_group_size = *min;
+  return absl::OkStatus();
 }
 
 bool GpuInfo::SupportsFloatImage2D(DataType data_type, int channels) const {

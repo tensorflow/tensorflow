@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -205,8 +205,7 @@ TEST_F(HloShardingTest, V1V2TileEquivalence) {
 TEST_F(HloShardingTest, V1V2PartialTileEquivalence) {
   {
     HloSharding v1 = HloSharding::PartialTile(MakeArray({2, 2}, {0, 1, 2, 3}));
-    HloSharding v2 = HloSharding::PartialTile(
-        TileAssignment((absl::Span<const int64_t>){2, 2}));
+    HloSharding v2 = HloSharding::PartialTile(TileAssignment({2, 2}));
     EXPECT_EQ(v1, v2);
     EXPECT_EQ(absl::HashOf(v1), absl::HashOf(v2));
   }
@@ -232,9 +231,8 @@ TEST_F(HloShardingTest, V1V2SubgroupEquivalence) {
     HloSharding v1 =
         HloSharding::Subgroup(MakeArray({2, 2}, {0, 1, 2, 3}),
                               {OpSharding::MANUAL, OpSharding::REPLICATED});
-    HloSharding v2 =
-        HloSharding::Subgroup(TileAssignment((absl::Span<const int64_t>){2, 2}),
-                              {OpSharding::MANUAL, OpSharding::REPLICATED});
+    HloSharding v2 = HloSharding::Subgroup(
+        TileAssignment({2, 2}), {OpSharding::MANUAL, OpSharding::REPLICATED});
     EXPECT_EQ(v1, v2);
     EXPECT_EQ(absl::HashOf(v1), absl::HashOf(v2));
   }

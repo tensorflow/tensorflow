@@ -19,7 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "grpcpp/grpcpp.h"
-
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_master_service_impl.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_testlib.h"
@@ -389,8 +389,8 @@ TEST_F(MasterTest, EigenProblem) {
   TF_CHECK_OK(CreateSession(def, &handle, &initial_version));
 
   // Temps supporting the computation of the convergence condition.
-  const Eigen::array<Eigen::DenseIndex, 1> sum_along_dim(0);
-  const Eigen::array<Eigen::DenseIndex, 2> matrix_transpose({1, 0});
+  const Eigen::array<Eigen::DenseIndex, 1> sum_along_dim{0};
+  const Eigen::array<Eigen::DenseIndex, 2> matrix_transpose{1, 0};
   Tensor x(DT_FLOAT, TensorShape({2, 1}));
   Tensor y(DT_FLOAT, TensorShape({2, 1}));
   Eigen::Tensor<float, 1, Eigen::RowMajor> y_square_sum;

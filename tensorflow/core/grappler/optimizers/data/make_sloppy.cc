@@ -43,7 +43,7 @@ Status MakeSloppy::OptimizeAndCollectStats(Cluster* cluster,
       stats->num_changes++;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(MakeSloppy, "make_sloppy");

@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,7 +22,11 @@ limitations under the License.
 #include <vector>
 
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/typed_kernel_factory.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
 
@@ -62,15 +66,12 @@ static_assert(
     std::is_same_v<ArgsStorage<DeviceMemoryBase*, const DeviceMemoryBase*>,
                    std::tuple<const void*, const void*>>);
 
-static std::unique_ptr<StreamExecutor> NewStreamExecutor() {
-  Platform* platform = MultiPlatformManager::PlatformWithName("Host").value();
-  StreamExecutorConfig config(/*ordinal=*/0);
-  return platform->GetUncachedExecutor(config).value();
+static StreamExecutor* NewStreamExecutor() {
+  Platform* platform = PlatformManager::PlatformWithName("Host").value();
+  return platform->ExecutorForDevice(/*ordinal=*/0).value();
 }
 
 TEST(KernelTest, PackDeviceMemoryArguments) {
-  auto executor = NewStreamExecutor();
-
   DeviceMemoryBase a(reinterpret_cast<void*>(0x12345678));
   DeviceMemoryBase b(reinterpret_cast<void*>(0x87654321));
 
@@ -103,11 +104,8 @@ TEST(KernelTest, PackPodArguments) {
   ASSERT_EQ(f64, 3.0);
 }
 
-TEST(KernelTest, PackTypedKernelArguments) {
-  auto executor = NewStreamExecutor();
-  TypedKernel<int32_t, float, double> kernel(executor.get());
-
-  auto args = PackKernelArgs(kernel, 1, 2.0f, 3.0);
+TEST(KernelTest, PackTupleArguments) {
+  auto args = PackKernelArgs(/*shmem_bytes=*/0, 1, 2.0f, 3.0);
   ASSERT_EQ(args->number_of_arguments(), 3);
 
   auto packed = args->argument_addresses();
@@ -118,6 +116,14 @@ TEST(KernelTest, PackTypedKernelArguments) {
   ASSERT_EQ(i32, 1);
   ASSERT_EQ(f32, 2.0f);
   ASSERT_EQ(f64, 3.0);
+}
+
+TEST(KernelTest, FailToCreateTypedKernelFromEmptySpec) {
+  MultiKernelLoaderSpec empty_spec(/*arity=*/0);
+
+  auto executor = NewStreamExecutor();
+  auto kernel = TypedKernelFactory<>::Create(executor, empty_spec);
+  EXPECT_FALSE(kernel.ok());
 }
 
 //===----------------------------------------------------------------------===//

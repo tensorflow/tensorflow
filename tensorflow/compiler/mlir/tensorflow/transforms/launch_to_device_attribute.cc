@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
@@ -66,7 +67,7 @@ LogicalResult AssignDevicesInRegion(const Dialect* tf_dialect,
       return WalkResult::advance();
     }
 
-    if (auto device_str_attr = device_attr.dyn_cast<StringAttr>()) {
+    if (auto device_str_attr = mlir::dyn_cast<StringAttr>(device_attr)) {
       if (device_str_attr.getValue().empty()) {
         op->setAttr(kDeviceAttr, launch.getDeviceAttr());
         return WalkResult::advance();

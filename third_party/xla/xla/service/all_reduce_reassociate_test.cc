@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,16 +17,22 @@ limitations under the License.
 
 #include <cstddef>
 #include <memory>
+#include <utility>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_matchers.h"
+#include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
-#include "xla/statusor.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -36,7 +42,7 @@ using ::testing::_;
 
 class AllReduceSimplifierTest : public HloTestBase {
  public:
-  StatusOr<std::unique_ptr<HloModule>> RunPass(
+  absl::StatusOr<std::unique_ptr<HloModule>> RunPass(
       absl::string_view hlo_module, bool expect_change,
       bool reassociate_converted_ar = false) {
     TF_ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(hlo_module));
@@ -46,7 +52,7 @@ class AllReduceSimplifierTest : public HloTestBase {
       return changed.status();
     }
     EXPECT_EQ(changed.value(), expect_change);
-    return StatusOr<std::unique_ptr<HloModule>>(std::move(module));
+    return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(module));
   }
 
   size_t AllReduceCount(std::unique_ptr<HloModule>& module) {

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/message_wrappers.h"
 
+#include <memory>
+
 #include "absl/status/status.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
@@ -59,13 +61,13 @@ const string& InMemoryRunStepRequest::feed_name(size_t i) const {
 
 Status InMemoryRunStepRequest::FeedValue(size_t i, Tensor* out_tensor) const {
   *out_tensor = feeds_[i].second;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status InMemoryRunStepRequest::FeedValue(size_t i,
                                          TensorProto* out_tensor) const {
   feeds_[i].second.AsProtoTensorContent(out_tensor);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void InMemoryRunStepRequest::add_feed(const string& name, const Tensor& value) {
@@ -111,7 +113,7 @@ string InMemoryRunStepRequest::DebugString() const {
 
 const RunStepRequest& InMemoryRunStepRequest::ToProto() const {
   if (!proto_version_) {
-    proto_version_.reset(new RunStepRequest);
+    proto_version_ = std::make_unique<RunStepRequest>();
     proto_version_->set_session_handle(session_handle());
     proto_version_->set_partial_run_handle(partial_run_handle());
     for (size_t i = 0; i < num_feeds(); ++i) {
@@ -155,14 +157,14 @@ Status MutableProtoRunStepRequest::FeedValue(size_t i,
   if (!ParseTensorProtoToTensor(request_.feed(i).tensor(), out_tensor)) {
     return errors::InvalidArgument("Invalid TensorProto for feed value ", i);
   } else {
-    return OkStatus();
+    return absl::OkStatus();
   }
 }
 
 Status MutableProtoRunStepRequest::FeedValue(size_t i,
                                              TensorProto* out_tensor) const {
   *out_tensor = request_.feed(i).tensor();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void MutableProtoRunStepRequest::add_feed(const string& name,
@@ -246,13 +248,13 @@ Status ProtoRunStepRequest::FeedValue(size_t i, Tensor* out_tensor) const {
   if (!ParseTensorProtoToTensor(request_->feed(i).tensor(), out_tensor)) {
     return errors::InvalidArgument("Invalid TensorProto for feed value ", i);
   } else {
-    return OkStatus();
+    return absl::OkStatus();
   }
 }
 
 Status ProtoRunStepRequest::FeedValue(size_t i, TensorProto* out_tensor) const {
   *out_tensor = request_->feed(i).tensor();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 size_t ProtoRunStepRequest::num_fetches() const {
@@ -335,7 +337,7 @@ const string& InMemoryRunGraphRequest::send_key(size_t i) const {
 
 Status InMemoryRunGraphRequest::SendValue(size_t i, Tensor* out_tensor) const {
   *out_tensor = sends_[i].second;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status InMemoryRunGraphRequest::AddSendFromRunStepRequest(
@@ -344,7 +346,7 @@ Status InMemoryRunGraphRequest::AddSendFromRunStepRequest(
   Tensor tensor;
   TF_RETURN_IF_ERROR(run_step_request.FeedValue(i, &tensor));
   sends_.emplace_back(send_key, std::move(tensor));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status InMemoryRunGraphRequest::AddSendFromRunCallableRequest(
@@ -355,7 +357,7 @@ Status InMemoryRunGraphRequest::AddSendFromRunCallableRequest(
     return errors::InvalidArgument("Invalid TensorProto for feed value ", i);
   }
   sends_.emplace_back(send_key, std::move(tensor));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 size_t InMemoryRunGraphRequest::num_recvs() const { return recvs_.size(); }
@@ -400,7 +402,7 @@ void InMemoryRunGraphRequest::set_request_id(int64_t request_id) {
 
 const RunGraphRequest& InMemoryRunGraphRequest::ToProto() const {
   if (!proto_version_) {
-    proto_version_.reset(new RunGraphRequest);
+    proto_version_ = std::make_unique<RunGraphRequest>();
     proto_version_->set_session_handle(session_handle());
     proto_version_->set_create_worker_session_called(
         create_worker_session_called());
@@ -478,7 +480,7 @@ Status MutableProtoRunGraphRequest::SendValue(size_t i,
   if (!ParseTensorProtoToTensor(request_.send(i).tensor(), out_tensor)) {
     return errors::InvalidArgument("Invalid TensorProto for feed value ", i);
   } else {
-    return OkStatus();
+    return absl::OkStatus();
   }
 }
 
@@ -488,7 +490,7 @@ Status MutableProtoRunGraphRequest::AddSendFromRunStepRequest(
   NamedTensorProto* send = request_.add_send();
   send->set_name(send_key);
   TF_RETURN_IF_ERROR(run_step_request.FeedValue(i, send->mutable_tensor()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status MutableProtoRunGraphRequest::AddSendFromRunCallableRequest(
@@ -497,7 +499,7 @@ Status MutableProtoRunGraphRequest::AddSendFromRunCallableRequest(
   NamedTensorProto* send = request_.add_send();
   send->set_name(send_key);
   *send->mutable_tensor() = run_callable_request.feed(i);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 size_t MutableProtoRunGraphRequest::num_recvs() const {
@@ -581,7 +583,7 @@ Status ProtoRunGraphRequest::SendValue(size_t i, Tensor* out_tensor) const {
   if (!ParseTensorProtoToTensor(request_->send(i).tensor(), out_tensor)) {
     return errors::InvalidArgument("Invalid TensorProto for feed value ", i);
   } else {
-    return OkStatus();
+    return absl::OkStatus();
   }
 }
 
@@ -619,12 +621,12 @@ const string& InMemoryRunGraphResponse::recv_key(size_t i) const {
 
 Status InMemoryRunGraphResponse::RecvValue(size_t i, TensorProto* out_tensor) {
   recvs_[i].second.AsProtoTensorContent(out_tensor);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status InMemoryRunGraphResponse::RecvValue(size_t i, Tensor* out_tensor) {
   *out_tensor = recvs_[i].second;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void InMemoryRunGraphResponse::AddRecv(const string& key, const Tensor& value) {
@@ -678,14 +680,14 @@ const string& OwnedProtoRunGraphResponse::recv_key(size_t i) const {
 Status OwnedProtoRunGraphResponse::RecvValue(size_t i,
                                              TensorProto* out_tensor) {
   out_tensor->Swap(response_.mutable_recv(i)->mutable_tensor());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status OwnedProtoRunGraphResponse::RecvValue(size_t i, Tensor* out_tensor) {
   if (!ParseTensorProtoToTensor(response_.recv(i).tensor(), out_tensor)) {
     return errors::InvalidArgument("Invalid TensorProto for recv value ", i);
   } else {
-    return OkStatus();
+    return absl::OkStatus();
   }
 }
 
@@ -716,7 +718,7 @@ absl::StatusCode OwnedProtoRunGraphResponse::status_code() const {
 
 void OwnedProtoRunGraphResponse::set_status(const Status& status) {
   response_.set_status_code(static_cast<tsl::error::Code>(status.code()));
-  response_.set_status_error_message(tsl::NullTerminatedMessage(status));
+  response_.set_status_error_message(absl::StatusMessageAsCStr(status));
 }
 
 RunGraphResponse* OwnedProtoRunGraphResponse::get_proto() { return &response_; }
@@ -750,14 +752,14 @@ const string& NonOwnedProtoRunGraphResponse::recv_key(size_t i) const {
 Status NonOwnedProtoRunGraphResponse::RecvValue(size_t i,
                                                 TensorProto* out_tensor) {
   out_tensor->Swap(response_->mutable_recv(i)->mutable_tensor());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status NonOwnedProtoRunGraphResponse::RecvValue(size_t i, Tensor* out_tensor) {
   if (!ParseTensorProtoToTensor(response_->recv(i).tensor(), out_tensor)) {
     return errors::InvalidArgument("Invalid TensorProto for recv value ", i);
   } else {
-    return OkStatus();
+    return absl::OkStatus();
   }
 }
 
@@ -788,7 +790,7 @@ absl::StatusCode NonOwnedProtoRunGraphResponse::status_code() const {
 
 void NonOwnedProtoRunGraphResponse::set_status(const Status& status) {
   response_->set_status_code(static_cast<tsl::error::Code>(status.code()));
-  response_->set_status_error_message(tsl::NullTerminatedMessage(status));
+  response_->set_status_error_message(absl::StatusMessageAsCStr(status));
 }
 
 RunGraphResponse* NonOwnedProtoRunGraphResponse::get_proto() {
@@ -820,7 +822,7 @@ const string& InMemoryRunStepResponse::tensor_name(size_t i) const {
 Status InMemoryRunStepResponse::TensorValue(size_t i,
                                             Tensor* out_tensor) const {
   *out_tensor = tensors_[i].second;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 const RunMetadata& InMemoryRunStepResponse::metadata() const {
@@ -832,7 +834,7 @@ Status InMemoryRunStepResponse::AddTensorFromRunGraphResponse(
   Tensor tensor;
   TF_RETURN_IF_ERROR(wrapper->RecvValue(i, &tensor));
   tensors_.emplace_back(name, tensor);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 RunMetadata* InMemoryRunStepResponse::mutable_metadata() { return &metadata_; }
@@ -865,7 +867,7 @@ Status OwnedProtoRunStepResponse::TensorValue(size_t i,
   if (!ParseTensorProtoToTensor(response_.tensor(i).tensor(), out_tensor)) {
     return errors::InvalidArgument("Invalid TensorProto for fetch value ", i);
   } else {
-    return OkStatus();
+    return absl::OkStatus();
   }
 }
 
@@ -896,7 +898,7 @@ absl::StatusCode OwnedProtoRunStepResponse::status_code() const {
 
 void OwnedProtoRunStepResponse::set_status(const Status& status) {
   response_.set_status_code(static_cast<tsl::error::Code>(status.code()));
-  response_.set_status_error_message(tsl::NullTerminatedMessage(status));
+  response_.set_status_error_message(absl::StatusMessageAsCStr(status));
 }
 
 RunStepResponse* OwnedProtoRunStepResponse::get_proto() { return &response_; }
@@ -918,7 +920,7 @@ Status NonOwnedProtoRunStepResponse::TensorValue(size_t i,
   if (!ParseTensorProtoToTensor(response_->tensor(i).tensor(), out_tensor)) {
     return errors::InvalidArgument("Invalid TensorProto for fetch value ", i);
   } else {
-    return OkStatus();
+    return absl::OkStatus();
   }
 }
 
@@ -949,7 +951,7 @@ absl::StatusCode NonOwnedProtoRunStepResponse::status_code() const {
 
 void NonOwnedProtoRunStepResponse::set_status(const Status& status) {
   response_->set_status_code(static_cast<tsl::error::Code>(status.code()));
-  response_->set_status_error_message(tsl::NullTerminatedMessage(status));
+  response_->set_status_error_message(absl::StatusMessageAsCStr(status));
 }
 
 RunStepResponse* NonOwnedProtoRunStepResponse::get_proto() { return response_; }

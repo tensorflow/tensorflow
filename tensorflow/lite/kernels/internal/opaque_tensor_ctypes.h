@@ -18,11 +18,17 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_opaque.h"
 #include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/kernels/internal/types.h"
+#include "tensorflow/lite/namespace.h"
 
 namespace tflite {
+namespace TFLITE_CONDITIONAL_NAMESPACE {
 
 /// Returns the dimensions of the given tensor.
 TFLITE_NOINLINE RuntimeShape GetTensorShape(const TfLiteOpaqueTensor* tensor);
+
+}  // namespace TFLITE_CONDITIONAL_NAMESPACE
+
+using ::tflite::TFLITE_CONDITIONAL_NAMESPACE::GetTensorShape;
 
 }  // namespace tflite
 

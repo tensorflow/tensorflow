@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/stream_executor/tpu/tpu_api_dlsym_set_fn.h"
 #include "xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "xla/stream_executor/tpu/tsl_status_helper.h"
-#include "tsl/c/tsl_status.h"
+#include "xla/tsl/c/tsl_status.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/types.h"
@@ -61,7 +61,7 @@ class ProfilerStatusHelper {
     stream_executor::tpu::ProfilerApiFn()->TpuStatus_FreeFn(c_status);
   }
 
-  static tsl::Status FromC(  // TENSORFLOW_STATUS_OK
+  static absl::Status FromC(  // TENSORFLOW_STATUS_OK
       TF_Status* const c_status) {
     if (stream_executor::tpu::ProfilerApiFn()->TpuStatus_CodeFn(c_status) ==
         TSL_OK) {
@@ -80,7 +80,7 @@ class ProfilerStatusHelper {
            TSL_OK;
   }
 
-  tsl::Status status() const {  // TENSORFLOW_STATUS_OK
+  absl::Status status() const {  // TENSORFLOW_STATUS_OK
     return FromC(c_status);
   }
 
@@ -95,11 +95,11 @@ class TpuTracer : public ProfilerInterface {
   explicit TpuTracer();
   ~TpuTracer() override;
 
-  Status Start() override;
+  absl::Status Start() override;
 
-  Status Stop() override;
+  absl::Status Stop() override;
 
-  Status CollectData(XSpace* space) override;
+  absl::Status CollectData(XSpace* space) override;
 
  private:
   TpuProfiler* tpu_profiler_;
@@ -118,7 +118,7 @@ TpuTracer::~TpuTracer() {
   stream_executor::tpu::ProfilerApiFn()->TpuProfiler_DestroyFn(tpu_profiler_);
 }
 
-Status TpuTracer::Start() {
+absl::Status TpuTracer::Start() {
   ProfilerStatusHelper status;
   stream_executor::tpu::ProfilerApiFn()->TpuProfiler_StartFn(tpu_profiler_,
                                                              status.c_status);
@@ -126,10 +126,10 @@ Status TpuTracer::Start() {
     LOG(ERROR) << "TPU tracer failed to start.";
     return status.status();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status TpuTracer::Stop() {
+absl::Status TpuTracer::Stop() {
   ProfilerStatusHelper status;
   stream_executor::tpu::ProfilerApiFn()->TpuProfiler_StopFn(tpu_profiler_,
                                                             status.c_status);
@@ -137,10 +137,10 @@ Status TpuTracer::Stop() {
     LOG(ERROR) << "TPU tracer failed to stop.";
     return status.status();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status TpuTracer::CollectData(XSpace* space) {
+absl::Status TpuTracer::CollectData(XSpace* space) {
   ProfilerStatusHelper status;
   // Get size of buffer required for TPU driver to serialize XSpace into.
   size_t size_in_bytes;
@@ -164,7 +164,7 @@ Status TpuTracer::CollectData(XSpace* space) {
     LOG(ERROR) << "TPU tracer failed to collect data.";
     return status.status();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Initializes TpuProfilerApiFns. The initialization may not be successful if

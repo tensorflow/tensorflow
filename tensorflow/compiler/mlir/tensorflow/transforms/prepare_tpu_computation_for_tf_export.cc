@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
@@ -47,8 +48,8 @@ bool IsCommunicationOp(Operation* op) {
 // subcomputation in the TF/XLA bridge.
 bool SupportsCommunicationComputation(Operation* op) {
   return isa<TF::IfRegionOp, TF::WhileRegionOp, TF::CaseRegionOp,
-             TF::StatefulPartitionedCallOp, TF::PartitionedCallOp,
-             TF::LegacyCallOp>(op);
+             TF::XlaCallModuleOp, TF::StatefulPartitionedCallOp,
+             TF::PartitionedCallOp, TF::LegacyCallOp>(op);
 }
 
 #define GEN_PASS_DEF_PREPARETPUCOMPUTATIONFORTFEXPORTPASS
@@ -65,19 +66,22 @@ class RewriteXlaHostComputeMlir
  public:
   using OpRewritePattern<TF::_XlaHostComputeMlirOp>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(TF::_XlaHostComputeMlirOp op,
-                                PatternRewriter& rewriter) const override {
+  LogicalResult match(TF::_XlaHostComputeMlirOp op) const override {
     if (op.getManualSharding()) {
-      op.emitOpError() << "manual_sharding not supported with fallback of "
-                          "phase 2 legalize TF/XLA bridge. manual_sharding is "
-                          "used by map_outside_compilation";
+      // This rewrite does not support manual_sharding. It is expected that the
+      // _XlaHostComputeMlirOp registered as an MlirXlaOpKernel will handle this
+      // case later once the XlaBuilder graph reaches it.
       return failure();
     }
+    return success();
+  }
+  void rewrite(TF::_XlaHostComputeMlirOp op,
+               PatternRewriter& rewriter) const override {
     llvm::SmallVector<Attribute> shape_attrs;
     shape_attrs.reserve(op.getNumResults());
     for (Type ty : op.getResultTypes()) {
-      shape_attrs.push_back(
-          TF::ShapeAttr::get(rewriter.getContext(), ty.cast<ShapedType>()));
+      shape_attrs.push_back(TF::ShapeAttr::get(rewriter.getContext(),
+                                               mlir::cast<ShapedType>(ty)));
     }
 
     // Clone the `host_func` in the `host_mlir_module` attribute if it exists
@@ -132,7 +136,6 @@ class RewriteXlaHostComputeMlir
         op.getRecvKeyAttr(),
         /*cost_estimate_ns=*/rewriter.getI64IntegerAttr(kDefaultCostEstimate),
         /*tpu_core=*/rewriter.getI64IntegerAttr(0));
-    return success();
   }
 };
 

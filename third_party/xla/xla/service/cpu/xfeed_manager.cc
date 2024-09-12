@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,26 +15,15 @@ limitations under the License.
 
 #include "xla/service/cpu/xfeed_manager.h"
 
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
 namespace cpu {
 namespace runtime {
-
-void XfeedManager::Reset() {
-  infeed()->Reset();
-  outfeed()->Reset();
-}
-
-void XfeedQueueManager::Reset() {
-  absl::MutexLock l(&mu_);
-  CHECK(current_buffer_ == nullptr);
-  for (auto buffer : enqueued_buffers_) {
-    buffer->Done(ShapeUtil::MakeNil());
-  }
-  enqueued_buffers_.clear();
-}
 
 void XfeedQueueManager::EnqueueBuffersAtomically(
     absl::Span<XfeedBuffer* const> buffers) {
@@ -68,7 +57,7 @@ XfeedBuffer* XfeedQueueManager::BlockingDequeueBuffer() {
 }
 
 void XfeedQueueManager::ReleaseCurrentBuffer(int32_t length, void* data,
-                                             StatusOr<Shape> shape) {
+                                             absl::StatusOr<Shape> shape) {
   VLOG(3) << "Releasing buffer with shape: "
           << (shape.ok() ? ShapeUtil::HumanString(shape.value())
                          : "<error status>");
@@ -81,7 +70,7 @@ void XfeedQueueManager::ReleaseCurrentBuffer(int32_t length, void* data,
 }
 
 int64_t GetByteSizeRequirement(const Shape& shape, int64_t pointer_size) {
-  if (shape.is_static() || shape.IsTuple()) {
+  if (shape.IsTuple() || shape.is_static()) {
     return ShapeUtil::ByteSizeOf(shape, pointer_size);
   }
   int64_t metadata_size = sizeof(int32_t) * shape.dimensions_size();

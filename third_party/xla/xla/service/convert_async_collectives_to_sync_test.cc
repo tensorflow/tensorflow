@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,12 +17,19 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -35,12 +42,12 @@ namespace m = xla::testing::opcode_matchers;
 // to the HLO module string.
 class ConvertAsyncCollectivesToSyncTest : public HloTestBase {
  public:
-  Status RunPass(HloModule *module, bool expect_change,
-                 HloPredicate is_nop = {}) {
+  absl::Status RunPass(HloModule *module, bool expect_change,
+                       HloPredicate is_nop = {}) {
     TF_ASSIGN_OR_RETURN(bool changed,
                         ConvertAsyncCollectivesToSync{is_nop}.Run(module));
     EXPECT_EQ(changed, expect_change);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   absl::string_view GetAsyncName(const HloInstruction *inst) {

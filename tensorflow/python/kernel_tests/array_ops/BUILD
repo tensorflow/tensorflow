@@ -415,17 +415,12 @@ cuda_py_strict_test(
     size = "medium",
     srcs = ["init_ops_test.py"],
     shard_count = 4,
-    tags = [
-        "noasan",
-        "notap",
-    ],
     deps = [
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:random_seed",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/layers",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:init_ops",
         "//tensorflow/python/ops:linalg_ops",

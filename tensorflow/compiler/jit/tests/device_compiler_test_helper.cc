@@ -131,7 +131,7 @@ Status DeviceCompilerSerializeTest::ExecuteWithBatch(const GraphDef& graph,
     EXPECT_NEAR(golden_output_tensors[0].flat<float>()(i),
                 output_tensors[0].flat<float>()(i), 1e-3);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status DeviceCompilerSerializeTest::AlterPersistentCacheEntryHloModuleNames(
@@ -160,7 +160,7 @@ Status DeviceCompilerSerializeTest::AlterPersistentCacheEntryHloModuleNames(
     return errors::NotFound(
         "Did not find any persistent XLA compilation cache entries to alter.");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

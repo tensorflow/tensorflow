@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ namespace {
 void RecordPassStartMetadata(HloModule& module, const std::string& pass_name,
                              const std::string& pipeline_name) {
   module.metadata()->RecordPassStart();
-  // An HloPassMetadata was just created so Status should always be OK.
+  // An HloPassMetadata was just created so absl::Status should always be OK.
   TF_CHECK_OK(module.metadata()->set_current_pass_name(pass_name));
   TF_CHECK_OK(module.metadata()->set_current_pass_pipeline_name(pipeline_name));
 }
@@ -53,9 +53,9 @@ void RecordPassStartMetadata(HloModuleGroup& module_group,
   }
 }
 
-Status AttemptRecordPassEndMetadata(HloModule& module,
-                                    const std::string& pass_name,
-                                    bool module_changed) {
+absl::Status AttemptRecordPassEndMetadata(HloModule& module,
+                                          const std::string& pass_name,
+                                          bool module_changed) {
   // Module id is set here instead of RecordPassStartMetadata because it may
   // change in the middle of the pass, and we want the final id.
   TF_RETURN_IF_ERROR(
@@ -63,21 +63,21 @@ Status AttemptRecordPassEndMetadata(HloModule& module,
   TF_RETURN_IF_ERROR(
       module.metadata()->set_current_pass_module_changed(module_changed));
   TF_RETURN_IF_ERROR(module.metadata()->RecordPassEnd());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void RecordPassEndMetadata(HloModule& module, const std::string& pass_name,
                            bool module_changed) {
-  Status status =
+  absl::Status status =
       AttemptRecordPassEndMetadata(module, pass_name, module_changed);
   if (!status.ok()) {
     LOG(FATAL) << status;
   }
 }
 
-Status AttemptRecordPassEndMetadata(HloModuleGroup& module_group,
-                                    const std::string& pass_name,
-                                    bool module_changed) {
+absl::Status AttemptRecordPassEndMetadata(HloModuleGroup& module_group,
+                                          const std::string& pass_name,
+                                          bool module_changed) {
   for (HloModule* module : module_group.modules()) {
     for (HloModule* other_module : module_group.modules()) {
       TF_RETURN_IF_ERROR(
@@ -87,50 +87,27 @@ Status AttemptRecordPassEndMetadata(HloModuleGroup& module_group,
     TF_RETURN_IF_ERROR(
         AttemptRecordPassEndMetadata(*module, pass_name, module_changed));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void RecordPassEndMetadata(HloModuleGroup& module_group,
                            const std::string& pass_name, bool module_changed) {
-  Status status =
+  absl::Status status =
       AttemptRecordPassEndMetadata(module_group, pass_name, module_changed);
   if (!status.ok()) {
     LOG(FATAL) << status;
   }
 }
 
-void SetInstructionMetadata(HloModule& module) {
-  StatusOr<int64_t> pass_id = module.metadata()->current_pass_id();
-  if (!pass_id.ok()) {
-    LOG(FATAL) << pass_id.status();
-  }
-  for (xla::HloComputation* computation : module.computations()) {
-    for (xla::HloInstruction* instruction : computation->instructions()) {
-      if (instruction->metadata().creation_pass_id() == 0) {
-        instruction->set_creation_pass_id(*pass_id);
-      }
-      if (instruction->metadata().logical_creation_pass_id() == 0) {
-        instruction->set_logical_creation_pass_id(*pass_id);
-      }
-    }
-  }
-}
-
-void SetInstructionMetadata(HloModuleGroup& module_group) {
-  for (HloModule* module : module_group.modules()) {
-    SetInstructionMetadata(*module);
-  }
-}
-
 }  // namespace
 
 template <typename HloT>
-Status HloPassPipeline::RunInvariantCheckers(
+absl::Status HloPassPipeline::RunInvariantCheckers(
     HloT* hlo, absl::string_view after_pass_name,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   for (auto& invariant_checker : invariant_checkers_) {
     VLOG(1) << "    Invariant checker " << invariant_checker->name();
-    StatusOr<bool> changed_status =
+    absl::StatusOr<bool> changed_status =
         RunHelper(invariant_checker.get(), hlo, execution_threads);
     VLOG(1) << "    Invariant checker done " << invariant_checker->name();
     if (!changed_status.ok()) {
@@ -144,7 +121,7 @@ Status HloPassPipeline::RunInvariantCheckers(
     TF_RET_CHECK(!changed_status.value())
         << "invariant checkers must not change the graph";
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -160,7 +137,7 @@ std::string UniqueId(const HloModuleGroup& group) {
 }  // namespace
 
 template <typename HloT>
-StatusOr<bool> HloPassPipeline::RunPassesInternal(
+absl::StatusOr<bool> HloPassPipeline::RunPassesInternal(
     HloT* hlo, const DebugOptions& debug_options,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   auto passes = GetEnabledPasses(debug_options);
@@ -179,7 +156,6 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
       RunInvariantCheckers(hlo, kPipelineStart, execution_threads));
 
   RecordPassStartMetadata(*hlo, std::string(kPipelineStart), pipeline_name);
-  SetInstructionMetadata(*hlo);
   MaybeDumpHloAndSaveFilenames(*hlo,
                                /*after_pass_name=*/kPipelineStart,
                                /*before_pass_name=*/passes.empty()
@@ -191,31 +167,24 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
   bool changed = false;
   for (int i = 0; i < passes.size(); i++) {
     HloPassInterface* pass = passes[i];
-    XLA_SCOPED_LOGGING_TIMER(absl::StrCat("HLO pass: ", pass->name()));
     std::string pass_name = std::string(pass->name());
-    tsl::profiler::ScopedAnnotation annotation{
-        [&] { return "XlaPass:" + pass_name; }};
+    XLA_SCOPED_LOGGING_TIMER(absl::StrCat("HLO pass: ", pass_name));
+    tsl::profiler::ScopedAnnotation annotation{[&] {
+      return absl::StrFormat("XlaPass:#name=%s,module=%s,program_id=%s#",
+                             pass_name, hlo->name(), UniqueId(*hlo));
+    }};
     VLOG(1) << "  HLO pass " << pass_name;
     VLOG(2) << "  Module hash " << absl::HashOf(*hlo);
     if (!pass->IsPassPipeline()) {
       compilation_stats_->StartPass(pass_name);
     }
     RecordPassStartMetadata(*hlo, pass_name, pipeline_name);
-    // Embed RunHelper into lambda to enable recording of error statuses
-    auto run_helper_lambda =
-        [this, pass_name](
-            HloPassInterface* pass, HloT* hlo,
-            const absl::flat_hash_set<absl::string_view>& execution_threads) {
-          auto status_or = RunHelper(pass, hlo, execution_threads);
-          if (!status_or.ok()) {
-            compilation_stats_->RecordPassError(
-                pass_name, absl::StatusCodeToString(status_or.status().code()));
-          }
-          return status_or;
-        };
-    TF_ASSIGN_OR_RETURN(bool pass_changed,
-                        run_helper_lambda(pass, hlo, execution_threads));
-    SetInstructionMetadata(*hlo);
+    auto status_or_changed = RunHelper(pass, hlo, execution_threads);
+    if (auto status = status_or_changed.status(); !status.ok()) {
+      compilation_stats_->RecordPassError(
+          pass_name, absl::StatusCodeToString(status.code()));
+    }
+    TF_ASSIGN_OR_RETURN(bool pass_changed, status_or_changed);
     if (!dump_regex.empty() && (pass_changed || dump_regex != ".*")) {
       MaybeDumpHloAndSaveFilenames(*hlo,
                                    /*after_pass_name=*/pass_name,
@@ -226,22 +195,13 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
     RecordPassEndMetadata(*hlo, pass_name, pass_changed);
     changed |= pass_changed;
     if (pass_changed) {
-      VLOG(3) << "  Pass caused changes " << pass->name();
-      // Embed RunInvariantCheckers into lambda to enable recording of errors
-      auto run_invariant_checkers_lambda =
-          [this](
-              HloT* hlo, absl::string_view pass_name,
-              const absl::flat_hash_set<absl::string_view>& execution_threads) {
-            auto status =
-                RunInvariantCheckers(hlo, pass_name, execution_threads);
-            if (!status.ok()) {
-              compilation_stats_->RecordPassError(
-                  pass_name, absl::StatusCodeToString(status.code()));
-            }
-            return status;
-          };
-      TF_RETURN_IF_ERROR(
-          run_invariant_checkers_lambda(hlo, pass_name, execution_threads));
+      VLOG(3) << "  Pass caused changes " << pass_name;
+      auto status = RunInvariantCheckers(hlo, pass_name, execution_threads);
+      if (!status.ok()) {
+        compilation_stats_->RecordPassError(
+            pass_name, absl::StatusCodeToString(status.code()));
+      }
+      TF_RETURN_IF_ERROR(status);
     }
     if (!pass->IsPassPipeline()) {
       compilation_stats_->EndPass(pass_name);
@@ -311,7 +271,8 @@ void HloPassPipeline::MaybeDumpHloAndSaveFilenames(
     absl::string_view before_pass_name) {
   for (const std::string& filename : DumpHloModuleBetweenPassesIfEnabled(
            name(), before_pass_name, after_pass_name, module)) {
-    Status status = module.metadata()->add_current_pass_dump_filename(filename);
+    absl::Status status =
+        module.metadata()->add_current_pass_dump_filename(filename);
     if (!status.ok()) {
       LOG(FATAL) << status;
     }
@@ -326,7 +287,7 @@ void HloPassPipeline::MaybeDumpHloAndSaveFilenames(
   }
 }
 
-StatusOr<bool> HloPassPipeline::Run(
+absl::StatusOr<bool> HloPassPipeline::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   run_called_ = true;
@@ -338,7 +299,7 @@ StatusOr<bool> HloPassPipeline::Run(
                            execution_threads);
 }
 
-StatusOr<bool> HloPassPipeline::RunOnModuleGroup(
+absl::StatusOr<bool> HloPassPipeline::RunOnModuleGroup(
     HloModuleGroup* module_group,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   run_called_ = true;

@@ -202,7 +202,6 @@ tflite::PadParams GetPadParams(TfLiteContext* context,
     }
     case kTfLiteInt32: {
       return GetPadParams<int32_t>(context, op_context);
-      break;
     }
     default:
       TF_LITE_KERNEL_LOG(context,

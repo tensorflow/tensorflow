@@ -28,7 +28,7 @@ namespace tpu {
 // scalar (rank = 0), the tensor is replicated across all the cores within the
 // replica. If the shape is a non-scalar (rank >= 1), the tensor is sharded on
 // dimension `0' across all the cores within the same replica.
-StatusOr<xla::OpSharding> SpmdShardingAnnotationOnFirstDim(
+absl::StatusOr<xla::OpSharding> SpmdShardingAnnotationOnFirstDim(
     const xla::Shape& shape, int core_count_per_replica,
     xla::XlaBuilder* builder);
 

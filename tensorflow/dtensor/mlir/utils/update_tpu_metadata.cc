@@ -165,7 +165,7 @@ Status UpdateMetadataProtoXlaSpmd(const Mesh& mesh_config,
       mesh_name = "";
     }
     const std::vector<int>& tpu_core_ids = Mesh::tpu_core_ids()[mesh_name];
-    VLOG(1) << "tpu_core_ids: " << str_util::Join(tpu_core_ids, ", ");
+    VLOG(1) << "tpu_core_ids: " << absl::StrJoin(tpu_core_ids, ", ");
 
     xla::DeviceAssignmentProto device_assignment;
     device_assignment.set_replica_count(1);
@@ -179,7 +179,7 @@ Status UpdateMetadataProtoXlaSpmd(const Mesh& mesh_config,
     }
     *proto.mutable_device_assignment() = device_assignment;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status UpdateMetadataProtoDtensorSpmd(const Mesh& mesh_config,
@@ -223,7 +223,7 @@ Status UpdateMetadataProtoDtensorSpmd(const Mesh& mesh_config,
       mesh_name = "";
     }
     const std::vector<int>& tpu_core_ids = Mesh::tpu_core_ids()[mesh_name];
-    VLOG(1) << "tpu_core_ids: " << str_util::Join(tpu_core_ids, ", ");
+    VLOG(1) << "tpu_core_ids: " << absl::StrJoin(tpu_core_ids, ", ");
 
     xla::DeviceAssignmentProto device_assignment;
     device_assignment.set_replica_count(num_replicas);
@@ -238,7 +238,7 @@ Status UpdateMetadataProtoDtensorSpmd(const Mesh& mesh_config,
     }
     *proto.mutable_device_assignment() = device_assignment;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 mlir::LogicalResult UpdateTPUCompileMetadata(const Mesh& mesh_config,

@@ -67,7 +67,7 @@ static Status StatelessRandomPermuteShape(InferenceContext* c) {
       (index_rank == 0 && seed_rank == 1 && max_index_rank == 0);
   if (output_is_scalar) {
     c->set_output(0, c->Scalar());
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Case 2.
@@ -78,7 +78,7 @@ static Status StatelessRandomPermuteShape(InferenceContext* c) {
       (index_rank == 1 || seed_rank == 2 || max_index_rank == 1);
   if (!output_must_be_vector) {
     c->set_output(0, c->UnknownShape());
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Case 3.
@@ -117,7 +117,7 @@ static Status StatelessRandomPermuteShape(InferenceContext* c) {
   }
 
   c->set_output(0, c->Vector(num_outputs));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OP("RandomIndexShuffle")

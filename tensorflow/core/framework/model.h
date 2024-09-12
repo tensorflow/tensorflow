@@ -137,10 +137,16 @@ struct Parameter {
   std::shared_ptr<SharedState> state;
 };
 
-// Returns a new tunable parameter.
+// Returns a new tunable parameter with the value set to `min`.
 std::shared_ptr<Parameter> MakeParameter(const string& name,
                                          std::shared_ptr<SharedState> state,
                                          double min, double max);
+
+// Returns a new tunable parameter with the value set to `value` instead
+// of `min`.
+std::shared_ptr<Parameter> MakeParameter(const string& name,
+                                         std::shared_ptr<SharedState> state,
+                                         double min, double max, double value);
 
 // Returns a new non-tunable parameter.
 std::shared_ptr<Parameter> MakeNonTunableParameter(const string& name,
@@ -520,7 +526,7 @@ class Node {
   virtual double ComputeSelfTime() const;
 
   // Returns the parameter value if it exists, not ok status otherwise.
-  StatusOr<double> ParameterValue(const std::string& parameter_name) const
+  absl::StatusOr<double> ParameterValue(const std::string& parameter_name) const
       TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     if (parameters_.contains(parameter_name)) {
@@ -624,6 +630,15 @@ class Node {
   double AverageBufferedElementSize() const {
     tf_shared_lock l(mu_);
     return AverageBufferedElementSizeLocked();
+  }
+
+  // Copies node's parameter state value to parameter value if the parameter
+  // name matches `parameter_name`.
+  void SyncStateValuesToParameterValues(const std::string& parameter_name);
+
+  void SetEstimatedElementSize(std::optional<int64_t> estimated_element_size) {
+    mutex_lock l(mu_);
+    estimated_element_size_ = estimated_element_size;
   }
 
  protected:
@@ -850,6 +865,8 @@ class Node {
   // node results in recursive deletion of the subtree rooted in the node.
   Node* const output_;
   std::weak_ptr<Node> output_weak_ptr_;
+  std::optional<int64_t> estimated_element_size_ TF_GUARDED_BY(mu_) =
+      std::nullopt;
 };
 
 // InterleaveMany is used to model datasets whose inputs are used to create
@@ -872,10 +889,13 @@ std::shared_ptr<Node> MakeAsyncKnownRatioNode(
     std::vector<std::shared_ptr<Parameter>> parameters,
     bool is_legacy_prefetch_autotuned = false);
 
+// Makes an AsyncKnownRatioNode. If `estimated_element_size` is provided,
+// it will be used during the estimation of maximum buffered bytes.
 std::shared_ptr<Node> MakeAsyncKnownRatioNode(
     Node::Args args, double ratio,
     std::vector<std::shared_ptr<Parameter>> parameters,
-    bool is_legacy_prefetch_autotuned = false);
+    bool is_legacy_prefetch_autotuned = false,
+    std::optional<int64_t> estimated_element_size = std::nullopt);
 
 // Source nodes represent data sources.
 std::shared_ptr<Node> MakeSourceNode(Node::Args args);
@@ -1039,7 +1059,7 @@ class Model {
   // nodes, the parameter state values are not tuned by Autotune and hence the
   // parameter values can be stale. We do not sync all parameters because it may
   // increase mutex contention with `GetNext()`.
-  void MaybeSyncStateValuesToValues(ModelParameters* parameters);
+  void MaybeSyncStateValuesToValues(std::shared_ptr<Node> snapshot);
 
   // Downsizes buffers that are too large for all nodes rooted at `snapshot`.
   // Returns true if any buffer is downsized.

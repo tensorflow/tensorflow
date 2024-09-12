@@ -82,7 +82,7 @@ Status ComputeTransitiveFanin(
       // So, we do not set ill_formed for missing _Send.
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ComputeTransitiveFanin(const GraphDef& graph,
@@ -106,7 +106,7 @@ Status SetTransitiveFaninGraph(const GraphDef& input_graph,
     *output_graph->add_node() = *keep[i];
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace grappler

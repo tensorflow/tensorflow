@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
@@ -372,6 +373,7 @@ TEST_F(HloCreationUtilsTest, MaybeMakeTupleTuplizesMultipleOperands) {
   Literal expected_result = LiteralUtil::MakeTuple({&input1, &input0});
   EXPECT_EQ(result_literal, expected_result);
 }
+
 TEST_F(HloCreationUtilsTest, DynamicUpdateSliceVectorStartIndices) {
   auto module = CreateNewVerifiedModule("dus-creation-test");
   // arg:
@@ -483,6 +485,68 @@ TEST_F(HloCreationUtilsTest, ReduceWindow) {
       module->compute_computation_layout();
   EXPECT_EQ(module->entry_computation()->root_instruction()->shape(),
             expected_output_shape);
+}
+
+TEST_F(HloCreationUtilsTest, ReduceWindowBinaryOpcode) {
+  const Shape scalar_shape = ShapeUtil::MakeShape(S32, {});
+  std::unique_ptr<HloModule> module = CreateNewVerifiedModule();
+
+  auto builder = HloComputation::Builder(TestName());
+  Shape input_shape = ShapeUtil::MakeShape(F32, {2, 4, 4});
+  Shape expected_output_shape = ShapeUtil::MakeShape(F32, {2, 2, 2});
+
+  Window window;
+  // First dimension is unchanged.
+  WindowDimension* batch_dim = window.add_dimensions();
+  batch_dim->set_size(1);
+  batch_dim->set_stride(1);
+  batch_dim->set_padding_low(0);
+  batch_dim->set_padding_high(0);
+  batch_dim->set_window_dilation(1);
+  batch_dim->set_base_dilation(1);
+
+  // Second and third dimension are reduced.
+  for (int64_t i = 0; i < 2; ++i) {
+    WindowDimension* dim = window.add_dimensions();
+    dim->set_size(2);
+    dim->set_stride(2);
+    dim->set_padding_low(0);
+    dim->set_padding_high(0);
+    dim->set_window_dilation(1);
+    dim->set_base_dilation(1);
+  }
+
+  auto* a_param = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/0, input_shape, "A"));
+
+  auto init = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0)));
+  module->AddEntryComputation(builder.Build());
+  TF_ASSERT_OK_AND_ASSIGN(
+      HloInstruction * reduce_window,
+      MakeReduceWindowHlo(a_param, init, window, HloOpcode::kAdd));
+  module->entry_computation()->set_root_instruction(
+      reduce_window,
+      /*accept_different_shape=*/true);
+
+  *module->mutable_entry_computation_layout() =
+      module->compute_computation_layout();
+  EXPECT_EQ(module->entry_computation()->root_instruction()->shape(),
+            expected_output_shape);
+}
+
+TEST_F(HloCreationUtilsTest, DynamicBroadcastShape) {
+  HloInstruction* param;
+  HloComputation* entry_computation;
+
+  auto module = CreateModuleWithProgramShape(F32, /*input_shape_dims=*/{10},
+                                             /*output_shape_dims=*/{10}, &param,
+                                             &entry_computation);
+  param->mutable_shape()->set_dynamic_dimension(0, true);
+
+  HloInstruction* one_constant = MakeScalarLike(param, 1.0f);
+  // Broadcasts should always have a static shape that is inferred.
+  EXPECT_TRUE(one_constant->shape().is_static());
 }
 
 }  // namespace

@@ -1,5 +1,5 @@
-load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

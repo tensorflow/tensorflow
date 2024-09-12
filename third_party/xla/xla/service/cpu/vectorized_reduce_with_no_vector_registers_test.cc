@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,20 +13,31 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/memory/memory.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Target/TargetMachine.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_module_group.h"
+#include "xla/service/compiler.h"
 #include "xla/service/cpu/cpu_compiler.h"
+#include "xla/service/cpu/target_machine_features.h"
 #include "xla/service/cpu/test_target_triple_helper.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 class CodegenReduceOnArchWithNoVectorRegisters : public HloTestBase {};
 
-StatusOr<unsigned> GetTargetVectorRegisterByteSize(std::string triple) {
+absl::StatusOr<unsigned int> GetTargetVectorRegisterByteSize(
+    std::string triple) {
   // Unfortunately we need a lot of boilerplate to get to an
   // llvm::TargetMachine.
 
@@ -34,7 +45,7 @@ StatusOr<unsigned> GetTargetVectorRegisterByteSize(std::string triple) {
   const llvm::Target* target =
       llvm::TargetRegistry::lookupTarget(triple, error);
   if (target == nullptr) {
-    return InternalError("TargetRegistry::lookupTarget failed: %s", error);
+    return Internal("TargetRegistry::lookupTarget failed: %s", error);
   }
 
   llvm::LLVMContext context;

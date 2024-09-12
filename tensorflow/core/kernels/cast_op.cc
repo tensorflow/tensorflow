@@ -125,7 +125,7 @@ CpuCastOp::CpuCastOp(OpKernelConstruction* ctx) : CastOpBase(ctx) {
 Status CpuCastOp::Prepare() {
   if (external_src_dtype_ == external_dst_dtype_) {
     work_ = nullptr;  // Identity
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (src_dtype_ == DT_BOOL) {
     work_ = GetCpuCastFromBool(dst_dtype_);
@@ -172,7 +172,7 @@ Status CpuCastOp::Prepare() {
   // vectorized versions (not the least based on F16C for Haswell
   // or newer).
 
-  return work_ == nullptr ? Unimplemented() : OkStatus();
+  return work_ == nullptr ? Unimplemented() : absl::OkStatus();
 }
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \

@@ -406,15 +406,15 @@ def set_output_all_intermediates(state):  # pylint: disable=invalid-name
   """Whether to output all intermediates from functional control flow ops.
 
   The "default" behavior to is to output all intermediates when using v2 control
-  flow inside Keras models in graph mode (possibly inside Estimators). This is
-  needed to support taking gradients of v2 control flow. In graph mode, Keras
-  can sometimes freeze the forward graph before the gradient computation which
-  does not work for v2 control flow since it requires updating the forward ops
-  to output the needed intermediates. We work around this by proactively
-  outputting the needed intermediates when building the forward pass itself.
-  Ideally any such extra tensors should be pruned out at runtime. However, if
-  for any reason this doesn't work for you or if you have an inference-only
-  model you can turn this behavior off using
+  flow inside Keras models in graph mode. This is needed to support taking
+  gradients of v2 control flow. In graph mode, Keras can sometimes freeze the
+  forward graph before the gradient computation which does not work for v2
+  control flow since it requires updating the forward ops to output the needed
+  intermediates. We work around this by proactively outputting the needed
+  intermediates when building the forward pass itself. Ideally any such extra
+  tensors should be pruned out at runtime. However, if for any reason this
+  doesn't work for you or if you have an inference-only model you can turn this
+  behavior off using
   `tf.compat.v1.experimental.output_all_intermediates(False)`.
 
   If with the default behavior you are still seeing errors of the form

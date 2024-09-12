@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ namespace ifrt {
 char IfrtIRProgram::ID = 0;
 char IfrtIRCompileOptions::ID = 0;
 
-StatusOr<std::unique_ptr<IfrtIRCompileOptions>> GetIfrtIRCompileOptions(
+absl::StatusOr<std::unique_ptr<IfrtIRCompileOptions>> GetIfrtIRCompileOptions(
     std::unique_ptr<CompileOptions> options) {
   if (!llvm::isa<IfrtIRCompileOptions>(options.get())) {
     return absl::InvalidArgumentError("options must be IfrtIRCompileOptions");

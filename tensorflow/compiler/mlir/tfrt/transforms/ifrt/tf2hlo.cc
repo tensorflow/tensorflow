@@ -39,6 +39,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/legalize_tf.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_constants.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -47,7 +49,7 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/multi_platform_manager.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -58,63 +60,23 @@ limitations under the License.
 #include "tensorflow/core/protobuf/tpu/topology.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/protobuf.h"
 #include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace ifrt_serving {
 namespace {
 static constexpr absl::string_view kEntryFuncName = "main";
+}  // namespace
 
-absl::StatusOr<tensorflow::tpu::TPUCompileMetadataProto> GetCompileMetadata(
-    mlir::func::FuncOp op, absl::Span<const tensorflow::Tensor> inputs,
-    const xla::ifrt::Client& ifrt_client) {
-  tensorflow::tpu::TPUCompileMetadataProto metadata;
-
-  static constexpr absl::string_view kMetadataAttrName = "tpu_compile_metadata";
-  // This is not backward compatible and only used for debug.
-  static constexpr absl::string_view kMetadataTextAttrName =
-      "__tpu_compile_metadata_text";
-  auto metadata_attr = op->getAttrOfType<mlir::StringAttr>(kMetadataAttrName);
-  auto metadata_text_attr =
-      op->getAttrOfType<mlir::StringAttr>(kMetadataTextAttrName);
-
-  if (metadata_attr && !metadata_attr.getValue().empty()) {
-    // tpu_compile_metadata takes priority if exists.
-    VLOG(1) << "Parsing from attribute " << kMetadataAttrName << " : "
-            << metadata_attr.getValue().str();
-    if (!metadata.ParseFromString(metadata_attr.getValue())) {
-      return absl::InternalError(
-          absl::StrCat("Failed to parse tpu_compile_metadata attribute:",
-                       metadata_attr.getValue().str()));
-    }
-  } else if (metadata_text_attr && !metadata_text_attr.getValue().empty()) {
-    // Try __tpu_compile_metadata_text attribute. This only for debugging
-    // purpose.
-    VLOG(1) << "Parsing from attribute " << kMetadataTextAttrName
-            << metadata_text_attr.getValue().str();
-    if (!tsl::protobuf::TextFormat::ParseFromString(
-            metadata_text_attr.getValue(), &metadata)) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Attribute ", kMetadataTextAttrName, ":",
-          metadata_text_attr.getValue().str(), " cannot be parsed"));
-    }
-  } else {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Missing ", kMetadataAttrName, " and ", kMetadataTextAttrName));
-  }
-
+absl::Status UpdateCompileMetadata(
+    tensorflow::tpu::TPUCompileMetadataProto& metadata,
+    absl::Span<const DtypeAndShape> inputs) {
   VLOG(3) << "TpuCompileMetadata before shape is populated " << metadata;
   if (metadata.num_replicas() < 1 || metadata.num_cores_per_replica() < 1) {
     return absl::InternalError(
         absl::StrCat("Number of replicas ", metadata.num_replicas(),
                      " and number of cores per replica ",
                      metadata.num_cores_per_replica(), " must be >= 1"));
-  }
-  if (op.getNumResults() != metadata.retvals_size()) {
-    return absl::InternalError(
-        absl::StrCat("Number of retvals mismatched! Expected ",
-                     op.getNumResults(), " got ", metadata.retvals_size()));
   }
   if (metadata.args_size() != inputs.size()) {
     return absl::InternalError(
@@ -129,14 +91,44 @@ absl::StatusOr<tensorflow::tpu::TPUCompileMetadataProto> GetCompileMetadata(
           "Only support PARAMETER, but got ", metadata.args(i).kind()));
     }
 
-    if (metadata.args(i).dtype() != inputs[i].dtype()) {
+    if (metadata.args(i).dtype() != inputs[i].dtype) {
       return absl::InternalError(absl::StrCat("Dtype mismatched! Expected ",
                                               metadata.args(i).dtype(), " got ",
-                                              inputs[i].dtype()));
+                                              inputs[i].dtype));
     }
 
     // Update shape.
-    *metadata.mutable_args(i)->mutable_shape() = inputs[i].shape().AsProto();
+    *metadata.mutable_args(i)->mutable_shape() = inputs[i].shape.AsProto();
+  }
+  return absl::OkStatus();
+}
+
+absl::StatusOr<tensorflow::tpu::TPUCompileMetadataProto> GetCompileMetadata(
+    mlir::ModuleOp module, const xla::ifrt::Client& ifrt_client) {
+  tensorflow::tpu::TPUCompileMetadataProto metadata;
+
+  auto op = module.lookupSymbol<mlir::func::FuncOp>(kEntryFuncName);
+  if (!op) {
+    return absl::InternalError("Could not find entry function in MLIR Module.");
+  }
+
+  auto metadata_text_attr =
+      op->getAttrOfType<mlir::StringAttr>(kMetadataTextAttrName);
+
+  if (metadata_text_attr && !metadata_text_attr.getValue().empty()) {
+    // Try __tpu_compile_metadata_text attribute. This only for debugging
+    // purpose.
+    VLOG(1) << "Parsing from attribute " << kMetadataTextAttrName
+            << metadata_text_attr.getValue().str();
+    if (!tsl::protobuf::TextFormat::ParseFromString(
+            metadata_text_attr.getValue().str(), &metadata)) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Attribute ", kMetadataTextAttrName, ":",
+          metadata_text_attr.getValue().str(), " cannot be parsed"));
+    }
+  } else {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Missing ", kMetadataTextAttrName));
   }
 
   // Create a default device assignment if one is not given by the model.
@@ -147,18 +139,18 @@ absl::StatusOr<tensorflow::tpu::TPUCompileMetadataProto> GetCompileMetadata(
             metadata.num_replicas(), metadata.num_cores_per_replica()));
 
     xla::DeviceAssignmentProto device_assignment_proto;
-    TF_RETURN_IF_ERROR(device_assignment.Serialize(&device_assignment_proto));
+    device_assignment.Serialize(&device_assignment_proto);
 
     *metadata.mutable_device_assignment() = device_assignment_proto;
   }
 
   return metadata;
 }
-}  // namespace
 
 absl::StatusOr<Tf2HloResult> CompileTfToHlo(
-    mlir::ModuleOp module, absl::Span<const tensorflow::Tensor> inputs,
+    mlir::ModuleOp module, absl::Span<const DtypeAndShape> inputs,
     absl::string_view entry_function_name, const xla::ifrt::Client& ifrt_client,
+    const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
     tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn) {
   if (VLOG_IS_ON(1)) {
     tensorflow::DumpMlirOpToFile("ifrt_before_bridge_phase2", module);
@@ -173,29 +165,14 @@ absl::StatusOr<Tf2HloResult> CompileTfToHlo(
 
   TF_ASSIGN_OR_RETURN(
       auto* platform,
-      stream_executor::MultiPlatformManager::PlatformWithName("Host"));
+      stream_executor::PlatformManager::PlatformWithName("Host"));
   TF_ASSIGN_OR_RETURN(
       auto* client, xla::ClientLibrary::GetOrCreateCompileOnlyClient(platform));
 
-  auto entry_fn = module.lookupSymbol<mlir::func::FuncOp>(kEntryFuncName);
-  if (!entry_fn) {
-    return absl::InternalError("Could not find entry function in MLIR Module.");
-  }
-
-  if (inputs.size() != entry_fn.getNumArguments()) {
-    return absl::InternalError(
-        absl::StrCat("Entry function arguments mismatched! Expected ",
-                     entry_fn.getNumArguments(), " got", inputs.size()));
-  }
-
-  TF_ASSIGN_OR_RETURN(tensorflow::tpu::TPUCompileMetadataProto compile_metadata,
-                      GetCompileMetadata(entry_fn, inputs, ifrt_client));
-
-  VLOG(1) << "Compilation metadata: " << compile_metadata;
 
   std::vector<TensorShape> arg_shapes;
   for (const auto& input : inputs) {
-    arg_shapes.push_back(input.shape());
+    arg_shapes.push_back(input.shape);
   }
 
   bool use_tuple_args = false;
@@ -225,6 +202,7 @@ absl::StatusOr<Tf2HloResult> CompileTfToHlo(
   Tf2HloResult result;
   result.mlir_hlo_module = xla::llvm_ir::CreateMlirModuleOp(module->getLoc());
   result.compile_metadata = std::move(compile_metadata);
+  result.host_compute_metadata = compilation_result.host_compute_metadata;
 
   TF_RETURN_IF_ERROR(xla::ConvertHloToMlirHlo(
       *result.mlir_hlo_module, &compilation_result.computation->proto()));

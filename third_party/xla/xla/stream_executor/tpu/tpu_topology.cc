@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@ limitations under the License.
 #include <vector>
 
 #include "xla/stream_executor/tpu/c_api_decl.h"
-#include "xla/stream_executor/tpu/tpu_api.h"
 #include "xla/stream_executor/tpu/tpu_executor_api.h"
 
 namespace tensorflow {
@@ -157,7 +156,8 @@ std::string TpuVersionEnumToString(TpuVersionEnum version) {
       return "TPU v3";
     case kTpuV4:
       return "TPU v4";
-// reserved for internal use
+    case kTpuV5:
+      return "TPU v5";
   }
 }
 

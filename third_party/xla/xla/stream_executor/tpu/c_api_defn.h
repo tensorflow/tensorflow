@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,7 +16,8 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_TPU_C_API_DEFN_H_
 #define XLA_STREAM_EXECUTOR_TPU_C_API_DEFN_H_
 
-#include "xla/stream_executor/device_options.h"
+#include <memory>
+
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -39,22 +40,13 @@ struct SE_StreamExecutor {
 };
 
 struct SE_Stream {
-  explicit SE_Stream(stream_executor::StreamExecutor* parent)
-      : stream(parent) {}
-  stream_executor::Stream stream;
+  explicit SE_Stream(stream_executor::StreamExecutor* parent) {}
+  std::unique_ptr<stream_executor::Stream> stream;
 };
 
 struct SE_Event {
-  explicit SE_Event(stream_executor::StreamExecutor* parent) : event(parent) {}
-  stream_executor::Event event;
-};
-
-struct SE_StreamExecutorConfig {
-  stream_executor::StreamExecutorConfig config;
-};
-
-struct SE_DeviceOptions {
-  stream_executor::DeviceOptions options;
+  explicit SE_Event(stream_executor::StreamExecutor* parent) {}
+  std::unique_ptr<stream_executor::Event> event;
 };
 
 // Ignored -- these are just used to enforce the interface types

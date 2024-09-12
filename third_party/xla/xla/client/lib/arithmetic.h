@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -81,10 +81,6 @@ XlaOp Any(XlaOp predicates);
 // Returns the argmax of `input` along `axis`. `output_type` is the type to
 // use for the output. In case of ties always prefers smaller index.
 XlaOp ArgMax(XlaOp input, PrimitiveType output_type, int axis);
-
-// Returns the argmin of `input` along `axis`. `output_type` is the type to
-// use for the output. In case of ties always prefers smaller index.
-XlaOp ArgMin(XlaOp input, PrimitiveType output_type, int axis);
 
 // Dispatch to ArgMin or ArgMax above, depending on bool.
 XlaOp ArgMinMax(XlaOp input, PrimitiveType output_type, int axis, bool is_min);

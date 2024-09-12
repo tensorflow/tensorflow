@@ -10,7 +10,7 @@ load(
     _genrule = "genrule",
     _get_compatible_with_portable = "get_compatible_with_portable",
     _if_indexing_source_code = "if_indexing_source_code",
-    _if_not_mobile_or_arm_or_lgpl_restricted = "if_not_mobile_or_arm_or_lgpl_restricted",
+    _if_not_mobile_or_arm_or_macos_or_lgpl_restricted = "if_not_mobile_or_arm_or_macos_or_lgpl_restricted",
     _if_portable = "if_portable",
     _internal_tfrt_deps = "internal_tfrt_deps",
     _pybind_extension = "pybind_extension",
@@ -31,7 +31,6 @@ load(
     _tf_generate_proto_text_sources = "tf_generate_proto_text_sources",
     _tf_grpc_cc_dependencies = "tf_grpc_cc_dependencies",
     _tf_grpc_dependencies = "tf_grpc_dependencies",
-    _tf_jit_compilation_passes_extra_deps = "tf_jit_compilation_passes_extra_deps",
     _tf_kernel_library = "tf_kernel_library",
     _tf_monitoring_framework_deps = "tf_monitoring_framework_deps",
     _tf_monitoring_python_deps = "tf_monitoring_python_deps",
@@ -48,7 +47,7 @@ load(
 )
 
 clean_dep = _clean_dep
-if_not_mobile_or_arm_or_lgpl_restricted = _if_not_mobile_or_arm_or_lgpl_restricted
+if_not_mobile_or_arm_or_macos_or_lgpl_restricted = _if_not_mobile_or_arm_or_macos_or_lgpl_restricted
 if_portable = _if_portable
 ADDITIONAL_API_INDEXABLE_SETTINGS = _ADDITIONAL_API_INDEXABLE_SETTINGS
 if_indexing_source_code = _if_indexing_source_code
@@ -73,7 +72,6 @@ tf_pybind_cc_library_wrapper = _tf_pybind_cc_library_wrapper
 tf_monitoring_framework_deps = _tf_monitoring_framework_deps
 tf_monitoring_python_deps = _tf_monitoring_python_deps
 tf_selective_registration_deps = _tf_selective_registration_deps
-tf_jit_compilation_passes_extra_deps = _tf_jit_compilation_passes_extra_deps
 tfcompile_target_cpu = _tfcompile_target_cpu
 tfcompile_dfsan_enabled = _tfcompile_dfsan_enabled
 tfcompile_dfsan_abilists = _tfcompile_dfsan_abilists

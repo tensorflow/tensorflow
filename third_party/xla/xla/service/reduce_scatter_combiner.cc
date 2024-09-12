@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ limitations under the License.
 #include <cassert>
 #include <cstdint>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <string>
@@ -48,22 +49,26 @@ limitations under the License.
 namespace xla {
 namespace {
 
-int64_t FindMostFrequentGatherDim(
+// Returns the most frequent scatter dim if it can be a valid scatter dim
+// for all shapes involved, else returns 0.
+int64_t FindMostFrequentScatterDim(
     absl::Span<HloInstruction* const> to_combine) {
   assert(!to_combine.empty());
 
   // Count frequencies.
+  int64_t min_rank = std::numeric_limits<int64_t>::max();
   std::vector<int64_t> frequency;
   for (const HloInstruction* it : to_combine) {
     int64_t dim = Cast<HloReduceScatterInstruction>(it)->scatter_dimension();
     frequency.resize(std::max(dim + 1, static_cast<int64_t>(frequency.size())),
                      0);
     frequency[dim]++;
+    min_rank = std::min(min_rank, it->shape().rank());
   }
 
   int64_t most_frequent_dim = std::distance(
       frequency.begin(), std::max_element(frequency.begin(), frequency.end()));
-  return most_frequent_dim;
+  return most_frequent_dim < min_rank ? most_frequent_dim : 0;
 }
 
 using ReduceScatterKey =
@@ -72,9 +77,10 @@ using ReduceScatterKey =
 // Combines the elements of to_combine into a single ReduceScatter op. All
 // entries in to_combine must be ReduceScatter ops with exactly one operand
 // and the same reduction operation.
-Status CombineReduceScatters(absl::Span<HloInstruction* const> to_combine) {
+absl::Status CombineReduceScatters(
+    absl::Span<HloInstruction* const> to_combine) {
   if (to_combine.size() < 2) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   VLOG(1) << "Combined " << to_combine.size() << " reduce-scatter ops";
 
@@ -90,8 +96,8 @@ Status CombineReduceScatters(absl::Span<HloInstruction* const> to_combine) {
   std::vector<std::optional<std::vector<int64_t>>> operand_permutations;
   std::vector<Shape> output_shapes;
 
-  // Find the most frequent all-gather dimension.
-  int64_t most_frequent_dim = FindMostFrequentGatherDim(to_combine);
+  // Find the most frequent reduce-scatter dimension.
+  int64_t most_frequent_dim = FindMostFrequentScatterDim(to_combine);
 
   VLOG(1) << "Combining set";
   for (HloInstruction* hlo : to_combine) {
@@ -135,7 +141,7 @@ Status CombineReduceScatters(absl::Span<HloInstruction* const> to_combine) {
   TF_RET_CHECK(operands.size() >= 2);
   combined = computation.AddInstruction(HloInstruction::CreateReduceScatter(
       ShapeUtil::MakeTupleShape(output_shapes), operands, reduction,
-      to_combine.front()->replica_groups(),
+      to_combine.front()->device_list(),
       /*constrain_layout=*/false, to_combine.front()->channel_id(),
       Cast<HloReduceScatterInstruction>(to_combine.front())
           ->use_global_device_ids(),
@@ -162,7 +168,7 @@ Status CombineReduceScatters(absl::Span<HloInstruction* const> to_combine) {
     TF_RETURN_IF_ERROR(
         computation.ReplaceInstruction(to_combine[i], replacement));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -173,7 +179,7 @@ ReduceScatterCombiner::ReduceScatterCombiner(int64_t combine_threshold_in_bytes,
       combine_threshold_count_(combine_threshold_count),
       combine_by_dim_(combine_by_dim) {}
 
-StatusOr<bool> ReduceScatterCombiner::Run(
+absl::StatusOr<bool> ReduceScatterCombiner::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(1) << "Running ReduceScatterCombiner with threshold of "

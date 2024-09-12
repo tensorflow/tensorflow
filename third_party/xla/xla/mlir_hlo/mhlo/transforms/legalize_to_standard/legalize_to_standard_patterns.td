@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -33,12 +33,16 @@ def : Pat<(MHLO_ConstantOp ElementsAttr:$value),
 //===----------------------------------------------------------------------===//
 
 def IsSameSizePred : CPred<
-    "$0.getType().cast<ShapedType>().getShape() "
-    "== $1.getType().cast<ShapedType>().getShape()">;
+    "cast<ShapedType>($0.getType()).getShape() "
+    "== cast<ShapedType>($1.getType()).getShape()">;
 def IsSameSizeConstraint : Constraint<IsSameSizePred, "inputs are same size">;
 def createFastMathNone : NativeCodeCall<
     "::mlir::arith::FastMathFlagsAttr::get("
       "$_builder.getContext(), ::mlir::arith::FastMathFlags::none"
+    ")">;
+def createOverflowNone : NativeCodeCall<
+    "::mlir::arith::IntegerOverflowFlagsAttr::get("
+      "$_builder.getContext(), ::mlir::arith::IntegerOverflowFlags::none"
     ")">;
 
 
@@ -68,13 +72,13 @@ def : Pat<(MHLO_RemOp MHLO_FpTensor:$l, MHLO_FpTensor:$r),
           (Arith_RemFOp $l, $r, (createFastMathNone )),
           [(IsSameSizeConstraint $l, $r)]>;
 def : Pat<(MHLO_AddOp MHLO_IntTensor:$l, MHLO_IntTensor:$r),
-          (Arith_AddIOp $l, $r),
+          (Arith_AddIOp $l, $r, (createOverflowNone )),
           [(IsSameSizeConstraint $l, $r)]>;
 def : Pat<(MHLO_SubtractOp MHLO_IntTensor:$l, MHLO_IntTensor:$r),
-          (Arith_SubIOp $l, $r),
+          (Arith_SubIOp $l, $r, (createOverflowNone )),
           [(IsSameSizeConstraint $l, $r)]>;
 def : Pat<(MHLO_MulOp MHLO_IntTensor:$l, MHLO_IntTensor:$r),
-          (Arith_MulIOp $l, $r),
+          (Arith_MulIOp $l, $r, (createOverflowNone )),
           [(IsSameSizeConstraint $l, $r)]>;
 def : Pat<(MHLO_DivOp MHLO_IntTensor:$l, MHLO_IntTensor:$r),
           (Arith_DivSIOp $l, $r),

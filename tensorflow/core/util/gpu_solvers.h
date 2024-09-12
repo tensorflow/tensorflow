@@ -34,7 +34,6 @@ limitations under the License.
 #include "rocm/include/hip/hip_complex.h"
 #include "rocm/include/rocblas.h"
 #include "rocm/rocm_config.h"
-#include "xla/stream_executor/blas.h"
 #if TF_ROCM_VERSION >= 40500
 #include "xla/stream_executor/rocm/hipsolver_wrapper.h"
 #endif
@@ -676,8 +675,7 @@ class DeviceLapackInfo : public ScratchSpace<int> {
     se::DeviceMemoryBase wrapped_src(
         static_cast<void*>(const_cast<int*>(this->data())));
     *success =
-        stream->ThenMemcpy(copy.mutable_data(), wrapped_src, this->bytes())
-            .ok();
+        stream->Memcpy(copy.mutable_data(), wrapped_src, this->bytes()).ok();
     return copy;
   }
 };

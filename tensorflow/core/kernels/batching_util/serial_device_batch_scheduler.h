@@ -303,7 +303,7 @@ Status SerialDeviceBatchScheduler<TaskType>::Create(
         "specified");
   }
   scheduler->reset(new SerialDeviceBatchScheduler<TaskType>(options));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename TaskType>
@@ -349,7 +349,7 @@ Status SerialDeviceBatchScheduler<TaskType>::AddQueue(
                    this->shared_from_this(), options));
   mutex_lock l(mu_);
   queues_and_callbacks_[SDBS_queue_raw] = process_batch_callback;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename TaskType>
@@ -516,7 +516,7 @@ Status SDBSQueue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
   }
   // AddBatch must be called outside of lock, since it may call ReleaseBatch.
   if (new_batch != nullptr) scheduler_->AddBatch(new_batch);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename TaskType>

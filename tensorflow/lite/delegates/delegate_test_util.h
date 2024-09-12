@@ -27,6 +27,7 @@ limitations under the License.
 #include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/kernels/register.h"
+#include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 
 namespace tflite {

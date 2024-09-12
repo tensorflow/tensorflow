@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -48,14 +49,14 @@ namespace dtensor {
 namespace {
 
 bool IsStringType(mlir::Type type) {
-  if (type.isa<mlir::TF::StringType>()) return true;
+  if (mlir::isa<mlir::TF::StringType>(type)) return true;
 
-  auto sub_type = type.dyn_cast<mlir::TF::TensorFlowTypeWithSubtype>();
+  auto sub_type = mlir::dyn_cast<mlir::TF::TensorFlowTypeWithSubtype>(type);
   if (!sub_type) return false;
 
   bool has_string =
       llvm::any_of(sub_type.GetSubtypes(), [](mlir::TensorType type) {
-        return type.getElementType().isa<mlir::TF::StringType>();
+        return mlir::isa<mlir::TF::StringType>(type.getElementType());
       });
   return has_string;
 }
@@ -421,7 +422,7 @@ StatusOr<mlir::Operation*> LowerOneToOneDTensorSendToTFHostSend(
                            op_builder.getStringAttr(send_layout.ToString()));
         mlir::Value val = arg;
         if (i32_copy) {
-          auto val_type = val.getType().cast<mlir::TensorType>();
+          auto val_type = mlir::cast<mlir::TensorType>(val.getType());
           val = op_builder
                     .create<mlir::TF::CastOp>(
                         loc,
@@ -673,7 +674,7 @@ StatusOr<mlir::Operation*> LowerDTensorSend(mlir::Operation* send_op,
                                                       dtensor_send));
     } else {
       mlir::TensorType send_type =
-          send_input.getType().cast<mlir::TensorType>();
+          mlir::cast<mlir::TensorType>(send_input.getType());
       if (!recv_mesh.is_cpu_mesh() &&
           send_type.getElementType().isInteger(32)) {
         builder.setInsertionPointAfter(send_input.getDefiningOp());
@@ -745,7 +746,7 @@ StatusOr<mlir::Operation*> LowerDTensorRecv(mlir::Operation* send_op,
     TF_ASSIGN_OR_RETURN(
         mlir::TensorType local_output_type,
         LocalTypeFromGlobalType(
-            recv_layout, dtensor_recv.getType().cast<mlir::TensorType>()));
+            recv_layout, mlir::cast<mlir::TensorType>(dtensor_recv.getType())));
     TF_ASSIGN_OR_RETURN(
         lowered_recv, LowerDTensorRecvToXlaOp(dtensor_recv, local_output_type));
     dtensor_recv->replaceAllUsesWith(lowered_recv);

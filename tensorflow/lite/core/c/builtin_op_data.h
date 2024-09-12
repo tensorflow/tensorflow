@@ -21,6 +21,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_CORE_C_BUILTIN_OP_DATA_H_
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include "tensorflow/lite/core/c/common.h"
@@ -644,6 +645,14 @@ typedef struct {
   int64_t edge_padding_high[TFLITE_STABLEHLO_PAD_PARAMS_MAX_DIMENSION_COUNT];
   int64_t interior_padding[TFLITE_STABLEHLO_PAD_PARAMS_MAX_DIMENSION_COUNT];
 } TfLiteStablehloPadParams;
+
+typedef struct {
+  const char* name;
+  int32_t subgraph_index;
+  int32_t version;
+  const uint8_t* attributes;
+  size_t attributes_size;
+} TfLiteStablehloCompositeParams;
 
 #ifdef __cplusplus
 }  // extern "C"

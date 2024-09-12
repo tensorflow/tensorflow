@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,25 +18,27 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
+#include "absl/status/statusor.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/kernels/cutlass_gemm.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu::kernel::gemm_universal {
 
-// Returns a pre-compiled custom kernel for a given data type and problem size.
-StatusOr<CustomKernel> GetCutlassGemmKernel(
-    std::string name, PrimitiveType dtype, int32_t m, int32_t n, int32_t k,
+// Returns pre-compiled custom kernels for a given data type and problem size.
+absl::StatusOr<std::vector<CustomKernel>> GetCutlassGemmKernels(
+    std::string name, PrimitiveType dot_type, PrimitiveType lhs_type,
+    PrimitiveType rhs_type, int32_t m, int32_t n, int32_t k,
     const ArgsIndices& indices, const DynamicSliceIndices& slices,
     const se::DeviceDescription& device);
 
 // Loads custom kernel for a given data type and problem size from a shared
 // library. It's up to the caller to guarantee that CUTLASS kernel in the shared
 // library is compatible with the data type and problem size.
-StatusOr<CustomKernel> LoadCutlassGemmKernel(
+absl::StatusOr<CustomKernel> LoadCutlassGemmKernel(
     std::string name, const std::string& library_path, PrimitiveType dtype,
     int32_t m, int32_t n, int32_t k, const ArgsIndices& indices,
     const DynamicSliceIndices& slices, const se::DeviceDescription& device);

@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,36 +17,18 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/log/log.h"
-#include "third_party/gpus/cuda/include/cuda.h"
+#include "absl/status/statusor.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_kernel.h"
-#include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 namespace gpu {
 
-CUfunc_cache GpuKernel::GetGpuCacheConfig() const {
-  switch (preferred_cache_config_) {
-    case KernelCacheConfig::kNoPreference:
-      return CU_FUNC_CACHE_PREFER_NONE;
-    case KernelCacheConfig::kPreferShared:
-      return CU_FUNC_CACHE_PREFER_SHARED;
-    case KernelCacheConfig::kPreferL1:
-      return CU_FUNC_CACHE_PREFER_L1;
-    case KernelCacheConfig::kPreferEqual:
-      return CU_FUNC_CACHE_PREFER_EQUAL;
-    default:
-      LOG(FATAL) << "Unknown KernelCacheConfig"
-                 << static_cast<int32_t>(preferred_cache_config_);
-  }
-}
-
-tsl::StatusOr<int32_t> GpuKernel::GetMaxOccupiedBlocksPerCore(
+absl::StatusOr<int32_t> GpuKernel::GetMaxOccupiedBlocksPerCore(
     ThreadDim threads, size_t dynamic_shared_memory_bytes) const {
   int32_t threads_per_block = threads.x * threads.y * threads.z;
-  VLOG(3) << "Get kernel block occupancy: " << name_
+  VLOG(3) << "Get kernel block occupancy: " << name()
           << "; threads_per_block: " << threads_per_block
           << "; dynamic_shared_memory_bytes: " << dynamic_shared_memory_bytes;
 

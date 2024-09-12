@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,9 +15,21 @@ limitations under the License.
 
 #include "xla/service/convert_mover.h"
 
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal.h"
 #include "xla/primitive_util.h"
 #include "xla/service/hlo_creation_utils.h"
+#include "xla/shape.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -30,11 +42,11 @@ static bool IsLosslesslyConvertibleTo(const Literal& literal,
 
   // The only reason Convert() should fail is if we don't support converting
   // from x to y, which indeed means it's not losslessly-convertible.
-  StatusOr<Literal> converted1 = literal.Convert(dst_ty);
+  absl::StatusOr<Literal> converted1 = literal.Convert(dst_ty);
   if (!converted1.ok()) {
     return false;
   }
-  StatusOr<Literal> converted2 = converted1->Convert(orig_ty);
+  absl::StatusOr<Literal> converted2 = converted1->Convert(orig_ty);
   if (!converted2.ok()) {
     return false;
   }
@@ -64,7 +76,7 @@ bool OpCommutesWithConvert(HloOpcode opcode) {
   }
 }
 
-StatusOr<bool> MoveConvertPrecisionOps(HloComputation* comp) {
+absl::StatusOr<bool> MoveConvertPrecisionOps(HloComputation* comp) {
   bool changed = false;
 
   // Move increase_precision "down" the graph:
@@ -114,9 +126,9 @@ StatusOr<bool> MoveConvertPrecisionOps(HloComputation* comp) {
       continue;
     }
 
-    // Currently int4 is not supported in most ops so moving the convert is not
-    // safe.
-    if (primitive_util::Is4BitType(src_ty)) {
+    // Currently packed types are not supported in most ops so moving the
+    // convert is not safe.
+    if (primitive_util::IsSubByteNonPredType(src_ty)) {
       continue;
     }
 
@@ -169,7 +181,7 @@ StatusOr<bool> MoveConvertPrecisionOps(HloComputation* comp) {
     if (primitive_util::BitWidth(src_ty) <= primitive_util::BitWidth(dst_ty)) {
       continue;
     }
-    if (primitive_util::Is4BitType(dst_ty)) {
+    if (primitive_util::IsSubByteNonPredType(dst_ty)) {
       continue;
     }
 
@@ -196,7 +208,7 @@ StatusOr<bool> MoveConvertPrecisionOps(HloComputation* comp) {
 
 }  // anonymous namespace
 
-StatusOr<bool> ConvertMover::Run(
+absl::StatusOr<bool> ConvertMover::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

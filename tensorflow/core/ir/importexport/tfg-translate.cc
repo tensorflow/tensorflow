@@ -15,17 +15,25 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/log/log.h"
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/AsmState.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/importexport/graphdef_export.h"
 #include "tensorflow/core/ir/importexport/graphdef_import.h"
 #include "tensorflow/core/ir/importexport/load_proto.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace mlir {
 

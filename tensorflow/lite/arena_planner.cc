@@ -141,6 +141,10 @@ bool ArenaPlanner::InputTensorCanBeShared(const TfLiteTensor& input_tensor,
       input_allocation_type != kTfLiteArenaRw) {
     return false;
   }
+  if (preserve_all_tensors_) {
+    return false;
+  }
+
   return true;
 }
 

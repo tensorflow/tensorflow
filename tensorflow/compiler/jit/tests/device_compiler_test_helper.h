@@ -33,17 +33,17 @@ class JitCompilationListener : public XlaActivityListener {
  public:
   Status Listen(
       const XlaAutoClusteringActivity& auto_clustering_activity) override {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Listen(
       const XlaJitCompilationActivity& jit_compilation_activity) override {
     activity_history_.push_back(jit_compilation_activity);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Listen(const XlaOptimizationRemark& optimization_remark) override {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   ~JitCompilationListener() override = default;
@@ -55,7 +55,7 @@ class JitCompilationListener : public XlaActivityListener {
         return absl::FailedPreconditionError("Unexpected listener history.");
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   std::vector<XlaJitCompilationActivity> GetListenerHistory() {

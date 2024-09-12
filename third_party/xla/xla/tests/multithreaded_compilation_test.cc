@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,16 +20,16 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
@@ -76,7 +76,7 @@ XLA_TEST_F(MultithreadedCompilation, EightModuleCompilation) {
     absl::MutexLock lock(&mu);
     executables.push_back(std::move(executable));
     VLOG(2) << "Adding executable obtained from thread: " << iteration;
-    return tsl::OkStatus();
+    return absl::OkStatus();
   };
 
   {

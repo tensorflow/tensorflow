@@ -19,6 +19,8 @@ limitations under the License.
 #include <functional>
 #include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/btree_set.h"
@@ -38,7 +40,7 @@ namespace data {
 class SnapshotChunkProvider : public SplitProvider {
  public:
   SnapshotChunkProvider(absl::string_view snapshot_path, tsl::Env* env);
-  virtual ~SnapshotChunkProvider() = default;
+  ~SnapshotChunkProvider() override = default;
   SnapshotChunkProvider(const SnapshotChunkProvider&) = delete;
   SnapshotChunkProvider& operator=(const SnapshotChunkProvider&) = delete;
 
@@ -78,6 +80,17 @@ class SnapshotChunkProvider : public SplitProvider {
     absl::Status status = absl::OkStatus();
   };
 
+  // Used to sort chunks by chunk indexes so that chunks are read evenly across
+  // streams and chunks of early repetitions are read first.
+  struct ChunkOrder {
+    bool operator()(const std::string& chunk1, const std::string& chunk2) const;
+  };
+  using OrderedChunkSet = absl::btree_set<std::string, ChunkOrder>;
+
+  // String conversions to support `Save` and `Restore`.
+  static std::string SetToString(const OrderedChunkSet& s);
+  static OrderedChunkSet SetFromString(absl::string_view s);
+
   // Updates the snapshot state and available chunks.
   absl::Status UpdateSnapshot();
 
@@ -95,11 +108,11 @@ class SnapshotChunkProvider : public SplitProvider {
   mutable absl::Mutex mu_;
 
   // The set of read chunks.
-  absl::btree_set<std::string> chunks_read_ ABSL_GUARDED_BY(mu_);
+  OrderedChunkSet chunks_read_ ABSL_GUARDED_BY(mu_);
 
   // The set of unread chunks. Uses an ordered set to make sure repeated reads
   // produce data in a deterministic order.
-  absl::btree_set<std::string> chunks_unread_ ABSL_GUARDED_BY(mu_);
+  OrderedChunkSet chunks_unread_ ABSL_GUARDED_BY(mu_);
 
   // State of the snapshot.
   SnapshotState snapshot_state_ ABSL_GUARDED_BY(mu_);

@@ -151,6 +151,10 @@ delegate library is built with "-DCL_DELEGATE_NO_GL" macro.
     this parameter. To disable this implicit application, set the value to
     `false` explicitly.
 
+*   `xnnpack_force_fp16`: `bool` (default=false) \
+    Enforce float16 inference. Internaly, set flag
+    `TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16` on XNNPackDelegateOptions.
+
 ### CoreML delegate provider
 
 *   `use_coreml`: `bool` (default=false) \

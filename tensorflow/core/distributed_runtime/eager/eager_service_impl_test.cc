@@ -60,7 +60,7 @@ class TestEagerServiceImpl : public EagerServiceImpl {
     TF_RETURN_IF_ERROR(GetServerContext(context_id, &context));
     core::ScopedUnref context_unref(context);
     *ctx = context->Context();
-    return OkStatus();
+    return absl::OkStatus();
   }
   Status GetTensorHandle(const uint64 context_id,
                          const RemoteTensorHandleInternal& remote_handle,
@@ -139,7 +139,7 @@ class DummyEagerClientCache : public EagerClientCache {
                    core::RefCountPtr<EagerClient>* client) override {
     client->reset(client_.get());
     client_->Ref();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -150,7 +150,7 @@ class FakeCache : public TestWorkerCache {
   Status GetEagerClientCache(
       std::unique_ptr<eager::EagerClientCache>* eager_client_cache) override {
     *eager_client_cache = std::make_unique<DummyEagerClientCache>();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   void ListWorkers(std::vector<string>* workers) const override {
@@ -168,7 +168,7 @@ class EagerServiceImplTest : public ::testing::Test {
             [](const ServerDef& server_def,
                WorkerCacheInterface** worker_cache) {
               *worker_cache = new FakeCache;
-              return OkStatus();
+              return absl::OkStatus();
             },
             /*coordination_handler=*/nullptr)) {
     worker_env_.env = Env::Default();
@@ -1009,7 +1009,7 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
                                    tsl::core::RefCountPtr<Rendezvous>* r) {
           *r = tsl::core::RefCountPtr<Rendezvous>(
               worker_env_.rendezvous_mgr->Find(step_id).release());
-          return OkStatus();
+          return absl::OkStatus();
         }});
   }
 
@@ -1100,7 +1100,7 @@ TEST_F(FunctionWithRemoteInputsTest, EagerPFLRTest) {
       std::move(tensor_args),
       [&inputs](const int i, RemoteTensorHandle* handle) -> Status {
         *handle = inputs.at(i);
-        return OkStatus();
+        return absl::OkStatus();
       });
   eager_pflr_->Run(opts, handle, args, &outputs,
                    [&status, &done](const Status& s) {
@@ -1204,7 +1204,7 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
       std::move(input_tensors),
       [&remote_handles](const int index, RemoteTensorHandle* handle) -> Status {
         *handle = remote_handles.at(index);
-        return OkStatus();
+        return absl::OkStatus();
       });
   std::vector<FunctionRet> outputs;
 
@@ -1259,7 +1259,7 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncAsyncTest) {
       std::move(input_tensors),
       [&remote_handles](const int index, RemoteTensorHandle* handle) -> Status {
         *handle = remote_handles.at(index);
-        return OkStatus();
+        return absl::OkStatus();
       });
   std::vector<FunctionRet> outputs;
 

@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/abi.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
@@ -68,7 +69,10 @@ void EncodeVariantImpl(const T& value,
                        TypeResolver<T, false /* is_pod */, false /* Tensor */,
                                     true /* protobuf */>,
                        VariantTensorData* data) {
-  value.SerializeToString(&data->metadata_);
+  if (!value.SerializeToString(&data->metadata_)) {
+    data->metadata_.clear();
+    LOG(ERROR) << "Failed to encode variant " << value.DebugString();
+  }
 }
 
 // Specialization for other types

@@ -259,10 +259,6 @@ tf_kernel_library(
 tf_kernel_library(
     name = "cwise_op",
     srcs = [],
-    visibility = [
-        ":friends",
-        "//tensorflow/core/kernels:__subpackages__",
-    ],
     deps = if_cuda_or_rocm([
         ":gpu_cwise_unary_op",
         ":gpu_cwise_binary_op",
@@ -1942,7 +1938,6 @@ gpu_kernel_library(
         "c64",
         "c128",
     ],
-    max_supported_rank = 8,
     op = "select_v2",
     tile_size = "256",
     types = [],

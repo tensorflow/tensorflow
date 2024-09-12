@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,8 +19,9 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<std::unique_ptr<Executable>> CodegenTestBase::CompileToExecutable(
-    std::unique_ptr<HloModule> hlo_module, bool run_optimization_passes) {
+absl::StatusOr<std::unique_ptr<Executable>>
+CodegenTestBase::CompileToExecutable(std::unique_ptr<HloModule> hlo_module,
+                                     bool run_optimization_passes) {
   if (run_optimization_passes) {
     TF_ASSIGN_OR_RETURN(hlo_module, backend().compiler()->RunHloPasses(
                                         std::move(hlo_module),
@@ -32,7 +33,7 @@ StatusOr<std::unique_ptr<Executable>> CodegenTestBase::CompileToExecutable(
                                           /*device_allocator=*/nullptr);
 }
 
-StatusOr<std::unique_ptr<AotCompilationResult>>
+absl::StatusOr<std::unique_ptr<AotCompilationResult>>
 CodegenTestBase::CompileToAotCompilationResult(
     std::unique_ptr<HloModule> hlo_module,
     const AotCompilationOptions& options) {

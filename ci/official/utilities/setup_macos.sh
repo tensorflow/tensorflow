@@ -58,10 +58,13 @@ fi
 
 # "TFCI_MACOS_UPGRADE_PYENV_ENABLE" is used to decide if we need to upgrade the
 # Pyenv version. We enable this for macOS x86 builds as the default Pyenv on
-# those VMs does not support installing Python 3.10 and above which we need
+# those VMs does not support installing Python 3.12 and above which we need
 # for running smoke tests in nightly/release wheel builds.
 if [[ "${TFCI_MACOS_UPGRADE_PYENV_ENABLE}" == 1 ]]; then
-  brew upgrade pyenv
+  # The TFCI Mac VM image seems to have uncommitted local changes to the Pyenv
+  # repository so we have to discard them and reset the working directory before
+  # we can pull in the latest changes.
+  cd /Users/kbuilder/.pyenv/ && git reset --hard HEAD && git pull && cd -
 fi
 
 # "TFCI_MACOS_PYENV_INSTALL_ENABLE" controls whether to use Pyenv to install
@@ -71,17 +74,11 @@ fi
 # it. TFCI Mac VMs only have one Python version installed so we need to install
 # the other versions manually.
 if [[ "${TFCI_MACOS_PYENV_INSTALL_ENABLE}" == 1 ]]; then
-  pyenv install "$TFCI_PYTHON_VERSION"
+  # Install the necessary Python, unless it's already present
+  pyenv install -s "$TFCI_PYTHON_VERSION"
   pyenv local "$TFCI_PYTHON_VERSION"
   # Do a sanity check to make sure that we using the correct Python version
   python --version
-fi
-
-if [[ "$TFCI_PYTHON_VERSION" == "3.12" ]]; then
-  # dm-tree (Keras v3 dependency) doesn't have pre-built wheels for 3.12 yet.
-  # Having CMake allows building them.
-  # Once the wheels are added, this should be removed - b/308399490.
-  brew install cmake
 fi
 
 # TFCI Mac VM images do not have twine installed by default so we need to
@@ -96,6 +93,10 @@ fi
 # a service account that has the right permissions to be able to do so.
 set +x
 if [[ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]]; then
+  # Python 3.12 removed the module `imp` which is needed by gcloud CLI so we set
+  # `CLOUDSDK_PYTHON` to Python 3.11 which is the system Python on TFCI Mac
+  # VMs.
+  export CLOUDSDK_PYTHON=$(which python3.11)
   gcloud auth activate-service-account --key-file="${GOOGLE_APPLICATION_CREDENTIALS}"
 fi
 set -x

@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,8 +22,8 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/functional/function_ref.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/statusor.h"
 
 namespace xla {
 

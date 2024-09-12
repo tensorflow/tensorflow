@@ -77,7 +77,7 @@ tensorflow::Status ToStatus(const absl::Status& uts) {
     return tensorflow::Status(absl::StatusCode(::util::RetrieveErrorCode(uts)),
                               uts.message());
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 // Conversion to our wrapper Options.
@@ -129,13 +129,15 @@ std::string JoinPath(const std::string& a, const std::string& b) {
 #else  // !PLATFORM_GOOGLE || __APPLE__ || __ANDROID__ || _WIN32
 
 #include <fcntl.h>
-#if defined(_WIN32)
-#include <io.h>  // for _close, _open, _read
-#endif
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <unistd.h>
+
 #include <cstdio>
+#if defined(_WIN32)
+#include <io.h>  // for _close, _open, _read
+#else
+#include <unistd.h>
+#endif
 
 #if defined(PLATFORM_GOOGLE)
 #include "base/commandlineflags.h"

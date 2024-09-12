@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -43,10 +43,10 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -94,9 +94,9 @@ class MappedPtrContainerSorter {
   // - unmapped_index() returns an invalid index
   // - An internal error occurs. (This should theoretically not happen.)
   template <typename OrderedTy, typename UnorderedTy>
-  static Status Sort(MapPtrFn map_ptr, UnmappedPtrIndexFn unmapped_index,
-                     const OrderedTy& ordered_container,
-                     UnorderedTy& unordered_container);
+  static absl::Status Sort(MapPtrFn map_ptr, UnmappedPtrIndexFn unmapped_index,
+                           const OrderedTy& ordered_container,
+                           UnorderedTy& unordered_container);
 
  private:
   // A class for sorting the indices of the unordered_container.
@@ -114,8 +114,8 @@ class MappedPtrContainerSorter {
     // Specify the partial ordering value of a mapped element from the
     // unordered container. The partial ordering is amongst other mapped
     // elements.
-    Status AddMappedElement(size_t unordered_container_index,
-                            size_t partial_order);
+    absl::Status AddMappedElement(size_t unordered_container_index,
+                                  size_t partial_order);
 
     // Specify the index (amongst mapped elements), where an unmapped element
     // should be inserted. The unmapped element is inserted just after the
@@ -127,7 +127,7 @@ class MappedPtrContainerSorter {
 
     // The result maps each element in the unordered_container to the target
     // index that it will occupy in the sorted result.
-    StatusOr<std::vector<size_t>> Flatten() const;
+    absl::StatusOr<std::vector<size_t>> Flatten() const;
 
    private:
     SortedIndices() = delete;
@@ -152,7 +152,7 @@ class MappedPtrContainerSorter {
   // Returns a mapping in which the element at index i indicates the target
   // index that unordered_container[i] should occupy in the sorted result.
   template <typename OrderedTy, typename UnorderedTy>
-  static StatusOr<std::vector<size_t>> ComputeNewIndices(
+  static absl::StatusOr<std::vector<size_t>> ComputeNewIndices(
       MapPtrFn map_ptr, UnmappedPtrIndexFn unmapped_index,
       const OrderedTy& ordered_container,
       const UnorderedTy& unordered_container);
@@ -227,17 +227,17 @@ MappedPtrContainerSorter<PointedToTy>::InvalidIndexFn() {
 }
 
 template <typename PointedToTy>
-Status MappedPtrContainerSorter<PointedToTy>::SortedIndices::AddMappedElement(
+absl::Status
+MappedPtrContainerSorter<PointedToTy>::SortedIndices::AddMappedElement(
     size_t unordered_container_index, size_t partial_order) {
   if (partial_order >= mapped_element_indices_by_partial_order_.size()) {
-    return InternalErrorStrCat(
-        "invalid partial order: ", partial_order, " v max(",
-        mapped_element_indices_by_partial_order_.size(), ")");
+    return InternalStrCat("invalid partial order: ", partial_order, " v max(",
+                          mapped_element_indices_by_partial_order_.size(), ")");
   }
 
   mapped_element_indices_by_partial_order_[partial_order].push_back(
       unordered_container_index);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename PointedToTy>
@@ -284,13 +284,13 @@ std::string MappedPtrContainerSorter<PointedToTy>::SortedIndices::ToString()
 }
 
 template <typename PointedToTy>
-StatusOr<std::vector<size_t>>
+absl::StatusOr<std::vector<size_t>>
 MappedPtrContainerSorter<PointedToTy>::SortedIndices::Flatten() const {
   std::vector<size_t> result(unordered_container_size_, InvalidIndex());
   size_t next_available_index = 0;
-  auto next_index_fn = [&]() -> StatusOr<size_t> {
+  auto next_index_fn = [&]() -> absl::StatusOr<size_t> {
     if (next_available_index >= unordered_container_size_) {
-      return InternalErrorStrCat(
+      return InternalStrCat(
           "invalid unordered_container index: ", next_available_index,
           " v size(", unordered_container_size_, ")");
     }
@@ -335,7 +335,7 @@ MappedPtrContainerSorter<PointedToTy>::SortedIndices::Flatten() const {
   absl::flat_hash_set<size_t> used_indices;
   for (size_t index : result) {
     if (used_indices.contains(index)) {
-      return InternalErrorStrCat(
+      return InternalStrCat(
           "2 elements in unordered_container are destined for the same "
           "index: ",
           index);
@@ -351,7 +351,7 @@ MappedPtrContainerSorter<PointedToTy>::SortedIndices::Flatten() const {
 
 template <typename PointedToTy>
 template <typename OrderedTy, typename UnorderedTy>
-StatusOr<std::vector<size_t>>
+absl::StatusOr<std::vector<size_t>>
 MappedPtrContainerSorter<PointedToTy>::ComputeNewIndices(
     MapPtrFn map_ptr, UnmappedPtrIndexFn unmapped_index,
     const OrderedTy& ordered_container,
@@ -441,7 +441,7 @@ void MappedPtrContainerSorter<PointedToTy>::Reorder(
 
 template <typename PointedToTy>
 template <typename OrderedTy, typename UnorderedTy>
-Status MappedPtrContainerSorter<PointedToTy>::Sort(
+absl::Status MappedPtrContainerSorter<PointedToTy>::Sort(
     MapPtrFn map_ptr, UnmappedPtrIndexFn unmapped_index,
     const OrderedTy& ordered_container, UnorderedTy& unordered_container) {
   std::vector<size_t> indices;
@@ -449,7 +449,7 @@ Status MappedPtrContainerSorter<PointedToTy>::Sort(
       indices, ComputeNewIndices(map_ptr, unmapped_index, ordered_container,
                                  unordered_container));
   Reorder(std::move(indices), unordered_container);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace xla

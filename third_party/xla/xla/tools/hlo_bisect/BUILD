@@ -10,7 +10,8 @@ load(
 )
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//xla:internal"],
 )
 
 build_test(
@@ -31,8 +32,8 @@ xla_cc_binary(
         "//xla/service:cpu_plugin",
         "//xla/service:gpu_plugin",
         "//xla/service:interpreter_plugin",
+        "//xla/tsl/util:command_line_flags",
         "@local_tsl//tsl/platform:platform_port",
-        "@local_tsl//tsl/util:command_line_flags",
     ] + if_cuda(["//xla/stream_executor/cuda:cublas_plugin"]),
 )
 
@@ -40,11 +41,8 @@ cc_library(
     name = "hlo_bisect_state",
     srcs = ["hlo_bisect_state.cc"],
     hdrs = ["hlo_bisect_state.h"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:literal",
-        "//xla:status",
-        "//xla:statusor",
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_dce",
@@ -52,6 +50,8 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -62,13 +62,13 @@ xla_cc_test(
     deps = [
         ":hlo_bisect_state",
         "//xla:literal",
-        "//xla:statusor",
         "//xla/hlo/ir:hlo",
         "//xla/service:pattern_matcher",
         "//xla/service:pattern_matcher_gmock",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status:statusor",
     ],
 )
 
@@ -77,7 +77,6 @@ cc_library(
     testonly = True,
     srcs = ["hlo_bisect_utils.cc"],
     hdrs = ["hlo_bisect_utils.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":hlo_bisect_state",
         "//xla:error_spec",
@@ -85,6 +84,7 @@ cc_library(
         "//xla:protobuf_util",
         "//xla:util",
         "//xla/hlo/ir:hlo",
+        "//xla/service:dump",
         "//xla/service:hlo_parser",
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_proto_util",

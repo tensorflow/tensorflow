@@ -1,9 +1,6 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
-exports_files(
-    ["LICENSE"],
-    visibility = ["//visibility:public"],
-)
+exports_files(["LICENSE"])
 
 config_setting(
     name = "build_with_acl",

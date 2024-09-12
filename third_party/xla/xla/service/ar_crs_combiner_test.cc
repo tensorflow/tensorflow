@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,10 +15,18 @@ limitations under the License.
 
 #include "xla/service/ar_crs_combiner.h"
 
+#include <cstdint>
+#include <memory>
+#include <vector>
+
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/statusor.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {

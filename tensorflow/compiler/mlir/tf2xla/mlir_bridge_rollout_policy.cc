@@ -18,13 +18,17 @@ limitations under the License.
 #include <optional>
 
 #include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 
 MlirBridgeRolloutPolicy GetMlirBridgeRolloutPolicy(
     const tensorflow::Graph& graph,
     const FunctionLibraryDefinition* function_library,
-    std::optional<ConfigProto> config_proto, bool run_tpu_bridge,
+    std::optional<ConfigProto> config_proto,
+    bool is_supported_by_replicated_brige,
     bool uses_uninitialized_resource_args, bool is_v1_compat,
     bool record_stats) {
   switch (GetMlirBridgeRolloutState(config_proto)) {

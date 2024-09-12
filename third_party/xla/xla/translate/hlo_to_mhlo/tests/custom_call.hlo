@@ -1,0 +1,51 @@
+// RUN: xla-translate --print-sugar=false -hlo-text-to-mlir-hlo -hlo-import-all-computations %s -o - | FileCheck %s
+
+// CHECK: module @foobar
+HloModule foobar
+
+// CHECK-LABEL:  func @main(%arg0: tensor<f32>) -> tensor<f32> {
+ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
+  ROOT %Arg_0.1 = f32[] parameter(0)
+}
+
+// CHECK-LABEL:  func private @test_custom_call_dynamic_broadcast_in_dim
+// CHECK-SAME:  [[ARG_0:%.*]]: tensor<1x?xf32>, [[ARG_1:%.*]]: tensor<3xi64>) -> tensor<2x?x2xf32>
+%test_custom_call_dynamic_broadcast_in_dim (arg1: f32[1,?], arg2: s64[3]) -> f32[2,?,2] {
+  %arg1 = f32[1,?] parameter(0)
+  %arg2 = s64[3] parameter(1)
+  // CHECK:  "mhlo.dynamic_broadcast_in_dim"([[ARG_0]], [[ARG_1]]) <{
+  // CHECK-SAME: broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}>
+  // CHECK-SAME: (tensor<1x?xf32>, tensor<3xi64>) -> tensor<2x?x2xf32>
+  ROOT %custom-call = f32[2,?,2] custom-call(f32[1,?] %arg1, s64[3] %arg2), custom_call_target="mhlo.dynamic_broadcast_in_dim", backend_config={broadcast_dimensions=[0,1]}
+}
+
+// CHECK-LABEL:  func private @test_custom_call_dynamic_reshape
+// CHECK-SAME:  [[ARG_0:%.*]]: tensor<?xf32>, [[ARG_1:%.*]]: tensor<2xi64>) -> tensor<?x?xf32>
+%test_custom_call_dynamic_reshape (arg1: f32[?], arg2: s64[2]) -> f32[?,?] {
+  %arg1 = f32[?] parameter(0)
+  %arg2 = s64[2] parameter(1)
+  // CHECK:  mhlo.dynamic_reshape [[ARG_0]], [[ARG_1]] : (tensor<?xf32>, tensor<2xi64>) -> tensor<?x?xf32>
+  ROOT %custom-call = f32[?,?] custom-call(f32[?] %arg1, s64[2] %arg2), custom_call_target="mhlo.dynamic_reshape"
+}
+
+// CHECK-LABEL:  func private @test_custom_call_real_dynamic_slice
+// CHECK-SAME:  ([[ARG_0:%.*]]: tensor<?x3x224x224xf32>, [[ARG_1:%.*]]: tensor<4xi32>, [[ARG_2:%.*]]: tensor<4xi32>, [[ARG_3:%.*]]: tensor<4xi32>) -> tensor<?x3x224x224xf32>
+%test_custom_call_real_dynamic_slice(arg1: f32[?,3,224,224], arg2: s32[4], arg3: s32[4], arg4: s32[4]) -> f32[?,3,224,224] {
+  %Arg_0.1 = f32[?,3,224,224] parameter(0)
+  %Arg_1.2 = s32[4] parameter(1)
+  %Arg_2.3 = s32[4] parameter(2)
+  %Arg_3.4 = s32[4] parameter(3)
+
+  // CHECK:  mhlo.real_dynamic_slice [[ARG_0]], [[ARG_1]], [[ARG_2]], [[ARG_3]] : (tensor<?x3x224x224xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<?x3x224x224xf32>
+  ROOT %custom-call.12 = f32[?,3,224,224] custom-call(f32[?,3,224,224] %Arg_0.1, s32[4] %Arg_1.2, s32[4] %Arg_2.3, s32[4] %Arg_3.4), custom_call_target="mhlo.real_dynamic_slice"
+}
+
+// Test HLO->MHLO converter for quantize/dequantize
+%test_custom_call_for_quant_dequant (p0:f32[1,3]) -> f32[1,3] {
+  %p0 = f32[1,3] parameter(0)
+  %custom-call.1 = s8[1,3] custom-call(f32[1,3] %p0), custom_call_target="mhlo.uniform_quantize", api_version=API_VERSION_TYPED_FFI, backend_config={scale=[1.00],zero_point=[0],storage_type=i8,expressed_type=f32,storage_min=-128,storage_max=127}
+  ROOT %custom-call.2 = f32[1,3] custom-call(s8[1,3] %custom-call.1), custom_call_target="mhlo.uniform_dequantize", api_version=API_VERSION_TYPED_FFI, backend_config={scale=[1.00],zero_point=[0],storage_type=i8,expressed_type=f32,storage_min=-128,storage_max=127}
+}
+// CHECK-LABEL:  func private @test_custom_call_for_quant_dequant
+// CHECK: mhlo.uniform_quantize {{.*}} : (tensor<1x3xf32>) ->  tensor<1x3x!quant.uniform<i8:f32, 1.000000e+00>>
+// CHECK: mhlo.uniform_dequantize {{.*}} : (tensor<1x3x!quant.uniform<i8:f32, 1.000000e+00>>) -> tensor<1x3xf32>

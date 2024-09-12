@@ -70,8 +70,8 @@ def ExtractSingleElementAsInt32 : NativeCodeCall<
 def CreateTFCastToInt32Op : NativeCodeCall<
   "CreateCastToInt32($0, $_loc, $_builder)">;
 
-def CreateNoneValue : NativeCodeCall<
-  "$_builder.create<TFL::NoValueOp>($0.getLoc(), $_builder.getUnitAttr())">;
+def CreateInt32ConstOrCast : NativeCodeCall<
+  "CreateInt32ConstOrCast($0, $_loc, $_builder)">;
 
 // Creates an int32 constant op from an integer attribute $0.
 def CreateInt32ConstOpFromIntAttr
@@ -347,7 +347,7 @@ def LegalizeGather: Pat<
   (TFL_GatherOp $params, $indices, ConstantAttr<I32Attr, "0">,
      ConstantAttr<I32Attr, "0">)>;
 
-def LegalizeGatherNd : Pat<(TF_GatherNdOp $params, $indices),
+def LegalizeGatherNd : Pat<(TF_GatherNdOp $params, $indices, $bad_indices_policy),
                            (TFL_GatherNdOp $params, $indices)>;
 
 def LegalizeGatherV2 : Pat<
@@ -577,7 +577,17 @@ def LegalizeMatrixSetDiag : Pat<
   (TFL_MatrixSetDiagOp $input, $diagonal)>;
 
 def LegalizeScatterNd : Pat<
-  (TF_ScatterNdOp $indices, $updates, $shape),
+  (TF_ScatterNdOp $indices, $updates, $shape, ConstantStrAttr<StrAttr, "">),
+  (TFL_ScatterNdOp (CreateTFCastToInt32Op $indices), $updates,
+    (CreateTFCastToInt32Op $shape))>;
+
+def LegalizeScatterNdDefaultBadindicesPolicy : Pat<
+  (TF_ScatterNdOp $indices, $updates, $shape, ConstantStrAttr<StrAttr, "DEFAULT">),
+  (TFL_ScatterNdOp (CreateTFCastToInt32Op $indices), $updates,
+    (CreateTFCastToInt32Op $shape))>;
+
+def LegalizeScatterNdIgnoreBadIndices : Pat<
+  (TF_ScatterNdOp $indices, $updates, $shape, ConstantStrAttr<StrAttr, "IGNORE">),
   (TFL_ScatterNdOp (CreateTFCastToInt32Op $indices), $updates,
     (CreateTFCastToInt32Op $shape))>;
 
@@ -587,10 +597,7 @@ def LegalizeCumsum : Pat<
 
 def LegalizeReshape : Pat<
   (TF_ReshapeOp $input, $shape),
-  (TFL_ReshapeOp $input, (CreateTFCastToInt32Op $shape))>;
-
-def ZeroIntAttr
-  : AttrConstraint<CPred<"$_self.cast<::mlir::IntegerAttr>().getInt() == 0">>;
+  (TFL_ReshapeOp $input, (CreateInt32ConstOrCast $shape))>;
 
 def LegalizeStridedSlice : Pat<
   (TF_StridedSliceOp

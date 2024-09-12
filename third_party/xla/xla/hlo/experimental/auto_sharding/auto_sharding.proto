@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,11 +31,17 @@ message AutoShardingSolverRequest {
   message Edges {
     repeated int64 edges = 1;
   }
+  message Names {
+    repeated string names = 1;
+  }
   message SolverTimeout {
     int64 solver_timeout_in_seconds = 1;
   }
   message Coeff {
     double coeff = 1;
+  }
+  message Group {
+    repeated int64 prims = 1;  // Node or edge primitive indices.
   }
 
   int64 num_nodes = 1;
@@ -43,9 +49,14 @@ message AutoShardingSolverRequest {
   repeated int64 s_len = 3;
   repeated int64 s_follow = 4;
   repeated int64 s_hint = 5;
+  repeated int64 peak_times = 35;
   repeated Pair edges = 6;
   repeated Nodes live = 7;
   repeated Edges live_edges = 28;
+  repeated Pair node_intervals = 36;
+  repeated Pair edge_intervals = 37;
+  repeated Group node_groups = 38;
+  repeated Group edge_groups = 39;
   repeated Costs computation_costs = 8;
   repeated Costs communication_costs = 9;
   repeated Costs memory_costs = 10;
@@ -56,6 +67,9 @@ message AutoShardingSolverRequest {
   repeated Pair aliases = 14;
   repeated Costs value_costs = 15;
   repeated string instruction_names = 16;
+  repeated string opcodes = 33;
+  repeated string metadata_source_files = 40;
+  repeated Names strategy_names = 32;
   optional SolverTimeout solver_timeout = 17;
   optional Coeff overbudget_coeff = 18;
   optional Coeff makespan_coeff = 19;
@@ -67,4 +81,8 @@ message AutoShardingSolverRequest {
   double saltiplier = 23;
   bool deterministic_mode = 27;
   string module_name = 24;
+  string request_name = 30;
+  bool enable_output = 31;
+  bool enable_memory_edge_costs = 34;
+  bool minimize_departures = 41;
 }

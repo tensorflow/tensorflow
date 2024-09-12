@@ -62,8 +62,6 @@ SOURCE_PATH_ANDROID_SDK = pathlib.Path('android/sdk/api/26.txt')
 SECTION_LABELS = {
     'org.tensorflow.lite': 'Core',
     'org.tensorflow.lite.support': 'Support Library',
-    'org.tensorflow.lite.task.gms': 'Task Library (Play Services)',
-    'org.tensorflow.lite.task': 'Task Library',
     'org.tensorflow.lite.gpu': 'Delegates',
     # If we ever need other ODML packages, drop the `.image` here.
     'com.google.android.odml.image': 'ODML',
@@ -106,7 +104,7 @@ def main(unused_argv):
   all_deps = [SOURCE_PATH_CORE, SOURCE_PATH_SUPPORT, SOURCE_PATH_ODML]
   # Keep searching upwards for a root that hosts the various dependencies. We
   # test `root.name` to ensure we haven't hit /.
-  while root.name and not (exists := exists_maybe_nested(all_deps, root)):
+  while not (exists := exists_maybe_nested(all_deps, root)) and root.name:
     root = root.parent
   if not exists:
     raise FileNotFoundError('Could not find dependencies.')

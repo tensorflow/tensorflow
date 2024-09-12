@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,11 +25,15 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -50,13 +54,14 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/TargetParser/Triple.h"
 #include "llvm/Transforms/Utils/Cloning.h"
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
-#include "mlir/IR/Types.h"  // from @llvm-project
-#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/OwningOpRef.h"
+#include "mlir/IR/Types.h"
+#include "mlir/IR/Value.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
@@ -66,15 +71,11 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/byte_order.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/file_system.h"
 #include "tsl/platform/logging.h"
+#include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -142,24 +143,10 @@ llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
   if (b->getFastMathFlags().noNaNs() || enable_fast_min_max) {
     auto cmp = b->CreateFCmpUGE(lhs_value, rhs_value);
     return b->CreateSelect(cmp, lhs_value, rhs_value, name.data());
-  } else {
-    // logic: isNaN(lhs) || (!isNan(rhs) && lhs >= rhs) ? lhs : rhs
-    // See also: IEEE Std 754-2008 5.11.
-    //
-    // This also works, but we wanted to make it similar to minimum.
-    // logic: isNaN(lhs) || lhs >= rhs ? lhs : rhs
-    //
-    // b->CreateMaximum() doesn't work on GPU before SM80.
-    //
-    // A test with a strange LLVM version breaks if we use OGT here, so we use
-    // OGE.
-    auto lhs_is_nan = b->CreateFCmpUNE(lhs_value, lhs_value);
-    auto rhs_is_not_nan = b->CreateFCmpOEQ(rhs_value, rhs_value);
-    auto lhs_is_ge = b->CreateFCmpOGE(lhs_value, rhs_value);
-    return b->CreateSelect(
-        b->CreateOr(lhs_is_nan, b->CreateAnd(rhs_is_not_nan, lhs_is_ge)),
-        lhs_value, rhs_value, name.data());
   }
+  return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::maximum,
+                                      {lhs_value, rhs_value},
+                                      {lhs_value->getType()}, b);
 }
 
 llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
@@ -168,25 +155,10 @@ llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
   if (b->getFastMathFlags().noNaNs() || enable_fast_min_max) {
     auto cmp = b->CreateFCmpULE(lhs_value, rhs_value);
     return b->CreateSelect(cmp, lhs_value, rhs_value, name.data());
-  } else {
-    // logic: isNaN(lhs) || (!isNan(rhs) && lhs <= rhs) ? lhs : rhs
-    // See also: IEEE Std 754-2008 5.11.
-    //
-    // This should also work, but the tests show that it doesn't work for
-    // minimum(x, NaN) on GPU:
-    // logic: isNaN(lhs) || lhs <= rhs ? lhs : rhs
-    //
-    // b->CreateMaximum() doesn't work on GPU before SM80.
-    //
-    // A test with a strange LLVM version breaks if we use OLT here, so we use
-    // OLE.
-    auto lhs_is_nan = b->CreateFCmpUNE(lhs_value, lhs_value);
-    auto rhs_is_not_nan = b->CreateFCmpOEQ(rhs_value, rhs_value);
-    auto lhs_is_le = b->CreateFCmpOLE(lhs_value, rhs_value);
-    return b->CreateSelect(
-        b->CreateOr(lhs_is_nan, b->CreateAnd(rhs_is_not_nan, lhs_is_le)),
-        lhs_value, rhs_value, name.data());
   }
+  return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::minimum,
+                                      {lhs_value, rhs_value},
+                                      {lhs_value->getType()}, b);
 }
 
 llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
@@ -213,6 +185,9 @@ llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
 llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
                                   llvm::Module* module) {
   switch (element_type) {
+    case S2:
+    case U2:
+      return llvm::Type::getIntNTy(module->getContext(), 2);
     case S4:
     case U4:
       return llvm::Type::getIntNTy(module->getContext(), 4);
@@ -222,22 +197,16 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
       return llvm::Type::getInt8Ty(module->getContext());
     case S16:
     case U16:
-    case BF16:
-      // For BF16 we just need some type that is 16 bits wide so that it will
-      // take up the right amount of space in memory. LLVM does not have a BF16
-      // type (the LLVM half type is IEEE 16 bit floating point, not bfloat), so
-      // we can't map it directly to an LLVM type. We will not map a BF16
-      // addition to an addition on this type (int16_t) - this is just the type
-      // used for storage.
       return llvm::Type::getInt16Ty(module->getContext());
     case F8E5M2:
     case F8E5M2FNUZ:
     case F8E4M3FN:
     case F8E4M3B11FNUZ:
     case F8E4M3FNUZ:
-      // Similarly as with BF16, we represent F8 as an int since there is no
-      // LLVM F8 dtype.
+      // We represent F8 as an int since there is no LLVM F8 dtype.
       return llvm::Type::getInt8Ty(module->getContext());
+    case BF16:
+      return llvm::Type::getBFloatTy(module->getContext());
     case F16:
       return llvm::Type::getHalfTy(module->getContext());
     case S32:
@@ -321,12 +290,11 @@ llvm::Type* ShapeToIrType(const Shape& shape, llvm::Module* module) {
   return result_type;
 }
 
-StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(const Shape& shape,
-                                                         int32_t* shape_size,
-                                                         llvm::IRBuilder<>* b) {
+absl::StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(
+    const Shape& shape, int32_t* shape_size, llvm::IRBuilder<>* b) {
   std::string encoded_shape = shape.SerializeAsString();
   if (encoded_shape.size() > std::numeric_limits<int32_t>::max()) {
-    return InternalError("Encoded shape size exceeded int32_t size limit.");
+    return Internal("Encoded shape size exceeded int32_t size limit.");
   }
   *shape_size = static_cast<int32_t>(encoded_shape.size());
   return b->CreateGlobalStringPtr(encoded_shape);
@@ -338,9 +306,12 @@ llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
   int64_t size_bytes = literal.size_bytes();
   CHECK_EQ(module->getDataLayout().isLittleEndian(), tsl::port::kLittleEndian);
   std::vector<char> packed_data;
-  if (primitive_util::Is4BitType(literal.shape().element_type())) {
-    packed_data.resize((size_bytes + 1) / 2);
-    PackInt4(absl::MakeSpan(data, size_bytes), absl::MakeSpan(packed_data));
+  if (primitive_util::IsSubByteNonPredType(literal.shape().element_type())) {
+    auto bit_width = primitive_util::BitWidth(literal.shape().element_type());
+    int elements_per_byte = 8 / bit_width;
+    packed_data.resize(CeilOfRatio<int64_t>(size_bytes, elements_per_byte));
+    PackIntN(bit_width, absl::MakeSpan(data, size_bytes),
+             absl::MakeSpan(packed_data));
     data = packed_data.data();
     size_bytes = packed_data.size();
   }
@@ -361,6 +332,49 @@ llvm::GlobalVariable* AllocateSharedMemoryTile(llvm::Module* module,
       llvm::GlobalValue::NotThreadLocal, kGPUSharedMemoryAddrSpace);
 }
 
+SharedMemoryTile AllocateSharedMemoryTile(
+    llvm::Module* module, llvm::Type* element_type,
+    absl::Span<int64_t const> dimensions_major_to_minor,
+    absl::string_view buffer_name) {
+  llvm::Type* ty = element_type;
+  for (auto dim : llvm::reverse(dimensions_major_to_minor)) {
+    ty = llvm::ArrayType::get(ty, dim);
+  }
+  return SharedMemoryTile{
+      llvm_ir::AllocateSharedMemoryTile(module, ty, buffer_name), element_type};
+}
+
+static std::vector<llvm::Value*> IndexWith0(
+    absl::Span<llvm::Value* const> index, llvm::IRBuilder<>* b) {
+  std::vector<llvm::Value*> index_with_0{
+      llvm::ConstantInt::get(index.front()->getType(), 0)};
+  absl::c_copy(index, std::back_inserter(index_with_0));
+  return index_with_0;
+}
+
+llvm::Value* SharedMemoryTile::Address(absl::Span<llvm::Value* const> index,
+                                       llvm::IRBuilder<>* b) const {
+  llvm::Value* gep = b->CreateInBoundsGEP(base_ptr_->getValueType(), base_ptr_,
+                                          IndexWith0(index, b));
+  // __shared__ memory uses a different address space, so we cast it
+  // to global address space before writing or reading.
+  return b->CreateAddrSpaceCast(gep,
+                                llvm::PointerType::get(b->getContext(), 0));
+};
+
+llvm::Value* SharedMemoryTile::Load(absl::Span<llvm::Value* const> index,
+                                    llvm::IRBuilder<>* b) const {
+  auto* load_type = llvm::GetElementPtrInst::getIndexedType(
+      base_ptr_->getValueType(), IndexWith0(index, b));
+  return b->CreateLoad(load_type, Address(index, b));
+}
+
+llvm::StoreInst* SharedMemoryTile::Store(llvm::Value* value,
+                                         absl::Span<llvm::Value* const> index,
+                                         llvm::IRBuilder<>* b) const {
+  return b->CreateStore(value, Address(index, b));
+}
+
 llvm::AllocaInst* EmitAllocaAtFunctionEntry(llvm::Type* type,
                                             absl::string_view name,
                                             llvm::IRBuilder<>* b,
@@ -377,8 +391,12 @@ llvm::AllocaInst* EmitAllocaAtFunctionEntryWithCount(llvm::Type* type,
   llvm::Function* function = b->GetInsertBlock()->getParent();
   b->SetInsertPoint(&function->getEntryBlock(),
                     function->getEntryBlock().getFirstInsertionPt());
+  llvm::Module* module = b->GetInsertBlock()->getModule();
+  // Explicitly set local addrspace for SPIR backend.
+  llvm::Triple target(module->getTargetTriple());
+  int addrspace = target.isSPIR() || target.isAMDGPU() ? 5 : 0;
   llvm::AllocaInst* alloca =
-      b->CreateAlloca(type, element_count, AsStringRef(name));
+      b->CreateAlloca(type, addrspace, element_count, AsStringRef(name));
   if (alignment != 0) {
     alloca->setAlignment(llvm::Align(alignment));
   }
@@ -496,7 +514,11 @@ void SetDereferenceableMetadataForLoad(llvm::LoadInst* load,
 }
 
 llvm::Instruction* AddRangeMetadata(int32_t lower, int32_t upper,
-                                    llvm::Instruction* inst) {
+                                    llvm::Instruction* inst,
+                                    llvm::Module* module) {
+  if (llvm::Triple(module->getTargetTriple()).isSPIR()) {
+    return inst;
+  }
   llvm::LLVMContext& context = inst->getParent()->getContext();
   llvm::IntegerType* i32 = llvm::Type::getInt32Ty(context);
   inst->setMetadata(
@@ -660,23 +682,16 @@ std::map<int, llvm::MDNode*> MergeMetadata(
   return result;
 }
 
-static Status CreateAndWriteStringToFile(const std::string& directory_name,
-                                         const std::string& file_name,
-                                         const std::string& text) {
-  std::unique_ptr<tsl::WritableFile> f;
-  TF_RETURN_IF_ERROR(tsl::Env::Default()->RecursivelyCreateDir(directory_name));
-  TF_RETURN_IF_ERROR(tsl::Env::Default()->NewWritableFile(file_name, &f));
-  TF_RETURN_IF_ERROR(f->Append(text));
-  TF_RETURN_IF_ERROR(f->Close());
-  return OkStatus();
-}
-
 void DumpIrIfEnabled(const HloModule& hlo_module,
                      const llvm::Module& llvm_module, bool optimized,
                      absl::string_view filename_suffix) {
   if (!DumpingEnabledForHloModule(hlo_module)) {
     return;
   }
+  tsl::profiler::ScopedAnnotation annotation([&] {
+    return absl::StrFormat("XlaDumpLlvmIr:#module=%s,program_id=%d#",
+                           hlo_module.name(), hlo_module.unique_id());
+  });
   // We can end up compiling different modules with the same name when using
   // XlaJitCompiledCpuFunction::Compile.  Avoid overwriting IR files previously
   // dumped from the same process in such cases.

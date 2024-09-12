@@ -161,7 +161,7 @@ class DeserializeSparseOp : public OpKernel {
 
     // Dimension 0 is the primary dimension.
     int rank = shape.dims();
-    gtl::InlinedVector<int64_t, 8> std_order(rank);
+    absl::InlinedVector<int64_t, 8UL> std_order(rank);
     std::iota(std_order.begin(), std_order.end(), 0);
 
     std::vector<SparseTensor> tensors;
@@ -223,7 +223,7 @@ class DeserializeSparseOp : public OpKernel {
       return errors::InvalidArgument("Could not construct tensor from proto");
     }
     *result = tensor;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status GetAndValidateSparseTensor(
@@ -278,7 +278,7 @@ class DeserializeSparseOp : public OpKernel {
                                      index, "].shape but they do not: ", rank,
                                      " vs. ", output_shape->dim_size(0));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   DataType dtype_;

@@ -15,13 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_LIB_ANNOTATED_TRACEME_H_
 #define TENSORFLOW_CORE_PROFILER_LIB_ANNOTATED_TRACEME_H_
 
+#include <optional>
+#include <string>
 #include <utility>
 
-#include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
@@ -35,22 +34,23 @@ class AnnotatedTraceMe {
   template <typename NameGeneratorT>
   explicit AnnotatedTraceMe(NameGeneratorT&& name_generator, int level = 1) {
     DCHECK_GE(level, 1);
-    bool annotation_enabled = ScopedAnnotation::IsEnabled();
-    bool traceme_enabled = TraceMe::Active(level);
-    if (TF_PREDICT_FALSE(annotation_enabled || traceme_enabled)) {
-      string name = std::forward<NameGeneratorT>(name_generator)();
-      if (annotation_enabled) {
-        scoped_annotation_.emplace(absl::string_view(name));
-      }
-      if (TF_PREDICT_TRUE(traceme_enabled)) {
-        trace_me_.emplace([&name] { return std::move(name); }, level);
-      }
+    bool annotation_enabled = tsl::profiler::ScopedAnnotation::IsEnabled();
+    bool traceme_enabled = tsl::profiler::TraceMe::Active(level);
+    if (TF_PREDICT_TRUE(!annotation_enabled && !traceme_enabled)) {
+      return;
+    }
+    std::string name = name_generator();
+    if (annotation_enabled) {
+      scoped_annotation_.emplace(name);
+    }
+    if (TF_PREDICT_TRUE(traceme_enabled)) {
+      trace_me_.emplace([&name] { return std::move(name); }, level);
     }
   }
 
  private:
-  absl::optional<TraceMe> trace_me_;
-  absl::optional<ScopedAnnotation> scoped_annotation_;
+  std::optional<tsl::profiler::TraceMe> trace_me_;
+  std::optional<tsl::profiler::ScopedAnnotation> scoped_annotation_;
 };
 
 }  // namespace profiler

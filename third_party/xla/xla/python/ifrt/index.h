@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -55,6 +55,10 @@ class Index {
   bool operator!=(const Index& other) const {
     return elements_ != other.elements_;
   }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const Index& index);
+
   Index operator+(const Index& offset) const {
     CHECK_EQ(elements_.size(), offset.elements_.size());
     Index result = *this;
@@ -92,6 +96,11 @@ class Index {
 };
 
 std::ostream& operator<<(std::ostream& os, const Index& index);
+
+template <typename H>
+H AbslHashValue(H h, const Index& index) {
+  return H::combine(std::move(h), index.elements_);
+}
 
 }  // namespace ifrt
 }  // namespace xla

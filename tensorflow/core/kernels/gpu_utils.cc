@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/base/call_once.h"
 #include "xla/stream_executor/gpu/asm_compiler.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
-#include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/protobuf/conv_autotuning.pb.h"
 #include "tensorflow/core/util/determinism.h"
@@ -193,7 +192,6 @@ void LogConvAutotuneResults(se::dnn::ConvolutionKind kind,
     *log.add_results() = result;
   }
   VLOG(2) << log.DebugString();
-  Logger::GetSingleton()->LogProto(log);
 }
 
 void LogFusedConvForwardAutotuneResults(
@@ -241,7 +239,6 @@ void LogFusedConvForwardAutotuneResults(
     *log.add_results() = result;
   }
   VLOG(2) << log.DebugString();
-  Logger::GetSingleton()->LogProto(log);
 }
 
 void LogFusedMatmulAutotuneResults(
@@ -287,7 +284,6 @@ void LogFusedMatmulAutotuneResults(
     *log.add_results() = result;
   }
   VLOG(2) << log.DebugString();
-  Logger::GetSingleton()->LogProto(log);
 }
 
 namespace {

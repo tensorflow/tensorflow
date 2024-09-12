@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -37,7 +37,7 @@ class CpuLayoutAssignment : public LayoutAssignment {
   ~CpuLayoutAssignment() override {}
 
  protected:
-  Status AddBackendConstraints(LayoutConstraints* constraints) override;
+  absl::Status AddBackendConstraints(LayoutConstraints* constraints) override;
 
   const TargetMachineFeatures& target_machine_features_;
 };

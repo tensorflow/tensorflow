@@ -132,7 +132,7 @@ Status CompressElement(const std::vector<Tensor>& element,
   out->set_version(kCompressedElementVersion);
   VLOG(3) << "Compressed element from " << iov.NumBytes() << " bytes to "
           << out->data().size() << " bytes";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status UncompressElement(const CompressedElement& compressed,
@@ -228,7 +228,7 @@ Status UncompressElement(const CompressedElement& compressed,
       nonmemcpyable_pos += metadata.uncompressed_bytes(0);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_UNARY_VARIANT_DECODE_FUNCTION(CompressedElement,

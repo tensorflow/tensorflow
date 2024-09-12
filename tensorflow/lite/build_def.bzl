@@ -1,12 +1,13 @@
 """Build macros for TF Lite."""
 
+load("//tensorflow:strict.default.bzl", "py_strict_test")
 load("//tensorflow:tensorflow.bzl", "clean_dep", "if_oss", "tf_binary_additional_srcs", "tf_cc_shared_object")
 load("//tensorflow/lite:special_rules.bzl", "tflite_copts_extra")
 load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni")
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
-load("//tensorflow:strict.default.bzl", "py_strict_test")
 
+# buildifier: disable=out-of-order-load
 def register_extension_info(**kwargs):
     pass
 
@@ -169,10 +170,7 @@ def tflite_linkopts_no_undefined():
             # since undefined symbols in shared libraries (references to symbols
             # that will be defined in the main executable) are normal and
             # expected in those cases.
-            "//tools/cpp:asan_build": [],
-            "//tools/cpp:hwasan_build": [],
-            "//tools/cpp:msan_build": [],
-            "//tools/cpp:tsan_build": [],
+            "//tools/cpp:sanitizer_build": [],
             "//tensorflow:ios": [
                 "-Wl,-undefined,error",
             ],
@@ -183,13 +181,22 @@ def tflite_linkopts_no_undefined():
         }),
     )
 
+def tflite_pagesize_linkopts():
+    """Defines linker flags for setting the page size."""
+    return select({
+        clean_dep("//tensorflow:android_arm64"): [
+            "-Wl,-z,max-page-size=16384",
+        ],
+        "//conditions:default": [],
+    })
+
 def tflite_linkopts():
     """Defines linker flags for linking TFLite binary."""
-    return tflite_linkopts_unstripped() + tflite_symbol_opts()
+    return tflite_linkopts_unstripped() + tflite_symbol_opts() + tflite_pagesize_linkopts()
 
 def tflite_jni_linkopts():
     """Defines linker flags for linking TFLite binary with JNI."""
-    return tflite_jni_linkopts_unstripped() + tflite_symbol_opts()
+    return tflite_jni_linkopts_unstripped() + tflite_symbol_opts() + tflite_pagesize_linkopts()
 
 def tflite_jni_binary(
         name,
@@ -875,7 +882,7 @@ def tflite_cc_library_with_c_headers_test(name, hdrs, **kwargs):
     build_tests = []
     for hdr in hdrs:
         label = _label(hdr)
-        basename = "%s__test_self_contained_c__%s" % (name, label.name)
+        basename = "%s__test_self_contained_c__%s__%s" % (name, label.package, label.name)
         compatible_with = kwargs.pop("compatible_with", [])
         native.genrule(
             name = "%s_gen" % basename,

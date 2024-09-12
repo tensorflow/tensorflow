@@ -3,7 +3,10 @@
 #   Thus helping write cross platform tests.
 
 package(
-    default_visibility = ["//visibility:public"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [
+        "//tsl/platform:__pkg__",
+    ],
     licenses = ["notice"],
 )
 

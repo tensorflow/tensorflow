@@ -15,6 +15,7 @@
 """Tests for TFE_TensorHandleToNumpy."""
 
 import numpy as np
+
 from tensorflow.python.eager import pywrap_tensor_test_util as util
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
@@ -45,6 +46,30 @@ class PywrapTensorTest(test.TestCase):
     for _ in range(int(1e2)):
       layer = my_layer(x)
     self.assertIsNotNone(layer)
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
+  def test_no_leak_cycles(self):
+    for i in range(int(1e2)):
+      # use multiply to avoid cached tensors.
+      x = 1.0 * constant_op.constant([1.0, 1, 1, i])
+      y = 1.0 * constant_op.constant([1.0, 1, 2, i])
+      x.self_ref = lambda x: x
+      x.y = y
+      y.x = x
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
+  def test_no_leak_shape(self):
+    for i in range(int(1e2)):
+      # use multiply to avoid cached tensors.
+      x = 1.0 * constant_op.constant([3.0, 1, 1, i])
+      x.shape.x = x
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly()
+  def test_no_leak_handle_data(self):
+    for i in range(int(1e2)):
+      # use multiply to avoid cached tensors.
+      x = 1.0 * constant_op.constant([4.0, 1, 1, i])
+      x._handle_data = x
 
 
 if __name__ == "__main__":

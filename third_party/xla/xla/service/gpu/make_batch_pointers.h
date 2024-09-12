@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,9 +17,8 @@ limitations under the License.
 #define XLA_SERVICE_GPU_MAKE_BATCH_POINTERS_H_
 
 #include <cstddef>
-#include <cstdint>
 
-#include "xla/status.h"
+#include "absl/status/status.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/types.h"  // IWYU pragma: keep
@@ -50,9 +49,10 @@ namespace xla::gpu {
 //    driver and slow down *all* work on the GPU.  So to do this right, we'd
 //    need to allocate the host memory as pinned, one alloc per stream.  Then
 //    we'd need to manage this memory without leaks.  This becomes complex!
-Status MakeBatchPointers(se::Stream* stream, se::DeviceMemoryBase base_ptr,
-                         size_t stride_bytes, size_t n,
-                         se::DeviceMemoryBase ptrs_out);
+absl::Status MakeBatchPointers(se::Stream* stream,
+                               se::DeviceMemoryBase base_ptr,
+                               size_t stride_bytes, size_t n,
+                               se::DeviceMemoryBase ptrs_out);
 
 }  // namespace xla::gpu
 

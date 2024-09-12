@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <optional>
 
+#include "xla/autotune_results.pb.h"
 #include "xla/service/symbol_repository.h"
 #include "xla/xla.pb.h"
 
@@ -26,6 +27,7 @@ namespace xla::gpu {
 // GPU-specific fields for SymbolRepositories.
 struct GpuBackendSpecificData : public BackendSpecificData {
   std::optional<GpuCompilationEnvironment> gpu_compilation_environment;
+  std::optional<AutotuneResults> autotune_results;
 };
 
 }  // namespace xla::gpu

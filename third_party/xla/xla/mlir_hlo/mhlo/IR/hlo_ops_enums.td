@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -40,8 +40,7 @@ def MHLO_PrecisionAttr : EnumAttr<MHLO_Dialect, MHLO_Precision, "precision">;
 
 // TODO(b/129153247) See if it's possible to also validate the size.
 def MHLO_PrecisionConfigAttr:
-    OptionalAttr<
-          TypedArrayAttrBase<MHLO_PrecisionAttr, "Precision Config attribute">>;
+    TypedArrayAttrBase<MHLO_PrecisionAttr, "Precision Config attribute">;
 
 //===----------------------------------------------------------------------===//
 // Custom call schedule hints

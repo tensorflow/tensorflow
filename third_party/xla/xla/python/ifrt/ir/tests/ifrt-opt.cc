@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
-#include "mlir/InitAllDialects.h"  // from @llvm-project
-#include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"
+#include "mlir/InitAllDialects.h"
+#include "mlir/Tools/mlir-opt/MlirOptMain.h"
+#include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/transforms/built_in_spmd_expansions.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
@@ -23,6 +24,7 @@ limitations under the License.
 int main(int argc, char** argv) {
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);
+  mlir::mhlo::registerAllMhloDialects(registry);
   registry.insert<xla::ifrt::IfrtDialect>();
   xla::ifrt::registerIfrtIrPasses();
 

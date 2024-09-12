@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "SparseToDense"
   input_arg {
     name: "sparse_indices"

@@ -136,8 +136,8 @@ class TopKTest(test.TestCase):
         self._validateTopK(inputs, k, values, indices)
 
   def testTop1AllNan(self):
-    inputs = [[np.NaN, np.NaN], [np.NaN, np.NaN]]
-    self._validateTopK(inputs, 1, [[np.NaN], [np.NaN]], [[0], [0]])
+    inputs = [[np.nan, np.nan], [np.nan, np.nan]]
+    self._validateTopK(inputs, 1, [[np.nan], [np.nan]], [[0], [0]])
 
   def _testLargeSort(self, dtype):
     b = 10

@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,11 +19,11 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "xla/client/global_data.h"
 #include "xla/client/xla_builder.h"
 #include "xla/error_spec.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/service.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"

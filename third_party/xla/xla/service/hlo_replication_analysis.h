@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,9 +20,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -35,19 +35,19 @@ namespace xla {
 class HloReplicationAnalysis {
  public:
   // Runs the analysis on module and returns the result or an error.
-  static StatusOr<std::unique_ptr<HloReplicationAnalysis>> Run(
+  static absl::StatusOr<std::unique_ptr<HloReplicationAnalysis>> Run(
       const HloModule* module, bool cross_partition_spmd);
 
   // Same as above, but the caller can provide additional annotations: a set of
   // while loops that are known to have the same iteration counts across
   // replicas or partitions.
-  static StatusOr<std::unique_ptr<HloReplicationAnalysis>> Run(
+  static absl::StatusOr<std::unique_ptr<HloReplicationAnalysis>> Run(
       const HloModule* module, bool cross_partition_spmd,
       const absl::flat_hash_set<const HloInstruction*>*
           loops_known_with_same_iterations);
 
   // Same as above but supports finding partially replicated HLOs.
-  static StatusOr<std::unique_ptr<HloReplicationAnalysis>>
+  static absl::StatusOr<std::unique_ptr<HloReplicationAnalysis>>
   RunWithPartialReplication(const HloModule* module, bool cross_partition_spmd);
 
   // Returns if the HLO instruction outputs the same value (i.e., replicated) at
@@ -114,7 +114,7 @@ class HloReplicationAnalysis {
         support_partial_replication_(support_partial_replication) {}
 
   // Computes hlo_replication_.
-  Status ComputeHloReplication();
+  absl::Status ComputeHloReplication();
 
   // A helper function to recursively compute hlo_replication on a computation.
   // Returns whether hlo_replication_ is changed.

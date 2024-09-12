@@ -56,10 +56,10 @@ struct ExampleStatistics {
   // case, this vector has the same length as the number of classes, where each
   // value corresponds to one class.
   // Use InlinedVector to avoid heap allocation for small number of classes.
-  gtl::InlinedVector<double, 1> wx;
+  absl::InlinedVector<double, 1> wx;
 
   // Logits for each class, using the previous weights.
-  gtl::InlinedVector<double, 1> prev_wx;
+  absl::InlinedVector<double, 1> prev_wx;
 
   // Sum of squared feature values occurring in the example divided by
   // L2 * sum(example_weights).
@@ -80,7 +80,7 @@ class Regularizations {
     TF_RETURN_IF_ERROR(context->GetAttr("l1", &symmetric_l1_));
     TF_RETURN_IF_ERROR(context->GetAttr("l2", &symmetric_l2_));
     shrinkage_ = symmetric_l1_ / symmetric_l2_;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Proximal SDCA shrinking for L1 regularization.

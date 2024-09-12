@@ -357,7 +357,7 @@ Status TrtShapeOptimizationProfile::AddProfiles(
     const nvinfer1::INetworkDefinition* network) {
   // Create optimization profile for calibration if necessary.
   if (!calib_profiles_.min.empty()) {
-    VLOG(2) << "Setting up calibration profies";
+    VLOG(2) << "Setting up calibration profiles";
     auto* calibProfile = builder->createOptimizationProfile();
     Status status =
         calib_profiles_.SetDimensions(network, calibProfile, input_mask_);

@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html devsite>
+<head>
+  <title>TfLiteAffineQuantization Struct Reference</title>
+  <meta name="page_type" value="reference" />
+</head>
+<body>
+  <div id="top"><!-- do not remove this div --></div>
+  <h1>TfLiteAffineQuantization</h1>
+  <code>#include &lt;common.h&gt;</code>
+  <p>Parameters for asymmetric quantization across a dimension (i.e per output channel quantization). </p>
+  <h2>Summary</h2>
+  <p>quantized_dimension specifies which dimension the scales and zero_points correspond to. For a particular value in quantized_dimension, quantized values can be converted back to float using: <code>real_value = scale * (quantized_value - zero_point)</code></p>
+  <table class="properties responsive">
+    <tr>
+      <th colspan="2">
+        <h3>Public attributes</h3>
+      </th>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_affine_quantization_1ab59ebe2c790ca6067e9792f2c7eb3a19">quantized_dimension</a></code>
+      </td>
+      <td>
+        <div>
+          <code>int32_t</code>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_affine_quantization_1affb59a5c94701600af48d007595e9890">scale</a></code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/struct/tf-lite-float-array.html#struct_tf_lite_float_array">TfLiteFloatArray</a> *</code>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_affine_quantization_1a7cc2b014f80312b2bb3f766ede8c12b0">zero_point</a></code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> *</code>
+        </div>
+      </td>
+    </tr>
+  </table>
+  <h2>Public attributes</h2>
+  <div id="struct_tf_lite_affine_quantization_1ab59ebe2c790ca6067e9792f2c7eb3a19">
+    <h3>quantized_dimension</h3>
+    <pre class="prettyprint">int32_t TfLiteAffineQuantization::quantized_dimension</pre>
+    <div />
+  </div>
+  <div id="struct_tf_lite_affine_quantization_1affb59a5c94701600af48d007595e9890">
+    <h3>scale</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/struct/tf-lite-float-array.html#struct_tf_lite_float_array">TfLiteFloatArray</a> * TfLiteAffineQuantization::scale</pre>
+    <div />
+  </div>
+  <div id="struct_tf_lite_affine_quantization_1a7cc2b014f80312b2bb3f766ede8c12b0">
+    <h3>zero_point</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> * TfLiteAffineQuantization::zero_point</pre>
+    <div />
+  </div>
+</body>
+</html>

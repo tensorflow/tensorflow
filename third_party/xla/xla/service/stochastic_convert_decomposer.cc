@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,13 +18,13 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/shape_inference.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -32,8 +32,8 @@ limitations under the License.
 
 namespace xla {
 
-Status DecomposeStochasticConvert(HloComputation* comp,
-                                  HloInstruction* instruction) {
+absl::Status DecomposeStochasticConvert(HloComputation* comp,
+                                        HloInstruction* instruction) {
   CHECK(instruction->opcode() == HloOpcode::kStochasticConvert)
       << "requires a stochastic_convert instruction to decompose, but got: "
       << instruction->opcode();
@@ -127,16 +127,16 @@ Status DecomposeStochasticConvert(HloComputation* comp,
 
     TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(result));
     TF_RETURN_IF_ERROR(comp->RemoveInstruction(instruction));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // TODO(b/232442915): Add support for converting to floats.
-  return InternalError("Unsupported stochastic convert: from %s to %s",
+  return Internal("Unsupported stochastic convert: from %s to %s",
                        PrimitiveType_Name(from_type),
                        PrimitiveType_Name(to_type));
 }
 
-StatusOr<bool> StochasticConvertDecomposer::Run(
+absl::StatusOr<bool> StochasticConvertDecomposer::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

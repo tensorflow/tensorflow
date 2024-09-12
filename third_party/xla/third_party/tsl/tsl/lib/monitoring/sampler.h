@@ -18,6 +18,7 @@ limitations under the License.
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
+#include "absl/status/status.h"
 #include "tsl/platform/platform.h"
 // clang-format on
 
@@ -121,7 +122,7 @@ class Sampler {
 #include <utility>
 #include <vector>
 
-#include "tsl/lib/histogram/histogram.h"
+#include "xla/tsl/lib/histogram/histogram.h"
 #include "tsl/lib/monitoring/collection_registry.h"
 #include "tsl/lib/monitoring/metric_def.h"
 #include "tsl/platform/macros.h"
@@ -231,7 +232,7 @@ class Sampler {
   template <typename... Labels>
   SamplerCell* GetCell(const Labels&... labels) TF_LOCKS_EXCLUDED(mu_);
 
-  Status GetStatus() { return status_; }
+  absl::Status GetStatus() { return status_; }
 
  private:
   friend class SamplerCell;
@@ -251,16 +252,17 @@ class Sampler {
               }
             })) {
     if (registration_handle_) {
-      status_ = OkStatus();
+      status_ = absl::OkStatus();
     } else {
-      status_ = Status(absl::StatusCode::kAlreadyExists,
+      status_ =
+          absl::Status(absl::StatusCode::kAlreadyExists,
                        "Another metric with the same name already exists.");
     }
   }
 
   mutable mutex mu_;
 
-  Status status_;
+  absl::Status status_;
 
   using LabelArray = std::array<string, NumLabels>;
   // we need a container here that guarantees pointer stability of the value,

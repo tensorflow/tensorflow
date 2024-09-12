@@ -25,37 +25,37 @@ message DebugOptions {
   // the MLIR after import will be dumped at the beginning of each pass manager
   // run. Additionally, MLIR will be dumped before and after each pass
   // depending on pass names and functions matched using the
-  // `mlir_dump_pass_regex` and `mlir_dump_func_regex` values.
-  optional string mlir_dump_dir = 1 [default = ""];
+  // `ir_dump_pass_regex` and `ir_dump_func_regex` values.
+  optional string ir_dump_dir = 1 [default = ""];
 
   // Regular expression that matches the names of passes in pascal case (e.g.,
   // FooPass) before/after which MLIR will be dumped. Effective only if
-  // mlir_dump_dir is not empty.
-  optional string mlir_dump_pass_regex = 2 [default = ".*"];
+  // ir_dump_dir is not empty.
+  optional string ir_dump_pass_regex = 2 [default = ".*"];
 
   // Regular expression that matches the names of functions to be dumped. MLIR
   // modules are dumped only if there's at least one public function in the
-  // module whose name matches the pattern. Effective only if mlir_dump_dir is
+  // module whose name matches the pattern. Effective only if ir_dump_dir is
   // not empty.
-  optional string mlir_dump_func_regex = 3 [default = ".*"];
+  optional string ir_dump_func_regex = 3 [default = ".*"];
 
   // If true, report the execution time of each MLIR pass.
-  optional bool mlir_enable_timing = 4 [default = false];
+  optional bool enable_timing = 4 [default = false];
 
   // Prints MLIR before specified passes. Supports regular expressions for
   // matching against the names of the desired passes.
-  optional string mlir_print_ir_before = 5 [default = ""];
+  optional string print_ir_before = 5 [default = ""];
 
   // Prints MLIR after specified passes. Supports regular expressions for
   // matching against the names of the desired passes. Currently only prints
   // after a pass if the MLIR is mutated.
-  optional string mlir_print_ir_after = 6 [default = ""];
+  optional string print_ir_after = 6 [default = ""];
 
   // If true, always print the top-level operation when printing IR for
   // print_ir_[before|after].
-  optional bool mlir_print_ir_module_scope = 7 [default = true];
+  optional bool print_ir_module_scope = 7 [default = true];
 
   // Elide ElementsAttrs with \"...\" that have more elements than the given
   // upper limit.
-  optional int64 mlir_elide_elementsattrs_if_larger = 8;
+  optional int64 elide_elementsattrs_if_larger = 8;
 }

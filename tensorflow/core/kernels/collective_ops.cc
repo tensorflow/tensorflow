@@ -560,7 +560,7 @@ class CollectiveAssignGroupV2OpKernel : public OpKernel {
                   << " device_index = " << index
                   << " group_key = " << group_key->DebugString()
                   << " group_size = " << group_size->DebugString();
-          return OkStatus();
+          return absl::OkStatus();
         }
       }
     }
@@ -638,7 +638,7 @@ class CollectiveOpV2Kernel : public AsyncOpKernel {
     col_params->instance.instance_key = instance_key.unaligned_flat<int32>()(0);
     col_params->instance.impl_details.communication_hint = communication_hint_;
     col_params->instance.impl_details.timeout_seconds = timeout_seconds_;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Runs a collective. The output tensor must be allocated before calling this
@@ -646,12 +646,12 @@ class CollectiveOpV2Kernel : public AsyncOpKernel {
   void Run(OpKernelContext* c, CollectiveParams* col_params,
            DoneCallback done) {
     // Trace the Run event.
-    profiler::TraceMeProducer producer(
+    tsl::profiler::TraceMeProducer producer(
         [this] {
-          return profiler::TraceMeEncode("CollectiveOpV2Kernel::Run",
-                                         {{"name", name()}});
+          return tsl::profiler::TraceMeEncode("CollectiveOpV2Kernel::Run",
+                                              {{"name", name()}});
         },
-        profiler::ContextType::kTfExecutor);
+        tsl::profiler::ContextType::kTfExecutor);
     auto xprof_ctx_id = producer.GetContextId();
 
     CollectiveExecutor* col_exec = c->collective_executor();
@@ -689,12 +689,13 @@ class CollectiveOpV2Kernel : public AsyncOpKernel {
     c->collective_executor()->RunClosure([c, activity_id, xprof_ctx_id,
                                           done = std::move(done), col_params,
                                           col_exec]() mutable {
-      profiler::TraceMeConsumer consumer(
+      tsl::profiler::TraceMeConsumer consumer(
           [&] {
-            return profiler::TraceMeEncode("CollectiveExecutor::RunClosure",
-                                           {{"name", c->op_kernel().name()}});
+            return tsl::profiler::TraceMeEncode(
+                "CollectiveExecutor::RunClosure",
+                {{"name", c->op_kernel().name()}});
           },
-          profiler::ContextType::kTfExecutor, xprof_ctx_id);
+          tsl::profiler::ContextType::kTfExecutor, xprof_ctx_id);
 
       VLOG(1) << "Collective CompleteParams for " << col_params->name
               << " device " << c->device()->name() << " group "
@@ -704,24 +705,24 @@ class CollectiveOpV2Kernel : public AsyncOpKernel {
           c->device()->attributes(), col_params, c->cancellation_manager(),
           [c, activity_id, xprof_ctx_id, done = std::move(done), col_params,
            col_exec](const Status& s) mutable {
-            profiler::TraceMeConsumer consumer(
+            tsl::profiler::TraceMeConsumer consumer(
                 [&] {
-                  return profiler::TraceMeEncode(
+                  return tsl::profiler::TraceMeEncode(
                       "CollectiveExecutor::CompleteParamsAsync::Done",
                       {{"name", c->op_kernel().name()}});
                 },
-                profiler::ContextType::kTfExecutor, xprof_ctx_id);
+                tsl::profiler::ContextType::kTfExecutor, xprof_ctx_id);
 
             if (s.ok()) {
               auto actual_done = [c, activity_id, col_params, xprof_ctx_id,
                                   done = std::move(done)](const Status& s) {
-                profiler::TraceMeConsumer consumer(
+                tsl::profiler::TraceMeConsumer consumer(
                     [&] {
-                      return profiler::TraceMeEncode(
+                      return tsl::profiler::TraceMeEncode(
                           "CollectiveExecutor::ExecuteAsync::Done",
                           {{"name", c->op_kernel().name()}});
                     },
-                    profiler::ContextType::kTfExecutor, xprof_ctx_id);
+                    tsl::profiler::ContextType::kTfExecutor, xprof_ctx_id);
 
                 VLOG(1) << "Collective ExecuteAsync done for "
                         << col_params->name << " device " << c->device()->name()
@@ -1072,7 +1073,7 @@ class CollectiveInitializeCommunicatorOpKernel : public AsyncOpKernel {
           "rank must be less than group size but got ", rank,
           " >= ", group_size);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   void ComputeAsync(OpKernelContext* c, DoneCallback done) override {
@@ -1196,7 +1197,7 @@ class CollectiveOpV3Kernel : public AsyncOpKernel {
     col_params->instance.impl_details.timeout_seconds =
         timeout_seconds_ > 0 ? resource->timeout_seconds() : timeout_seconds_;
     col_params->run_group_initialization = false;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Runs a collective. The output tensor must be allocated before calling this

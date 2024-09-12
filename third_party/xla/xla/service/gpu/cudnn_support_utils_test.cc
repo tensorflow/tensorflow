@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/service/hlo_parser.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
@@ -53,7 +52,7 @@ class CudnnSupportUtilsTest : public HloTestBase {
  public:
   // Gets the custom call with `target` from the `module`. Expects that there is
   // one and only one matching call.
-  StatusOr<HloCustomCallInstruction*> GetCustomCall(
+  absl::StatusOr<HloCustomCallInstruction*> GetCustomCall(
       xla::VerifiedHloModule* module, absl::string_view target) {
     HloCustomCallInstruction* call = nullptr;
     for (HloComputation* comp : module->MakeNonfusionComputations()) {

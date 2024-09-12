@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_graph.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_lru_cache.h"
+#include "xla/tsl/framework/fixedpoint/FixedPoint.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
@@ -49,7 +50,6 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/public/version.h"
-#include "tsl/framework/fixedpoint/FixedPoint.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 

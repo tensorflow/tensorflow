@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,10 +15,13 @@ limitations under the License.
 
 #include "xla/service/convert_operand_folding.h"
 
-#include "absl/strings/substitute.h"
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/primitive_util.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/platform/statusor.h"
 namespace xla {
 namespace {
 

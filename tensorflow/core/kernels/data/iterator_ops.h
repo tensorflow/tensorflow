@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/data/unbounded_thread_pool.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
+#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
@@ -54,6 +55,8 @@ class IteratorResource : public ResourceBase {
   // the content of `*out_tensors` will be undefined.
   Status GetNext(OpKernelContext* ctx, std::vector<Tensor>* out_tensors,
                  bool* end_of_sequence);
+
+  absl::Status GetModelProto(std::string& model_proto);
 
   // Saves a checkpoint of the state of the iterator through the given `writer`.
   Status Save(OpKernelContext* ctx, ExternalStatePolicy external_state_policy,
@@ -114,6 +117,8 @@ class IteratorResource : public ResourceBase {
 
     DatasetBaseIterator* iterator() { return iterator_.get(); }
 
+    std::shared_ptr<model::Model> model() { return model_; }
+
     const MemoryCheckpoint& checkpoint() const { return checkpoint_; }
 
     DatasetBase* dataset() { return dataset_.get(); }
@@ -125,6 +130,8 @@ class IteratorResource : public ResourceBase {
 
     // Merges the given checkpoint with the checkpoint of this state.
     void MergeCheckpoint(MemoryCheckpoint* other);
+
+    void SetModel(std::shared_ptr<model::Model> model);
 
     std::shared_ptr<MemoryCheckpoint::IdRegistry> id_registry() {
       return id_registry_;
@@ -141,6 +148,7 @@ class IteratorResource : public ResourceBase {
     core::RefCountPtr<DatasetBase> dataset_;
     std::shared_ptr<MemoryCheckpoint::IdRegistry> id_registry_;
     MemoryCheckpoint checkpoint_;
+    std::shared_ptr<model::Model> model_;
   };
 
   IteratorMetricsCollector metrics_collector_;
@@ -265,6 +273,17 @@ class IteratorGetNextOp : public HybridAsyncOpKernel {
  private:
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
+};
+
+class IteratorGetModelProtoOp : public HybridAsyncOpKernel {
+ public:
+  explicit IteratorGetModelProtoOp(OpKernelConstruction* ctx)
+      : HybridAsyncOpKernel(
+            ctx,
+            /*background_worker_name=*/"tf_data_iterator_get_model_proto") {}
+
+ protected:
+  Status DoCompute(OpKernelContext* ctx) override;
 };
 
 class DeleteIteratorOp : public HybridAsyncOpKernel {

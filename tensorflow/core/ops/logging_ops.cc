@@ -53,13 +53,13 @@ REGISTER_OP("PrintV2")
     .Attr("end: string = '\n'")
     .SetShapeFn([](InferenceContext* c) {
       // Early exit if rank is unknown.
-      if (!c->RankKnown(c->input(0))) return OkStatus();
+      if (!c->RankKnown(c->input(0))) return absl::OkStatus();
       // Make sure that the input is a scalar.
       if (c->Rank(c->input(0)) != 0) {
         return errors::InvalidArgument("input must be a scalar, but has rank: ",
                                        c->Rank(c->input(0)));
       }
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 ALLOW_STATEFUL_OP_FOR_DATASET_FUNCTIONS("PrintV2");

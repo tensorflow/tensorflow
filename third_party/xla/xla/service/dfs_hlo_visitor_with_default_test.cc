@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ limitations under the License.
 #include "xla/test.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -37,27 +37,27 @@ TEST_F(DfsHloVisitorWithDefaultTest, DefaultElementwiseTest) {
 
   class ElementwiseTestVisitor : public DfsHloVisitorWithDefault {
    public:
-    Status DefaultAction(HloInstruction* hlo) override {
+    absl::Status DefaultAction(HloInstruction* hlo) override {
       // The HLO should be neither an elementwise unary nor binary op. These
       // cases are handled in HandleElementwiseBinary/Unary.
       TF_RET_CHECK(!(hlo->IsElementwise() && hlo->operand_count() == 2))
           << hlo->ToString();
       TF_RET_CHECK(!(hlo->IsElementwise() && hlo->operand_count() == 1))
           << hlo->ToString();
-      return OkStatus();
+      return absl::OkStatus();
     }
 
-    Status HandleElementwiseBinary(HloInstruction* hlo) override {
+    absl::Status HandleElementwiseBinary(HloInstruction* hlo) override {
       // HLO should be elementwise binary.
       TF_RET_CHECK(hlo->IsElementwise() && hlo->operand_count() == 2)
           << hlo->ToString();
-      return OkStatus();
+      return absl::OkStatus();
     }
-    Status HandleElementwiseUnary(HloInstruction* hlo) override {
+    absl::Status HandleElementwiseUnary(HloInstruction* hlo) override {
       // HLO should be elementwise unary.
       TF_RET_CHECK(hlo->IsElementwise() && hlo->operand_count() == 1)
           << hlo->ToString();
-      return OkStatus();
+      return absl::OkStatus();
     }
   };
 

@@ -398,9 +398,10 @@ TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node, OpData* data,
         context, EvalQuantized<kernel_type>(context, node, params, data, input1,
                                             input2, output));
   } else {
-    TF_LITE_KERNEL_LOG(
-        context, "Mul only supports FLOAT32, COMPLEX32, INT8, INT16,",
-        " INT32, INT64 and quantized UINT8 now, got %d.", output->type);
+    TF_LITE_KERNEL_LOG(context,
+                       "Mul only supports FLOAT32, COMPLEX32, INT8, INT16,"
+                       " INT32, INT64 and quantized UINT8 now, got %d.",
+                       output->type);
     return kTfLiteError;
   }
 

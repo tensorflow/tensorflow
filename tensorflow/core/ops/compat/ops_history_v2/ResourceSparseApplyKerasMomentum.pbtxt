@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ResourceSparseApplyKerasMomentum"
   input_arg {
     name: "var"

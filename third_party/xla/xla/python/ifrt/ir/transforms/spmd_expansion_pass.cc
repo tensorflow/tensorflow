@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,26 +13,30 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
-#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/types/span.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/OpDefinition.h"  // from @llvm-project
-#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
-#include "mlir/IR/Visitors.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "xla/python/ifrt/ir/ifrt_dialect.h"
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/SymbolTable.h"
+#include "mlir/IR/TypeUtilities.h"
+#include "mlir/IR/Value.h"
+#include "mlir/IR/Visitors.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
+#include "mlir/Support/LogicalResult.h"
+#include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_interfaces.h"
-#include "xla/python/ifrt/ir/sharding_param.h"
-#include "xla/python/ifrt/ir/transforms/constants.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
 
 namespace xla::ifrt {
@@ -140,23 +144,6 @@ mlir::Operation* TopologicalIterator::next() {
 
 bool TopologicalIterator::hasNext() { return !ops_to_visit_.empty(); }
 
-absl::StatusOr<std::vector<int64_t>> LocalShapeFromGlobalShape(
-    absl::Span<const int64_t> global_shape, ShardingParam sharding_param) {
-  auto num_shards = sharding_param.dim_shards();
-  std::vector<int64_t> local_shape;
-  local_shape.reserve(global_shape.size());
-  for (int i = 0; i < num_shards.size(); ++i) {
-    if (global_shape[i] % num_shards[i] != 0) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Global shape is not divisible by the number of shards in dimension ",
-          i, ". Global size: ", global_shape[i],
-          ", number of shards: ", num_shards[i], "."));
-    }
-    local_shape.push_back(global_shape[i] / num_shards[i]);
-  }
-  return local_shape;
-}
-
 // Updates `function` input signature operand at `argument_index` with
 // `new_shape`.
 void UpdateFunctionInputShape(const int argument_index,
@@ -178,26 +165,25 @@ mlir::LogicalResult UpdateFunctionArgsUsingSharding(
   // can have resource type as input.
   for (int i = 0; i < function.getNumArguments(); ++i) {
     auto arg_sharding_attr =
-        function.getArgAttrOfType<IfrtShardingAttr>(i, kIfrtShardingAttrName);
+        function.getArgAttrOfType<IfrtShardingAttrInterface>(
+            i, kIfrtShardingAttrName);
     if (arg_sharding_attr == nullptr) {
       return function.emitOpError() << "requires `" << kIfrtShardingAttrName
                                     << "` attribute on arg " << i;
     }
 
-    ShardingParam sharding = arg_sharding_attr.getSharding();
-
     auto value = function.getFunctionType().getInput(i);
 
     mlir::RankedTensorType ranked_type =
-        value.dyn_cast<mlir::RankedTensorType>();
+        mlir::dyn_cast<mlir::RankedTensorType>(value);
     if (ranked_type == nullptr) {
       return function.emitOpError()
              << "requires `mlir::RankedTensorType` for arg " << i;
     }
 
     llvm::ArrayRef<int64_t> arg_shape = ranked_type.getShape();
-    absl::StatusOr<std::vector<int64_t>> arg_local_shape =
-        LocalShapeFromGlobalShape(arg_shape, sharding);
+    absl::StatusOr<llvm::SmallVector<int64_t>> arg_local_shape =
+        arg_sharding_attr.LocalShapeFromGlobalShape(arg_shape);
     if (!arg_local_shape.ok()) {
       return function.emitOpError() << arg_local_shape.status().message();
     }
@@ -221,15 +207,7 @@ class SpmdExpansionPass
 
  private:
   mlir::LogicalResult spmdExpand(mlir::func::FuncOp func_op);
-
-  mlir::LogicalResult AnnotateCallees(
-      mlir::func::FuncOp func_op, mlir::SymbolTableCollection& symbol_table);
 };
-
-mlir::LogicalResult SpmdExpansionPass::AnnotateCallees(
-    mlir::func::FuncOp func_op, mlir::SymbolTableCollection& symbol_table) {
-  return mlir::success();
-}
 
 // Given SPMD expanded `function_operands` to `function`, update the function
 // signature to reflect the local shape of `function_operands`.
@@ -238,7 +216,8 @@ mlir::LogicalResult UpdateFunctionWithLocalInputShapes(
     mlir::func::FuncOp function) {
   for (auto& operand : function_operands) {
     const int index = operand.getOperandNumber();
-    auto arg_type = operand.get().getType().dyn_cast<mlir::RankedTensorType>();
+    auto arg_type =
+        mlir::dyn_cast<mlir::RankedTensorType>(operand.get().getType());
     if (!arg_type) continue;
 
     llvm::ArrayRef<int64_t> arg_local_shape = arg_type.getShape();
@@ -292,15 +271,15 @@ mlir::LogicalResult SpmdExpansionPass::spmdExpand(mlir::func::FuncOp func_op) {
 void SpmdExpansionPass::runOnOperation() {
   mlir::ModuleOp module_op = getOperation();
   // Skip single-device case.
-  auto devices = module_op->getAttrOfType<xla::ifrt::IfrtDevicesAttr>(
-      kIfrtDevicesAttrName);
-  if (devices == nullptr) {
+  auto num_devices =
+      module_op->getAttrOfType<mlir::IntegerAttr>(kIfrtNumDevicesAttrName);
+  if (num_devices == nullptr) {
     module_op->emitOpError()
         << "`" << module_op.getName()->str() << "` requires `"
-        << kIfrtDevicesAttrName << "` attribute.";
+        << kIfrtNumDevicesAttrName << "` attribute.";
     return signalPassFailure();
   }
-  if (devices.getIds().size() == 1) {
+  if (num_devices.getInt() == 1) {
     return;
   }
 

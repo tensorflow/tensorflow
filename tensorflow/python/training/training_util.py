@@ -393,9 +393,7 @@ def _get_or_create_global_step_read(graph=None):
   # add 'zero' so that it will create a copy of variable as Tensor.
   with graph.as_default() as g, g.name_scope(None):
     with g.name_scope(global_step_tensor.op.name + '/'):
-      # must ensure that global_step is initialized before
-      # this run. This is needed for example Estimator makes all model_fn build
-      # under global_step_read_tensor dependency.
+      # must ensure that global_step is initialized before this run.
       if isinstance(global_step_tensor, variables.Variable):
         global_step_value = cond.cond(
             variable_v1.is_variable_initialized(global_step_tensor),

@@ -40,9 +40,6 @@ from tensorflow.python.util.tf_export import tf_export
 def get_loss_reduction():
   """`tf.distribute.ReduceOp` corresponding to the last loss reduction.
 
-  This is used to decide whether loss should be scaled in optimizer (used only
-  for estimator + v1 optimizer use case).
-
   Returns:
     `tf.distribute.ReduceOp` corresponding to the last loss reduction for
     estimator and v1 optimizer use case. `tf.distribute.ReduceOp.SUM` otherwise.
@@ -263,7 +260,7 @@ def is_distributed_table(v):
 
 def _validate_colocate_extended(v, extended):
   variable_strategy = v._distribute_strategy  # pylint: disable=protected-access
-  if variable_strategy.extended is not extended:
+  if not variable_strategy or variable_strategy.extended is not extended:
     raise ValueError(
         "`colocate_vars_with` must only be passed a variable created in this "
         "tf.distribute.Strategy.scope(), not %s created in scope: %s" %

@@ -66,7 +66,7 @@ add_library(tensorflowlite_c ${TFLITE_C_LIBTYPE}
   ${TFLITE_SOURCE_DIR}/core/c/c_api.cc
   ${TFLITE_SOURCE_DIR}/core/c/c_api_experimental.cc
   ${TFLITE_SOURCE_DIR}/core/c/common.cc
-  ${TFLITE_SOURCE_DIR}/core/c/registration_external.cc
+  ${TFLITE_SOURCE_DIR}/core/c/operator.cc
   builtin_op_data.h
   c_api.h
   c_api_experimental.h

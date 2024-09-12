@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -129,10 +129,13 @@ bool SpatialIsContracting(int64_t lhs_spatial_size, int64_t rhs_spatial_size,
     }
   }
 
+  dims.lhs_shape_rank = conv->operand(0)->shape().rank();
+  dims.rhs_shape_rank = conv->operand(1)->shape().rank();
+  dims.output_shape_rank = conv->shape().rank();
   return dims;
 }
 
-StatusOr<std::unique_ptr<HloInstruction>>
+absl::StatusOr<std::unique_ptr<HloInstruction>>
 CreateShardedConvForDotGeneralConvolution(
     const HloInstruction& conv, const DotConvolutionDimsInfo& dot_dnums,
     HloInstruction* sharded_lhs_hlo, HloInstruction* sharded_rhs_hlo) {
@@ -224,6 +227,10 @@ DotConvolutionDimsInfo ParseDotGeneralFromDot(const HloInstruction* dot) {
       dnums.rhs_non_contracting_dims.back().spatial_dim = -1;
     }
   }
+
+  dnums.lhs_shape_rank = dot->operand(0)->shape().rank();
+  dnums.rhs_shape_rank = dot->operand(1)->shape().rank();
+  dnums.output_shape_rank = dot->shape().rank();
   return dnums;
 }
 

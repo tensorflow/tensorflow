@@ -29,14 +29,14 @@ class DirectPluginOpKernelContext;
 class DirectPluginVariable : public PluginVariable {
  public:
   DirectPluginVariable(int index, const std::string& name, Var* var);
-  tsl::Status GetTensor(const Tensor** result_tensor) override {
+  absl::Status GetTensor(const Tensor** result_tensor) override {
     *result_tensor = var_info_.var()->tensor();
-    return tsl::OkStatus();
+    return absl::OkStatus();
   }
 
-  tsl::Status GetMutableTensor(Tensor** result_tensor) override {
+  absl::Status GetMutableTensor(Tensor** result_tensor) override {
     *result_tensor = var_info_.var()->tensor();
-    return tsl::OkStatus();
+    return absl::OkStatus();
   }
 
   VariableInfo* GetVariableInfo() { return &var_info_; }

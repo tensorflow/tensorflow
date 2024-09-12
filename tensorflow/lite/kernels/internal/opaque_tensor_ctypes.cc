@@ -17,8 +17,10 @@ limitations under the License.
 
 #include "tensorflow/lite/c/c_api_opaque.h"
 #include "tensorflow/lite/kernels/internal/runtime_shape.h"
+#include "tensorflow/lite/namespace.h"
 
 namespace tflite {
+namespace TFLITE_CONDITIONAL_NAMESPACE {
 
 RuntimeShape GetTensorShape(const TfLiteOpaqueTensor* tensor) {
   if (tensor == nullptr) {
@@ -32,4 +34,5 @@ RuntimeShape GetTensorShape(const TfLiteOpaqueTensor* tensor) {
   return shape;
 }
 
+}  // namespace TFLITE_CONDITIONAL_NAMESPACE
 }  // namespace tflite

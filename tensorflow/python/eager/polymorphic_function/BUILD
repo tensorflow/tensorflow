@@ -1,7 +1,7 @@
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
+load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -540,9 +540,7 @@ py_strict_library(
     name = "function_context",
     srcs = ["function_context.py"],
     srcs_version = "PY3",
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core/function/polymorphism:function_cache",
         "//tensorflow/python/eager:context",
@@ -620,9 +618,7 @@ py_strict_library(
     name = "compiler_ir",
     srcs = ["compiler_ir.py"],
     srcs_version = "PY3",
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python/eager:context",
@@ -639,6 +635,7 @@ tf_xla_py_strict_test(
     disabled_backends = [
         "cpu_ondemand",
         "gpu_a100",
+        "gpu_h100",
     ],
     enable_mlir_bridge = True,
     python_version = "PY3",

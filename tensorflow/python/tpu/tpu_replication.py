@@ -692,12 +692,11 @@ def outside_compilation(
 
   For variables placed in TPU device, which includes variables created inside
   TPUStrategy scope, outside compilation logic must not include variable
-  read/write. For variables placed on host, which is the case when variables
-  created via TPUEstimator, variable read/write is only allowed if the variable
-  is not accessed by any other ops in the TPU computation. Variable read/write
-  from outside compilation cluster is not visible from TPU computation and
-  vice versa. Therefore, if outside compilation logic contains such host
-  variables read/write ops and if the variables are accessed by TPU
+  read/write. For variables placed on host, variable read/write is only allowed
+  if the variable is not accessed by any other ops in the TPU computation.
+  Variable read/write from outside compilation cluster is not visible from TPU
+  computation and vice versa. Therefore, if outside compilation logic contains
+  such host variables read/write ops and if the variables are accessed by TPU
   computation as well, then this may lead to deadlock.
 
   Internally, `tf.tpu.outside_compilation()` adds outside compilation

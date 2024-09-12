@@ -99,9 +99,9 @@ TEST_F(SparseDenseCDivTest, SameShape) {
   // [3   4]
   const auto indices_shape = TensorShape({4, 2});
   std::initializer_list<int64_t> in{0, 1, 1, 0, 2, 0, 2, 1};
-  const gtl::ArraySlice<int64_t> indices(in);
+  const absl::Span<const int64_t> indices(in);
   std::initializer_list<int64_t> sh{3, 2};
-  const gtl::ArraySlice<int64_t> shape(sh);
+  const absl::Span<const int64_t> shape(sh);
 
   // Tensor dense(DT_FLOAT, TensorShape({3, 1}));
   Tensor dense(DT_FLOAT, TensorShape(shape));
@@ -128,9 +128,9 @@ TEST_F(SparseDenseCDivTest, BroadcastDenseSameDims) {
   // [3   4]
   const auto indices_shape = TensorShape({4, 2});
   std::initializer_list<int64_t> in{0, 1, 1, 0, 2, 0, 2, 1};
-  const gtl::ArraySlice<int64_t> indices(in);
+  const absl::Span<const int64_t> indices(in);
   std::initializer_list<int64_t> sh{3, 2};
-  const gtl::ArraySlice<int64_t> shape(sh);
+  const absl::Span<const int64_t> shape(sh);
 
   Tensor dense(DT_FLOAT, TensorShape({3, 1}));
   auto dense_flat = dense.flat<float>();
@@ -155,9 +155,9 @@ TEST_F(SparseDenseCDivTest, BroadcastDenseFewerDims) {
   // [3   4]
   const auto indices_shape = TensorShape({4, 2});
   std::initializer_list<int64_t> in{0, 1, 1, 0, 2, 0, 2, 1};
-  const gtl::ArraySlice<int64_t> indices(in);
+  const absl::Span<const int64_t> indices(in);
   std::initializer_list<int64_t> sh{3, 2};
-  const gtl::ArraySlice<int64_t> shape(sh);
+  const absl::Span<const int64_t> shape(sh);
 
   Tensor dense(DT_FLOAT, TensorShape({2}));
   auto dense_flat = dense.flat<float>();
@@ -187,9 +187,9 @@ TEST_F(SparseDenseCMulTest, BroadcastDense) {
   // [1.5 0]
   const auto indices_shape = TensorShape({4, 2});
   std::initializer_list<int64_t> in{0, 1, 1, 0, 2, 0, 2, 1};
-  const gtl::ArraySlice<int64_t> indices(in);
+  const absl::Span<const int64_t> indices(in);
   std::initializer_list<int64_t> sh{3, 2};
-  const gtl::ArraySlice<int64_t> shape(sh);
+  const absl::Span<const int64_t> shape(sh);
 
   Tensor dense(DT_FLOAT, TensorShape({2}));
   auto dense_flat = dense.flat<float>();
@@ -243,7 +243,7 @@ static ST MakeSparseTensor(Graph* g, int B, int M, int N, int nnz_inner) {
   Tensor vals(DT_FLOAT, TensorShape({total_nnz}));
   Tensor shape(DT_INT64, TensorShape({kNumDims}));
   vals.flat<float>().setRandom();
-  test::FillValues(&shape, gtl::ArraySlice<int64_t>({B, M, N}));
+  test::FillValues(&shape, absl::Span<const int64_t>({B, M, N}));
   auto indices_mat = indices.matrix<int64_t>();
 
   int nnz_cnt = 0;

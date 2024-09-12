@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -50,6 +50,27 @@ struct MemrefInfoPOD {
   void* data;
 };
 
+MemrefInfoHandler CreateMemrefInfoFromLiteral(const Literal* literal) {
+  MemrefInfoHandler result(new MemrefInfoPOD);
+
+  const auto& shape = literal->shape();
+  result->dtype = shape.element_type();
+  result->rank = shape.rank();
+  auto dimensions = shape.dimensions();
+  std::copy(dimensions.begin(), dimensions.end(),
+            absl::MakeSpan(result->dims).begin());
+
+  int64_t stride = 1;
+  for (int i : shape.layout().minor_to_major()) {
+    result->strides[i] = stride;
+    stride *= dimensions.at(i);
+  }
+
+  result->data = const_cast<void*>(literal->untyped_data());
+
+  return result;
+}
+
 StackAlloca GetAllocaAndEmitMemrefInfo(llvm::IRBuilder<>& builder,
                                        const llvm_ir::IrArray& ir_array) {
   const Shape& shape = ir_array.GetShape();
@@ -96,10 +117,8 @@ StackAlloca GetAllocaAndEmitMemrefInfo(llvm::IRBuilder<>& builder,
   // Allocate MemrefInfo on the stack
   llvm::Value* memref_info_ptr = llvm_ir::EmitAllocaAtFunctionEntry(
       memref_info_type, "memref.info", &builder);
-  llvm::Value* memref_life_start =
-      builder.CreateLifetimeStart(memref_info_ptr, builder.getInt64(-1));
-  llvm::Value* memref_store =
-      builder.CreateStore(memref_info_val, memref_info_ptr);
+  builder.CreateLifetimeStart(memref_info_ptr, builder.getInt64(-1));
+  builder.CreateStore(memref_info_val, memref_info_ptr);
 
   return {&builder, memref_info_ptr};
 }
@@ -149,6 +168,45 @@ void MemrefInfo::Print() {
 int64_t MemrefInfo::GetChannels() const { return pod_->dims[pod_->rank - 1]; }
 
 int64_t MemrefInfo::GetRank() const { return pod_->rank; }
+
+absl::StatusOr<dnnl::memory::desc> TransposeLastTwoDims(
+    const dnnl::memory::desc& md) {
+  int64_t ndims = md.get_ndims();
+  if (ndims < 2) {
+    return absl::InvalidArgumentError("Requires at least 2D shape.");
+  }
+  std::vector<int> permutation(ndims);
+  std::iota(permutation.begin(), permutation.end(), 0);
+  std::swap(permutation[ndims - 1], permutation[ndims - 2]);
+  return md.permute_axes(permutation);
+}
+
+dnnl::memory::desc ShapeToMemDesc(const Shape& shape) {
+  auto dimensions = shape.dimensions();
+  if (dimensions.empty()) {
+    return dnnl::memory::desc{};
+  }
+  auto dims = dnnl::memory::dims(dimensions.begin(), dimensions.end());
+  dnnl::memory::dims strides(dims.size());
+  dnnl::memory::dim stride = 1;
+  for (auto i : shape.layout().minor_to_major()) {
+    strides.at(i) = stride;
+    stride *= dims.at(i);
+  }
+  auto dt = ToOneDnnDataType(static_cast<PrimitiveType>(shape.element_type()));
+  return dnnl::memory::desc(dims, dt, strides);
+}
+
+Shape MemDescToXlaShapeFlattened(const dnnl::memory::desc& md) {
+  if (md.is_zero()) {
+    LOG(FATAL) << "Memory descriptor is zero.";
+  }
+  auto dtype = md.get_data_type();
+  auto element_size = dnnl::memory::data_type_size(dtype);
+  int64_t bytes_num = md.get_size();
+  int64_t elements_num = static_cast<int64_t>(bytes_num / element_size);
+  return ShapeUtil::MakeShape(ToXlaPrimitiveType(dtype), {elements_num});
+}
 
 }  // namespace cpu
 }  // namespace xla

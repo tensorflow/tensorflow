@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -127,23 +127,18 @@ Step 5: Update AllocationBlocks with the repacking placements
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
-#include "xla/service/heap_simulator.h"
-#include "xla/service/memory_space_assignment/repacking.h"
-#include "xla/statusor.h"
+#include "xla/service/heap_simulator/allocation_block.h"
+#include "xla/service/heap_simulator/heap_simulator.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/status.h"
 
 namespace xla {
 namespace {
-
-using AllocationBlock =
-    memory_space_assignment::MemorySpaceAssignmentRepacker::AllocationBlock;
-using Type = GlobalDecreasingSizeBestFitHeap<AllocationBlock>::Type;
-using SlicedAllocationData = memory_space_assignment::
-    MemorySpaceAssignmentRepacker::SlicedAllocationData;
-using Slice = memory_space_assignment::MemorySpaceAssignmentRepacker::Slice;
 
 bool IsSliced(const AllocationBlock* block) {
   return block->original_slice_data.has_value();
@@ -164,6 +159,14 @@ std::vector<const AllocationBlock*> SortAllocationBlocks(const T& container) {
   return result;
 }
 
+const SlicedAllocationData* GetSlicedAllocationDataPointer(
+    const std::optional<SlicedAllocationData>& sliced_allocation_data) {
+  if (!sliced_allocation_data.has_value()) {
+    return nullptr;
+  }
+  return &(*sliced_allocation_data);
+}
+
 // A slice-aware best-fit repacker.
 class BestFitRepacker
     : public GlobalDecreasingSizeBestFitHeap<AllocationBlock> {
@@ -171,11 +174,13 @@ class BestFitRepacker
   BestFitRepacker(
       const memory_space_assignment::MemorySpaceAssignmentBestFitRepacker::
           BestFitRepackOptions& options,
+      SliceTimePermutationIterator::Ty slice_time_permutation_iterator_type,
       int64_t max_size, int64_t alignment)
       : GlobalDecreasingSizeBestFitHeap<AllocationBlock>(
             alignment, kCustom,
             (options.buffer_interval_compare ? options.buffer_interval_compare
-                                             : DefaultBufferIntervalCompare())),
+                                             : DefaultBufferIntervalCompare()),
+            slice_time_permutation_iterator_type),
         validate_(options.validate),
         max_size_(max_size) {}
 
@@ -354,10 +359,10 @@ class BestFitRepacker
         new_offset = (new_offset == -1 ? chunk.offset
                                        : std::min(new_offset, chunk.offset));
         repacked_slice_data->slices_sorted_by_offset.push_back(
-            Slice({chunk.size, chunk.offset, start_time}));
+            AllocatedSlice({chunk.size, chunk.offset, start_time}));
       }
       absl::c_sort(repacked_slice_data->slices_sorted_by_offset,
-                   [](const Slice& lhs, const Slice& rhs) {
+                   [](const AllocatedSlice& lhs, const AllocatedSlice& rhs) {
                      return lhs.offset < rhs.offset;
                    });
     } else {
@@ -411,9 +416,14 @@ class BestFitRepacker
         SlicedBufferInterval& colocation_sliced_buffer_interval =
             sliced_buffer_interval_map_.at(colocation);
         SlicedAllocationFinder sliced_colocation_finder =
-            CreateSlicedAllocationFinder(colocation_sliced_buffer_interval,
-                                         max_colocation_size,
-                                         /*preferred_offset=*/-1);
+            CreateSlicedAllocationFinder(
+                colocation_sliced_buffer_interval, max_colocation_size,
+                /*preferred_offset=*/-1,
+                SliceTimePermutationIterator::CreateForRepack(
+                    slice_time_permutation_iterator_type(),
+                    GetSlicedAllocationDataPointer(
+                        colocation->original_slice_data)),
+                &SlicedAllocationFinder::AllOffsetsAllowed);
         sliced_buffer_map.insert(std::make_pair(
             colocation,
             SlicedColocationData{&colocation_sliced_buffer_interval,
@@ -447,6 +457,10 @@ class BestFitRepacker
     // Find chunks for allocation_block and its colocations.
     SlicedAllocationFinder finder = CreateSlicedAllocationFinder(
         sliced_buffer_interval, max_colocation_size, /*preferred_offset=*/-1,
+        SliceTimePermutationIterator::CreateForRepack(
+            slice_time_permutation_iterator_type(),
+            GetSlicedAllocationDataPointer(
+                allocation_block->original_slice_data)),
         is_offset_allowed);
     std::vector<Chunk> chunks = PostProcessFindChunkCandidatesResult(
         sliced_buffer_interval, finder.Find());
@@ -479,7 +493,7 @@ class BestFitRepacker
     LOG(FATAL) << "We should never get here.";
   }
 
-  Result Finish() override {
+  absl::StatusOr<Result> Finish() override {
     std::vector<BufferInterval> sorted_buffer_intervals =
         GetSortedBufferIntervals();
 
@@ -522,7 +536,7 @@ class BestFitRepacker
         for (int i = 0;
              i < block->repacked_slice_data->slices_sorted_by_offset.size();
              ++i) {
-          const Slice& slice =
+          const AllocatedSlice& slice =
               block->repacked_slice_data->slices_sorted_by_offset[i];
           timed_chunks.push_back(
               TimedChunk{absl::StrCat(((int64_t)block), "_slice_", i), block,
@@ -555,7 +569,7 @@ class BestFitRepacker
   }
 
   bool Repack() {
-    Finish();
+    TF_CHECK_OK(Finish().status());
     bool success = result_.heap_size <= max_size_;
     if (!success) {
       VLOG(1) << "Repacking unsuccessful with heap size " << result_.heap_size;
@@ -616,10 +630,10 @@ class BestFitRepacker
 
 namespace memory_space_assignment {
 
-StatusOr<bool> MemorySpaceAssignmentBestFitRepacker::Repack(
+absl::StatusOr<bool> MemorySpaceAssignmentBestFitRepacker::Repack(
     absl::Span<AllocationBlock*> allocations) {
-  BestFitRepacker best_fit_repacker =
-      BestFitRepacker(options_, max_size_, alignment_);
+  BestFitRepacker best_fit_repacker = BestFitRepacker(
+      options_, slice_time_permutation_iterator_type_, max_size_, alignment_);
   best_fit_repacker.ImportAllocationBlocks(allocations);
   return best_fit_repacker.Repack();
 }

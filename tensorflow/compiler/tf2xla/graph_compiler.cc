@@ -114,7 +114,7 @@ Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
         return errors::InvalidArgument("Invalid function argument");
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 Status GraphCompiler::Compile() {
@@ -204,7 +204,7 @@ Status GraphCompiler::Compile() {
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -221,7 +221,7 @@ Status GetFunctionNameAndAttr(const FunctionLibraryRuntime& flib,
           " does not have 'func' field set");
     }
     *func = attr_value->func();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (flib.GetFunctionLibraryDefinition()->Find(node.def().op())) {
@@ -230,7 +230,7 @@ Status GetFunctionNameAndAttr(const FunctionLibraryRuntime& flib,
     func->set_name(FunctionLibraryDefinition::kGradientOp);
   }
   *func->mutable_attr() = node.def().attr();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

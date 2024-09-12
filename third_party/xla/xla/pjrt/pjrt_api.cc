@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,10 +31,9 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 
@@ -57,7 +56,7 @@ static std::string CanonicalizeDeviceType(absl::string_view device_type) {
   return absl::AsciiStrToLower(device_type);
 }
 
-xla::StatusOr<const PJRT_Api*> PjrtApi(absl::string_view device_type) {
+absl::StatusOr<const PJRT_Api*> PjrtApi(absl::string_view device_type) {
   std::string canonicalize_device_type = CanonicalizeDeviceType(device_type);
   auto iter = pjrt_apis->find(canonicalize_device_type);
   if (iter == pjrt_apis->end()) {
@@ -67,7 +66,7 @@ xla::StatusOr<const PJRT_Api*> PjrtApi(absl::string_view device_type) {
   return iter->second.first;
 }
 
-xla::Status SetPjrtApi(absl::string_view device_type, const PJRT_Api* api) {
+absl::Status SetPjrtApi(absl::string_view device_type, const PJRT_Api* api) {
   std::string canonicalize_device_type = CanonicalizeDeviceType(device_type);
   if (auto iter = pjrt_apis->find(canonicalize_device_type);
       iter != pjrt_apis->end()) {
@@ -77,12 +76,12 @@ xla::Status SetPjrtApi(absl::string_view device_type, const PJRT_Api* api) {
   (*pjrt_apis)[canonicalize_device_type] =
       std::make_pair(api, /*is_initialized=*/false);
   LOG(INFO) << "PJRT_Api is set for device type " << canonicalize_device_type;
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 typedef const PJRT_Api* (*PjrtApiInitFn)();
-xla::StatusOr<const PJRT_Api*> LoadPjrtPlugin(absl::string_view device_type,
-                                              absl::string_view library_path) {
+absl::StatusOr<const PJRT_Api*> LoadPjrtPlugin(absl::string_view device_type,
+                                               absl::string_view library_path) {
 #ifdef PLATFORM_WINDOWS
   return tsl::errors::Unimplemented(
       "LoadPjrtPlugin is not implemented on windows yet.");
@@ -105,7 +104,7 @@ xla::StatusOr<const PJRT_Api*> LoadPjrtPlugin(absl::string_view device_type,
 #endif
 }
 
-xla::StatusOr<bool> IsPjrtPluginInitialized(absl::string_view device_type) {
+absl::StatusOr<bool> IsPjrtPluginInitialized(absl::string_view device_type) {
   std::string canonicalize_device_type = CanonicalizeDeviceType(device_type);
   auto iter = pjrt_apis->find(canonicalize_device_type);
   if (iter == pjrt_apis->end()) {
@@ -119,7 +118,7 @@ xla::StatusOr<bool> IsPjrtPluginInitialized(absl::string_view device_type) {
 static bool IsPjRtCompatibilityEnabled() {
   const char* val = getenv("ENABLE_PJRT_COMPATIBILITY");
   if (val == nullptr) {
-    return false;
+    return true;
   }
   bool enabled = false;
   if (!absl::SimpleAtob(val, &enabled)) {
@@ -128,7 +127,7 @@ static bool IsPjRtCompatibilityEnabled() {
   return enabled;
 }
 
-xla::Status InitializePjrtPlugin(absl::string_view device_type) {
+absl::Status InitializePjrtPlugin(absl::string_view device_type) {
   std::string canonicalize_device_type = CanonicalizeDeviceType(device_type);
   auto iter = pjrt_apis->find(canonicalize_device_type);
   if (iter == pjrt_apis->end()) {
@@ -177,7 +176,7 @@ xla::Status InitializePjrtPlugin(absl::string_view device_type) {
   }
   PJRT_Plugin_Initialize_Args args;
   args.struct_size = PJRT_Plugin_Initialize_Args_STRUCT_SIZE;
-  args.priv = nullptr;
+  args.extension_start = nullptr;
   RETURN_STATUS_IF_PJRT_ERROR(pjrt_api->PJRT_Plugin_Initialize(&args),
                               pjrt_api);
   iter->second.second = true;

@@ -63,7 +63,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   if (axis < 0) axis += NumDimensions(input);
 
   if (axis < 0 || axis >= NumDimensions(input)) {
-    TF_LITE_KERNEL_LOG(context, "Invalid axis: ", axis);
+    TF_LITE_KERNEL_LOG(context, "Invalid axis: %d", axis);
     return kTfLiteError;
   }
 

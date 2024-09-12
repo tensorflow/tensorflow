@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,20 +19,27 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace spmd {
 namespace {
 
-StatusOr<bool> ProcessScatter(HloInstruction* hlo,
-                              const CallGraph& call_graph) {
+absl::StatusOr<bool> ProcessScatter(HloInstruction* hlo,
+                                    const CallGraph& call_graph) {
   if (hlo->opcode() != HloOpcode::kScatter) {
     return false;
   }
@@ -74,7 +81,7 @@ StatusOr<bool> ProcessScatter(HloInstruction* hlo,
     int64_t index_vector_dim = dnums.index_vector_dim();
     const auto& index_map = dnums.scatter_dims_to_operand_dims();
     return hlo_sharding_util::GetGatherScatterBatchParallelDims(
-        indices, slice_sizes, index_vector_dim, index_map, call_graph);
+        operand, indices, slice_sizes, index_vector_dim, index_map, call_graph);
   };
   // Parallel dim already detected. Assume everything is good.
   if (get_parallel_dims_for_scatter(operand, indices, updates).has_value()) {
@@ -153,8 +160,8 @@ StatusOr<bool> ProcessScatter(HloInstruction* hlo,
   return true;
 }
 
-StatusOr<bool> RunOnComputation(HloComputation* computation,
-                                const CallGraph& call_graph) {
+absl::StatusOr<bool> RunOnComputation(HloComputation* computation,
+                                      const CallGraph& call_graph) {
   bool changed = false;
   for (HloInstruction* hlo : computation->MakeInstructionPostOrder()) {
     if (!hlo->has_sharding()) {
@@ -170,7 +177,7 @@ StatusOr<bool> RunOnComputation(HloComputation* computation,
 }
 }  // namespace
 
-StatusOr<bool> SpmdPrepare::Run(
+absl::StatusOr<bool> SpmdPrepare::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

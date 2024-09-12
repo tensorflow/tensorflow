@@ -16,40 +16,68 @@ limitations under the License.
 
 #include <optional>
 #include <string>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/graph_def.h"
+#include "absl/strings/string_view.h"
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/min_max_value.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibrator_singleton.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_quant_ops.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
-#include "tensorflow/core/framework/attr_value.pb.h"
-#include "tensorflow/core/framework/graph.pb.h"
+#include "tsl/platform/path.h"
+#include "tsl/platform/statusor.h"
 
 namespace stablehlo::quantization {
 namespace {
 
-using ::tensorflow::GraphDef;
-using ::tensorflow::NodeDef;
+using ::stablehlo::quantization::CalibrationOptions;
 using ::tensorflow::calibrator::CalibrationStatistics;
-using ::tensorflow::calibrator::CalibratorSingleton;
-using ::tensorflow::quantization::CalibrationOptions;
+using ::tensorflow::calibrator::CalibrationStatisticsMap;
 using ::tensorflow::quantization::PyFunctionLibrary;
+using CalibrationStatisticsFlatMap =
+    absl::flat_hash_map<std::string, CalibrationStatistics>;
 
 }  // namespace
 
+// Reads the calibration statistics from the given directory.
+absl::StatusOr<CalibrationStatisticsFlatMap> ReadStatistics(
+    absl::string_view calibration_data_dir) {
+  TF_ASSIGN_OR_RETURN(std::vector<std::string> statistics_files,
+                      io::ListDirectory(calibration_data_dir));
+
+  CalibrationStatisticsFlatMap statistics_map;
+  for (const std::string& statistics_file : statistics_files) {
+    TF_ASSIGN_OR_RETURN(
+        const auto single_map,
+        io::ReadBinaryProto<CalibrationStatisticsMap>(
+            tsl::io::JoinPath(calibration_data_dir, statistics_file)));
+    statistics_map.insert(single_map.statistics().begin(),
+                          single_map.statistics().end());
+  }
+  return statistics_map;
+}
+
 absl::Status AddCalibrationStatistics(
-    GraphDef& graph_def, const CalibrationOptions& calibration_options,
+    mlir::ModuleOp module_op, absl::string_view calibration_data_dir,
+    const CalibrationOptions& calibration_options,
     const PyFunctionLibrary& py_function_library) {
+  TF_ASSIGN_OR_RETURN(const CalibrationStatisticsFlatMap statistics_map,
+                      ReadStatistics(calibration_data_dir));
+
   absl::Status status = absl::OkStatus();
-  MutateNodeDefs(graph_def, [&py_function_library, &calibration_options,
-                             &status](NodeDef& node_def) {
-    if (node_def.op() != "CustomAggregator") return;
-    const std::string& id = node_def.attr().at("id").s();
-    std::optional<CalibrationStatistics> statistics =
-        CalibratorSingleton::GetStatistics(id);
-    if (statistics == std::nullopt) {
+  module_op.walk([&py_function_library, &calibration_options, &status,
+                  &statistics_map](mlir::TF::CustomAggregatorOp aggregator_op) {
+    mlir::StringRef id = aggregator_op.getId();
+    auto iter = statistics_map.find(id);
+    if (iter == statistics_map.end()) {
       status = absl::InternalError(
           absl::StrFormat("Calibrated data does not exist. Cannot find "
                           "statistics. value for id: %s",
@@ -57,15 +85,31 @@ absl::Status AddCalibrationStatistics(
       return;
     }
 
-    const auto [min_value, max_value] =
-        py_function_library.GetCalibrationMinMaxValue(*statistics,
+    const std::optional<MinMaxValue> min_max_values =
+        py_function_library.GetCalibrationMinMaxValue(iter->second,
                                                       calibration_options);
-    CalibratorSingleton::ClearData(id);
+    if (min_max_values == std::nullopt) {
+      status = absl::InternalError(
+          "Cannot find min/max values for calibration statistics.");
+      return;
+    }
 
-    (*node_def.mutable_attr())["min"].set_f(min_value);
-    (*node_def.mutable_attr())["max"].set_f(max_value);
+    const auto [min_value, max_value] = *min_max_values;
+    mlir::OpBuilder builder(aggregator_op);
+    aggregator_op->setAttr("min", builder.getF32FloatAttr(min_value));
+    aggregator_op->setAttr("max", builder.getF32FloatAttr(max_value));
   });
   return status;
+}
+
+bool IsCalibrationRequired(mlir::ModuleOp module_op) {
+  bool calibration_required = false;
+  module_op.walk(
+      [&calibration_required](
+          mlir::TF::CalibrationStatisticsSaverOp statistics_saver_op) {
+        calibration_required = true;
+      });
+  return calibration_required;
 }
 
 }  // namespace stablehlo::quantization

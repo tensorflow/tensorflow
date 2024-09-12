@@ -1,5 +1,5 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_shared_test")
 load("@tf_runtime//tools:mlir_to_bef.bzl", "glob_tfrt_lit_tests", "mlir_to_bef")
+load("//tensorflow:tensorflow.bzl", "tf_cc_shared_test")
 # copybara:uncomment load("//third_party/tf_runtime_google/cpp_tests:gen_tests.bzl", "tfrt_cc_test_and_strict_benchmark")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])

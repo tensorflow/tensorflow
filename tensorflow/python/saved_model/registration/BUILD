@@ -27,6 +27,7 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python/util:tf_inspect",
+        "@absl_py//absl/logging",
     ],
 )
 

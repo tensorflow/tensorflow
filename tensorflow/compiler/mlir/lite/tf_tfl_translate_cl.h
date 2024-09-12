@@ -60,7 +60,13 @@ enum HloImportType { proto, hlotxt, mlir_text };
 
 extern llvm::cl::opt<bool> import_hlo;
 extern llvm::cl::opt<HloImportType> hlo_import_type;
+
+// enable_hlo_to_tf_conversion and disable_hlo_to_tfl_conversion are used to
+// control the HLO to TF and HLO to TFLite conversion while debugging an
+// input_mlir. The default value of enable_hlo_to_tf_conversion is false, and
+// the default value of disable_hlo_to_tfl_conversion is true.
 extern llvm::cl::opt<bool> enable_hlo_to_tf_conversion;
+extern llvm::cl::opt<bool> disable_hlo_to_tfl_conversion;
 
 // quantization related flags
 extern llvm::cl::opt<bool> post_training_quantization;

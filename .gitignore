@@ -3,6 +3,7 @@
 node_modules
 /.bazelrc.user
 /.tf_configure.bazelrc
+/xla_configure.bazelrc
 /bazel-*
 /bazel_pip
 /tools/python_bin_path.sh

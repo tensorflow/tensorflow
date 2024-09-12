@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/jpeg.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {

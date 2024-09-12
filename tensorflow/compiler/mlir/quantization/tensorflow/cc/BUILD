@@ -99,6 +99,7 @@ cc_library(
     hdrs = ["convert_asset_args.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "//tensorflow/compiler/mlir/quantization/common:func",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/core/protobuf:for_core_protos_cc",
@@ -139,9 +140,9 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
-        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
@@ -172,14 +173,18 @@ tf_cc_test(
     srcs = ["constant_fold_test.cc"],
     deps = [
         ":constant_fold",
+        "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
+        "//tensorflow/compiler/mlir/quantization/common:test_base",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Parser",
-        "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
     ],
 )
 

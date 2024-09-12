@@ -21,6 +21,10 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/client/xla_builder.h"
 #include "xla/xla_data.pb.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/util/bcast.h"
 #include "tensorflow/core/util/matmul_bcast.h"
 

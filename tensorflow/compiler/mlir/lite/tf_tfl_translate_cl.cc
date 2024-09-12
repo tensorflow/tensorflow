@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/tf_tfl_translate_cl.h"
 
+#include "llvm/Support/CommandLine.h"
+
 using llvm::cl::opt;
 
 // TODO(jpienaar): Revise the command line option parsing here.
@@ -163,6 +165,12 @@ opt<HloImportType> hlo_import_type(
 opt<bool> enable_hlo_to_tf_conversion(
     "enable-hlo-to-tf-conversion",
     llvm::cl::desc("Whether to enable the hlo to tf ops conversion."),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<bool> disable_hlo_to_tfl_conversion(
+    "disable-hlo-to-tfl-conversion",
+    llvm::cl::desc("Whether to disable the hlo to tfl ops conversion."),
     llvm::cl::init(false));
 
 // NOLINTNEXTLINE

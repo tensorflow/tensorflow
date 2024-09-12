@@ -1,5 +1,3 @@
-# Example Estimator model
-
 load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library")
 
 package(

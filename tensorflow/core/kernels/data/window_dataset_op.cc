@@ -14,10 +14,28 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/window_dataset_op.h"
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
+#include "tensorflow/core/framework/model.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/data/window_dataset.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/stringprintf.h"
+#include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace data {
@@ -107,7 +125,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -133,7 +151,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
                       {input_graph_node, window_size_node, window_shift_node,
                        window_stride_node, drop_remainder_node},
                       output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -153,7 +171,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
       const int64_t window_shift = dataset()->window_shift_;
       const int64_t window_stride = dataset()->window_stride_;
       std::vector<std::vector<Tensor>> window_elements;
-      Status status = OkStatus();
+      Status status = absl::OkStatus();
       {
         const size_t target_size = TargetBufferSize(window_size, window_stride);
 
@@ -162,7 +180,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
             (buffer_.empty() ||
              (dataset()->drop_remainder_ && buffer_.size() < target_size))) {
           *end_of_sequence = true;
-          return OkStatus();
+          return absl::OkStatus();
         }
 
         // Add elements to the buffer.
@@ -187,7 +205,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
         if (buffer_.empty() ||
             (dataset()->drop_remainder_ && buffer_.size() < target_size)) {
           DCHECK(*end_of_sequence);
-          return OkStatus();
+          return absl::OkStatus();
         }
 
         int num_elements = 1 + (buffer_.size() - 1) / window_stride;
@@ -252,7 +270,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(
             StoreDatasetInVariantTensor(window_dataset, &out_tensors->back()));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    protected:
@@ -284,7 +302,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
               buffer_[i].result[j]));
         }
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -314,7 +332,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
                                  &buffer_[i].result[j]));
         }
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     TraceMeMetadata GetTraceMeMetadata() const override {
@@ -340,7 +358,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), ErrorMessageKey(index),
                                                std::string(status.message())));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status ReadStatusLocked(IteratorStateReader* reader, size_t index,
@@ -356,9 +374,9 @@ class WindowDatasetOp::Dataset : public DatasetBase {
                                               &error_message));
         *status = Status(code, error_message);
       } else {
-        *status = OkStatus();
+        *status = absl::OkStatus();
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     string CodeKey(size_t index) {

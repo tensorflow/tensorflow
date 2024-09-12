@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2016 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,14 +15,21 @@ limitations under the License.
 
 #include "xla/stream_executor/host/host_platform.h"
 
-#include <thread>
+#include <memory>
+#include <string>
+#include <thread>  // NOLINT
+#include <utility>
 
-#include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
-#include "xla/stream_executor/host/host_gpu_executor.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/host/host_executor.h"
 #include "xla/stream_executor/host/host_platform_id.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"
-#include "tsl/platform/errors.h"
+#include "xla/stream_executor/platform_manager.h"
+#include "tsl/platform/status.h"
 
 namespace stream_executor {
 namespace host {
@@ -39,35 +46,24 @@ int HostPlatform::VisibleDeviceCount() const {
 
 const std::string& HostPlatform::Name() const { return name_; }
 
-tsl::StatusOr<std::unique_ptr<DeviceDescription>>
+absl::StatusOr<std::unique_ptr<DeviceDescription>>
 HostPlatform::DescriptionForDevice(int ordinal) const {
   return HostExecutor::CreateDeviceDescription(ordinal);
 }
 
-tsl::StatusOr<StreamExecutor*> HostPlatform::ExecutorForDevice(int ordinal) {
-  StreamExecutorConfig config;
-  config.ordinal = ordinal;
-  config.device_options = DeviceOptions::Default();
-  return GetExecutor(config);
-}
-
-tsl::StatusOr<StreamExecutor*> HostPlatform::GetExecutor(
-    const StreamExecutorConfig& config) {
+absl::StatusOr<StreamExecutor*> HostPlatform::ExecutorForDevice(int ordinal) {
   return executor_cache_.GetOrCreate(
-      config, [&]() { return GetUncachedExecutor(config); });
+      ordinal, [this, ordinal]() { return GetUncachedExecutor(ordinal); });
 }
 
-tsl::StatusOr<std::unique_ptr<StreamExecutor>>
-HostPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
-  auto executor = std::make_unique<StreamExecutor>(
-      this, std::make_unique<HostExecutor>(), config.ordinal);
-  auto init_status = executor->Init(config.device_options);
+absl::StatusOr<std::unique_ptr<StreamExecutor>>
+HostPlatform::GetUncachedExecutor(int ordinal) {
+  auto executor = std::make_unique<HostExecutor>(this, ordinal);
+  auto init_status = executor->Init();
   if (!init_status.ok()) {
-    return tsl::Status(
-        absl::StatusCode::kInternal,
-        absl::StrFormat(
-            "failed initializing StreamExecutor for device ordinal %d: %s",
-            config.ordinal, init_status.ToString().c_str()));
+    return absl::InternalError(absl::StrFormat(
+        "failed initializing StreamExecutor for device ordinal %d: %s", ordinal,
+        init_status.ToString().c_str()));
   }
 
   return std::move(executor);
@@ -75,17 +71,11 @@ HostPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
 
 static void InitializeHostPlatform() {
   std::unique_ptr<Platform> platform(new host::HostPlatform);
-  TF_CHECK_OK(MultiPlatformManager::RegisterPlatform(std::move(platform)));
+  TF_CHECK_OK(PlatformManager::RegisterPlatform(std::move(platform)));
 }
 
 }  // namespace host
 }  // namespace stream_executor
 
-REGISTER_MODULE_INITIALIZER(host_platform,
-                            stream_executor::host::InitializeHostPlatform());
-
-// Note that module initialization sequencing is not supported in the
-// open-source project, so this will be a no-op there.
-REGISTER_MODULE_INITIALIZER_SEQUENCE(host_platform, multi_platform_manager);
-REGISTER_MODULE_INITIALIZER_SEQUENCE(multi_platform_manager_listener,
-                                     host_platform);
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(
+    host_platform, stream_executor::host::InitializeHostPlatform());

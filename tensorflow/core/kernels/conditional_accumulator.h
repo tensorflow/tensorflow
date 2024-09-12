@@ -81,7 +81,7 @@ class ConditionalAccumulator
                                      shape_.DebugString(), ", got ",
                                      tensor->shape().DebugString());
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   void AllocateAndAssignToAccumGradFunction(OpKernelContext* ctx,

@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ limitations under the License.
 
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "third_party/gloo/gloo/rendezvous/store.h"
+#include "gloo/rendezvous/store.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/status_casters.h"
 

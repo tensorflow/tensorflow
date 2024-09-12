@@ -90,7 +90,7 @@ Status DeviceNameToCpuDeviceNameWithDeviceId(const string& device_name,
     device.has_id = true;
     *host_device_name = DeviceNameUtils::ParsedNameToString(device);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Get the CPU device on the same host as dst.
@@ -114,7 +114,7 @@ Status GetSuccessorEdges(
     if (!device_to_edges.count(device)) device_to_edges.insert({device, {}});
     device_to_edges[device].push_back(edge);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Replicate the constant to each successor device.
@@ -148,7 +148,7 @@ Status ReplicateConstantsPass::Run(
 
   if (options.graph == nullptr) {
     VLOG(1) << "No graph in replicate_constants_pass.";
-    return OkStatus();
+    return absl::OkStatus();
   }
   Graph* graph = options.graph->get();
   if (VLOG_IS_ON(1)) {
@@ -206,7 +206,7 @@ Status ReplicateConstantsPass::Run(
     VLOG(1) << DumpGraphToFile("after_replicate_constants_pass", *graph,
                                options.flib_def);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, 3,

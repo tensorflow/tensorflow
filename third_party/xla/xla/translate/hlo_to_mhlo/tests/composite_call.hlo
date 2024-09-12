@@ -1,0 +1,186 @@
+// RUN: xla-translate -split-input-file -hlo-text-to-mlir-hlo %s | FileCheck %s
+
+// dictionary-like frontend_attributes
+HloModule composite, entry_computation_layout={()->f32[]}
+
+// CHECK: func.func @main() -> tensor<f32> {
+// CHECK:    %0 = mhlo.constant dense<4.200000e+01> : tensor<f32>
+// CHECK:    %1 = mhlo.composite "foo.bar" %0 {composite_attributes = {n = 1 : i32, tensor = dense<1> : tensor<i32>}, decomposition = @add.2, version = 1 : i32} : (tensor<f32>) -> tensor<f32>
+// CHECK:    return %1 : tensor<f32>
+// CHECK:  }
+
+// CHECK: func.func private @add.2(%arg0: tensor<f32>) -> tensor<f32> {
+// CHECK:    %0 = mhlo.constant dense<2.000000e+00> : tensor<f32>
+// CHECK:    %1 = mhlo.add %arg0, %0 : tensor<f32>
+// CHECK:    return %1 : tensor<f32>
+// CHECK:  }
+%add.2 (Arg_0.3: f32[]) -> f32[] {
+  %Arg_0.3 = f32[] parameter(0)
+  %constant.4 = f32[] constant(2)
+  ROOT %add.5 = f32[] add(f32[] %Arg_0.3, f32[] %constant.4)
+}
+
+ENTRY %main.7 () -> f32[] {
+  %constant.1 = f32[] constant(42)
+  ROOT %call.6 = f32[] call(f32[] %constant.1), to_apply=%add.2, is_composite=true, frontend_attributes={composite.attributes={n = 1 : i32, tensor = dense<1> : tensor<i32>},composite.name="foo.bar",composite.version="1"}
+}
+
+// -----
+
+// string-like frontend_attributes
+HloModule composite, entry_computation_layout={()->f32[]}
+
+// CHECK: func.func @main() -> tensor<f32> {
+// CHECK:    %0 = mhlo.constant dense<4.200000e+01> : tensor<f32>
+// CHECK:    %1 = mhlo.composite "foo.bar" %0 {composite_attributes = {n = 1 : i32, tensor = dense<1> : tensor<i32>}, decomposition = @add.2, version = 1 : i32} : (tensor<f32>) -> tensor<f32>
+// CHECK:    return %1 : tensor<f32>
+// CHECK:  }
+
+// CHECK: func.func private @add.2(%arg0: tensor<f32>) -> tensor<f32> {
+// CHECK:    %0 = mhlo.constant dense<2.000000e+00> : tensor<f32>
+// CHECK:    %1 = mhlo.add %arg0, %0 : tensor<f32>
+// CHECK:    return %1 : tensor<f32>
+// CHECK:  }
+%add.2 (Arg_0.3: f32[]) -> f32[] {
+  %Arg_0.3 = f32[] parameter(0)
+  %constant.4 = f32[] constant(2)
+  ROOT %add.5 = f32[] add(f32[] %Arg_0.3, f32[] %constant.4)
+}
+
+ENTRY %main.7 () -> f32[] {
+  %constant.1 = f32[] constant(42)
+  ROOT %call.6 = f32[] call(f32[] %constant.1), to_apply=%add.2, is_composite=true, frontend_attributes={composite.attributes="{n = 1 : i32, tensor = dense<1> : tensor<i32>}",composite.name="foo.bar",composite.version="1"}
+}
+
+// -----
+
+// zero-output composite
+HloModule composite, entry_computation_layout={()->()}
+
+// CHECK: func.func @main() -> tuple<> {
+// CHECK:   %0 = mhlo.constant dense<4.200000e+01> : tensor<f32>
+// CHECK:   %1 = mhlo.composite "foo.bar" %0 {composite_attributes = {n = 1 : i32, tensor = dense<1> : tensor<i32>}, decomposition = @return.2, version = 1 : i32, xla_shape = "()"} : (tensor<f32>) -> tuple<>
+// CHECK:   return %1 : tuple<>
+// CHECK: }
+// CHECK: func.func private @return.2(%arg0: tensor<f32>) -> tuple<> {
+// CHECK:   %0 = mhlo.tuple  {xla_shape = "()"} : tuple<>
+// CHECK:   return %0 : tuple<>
+// CHECK: }
+%return.2 (Arg_0.3: f32[]) -> () {
+  %Arg_0.3 = f32[] parameter(0)
+  ROOT %tuple.4 = () tuple()
+}
+
+ENTRY %main.7 () -> () {
+  %constant.1 = f32[] constant(42)
+  ROOT %call.5 = () call(f32[] %constant.1), to_apply=%return.2, is_composite=true, frontend_attributes={composite.attributes={n = 1 : i32, tensor = dense<1> : tensor<i32>},composite.name="foo.bar",composite.version="1"}
+}
+
+// -----
+
+// multi-output composite
+HloModule composite, entry_computation_layout={()->(f32[], f32[])}
+
+// CHECK: func.func @main() -> tuple<tensor<f32>, tensor<f32>> {
+// CHECK:   %0 = mhlo.constant dense<4.200000e+01> : tensor<f32>
+// CHECK:   %1 = mhlo.composite "foo.bar" %0 {composite_attributes = {n = 1 : i32, tensor = dense<1> : tensor<i32>}, decomposition = @add.2, version = 1 : i32, xla_shape = "(f32[], f32[])"} : (tensor<f32>) -> tuple<tensor<f32>, tensor<f32>>
+// CHECK:   return %1 : tuple<tensor<f32>, tensor<f32>>
+// CHECK: }
+// CHECK: func.func private @add.2(%arg0: tensor<f32>) -> tuple<tensor<f32>, tensor<f32>> {
+// CHECK:   %0 = mhlo.constant dense<2.000000e+00> : tensor<f32>
+// CHECK:   %1 = mhlo.add %arg0, %0 : tensor<f32>
+// CHECK:   %2 = mhlo.tuple %1, %1 {xla_shape = "(f32[], f32[])"} : tuple<tensor<f32>, tensor<f32>>
+// CHECK:   return %2 : tuple<tensor<f32>, tensor<f32>>
+// CHECK: }
+%add.2 (Arg_0.3: f32[]) -> (f32[], f32[]) {
+  %Arg_0.3 = f32[] parameter(0)
+  %constant.4 = f32[] constant(2)
+  %add.5 = f32[] add(f32[] %Arg_0.3, f32[] %constant.4)
+  ROOT %tuple.6 = (f32[], f32[]) tuple(f32[] %add.5, f32[] %add.5)
+}
+
+ENTRY %main.9 () -> (f32[], f32[]) {
+  %constant.1 = f32[] constant(42)
+  ROOT %call.7 = (f32[], f32[]) call(f32[] %constant.1), to_apply=%add.2, is_composite=true, frontend_attributes={composite.attributes={n = 1 : i32, tensor = dense<1> : tensor<i32>},composite.name="foo.bar",composite.version="1"}
+}
+
+// -----
+
+// optional composite attributes
+HloModule composite, entry_computation_layout={()->f32[]}
+
+// CHECK: func.func @main() -> tensor<f32> {
+// CHECK:    %0 = mhlo.constant dense<4.200000e+01> : tensor<f32>
+// CHECK:    %1 = mhlo.composite "foo.bar" %0 {decomposition = @add.2, version = 1 : i32} : (tensor<f32>) -> tensor<f32>
+// CHECK:    return %1 : tensor<f32>
+// CHECK:  }
+
+// CHECK: func.func private @add.2(%arg0: tensor<f32>) -> tensor<f32> {
+// CHECK:    %0 = mhlo.constant dense<2.000000e+00> : tensor<f32>
+// CHECK:    %1 = mhlo.add %arg0, %0 : tensor<f32>
+// CHECK:    return %1 : tensor<f32>
+// CHECK:  }
+%add.2 (Arg_0.3: f32[]) -> f32[] {
+  %Arg_0.3 = f32[] parameter(0)
+  %constant.4 = f32[] constant(2)
+  ROOT %add.5 = f32[] add(f32[] %Arg_0.3, f32[] %constant.4)
+}
+
+ENTRY %main.7 () -> f32[] {
+  %constant.1 = f32[] constant(42)
+  ROOT %call.6 = f32[] call(f32[] %constant.1), to_apply=%add.2, is_composite=true, frontend_attributes={composite.attributes={},composite.name="foo.bar",composite.version="1"}
+}
+
+// -----
+
+// optional composite version
+HloModule composite, entry_computation_layout={()->f32[]}
+
+// CHECK: func.func @main() -> tensor<f32> {
+// CHECK:    %0 = mhlo.constant dense<4.200000e+01> : tensor<f32>
+// CHECK:    %1 = mhlo.composite "foo.bar" %0 {composite_attributes = {n = 1 : i32, tensor = dense<1> : tensor<i32>}, decomposition = @add.2} : (tensor<f32>) -> tensor<f32>
+// CHECK:    return %1 : tensor<f32>
+// CHECK:  }
+
+// CHECK: func.func private @add.2(%arg0: tensor<f32>) -> tensor<f32> {
+// CHECK:    %0 = mhlo.constant dense<2.000000e+00> : tensor<f32>
+// CHECK:    %1 = mhlo.add %arg0, %0 : tensor<f32>
+// CHECK:    return %1 : tensor<f32>
+// CHECK:  }
+%add.2 (Arg_0.3: f32[]) -> f32[] {
+  %Arg_0.3 = f32[] parameter(0)
+  %constant.4 = f32[] constant(2)
+  ROOT %add.5 = f32[] add(f32[] %Arg_0.3, f32[] %constant.4)
+}
+
+ENTRY %main.7 () -> f32[] {
+  %constant.1 = f32[] constant(42)
+  ROOT %call.6 = f32[] call(f32[] %constant.1), to_apply=%add.2, is_composite=true, frontend_attributes={composite.attributes="{n = 1 : i32, tensor = dense<1> : tensor<i32>}",composite.name="foo.bar",composite.version="0"}
+}
+
+// -----
+
+// optional composite attributes and version
+HloModule composite, entry_computation_layout={()->f32[]}
+
+// CHECK: func.func @main() -> tensor<f32> {
+// CHECK:    %0 = mhlo.constant dense<4.200000e+01> : tensor<f32>
+// CHECK:    %1 = mhlo.composite "foo.bar" %0 {decomposition = @add.2} : (tensor<f32>) -> tensor<f32>
+// CHECK:    return %1 : tensor<f32>
+// CHECK:  }
+
+// CHECK: func.func private @add.2(%arg0: tensor<f32>) -> tensor<f32> {
+// CHECK:    %0 = mhlo.constant dense<2.000000e+00> : tensor<f32>
+// CHECK:    %1 = mhlo.add %arg0, %0 : tensor<f32>
+// CHECK:    return %1 : tensor<f32>
+// CHECK:  }
+%add.2 (Arg_0.3: f32[]) -> f32[] {
+  %Arg_0.3 = f32[] parameter(0)
+  %constant.4 = f32[] constant(2)
+  ROOT %add.5 = f32[] add(f32[] %Arg_0.3, f32[] %constant.4)
+}
+
+ENTRY %main.7 () -> f32[] {
+  %constant.1 = f32[] constant(42)
+  ROOT %call.6 = f32[] call(f32[] %constant.1), to_apply=%add.2, is_composite=true, frontend_attributes={composite.attributes={},composite.name="foo.bar",composite.version="0"}
+}

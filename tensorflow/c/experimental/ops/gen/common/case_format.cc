@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/ops/gen/common/case_format.h"
 
+#include "absl/strings/ascii.h"
+#include "tensorflow/core/platform/types.h"
+
 namespace tensorflow {
 namespace generator {
 
@@ -28,8 +31,8 @@ enum CaseFormatType {
 
 string FormatStringCase(const string &str, CaseFormatType to,
                         const char delimiter = '_') {
-  const bool from_snake =
-      (str == str_util::Uppercase(str)) || (str == str_util::Lowercase(str));
+  const bool from_snake = (str == absl::AsciiStrToUpper(str)) ||
+                          (str == absl::AsciiStrToLower(str));
   const bool toUpper = (to == UPPER_CAMEL || to == UPPER_SNAKE);
   const bool toSnake = (to == LOWER_SNAKE || to == UPPER_SNAKE);
 

@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_tensor.h"
+#include "xla/tsl/framework/allocator.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_device_context_c_api.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_device_context_c_api_helper.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_rendezvous_c_api.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tsl/framework/allocator.h"
 
 #define CONCAT_HELPER(a, b) a##b
 #define CONCAT(a, b) CONCAT_HELPER(a, b)
@@ -101,9 +101,9 @@ using DoneCallbackParamPtr =
     std::unique_ptr<TF_RendezvousDoneCallback_Params, DoneCallbackParamDeleter>;
 
 SendParamDeleter MakeSendParamDeleter();
-StatusOr<SendParamPtr> SendParamsToC(const RendezvousInterface::ParsedKey& key,
-                                     const RendezvousInterface::Args& args,
-                                     const Tensor& tensor, bool is_dead);
+absl::StatusOr<SendParamPtr> SendParamsToC(
+    const RendezvousInterface::ParsedKey& key,
+    const RendezvousInterface::Args& args, const Tensor& tensor, bool is_dead);
 
 void RendezvousCallbackThunk(void* context,
                              TF_RendezvousDoneCallback_Params* params) {
@@ -168,9 +168,10 @@ SendParamDeleter MakeSendParamDeleter() {
   };
 }
 
-StatusOr<SendParamPtr> SendParamsToC(const RendezvousInterface::ParsedKey& key,
-                                     const RendezvousInterface::Args& args,
-                                     const Tensor& tensor, const bool is_dead) {
+absl::StatusOr<SendParamPtr> SendParamsToC(
+    const RendezvousInterface::ParsedKey& key,
+    const RendezvousInterface::Args& args, const Tensor& tensor,
+    const bool is_dead) {
   TF_RendezvousSend_Params* params = new TF_RendezvousSend_Params();
   params->key = new TF_RendezvousParsedKey(ToC(key));
   params->args = new TF_RendezvousArgsStruct(ToC(args));

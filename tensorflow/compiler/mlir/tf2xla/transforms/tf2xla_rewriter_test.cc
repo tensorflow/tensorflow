@@ -42,9 +42,9 @@ limitations under the License.
 #include "xla/client/xla_computation.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
@@ -103,7 +103,7 @@ class Tf2XlaRewriterTestPeer {
         tf2xla_rewriter_(op, empty_rewriter_,
                          /*device_type=*/"XLA_CPU_JIT") {}
 
-  tsl::StatusOr<TupleOp> ImportXlaComputationIntoModule(
+  absl::StatusOr<TupleOp> ImportXlaComputationIntoModule(
       XlaComputation& computation) {
     return tf2xla_rewriter_.ImportXlaComputation(computation);
   }
@@ -127,7 +127,7 @@ class Tf2XlaRewriterTest : public ::testing::Test {
         module_, test::GetMlirModuleFromString(module_string, &context_));
 
     context_.loadAllAvailableDialects();
-    return tsl::OkStatus();
+    return absl::OkStatus();
   }
 
   Status LegalizeSingleOp(Operation& op) {
@@ -143,7 +143,7 @@ class Tf2XlaRewriterTest : public ::testing::Test {
       return tsl::errors::Internal("Failed to rewrite op");
     }
 
-    return tsl::OkStatus();
+    return absl::OkStatus();
   }
 
   Status LegalizeModule(std::string module_string = kMlirModuleStr) {
@@ -170,7 +170,7 @@ class Tf2XlaRewriterTest : public ::testing::Test {
       return tsl::errors::Internal("Could not legalize all ops");
     }
 
-    return tsl::OkStatus();
+    return absl::OkStatus();
   }
 
   mlir::func::FuncOp GetMainFunc() {
@@ -185,7 +185,7 @@ class Tf2XlaRewriterTest : public ::testing::Test {
     return main_func.getBody().front().front();
   }
 
-  StatusOr<TupleOp> ImportXlaComputationIntoModule(
+  absl::StatusOr<TupleOp> ImportXlaComputationIntoModule(
       XlaComputation& computation) {
     SourceMgrDiagnosticHandler sourceMgrHandler(source_manager_, &context_);
 
@@ -299,6 +299,24 @@ TEST_F(Tf2XlaRewriterTest, DoesntEnforceCompileTimeConstantCheck) {
   TF_ASSERT_OK(LegalizeModule(kModuleWithNonConstParam));
 }
 
+TEST_F(Tf2XlaRewriterTest, CreatesDefaultValues) {
+  // If a TF op has default value attributes and the mlir is missing them then
+  // the LegalizeOp should insert the default values when converting the dialect
+  // op to a node def.
+  // TF.RandomUniform would fail without the seeds being set if they were not
+  // automatically inserted with the default values.
+  static constexpr char kModuleWithOpWithoutValuesThatShouldBeDefaulted[] = R"(
+  module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 1610 : i32}} {
+    func.func @main() -> tensor<1x2x3x4xf32> attributes {allow_soft_placement = false, tf.entry_function = {control_outputs = "", inputs = "_arg0,_arg1,_arg2", outputs = "_retval0"}} {
+      %cst = "tf.Const"() {value = dense<[1, 2, 3, 4]> : tensor<4xi32>} : () -> tensor<4xi32>
+      %0 = "tf.RandomUniform"(%cst) : (tensor<4xi32>) -> tensor<1x2x3x4xf32>
+      return %0 : tensor<1x2x3x4xf32>
+    }
+  })";
+
+  TF_ASSERT_OK(LegalizeModule(kModuleWithOpWithoutValuesThatShouldBeDefaulted));
+}
+
 TEST_F(Tf2XlaRewriterTest, ErrorsWithInvalidNumberOfParametersToArgs) {
   XlaBuilder builder("test_builder");
   XlaComputation to_apply;
@@ -323,7 +341,7 @@ TEST_F(Tf2XlaRewriterTest, ErrorsWithInvalidNumberOfParametersToArgs) {
   EXPECT_EQ(computation.proto().computations_size(), 2);
 
   TF_ASSERT_OK(CreateMlirModule());
-  tsl::StatusOr<TupleOp> status_or_tuple_op =
+  absl::StatusOr<TupleOp> status_or_tuple_op =
       ImportXlaComputationIntoModule(computation);
   EXPECT_FALSE(status_or_tuple_op.ok());
 }

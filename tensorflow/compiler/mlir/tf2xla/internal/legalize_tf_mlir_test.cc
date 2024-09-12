@@ -49,8 +49,8 @@ static constexpr char kMlirModuleStr[] = R"(
     }
   })";
 
-tsl::StatusOr<std::string> CompileMlirModule(bool compile_to_xla_hlo,
-                                             const char* module_str) {
+absl::StatusOr<std::string> CompileMlirModule(bool compile_to_xla_hlo,
+                                              const char* module_str) {
   MlirToHloArgs mlir_to_hlo_args;
   mlir_to_hlo_args.mlir_module = module_str;
 
@@ -71,7 +71,7 @@ tsl::StatusOr<std::string> CompileMlirModule(bool compile_to_xla_hlo,
       &per_core_arg_shapes);
 }
 
-tsl::StatusOr<XlaCompiler::CompilationResult> LegalizeMlirModule(
+absl::StatusOr<XlaCompiler::CompilationResult> LegalizeMlirModule(
     const char* module_str) {
   MlirToHloArgs mlir_to_hlo_args;
   mlir_to_hlo_args.mlir_module = module_str;

@@ -27,11 +27,11 @@ namespace tensorflow {
 
 CPluginVariable::~CPluginVariable() { TF_DeleteVariableInfo(var_info_); }
 
-tsl::Status CPluginVariable::GetTensorInternal() {
+absl::Status CPluginVariable::GetTensorInternal() {
   // Note: we assume once a variable is initialized, it's underlying tensor
   // won't change during it's lifecycle.
   if (tensor_obtained_) {
-    return tsl::OkStatus();
+    return absl::OkStatus();
   }
   TF_StatusPtr c_status_ptr(TF_NewStatus());
   TF_Tensor* c_tensor =
@@ -42,21 +42,21 @@ tsl::Status CPluginVariable::GetTensorInternal() {
   }
   TF_RETURN_IF_ERROR(TF_TensorToTensor(c_tensor_ptr.get(), &tensor_));
   tensor_obtained_ = true;
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
-tsl::Status CPluginVariable::GetTensor(const Tensor** result_tensor) {
+absl::Status CPluginVariable::GetTensor(const Tensor** result_tensor) {
   TF_RETURN_IF_ERROR(GetTensorInternal());
   *result_tensor = &tensor_;
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
-tsl::Status CPluginVariable::GetMutableTensor(Tensor** result_tensor) {
+absl::Status CPluginVariable::GetMutableTensor(Tensor** result_tensor) {
   // Note: we assume once a variable is initialized, it's underlying tensor
   // won't change during it's lifecycle.
   TF_RETURN_IF_ERROR(GetTensorInternal());
   *result_tensor = &tensor_;
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "grpcpp/generic/generic_stub.h"
+#include "xla/tsl/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_service.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_client_cq_tag.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
 #include "tensorflow/core/protobuf/eager_service.pb.h"
 #include "tensorflow/core/util/env_var.h"
-#include "tsl/distributed_runtime/call_options.h"
 
 namespace tensorflow {
 namespace eager {
@@ -154,11 +154,18 @@ class GrpcEagerClient : public EagerClient {
   void method##Async(const method##Request* request,                         \
                      method##Response* response, StatusCallback done,        \
                      int64_t init_timeout_in_ms, int retries) override {     \
-    StatusCallback done_wrapped = callback_wrapper(std::move(done));         \
     CallOptions* call_ops = nullptr;                                         \
+    StatusCallback done_wrapped;                                             \
     if (init_timeout_in_ms > 0) {                                            \
       call_ops = new CallOptions;                                            \
       call_ops->SetTimeout(init_timeout_in_ms);                              \
+      auto new_done = [call_ops, done = std::move(done)](const Status& s) {  \
+        done(s);                                                             \
+        delete call_ops;                                                     \
+      };                                                                     \
+      done_wrapped = callback_wrapper(new_done);                             \
+    } else {                                                                 \
+      done_wrapped = callback_wrapper(std::move(done));                      \
     }                                                                        \
     new RPCState<protobuf::Message>(                                         \
         &stub_, cq_, "/tensorflow.eager.EagerService/" #method, *request,    \
@@ -317,7 +324,7 @@ class GrpcEagerClientCache : public EagerClientCache {
 
     it->second->Ref();
     client->reset(it->second.get());
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

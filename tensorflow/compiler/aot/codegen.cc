@@ -90,7 +90,7 @@ Status XLATypeToCpp(xla::PrimitiveType type, string* str) {
       return errors::Unimplemented("XLA type ", xla::PrimitiveType_Name(type),
                                    " has no equivalent in C++");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Returns the sum of the size of each buffer in `buffer_infos`.
@@ -152,7 +152,7 @@ Status AddRewritesForShape(int i, const xla::Shape& shape,
   rewrites->push_back({"{{DIM_SIZES}}", dim_sizes});
   rewrites->push_back({"{{INDICES}}", indices});
   rewrites->push_back({"{{COUNT}}", absl::StrCat(count)});
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Returns code rewritten by replacing all rewrite pairs, with an extra rewrite
@@ -216,7 +216,7 @@ Status GenArgMethods(const tf2xla::Config& config,
       *methods += RewriteWithName("_" + config.feed(i).name(), code, rewrites);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Generate methods for results (outputs).
@@ -270,7 +270,7 @@ Status GenResultMethods(const tf2xla::Config& config,
       *methods += RewriteWithName("_" + config.fetch(i).name(), code, rewrites);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Generate methods for variables.
@@ -311,7 +311,7 @@ Status GenVariableMethods(const tf2xla::Config& config,
     *methods += RewriteWithName(
         var.name().empty() ? var.node_name() : var.name(), code, rewrites);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Generate shape infos for args (inputs).
@@ -348,7 +348,7 @@ $1
   *infos += R"(    };
     return kArgShapeInfoTable;
   })";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Generate shape infos for results.
@@ -379,7 +379,7 @@ $1
   *infos += R"(    };
     return kResultShapeInfoTable;
   })";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Generates code implementing {Arg,Result}Names(), where T is one of
@@ -436,7 +436,7 @@ Status ValidateFeedFetchCppNames(const tf2xla::Config& config) {
           ValidateCppIdent(variable.node_name(), "variable name"));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Returns a list of C++ expressions that, when executed, will construct the
@@ -467,7 +467,7 @@ Status CheckEqual(size_t a, size_t b, absl::string_view error_msg) {
     return absl::InternalError(
         absl::StrCat(error_msg, ". Expected ", a, ", got ", b, "."));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -668,7 +668,6 @@ class {{CLASS}} final : public tensorflow::XlaCompiledCpuFunction {
       set_static_data_program_shape(data, StaticProgramShape());
       set_static_data_hlo_profile_printer_data(
           data, StaticHloProfilePrinterData());
-      set_static_data_use_xla_runtime(data, {{USE_XLA_RUNTIME}});
 {{ASSIGN_PROFILE_COUNTERS_SIZE}}
       return data;
     }();
@@ -822,7 +821,6 @@ class {{CLASS}} final : public tensorflow::XlaCompiledCpuFunction {
       {"{{DECLS_FROM_OBJ_FILE}}",
        absl::StrJoin(metadata_result.header_variable_decls, "\n")},
       {"{{ENTRY}}", compile_result.entry_point},
-      {"{{USE_XLA_RUNTIME}}", opts.use_xla_runtime ? "true" : "false"},
       {"{{HLO_PROFILE_PRINTER_DATA_SHIM_EXPRESSION}}",
        metadata_result.hlo_profile_printer_data_access_shim},
       {"{{INCLUDE_XLA_DATA_PROTO}}", include_xla_data_proto},
@@ -846,7 +844,7 @@ class {{CLASS}} final : public tensorflow::XlaCompiledCpuFunction {
       {"{{BUFFER_INFOS_AS_STRING}}",
        absl::StrJoin(buffer_infos_as_strings, ",\n")}};
   absl::StrReplaceAll(rewrites, header);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 static string CreateUniqueIdentifier(const CodegenOpts& opts,
@@ -903,7 +901,7 @@ Status GenerateMetadata(const CodegenOpts& opts,
       std::move(embedded_protobufs.cpp_shims[1].variable_decl));
   metadata_result->object_file_data =
       std::move(embedded_protobufs.object_file_data);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ParseCppClass(const string& cpp_class, string* class_name,
@@ -929,7 +927,7 @@ Status ParseCppClass(const string& cpp_class, string* class_name,
       *class_name = parts[i];
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status ValidateCppIdent(absl::string_view ident, absl::string_view msg) {
@@ -953,7 +951,7 @@ Status ValidateCppIdent(absl::string_view ident, absl::string_view msg) {
       return errors::InvalidArgument("illegal char: ", msg);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tfcompile

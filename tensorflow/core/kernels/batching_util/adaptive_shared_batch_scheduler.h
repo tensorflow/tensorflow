@@ -424,7 +424,7 @@ Status AdaptiveSharedBatchScheduler<TaskType>::Create(
         options.batches_to_average_over);
   }
   scheduler->reset(new AdaptiveSharedBatchScheduler<TaskType>(options));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename TaskType>
@@ -472,7 +472,7 @@ Status AdaptiveSharedBatchScheduler<TaskType>::AddQueue(
                    this->shared_from_this(), options));
   mutex_lock l(mu_);
   queues_and_callbacks_[asbs_queue_raw] = process_batch_callback;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename TaskType>
@@ -633,13 +633,13 @@ void AdaptiveSharedBatchScheduler<TaskType>::CallbackWrapper(
     const internal::ASBSBatch<TaskType>* batch,
     AdaptiveSharedBatchScheduler<TaskType>::BatchProcessor callback,
     bool is_express) {
-  profiler::TraceMeConsumer trace_me(
+  tsl::profiler::TraceMeConsumer trace_me(
       [&] {
         return profiler::TraceMeEncode(
             "ProcessBatch", {{"batch_size_before_padding", batch->size()},
                              {"_r", 2} /*root_event*/});
       },
-      profiler::ContextType::kAdaptiveSharedBatchScheduler,
+      tsl::profiler::ContextType::kAdaptiveSharedBatchScheduler,
       batch->traceme_context_id());
   const int64_t start_time = batch->creation_time_micros();
   callback(std::unique_ptr<Batch<TaskType>>(
@@ -792,13 +792,13 @@ Status ASBSQueue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
 
       // Annotate each task (corresponds to one call of schedule) with a
       // TraceMeProducer.
-      profiler::TraceMeProducer trace_me(
+      tsl::profiler::TraceMeProducer trace_me(
           [task_size = task->size()] {
             return profiler::TraceMeEncode(
                 "ASBSQueue::Schedule",
                 {{"batching_input_task_size", task_size}});
           },
-          profiler::ContextType::kAdaptiveSharedBatchScheduler,
+          tsl::profiler::ContextType::kAdaptiveSharedBatchScheduler,
           this->current_batch_->traceme_context_id());
       current_batch_->AddTask(std::move(task));
       num_enqueued_tasks_++;
@@ -822,7 +822,7 @@ Status ASBSQueue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
   if (closed_batch) {
     scheduler_->MaybeScheduleClosedBatches();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename TaskType>

@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/statusor.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
-#include "xla/statusor.h"
 
 namespace xla {
 
@@ -29,7 +29,7 @@ class InterpreterDevice : public PjRtStreamExecutorDevice {
                     std::unique_ptr<LocalDeviceState> local_device_state);
 };
 
-StatusOr<std::unique_ptr<PjRtClient>> GetInterpreterClient();
+absl::StatusOr<std::unique_ptr<PjRtClient>> GetInterpreterClient();
 
 }  // namespace xla
 

@@ -21,9 +21,10 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/python/ifrt/client.h"
-#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 
 namespace tensorflow {
@@ -32,13 +33,22 @@ namespace ifrt_serving {
 struct Tf2HloResult {
   mlir::OwningOpRef<mlir::ModuleOp> mlir_hlo_module;
   tensorflow::tpu::TPUCompileMetadataProto compile_metadata;
+  tf2xla::HostComputeMetadata host_compute_metadata;
 };
+
+absl::Status UpdateCompileMetadata(
+    tensorflow::tpu::TPUCompileMetadataProto& metadata,
+    absl::Span<const DtypeAndShape> inputs);
+
+absl::StatusOr<tensorflow::tpu::TPUCompileMetadataProto> GetCompileMetadata(
+    mlir::ModuleOp module, const xla::ifrt::Client& ifrt_client);
 
 // A class that convert tf module to hlo
 // TODO(b/304839793): provide wrap persistent compilation cache.
 absl::StatusOr<Tf2HloResult> CompileTfToHlo(
-    mlir::ModuleOp module, absl::Span<const tensorflow::Tensor> inputs,
+    mlir::ModuleOp module, absl::Span<const DtypeAndShape> inputs,
     absl::string_view entry_function_name, const xla::ifrt::Client& ifrt_client,
+    const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
     tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn);
 
 }  // namespace ifrt_serving

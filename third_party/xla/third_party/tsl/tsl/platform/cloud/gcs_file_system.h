@@ -66,7 +66,7 @@ constexpr uint64 kDefaultMaxStaleness = 0;
 // Helper function to extract an environment variable and convert it into a
 // value of type T.
 template <typename T>
-bool GetEnvVar(const char* varname, bool (*convert)(StringPiece, T*),
+bool GetEnvVar(const char* varname, bool (*convert)(absl::string_view, T*),
                T* value) {
   const char* env_value = std::getenv(varname);
   if (env_value == nullptr) {
@@ -144,48 +144,54 @@ class GcsFileSystem : public FileSystem {
 
   TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
 
-  Status NewRandomAccessFile(
+  absl::Status NewRandomAccessFile(
       const string& fname, TransactionToken* token,
       std::unique_ptr<RandomAccessFile>* result) override;
 
-  Status NewWritableFile(const string& fname, TransactionToken* token,
-                         std::unique_ptr<WritableFile>* result) override;
+  absl::Status NewWritableFile(const string& fname, TransactionToken* token,
+                               std::unique_ptr<WritableFile>* result) override;
 
-  Status NewAppendableFile(const string& fname, TransactionToken* token,
-                           std::unique_ptr<WritableFile>* result) override;
+  absl::Status NewAppendableFile(
+      const string& fname, TransactionToken* token,
+      std::unique_ptr<WritableFile>* result) override;
 
-  Status NewReadOnlyMemoryRegionFromFile(
+  absl::Status NewReadOnlyMemoryRegionFromFile(
       const string& fname, TransactionToken* token,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
 
-  Status FileExists(const string& fname, TransactionToken* token) override;
+  absl::Status FileExists(const string& fname,
+                          TransactionToken* token) override;
 
-  Status Stat(const string& fname, TransactionToken* token,
-              FileStatistics* stat) override;
+  absl::Status Stat(const string& fname, TransactionToken* token,
+                    FileStatistics* stat) override;
 
-  Status GetChildren(const string& dir, TransactionToken* token,
-                     std::vector<string>* result) override;
+  absl::Status GetChildren(const string& dir, TransactionToken* token,
+                           std::vector<string>* result) override;
 
-  Status GetMatchingPaths(const string& pattern, TransactionToken* token,
-                          std::vector<string>* results) override;
+  absl::Status GetMatchingPaths(const string& pattern, TransactionToken* token,
+                                std::vector<string>* results) override;
 
-  Status DeleteFile(const string& fname, TransactionToken* token) override;
+  absl::Status DeleteFile(const string& fname,
+                          TransactionToken* token) override;
 
-  Status CreateDir(const string& dirname, TransactionToken* token) override;
+  absl::Status CreateDir(const string& dirname,
+                         TransactionToken* token) override;
 
-  Status DeleteDir(const string& dirname, TransactionToken* token) override;
+  absl::Status DeleteDir(const string& dirname,
+                         TransactionToken* token) override;
 
-  Status GetFileSize(const string& fname, TransactionToken* token,
-                     uint64* file_size) override;
+  absl::Status GetFileSize(const string& fname, TransactionToken* token,
+                           uint64* file_size) override;
 
-  Status RenameFile(const string& src, const string& target,
-                    TransactionToken* token) override;
+  absl::Status RenameFile(const string& src, const string& target,
+                          TransactionToken* token) override;
 
-  Status IsDirectory(const string& fname, TransactionToken* token) override;
+  absl::Status IsDirectory(const string& fname,
+                           TransactionToken* token) override;
 
-  Status DeleteRecursively(const string& dirname, TransactionToken* token,
-                           int64_t* undeleted_files,
-                           int64_t* undeleted_dirs) override;
+  absl::Status DeleteRecursively(const string& dirname, TransactionToken* token,
+                                 int64_t* undeleted_files,
+                                 int64_t* undeleted_dirs) override;
 
   void FlushCaches(TransactionToken* token) override;
 
@@ -267,7 +273,7 @@ class GcsFileSystem : public FileSystem {
           write(write) {}
   };
 
-  Status CreateHttpRequest(std::unique_ptr<HttpRequest>* request);
+  absl::Status CreateHttpRequest(std::unique_ptr<HttpRequest>* request);
 
   /// \brief Sets a new AuthProvider on the GCS FileSystem.
   ///
@@ -289,37 +295,38 @@ class GcsFileSystem : public FileSystem {
       size_t block_size, size_t max_bytes, uint64 max_staleness);
 
   /// Loads file contents from GCS for a given filename, offset, and length.
-  virtual Status LoadBufferFromGCS(const string& fname, size_t offset, size_t n,
-                                   char* buffer, size_t* bytes_transferred);
+  virtual absl::Status LoadBufferFromGCS(const string& fname, size_t offset,
+                                         size_t n, char* buffer,
+                                         size_t* bytes_transferred);
 
   // Creates an upload session for an upcoming GCS object upload.
-  virtual Status CreateNewUploadSession(uint64 start_offset,
-                                        const std::string& object_to_upload,
-                                        const std::string& bucket,
-                                        uint64 file_size,
-                                        const std::string& gcs_path,
-                                        UploadSessionHandle* session_handle);
+  virtual absl::Status CreateNewUploadSession(
+      uint64 start_offset, const std::string& object_to_upload,
+      const std::string& bucket, uint64 file_size, const std::string& gcs_path,
+      UploadSessionHandle* session_handle);
 
   // Uploads object data to session.
-  virtual Status UploadToSession(const std::string& session_uri,
-                                 uint64 start_offset, uint64 already_uploaded,
-                                 const std::string& tmp_content_filename,
-                                 uint64 file_size,
-                                 const std::string& file_path);
+  virtual absl::Status UploadToSession(const std::string& session_uri,
+                                       uint64 start_offset,
+                                       uint64 already_uploaded,
+                                       const std::string& tmp_content_filename,
+                                       uint64 file_size,
+                                       const std::string& file_path);
 
   /// \brief Requests status of a previously initiated upload session.
   ///
   /// If the upload has already succeeded, sets 'completed' to true.
   /// Otherwise sets 'completed' to false and 'uploaded' to the currently
   /// uploaded size in bytes.
-  virtual Status RequestUploadSessionStatus(const string& session_uri,
-                                            uint64 file_size,
-                                            const std::string& gcs_path,
-                                            bool* completed, uint64* uploaded);
+  virtual absl::Status RequestUploadSessionStatus(const string& session_uri,
+                                                  uint64 file_size,
+                                                  const std::string& gcs_path,
+                                                  bool* completed,
+                                                  uint64* uploaded);
 
-  Status ParseGcsPathForScheme(StringPiece fname, string scheme,
-                               bool empty_object_ok, string* bucket,
-                               string* object);
+  absl::Status ParseGcsPathForScheme(absl::string_view fname, string scheme,
+                                     bool empty_object_ok, string* bucket,
+                                     string* object);
 
   /// \brief Splits a GCS path to a bucket and an object.
   ///
@@ -327,8 +334,9 @@ class GcsFileSystem : public FileSystem {
   /// "bucket-name" and "path/to/file.txt".
   /// If fname only contains the bucket and empty_object_ok = true, the returned
   /// object is empty.
-  virtual Status ParseGcsPath(StringPiece fname, bool empty_object_ok,
-                              string* bucket, string* object);
+  virtual absl::Status ParseGcsPath(absl::string_view fname,
+                                    bool empty_object_ok, string* bucket,
+                                    string* object);
 
   std::shared_ptr<ComputeEngineMetadataClient> compute_engine_metadata_client_;
 
@@ -348,7 +356,7 @@ class GcsFileSystem : public FileSystem {
   /// \brief Checks if the bucket exists. Returns OK if the check succeeded.
   ///
   /// 'result' is set if the function returns OK. 'result' cannot be nullptr.
-  Status BucketExists(const string& bucket, bool* result);
+  absl::Status BucketExists(const string& bucket, bool* result);
 
   /// \brief Retrieves the GCS bucket location. Returns OK if the location was
   /// retrieved.
@@ -359,28 +367,28 @@ class GcsFileSystem : public FileSystem {
   /// This requires the bucket metadata permission.
   /// Repeated calls for the same bucket are cached so this function can be
   /// called frequently without causing an extra API call
-  Status GetBucketLocation(const string& bucket, string* location);
+  absl::Status GetBucketLocation(const string& bucket, string* location);
 
   /// \brief Check if the GCS buckets location is allowed with the current
   /// constraint configuration
-  Status CheckBucketLocationConstraint(const string& bucket);
+  absl::Status CheckBucketLocationConstraint(const string& bucket);
 
   /// \brief Given the input bucket `bucket`, fills `result_buffer` with the
   /// results of the metadata. Returns OK if the API call succeeds without
   /// error.
-  Status GetBucketMetadata(const string& bucket,
-                           std::vector<char>* result_buffer);
+  absl::Status GetBucketMetadata(const string& bucket,
+                                 std::vector<char>* result_buffer);
 
   /// \brief Checks if the object exists. Returns OK if the check succeeded.
   ///
   /// 'result' is set if the function returns OK. 'result' cannot be nullptr.
-  Status ObjectExists(const string& fname, const string& bucket,
-                      const string& object, bool* result);
+  absl::Status ObjectExists(const string& fname, const string& bucket,
+                            const string& object, bool* result);
 
   /// \brief Checks if the folder exists. Returns OK if the check succeeded.
   ///
   /// 'result' is set if the function returns OK. 'result' cannot be nullptr.
-  Status FolderExists(const string& dirname, bool* result);
+  absl::Status FolderExists(const string& dirname, bool* result);
 
   /// \brief Internal version of GetChildren with more knobs.
   ///
@@ -390,19 +398,19 @@ class GcsFileSystem : public FileSystem {
   /// If 'include_self_directory_marker' is true and there is a GCS directory
   /// marker at the path 'dir', GetChildrenBound will return an empty string
   /// as one of the children that represents this marker.
-  Status GetChildrenBounded(const string& dir, uint64 max_results,
-                            std::vector<string>* result, bool recursively,
-                            bool include_self_directory_marker);
+  absl::Status GetChildrenBounded(const string& dir, uint64 max_results,
+                                  std::vector<string>* result, bool recursively,
+                                  bool include_self_directory_marker);
 
   /// Retrieves file statistics assuming fname points to a GCS object. The data
   /// may be read from cache or from GCS directly.
-  Status StatForObject(const string& fname, const string& bucket,
-                       const string& object, GcsFileStat* stat);
+  absl::Status StatForObject(const string& fname, const string& bucket,
+                             const string& object, GcsFileStat* stat);
   /// Retrieves file statistics of file fname directly from GCS.
-  Status UncachedStatForObject(const string& fname, const string& bucket,
-                               const string& object, GcsFileStat* stat);
+  absl::Status UncachedStatForObject(const string& fname, const string& bucket,
+                                     const string& object, GcsFileStat* stat);
 
-  Status RenameObject(const string& src, const string& target);
+  absl::Status RenameObject(const string& src, const string& target);
 
   // Clear all the caches related to the file with name `filename`.
   void ClearFileCaches(const string& fname);

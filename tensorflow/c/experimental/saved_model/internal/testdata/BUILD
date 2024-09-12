@@ -1,5 +1,5 @@
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow:strict.default.bzl", "py_strict_binary")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

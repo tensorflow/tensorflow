@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,16 +19,16 @@ limitations under the License.
 #include <cstring>
 #include <vector>
 
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/Support/DebugStringHelper.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/types.h"
-#include "tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {

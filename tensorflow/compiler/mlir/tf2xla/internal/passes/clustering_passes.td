@@ -253,56 +253,6 @@ def XlaClusterFormationPass : Pass<"tf-xla-cluster-formation", "ModuleOp"> {
   let dependentDialects = ["mlir::tf_device::TensorFlowDeviceDialect"];
 }
 
-def XlaOutlineEntryFunctionsPass : Pass<"tf-xla-outline-entry-functions", "ModuleOp"> {
-  let summary = "Outline the body of an entry function into a call to the "
-    "original function body";
-  let description = [{
-    This pass adds support for top-level function with
-    `_xla_compile_device_type` attribute in MLIR generic pipeline.
-    It renames such a function, and creates a new function taking the original
-    name with a `tf.StatefulPartitionedCall` to the original function. It
-    allows the MLIR generic pipeline to handle such functions the same way it
-    handles other partitioned calls with the attribute.
-
-    For example, the following code
-
-    ```mlir
-    func.func @main(%arg0: tensor<i32>) -> tensor<i32> attributes {_xla_compile_device_type = "CPU", allow_soft_placement = true, tf.entry_function = {}} {
-      %0 = "tf.StatefulPartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", _xla_compile_device_type = "CPU", f = @stateful_pcall_func} : (tensor<i32>) -> (tensor<i32>)
-      %1 = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
-      %2 = "tf.Add"(%0, %1) : (tensor<i32>, tensor<i32>) -> (tensor<i32>)
-      func.return %2 : tensor<i32>
-    }
-
-    func.func @stateful_pcall_func(%arg0: tensor<i32>) -> tensor<i32> {
-      func.return %arg0 : tensor<i32>
-    }
-    ```
-
-    will be replaced as
-
-    ```mlir
-    func.func private @main_outlined(%arg0: tensor<i32>) -> tensor<i32> attributes {_xla_compile_device_type = "CPU", allow_soft_placement = true} {
-      %0 = "tf.StatefulPartitionedCall"(%arg0) {_xla_compile_device_type = "CPU", config = "", config_proto = "", executor_type = "", f = @stateful_pcall_func} : (tensor<i32>) -> tensor<i32>
-      %cst = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
-      %1 = "tf.Add"(%0, %cst) : (tensor<i32>, tensor<i32>) -> tensor<i32>
-      return %1 : tensor<i32>
-    }
-
-    func.func @main(%arg0: tensor<i32>) -> tensor<i32> attributes {_xla_compile_device_type = "CPU", tf.entry_function = {}} {
-      %0 = "tf.StatefulPartitionedCall"(%arg0) {_xla_compile_device_type = "CPU", allow_soft_placement = true, config = "", config_proto = "", executor_type = "", f = @main_outlined} : (tensor<i32>) -> tensor<i32>
-      return %0 : tensor<i32>
-    }
-
-    func.func @stateful_pcall_func(%arg0: tensor<i32>) -> tensor<i32> {
-      func.return %arg0 : tensor<i32>
-    }
-    ```
-  }];
-  let constructor = "tensorflow::tf2xla::internal::CreateXlaOutlineEntryFunctionsPass()";
-  let dependentDialects = ["mlir::tf_device::TensorFlowDeviceDialect"];
-}
-
 def MarkOpsForOutsideCompilationPass : Pass<"tf-mark-ops-for-outside-compilation", "ModuleOp"> {
   let summary = "Marks ops in device cluster for outside compilation if they are unsupported on device.";
 
@@ -349,3 +299,146 @@ def MarkOpsForOutsideCompilationPass : Pass<"tf-mark-ops-for-outside-compilation
 
   let constructor = "tensorflow::tf2xla::internal::CreateMarkOpsForOutsideCompilationPass()";
 }
+
+def HoistBroadcastReadPass : Pass<"tf-hoist-broadcast-read", "mlir::func::FuncOp"> {
+  let summary = "Hoist reads out of a replicate that are on a resource that is broacast to all replicas.";
+
+  let description = [{
+    Some `ReadVariableOp`s that are within a `tf_device.replicate` read the same
+    value across all replicas. These reads can be hoisted out of the
+    `tf_device.replicate` so there's one read for all replicas, and each replica
+    depends on the result of the read. This transform enables the
+    xla-broadcast-pass to optimize the broadcast value.
+
+    For example, the following:
+
+    ```mlir
+    tf_device.replicate {n = 2 : i32} {
+      %0 = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf_type.resource<tensor<f32>>>) -> tensor<f32>
+      "tf.OpA"(%0) : (tensor<f32>) -> ()
+    }
+    ```
+
+    will be transformed into:
+
+    ``mlir
+    %0 = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf_type.resource<tensor<f32>>>) -> tensor<f32>
+    tf_device.replicate {n = 2 : i32} {
+      "tf.OpA"(%0) : (tensor<f32>) -> ()
+    }
+    ```
+
+    We must ensure that there is a single underlying resource that not
+    distributed across replicas. There is a single underlying resource when the
+    resource device type is CPU, so we cautiously only apply in this case.
+
+    To be cautious we never hoist a read that comes after a write to the same
+    resource.
+  }];
+
+  let constructor = "tensorflow::tf2xla::internal::CreateHoistBroadcastReadPass()";
+}
+
+def XlaBroadcastPass : Pass<"tf-xla-broadcast", "mlir::func::FuncOp"> {
+  let summary = "Moves a broadcast from host into XLA, encoded as XlaAllReduce";
+
+  let description = [{
+    This pass moves brodcasts from host TF ops into XLA. This enables use of
+    the inter-device network, which is faster than the inter-host network.
+    Broadcasts in XLA are encoded as XlaAllReduce. An all_reduce with all 0
+    inputs except for one real input produces the same result as a broadcast.
+
+    For example, the following:
+
+    ```mlir
+    func.func @main(%arg0: tensor<f32>) -> () {
+      tf_device.replicate {n = 2 : i32} {
+        "tf_device.cluster"() ({
+          "tf.OpA"(%arg0) : (tensor<f32>) -> ()
+          tf_device.return
+        }) : () -> ()
+      }
+      func.return
+    }
+    ```
+
+    will be transformed into
+
+    ```mlir
+    func.func @main(%arg0: tensor<f32>) {
+      %elem = "tf.Const"() <{value = dense<0.000000e+00> : tensor<f32>}> : () -> tensor<f32>
+      %shape = "tf.Const"() <{value = dense<> : tensor<0xi64>}> : () -> tensor<0xi64>
+      %zero = "tf.Fill"(%shape, %elem) : (tensor<0xi64>, tensor<f32>) -> tensor<f32>
+      tf_device.replicate([%arg0, %zero] as %arg1: tensor<f32>) {n = 2 : i32} {
+        %arg1_id = "tf_device.launch"() <{device = "TPU_REPLICATED_HOST_0"}> ({
+          %1 = "tf.Identity"(%arg1) : (tensor<f32>) -> tensor<f32>
+          tf_device.return %1 : tensor<f32>
+        }) : () -> tensor<f32>
+        "tf_device.cluster"() ({
+          %group = "tf.Const"() <{value = dense<[[0, 1]]> : tensor<1x2xi32>}> : () -> tensor<1x2xi32>
+          %arg1_reduced = "tf.XlaAllReduce"(%arg1_id, %group) <{mode = "CrossReplica", reduce_op = "Add"}> : (tensor<f32>, tensor<1x2xi32>) -> tensor<f32>
+          "tf.OpA"(%arg1_reduced) : (tensor<f32>) -> ()
+          tf_device.return
+        }) : () -> ()
+        tf_device.return
+      }
+      return
+    }
+    ```
+  }];
+
+  let constructor = "tensorflow::tf2xla::internal::CreateXlaBroadcastPass()";
+  let dependentDialects = ["mlir::tf_device::TensorFlowDeviceDialect"];
+}
+
+def TPUShardingIdentificationPass : Pass<"tf-tpu-sharding-identification", "ModuleOp"> {
+  let summary = "Identifies and handles inputs/outputs of TPU computation that is "
+           "sharded across logical cores.";
+  let constructor = "tensorflow::tf2xla::internal::CreateTPUShardingIdentificationPass()";
+  let description = [{
+    Bubbles up sharding configuration from `cluster_func` regions into
+    the attributes of `cluster_func`. This is done by parsing the
+    `XlaSharding` / `TPUPartitionedOutput` / `TPUPartitionedInput` ops inside
+    `cluster_func`.
+
+    For example, given the following `cluster_func` wrapping `func`:
+
+    ```mlir
+      func @test(%arg0: tensor<*xi32>) {
+        "tf_device.cluster_func"(%arg0) {
+            func = @func,
+            step_marker_location = ""} : (tensor<*xi32>) -> tensor<*xi32>
+        return
+      }
+
+      func @func(%arg0: tensor<*xi32>) -> tensor<*xi32> {
+        %0 = "tf.XlaSharding"(%arg0) {_XlaSharding = "\01\02\03",
+                                      sharding = "\01\02\03"} : (tensor<*xi32>) -> tensor<*xi32>
+        %1 = "tf.A"(%0) : (tensor<*xi32>) -> (tensor<*xi32>)
+        return %1 : tensor<*xi32>
+      }
+    ```
+
+    Now, cluster_func receives the following `*_sharding_configuration`
+    attributes, and `func` receives the mhlo.sharding attribute:
+
+    ```mlir
+      func @test(%arg0: tensor<*xi32>) {
+        %0 = "tf_device.cluster_func"(%arg0) {
+            func = @func,
+            input_sharding_configuration = ["\01\02\03"],
+            output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"],
+            step_marker_location = ""} : (tensor<*xi32>) -> tensor<*xi32>
+        return
+      }
+      func @func(%arg0: tensor<*xi32> {mhlo.sharding = "\01\02\03"}) ->
+                (tensor<*xi32> {mhlo.sharding = "\08\01\1A\01\01\22\01\00"}) {
+        %0 = "tf.XlaSharding"(%arg0) {_XlaSharding = "\01\02\03", sharding = "\01\02\03"} : (tensor<*xi32>) -> tensor<*xi32>
+        %1 = "tf.A"(%0) : (tensor<*xi32>) -> tensor<*xi32>
+        return %1 : tensor<*xi32>
+      }
+    ```
+  }];
+}
+
+

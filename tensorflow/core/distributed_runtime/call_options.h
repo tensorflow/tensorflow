@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_CALL_OPTIONS_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_CALL_OPTIONS_H_
 
-#include "tsl/distributed_runtime/call_options.h"
+#include "xla/tsl/distributed_runtime/call_options.h"
 
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)

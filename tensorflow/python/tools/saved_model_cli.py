@@ -44,6 +44,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import load
+from tensorflow.python.saved_model import load_options
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import signature_constants
@@ -417,10 +418,20 @@ def _show_defined_functions(saved_model_dir, meta_graphs):
     has_object_graph_def |= meta_graph_def.HasField('object_graph_def')
   if not has_object_graph_def:
     return
-  with ops_lib.Graph().as_default():
-    trackable_object = load.load(saved_model_dir)
-
   print('\nConcrete Functions:', end='')
+  try:
+    with ops_lib.Graph().as_default():
+      trackable_object = load.load(
+          saved_model_dir,
+          options=load_options.LoadOptions(experimental_skip_checkpoint=True))
+  except Exception as e:  # pylint: disable=broad-exception-caught
+    if 'Op type not registered' in str(e):
+      error = 'the existence of custom ops in the SavedModel'
+    else:
+      error = 'unknown reasons'
+    print(f' N/A (could not be listed due to {error})')
+    return
+
   children = list(
       save._AugmentedGraphView(trackable_object)  # pylint: disable=protected-access
       .list_children(trackable_object))

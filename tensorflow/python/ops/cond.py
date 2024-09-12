@@ -257,7 +257,7 @@ def cond_for_tf_v2(pred, true_fn=None, false_fn=None, name=None):
   ...   else:
   ...     z = y-1
   ...   return z
-  >>> fun1(tf.constant(7), tf.constant(3)).numpy()
+  >>> print(fun1(tf.constant(7), tf.constant(3)).numpy())
   4
 
   >>> @tf.function
@@ -266,7 +266,7 @@ def cond_for_tf_v2(pred, true_fn=None, false_fn=None, name=None):
   ...   true_fn =  lambda: y+1
   ...   false_fn = lambda: y-1
   ...   return tf.cond(pred, true_fn, false_fn)  # Use tf.cond() explicitly.
-  >>> fun1(tf.constant(7), tf.constant(3)).numpy()
+  >>> print(fun1(tf.constant(7), tf.constant(3)).numpy())
   4
 
   For more information, see [tf.function and AutoGraph guide](
@@ -285,7 +285,7 @@ def cond_for_tf_v2(pred, true_fn=None, false_fn=None, name=None):
   >>> x, y = tf.constant(2, dtype=tf.int32), tf.constant(4, dtype=tf.int32)
   >>> z = tf.multiply(x, y)
   >>> r = tf.cond(x < y, lambda: tf.add(x, z), lambda: tf.square(y))
-  >>> r.numpy()
+  >>> print(r.numpy())
   10
 
   If `x < y`, the `tf.add` operation will be executed and `tf.square`
@@ -336,7 +336,7 @@ def cond_for_tf_v2(pred, true_fn=None, false_fn=None, name=None):
   >>> r = tf.cond(tf.less(x, y), f1, f2)
   >>> # r is set to f1().
   >>> # Operations in f2 (e.g., tf.add) are not executed.
-  >>> r.numpy()
+  >>> print(r.numpy())
   14
 
   """

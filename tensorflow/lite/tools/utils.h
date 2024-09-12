@@ -16,8 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_UTILS_H_
 #define TENSORFLOW_LITE_TOOLS_UTILS_H_
 
+#include <cstdint>
 #include <memory>
+#include <vector>
 
+#include "absl/types/span.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 
 namespace tflite {
@@ -43,6 +47,14 @@ InputTensorData CreateRandomTensorData(const TfLiteTensor& tensor,
 // benchmarking and/or testing purposes.
 void GetDataRangesForType(TfLiteType type, float* low_range, float* high_range);
 
+// Converts TfLiteTensor to float array. Returns an error if the tensor type is
+// not supported or the values size is not equal to the tensor dimension.
+TfLiteStatus TfLiteTensorToFloat32Array(const TfLiteTensor& tensor,
+                                        absl::Span<float> values);
+
+// Same as above, but converts to int64_t array.
+TfLiteStatus TfLiteTensorToInt64Array(const TfLiteTensor& tensor,
+                                      absl::Span<int64_t> values);
 }  // namespace utils
 }  // namespace tflite
 

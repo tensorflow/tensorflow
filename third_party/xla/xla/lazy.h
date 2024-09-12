@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,6 +27,8 @@ class Lazy {
  public:
   explicit Lazy(absl::AnyInvocable<T() &&> func)
       : maybe_value_(std::move(func)) {}
+
+  bool has_value() const { return std::holds_alternative<T>(maybe_value_); }
 
   const T& get() const {
     if (!std::holds_alternative<T>(maybe_value_)) {

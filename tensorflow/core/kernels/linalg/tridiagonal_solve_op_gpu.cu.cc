@@ -76,8 +76,8 @@ void CopyDeviceToDevice(OpKernelContext* context, const Scalar* src,
   auto dst_device_mem = AsDeviceMemory(dst);
   auto* stream = context->op_device_context()->stream();
   bool copy_status = stream
-                         ->ThenMemcpyD2D(&dst_device_mem, src_device_mem,
-                                         sizeof(Scalar) * num_elements)
+                         ->MemcpyD2D(&dst_device_mem, src_device_mem,
+                                     sizeof(Scalar) * num_elements)
                          .ok();
 
   if (!copy_status) {

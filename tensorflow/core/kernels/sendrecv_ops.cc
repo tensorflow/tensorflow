@@ -120,8 +120,8 @@ string SendOp::TraceString(const OpKernelContext& ctx, bool verbose) const {
   auto dst_it = attr.find("_dst");
   const string& src = src_it != attr.end() ? src_it->second.s() : "";
   const string& dst = dst_it != attr.end() ? dst_it->second.s() : "";
-  string op = profiler::TraceMeOp(name_view(), type_string_view());
-  return profiler::TraceMeEncode(
+  string op = tsl::profiler::TraceMeOp(name_view(), type_string_view());
+  return tsl::profiler::TraceMeEncode(
       std::move(op),
       {{"from", src}, {"to", dst}, {"key", parsed_key_.FullKey()}});
 }
@@ -166,8 +166,8 @@ string RecvOp::TraceString(const OpKernelContext& ctx, bool verbose) const {
   auto dst_it = attr.find("_dst");
   const string& src = src_it != attr.end() ? src_it->second.s() : "";
   const string& dst = dst_it != attr.end() ? dst_it->second.s() : "";
-  string op = profiler::TraceMeOp(name_view(), type_string_view());
-  return profiler::TraceMeEncode(
+  string op = tsl::profiler::TraceMeOp(name_view(), type_string_view());
+  return tsl::profiler::TraceMeEncode(
       std::move(op),
       {{"from", src}, {"to", dst}, {"key", parsed_key_.FullKey()}});
 }

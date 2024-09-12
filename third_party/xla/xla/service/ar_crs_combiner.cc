@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,11 +15,20 @@ limitations under the License.
 
 #include "xla/service/ar_crs_combiner.h"
 
-#include <string>
+#include <algorithm>
+#include <cstdint>
+#include <optional>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -30,9 +39,12 @@ limitations under the License.
 #include "xla/service/call_graph.h"
 #include "xla/service/hlo_replication_analysis.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/types.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -42,8 +54,8 @@ namespace {
 // divide by the number of partitions. Depending on the topology and the
 // implementation of the all-reduce for the backend, this may give a better
 // performance.
-StatusOr<bool> ReplaceReplicatedAllReduce(HloModule* module,
-                                          int64_t partition_count) {
+absl::StatusOr<bool> ReplaceReplicatedAllReduce(HloModule* module,
+                                                int64_t partition_count) {
   TF_ASSIGN_OR_RETURN(
       auto replication_analysis,
       HloReplicationAnalysis::Run(module, /*cross_partition_spmd=*/true));
@@ -462,7 +474,7 @@ void ArCrsCombiner::GroupAllReducesById(HloModule* module) {
   }
 }
 
-Status ArCrsCombiner::KeepProvablyEqualInstructionGroupsMPMD() {
+absl::Status ArCrsCombiner::KeepProvablyEqualInstructionGroupsMPMD() {
   for (auto it = all_reduce_map_.begin(); it != all_reduce_map_.end();) {
     auto copy_it = it++;  // Advance `it` before invalidation from erase.
     auto channel_id = copy_it->first;
@@ -493,10 +505,10 @@ Status ArCrsCombiner::KeepProvablyEqualInstructionGroupsMPMD() {
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ArCrsCombiner::KeepProvablyEqualInstructionGroupsSPMD(
+absl::Status ArCrsCombiner::KeepProvablyEqualInstructionGroupsSPMD(
     HloModule* module) {
   // For SPMD mode, use HloReplicationAnalysis to figure out HLO value
   // equivalence across partitions.
@@ -531,10 +543,10 @@ Status ArCrsCombiner::KeepProvablyEqualInstructionGroupsSPMD(
       next = next->users()[0];
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<bool> ArCrsCombiner::RewriteGraph() {
+absl::StatusOr<bool> ArCrsCombiner::RewriteGraph() {
   if (all_reduce_map_.empty()) {
     return false;
   }
@@ -600,7 +612,7 @@ StatusOr<bool> ArCrsCombiner::RewriteGraph() {
   return true;
 }
 
-StatusOr<bool> ArCrsCombiner::Run(
+absl::StatusOr<bool> ArCrsCombiner::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   call_graph_ = CallGraph::Build(module);

@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include <gtest/gtest.h>
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/platform/errors.h"
@@ -161,16 +162,16 @@ TEST_F(RunHandlerThreadWorkQueueTest, RunningMixedTask) {
 }
 
 TEST_F(RunHandlerThreadWorkQueueTest, NameReturnsValidString) {
-  EXPECT_EQ(queue_->name(), "run_handler");
+  EXPECT_TRUE(absl::StrContains(pool_->name(), "RunHandlerThreadWorkQueue"));
 }
 
 TEST_F(RunHandlerThreadWorkQueueTest, GetParallelismLevelOk) {
-  EXPECT_EQ(queue_->GetParallelismLevel(),
+  EXPECT_EQ(pool_->GetParallelismLevel(),
             kNumComplementaryThreads + kNumMainThreads);
 }
 
 TEST_F(RunHandlerThreadWorkQueueTest, IsWorkerThreadOk) {
-  EXPECT_TRUE(queue_->IsInWorkerThread());
+  EXPECT_TRUE(pool_->IsInWorkerThread());
 }
 
 TEST_F(RunHandlerThreadWorkQueueTest, NoHandlerReturnsError) {

@@ -1,5 +1,5 @@
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -9,9 +9,7 @@ package(
 filegroup(
     name = "higher_level_tests_group",
     srcs = ["sparse_tensor_test.cc"],
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
 )
 
 # Export source files needed for mobile builds, which do not use granular targets.

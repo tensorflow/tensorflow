@@ -29,16 +29,17 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Dumps 'graph_def' to a file, as a GraphDef text proto. Returns the file name
-// chosen.
+// Dumps 'graph_def' to a file, as a GraphDef text or binary proto. Returns the
+// file name chosen. The format is determined by the TF_DUMP_GRAPH_FMT
+// environment variable (TXT or BIN).
 //
 // If the TF_DUMP_GRAPH_PREFIX environment variable is "-", then instead the
 // GraphDef will be logged (using the LOG() macro).
 //
 // Automatically picks a file name. Prefixes 'name' with the value of the
 // TF_DUMP_GRAPH_PREFIX environment variable if 'dirname' is empty, and suffixes
-// 'name' with ".pbtxt" to form a name. If a graph has already been dumped by
-// this process with the same name, suffixes with "_n.pbtxt", where 'n' is a
+// 'name' with '.pbtxt' or '.pb'. If a graph has already been dumped by
+// this process with the same name, suffixes with "_n.pb(txt)", where 'n' is a
 // sequence number.
 string DumpGraphDefToFile(const string& name, GraphDef const& graph_def,
                           const string& dirname = "");

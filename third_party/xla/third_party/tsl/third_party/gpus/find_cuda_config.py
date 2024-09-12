@@ -14,6 +14,9 @@
 # ==============================================================================
 """Prints CUDA library and header directories and versions found on the system.
 
+NB: DEPRECATED! This script is a part of the deprecated `cuda_configure` rule.
+Please use `hermetic/cuda_configure` instead.
+
 The script searches for CUDA library and header files on the system, inspects
 them to determine their version and prints the configuration to stdout.
 The paths to inspect and the required versions are specified through environment

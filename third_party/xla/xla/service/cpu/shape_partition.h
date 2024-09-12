@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,9 +16,12 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_SHAPE_PARTITION_H_
 #define XLA_SERVICE_CPU_SHAPE_PARTITION_H_
 
+#include <cstdint>
+#include <utility>
 #include <vector>
 
-#include "xla/shape_util.h"
+#include "absl/types/span.h"
+#include "xla/shape.h"
 
 namespace xla {
 namespace cpu {
@@ -64,9 +67,9 @@ namespace cpu {
 //
 class ShapePartitionAssigner {
  public:
-  ShapePartitionAssigner(const Shape& shape) : shape_(shape) {}
+  explicit ShapePartitionAssigner(const Shape& shape) : shape_(shape) {}
 
-  // Returns dimension partition counts (starting at outer-most dimension).
+  // Returns dimension partition counts (starting at outermost dimension).
   std::vector<int64_t> Run(int64_t target_partition_count);
 
   // Returns the total partition count based on 'dimension_partition_counts'.

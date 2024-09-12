@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,11 +29,10 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/status.h"
+#include "xla/tsl/profiler/convert/xla_op_utils.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/types.h"
-#include "tsl/profiler/convert/xla_op_utils.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 #include "tsl/profiler/utils/file_system_utils.h"
 #include "tsl/profiler/utils/tf_xplane_visitor.h"
@@ -177,7 +176,7 @@ void GetXPlaneHloModuleInfo(
 
 }  // namespace
 
-Status ConvertXplaneUnderLogdirToProfiledInstructionsProto(
+absl::Status ConvertXplaneUnderLogdirToProfiledInstructionsProto(
     const std::string& logdir, tensorflow::profiler::ProfiledInstructionsProto*
                                    profiled_instructions_proto) {
   // Find the xplane files for each host under logdir.
@@ -202,7 +201,7 @@ Status ConvertXplaneUnderLogdirToProfiledInstructionsProto(
                                                   profiled_instructions_proto);
 }
 
-Status ConvertXplaneToProfiledInstructionsProto(
+absl::Status ConvertXplaneToProfiledInstructionsProto(
     std::vector<tensorflow::profiler::XSpace> xspaces,
     tensorflow::profiler::ProfiledInstructionsProto*
         profiled_instructions_proto) {
@@ -244,7 +243,7 @@ Status ConvertXplaneToProfiledInstructionsProto(
     cost->set_name(iter.first);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace xla

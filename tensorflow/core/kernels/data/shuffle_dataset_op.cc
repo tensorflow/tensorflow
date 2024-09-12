@@ -126,7 +126,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -148,7 +148,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       shuffled_index = shuffled_indices_[index];
     }
     TF_RETURN_IF_ERROR(input_->Get(ctx, shuffled_index, out_tensors));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   string DebugString() const override {
@@ -211,7 +211,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
           checkpoint_indices_.insert(i);
         }
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -222,7 +222,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       if (num_elements_ == 0) {
         DCHECK(input_impl_ == nullptr);
         *end_of_sequence = true;
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       *end_of_sequence = false;
@@ -241,7 +241,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       checkpoint_indices_.insert(slices_.front()->start % buffer_->size());
       slices_.front()->start++;
       num_elements_--;
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    protected:
@@ -316,7 +316,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
             writer->WriteScalar(this->prefix(), kDataProduced, ""));
       }
 
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -393,7 +393,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       }
       data_produced_ = reader->Contains(this->prefix(), kDataProduced);
 
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     TraceMeMetadata GetTraceMeMetadata() const override {
@@ -473,13 +473,13 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
           // If we encounter the end of sequence without producing data, we
           // terminate the iteration immediately. (Otherwise, this iterator
           // would loop infinitely and never produce a value.)
-          return OkStatus();
+          return absl::OkStatus();
         }
       }
       if (num_log_entries > 0) {
         LOG(INFO) << "Shuffle buffer filled.";
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     bool ShouldFillBuffer() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
@@ -517,7 +517,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       TF_RETURN_IF_ERROR(this->dataset()->input_->MakeIterator(
           ctx, this, this->prefix(), &input_impl_));
       epoch_++;
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     void AddToShuffleBuffer(IteratorContext* ctx, std::vector<Tensor>&& element)
@@ -641,7 +641,7 @@ class ShuffleDatasetOp::Dataset : public ShuffleDatasetBase {
         {std::make_pair(kReshuffleEachIteration,
                         reshuffle_each_iteration)},  // Attrs
         output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -696,7 +696,7 @@ class ShuffleDatasetOp::DatasetV2 : public ShuffleDatasetBase {
         {input_graph_node, buffer_size_node, resource_handle_node},  // Inputs
         {},                                                          // Attrs
         output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -760,7 +760,7 @@ class ShuffleDatasetOp::DatasetV3 : public ShuffleDatasetBase {
                       {std::make_pair(kReshuffleEachIteration,
                                       reshuffle_each_iteration)},  // Attrs
                       output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -828,7 +828,7 @@ void ShuffleDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                   *manager =
                       new SeedGeneratorManager(new FixedSeedGenerator(seeds));
                 }
-                return OkStatus();
+                return absl::OkStatus();
               }));
       handle = MakeResourceHandle<SeedGenerator>(ctx, container, name);
     } else {
@@ -857,7 +857,7 @@ void ShuffleDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    [&seeds](SeedGeneratorManager** manager) {
                      *manager = new SeedGeneratorManager(
                          new RandomSeedGenerator(seeds));
-                     return OkStatus();
+                     return absl::OkStatus();
                    }));
       handle = MakeResourceHandle<SeedGeneratorManager>(ctx, container, name);
     } else {
@@ -892,7 +892,7 @@ void ShuffleDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                 *manager =
                     new SeedGeneratorManager(new FixedSeedGenerator(seeds));
               }
-              return OkStatus();
+              return absl::OkStatus();
             }));
     auto handle =
         MakeResourceHandle<SeedGeneratorManager>(ctx, container, name);
@@ -949,7 +949,7 @@ class ShuffleAndRepeatDatasetOp::Dataset : public ShuffleDatasetBase {
         {std::make_pair(kReshuffleEachIteration,
                         reshuffle_each_iteration)},  // Attrs
         output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -1012,7 +1012,7 @@ class ShuffleAndRepeatDatasetOp::DatasetV2 : public ShuffleDatasetBase {
                       {std::make_pair(kReshuffleEachIteration,
                                       reshuffle_each_iteration)},  // Attrs
                       output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -1088,7 +1088,7 @@ void ShuffleAndRepeatDatasetOp::MakeDataset(OpKernelContext* ctx,
                   *manager =
                       new SeedGeneratorManager(new FixedSeedGenerator(seeds));
                 }
-                return OkStatus();
+                return absl::OkStatus();
               }));
       handle = MakeResourceHandle<SeedGenerator>(ctx, container, name);
     } else {
@@ -1118,7 +1118,7 @@ void ShuffleAndRepeatDatasetOp::MakeDataset(OpKernelContext* ctx,
                 *manager =
                     new SeedGeneratorManager(new FixedSeedGenerator(seeds));
               }
-              return OkStatus();
+              return absl::OkStatus();
             }));
     auto handle =
         MakeResourceHandle<SeedGeneratorManager>(ctx, container, name);

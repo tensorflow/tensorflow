@@ -47,8 +47,8 @@ static Status InitDeviceModule(void* dso_handle) {
 
   if (absl::IsNotFound(status)) {
     VLOG(1) << "Device module not found.";
-    return OkStatus();
-  } else if (status != OkStatus()) {
+    return absl::OkStatus();
+  } else if (status != absl::OkStatus()) {
     return status;
   }
   auto init_fn = reinterpret_cast<stream_executor::SEInitPluginFn>(dso_symbol);
@@ -68,7 +68,7 @@ static Status InitDeviceModule(void* dso_handle) {
       /*is_pluggable_device=*/true));  // Register the Copy tensor.
 
   VLOG(1) << "Successfully initialized Device module.";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 typedef const PJRT_Api* (*PjrtApiInitFn)();
@@ -81,8 +81,8 @@ static Status InitNextPluggableDeviceModule(void* dso_handle) {
       env->GetSymbolFromLibrary(dso_handle, "TFNPD_InitPlugin", &dso_symbol);
   if (absl::IsNotFound(status)) {
     VLOG(1) << "Next pluggable device module not found.";
-    return OkStatus();
-  } else if (status != OkStatus()) {
+    return absl::OkStatus();
+  } else if (status != absl::OkStatus()) {
     return status;
   }
   auto init_fn = reinterpret_cast<TFNPDInitPluginFn>(dso_symbol);
@@ -98,7 +98,7 @@ static Status InitNextPluggableDeviceModule(void* dso_handle) {
   if (absl::IsNotFound(status)) {
     VLOG(1) << "Loading PJRT plugin failed for " << device_type << ": "
             << status.message();
-    return OkStatus();
+    return absl::OkStatus();
   } else if (!status.ok()) {
     return status;
   }
@@ -140,7 +140,7 @@ static Status InitNextPluggableDeviceModule(void* dso_handle) {
       /*is_pluggable_device=*/true));  // Register the Copy tensor.
 
   VLOG(1) << "Successfully initialized NextPluggableDevice module.";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 static Status InitGraphModule(void* dso_handle) {
@@ -151,15 +151,15 @@ static Status InitGraphModule(void* dso_handle) {
 
   if (absl::IsNotFound(status)) {
     VLOG(1) << "Graph module not found.";
-    return OkStatus();
-  } else if (status != OkStatus()) {
+    return absl::OkStatus();
+  } else if (status != absl::OkStatus()) {
     return status;
   }
   auto init_fn = reinterpret_cast<grappler::TFInitGraphPluginFn>(dso_symbol);
   TF_RETURN_IF_ERROR(grappler::InitGraphPlugin(init_fn));
 
   VLOG(1) << "Successfully initialized Graph module.";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 typedef void (*TFKernelInitFn)();
@@ -171,8 +171,8 @@ static Status InitKernelModule(void* dso_handle) {
 
   if (absl::IsNotFound(status)) {
     VLOG(1) << "Kernel module not found.";
-    return OkStatus();
-  } else if (status != OkStatus()) {
+    return absl::OkStatus();
+  } else if (status != absl::OkStatus()) {
     return status;
   }
 
@@ -180,7 +180,7 @@ static Status InitKernelModule(void* dso_handle) {
   init_fn();
 
   VLOG(1) << "Successfully initialized Kernel module.";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 static Status InitProfilerModule(void* dso_handle) {
@@ -192,8 +192,8 @@ static Status InitProfilerModule(void* dso_handle) {
 
   if (absl::IsNotFound(status)) {
     VLOG(1) << "Profiler module not found.";
-    return OkStatus();
-  } else if (status != OkStatus()) {
+    return absl::OkStatus();
+  } else if (status != absl::OkStatus()) {
     return status;
   }
 
@@ -201,7 +201,7 @@ static Status InitProfilerModule(void* dso_handle) {
   TF_RETURN_IF_ERROR(profiler::InitPluginProfiler(init_fn));
 
   VLOG(1) << "Successfully initialized Profiler module";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status RegisterPluggableDevicePlugin(void* dso_handle) {
@@ -220,7 +220,7 @@ Status RegisterPluggableDevicePlugin(void* dso_handle) {
   // Step 4 Init Profiler Module.
   TF_RETURN_IF_ERROR(InitProfilerModule(dso_handle));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

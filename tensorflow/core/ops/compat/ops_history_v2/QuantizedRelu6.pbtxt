@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "QuantizedRelu6"
   input_arg {
     name: "features"

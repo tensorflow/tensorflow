@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ limitations under the License.
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -34,7 +34,7 @@ namespace op = xla::testing::opcode_matchers;
 
 class HloControlFlowFlatteningTest : public HloTestBase {
  public:
-  StatusOr<std::unique_ptr<HloModule>> PartitionComputation(
+  absl::StatusOr<std::unique_ptr<HloModule>> PartitionComputation(
       std::unique_ptr<VerifiedHloModule> hlo_module, int64_t num_devices = 2) {
     spmd::SpmdPartitionerOptions options;
     auto collective_ops_creator =
@@ -52,7 +52,7 @@ class HloControlFlowFlatteningTest : public HloTestBase {
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                               /*allow_mixed_precision=*/false);
     TF_RETURN_IF_ERROR(pass.Run(hlo_module.get()).status());
-    return StatusOr<std::unique_ptr<HloModule>>(std::move(hlo_module));
+    return absl::StatusOr<std::unique_ptr<HloModule>>(std::move(hlo_module));
   }
 };
 
@@ -515,6 +515,37 @@ TEST_F(HloControlFlowFlatteningTest, ReplicaIdSucceedsWithChange) {
             "replica-id.18600");
 }
 
+TEST_F(HloControlFlowFlatteningTest, RemoveReplicaIdButKeepAllReduce) {
+  absl::string_view kHloText = R"(
+  HloModule RemoveReplicaIdButKeepCollective
+
+%sum (a: f32[], b: f32[]) -> f32[] {
+    %a = f32[] parameter(0)
+    %b = f32[] parameter(1)
+    ROOT %add = f32[] add(f32[] a, f32[] b)
+  }
+  ENTRY ReplicaId {
+    replica-id.1 = u32[]{:T(128)} replica-id()
+    ROOT all-reduce.1 = u32[]{:T(128)} all-reduce(replica-id.1), to_apply=sum, replica_groups={}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  HloControlFlowFlattening flattening(HloControlFlowFlattening::Options{
+      /*while_execution_count=*/1, /*max_outer_loop_count=*/1,
+      /*max_loop_count=*/1, /*remove_infeed_outfeed=*/false,
+      /*flatten_while_loop=*/false, /*remove_comm=*/false,
+      /*remove_host_transfer=*/false, /*remove_id=*/true});
+  EXPECT_TRUE(flattening.Run(module.get()).value());
+  TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
+                           /*allow_mixed_precision=*/true)
+                   .Run(module.get())
+                   .status());
+  EXPECT_THAT(module->entry_computation()->root_instruction(), op::AllReduce());
+  EXPECT_THAT(module->entry_computation()->root_instruction()->operand(0),
+              op::Constant());
+}
+
 TEST_F(HloControlFlowFlatteningTest, CollectivePermuteInPlaceUpdate) {
   absl::string_view hlo_string = R"(
   HloModule CollectivePermuteInPlaceUpdate
@@ -790,6 +821,27 @@ ENTRY main {
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::CustomCall(op::Parameter(0), op::Parameter(1)));
   EXPECT_EQ(module->entry_computation()->root_instruction()->name(), "fusion");
+}
+
+TEST_F(HloControlFlowFlatteningTest, AsyncAllToAll) {
+  absl::string_view hlo = R"(
+
+  ENTRY main {
+  param = f32[4,8,128]{2,1,0} parameter(0)
+  all-to-all-start = ((f32[4,8,128]{2,1,0}), f32[4,8,128]{2,1,0}, u32[], u32[]) all-to-all-start(param), channel_id=1, replica_groups={{0,1,2,3,4,5,6,7}}, dimensions={1}
+  ROOT all-to-all-done = f32[4,8,128]{2,1,0} all-to-all-done(all-to-all-start)
+  }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  EXPECT_TRUE(IsCollective(module->entry_computation()->root_instruction()));
+  HloControlFlowFlattening flattening({});
+  EXPECT_TRUE(flattening.Run(module.get()).value());
+  TF_ASSERT_OK(HloVerifier(/*layout_sensitive=*/true,
+                           /*allow_mixed_precision=*/true)
+                   .Run(module.get())
+                   .status());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::CustomCall(op::CustomCall(op::Parameter(0))));
 }
 
 void CheckWhileBound(HloInstruction* while_op, int expected_bound) {

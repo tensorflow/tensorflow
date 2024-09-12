@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -40,6 +40,7 @@ std::string AutoShardingOption::ToString() const {
         absl::StrCat("memory_budget_per_device: ",
                      memory_budget_per_device / (1024 * 1024 * 1024), " GB"));
   }
+  lines.push_back(absl::StrCat("memory_budget_ratio: ", memory_budget_ratio));
 
   lines.push_back(absl::StrCat("force_override_all_gather_cost: ",
                                force_override_all_gather_cost));
@@ -81,8 +82,6 @@ std::string AutoShardingOption::ToString() const {
       absl::StrCat("allow_recompute_heavy_op: ", allow_recompute_heavy_op));
   lines.push_back(
       absl::StrCat("allow_mixed_mesh_shape: ", allow_mixed_mesh_shape));
-  lines.push_back(
-      absl::StrCat("grad_acc_num_micro_batches: ", grad_acc_num_micro_batches));
   lines.push_back(absl::StrCat("solve_nd_sharding_iteratively: ",
                                solve_nd_sharding_iteratively));
   lines.push_back(
@@ -106,9 +105,6 @@ std::string AutoShardingOption::ToString() const {
 
   lines.push_back(absl::StrCat("nd_sharding_iteratively_strict_search_space: ",
                                nd_sharding_iteratively_strict_search_space));
-
-  lines.push_back(absl::StrCat("allow_replicated_strategy_for_dot_and_conv: ",
-                               allow_replicated_strategy_for_dot_and_conv));
 
   lines.push_back(absl::StrCat("device_mesh_shape: [",
                                absl::StrJoin(device_mesh_shape, ","), "]"));
@@ -136,9 +132,24 @@ std::string AutoShardingOption::ToString() const {
       absl::StrCat("use_sharding_propagation_for_default_shardings: ",
                    use_sharding_propagation_for_default_shardings));
 
+  lines.push_back(absl::StrCat("model_resharding_memory_costs: ",
+                               model_resharding_memory_costs));
+
+  lines.push_back(absl::StrCat("generate_windowed_einsum_strategies: ",
+                               generate_windowed_einsum_strategies));
+
+  lines.push_back(
+      absl::StrCat("allow_shardings_small_dims_across_many_devices: ",
+                   allow_shardings_small_dims_across_many_devices));
+
+  lines.push_back(absl::StrCat("insert_resharding_reshapes_for_non_dot_ops: ",
+                               insert_resharding_reshapes_for_non_dot_ops));
+
   return absl::StrJoin(lines, "\n");
 }
 
+// TODO(pratikf) The device mesh shape handling in this function currently does
+// not work when try_multiple_mesh_shapes is true. Fix it.
 absl::Status AutoShardingOption::CheckAndSetup() {
   only_allow_divisible_input_output = true;
   only_allow_divisible_intermediate = false;
@@ -147,31 +158,13 @@ absl::Status AutoShardingOption::CheckAndSetup() {
     return absl::OutOfRangeError(
         "device_mesh_shape is empty and it needs to be specified.");
   }
-  std::vector<int64_t> mesh_dims_greater_than_one_indices =
-      spmd::VectorGreaterThanOneElementIndices(device_mesh_shape);
 
-  // TODO(pratikf) The device mesh shape handling in this function currently
-  // does not work when try_multiple_mesh_shapes is true. Fix it.
-  if (mesh_dims_greater_than_one_indices.size() > 3 ||
-      (device_mesh_shape.size() > 3 && try_multiple_mesh_shapes)) {
-    return absl::OutOfRangeError(
-        absl::StrCat("Not supported: only device_mesh_shapes with 3 or less "
-                     "dimensions larger than 1 are supported. Instead we have ",
-                     mesh_dims_greater_than_one_indices.size(),
-                     " dimensions greater than 1."));
-  }
   // All values in device_mesh_shape must be greater than 0.
   if (absl::c_any_of(device_mesh_shape,
                      [](const int64_t i) { return i <= 0; })) {
     return absl::OutOfRangeError(
         absl::StrCat("device_mesh_shape values need to be larger than 0: "
                      "device_mesh_shape=",
-                     absl::StrJoin(device_mesh_shape, ",")));
-  }
-  if (spmd::VectorGreaterThanOneElementCount(device_mesh_shape) > 3) {
-    return absl::OutOfRangeError(
-        absl::StrCat("the auto-sharding pass currently does not support ",
-                     "more than three shardable dims: device_mesh_shape=",
                      absl::StrJoin(device_mesh_shape, ",")));
   }
 
@@ -203,6 +196,8 @@ absl::Status AutoShardingOption::CheckAndSetup() {
   }
 
   if (!try_multiple_mesh_shapes) {
+    std::vector<int64_t> mesh_dims_greater_than_one_indices =
+        spmd::VectorGreaterThanOneElementIndices(device_mesh_shape);
     std::vector<int64_t> compressed_device_mesh_shape;
     std::vector<double> compressed_device_mesh_alpha;
     std::vector<double> compressed_device_mesh_beta;

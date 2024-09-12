@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ class TopkRewriter : public HloModulePass {
   absl::string_view name() const override { return "topk-rewriter"; }
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
@@ -50,7 +50,7 @@ class TopkRewriter : public HloModulePass {
   std::optional<int64_t> SortIsInTopK(HloInstruction* inst);
 
   // Transform to CustomCall.
-  StatusOr<bool> TransformToCustomCall(
+  absl::StatusOr<bool> TransformToCustomCall(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 
@@ -62,7 +62,8 @@ class TopkRewriter : public HloModulePass {
 
   // Matches the input to the sort+iota+slice pattern and converts to custom
   // call if profitable. Returns the custom call if one was created.
-  StatusOr<HloInstruction*> TransformPatternToCustomCall(HloInstruction* inst);
+  absl::StatusOr<HloInstruction*> TransformPatternToCustomCall(
+      HloInstruction* inst);
 };
 
 class TopkDecomposer : public HloModulePass {
@@ -73,7 +74,7 @@ class TopkDecomposer : public HloModulePass {
       : should_decompose_(should_decompose) {}
 
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

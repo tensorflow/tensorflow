@@ -113,9 +113,8 @@ LogicalResult ConvertReplicaGroups(OpBuilder& builder,
   if (!matchPattern(group_assignment_value, m_Constant(&group_assignment))) {
     return op->emitOpError() << "expects constant group_assignment";
   }
-  replica_groups =
-      hlo::convertElementsAttr(group_assignment, builder.getIntegerType(64))
-          .cast<DenseIntElementsAttr>();
+  replica_groups = mlir::cast<DenseIntElementsAttr>(
+      hlo::convertElementsAttr(group_assignment, builder.getIntegerType(64)));
   if (replica_groups.getType().getRank() != 2) {
     return op->emitOpError() << "group_assignment should have rank 2, got "
                              << replica_groups.getType().getRank();
@@ -176,7 +175,7 @@ LogicalResult ConvertAllReduce(OpBuilder& builder, int64_t channel_id,
     }
     auto divisor =
         GetScalarConstOfType(element_type, loc, replica_group_size, &builder);
-    auto broadcast_dims = GetI64ElementsAttr({}, &builder);
+    auto broadcast_dims = builder.getDenseI64ArrayAttr({});
     result = builder.create<chlo::BroadcastDivOp>(
         loc, all_reduce.getResult(0), divisor.getResult(), broadcast_dims);
   } else if (final_op != "Id") {

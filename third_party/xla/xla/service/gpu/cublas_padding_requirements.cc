@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/gpu/variant_visitor.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
@@ -32,7 +33,7 @@ namespace {
 bool DimensionRequiresPadding(const int64_t size, const PrimitiveType data_type,
                               const se::GpuComputeCapability& gpu_cc) {
   return std::visit(
-      se::VariantVisitor{
+      VariantVisitor{
           [&](const se::CudaComputeCapability& cc) {
             for (const auto& req : CublasPaddingRequirements) {
               if (cc.IsAtLeast(req.min_compute_capability) &&
@@ -53,22 +54,29 @@ bool DimensionRequiresPadding(const int64_t size, const PrimitiveType data_type,
       gpu_cc);
 }
 
-bool ShapeRequiresPadding(const Shape& shape,
+bool ShapeRequiresPadding(const Shape& shape, int batch_dimensions_size,
                           const se::GpuComputeCapability& cc) {
-  // Since dots are canonicalized before padding only the last two dimensions
-  // of each operand represent non-batch dimensions and may need padding.
-  return DimensionRequiresPadding(shape.dimensions(shape.rank() - 1),
-                                  shape.element_type(), cc) ||
-         DimensionRequiresPadding(shape.dimensions(shape.rank() - 2),
-                                  shape.element_type(), cc);
+  // Non-batch dimensions requiring potential padding are placed at higher
+  // indices than batch dimensions. This is because dots are canonicalized prior
+  // to padding.
+  for (int i = batch_dimensions_size; i < shape.rank(); i++) {
+    if (DimensionRequiresPadding(shape.dimensions(i), shape.element_type(),
+                                 cc)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 }  // namespace
 
 bool CublasRequiresPadding(const HloDotInstruction& dot,
                            const se::GpuComputeCapability& cc) {
-  return ShapeRequiresPadding(dot.operand(0)->shape(), cc) ||
-         ShapeRequiresPadding(dot.operand(1)->shape(), cc);
+  const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
+  return ShapeRequiresPadding(dot.operand(0)->shape(),
+                              dim_numbers.lhs_batch_dimensions_size(), cc) ||
+         ShapeRequiresPadding(dot.operand(1)->shape(),
+                              dim_numbers.rhs_batch_dimensions_size(), cc);
 }
 
 }  // namespace gpu

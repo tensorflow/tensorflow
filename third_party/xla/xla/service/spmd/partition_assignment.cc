@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,6 +17,14 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 
@@ -55,7 +63,7 @@ NoopPartitioning::NoopPartitioning(int64_t num_partitions)
           << num_partitions;
 }
 
-StatusOr<bool> NoopPartitioning::Run(HloModule* module) const {
+absl::StatusOr<bool> NoopPartitioning::Run(HloModule* module) const {
   VLOG(2) << "No-op algorithm was called to partition module: "
           << module->name();
   return false;
@@ -86,7 +94,7 @@ PartitionAssignment::ChoosePartitioningAlgorithm(
   return PartitioningAlgorithm::CreateNoopPartitioning(num_partitions());
 }
 
-StatusOr<bool> PartitionAssignment::Run(
+absl::StatusOr<bool> PartitionAssignment::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(2) << "Running partition assignment on module " << module->name();

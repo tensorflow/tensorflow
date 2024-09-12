@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ limitations under the License.
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 
 // Tests replicated infeed/outfeed operations.
 
@@ -50,7 +50,10 @@ XLA_TEST_F(ReplicatedIOFeedTest, InfeedAndOutfeed) {
     result = u32[] add(infeed.data, replica_id)
     outfeed = token[] outfeed(result, infeed.token), outfeed_shape=u32[]
   })";
+
   const int kNumReplicas = 4;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
+
   auto config = GetModuleConfigForTest();
   config.set_replica_count(kNumReplicas);
   std::unique_ptr<HloModule> module =

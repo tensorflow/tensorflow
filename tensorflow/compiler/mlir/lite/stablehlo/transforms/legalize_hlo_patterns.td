@@ -23,7 +23,7 @@ include "mhlo/IR/hlo_ops.td"
 
 // Check if broadcasting is compatible with TF ops.
 def IsLegalNumpyRankedBroadcast :
-    Constraint<CPred<"hlo::isLegalNumpyRankedBroadcast($0, $1, $2)">,
+    Constraint<CPred<"hlo::isLegalNumpyRankedBroadcast($0, $1, $2 ? $2.asArrayRef() : ArrayRef<int64_t>{})">,
     "broadcasting should be compatible with TF ops">;
 
 // Return a constant op that carries the shape of the given value.
@@ -380,7 +380,7 @@ def ConvertDotGeneralOp : NativeCodeCall<"ConvertDotGeneralOp($_builder, "
 def : Pat<(MHLO_DotGeneralOp:$old_value
                RankedTensorOf<[TF_ElementType]>:$lhs,
                RankedTensorOf<[TF_ElementType]>:$rhs,
-               $dot_dimension_numbers, $precision_config),
+               $dot_dimension_numbers, $precision_config, $algorithm),
           (ConvertDotGeneralOp $old_value)>;
 
 

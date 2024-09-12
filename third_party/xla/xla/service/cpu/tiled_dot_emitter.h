@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_CPU_TILED_DOT_EMITTER_H_
 
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Value.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/xla_data.pb.h"
 

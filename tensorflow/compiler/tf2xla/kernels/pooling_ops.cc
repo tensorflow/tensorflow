@@ -19,6 +19,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
@@ -28,18 +31,22 @@ limitations under the License.
 #include "xla/client/lib/arithmetic.h"
 #include "xla/client/lib/constants.h"
 #include "xla/client/lib/pooling.h"
+#include "xla/client/padding.h"
 #include "xla/client/value_inference.h"
 #include "xla/client/xla_builder.h"
 #include "xla/client/xla_computation.h"
-#include "xla/literal.h"
-#include "xla/util.h"
-#include "tensorflow/core/framework/bounds_check.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
-#include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/determinism.h"
+#include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 #include "tsl/platform/errors.h"
 
@@ -55,7 +62,7 @@ static Status ValidateKernelSizes(const T& ksizes) {
           " must be positive but is ", ksizes[i]);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename T>
@@ -67,7 +74,7 @@ static Status ValidateStrides(const T& strides) {
           " must be positive but is ", strides[i]);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Superclass of pooling ops.
@@ -110,7 +117,7 @@ class PoolingOp : public XlaOpKernel {
   int num_dims() const { return num_spatial_dims_ + 2; }
 
  protected:
-  StatusOr<std::vector<int64_t>> GetKernelSize(XlaOpKernelContext* ctx) {
+  absl::StatusOr<std::vector<int64_t>> GetKernelSize(XlaOpKernelContext* ctx) {
     std::vector<int64_t> ksize;
     if (ctx->num_inputs() == 1) {
       ksize = ksize_;
@@ -136,7 +143,7 @@ class PoolingOp : public XlaOpKernel {
     return ksize;
   }
 
-  StatusOr<std::vector<int64_t>> GetStride(XlaOpKernelContext* ctx) {
+  absl::StatusOr<std::vector<int64_t>> GetStride(XlaOpKernelContext* ctx) {
     std::vector<int64_t> stride;
     if (ctx->num_inputs() == 1) {
       stride = stride_;
@@ -216,7 +223,7 @@ class MaxPoolOp : public PoolingOp {
 
     xla::XlaOp input = ctx->Input(0);
 
-    StatusOr<xla::Shape> input_shape = ctx->builder()->GetShape(input);
+    absl::StatusOr<xla::Shape> input_shape = ctx->builder()->GetShape(input);
     OP_REQUIRES_OK(ctx, input_shape.status());
 
     // For VECT_C max-pool ops, transpose to plain NCHW, do the max-pool, and
@@ -242,7 +249,8 @@ class MaxPoolOp : public PoolingOp {
             input_shape->dimensions_size() - 2));
 
     if (data_format_ == FORMAT_NCHW_VECT_C) {
-      StatusOr<xla::Shape> result_shape = ctx->builder()->GetShape(pooling);
+      absl::StatusOr<xla::Shape> result_shape =
+          ctx->builder()->GetShape(pooling);
       OP_REQUIRES_OK(ctx, result_shape.status());
 
       int64 num_channels = result_shape->dimensions(1);

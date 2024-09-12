@@ -20,12 +20,15 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/delegate.h"
 
+#include "tensorflow/lite/logger.h"
+
 #if defined(__ANDROID__)
 #include <android/hardware_buffer.h>
 #endif
 
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <string>
 #include <thread>  // NOLINT(build/c++11)
@@ -34,6 +37,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/numbers.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/builtin_ops.h"
 
@@ -113,9 +117,10 @@ using tflite::delegates::utils::WriteSyncAttrs;
 namespace tflite {
 namespace gpu {
 namespace {
-
+// TODO(b/328628170): Add productive coverage to GPU delegate.
 using delegates::Serialization;
 using delegates::SerializationParams;
+using tflite::TFLITE_LOG_WARNING;
 
 constexpr char kSerializedDataPrefix[] = "gpuv2_data_";
 
@@ -149,6 +154,69 @@ InferenceUsage ToUsage(int32_t usage) {
       return InferenceUsage::BALANCED;
   }
   return InferenceUsage::UNKNOWN;
+}
+
+bool ParseOptions(const char* const* options_keys,
+                  const char* const* options_values, size_t num_options,
+                  TfLiteGpuDelegateOptionsV2* options) {
+  for (size_t i = 0; i < num_options; ++i) {
+    if (strcmp(options_keys[i], "is_precision_loss_allowed")) {
+      if (!absl::SimpleAtoi(options_values[i],
+                            &options->is_precision_loss_allowed)) {
+        TFLITE_LOG(TFLITE_LOG_WARNING, "ParseOptions: malformed option %s.",
+                   options_keys[i]);
+        return false;
+      }
+    } else if (strcmp(options_keys[i], "inference_preference")) {
+      if (!absl::SimpleAtoi(options_values[i],
+                            &options->inference_preference)) {
+        TFLITE_LOG(TFLITE_LOG_WARNING, "ParseOptions: malformed option %s.",
+                   options_keys[i]);
+        return false;
+      }
+    } else if (strcmp(options_keys[i], "inference_priority1")) {
+      if (!absl::SimpleAtoi(options_values[i], &options->inference_priority1)) {
+        TFLITE_LOG(TFLITE_LOG_WARNING, "ParseOptions: malformed option %s.",
+                   options_keys[i]);
+        return false;
+      }
+    } else if (strcmp(options_keys[i], "inference_priority2")) {
+      if (!absl::SimpleAtoi(options_values[i], &options->inference_priority2)) {
+        TFLITE_LOG(TFLITE_LOG_WARNING, "ParseOptions: malformed option %s.",
+                   options_keys[i]);
+        return false;
+      }
+    } else if (strcmp(options_keys[i], "inference_priority3")) {
+      if (!absl::SimpleAtoi(options_values[i], &options->inference_priority3)) {
+        TFLITE_LOG(TFLITE_LOG_WARNING, "ParseOptions: malformed option %s.",
+                   options_keys[i]);
+        return false;
+      }
+    } else if (strcmp(options_keys[i], "experimental_flags")) {
+      if (!absl::SimpleAtoi(options_values[i], &options->experimental_flags)) {
+        TFLITE_LOG(TFLITE_LOG_WARNING, "ParseOptions: malformed option %s.",
+                   options_keys[i]);
+        return false;
+      }
+    } else if (strcmp(options_keys[i], "max_delegated_partitions")) {
+      if (!absl::SimpleAtoi(options_values[i],
+                            &options->max_delegated_partitions)) {
+        TFLITE_LOG(TFLITE_LOG_WARNING, "ParseOptions: malformed option %s.",
+                   options_keys[i]);
+        return false;
+      }
+    } else if (strcmp(options_keys[i], "serialization_dir")) {
+      options->serialization_dir = options_values[i];
+    } else if (strcmp(options_keys[i], "model_token")) {
+      options->model_token = options_values[i];
+    } else {
+      TFLITE_LOG(TFLITE_LOG_WARNING, "ParseOptions: unknown option %s.",
+                 options_keys[i]);
+      return false;
+    }
+  }
+
+  return true;
 }
 
 // Forward declarations.
@@ -476,6 +544,10 @@ absl::Status DelegateKernelCore::InitializeOpenClApi(
   }
   options.usage = ToUsage(delegate_options.inference_preference);
 
+#ifdef TFLITE_GPU_ENABLE_INVOKE_LOOP
+  options.gpu_invoke_loop_times = delegate_options.gpu_invoke_loop_times;
+#endif
+
   if (!serialization) {
     // This path is faster when there is no serialization involved.
     RETURN_IF_ERROR(cl::NewInferenceEnvironment(env_options, &cl_environment_,
@@ -521,9 +593,22 @@ absl::Status DelegateKernelCore::InitializeOpenGlApi(
   auto delegate_options = delegate_->options();
   gl::InferenceOptions options;
   options.usage = ToUsage(delegate_options.inference_preference);
-  options.priority1 = ToPriority(delegate_options.inference_priority1);
-  options.priority2 = ToPriority(delegate_options.inference_priority2);
-  options.priority3 = ToPriority(delegate_options.inference_priority3);
+  // If is_precision_loss_allowed == -1, then just use priorities instead
+  // of paying attention to is_precision_loss_allowed value.
+  if (delegate_options.is_precision_loss_allowed == -1) {
+    options.priority1 = ToPriority(delegate_options.inference_priority1);
+    options.priority2 = ToPriority(delegate_options.inference_priority2);
+    options.priority3 = ToPriority(delegate_options.inference_priority3);
+  } else {
+    if (delegate_options.is_precision_loss_allowed == 0) {
+      options.priority1 = InferencePriority::MAX_PRECISION;
+    } else {
+      options.priority1 = InferencePriority::MIN_LATENCY;
+    }
+  }
+#ifdef TFLITE_GPU_ENABLE_INVOKE_LOOP
+  options.gpu_invoke_loop_times = delegate_options.gpu_invoke_loop_times;
+#endif
   RETURN_IF_ERROR(gl_environment_->NewInferenceBuilder(std::move(*graph),
                                                        options, builder));
   enforce_same_thread_ = true;
@@ -724,6 +809,10 @@ class DelegateAsyncKernel : public BackendAsyncKernelInterface {
   TfLiteStatus SetAttributes(TfLiteOpaqueContext* context,
                              TfLiteOpaqueNode* node, int tensor_index,
                              const TfLiteAttributeMap* attrs) override;
+  TfLiteStatus SetBufferAttributes(const TfLiteBackendBuffer* buffer,
+                                   const TfLiteAttributeMap* attrs) override;
+  TfLiteStatus GetBufferAttributes(const TfLiteBackendBuffer* buffer,
+                                   TfLiteAttributeMap* attrs) override;
   TfLiteStatus Prepare(TfLiteOpaqueContext* context,
                        TfLiteOpaqueNode* node) override;
 
@@ -791,6 +880,37 @@ class DelegateAsyncKernel : public BackendAsyncKernelInterface {
     return desc_ahwb;
   }
 
+  // Validate the attributes passed in, return kTfLiteOk if the attributes
+  // meet the requirements. Return the registered buffer attributes in
+  // `buffer_attrs`.
+  static TfLiteStatus CheckAttributes(const TfLiteAttributeMap* attrs,
+                                      BufferAttributes& buffer_attrs) {
+    // Validate buffer attributes.
+    TFLITE_RET_CHECK_STATUS(
+        TfLiteAttributeMapIsBufferAttributeMap(attrs),
+        "calling RegisterBuffer with invalid attribute map type");
+    buffer_attrs = ReadBufferAttrs(attrs);
+    TFLITE_RET_CHECK_STATUS(
+        buffer_attrs.buffer_type.has_value(),
+        "calling RegisterBuffer with buffer resource type name unspecified");
+    TFLITE_RET_CHECK_STATUS(
+        buffer_attrs.buffer_type.value() != BufferType::kUnknown,
+        "calling RegisterBuffer with unknown buffer resource type");
+    size_t alignment = buffer_attrs.alignment.value_or(kRequiredByteAlignment);
+    TFLITE_RET_CHECK_STATUS(
+        alignment % kRequiredByteAlignment == 0,
+        "calling RegisterBuffer with non-zero buffer alignment");
+    size_t padding = buffer_attrs.padding.value_or(kRequiredBytePadding);
+    TFLITE_RET_CHECK_STATUS(
+        padding % kRequiredBytePadding == 0,
+        "calling RegisterBuffer with non-zero buffer padding");
+    size_t offset = buffer_attrs.offset.value_or(0);
+    TFLITE_RET_CHECK_STATUS(offset == 0,
+                            "calling RegisterBuffer with non-zero offset");
+
+    return kTfLiteOk;
+  }
+
   // For SupportedBufferTypes and SupportedSynchronizations
   const std::vector<const char*> supported_buffer_types_ = {
       ::tflite::delegates::utils::kBufferTypeAHardwareBufferBlob};
@@ -812,6 +932,9 @@ class DelegateAsyncKernel : public BackendAsyncKernelInterface {
 
   absl::flat_hash_map<TfLiteBufferHandle, UniquePtrAHardwareBuffer>
       buffer_by_handle_ ABSL_GUARDED_BY(eval_mutex_);
+
+  absl::flat_hash_map<AHardwareBuffer*, BufferAttributes> attributes_by_buffer_
+      ABSL_GUARDED_BY(eval_mutex_);
   std::vector<SyncType> output_sync_types_ ABSL_GUARDED_BY(eval_mutex_);
 };
 
@@ -983,6 +1106,82 @@ TfLiteStatus DelegateAsyncKernel::SetAttributesImpl(
   return kTfLiteOk;
 }
 
+TfLiteStatus DelegateAsyncKernel::SetBufferAttributes(
+    const TfLiteBackendBuffer* buffer, const TfLiteAttributeMap* attrs) {
+  TFLITE_ABORT_CHECK(buffer != nullptr, "Buffer is null");
+  TFLITE_ABORT_CHECK(attrs != nullptr, "Attribute is null");
+
+  // We depend on the availability of AHardwareBuffer.
+  TFLITE_RET_CHECK_STATUS(
+      TFLITE_AHWB_AVAILABLE(),
+      "calling tflite::gpu::DelegateAsyncKernel::SetBufferAttributes on device "
+      "without AHardwareBuffer support");
+  BufferAttributes buffer_attrs;
+  TFLITE_RET_CHECK_STATUS(CheckAttributes(attrs, buffer_attrs) == kTfLiteOk,
+                          "SetBufferAttributes(): Failed to check attributes");
+
+  // Validate ahardwarebuffer.
+  auto* ahwb =
+      reinterpret_cast<AHardwareBuffer*>(TfLiteBackendBufferGetPtr(buffer));
+  TFLITE_RET_CHECK_STATUS(ahwb != nullptr,
+                          "calling SetBufferAttributes with nullptr buffer");
+  UniquePtrAHardwareBuffer uptr_ahwb = Acquire(ahwb);
+  const AHardwareBuffer_Desc desc_ahwb = Describe(uptr_ahwb);
+  TFLITE_RET_CHECK_STATUS(desc_ahwb.format == AHARDWAREBUFFER_FORMAT_BLOB,
+                          "calling SetBufferAttributes with an AHardwareBuffer "
+                          "of format other than BLOB is not supported");
+  size_t size = buffer_attrs.size.value_or(desc_ahwb.width);
+  TFLITE_RET_CHECK_STATUS(
+      size <= desc_ahwb.width,
+      "calling SetBufferAttributes with buffer size larger than the actual "
+      "AHardwareBuffer size");
+
+  absl::MutexLock eval_lock(&eval_mutex_);
+  if (attributes_by_buffer_.find(uptr_ahwb.get()) !=
+      attributes_by_buffer_.end()) {
+    attributes_by_buffer_[uptr_ahwb.get()] = buffer_attrs;
+  } else {
+    TFLITE_LOG_PROD(
+        TFLITE_LOG_ERROR,
+        "SetBufferAttributes(): Unable to find the buffer in the map.");
+  }
+  return kTfLiteOk;
+}
+
+TfLiteStatus DelegateAsyncKernel::GetBufferAttributes(
+    const TfLiteBackendBuffer* buffer, TfLiteAttributeMap* attrs) {
+  TFLITE_ABORT_CHECK(buffer != nullptr, "Buffer is null");
+  TFLITE_ABORT_CHECK(attrs != nullptr, "Attribute map is null");
+
+  // We depend on the availability of AHardwareBuffer.
+  TFLITE_RET_CHECK_STATUS(
+      TFLITE_AHWB_AVAILABLE(),
+      "calling tflite::gpu::DelegateAsyncKernel::GetBufferAttributes on device "
+      "without AHardwareBuffer support");
+  TFLITE_RET_CHECK_STATUS(
+      TfLiteAttributeMapIsBufferAttributeMap(attrs),
+      "calling GetBufferAttributes with an invalid attribute map type");
+
+  // Validate ahardwarebuffer.
+  auto* ahwb =
+      reinterpret_cast<AHardwareBuffer*>(TfLiteBackendBufferGetPtr(buffer));
+  TFLITE_RET_CHECK_STATUS(ahwb != nullptr,
+                          "calling GetBufferAttributes with nullptr buffer");
+  UniquePtrAHardwareBuffer uptr_ahwb = Acquire(ahwb);
+  const AHardwareBuffer_Desc desc_ahwb = Describe(uptr_ahwb);
+  TFLITE_RET_CHECK_STATUS(desc_ahwb.format == AHARDWAREBUFFER_FORMAT_BLOB,
+                          "calling GetBufferAttributes with an AHardwareBuffer "
+                          "of format other than "
+                          "BLOB is not supported");
+
+  absl::MutexLock eval_lock(&eval_mutex_);
+  auto it = attributes_by_buffer_.find(uptr_ahwb.get());
+  TFLITE_RET_CHECK_STATUS(it != attributes_by_buffer_.end(),
+                          "Unable to find the buffer.");
+  WriteBufferAttrs(it->second, attrs);
+  return kTfLiteOk;
+}
+
 TfLiteStatus DelegateAsyncKernel::Prepare(TfLiteOpaqueContext* opaque_context,
                                           TfLiteOpaqueNode* opaque_node) {
   // The following cast is safe only because this code is part of the
@@ -1040,34 +1239,14 @@ TfLiteStatus DelegateAsyncKernel::RegisterBufferImpl(
   TFLITE_ABORT_CHECK(buffer != nullptr, "");                  // Crash OK
   TFLITE_ABORT_CHECK(attrs != nullptr, "");                   // Crash OK
   TFLITE_ABORT_CHECK(handle != kTfLiteNullBufferHandle, "");  // Crash OK
-
-  // Validate buffer attributes.
-  TFLITE_RET_CHECK_STATUS(
-      TfLiteAttributeMapIsBufferAttributeMap(attrs),
-      "calling RegisterBuffer with invalid attribute map type");
-  auto buffer_attrs = ReadBufferAttrs(attrs);
-  TFLITE_RET_CHECK_STATUS(
-      buffer_attrs.buffer_type.has_value(),
-      "calling RegisterBuffer with buffer resource type name unspecified");
-  TFLITE_RET_CHECK_STATUS(
-      buffer_attrs.buffer_type.value() != BufferType::kUnknown,
-      "calling RegisterBuffer with unknown buffer resource type");
-  size_t alignment = buffer_attrs.alignment.value_or(kRequiredByteAlignment);
-  TFLITE_RET_CHECK_STATUS(
-      alignment % kRequiredByteAlignment == 0,
-      "calling RegisterBuffer with invalid buffer alignment");
-  size_t padding = buffer_attrs.padding.value_or(kRequiredBytePadding);
-  TFLITE_RET_CHECK_STATUS(padding % kRequiredBytePadding == 0,
-                          "calling RegisterBuffer with invalid buffer padding");
-  size_t offset = buffer_attrs.offset.value_or(0);
-  TFLITE_RET_CHECK_STATUS(offset == 0,
-                          "calling RegisterBuffer with non-zero offset");
-
   // We depend on the availability of AHardwareBuffer.
   TFLITE_RET_CHECK_STATUS(
       TFLITE_AHWB_AVAILABLE(),
       "calling tflite::gpu::DelegateAsyncKernel::RegisterBuffer on device "
       "without AHardwareBuffer support");
+  BufferAttributes buffer_attrs;
+  TFLITE_RET_CHECK_STATUS(CheckAttributes(attrs, buffer_attrs) == kTfLiteOk,
+                          "RegisterBufferImpl(): Failed to check attributes");
 
   // Retrieve and validate the buffer.
   auto* ahwb =
@@ -1092,6 +1271,10 @@ TfLiteStatus DelegateAsyncKernel::RegisterBufferImpl(
       buffer_by_handle_.try_emplace(handle, std::move(uptr_ahwb));
   TFLITE_RET_CHECK_STATUS(did_something,
                           "RegisterBuffer called with duplicate handle");
+
+  auto [iterator, check] =
+      attributes_by_buffer_.try_emplace(it->second.get(), buffer_attrs);
+  TFLITE_RET_CHECK_STATUS(check, "RegisterBuffer called with same buffer");
   return kTfLiteOk;
 }
 
@@ -1418,4 +1601,20 @@ TfLiteDelegate* TfLiteGpuDelegateV2CreateAsync(
 
 void TfLiteGpuDelegateV2Delete(TfLiteDelegate* delegate) {
   delete tflite::gpu::GetDelegate(delegate);
+}
+
+TfLiteDelegate* tflite_plugin_create_delegate(
+    const char* const* options_keys, const char* const* options_values,
+    size_t num_options, void (*report_error)(const char*)) {
+  TfLiteGpuDelegateOptionsV2 options = TfLiteGpuDelegateOptionsV2Default();
+  if (!tflite::gpu::ParseOptions(options_keys, options_values, num_options,
+                                 &options)) {
+    return nullptr;
+  }
+
+  return TfLiteGpuDelegateV2Create(&options);
+}
+
+void tflite_plugin_destroy_delegate(TfLiteDelegate* delegate) {
+  TfLiteGpuDelegateV2Delete(delegate);
 }

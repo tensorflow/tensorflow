@@ -129,7 +129,7 @@ Status BaseRemoteRendezvous::Initialize(WorkerSession* session) {
     if (session_ != nullptr) {
       if (session_->worker_name() == session->worker_name()) {
         VLOG(1) << "Skipping rendezvous re-initialization.";
-        return OkStatus();
+        return absl::OkStatus();
       }
       Status s = errors::Internal(
           "Double init! Worker names would have changed from: ",
@@ -143,7 +143,7 @@ Status BaseRemoteRendezvous::Initialize(WorkerSession* session) {
   for (auto& call : deferred_calls) {
     RecvLocalAsyncInternal(call.parsed, std::move(call.done));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 WorkerSession* BaseRemoteRendezvous::session() {
@@ -203,7 +203,7 @@ Status BaseRemoteRendezvous::ValidateDevices(const ParsedKey& parsed,
         "Invalid rendezvous key (dst): ", parsed.FullKey(), " @ ",
         sess->worker_name());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void BaseRemoteRendezvous::SameWorkerRecvDone(
@@ -218,7 +218,7 @@ void BaseRemoteRendezvous::SameWorkerRecvDone(
       (recv_args.alloc_attrs.on_host() || parsed.dst.type == "CPU");
   if (src_host && dst_host) {
     *out = in;
-    done(OkStatus());
+    done(absl::OkStatus());
     return;
   }
 
@@ -247,7 +247,7 @@ void BaseRemoteRendezvous::SameWorkerRecvDone(
     return;
   }
 
-  profiler::ScopedMemoryDebugAnnotation op_annotation(
+  tsl::profiler::ScopedMemoryDebugAnnotation op_annotation(
       "SameWorkerRecvDone", step_id_, "dynamic", in.dtype(),
       [&in]() { return in.shape().DebugString(); });
   AllocatorAttributes attr = recv_args.alloc_attrs;
@@ -298,7 +298,8 @@ void BaseRemoteRendezvous::RecvAsync(const ParsedKey& parsed,
   DCHECK(is_initialized()) << "RecvAsync called when uninitialized (key: "
                            << parsed.FullKey() << ").";
 
-  profiler::ScopedMemoryDebugAnnotation op_annotation("RecvAsync", step_id_);
+  tsl::profiler::ScopedMemoryDebugAnnotation op_annotation("RecvAsync",
+                                                           step_id_);
   // Are src and dst in the same worker?
   // At this point parsed.dst must be a local device asserted by the previous
   // call to ValidateDevices.

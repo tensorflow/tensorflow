@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,27 +16,27 @@ limitations under the License.
 #include "xla/service/hlo_value.h"
 
 #include <algorithm>
-#include <memory>
+#include <cstdint>
+#include <ostream>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/map_util.h"
+#include "xla/service/buffer_value.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
-#include "xla/types.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
@@ -95,12 +95,16 @@ std::string HloValue::ToString(int indent) const {
   for (const HloPosition& position : positions()) {
     StrAppend(&out, indentation, "  ", position.ToString(), "\n");
   }
-  StrAppend(&out, indentation, " uses:\n");
-  for (const HloUse& use : GetUses()) {
-    StrAppend(&out, indentation, "  ", use.ToString(), "\n");
+  if (uses_.has_value()) {
+    StrAppend(&out, indentation, " uses:\n");
+    for (const HloUse& use : GetUses()) {
+      StrAppend(&out, indentation, "  ", use.ToString(), "\n");
+    }
+  } else {
+    StrAppend(&out, indentation, " uses are not initialized yet.\n");
   }
-  StrAppend(&out, indentation, " from instruction:", instruction()->ToString(),
-            "\n");
+  StrAppend(&out, indentation,
+            " from instruction: ", instruction()->ToString());
   return out;
 }
 
@@ -110,28 +114,23 @@ namespace {
 // ShapeIndex in the given operand. Generally, instruction which pass through
 // values transparently without reading the value are not considered to use the
 // value.
-bool MayUseOperandValue(int64_t operand_number, const ShapeIndex& index,
-                        const HloInstruction* user) {
+bool MayUseOperandValue(const ShapeIndex& index, const HloInstruction* user) {
   switch (user->opcode()) {
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kCopy:
       // These instructions only access the top-level values of their
       // operand. Non-top-level (nested) values are passed through
       // transparently.
-      CHECK_EQ(operand_number, 0);
       return index.empty();
     case HloOpcode::kDomain:
     case HloOpcode::kTuple:
       // These instructions always pass through their operands transparently.
       return false;
 
-    case HloOpcode::kCall:
-    case HloOpcode::kWhile:
-      // Although call and while instructions pass through their operands, they
-      // are considered uses.
-      return true;
-
     default:
+      // Although call (HloOpcode::kCall) and while (HloOpcode::kWhile)
+      // instructions pass through their operands as are all other opcode types,
+      // they are considered uses.
       return true;
   }
 }
@@ -171,6 +170,19 @@ HloValue::Uses HloValue::ComputeUses() const {
   // Build vector of HloUses for the value.
   for (const HloPosition& position : positions_) {
     for (HloInstruction* const user : position.instruction->users()) {
+#ifndef NDEBUG
+      // If user is in the root positions of this value, it must be a root.
+      if (root_positions.contains(user)) {
+        CHECK(user->IsRoot());
+      }
+#endif  // NDEBUG
+      // Root instructions of computations are considered to be uses whether
+      // or not the root instruction itself actually uses the value.
+      if (!MayUseOperandValue(position.index, user) &&
+          !(user->IsRoot() && root_positions.contains(user))) {
+        continue;
+      }
+
       int i = -1;
       for (const auto& operand : user->operands()) {
         ++i;
@@ -179,28 +191,19 @@ HloValue::Uses HloValue::ComputeUses() const {
           continue;
         }
 
+        uses.emplace_back(user, i, position.index);
 #ifndef NDEBUG
-        // If user is in the root positions of this value, it must be a root.
-        if (root_positions.contains(user)) {
-          CHECK(user->IsRoot());
+        // The new use must not already exist in uses.
+        for (int index = 0; index + 1 < uses.size(); ++index) {
+          DCHECK_NE(uses[index], uses.back());
         }
 #endif  // NDEBUG
-
-        // Root instructions of computations are considered to be uses whether
-        // or not the root instruction itself actually uses the value.
-        if (MayUseOperandValue(i, position.index, user) ||
-            (user->IsRoot() && root_positions.contains(user))) {
-          HloUse new_use{user, i, position.index};
-
-#ifndef NDEBUG
-          // The new use must not already exist in uses.
-          for (const HloUse& use : uses) {
-            DCHECK_NE(use, new_use);
-          }
-#endif  // NDEBUG
-
-          uses.push_back(std::move(new_use));
-        }
+      }
+      // In case of HloOpcode::kGetTupleElement or HloOpcode::kCopy instruction,
+      // ensure that user has at most one operand.
+      if (user->opcode() == HloOpcode::kGetTupleElement ||
+          user->opcode() == HloOpcode::kCopy) {
+        CHECK_LE(i, 0);
       }
     }
   }

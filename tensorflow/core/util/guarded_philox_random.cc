@@ -35,7 +35,7 @@ Status GuardedPhiloxRandom::Init(OpKernelConstruction* context) {
 
   // Initialize with the given seeds
   Init(seed, seed2);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void GuardedPhiloxRandom::Init(int64_t seed, int64_t seed2) {

@@ -1,14 +1,14 @@
 # Platform-specific build configurations.
 
+load("@com_github_grpc_grpc//bazel:generate_cc.bzl", "generate_cc")
 load("@com_google_protobuf//:protobuf.bzl", "proto_gen")
-load("//tsl/platform:build_config_root.bzl", "if_static")
 load(
-    "//tsl:tsl.bzl",
+    "@local_xla//xla/tsl:tsl.bzl",
     "clean_dep",
     "if_not_windows",
     "if_tsl_link_protobuf",
 )
-load("@com_github_grpc_grpc//bazel:generate_cc.bzl", "generate_cc")
+load("//tsl/platform:build_config_root.bzl", "if_static")
 
 def well_known_proto_libs():
     """Set of standard protobuf protos, like Any and Timestamp.
@@ -297,7 +297,6 @@ def cc_grpc_library(
     as srcs argument and generates only grpc library classes, expecting
     protobuf messages classes library (cc_proto_library target) to be passed in
     deps argument.
-    Assumes the generated classes will be used in cc_api_version = 2.
     Args:
         name (str): Name of rule.
         srcs (list): A single .proto file which contains services definitions,
@@ -442,7 +441,6 @@ def tf_proto_library_cc(
         cc_grpc_version = None,
         use_grpc_namespace = False,
         j2objc_api_version = 1,
-        cc_api_version = 2,
         js_codegen = "jspb",
         create_service = False,
         create_java_proto = False,
@@ -576,7 +574,6 @@ def tf_proto_library(
         testonly = 0,
         cc_libs = [],
         cc_stubby_versions = None,
-        cc_api_version = 2,
         cc_grpc_version = None,
         use_grpc_namespace = False,
         j2objc_api_version = 1,
@@ -655,19 +652,17 @@ def tf_additional_lib_hdrs():
         clean_dep("//tsl/platform/default:casts.h"),
         clean_dep("//tsl/platform/default:context.h"),
         clean_dep("//tsl/platform/default:criticality.h"),
-        clean_dep("//tsl/platform/default:dynamic_annotations.h"),
         clean_dep("//tsl/platform/default:integral_types.h"),
         clean_dep("//tsl/platform/default:logging.h"),
         clean_dep("//tsl/platform/default:mutex.h"),
         clean_dep("//tsl/platform/default:mutex_data.h"),
-        clean_dep("//tsl/platform/default:notification.h"),
         clean_dep("//tsl/platform/default:stacktrace.h"),
         clean_dep("//tsl/platform/default:status.h"),
         clean_dep("//tsl/platform/default:statusor.h"),
         clean_dep("//tsl/platform/default:tracing_impl.h"),
         clean_dep("//tsl/platform/default:unbounded_work_queue.h"),
     ] + select({
-        clean_dep("//tsl:windows"): [
+        clean_dep("@local_xla//xla/tsl:windows"): [
             clean_dep("//tsl/platform/windows:intrinsics_port.h"),
             clean_dep("//tsl/platform/windows:stacktrace.h"),
             clean_dep("//tsl/platform/windows:subprocess.h"),
@@ -722,9 +717,9 @@ def tf_additional_lib_deps():
 
 def tf_additional_core_deps():
     return select({
-        clean_dep("//tsl:android"): [],
-        clean_dep("//tsl:ios"): [],
-        clean_dep("//tsl:linux_s390x"): [],
+        clean_dep("@local_xla//xla/tsl:android"): [],
+        clean_dep("@local_xla//xla/tsl:ios"): [],
+        clean_dep("@local_xla//xla/tsl:linux_s390x"): [],
         "//conditions:default": [
             clean_dep("//tsl/platform/cloud:gcs_file_system"),
         ],
@@ -734,7 +729,7 @@ def tf_lib_proto_parsing_deps():
     return [
         ":protos_all_cc",
         clean_dep("@eigen_archive//:eigen3"),
-        clean_dep("//tsl/platform/default/build_config:proto_parsing"),
+        clean_dep("//tsl/protobuf:protos_all_cc"),
     ]
 
 def tf_py_clif_cc(name, visibility = None, **kwargs):
@@ -809,7 +804,7 @@ def tf_protobuf_compiler_deps():
 
 def tf_windows_aware_platform_deps(name):
     return select({
-        clean_dep("//tsl:windows"): [
+        clean_dep("@local_xla//xla/tsl:windows"): [
             clean_dep("//tsl/platform/windows:" + name),
         ],
         "//conditions:default": [
@@ -819,9 +814,6 @@ def tf_windows_aware_platform_deps(name):
 
 def tf_platform_deps(name, platform_dir = "@local_tsl//tsl/platform/"):
     return [platform_dir + "default:" + name]
-
-def tf_testing_deps(name, platform_dir = "@local_tsl//tsl/platform/"):
-    return tf_platform_deps(name, platform_dir)
 
 def tf_stream_executor_deps(name, platform_dir = "@local_tsl//tsl/platform/"):
     return tf_platform_deps(name, platform_dir)
@@ -834,6 +826,9 @@ def tf_logging_deps():
 
 def tf_error_logging_deps():
     return [clean_dep("//tsl/platform/default:error_logging")]
+
+def tsl_grpc_credentials_deps():
+    return [clean_dep("//tsl/platform/default:grpc_credentials")]
 
 def tf_resource_deps():
     return [clean_dep("//tsl/platform/default:resource")]
@@ -852,15 +847,6 @@ def tf_google_mobile_srcs_no_runtime():
 
 def tf_google_mobile_srcs_only_runtime():
     return []
-
-def if_llvm_aarch64_available(then, otherwise = []):
-    return then
-
-def if_llvm_system_z_available(then, otherwise = []):
-    return select({
-        clean_dep("//tsl:linux_s390x"): then,
-        "//conditions:default": otherwise,
-    })
 
 def tf_cuda_libdevice_path_deps():
     return tf_platform_deps("cuda_libdevice_path")

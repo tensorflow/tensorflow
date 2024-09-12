@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -47,6 +48,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function_utils.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
+#include "tensorflow/core/config/flag_defs.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
@@ -62,7 +64,6 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
@@ -151,8 +152,8 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
       retvals.push_back(n);
     } else if (n->type_string() == "TPUReplicateMetadata") {
       metadata_node = n;
-    } else if (!str_util::StrContains(n->requested_device(),
-                                      DEVICE_TPU_REPLICATED_CORE)) {
+    } else if (!absl::StrContains(n->requested_device(),
+                                  DEVICE_TPU_REPLICATED_CORE)) {
       // If an operator isn't assigned to a TPU core device, assign it to
       // TPU_REPLICATED_CORE without a specific core ID. For some operators,
       // such as variable reads/writes, the operator may be assigned to non-TPU
@@ -1669,7 +1670,7 @@ Status RenameClustersWithDuplicatedNames(Graph* g) {
 // Instantiate a function that is associated with a functional control flow
 // node. The function name is found by looking up `function_name_attr` of given
 // node.
-StatusOr<std::unique_ptr<FunctionBody>> InstantiateAssociatedFunction(
+absl::StatusOr<std::unique_ptr<FunctionBody>> InstantiateAssociatedFunction(
     const Node& n, absl::string_view function_name_attr,
     FunctionLibraryDefinition* fld) {
   std::unique_ptr<FunctionBody> fbody;
@@ -1688,7 +1689,7 @@ StatusOr<std::unique_ptr<FunctionBody>> InstantiateAssociatedFunction(
 
 // Find inputs of If node that are only used for outside compilation if used at
 // all in both if/else branches
-StatusOr<absl::flat_hash_set<int>> FindArgsToLiftForIfNode(
+absl::StatusOr<absl::flat_hash_set<int>> FindArgsToLiftForIfNode(
     const Node& if_node, FunctionLibraryDefinition* fld) {
   absl::flat_hash_set<int> args_to_lift_indices;
   std::vector<DataType> dtypes;
@@ -1750,7 +1751,7 @@ StatusOr<absl::flat_hash_set<int>> FindArgsToLiftForIfNode(
 // 2. only used for outside compilation in body func,
 // 3. loop invariant.
 // These inputs can be lifted out of the while loop.
-StatusOr<absl::flat_hash_set<int>> FindArgsToLiftForWhileNode(
+absl::StatusOr<absl::flat_hash_set<int>> FindArgsToLiftForWhileNode(
     Node* while_node, FunctionLibraryDefinition* fld) {
   // DT_RESOURCE inputs are candidates.
   absl::flat_hash_set<int> result;
@@ -1835,7 +1836,7 @@ StatusOr<absl::flat_hash_set<int>> FindArgsToLiftForWhileNode(
 
 // Find inputs of function call node that are only used for outside compilation.
 // These inputs can be lifted out of the function call node.
-StatusOr<absl::flat_hash_set<int>> FindArgsToLiftForCallNode(
+absl::StatusOr<absl::flat_hash_set<int>> FindArgsToLiftForCallNode(
     Node* call_node, const FunctionBody& fbody) {
   // DT_RESOURCE inputs are candidates.
   absl::flat_hash_set<int> result;
@@ -2481,10 +2482,32 @@ Status LiftOutsideCompilationOnlyArgs(Graph* g, FunctionLibraryRuntime* flr,
   return absl::OkStatus();
 }
 
+// TODO(b/355263902): Encapsulation fails for some non-TPU graphs that are
+// missing full variable shape information. Remove this path once the
+// underlying issue is fixed.
+bool ShouldSkipEncapsulationForNonTPUGraph() {
+  return flags::Global().enable_skip_encapsulation_for_non_tpu_graphs.value();
+}
+
 }  // namespace
 
 /*static*/ Status EncapsulateTPUComputationsPass::Encapsulate(
     std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def) {
+  // If the graph does not contain any TPU computations, there is nothing to do.
+  if (ShouldSkipEncapsulationForNonTPUGraph()) {
+    bool found_tpu_replicate = false;
+    for (const Node* n : (*graph)->nodes()) {
+      if (n->attrs().Find(kTPUReplicateAttr) != nullptr) {
+        found_tpu_replicate = true;
+        break;
+      }
+    }
+    if (!found_tpu_replicate) {
+      VLOG(1) << "No TPU replicate found, skipping encapsulation";
+      return absl::OkStatus();
+    }
+  }
+
   // Check for undeclared outputs before Encapsulation, so we can give a better
   // error message.
   // TODO(phawkins): merge this with the encapsulation code to avoid the extra

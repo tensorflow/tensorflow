@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,13 +18,11 @@ limitations under the License.
 
 #include <unordered_map>
 
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/SymbolTable.h"  // from @llvm-project
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "xla/status.h"
+#include "absl/status/status.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/SymbolTable.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -39,19 +37,18 @@ class Shape;
 class HloModuleImporter {
  public:
   explicit HloModuleImporter(mlir::ModuleOp module,
-                             bool import_all_computation = false);
+                             bool import_all_computation = false,
+                             bool flatten_computation_args_result = false);
 
   // Import the HloModule into the MLIR Module.
-  Status Import(const xla::HloModule& module);
+  absl::Status Import(const xla::HloModule& module);
 
   // Import the HloModuleProto into the MLIR Module.
-  Status Import(const xla::HloModuleProto& module);
+  absl::Status Import(const xla::HloModuleProto& module);
 
  private:
-  void ImportFrontendAttributes(const xla::HloModule& hlo_module,
-                                mlir::ModuleOp module);
-
   bool import_all_computation_;
+  bool flatten_computation_args_result_;
   mlir::SymbolTable symbol_table_;
   mlir::Builder builder_;
 

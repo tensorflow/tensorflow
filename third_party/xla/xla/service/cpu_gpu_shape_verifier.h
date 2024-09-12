@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ class CpuGpuShapeVerifier : public ShapeVerifier {
   explicit CpuGpuShapeVerifier(const HloVerifierOpts& opts)
       : ShapeVerifier(opts) {}
 
-  Status Preprocess(HloInstruction* hlo) override;
+  absl::Status Preprocess(HloInstruction* hlo) override;
 };
 
 // A verifier metadata class that uses the CpuGpuShapeVerifier.

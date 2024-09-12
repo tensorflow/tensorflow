@@ -79,7 +79,7 @@ Status GetOutputDataType(
                             " size of output_props ", output_props.size());
   }
   *dtype = output_props[output_index].dtype();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // After shape inference has been done each op should be annotated
@@ -133,7 +133,7 @@ Status CheckTypesAndGetShapes(const GraphProperties& graph_properties,
     VLOG(2) << "Adding shape " << props.shape().DebugString();
     shapes->push_back(TensorShape(props.shape()));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Describes an existing input edge in the graph.
@@ -183,7 +183,7 @@ Status RemoveEdge(const string& input_edge_name, const string& from_node_name,
     node_map->RemoveOutput(from_node_name, to_node->name());
   }
   inputs->DeleteSubrange(edge_index, 1);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // In certain cases, we would like to insert an identity op between `input` and
@@ -224,7 +224,7 @@ Status MaybeRewriteInput(ScopedAllocatorOptimizer* sa_opti,
   if (!(*rewrite)) {
     *new_input = input;
     *new_output_index = output_index;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Create new Identity op.
@@ -249,7 +249,7 @@ Status MaybeRewriteInput(ScopedAllocatorOptimizer* sa_opti,
   VLOG(1) << "Rewrite input " << edge_name << " op " << op->name()
           << " old output index " << output_index << " with identity "
           << identity_name << " new output index 0";
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Populates *inputs with all of the non-control inputs of ops.
@@ -310,7 +310,7 @@ Status GetInputs(ScopedAllocatorOptimizer* sa_opti, int64_t invocation_count,
     }
     inputs->emplace_back(inode, output_index, n);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Return non-control inputs of `op` in `inputs`.
@@ -333,7 +333,7 @@ Status GetDataInputs(GraphDef* graph, NodeMap* node_map, NodeDef* op,
             << output_index;
     inputs->emplace_back(inode, output_index, op);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void DumpGraphToVLOG(const GraphDef& graph, int log_level) {
@@ -377,7 +377,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
             " is a Const op which does not use AllocatorAttributes");
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Return non-OK if any input is already committed to a ScopedAllocator.
@@ -403,7 +403,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
             "assigned to scope_id ", scope_ids[1]);
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Return non-OK if any input is a member of op_set.
@@ -419,7 +419,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
         }
       }
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Remove all control edges between members of ops.
@@ -478,7 +478,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
     int64_t num_elts = num_bytes / DataTypeSize(*dtype);
     VLOG(2) << "num_bytes " << num_bytes << " num_elts=" << num_elts;
     *sa_shape = TensorShape({num_elts});
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Returns the set of all nodes that are transitively reachable via data or
@@ -505,7 +505,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
       }
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Build the ScopedAllocator node that will be assigned to allocate
@@ -594,7 +594,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
                       "ScopedAllocatorOptimizer and file a bug.";
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status BuildSAConcatNode(GraphDef* graph, NodeMap* node_map,
@@ -657,7 +657,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
       sac_node->add_input(ctl_edge);
       node_map->AddOutput(input_name, sac_node->name());
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status BuildReplacementOp(GraphDef* graph, NodeMap* node_map,
@@ -684,7 +684,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
     LOG_WARNING_AND_RETURN_IF_ERROR(op_builder.Finalize(sa_op_node));
     node_map->AddNode(sa_op_name, sa_op_node);
     node_map->AddOutput(sac_name, sa_op_name);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status BuildSplitNode(GraphDef* graph, NodeMap* node_map,
@@ -713,7 +713,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
     for (const auto& input : sas_inputs) {
       node_map->AddOutput(input.node, sas_name);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // After the new ScopedAllocator and its corresponding Concat and
@@ -804,7 +804,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
       // Remove.
       RemoveNode(old_op, graph, node_map);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Given a collection of instances of op_name, presumed to be
@@ -885,7 +885,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
                                       op_name, sas_name));
 
     *applied = true;
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -933,7 +933,7 @@ Status ScopedAllocatorOptimizer::Optimize(Cluster* /*cluster*/,
   VLOG(1) << "ScopedAllocatorOptimizer::Optimize() done";
   VLOG(3) << "Optimized graph:";
   DumpGraphToVLOG(*optimized_graph, /*log_level=*/3);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 ScopedAllocatorOptimizer::Rewriter* ScopedAllocatorOptimizer::GetRewriter(
@@ -958,7 +958,7 @@ Status ScopedAllocatorOptimizer::NewIdentityId(int* id) {
   if (next_identity_id_ < 0) {
     return errors::Aborted("NewIdentityId overflow");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 ScopedAllocatorOptimizer::~ScopedAllocatorOptimizer() {
@@ -1115,7 +1115,7 @@ Status ScopedAllocatorOptimizer::ProcessGraphDef(
         absl::flat_hash_set<string> seen_outputs;
         status = ApplyToAll(root.get(), [this, &seen_outputs](Tree* t) {
           IdentifyRepeatedInputs(t->nodes_, &seen_outputs, &repeated_outputs_);
-          return OkStatus();
+          return absl::OkStatus();
         });
         if (!status.ok()) {
           break;
@@ -1142,7 +1142,7 @@ Status ScopedAllocatorOptimizer::ProcessGraphDef(
               }
             }
           }
-          return OkStatus();
+          return absl::OkStatus();
         });
         if (!status.ok()) {
           break;
@@ -1198,13 +1198,13 @@ Status ScopedAllocatorOptimizer::OrderNodeSet(
   // Nodes should be identical type.  Default order is by name but for
   // collectives we order by increasing instance_key so each group gets
   // the same instance_key.
-  if (nodes->size() <= 1) return OkStatus();
+  if (nodes->size() <= 1) return absl::OkStatus();
   if (IsCollectiveNode(*nodes->at(0))) {
     std::sort(nodes->begin(), nodes->end(), InstanceKeyLess());
   } else {
     std::sort(nodes->begin(), nodes->end(), NameLess());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace grappler

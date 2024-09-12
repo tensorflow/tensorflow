@@ -16,6 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_JPEG_H_
 #define TENSORFLOW_CORE_PLATFORM_JPEG_H_
 
-#include "tsl/platform/jpeg.h"
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/types.h>
+
+extern "C" {
+#include "jerror.h"  // from @libjpeg_turbo   // IWYU pragma: export
+#include "jpeglib.h"  // from @libjpeg_turbo  // IWYU pragma: export
+}
 
 #endif  // TENSORFLOW_CORE_PLATFORM_JPEG_H_

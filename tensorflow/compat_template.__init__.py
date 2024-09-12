@@ -18,10 +18,8 @@
 
 import os as _os
 import sys as _sys
-import typing as _typing
 
 from tensorflow.python.tools import module_util as _module_util
-from tensorflow.python.util.lazy_loader import LazyLoader as _LazyLoader
 from tensorflow.python.util.lazy_loader import KerasLazyLoader as _KerasLazyLoader
 
 # API IMPORTS PLACEHOLDER
@@ -30,14 +28,6 @@ from tensorflow.python.util.lazy_loader import KerasLazyLoader as _KerasLazyLoad
 
 # Hook external TensorFlow modules.
 _current_module = _sys.modules[__name__]
-
-# Lazy-load estimator.
-_estimator_module = "tensorflow_estimator.python.estimator.api._v2.estimator"
-estimator = _LazyLoader("estimator", globals(), _estimator_module)
-_module_dir = _module_util.get_parent_dir_for_name(_estimator_module)
-if _module_dir:
-  _current_module.__path__ = [_module_dir] + _current_module.__path__
-setattr(_current_module, "estimator", estimator)
 
 # Lazy load Keras v2
 _tf_uses_legacy_keras = (
@@ -72,9 +62,3 @@ setattr(_current_module, "losses", _losses)
 setattr(_current_module, "metrics", _metrics)
 setattr(_current_module, "optimizers", _optimizers)
 setattr(_current_module, "initializers", _initializers)
-
-# Explicitly import lazy-loaded modules to support autocompletion.
-# pylint: disable=g-import-not-at-top
-if _typing.TYPE_CHECKING:
-  from tensorflow_estimator.python.estimator.api._v2 import estimator as estimator
-# pylint: enable=g-import-not-at-top

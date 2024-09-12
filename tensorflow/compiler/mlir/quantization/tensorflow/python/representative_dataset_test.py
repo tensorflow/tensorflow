@@ -87,6 +87,18 @@ class RepresentativeDatasetTest(test.TestCase):
             sess, sample_1[input_key], sample_2[input_key]
         )
 
+  def test_not_implemented_saver(self):
+    with self.assertRaisesRegex(
+        NotImplementedError, '"save" is not implemented.'
+    ):
+      repr_dataset.RepresentativeDatasetSaver().save(representative_dataset={})
+
+  def test_not_implemented_loader(self):
+    with self.assertRaisesRegex(
+        NotImplementedError, '"load" is not implemented.'
+    ):
+      repr_dataset.RepresentativeDatasetLoader().load()
+
   @test_util.deprecated_graph_mode_only
   def test_replace_tensors_by_numpy_ndarrays_with_tensor_list(self):
     num_samples = 8
@@ -167,12 +179,10 @@ class RepresentativeDatasetTest(test.TestCase):
     ]
 
     # Extend the representative dataset with np.ndarrays.
-    repr_ds.extend(
-        [
-            {'tensor_key': np.random.uniform(low=-1.0, high=1.0, size=(3, 3))}
-            for _ in range(4)
-        ]
-    )
+    repr_ds.extend([
+        {'tensor_key': np.random.uniform(low=-1.0, high=1.0, size=(3, 3))}
+        for _ in range(4)
+    ])
 
     random.shuffle(repr_ds)
 
@@ -292,7 +302,7 @@ class RepresentativeDatasetSaverTest(test.TestCase):
 
 
 class TfRecordRepresentativeDatasetTest(test.TestCase):
-  """Test cases for RepresentativeDatasetLoader."""
+  """Test cases for TfRecordRepresentativeDatasetLoader."""
 
   def test_tf_record_saver_with_generator_dataset(self):
     tf_record_path = self.create_tempfile().full_path
@@ -308,7 +318,7 @@ class TfRecordRepresentativeDatasetTest(test.TestCase):
     dataset_file_map = saver.save(repr_ds_map)
     self.assertCountEqual(dataset_file_map.keys(), ['serving_default'])
 
-    dataset_map = repr_dataset.RepresentativeDatasetLoader(
+    dataset_map = repr_dataset.TfRecordRepresentativeDatasetLoader(
         dataset_file_map
     ).load()
     self.assertCountEqual(dataset_map.keys(), ['serving_default'])

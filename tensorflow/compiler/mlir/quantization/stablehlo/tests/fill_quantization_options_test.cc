@@ -21,7 +21,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_options.pb.h"
-#include "tsl/platform/protobuf.h"
+#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
 
 namespace mlir::quant::stablehlo {
 namespace {

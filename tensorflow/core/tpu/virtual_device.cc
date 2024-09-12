@@ -41,7 +41,7 @@ void VirtualDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
                                                  StatusCallback done,
                                                  bool sync_dst_compute) const {
   *device_tensor = *cpu_tensor;
-  done(OkStatus());
+  done(absl::OkStatus());
 }
 
 void VirtualDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
@@ -50,7 +50,7 @@ void VirtualDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
                                                  Tensor* cpu_tensor,
                                                  StatusCallback done) {
   *cpu_tensor = *device_tensor;
-  done(OkStatus());
+  done(absl::OkStatus());
 }
 
 void VirtualDeviceContext::CopyTensorInSameDevice(const Tensor* input_tensor,
@@ -58,7 +58,7 @@ void VirtualDeviceContext::CopyTensorInSameDevice(const Tensor* input_tensor,
                                                   Tensor* output_tensor,
                                                   StatusCallback done) const {
   *output_tensor = *input_tensor;
-  done(OkStatus());
+  done(absl::OkStatus());
 }
 
 }  // namespace
@@ -69,7 +69,7 @@ VirtualDevice::VirtualDevice(Env* env,
                              const DeviceAttributes& device_attributes)
     : Device(env, device_attributes) {}
 
-Status VirtualDevice::Sync() { return OkStatus(); }
+Status VirtualDevice::Sync() { return absl::OkStatus(); }
 
 Allocator* VirtualDevice::GetAllocator(AllocatorAttributes attr) {
   // Tensors always live on the host.
@@ -86,12 +86,12 @@ Status VirtualDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
                                    tensor_proto.DebugString());
   }
   *tensor = parsed;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status VirtualDevice::TryGetDeviceContext(DeviceContext** out_context) {
   *out_context = new VirtualDeviceContext;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

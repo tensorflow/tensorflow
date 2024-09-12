@@ -51,7 +51,7 @@ Status ValidateNumThreads(int32_t num_threads) {
   if (num_threads >= kThreadLimit) {
     return errors::InvalidArgument("`num_threads` must be < ", kThreadLimit);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -136,7 +136,7 @@ class ThreadPoolHandleOp : public OpKernel {
                                         num_threads_,
                                         /*low_latency_hint=*/false,
                                         max_intra_op_parallelism_);
-                                    return OkStatus();
+                                    return absl::OkStatus();
                                   }));
       initialized_ = true;
     }
@@ -210,7 +210,7 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
       inputs->push_back(input_);
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status CheckExternalState() const override {
@@ -227,7 +227,7 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
       TF_RETURN_IF_ERROR(b->AddTensor(resource_handle_, &resource_handle_node));
       TF_RETURN_IF_ERROR(b->AddDataset(
           this, {input_graph_node, resource_handle_node}, output));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    private:
@@ -259,13 +259,13 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
                           IteratorStateWriter* writer) override {
         DCHECK(input_impl_ != nullptr);
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
-        return OkStatus();
+        return absl::OkStatus();
       }
 
      private:
@@ -332,7 +332,7 @@ class MaxIntraOpParallelismDatasetOp::Dataset : public DatasetBase {
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->clear();
     inputs->push_back(input_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -350,7 +350,7 @@ class MaxIntraOpParallelismDatasetOp::Dataset : public DatasetBase {
                                     &max_intra_op_parallelism_node));
     TF_RETURN_IF_ERROR(b->AddDataset(
         this, {input_graph_node, max_intra_op_parallelism_node}, output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -383,13 +383,13 @@ class MaxIntraOpParallelismDatasetOp::Dataset : public DatasetBase {
                         IteratorStateWriter* writer) override {
       DCHECK(input_impl_ != nullptr);
       TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     TraceMeMetadata GetTraceMeMetadata() const override {
@@ -475,7 +475,7 @@ class PrivateThreadPoolDatasetOp::Dataset : public DatasetBase {
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->clear();
     inputs->push_back(input_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -492,7 +492,7 @@ class PrivateThreadPoolDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(b->AddScalar(num_threads_, &num_threads_node));
     TF_RETURN_IF_ERROR(
         b->AddDataset(this, {input_graph_node, num_threads_node}, output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -528,13 +528,13 @@ class PrivateThreadPoolDatasetOp::Dataset : public DatasetBase {
                         IteratorStateWriter* writer) override {
       DCHECK(input_impl_ != nullptr);
       TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     TraceMeMetadata GetTraceMeMetadata() const override {

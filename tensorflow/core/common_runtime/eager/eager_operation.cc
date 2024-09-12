@@ -51,33 +51,33 @@ void EagerOperation::Clear() {
 Status EagerOperation::SetAttrValue(const char* attr_name,
                                     const AttrValue& value) {
   MutableAttrs()->Set(attr_name, value);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status EagerOperation::SetAttrString(const char* attr_name, const char* data,
                                      size_t length) {
   MutableAttrs()->Set(attr_name, StringPiece(data, length));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status EagerOperation::SetAttrInt(const char* attr_name, int64_t value) {
   MutableAttrs()->Set(attr_name, static_cast<int64_t>(value));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status EagerOperation::SetAttrFloat(const char* attr_name, float value) {
   MutableAttrs()->Set(attr_name, value);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status EagerOperation::SetAttrBool(const char* attr_name, bool value) {
   MutableAttrs()->Set(attr_name, value);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status EagerOperation::SetAttrType(const char* attr_name, DataType value) {
   MutableAttrs()->Set(attr_name, value);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status EagerOperation::SetAttrShape(const char* attr_name, const int64_t* dims,
@@ -100,7 +100,7 @@ Status EagerOperation::SetAttrShape(const char* attr_name, const int64_t* dims,
 
   MutableAttrs()->Set(attr_name, proto);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status EagerOperation::SetAttrFunction(const char* attr_name,
@@ -111,7 +111,7 @@ Status EagerOperation::SetAttrFunction(const char* attr_name,
   auto* value_operation = down_cast<const EagerOperation*>(value);
   value_operation->Attrs().FillAttrValueMap(func->mutable_attr());
   MutableAttrs()->Set(attr_name, attr_value);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status EagerOperation::SetAttrFunctionName(const char* attr_name,
@@ -120,14 +120,14 @@ Status EagerOperation::SetAttrFunctionName(const char* attr_name,
   NameAttrList* func = attr_value.mutable_func();
   func->set_name(data, length);
   MutableAttrs()->Set(attr_name, attr_value);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status EagerOperation::SetAttrTensor(const char* attr_name,
                                      AbstractTensorInterface* tensor) {
   Tensor t = TensorFromInterface(tensor);
   MutableAttrs()->Set(attr_name, t);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status EagerOperation::SetAttrStringList(const char* attr_name,
@@ -140,14 +140,14 @@ Status EagerOperation::SetAttrStringList(const char* attr_name,
   }
   MutableAttrs()->Set(attr_name, v);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status EagerOperation::SetAttrFloatList(const char* attr_name,
                                         const float* values, int num_values) {
   MutableAttrs()->Set(attr_name,
                       gtl::ArraySlice<const float>(values, num_values));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status EagerOperation::SetAttrIntList(const char* attr_name,
@@ -155,14 +155,14 @@ Status EagerOperation::SetAttrIntList(const char* attr_name,
   MutableAttrs()->Set(
       attr_name, gtl::ArraySlice<const int64_t>(
                      reinterpret_cast<const int64_t*>(values), num_values));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status EagerOperation::SetAttrTypeList(const char* attr_name,
                                        const DataType* values, int num_values) {
   MutableAttrs()->Set(attr_name,
                       gtl::ArraySlice<const DataType>(values, num_values));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status EagerOperation::SetAttrBoolList(const char* attr_name,
@@ -174,7 +174,7 @@ Status EagerOperation::SetAttrBoolList(const char* attr_name,
   }
   MutableAttrs()->Set(attr_name,
                       gtl::ArraySlice<const bool>(b.get(), num_values));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status EagerOperation::SetAttrShapeList(const char* attr_name,
@@ -202,7 +202,7 @@ Status EagerOperation::SetAttrShapeList(const char* attr_name,
   }
   MutableAttrs()->Set(
       attr_name, gtl::ArraySlice<TensorShapeProto>(proto.get(), num_values));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status EagerOperation::SetAttrFunctionList(
@@ -216,7 +216,7 @@ Status EagerOperation::SetAttrFunctionList(
   }
   MutableAttrs()->Set(
       attr_name, gtl::ArraySlice<const NameAttrList>(funcs.get(), num_values));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 const OpDef* EagerOperation::GetOpDef(Status* status) {
@@ -242,7 +242,7 @@ Status EagerOperation::InputLength(const char* input_name, int* length) {
     return errors::InvalidArgument("Input '", input_name, "' not found");
   }
   *length = iter->second.second - iter->second.first;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::Span<ImmediateExecutionTensorHandle* const> EagerOperation::GetInputs()
@@ -269,7 +269,7 @@ Status EagerOperation::OutputLength(const char* output_name, int* length) {
     return errors::InvalidArgument("Output '", output_name, "' not found");
   }
   *length = iter->second.second - iter->second.first;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status EagerOperation::AddInput(AbstractTensorHandle* input) {
@@ -314,7 +314,7 @@ Status EagerOperation::SetInput(size_t index,
   input->Ref();
   inputs_[index] = input;
   previous->Unref();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status EagerOperation::Reset(
@@ -369,7 +369,7 @@ Status EagerOperation::Reset(
 
 Status EagerOperation::MaybeInferSingleInputAttrs(
     ImmediateExecutionTensorHandle* handle) {
-  if (!op_def_) return OkStatus();
+  if (!op_def_) return absl::OkStatus();
 
   const auto& input_def = op_def_->input_arg(inference_arg_idx_++);
   if (!input_def.number_attr().empty() || !input_def.type_list_attr().empty()) {
@@ -380,7 +380,7 @@ Status EagerOperation::MaybeInferSingleInputAttrs(
     // arguments in the op definition. To guarantee backward compatibility with
     // those clients, disable automatic inference in this case.
     ClearInferenceState();
-    return OkStatus();
+    return absl::OkStatus();
   }
   const std::string& type_attr = input_def.type_attr();
   if (!type_attr.empty() &&
@@ -388,7 +388,7 @@ Status EagerOperation::MaybeInferSingleInputAttrs(
     MutableAttrs()->Set(type_attr, handle->DataType());
     inference_attrs_.insert(type_attr);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void EagerOperation::InferSingleTypeInputListAttrs(
@@ -416,7 +416,7 @@ void EagerOperation::InferMixedTypeInputListAttrs(
 }
 
 Status EagerOperation::InferInputListAttrs(int num_inputs) {
-  if (!op_def_) return OkStatus();
+  if (!op_def_) return absl::OkStatus();
 
   int start = inference_arg_idx_;
   const auto& input_def = op_def_->input_arg(inference_arg_idx_++);
@@ -439,7 +439,7 @@ Status EagerOperation::InferInputListAttrs(int num_inputs) {
   } else {
     return errors::InvalidArgument("Invalid input list definition");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status EagerOperation::TensorHandleInputs(
@@ -447,7 +447,7 @@ Status EagerOperation::TensorHandleInputs(
   if (TF_PREDICT_TRUE(!HasCustomDeviceInput())) {
     *inputs = reinterpret_cast<const absl::InlinedVector<TensorHandle*, 4>*>(
         &inputs_);
-    return OkStatus();
+    return absl::OkStatus();
   } else {
     return errors::Internal("The operation unexpectedly had custom devices.");
   }
@@ -458,7 +458,7 @@ Status EagerOperation::MutableTensorHandleInputs(
   if (TF_PREDICT_TRUE(!HasCustomDeviceInput())) {
     *inputs =
         reinterpret_cast<absl::InlinedVector<TensorHandle*, 4>*>(&inputs_);
-    return OkStatus();
+    return absl::OkStatus();
   } else {
     return errors::Internal("The operation unexpectedly had custom devices.");
   }
@@ -475,7 +475,7 @@ Status EagerOperation::SetDeviceName(const char* c_name) {
     device_name_ = DeviceNameUtils::ParsedNameToString(device_parsed_name_);
     device_ = kVariantDeviceNull;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool EagerOperation::IsLocal() const {

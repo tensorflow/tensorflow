@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "xla/status.h"
+#include "absl/status/status.h"
 #include "tsl/profiler/protobuf/profiled_instructions.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
@@ -36,14 +36,14 @@ struct HloLatencyInfo {
 
 // Convert XSpace to ProfiledInstructionsProto. This function will aggregate
 // all the xplane.pb info into ProfiledInstructionsProto.
-Status ConvertXplaneToProfiledInstructionsProto(
+absl::Status ConvertXplaneToProfiledInstructionsProto(
     std::vector<tensorflow::profiler::XSpace> xspaces,
     tensorflow::profiler::ProfiledInstructionsProto*
         profiled_instructions_proto);
 
 // Convert XSpace to ProfiledInstructionsProto. This function will aggregate
 // all the xplane.pb info under logdir into ProfiledInstructionsProto.
-Status ConvertXplaneUnderLogdirToProfiledInstructionsProto(
+absl::Status ConvertXplaneUnderLogdirToProfiledInstructionsProto(
     const std::string& logdir, tensorflow::profiler::ProfiledInstructionsProto*
                                    profiled_instructions_proto);
 

@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,24 +19,23 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "xla/client/lib/arithmetic.h"
 #include "xla/client/lib/constants.h"
-#include "xla/client/lib/loops.h"
-#include "xla/client/lib/math.h"
 #include "xla/client/lib/matrix.h"
 #include "xla/client/lib/qr.h"
 #include "xla/client/lib/slicing.h"
 #include "xla/client/xla_builder.h"
-#include "xla/literal_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
-#include "xla/statusor.h"
-#include "tsl/platform/errors.h"
+#include "xla/util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
 SignAndLogDet SLogDet(XlaOp a) {
-  StatusOr<SignAndLogDet> result = [&]() -> StatusOr<SignAndLogDet> {
+  absl::StatusOr<SignAndLogDet> result =
+      [&]() -> absl::StatusOr<SignAndLogDet> {
     TF_ASSIGN_OR_RETURN(Shape a_shape, a.builder()->GetShape(a));
     auto qr = Qr(a);
 

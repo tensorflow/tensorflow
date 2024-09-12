@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,15 +24,17 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/gpu/model/hlo_op_profiler.h"
+#include "xla/service/gpu/model/hlo_op_profiles.h"
 #include "xla/service/hlo_runner.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/protobuf.h"
 #include "tsl/platform/status.h"
-#include "tsl/util/command_line_flags.h"
 
 namespace xla {
 namespace gpu {
@@ -56,8 +58,9 @@ void WriteOutput(const DeviceHloInstructionProfiles& literal,
     file_name = tsl::io::GetTempFilename(absl::StrCat(name, ".textproto"));
   }
   VLOG(0) << "Writing output to " << file_name;
-  TF_CHECK_OK(tsl::WriteStringToFile(tsl::Env::Default(), file_name,
-                                     literal.DebugString()));
+  TF_CHECK_OK(
+      tsl::WriteStringToFile(tsl::Env::Default(), file_name,
+                             tsl::LegacyUnredactedDebugString(literal)));
 }
 
 int RunProfiler(int argc, char** argv) {
@@ -88,6 +91,7 @@ int RunProfiler(int argc, char** argv) {
       // Unary
       HloOpcode::kCbrt,
       HloOpcode::kCos,
+      HloOpcode::kErf,
       HloOpcode::kExp,
       HloOpcode::kExpm1,
       HloOpcode::kLog,
@@ -121,8 +125,9 @@ int RunProfiler(int argc, char** argv) {
 
   VLOG(1) << "\n" << instr_profiles;
 
+  auto profile_name = HloOpProfiles::GetProfileName(&dev_info);
   DeviceHloInstructionProfiles device_profiles;
-  device_profiles.mutable_entries()->insert({dev_info.name(), instr_profiles});
+  device_profiles.mutable_entries()->insert({profile_name, instr_profiles});
   if (!output_file.empty()) {
     WriteOutput(device_profiles, output_file);
   }

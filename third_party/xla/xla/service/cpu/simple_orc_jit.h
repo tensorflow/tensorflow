@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,24 +16,39 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_SIMPLE_ORC_JIT_H_
 #define XLA_SERVICE_CPU_SIMPLE_ORC_JIT_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ExecutionEngine/JITEventListener.h"
 #include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/ExecutionEngine/Orc/ExecutorProcessControl.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
-#include "llvm/ExecutionEngine/Orc/SymbolStringPool.h"
+#include "llvm/ExecutionEngine/Orc/Shared/ExecutorSymbolDef.h"
+#include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
+#include "llvm/ExecutionEngine/RuntimeDyld.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/FMF.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Support/CodeGen.h"
+#include "llvm/Support/Error.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/Target/TargetOptions.h"
 #include "llvm/TargetParser/Triple.h"
 #include "xla/service/cpu/compiler_functor.h"
-#include "xla/types.h"
+#include "xla/service/llvm_compiler.h"
 
-namespace xla {
-namespace cpu {
+namespace xla::cpu {
 
 // Simplified LLVM JIT based on the new Orc API.
 //
@@ -62,7 +77,9 @@ class SimpleOrcJIT : public llvm::JITEventListener {
       llvm::FastMathFlags fast_math_flags,
       LLVMCompiler::ModuleHook pre_optimization_hook,
       LLVMCompiler::ModuleHook post_optimization_hook,
-      std::function<void(const llvm::object::ObjectFile&)> post_codegen_hook);
+      absl::AnyInvocable<void(const llvm::object::ObjectFile&)>
+          post_codegen_hook,
+      size_t num_jit_dylibs = 1);
 
   static llvm::Expected<std::unique_ptr<SimpleOrcJIT>> Create(
       const llvm::TargetOptions& target_options,
@@ -71,7 +88,9 @@ class SimpleOrcJIT : public llvm::JITEventListener {
       llvm::FastMathFlags fast_math_flags,
       LLVMCompiler::ModuleHook pre_optimization_hook,
       LLVMCompiler::ModuleHook post_optimization_hook,
-      std::function<void(const llvm::object::ObjectFile&)> post_codegen_hook);
+      absl::AnyInvocable<void(const llvm::object::ObjectFile&)>
+          post_codegen_hook,
+      size_t num_jit_dylibs = 1);
 
   ~SimpleOrcJIT() override;
 
@@ -79,7 +98,10 @@ class SimpleOrcJIT : public llvm::JITEventListener {
 
   const llvm::Triple& target_triple() const { return target_triple_; }
 
-  llvm::Error AddModule(llvm::orc::ThreadSafeModule module);
+  llvm::Error AddObjFile(std::unique_ptr<llvm::MemoryBuffer> obj_file,
+                         size_t dylib_index = 0);
+  llvm::Error AddModule(llvm::orc::ThreadSafeModule module,
+                        size_t dylib_index = 0);
 
   // Discards objects we no longer need once we are done compiling.
   void DoneCompiling();
@@ -101,6 +123,10 @@ class SimpleOrcJIT : public llvm::JITEventListener {
     return size_of_generated_code_in_bytes_;
   }
 
+  void AddKernelSymbol(std::string_view name) {
+    kernel_symbols_.insert(std::string(name));
+  }
+
  private:
   llvm::orc::ExecutorSymbolDef ResolveRuntimeSymbol(llvm::StringRef name);
 
@@ -110,15 +136,24 @@ class SimpleOrcJIT : public llvm::JITEventListener {
       const llvm::RuntimeDyld::LoadedObjectInfo& object_info) override;
   void notifyFreeingObject(llvm::JITEventListener::ObjectKey key) override;
 
-  std::unique_ptr<llvm::TargetMachine> target_machine_;
+  // Target machine builder that is used to construct target machines for this
+  // instance of SimpleOrcJIT, and to construct `target_machine_`.
+  CompilerFunctor::TargetMachineBuilder target_machine_builder_;
+  std::shared_ptr<llvm::TargetMachine> target_machine_;
+
   llvm::Triple target_triple_;
   const llvm::DataLayout data_layout_;
   std::unique_ptr<llvm::orc::ExecutorProcessControl> target_process_control_;
   std::unique_ptr<llvm::orc::ExecutionSession> execution_session_;
   ObjLayerT object_layer_;
   CompileLayerT compile_layer_;
-  llvm::orc::JITDylib* main_jit_dylib_;
+  llvm::SmallVector<llvm::orc::JITDylib*> jit_dylibs_;
   int64_t size_of_generated_code_in_bytes_ = 0;
+
+  // Symbols corresponding to kernel functions. Because we use module splitting,
+  // some of the modules might have a declaration, but no definition of the
+  // kernel function, and this is fine, and should not log an error.
+  absl::flat_hash_set<std::string> kernel_symbols_;
 
   // Non owning pointer to a JIT event listener that registers the JIT events
   // with an attached GDB.
@@ -132,7 +167,8 @@ class SimpleOrcJIT : public llvm::JITEventListener {
   llvm::JITEventListener* perf_jit_event_listener_;
 };
 
-}  // namespace cpu
-}  // namespace xla
+std::vector<std::string> DetectMachineAttributes();
+
+}  // namespace xla::cpu
 
 #endif  // XLA_SERVICE_CPU_SIMPLE_ORC_JIT_H_

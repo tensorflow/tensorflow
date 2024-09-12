@@ -5,7 +5,6 @@ load("//xla:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("//xla/tests:build_defs.bzl", "generate_backend_suites")
 
 package(
-    default_visibility = ["//visibility:public"],
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )

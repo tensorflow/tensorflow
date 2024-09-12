@@ -1,0 +1,14 @@
+op {
+  graph_op_name: "GetTpuTaskId"
+  visibility: HIDDEN
+  out_arg {
+    name: "tpu_task_id"
+    description: <<END
+The TPU task ID from TPU topology.
+END
+  }
+  summary: "An op returns the TPU task ID from TPU topology."
+  description: <<END
+This op is to return the TPU task ID from TPU topology.
+END
+}

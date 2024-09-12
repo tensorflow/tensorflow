@@ -58,7 +58,6 @@ class DrawBoundingBoxesOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& images = context->input(0);
     const Tensor& boxes = context->input(1);
-    const int64_t depth = images.dim_size(3);
 
     OP_REQUIRES(context, images.dims() == 4,
                 errors::InvalidArgument("The rank of the images should be 4"));
@@ -68,6 +67,7 @@ class DrawBoundingBoxesOp : public OpKernel {
     OP_REQUIRES(context, images.dim_size(0) == boxes.dim_size(0),
                 errors::InvalidArgument("The batch sizes should be the same"));
 
+    const int64_t depth = images.dim_size(3);
     OP_REQUIRES(
         context, depth == 4 || depth == 1 || depth == 3,
         errors::InvalidArgument("Channel depth should be either 1 (GRY), "

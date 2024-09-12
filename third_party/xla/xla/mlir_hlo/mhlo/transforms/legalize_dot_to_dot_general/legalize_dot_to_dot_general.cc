@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -55,9 +55,9 @@ struct DotToDotGeneralPattern : public OpRewritePattern<DotOp> {
         /*lhsContractingDimensions=*/{lhs.getType().getRank() - 1},
         /*rhsContractingDimensions=*/{0});
 
-    rewriter.replaceOpWithNewOp<DotGeneralOp>(dotOp, dotOp.getType(), lhs, rhs,
-                                              dotDimensionNumbers,
-                                              dotOp.getPrecisionConfigAttr());
+    rewriter.replaceOpWithNewOp<DotGeneralOp>(
+        dotOp, dotOp.getType(), lhs, rhs, dotDimensionNumbers,
+        dotOp.getPrecisionConfigAttr(), DotAlgorithmAttr{});
     return success();
   }
 };

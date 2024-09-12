@@ -1,6 +1,0 @@
-source ci/official/envs/ci_nightly_uploads
-TFCI_BAZEL_COMMON_ARGS="--config release_macos_x86 --config tf_public_macos_cache_push --repo_env=TF_PYTHON_VERSION=$TFCI_PYTHON_VERSION"
-TFCI_DOCKER_ENABLE=0
-TFCI_LIB_SUFFIX="-cpu-darwin-x86_64"
-TFCI_NIGHTLY_UPDATE_VERSION_ENABLE=1
-TFCI_PYTHON_VERSION=3.10

@@ -463,14 +463,16 @@ TEST_P(ConvolutionOpTest, PointwiseFloat32) {
 
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({
-                                 // First batch
-                                 1.5, 1.5, 1.5, 1.5,  // row = 1
-                                 3., 3., 3., 3.,      // row = 2
-                                 // Second batch
-                                 1.5, 3., 4.5, 6.,  // row = 1
-                                 1.5, 3., 4.5, 6.,  // row = 2
-                             }));
+  EXPECT_THAT(m.GetOutput(),
+              Pointwise(FloatingPointEq(), {
+                                               // First batch
+                                               1.5, 1.5, 1.5, 1.5,  // row = 1
+                                               3., 3., 3., 3.,      // row = 2
+
+                                               // Second batch
+                                               1.5, 3., 4.5, 6.,  // row = 1
+                                               1.5, 3., 4.5, 6.,  // row = 2
+                                           }));
 }
 
 // TODO(alanchiao): this passes locally, but fails on continuous build system.
@@ -497,12 +499,14 @@ TEST_P(ConvolutionOpTest, DISABLED_PointwiseMultifilterFloat32) {
 
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
-  EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray({
-                  1.5, 2.5, 1.5, 2.5, 1.5, 2.5, 1.5, 2.5, 3., 5.,  3.,
-                  5.,  3.,  5.,  3.,  5.,  1.5, 2.5, 3.,  5., 4.5, 7.5,
-                  6.,  10., 1.5, 2.5, 3.,  5.,  4.5, 7.5, 6., 10.,
-              }));
+  EXPECT_THAT(
+      m.GetOutput(),
+      Pointwise(FloatingPointEq(),
+                {
+                    1.5, 2.5, 1.5, 2.5, 1.5, 2.5, 1.5, 2.5, 3., 5.,  3.,
+                    5.,  3.,  5.,  3.,  5.,  1.5, 2.5, 3.,  5., 4.5, 7.5,
+                    6.,  10., 1.5, 2.5, 3.,  5.,  4.5, 7.5, 6., 10.,
+                }));
 }
 
 TEST_P(ConvolutionOpTest, SimpleTestFloat32WithAnisotropicStrides) {

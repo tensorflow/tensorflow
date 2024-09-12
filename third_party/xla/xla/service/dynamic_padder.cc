@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,6 +26,8 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -51,9 +53,7 @@ limitations under the License.
 #include "xla/service/tuple_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
@@ -74,8 +74,8 @@ auto* dynamic_padding_gauge = tsl::monitoring::Gauge<bool, 0>::New(
 // instruction.
 //
 // nullopt is returned if padding doesn't need to be reset.
-StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst,
-                                              int64_t operand_number) {
+absl::StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst,
+                                                    int64_t operand_number) {
   // Padding on elementwise operation doesn't affect the result of the effective
   // data.
   if (inst->IsElementwise()) {
@@ -173,7 +173,7 @@ StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst,
   }
 }
 
-StatusOr<bool> ReplaceGetSize(
+absl::StatusOr<bool> ReplaceGetSize(
     HloInstruction* instr,
     DynamicDimensionInference* dynamic_dimension_inference) {
   if (instr->opcode() != HloOpcode::kGetDimensionSize) {
@@ -210,7 +210,7 @@ StatusOr<bool> ReplaceGetSize(
   return true;
 }
 
-StatusOr<bool> ReplaceSetSize(HloInstruction* instr) {
+absl::StatusOr<bool> ReplaceSetSize(HloInstruction* instr) {
   if (instr->opcode() != HloOpcode::kSetDimensionSize) {
     return false;
   }
@@ -225,7 +225,7 @@ StatusOr<bool> ReplaceSetSize(HloInstruction* instr) {
   return true;
 }
 
-StatusOr<bool> ReplaceSetBound(HloInstruction* instr) {
+absl::StatusOr<bool> ReplaceSetBound(HloInstruction* instr) {
   if (instr->opcode() != HloOpcode::kCustomCall ||
       instr->custom_call_target() != "SetBound") {
     return false;
@@ -487,7 +487,7 @@ HloInstruction* GenerateBinaryMask(
 //  [[a,b,P]
 //   [c,d,P]]
 //
-StatusOr<bool> RewriteDynamicReshapeSplitInput(
+absl::StatusOr<bool> RewriteDynamicReshapeSplitInput(
     HloInstruction* reshape, int64_t input_dim,
     absl::Span<const int64_t> output_dims,
     absl::Span<HloInstruction*> output_dynamic_dims,
@@ -670,7 +670,7 @@ StatusOr<bool> RewriteDynamicReshapeSplitInput(
 //            |
 //       [a,b,c,d,P,P]
 //
-StatusOr<bool> RewriteDynamicReshapeCombineInput(
+absl::StatusOr<bool> RewriteDynamicReshapeCombineInput(
     HloInstruction* reshape, absl::Span<const int64_t> input_dims,
     int64_t output_dim, absl::Span<HloInstruction*> input_dynamic_dims,
     DynamicDimensionInference* dynamic_dimension_inference) {
@@ -790,7 +790,7 @@ StatusOr<bool> RewriteDynamicReshapeCombineInput(
   return true;
 }
 
-StatusOr<bool> RewriteDynamicReshapeSingleGroup(
+absl::StatusOr<bool> RewriteDynamicReshapeSingleGroup(
     HloInstruction* reshape, absl::Span<const int64_t> input_dims,
     absl::Span<const int64_t> output_dims,
     absl::Span<HloInstruction*> input_dynamic_dims,
@@ -831,7 +831,7 @@ StatusOr<bool> RewriteDynamicReshapeSingleGroup(
   return false;
 }
 
-StatusOr<bool> RewriteReverse(
+absl::StatusOr<bool> RewriteReverse(
     HloInstruction* reverse,
     DynamicDimensionInference* dynamic_dimension_inference) {
   // When we have [A, B, C, D, E] and reverse them, we get [E, D, C, B, A].
@@ -980,7 +980,7 @@ HloInstruction* RewriteInputWithDynamicPadding(
   return input;
 }
 
-StatusOr<bool> RewriteDynamicConvolutionInputGrad(
+absl::StatusOr<bool> RewriteDynamicConvolutionInputGrad(
     HloInstruction* custom_call_conv,
     DynamicDimensionInference* dynamic_dimension_inference) {
   HloInstruction* grad = custom_call_conv->mutable_operand(1);
@@ -1049,7 +1049,7 @@ StatusOr<bool> RewriteDynamicConvolutionInputGrad(
   return true;
 }
 
-StatusOr<bool> RewriteDynamicConvolutionForward(
+absl::StatusOr<bool> RewriteDynamicConvolutionForward(
     HloInstruction* custom_call_conv,
     DynamicDimensionInference* dynamic_dimension_inference) {
   HloInstruction* input = custom_call_conv->mutable_operand(0);
@@ -1108,7 +1108,7 @@ StatusOr<bool> RewriteDynamicConvolutionForward(
   return true;
 }
 
-StatusOr<bool> RewriteDynamicConvolutionKernelGrad(
+absl::StatusOr<bool> RewriteDynamicConvolutionKernelGrad(
     HloInstruction* custom_call_conv,
     DynamicDimensionInference* dynamic_dimension_inference) {
   HloInstruction* activations = custom_call_conv->mutable_operand(0);
@@ -1192,7 +1192,7 @@ StatusOr<bool> RewriteDynamicConvolutionKernelGrad(
   return true;
 }
 
-StatusOr<bool> RewriteDynamicReduceWindowSamePadding(
+absl::StatusOr<bool> RewriteDynamicReduceWindowSamePadding(
     HloInstruction* hlo,
     DynamicDimensionInference* dynamic_dimension_inference) {
   if (hlo->shape().IsTuple()) {
@@ -1236,7 +1236,7 @@ StatusOr<bool> RewriteDynamicReduceWindowSamePadding(
   return true;
 }
 
-StatusOr<bool> RewriteDynamicSelectAndScatterSamePadding(
+absl::StatusOr<bool> RewriteDynamicSelectAndScatterSamePadding(
     HloInstruction* hlo,
     DynamicDimensionInference* dynamic_dimension_inference) {
   HloInstruction* input = hlo->mutable_operand(0);
@@ -1312,7 +1312,7 @@ StatusOr<bool> RewriteDynamicSelectAndScatterSamePadding(
   return true;
 }
 
-StatusOr<bool> RewriteDynamicConcat(
+absl::StatusOr<bool> RewriteDynamicConcat(
     HloInstruction* concat,
     DynamicDimensionInference* dynamic_dimension_inference) {
   const int64_t concat_dim = concat->concatenate_dimension();
@@ -1322,6 +1322,7 @@ StatusOr<bool> RewriteDynamicConcat(
     return false;
   }
   std::vector<HloInstruction*> offsets;
+  offsets.reserve(concat->shape().dimensions_size());
   for (int64_t i = 0; i < concat->shape().dimensions_size(); ++i) {
     offsets.push_back(concat->AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(0))));
@@ -1359,7 +1360,7 @@ StatusOr<bool> RewriteDynamicConcat(
   return true;
 }
 
-StatusOr<bool> RewriteDynamicSort(
+absl::StatusOr<bool> RewriteDynamicSort(
     HloInstruction* hlo,
     DynamicDimensionInference* dynamic_dimension_inference) {
   HloInstruction* dynamic_size = nullptr;
@@ -1448,7 +1449,7 @@ StatusOr<bool> RewriteDynamicSort(
   return true;
 }
 
-StatusOr<bool> RewriteDynamicBinaryOp(
+absl::StatusOr<bool> RewriteDynamicBinaryOp(
     HloInstruction* binary,
     DynamicDimensionInference* dynamic_dimension_inference) {
   HloInstruction* operand_0 = binary->mutable_operand(0);
@@ -1559,7 +1560,7 @@ StatusOr<bool> RewriteDynamicBinaryOp(
   return changed;
 }
 
-StatusOr<bool> RewriteDynamicUpdateSlice(
+absl::StatusOr<bool> RewriteDynamicUpdateSlice(
     HloInstruction* hlo,
     DynamicDimensionInference* dynamic_dimension_inference) {
   HloDynamicUpdateSliceInstruction* dus =
@@ -1661,18 +1662,20 @@ StatusOr<bool> RewriteDynamicUpdateSlice(
   return true;
 }
 
-StatusOr<bool> RewriteDynamicReshape(
+absl::StatusOr<bool> RewriteDynamicReshape(
     HloInstruction* reshape,
     DynamicDimensionInference* dynamic_dimension_inference) {
   bool changed = false;
   HloInstruction* operand = reshape->mutable_operand(0);
   std::vector<HloInstruction*> input_dynamic_dims;
+  input_dynamic_dims.reserve(operand->shape().dimensions_size());
   for (int64_t dim = 0; dim < operand->shape().dimensions_size(); ++dim) {
     input_dynamic_dims.push_back(
         dynamic_dimension_inference->GetDynamicSize(operand, {}, dim));
   }
 
   std::vector<HloInstruction*> output_dynamic_dims;
+  output_dynamic_dims.reserve(reshape->shape().dimensions_size());
   for (int64_t dim = 0; dim < reshape->shape().dimensions_size(); ++dim) {
     output_dynamic_dims.push_back(
         dynamic_dimension_inference->GetDynamicSize(reshape, {}, dim));
@@ -1799,7 +1802,7 @@ StatusOr<bool> RewriteDynamicReshape(
       continue;
     }
     if (input_dims.size() > 1 && output_dims.size() > 1) {
-      return InternalError(
+      return Internal(
           "Should be handled by decomposing reshape into "
           "flatten-unflatten pair. %s",
           reshape->ToString());
@@ -1850,27 +1853,27 @@ class DynamicShapeRemovingVisitor : public DfsHloRewriteVisitor {
         dynamic_dimension_inference_(dynamic_dimension_inference),
         execution_threads_(execution_threads) {}
 
-  Status DefaultAction(HloInstruction* hlo) override;
+  absl::Status DefaultAction(HloInstruction* hlo) override;
 
-  Status HandleCustomCall(HloInstruction* hlo) override;
+  absl::Status HandleCustomCall(HloInstruction* hlo) override;
 
-  Status HandleTuple(HloInstruction* hlo) override;
-  Status HandleGetTupleElement(HloInstruction* hlo) override;
+  absl::Status HandleTuple(HloInstruction* hlo) override;
+  absl::Status HandleGetTupleElement(HloInstruction* hlo) override;
 
-  Status HandleParameter(HloInstruction* hlo) override;
-  Status HandleInfeed(HloInstruction* hlo) override;
+  absl::Status HandleParameter(HloInstruction* hlo) override;
+  absl::Status HandleInfeed(HloInstruction* hlo) override;
 
-  Status HandleAsyncStart(HloInstruction* hlo) override;
-  Status HandleAsyncUpdate(HloInstruction* hlo) override;
-  Status HandleAsyncDone(HloInstruction* hlo) override;
+  absl::Status HandleAsyncStart(HloInstruction* hlo) override;
+  absl::Status HandleAsyncUpdate(HloInstruction* hlo) override;
+  absl::Status HandleAsyncDone(HloInstruction* hlo) override;
 
-  Status HandleWhile(HloInstruction* hlo) override;
-  Status HandleConditional(HloInstruction* hlo) override;
+  absl::Status HandleWhile(HloInstruction* hlo) override;
+  absl::Status HandleConditional(HloInstruction* hlo) override;
 
-  Status HandleGetDimensionSize(HloInstruction* hlo) override;
-  Status HandleSetDimensionSize(HloInstruction* hlo) override;
+  absl::Status HandleGetDimensionSize(HloInstruction* hlo) override;
+  absl::Status HandleSetDimensionSize(HloInstruction* hlo) override;
 
-  static StatusOr<bool> Run(
+  static absl::StatusOr<bool> Run(
       HloComputation* computation,
       const OpSupportsDynamismHandler& op_supports_dynamism_handler,
       DynamicDimensionInference* dynamic_shape_inference,
@@ -1896,11 +1899,11 @@ class DynamicShapeRemovingVisitor : public DfsHloRewriteVisitor {
  private:
   // If a tensor produced by `inst` is in static form, convert it to dynamic and
   // returns the new instruction.
-  StatusOr<HloInstruction*> ConvertToDynamic(HloInstruction* inst);
+  absl::StatusOr<HloInstruction*> ConvertToDynamic(HloInstruction* inst);
 
   // Same as above, but for all of the instructions operands.  The operands will
   // be replaced by dynamic operands as needed.
-  Status ConvertOperandsToDynamic(HloInstruction* inst);
+  absl::Status ConvertOperandsToDynamic(HloInstruction* inst);
 
   const OpSupportsDynamismHandler& op_supports_dynamism_handler_;
 
@@ -1909,10 +1912,10 @@ class DynamicShapeRemovingVisitor : public DfsHloRewriteVisitor {
   absl::flat_hash_set<absl::string_view> execution_threads_;
 };
 
-StatusOr<HloInstruction*> DynamicShapeRemovingVisitor::ConvertToDynamic(
+absl::StatusOr<HloInstruction*> DynamicShapeRemovingVisitor::ConvertToDynamic(
     HloInstruction* inst) {
   if (!dynamic_dimension_inference_->HasDynamicDimension(inst)) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   MarkAsChanged();
   Shape shape = dynamic_dimension_inference_->GetDynamicShape(inst);
@@ -1947,7 +1950,7 @@ StatusOr<HloInstruction*> DynamicShapeRemovingVisitor::ConvertToDynamic(
   return TupleUtil::AssembleTupleInstruction(inst->parent(), std::move(gtes));
 }
 
-Status DynamicShapeRemovingVisitor::ConvertOperandsToDynamic(
+absl::Status DynamicShapeRemovingVisitor::ConvertOperandsToDynamic(
     HloInstruction* inst) {
   for (int64_t i = 0; i < inst->operand_count(); ++i) {
     auto operand = inst->mutable_operand(i);
@@ -1958,10 +1961,10 @@ Status DynamicShapeRemovingVisitor::ConvertOperandsToDynamic(
       MarkAsChanged();
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status DynamicShapeRemovingVisitor::DefaultAction(HloInstruction* hlo) {
+absl::Status DynamicShapeRemovingVisitor::DefaultAction(HloInstruction* hlo) {
   // By default, ops don't support dynamic lowering.
   OpDynamismSupport op_support = OpDynamismSupport::kNoSupport;
   if (op_supports_dynamism_handler_) {
@@ -1981,7 +1984,7 @@ Status DynamicShapeRemovingVisitor::DefaultAction(HloInstruction* hlo) {
 
   // If the input to an op is static, we are done.
   if (!input_is_dynamic) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Op doesn't support dynamic tensor, but by now we should have already
@@ -1990,75 +1993,80 @@ Status DynamicShapeRemovingVisitor::DefaultAction(HloInstruction* hlo) {
       << "Dynamic input unexpectedly found for unsupported instruction: "
       << hlo->ToString();
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status DynamicShapeRemovingVisitor::HandleGetTupleElement(HloInstruction* hlo) {
-  return OkStatus();
+absl::Status DynamicShapeRemovingVisitor::HandleGetTupleElement(
+    HloInstruction* hlo) {
+  return absl::OkStatus();
 }
 
-Status DynamicShapeRemovingVisitor::HandleTuple(HloInstruction* hlo) {
-  return OkStatus();
+absl::Status DynamicShapeRemovingVisitor::HandleTuple(HloInstruction* hlo) {
+  return absl::OkStatus();
 }
 
-Status DynamicShapeRemovingVisitor::HandleInfeed(HloInstruction* hlo) {
-  return OkStatus();
+absl::Status DynamicShapeRemovingVisitor::HandleInfeed(HloInstruction* hlo) {
+  return absl::OkStatus();
 }
 
-Status DynamicShapeRemovingVisitor::HandleParameter(HloInstruction* hlo) {
-  return OkStatus();
+absl::Status DynamicShapeRemovingVisitor::HandleParameter(HloInstruction* hlo) {
+  return absl::OkStatus();
 }
 
-Status DynamicShapeRemovingVisitor::HandleCustomCall(HloInstruction* hlo) {
+absl::Status DynamicShapeRemovingVisitor::HandleCustomCall(
+    HloInstruction* hlo) {
   if (hlo->custom_call_target() == "SliceToDynamic" ||
       hlo->custom_call_target() == "PadToStatic") {
     // Those ops support are created to handle dynamic tensors so by their
     // nature they support dynamic lowering.
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   return DefaultAction(hlo);
 }
 
-Status DynamicShapeRemovingVisitor::HandleAsyncStart(HloInstruction* hlo) {
+absl::Status DynamicShapeRemovingVisitor::HandleAsyncStart(
+    HloInstruction* hlo) {
   if (HloInstruction::IsThreadIncluded(hlo->async_execution_thread(),
                                        execution_threads_)) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   return ConvertOperandsToDynamic(hlo);
 }
 
-Status DynamicShapeRemovingVisitor::HandleAsyncUpdate(HloInstruction* hlo) {
-  return OkStatus();
-}
-
-Status DynamicShapeRemovingVisitor::HandleAsyncDone(HloInstruction* hlo) {
-  return OkStatus();
-}
-
-Status DynamicShapeRemovingVisitor::HandleWhile(HloInstruction* hlo) {
-  return OkStatus();
-}
-
-Status DynamicShapeRemovingVisitor::HandleConditional(HloInstruction* hlo) {
-  return OkStatus();
-}
-
-Status DynamicShapeRemovingVisitor::HandleGetDimensionSize(
+absl::Status DynamicShapeRemovingVisitor::HandleAsyncUpdate(
     HloInstruction* hlo) {
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status DynamicShapeRemovingVisitor::HandleSetDimensionSize(
+absl::Status DynamicShapeRemovingVisitor::HandleAsyncDone(HloInstruction* hlo) {
+  return absl::OkStatus();
+}
+
+absl::Status DynamicShapeRemovingVisitor::HandleWhile(HloInstruction* hlo) {
+  return absl::OkStatus();
+}
+
+absl::Status DynamicShapeRemovingVisitor::HandleConditional(
+    HloInstruction* hlo) {
+  return absl::OkStatus();
+}
+
+absl::Status DynamicShapeRemovingVisitor::HandleGetDimensionSize(
+    HloInstruction* hlo) {
+  return absl::OkStatus();
+}
+
+absl::Status DynamicShapeRemovingVisitor::HandleSetDimensionSize(
     HloInstruction* hlo) {
   *hlo->mutable_shape() = hlo->operand(0)->shape();
   hlo->mutable_shape()->set_dynamic_dimension(hlo->dimension(), false);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
 
-StatusOr<bool> DynamicPadder::Run(
+absl::StatusOr<bool> DynamicPadder::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(2) << "Pre DynamicPadder HLO:";

@@ -2977,9 +2977,6 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
       self.skipTest("Not implemented for cpp.")
     if sys.version_info.major < 3:
       self.skipTest("Not working in Python 2")
-    if sys.version_info.major == 3 and sys.version_info.minor in (11, 12):
-      # TODO(b/264948173)
-      self.skipTest("Not working in Python 3.11+")
     root = module.Module()
     root.v = variables.Variable(1.0)
     root.f = def_function.function(

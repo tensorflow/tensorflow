@@ -43,7 +43,7 @@ int main(int argc, char **argv) {
   mlir::registerInlinerPass();
 
   mlir::registerTensorFlowPasses();
-
+  mlir::TFDevice::registerTensorFlowDevicePasses();
 
   tensorflow::mlrt_compiler::RegisterMlrtPasses();
   tensorflow::ifrt_serving::RegisterTfIfrtPasses();

@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -164,8 +164,9 @@ std::optional<std::vector<HloInstruction*>> FindElementwiseOperationGroup(
 // Generates a new elementwise operation using the slice_sources as operands,
 // and replaces the uses of elementwise operation_on_slices with slices of the
 // new elementwise operations.
-Status SinkSlices(const std::vector<HloInstruction*>& slice_sources,
-                  const std::vector<HloInstruction*>& operation_on_slices) {
+absl::Status SinkSlices(
+    const std::vector<HloInstruction*>& slice_sources,
+    const std::vector<HloInstruction*>& operation_on_slices) {
   const Shape shape = slice_sources[0]->shape();
   PrimitiveType element_type = operation_on_slices[0]->shape().element_type();
   Shape new_shape = ShapeUtil::ChangeElementType(shape, element_type);
@@ -187,7 +188,7 @@ Status SinkSlices(const std::vector<HloInstruction*>& slice_sources,
              << " to replace: " << user->ToString();
     TF_RETURN_IF_ERROR(user->ReplaceAllUsesWith(user_slice));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -238,7 +239,7 @@ Status SinkSlices(const std::vector<HloInstruction*>& slice_sources,
 // This pass currently doesn't transform non-elementwise instructions. We may
 // extend this pass to transform non-elementwise instructions, such as dot,
 // broadcast and reduce in the future.
-StatusOr<bool> SliceSinker::Run(
+absl::StatusOr<bool> SliceSinker::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

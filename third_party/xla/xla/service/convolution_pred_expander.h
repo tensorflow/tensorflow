@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef XLA_SERVICE_CONVOLUTION_PRED_EXPANDER_H_
 #define XLA_SERVICE_CONVOLUTION_PRED_EXPANDER_H_
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/op_expander_pass.h"
-#include "xla/statusor.h"
 
 namespace xla {
 
@@ -35,7 +35,7 @@ class ConvolutionPredExpander : public OpExpanderPass {
  protected:
   bool InstructionMatchesPattern(HloInstruction* instruction) override;
 
-  StatusOr<HloInstruction*> ExpandInstruction(
+  absl::StatusOr<HloInstruction*> ExpandInstruction(
       HloInstruction* instruction) override;
 };
 

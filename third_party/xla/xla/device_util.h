@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,8 +29,8 @@ namespace xla {
 
 // Returns a string that represents the device in terms of platform and ordinal;
 // e.g. the first CUDA device will be "cuda:0"
-std::string DeviceIdentifier(se::StreamExecutor* stream_exec) {
-  return absl::StrCat(stream_exec->platform()->Name(), ":",
+inline std::string DeviceIdentifier(se::StreamExecutor* stream_exec) {
+  return absl::StrCat(stream_exec->GetPlatform()->Name(), ":",
                       stream_exec->device_ordinal());
 }
 

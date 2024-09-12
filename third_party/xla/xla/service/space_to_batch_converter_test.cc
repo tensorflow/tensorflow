@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -245,6 +245,110 @@ ENTRY computation {
                                 .output_batch_dimension();
 
   EXPECT_GT(previous_reshape->operand(0)->shape().dimensions(batch_dim), 4);
+}
+
+TEST_F(SpaceToBatchConverterTest, PropagateThroughDot) {
+  std::string hlo_string = R"(
+  HloModule module
+
+  ENTRY computation {
+    %p0 = bf16[1,258,258,32] parameter(0)
+    %p1 = bf16[3,3,32,32] parameter(1)
+    %convolution = bf16[1,256,256,32] convolution(%p0, %p1), window={size=3x3},
+    dim_labels=b01f_01io->b01f
+    %p2 = bf16[32,32] parameter(2)
+    ROOT %dot.5010 = bf16[1,256,256,32] dot(%convolution, %p2),
+      lhs_contracting_dims={3},
+      rhs_contracting_dims={0}
+  }
+
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  SpaceToBatchConverter converter(
+      SpaceToBatchController{true, true, true, true, 8});
+  // Test that we do not start space-to-batch on conv->dot chains.
+  ASSERT_TRUE(converter.Run(module.get()).value());
+}
+
+TEST_F(SpaceToBatchConverterTest, PropagateOnTrivialReduce) {
+  std::string hlo_string = R"(
+  HloModule module
+
+  %region_1.37 (Arg_0.38: f32[], Arg_1.39: f32[]) -> f32[] {
+    %Arg_0.38 = f32[] parameter(0)
+    %Arg_1.39 = f32[] parameter(1)
+    ROOT %add.40 = f32[] add(f32[] %Arg_0.38, f32[] %Arg_1.39)
+  }
+
+  ENTRY computation {
+    %p0 = bf16[7,320,800,3]{3,2,1,0} parameter(0)
+    %p1 = bf16[3,3,3,32]{3,2,1,0} parameter(1)
+    %c = f32[7,160,400,32]{3,2,1,0} convolution( %p0,  %p1),
+    window={size=3x3 stride=2x2 pad=0_1x0_1}, dim_labels=b01f_01io->b01f
+    %constant.5 = f32[] constant(0)
+    ROOT %reduce.41 = f32[7,160,400]{2,1,0} reduce(%c, %constant.5), dimensions={3}, to_apply=%region_1.37
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  auto computation = module->entry_computation();
+  SpaceToBatchConverter converter(
+      SpaceToBatchController{true, true, true, true, /*number_of_splits=*/8});
+  ASSERT_TRUE(converter.Run(module.get()).value());
+
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_THAT(root, op::Transpose());
+  EXPECT_THAT(root->operand(0)->operand(0)->operand(0)->operand(0),
+              op::Reduce());
+  auto new_reduce = root->operand(0)->operand(0)->operand(0)->operand(0);
+  // Make sure we propagated on the reduce with the larger batch size.
+  EXPECT_EQ(new_reduce->shape().dimensions(1),
+            // batch*number_of_splits
+            7 * 8);
+}
+
+TEST_F(SpaceToBatchConverterTest, DoNotPropagateOnTupleReduce) {
+  std::string hlo_string = R"(
+  HloModule module
+
+%minmax_func.2717 {
+  %lhs_value.2718 = f32[] parameter(0)
+  %rhs_value.2720 = f32[] parameter(2)
+  %compare.2722 = pred[] compare(f32[] %lhs_value.2718, f32[] %rhs_value.2720), direction=GE
+  %select.2723 = f32[] select(pred[] %compare.2722, f32[] %lhs_value.2718, f32[] %rhs_value.2720)
+  %compare.2725 = pred[] compare(f32[] %lhs_value.2718, f32[] %rhs_value.2720), direction=EQ
+  %lhs_index.2719 = f32[] parameter(1)
+  %rhs_index.2721 = f32[] parameter(3)
+  %minimum.2726 = f32[] minimum(f32[] %lhs_index.2719, f32[] %rhs_index.2721)
+  %select.2724 = f32[] select(pred[] %compare.2722, f32[] %lhs_index.2719, f32[] %rhs_index.2721)
+  %select.2727 = f32[] select(pred[] %compare.2725, f32[] %minimum.2726, f32[] %select.2724)
+  ROOT %tuple.4 = (f32[], f32[]) tuple(f32[] %select.2723, f32[] %select.2727)
+ }
+ 
+  ENTRY computation {
+    %p0 = bf16[7,320,800,3]{3,2,1,0} parameter(0)
+    %p1 = bf16[3,3,3,32]{3,2,1,0} parameter(1)
+    %c = f32[7,160,400,32]{3,2,1,0} convolution( %p0,  %p1),
+    window={size=3x3 stride=2x2 pad=0_1x0_1}, dim_labels=b01f_01io->b01f
+    %constant.5 = f32[] constant(0)
+    %constant.6 = f32[] constant(1)
+    ROOT %reduce.36 = (f32[7,160,400]{2,1,0}, f32[7,160,400]{2,1,0}) reduce(%c, %c,
+    %constant.5, %constant.6), dimensions={3}, to_apply=%minmax_func.2717
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  auto computation = module->entry_computation();
+  SpaceToBatchConverter converter(
+      SpaceToBatchController{true, true, true, true, /*number_of_splits=*/8});
+  ASSERT_TRUE(converter.Run(module.get()).value());
+
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_THAT(root, op::Reduce());
 }
 
 }  // namespace

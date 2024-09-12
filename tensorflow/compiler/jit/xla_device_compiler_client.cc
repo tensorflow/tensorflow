@@ -35,7 +35,7 @@ std::vector<const xla::Shape*> GetShapePointers(
 }
 }  // namespace
 
-StatusOr<std::unique_ptr<xla::LocalExecutable>>
+absl::StatusOr<std::unique_ptr<xla::LocalExecutable>>
 XlaDeviceCompilerClient::BuildExecutable(
     const XlaCompiler::Options& options,
     const XlaCompiler::CompilationResult& result) {
@@ -52,7 +52,7 @@ XlaDeviceCompilerClient::BuildExecutable(
   return std::move(executables[0]);
 }
 
-StatusOr<std::string> XlaDeviceCompilerClient::SerializeExecutable(
+absl::StatusOr<std::string> XlaDeviceCompilerClient::SerializeExecutable(
     const xla::LocalExecutable& executable) {
   if (executable.executable() == nullptr) {
     return errors::FailedPrecondition(
@@ -71,7 +71,7 @@ StatusOr<std::string> XlaDeviceCompilerClient::SerializeExecutable(
   return exported.status();
 }
 
-StatusOr<std::string> XlaDeviceCompilerClient::BuildSerializedExecutable(
+absl::StatusOr<std::string> XlaDeviceCompilerClient::BuildSerializedExecutable(
     const XlaCompiler::Options& options,
     const XlaCompiler::CompilationResult& result) {
   VLOG(2) << "Compiling to xla::AotCompilationResult and serializing it";
@@ -88,7 +88,7 @@ StatusOr<std::string> XlaDeviceCompilerClient::BuildSerializedExecutable(
   return aot_results[0]->SerializeAsString();
 }
 
-StatusOr<std::unique_ptr<xla::LocalExecutable>>
+absl::StatusOr<std::unique_ptr<xla::LocalExecutable>>
 XlaDeviceCompilerClient::LoadExecutable(
     const XlaCompiler::Options& options,
     const XlaCompiler::CompilationResult& result,

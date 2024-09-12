@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
+#include "tsl/platform/protobuf.h"
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -67,17 +68,17 @@ class TestClusterFLR : public DistributedFunctionLibraryRuntime {
       *handle = next_handle_;
       next_handle_++;
     }
-    done(OkStatus());
+    done(absl::OkStatus());
   }
 
   void Run(const FunctionLibraryRuntime::Options& opts,
            FunctionLibraryRuntime::LocalHandle handle,
-           gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
+           absl::Span<const Tensor> args, std::vector<Tensor>* rets,
            FunctionLibraryRuntime::DoneCallback done) override {}
 
   void Run(const FunctionLibraryRuntime::Options& opts,
            FunctionLibraryRuntime::LocalHandle handle,
-           gtl::ArraySlice<FunctionArg> args, std::vector<FunctionRet>* rets,
+           absl::Span<const FunctionArg> args, std::vector<FunctionRet>* rets,
            FunctionLibraryRuntime::DoneCallback done) override {}
 
   void CleanUp(uint64 step_id, FunctionLibraryRuntime::LocalHandle handle,
@@ -158,7 +159,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
             return tsl::core::RefCountPtr<IntraProcessRendezvous>(
                 new IntraProcessRendezvous(device_mgr));
           });
-          return OkStatus();
+          return absl::OkStatus();
         }}));
   }
 
@@ -261,7 +262,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
     EXPECT_TRUE(errors::IsNotFound(status)) << "Actual status: " << status;
     EXPECT_TRUE(absl::StrContains(status.message(), "not found."));
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Run(const string& name, FunctionLibraryRuntime::Options opts,
@@ -308,7 +309,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
     for (size_t i = 0; i < rets.size(); ++i) {
       *rets[i] = out[i];
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   std::unique_ptr<DynamicDeviceMgr> device_mgr_;
@@ -935,7 +936,7 @@ class TestFunctionPackedArgs : public FunctionArgsInterface {
   Status GetLocalArg(const FunctionArgIndex& index,
                      Tensor* val) const override {
     *val = *packed_args_.at(index.index).at(index.sub_index).tensor;
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   std::vector<Tensor> GetLocalTensors() const override { return {}; }
@@ -1135,7 +1136,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_StateHandle) {
       // Attrs
       {},
       // Nodes
-      {FunctionDefHelper::Const<int32>("shape", gtl::ArraySlice<int32>({1})),
+      {FunctionDefHelper::Const<int32>("shape", absl::Span<const int32>({1})),
        FunctionDefHelper::Const<int32>("minval", 0),
        {{"maxval"}, "ReadVariableOp", {"x"}, {{"dtype", T}}, {}},
        // A stateful node.
@@ -1243,7 +1244,8 @@ class SessionMetadataReaderOp : public OpKernel {
     OP_REQUIRES_OK(ctx,
                    ctx->allocate_output("y", TensorShape({}), &out_tensor));
     if (ctx->session_metadata() != nullptr) {
-      out_tensor->scalar<tstring>()() = ctx->session_metadata()->DebugString();
+      out_tensor->scalar<tstring>()() =
+          tsl::LegacyUnredactedDebugString(*ctx->session_metadata());
     } else {
       out_tensor->scalar<tstring>()() = "";
     }

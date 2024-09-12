@@ -24,21 +24,12 @@ instructions.
 
 %async-start = (f32[64], f32[32], s32[]) async-start(f32[64] %operand),
                                          calls=%async_op
-%async-done = f32[32] async-done((f32[64], f32[32], s32[]) %async-start),
-                                         calls=%async_op
+%async-done = f32[32] async-done((f32[64], f32[32], s32[]) %async-start)
 ```
 
 In the representation above, only `async-start` has a called computation since
 it is trivial to find what the `async-done` does by following its operand to
 find the corresponding `async-start` to find the called computation.
-
-Today both `async-start` and `async-done` have a called computation attribute,
-but long term we plan to keep it only for `async-start`, since it is trivial
-to find what the `async-done` does by following its operand to find the
-corresponding `async-start` to find the called computation.
-
-> [!NOTE]
-> Tracked as b/302594825 internally.
 
 Also note
 that the first element in the output tuple of `async-start` aliases with the
@@ -102,10 +93,8 @@ to the following and the two can be parsed to the same representation:
                         (f32[64], f32[32], s32[]) %op-start),
                         op_specific_attr=”foo”
 %op-update1 = (f32[64], f32[32], s32[]) op-update(
-                        (f32[64], f32[32], s32[]) %op-update0),
-                        op_specific_attr=”foo”
-%op-done = f32[32] op-done((f32[64], f32[32], s32[]) %op-update1),
-                          op_specific_attr=”foo”
+                        (f32[64], f32[32], s32[]) %op-update0)
+%op-done = f32[32] op-done((f32[64], f32[32], s32[]) %op-update1)
 
 ```
 

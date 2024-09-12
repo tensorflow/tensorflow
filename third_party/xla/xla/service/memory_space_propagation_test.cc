@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "xla/service/hlo_parser.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -29,7 +29,9 @@ class MemorySpacePropagationTest : public HloTestBase {
         verifier_(/*layout_sensitive=*/false, /*allow_mixed_precision*/ false) {
   }
 
-  Status Verify(HloModule* module) { return verifier_.Run(module).status(); }
+  absl::Status Verify(HloModule* module) {
+    return verifier_.Run(module).status();
+  }
 
  private:
   HloVerifier verifier_;

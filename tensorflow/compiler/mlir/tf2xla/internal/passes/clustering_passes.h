@@ -46,21 +46,33 @@ CreateExtractOutsideCompilationPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateXlaClusterFormationPass();
 
-// Create a pass that rewrites entry functions with `_xla_compile_device` into a
-// `tf.StatefulPartitionedCall` to the original function.
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateXlaOutlineEntryFunctionsPass();
-
 // Creates a pass that marks unsupported ops in device cluster for outside
 // compilation.
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateMarkOpsForOutsideCompilationPass();
+
+// Creates a pass that hoists reads out of a replicate that are on a variable
+// whose value is broacast to all replicas.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateHoistBroadcastReadPass();
+
+// Creates a pass that moves broadcasts from TF host ops to XLA code, encoded as
+// XlaAllReduces. This enables use of the device network for broadcasts, which
+// is faster.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateXlaBroadcastPass();
+
+// Creates a pass that identifies XLASharding ops in launch op for TPU
+// computation.
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateTPUShardingIdentificationPass();
 
 #define GEN_PASS_REGISTRATION
 #define GEN_PASS_DECL_MARKOPSFOROUTSIDECOMPILATIONPASS
 #define GEN_PASS_DECL_TPUCLUSTERFORMATIONPASS
 #define GEN_PASS_DECL_TPUEXTRACTHEADTAILOUTSIDECOMPILATIONPASS
 #define GEN_PASS_DECL_TPUEXTRACTOUTSIDECOMPILATIONPASS
+#define GEN_PASS_DECL_TPUSHARDINGIDENTIFICATIONPASS
 #define GEN_PASS_DECL_VERIFYCLUSTERINGPASS
 #define GEN_PASS_DECL_XLACLUSTERFORMATIONPASS
 #include "tensorflow/compiler/mlir/tf2xla/internal/passes/clustering_passes.h.inc"

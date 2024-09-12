@@ -45,6 +45,9 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/framework:tensor_shape",
+        "//tensorflow/core/framework:types_proto_cc",
         "@tf_runtime//:hostcontext",
     ] + select({
         "//tensorflow:android": [
@@ -190,9 +193,9 @@ cc_library(
 #         ":coreruntime_driver",
 #         "@com_google_googletest//:gtest",
 #         "//tensorflow/core/platform:test_benchmark",
+#         "//tensorflow/core/platform/default/build_config:test_main",
 #         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_op_handler",
 #         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_tensor",
-#         "@local_tsl//tsl/platform/default/build_config:test_main",
 #         "@tf_runtime//:core_runtime_alwayslink",
 #         "@tf_runtime//:hostcontext",
 #         "@tf_runtime//:tensor",
@@ -215,9 +218,9 @@ cc_library(
 #     deps = [
 #         "@com_google_googletest//:gtest",
 #         "//tensorflow/core/framework:tensor_testutil",
+#         "//tensorflow/core/platform/default/build_config:test_main",
 #         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_compat_request_state",
 #         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_op_handler",
-#         "@local_tsl//tsl/platform/default/build_config:test_main",
 #         "@tf_runtime//:core_runtime_alwayslink",
 #     ],
 # )
@@ -231,6 +234,7 @@ cc_library(
     ],
     visibility = ["//tensorflow/core/runtime_fallback:__subpackages__"],
     deps = [
+        "@com_google_absl//absl/log",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs

@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,16 +20,16 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "grpcpp/grpcpp.h"
 #include "grpcpp/security/server_credentials.h"
 #include "grpcpp/server_builder.h"
-#include "xla/statusor.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service.h"
+#include "xla/tsl/distributed_runtime/rpc/async_service_interface.h"
 #include "xla/types.h"
-#include "tsl/distributed_runtime/coordination/coordination_service.h"
-#include "tsl/distributed_runtime/rpc/async_service_interface.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/threadpool.h"
 
@@ -84,7 +84,7 @@ class CoordinationServiceImpl {
 
 class DistributedRuntimeService {
  public:
-  static xla::StatusOr<std::unique_ptr<DistributedRuntimeService>> Get(
+  static absl::StatusOr<std::unique_ptr<DistributedRuntimeService>> Get(
       const std::string& address,
       std::shared_ptr<::grpc::ServerCredentials> credentials,
       const CoordinationServiceImpl::Options& options);

@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,9 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 
+#include <gtest/gtest.h>
+#include "xla/protobuf_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_traversal.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/tests/hlo_test_base.h"
@@ -28,7 +31,7 @@ namespace {
 class HloFusionAnalysisTest : public HloTestBase {};
 
 TEST_F(HloFusionAnalysisTest, DoesNotPeekOutsideBoundary) {
-  auto module = ParseAndReturnVerifiedModule(R"(
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     add {
@@ -42,26 +45,23 @@ TEST_F(HloFusionAnalysisTest, DoesNotPeekOutsideBoundary) {
       %p1 = f32[] parameter(1)
       %reduce = f32[] reduce(%p0, %p1), dimensions={0}, to_apply=add
       ROOT %bitcast = s32[] bitcast(%reduce)
-    })")
-                    .value();
+    })"));
 
   auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis = AnalyzeFusion(*root, device_info);
-  ASSERT_NE(analysis, std::nullopt);
-  EXPECT_EQ(analysis->GetEmitterFusionKind(),
+  auto analysis = HloFusionAnalysis::Create(*root, device_info);
+  EXPECT_EQ(analysis.GetEmitterFusionKind(),
             HloFusionAnalysis::EmitterFusionKind::kLoop);
 
   auto analysis_fused =
-      AnalyzeProducerConsumerFusion(*root->operand(0), *root, device_info);
-  ASSERT_NE(analysis_fused, std::nullopt);
-  EXPECT_EQ(analysis_fused->GetEmitterFusionKind(),
+      HloFusionAnalysis::Create(*root->operand(0), *root, device_info);
+  EXPECT_EQ(analysis_fused.GetEmitterFusionKind(),
             HloFusionAnalysis::EmitterFusionKind::kReduction);
 }
 
 TEST_F(HloFusionAnalysisTest, ReductionWithMultipleUsers) {
-  auto module = ParseAndReturnVerifiedModule(R"(
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     add {
@@ -83,23 +83,21 @@ TEST_F(HloFusionAnalysisTest, ReductionWithMultipleUsers) {
       %p0 = f32[1024] parameter(0)
       %p1 = f32[] parameter(1)
       ROOT %fusion = (f32[], f32[]) fusion(%p0, %p1), kind=kLoop, calls=fused_computation
-    })")
-                    .value();
+    })"));
 
   auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto analysis, HloFusionAnalysis::Create(
-                         FusionBackendConfig::default_instance(),
-                         HloFusionAdaptor::ForInstruction(
-                             module->entry_computation()->root_instruction()),
-                         &device_info));
+  auto analysis = HloFusionAnalysis::Create(
+      FusionBackendConfig::default_instance(),
+      HloFusionAdaptor::ForInstruction(
+          module->entry_computation()->root_instruction()),
+      &device_info);
   EXPECT_EQ(analysis.GetEmitterFusionKind(),
             HloFusionAnalysis::EmitterFusionKind::kReduction);
 }
 
 TEST_F(HloFusionAnalysisTest, ReductionEpilogueFusion) {
-  auto module = ParseAndReturnVerifiedModule(R"(
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     add {
@@ -119,22 +117,20 @@ TEST_F(HloFusionAnalysisTest, ReductionEpilogueFusion) {
       %p0 = f32[1024] parameter(0)
       %p1 = f32[] parameter(1)
       ROOT %fusion = f32[] fusion(%p0, %p1), kind=kInput, calls=fused_computation
-    })")
-                    .value();
+    })"));
 
   auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
 
   auto* root = module->entry_computation()->root_instruction();
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto analysis, HloFusionAnalysis::Create(
-                         FusionBackendConfig::default_instance(),
-                         HloFusionAdaptor::ForInstruction(root), &device_info));
+  auto analysis = HloFusionAnalysis::Create(
+      FusionBackendConfig::default_instance(),
+      HloFusionAdaptor::ForInstruction(root), &device_info);
   EXPECT_EQ(analysis.GetEmitterFusionKind(),
             HloFusionAnalysis::EmitterFusionKind::kReduction);
 }
 
 TEST_F(HloFusionAnalysisTest, ReductionEpilogueFusionPartiallyFused) {
-  auto module = ParseAndReturnVerifiedModule(R"(
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     add {
@@ -154,22 +150,20 @@ TEST_F(HloFusionAnalysisTest, ReductionEpilogueFusionPartiallyFused) {
       %p1 = f32[] parameter(1)
       %fusion = f32[] fusion(%p0, %p1), kind=kInput, calls=fusion
       ROOT %negate = f32[] negate(%fusion)
-    })")
-                    .value();
+    })"));
 
   auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
 
   auto* root = module->entry_computation()->root_instruction();
 
   auto analysis =
-      AnalyzeProducerConsumerFusion(*root->operand(0), *root, device_info);
-  ASSERT_NE(analysis, std::nullopt);
-  EXPECT_EQ(analysis->GetEmitterFusionKind(),
+      HloFusionAnalysis::Create(*root->operand(0), *root, device_info);
+  EXPECT_EQ(analysis.GetEmitterFusionKind(),
             HloFusionAnalysis::EmitterFusionKind::kReduction);
 }
 
 TEST_F(HloFusionAnalysisTest, ReductionEpilogueFusionPartiallyFusedInConsumer) {
-  auto module = ParseAndReturnVerifiedModule(R"(
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     add {
@@ -188,21 +182,19 @@ TEST_F(HloFusionAnalysisTest, ReductionEpilogueFusionPartiallyFusedInConsumer) {
       %p1 = f32[] parameter(1)
       %reduce = f32[] reduce(%p0, %p1), dimensions={0}, to_apply=add
       ROOT %fusion = f32[] fusion(%reduce), kind=kInput, calls=fusion
-    })")
-                    .value();
+    })"));
 
   auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
 
   auto* root = module->entry_computation()->root_instruction();
   auto analysis =
-      AnalyzeProducerConsumerFusion(*root->operand(0), *root, device_info);
-  ASSERT_NE(analysis, std::nullopt);
-  EXPECT_EQ(analysis->GetEmitterFusionKind(),
+      HloFusionAnalysis::Create(*root->operand(0), *root, device_info);
+  EXPECT_EQ(analysis.GetEmitterFusionKind(),
             HloFusionAnalysis::EmitterFusionKind::kReduction);
 }
 
 TEST_F(HloFusionAnalysisTest, ReductionEpilogueFusionPartiallyFusedInBoth) {
-  auto module = ParseAndReturnVerifiedModule(R"(
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     add {
@@ -227,24 +219,88 @@ TEST_F(HloFusionAnalysisTest, ReductionEpilogueFusionPartiallyFusedInBoth) {
       %p1 = f32[] parameter(1)
       %fusion.1 = f32[] fusion(%p0, %p1), kind=kInput, calls=fusion.1
       ROOT %fusion.2 = f32[] fusion(%fusion.1), kind=kInput, calls=fusion.2
-    })")
-                    .value();
+    })"));
 
   auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
 
   auto* root = module->entry_computation()->root_instruction();
   auto analysis =
-      AnalyzeProducerConsumerFusion(*root->operand(0), *root, device_info);
-  ASSERT_NE(analysis, std::nullopt);
-  EXPECT_EQ(analysis->GetEmitterFusionKind(),
+      HloFusionAnalysis::Create(*root->operand(0), *root, device_info);
+  EXPECT_EQ(analysis.GetEmitterFusionKind(),
             HloFusionAnalysis::EmitterFusionKind::kReduction);
+}
+
+TEST_F(HloFusionAnalysisTest, ReduceMultiOutputFusionWithTransposeBitcast) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    }
+
+    fusion {
+      %p0 = f32[1024, 512]{1,0} parameter(0)
+      %p1 = f32[] parameter(1)
+      %reduce = f32[1024]{0} reduce(%p0, %p1), dimensions={1}, to_apply=add
+      %bitcast = f32[512, 1024]{0,1} bitcast(%p0)
+      ROOT res = (f32[1024]{0}, f32[512, 1024]{0,1}) tuple(%reduce, %bitcast)
+    }
+
+    ENTRY main {
+      %p0 = f32[1024, 512]{1,0} parameter(0)
+      %p1 = f32[] parameter(1)
+      ROOT %fusion = (f32[1024]{0}, f32[512, 1024]{0,1}) fusion(%p0, %p1), kind=kInput, calls=fusion
+    })"));
+
+  auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+
+  auto* root = module->entry_computation()->root_instruction();
+  auto analysis = HloFusionAnalysis::Create(*root, device_info);
+  EXPECT_EQ(analysis.GetEmitterFusionKind(),
+            HloFusionAnalysis::EmitterFusionKind::kReduction);
+}
+
+TEST_F(HloFusionAnalysisTest, InvalidReduceMultiOutputFusion) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    }
+
+    fusion {
+      %p0 = f32[1024, 1024]{1,0} parameter(0)
+      %p1 = f32[] parameter(1)
+      %reduce = f32[1024]{0} reduce(%p0, %p1), dimensions={0}, to_apply=add
+      %reduce2 = f32[1024]{0} reduce(%p0, %p1), dimensions={1}, to_apply=add
+      ROOT res = (f32[1024]{0}, f32[1024]{0}) tuple(reduce, reduce2)
+    }
+
+    ENTRY main {
+      %p0 = f32[1024, 1024]{1,0} parameter(0)
+      %p1 = f32[] parameter(1)
+      ROOT %fusion = (f32[1024]{0}, f32[1024]{0}) fusion(%p0, %p1), kind=kInput, calls=fusion
+    })"));
+
+  auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+
+  auto* root = module->entry_computation()->root_instruction();
+  auto analysis = HloFusionAnalysis::Create(*root, device_info);
+  // We expect to fallback to the loop emitter, because the two reductions are
+  // not compatible as they reduce over different dimensions.
+  EXPECT_EQ(analysis.GetEmitterFusionKind(),
+            HloFusionAnalysis::EmitterFusionKind::kLoop);
 }
 
 TEST_F(HloFusionAnalysisTest, InvalidDevice) {
   // Verifies that an analysis can be created even with an invalid/empty device
   // info, and that the emitter type is determined correctly.
   // Don't rely on this behavior.
-  auto module = ParseAndReturnVerifiedModule(R"(
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
     HloModule test_module
 
     add {
@@ -258,74 +314,129 @@ TEST_F(HloFusionAnalysisTest, InvalidDevice) {
       %p1 = f32[] parameter(1)
       %reduce = f32[128] reduce(%p0, %p1), dimensions={0}, to_apply=add
       ROOT %bitcast = s32[128] bitcast(%reduce)
-    })")
-                    .value();
+    })"));
 
   stream_executor::GpuDeviceInfoProto device_info_proto;
   stream_executor::DeviceDescription device_info(device_info_proto);
 
   auto* root = module->entry_computation()->root_instruction();
   auto analysis_fused =
-      AnalyzeProducerConsumerFusion(*root->operand(0), *root, device_info);
-  ASSERT_NE(analysis_fused, std::nullopt);
-  EXPECT_EQ(analysis_fused->GetEmitterFusionKind(),
+      HloFusionAnalysis::Create(*root->operand(0), *root, device_info);
+  EXPECT_EQ(analysis_fused.GetEmitterFusionKind(),
             HloFusionAnalysis::EmitterFusionKind::kReduction);
 }
 
-TEST_F(HloFusionAnalysisTest, TritonSoftmaxFusion) {
-#ifndef GOOGLE_CUDA
-  GTEST_SKIP() << "Triton fusion only enable for CUDA devices.";
-#endif
+TEST_F(HloFusionAnalysisTest, ConcatFusion) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
 
-  auto module = ParseAndReturnVerifiedModule(R"(
-    HloModule t
-
-    add {
-      Arg_0 = f32[] parameter(0)
-      Arg_1 = f32[] parameter(1)
-      ROOT add = f32[] add(Arg_0, Arg_1)
-    }
-
-    auxiliary_computation {
-      parameter_0 = f32[125]{0} parameter(0)
-      ROOT broadcast = f32[125,127]{1,0} broadcast(parameter_0), dimensions={0}
-    }
-
-    triton_softmax_computation {
-      parameter_0 = f32[125,127]{1,0} parameter(0)
-      multiply_0 = f32[125,127]{1,0} multiply(parameter_0, parameter_0)
-      constant_0 = f32[] constant(0)
-      reduce_0 = f32[125]{0} reduce(multiply_0, constant_0), dimensions={1}, to_apply=add
-      broadcast_4 = f32[125,127]{1,0} broadcast(reduce_0), dimensions={0}
-      ROOT multiply = f32[125,127]{1,0} multiply(multiply_0, broadcast_4)
+    fused_computation {
+      %p0 = f32[128] parameter(0)
+      %p1 = f32[128] parameter(1)
+      %add = f32[128] add(p0, p0)
+      %concat = f32[256] concatenate(%add, %p1), dimensions={0}
+      ROOT %negate = f32[256] negate(%concat)
     }
 
     ENTRY main {
-      param_0 = f32[125]{0} parameter(0)
-      auxiliary_fusion = f32[125,127]{1,0} fusion(param_0), kind=kLoop, calls=auxiliary_computation
-      ROOT triton_softmax = f32[125,127]{1,0} fusion(auxiliary_fusion), kind=kCustom, calls=triton_softmax_computation, backend_config={"kind":"__triton_softmax"}
-      })")
-                    .value();
+      %p0 = f32[128] parameter(0)
+      %p1 = f32[128] parameter(1)
+      ROOT %fusion = f32[256] fusion(%p0, %p1), kind=kInput, calls=fused_computation
+    })"));
 
-  stream_executor::GpuDeviceInfoProto device_info_proto;
-  stream_executor::DeviceDescription device_info(device_info_proto);
+  auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
 
   auto* root = module->entry_computation()->root_instruction();
-  auto analysis_fused =
-      AnalyzeProducerConsumerFusion(*root->operand(0), *root, device_info);
-  ASSERT_NE(analysis_fused, std::nullopt);
-  EXPECT_EQ(analysis_fused->GetEmitterFusionKind(),
-            HloFusionAnalysis::EmitterFusionKind::kTriton);
+  auto analysis = HloFusionAnalysis::Create(
+      FusionBackendConfig::default_instance(),
+      HloFusionAdaptor::ForInstruction(root), &device_info);
+  EXPECT_EQ(analysis.GetEmitterFusionKind(),
+            HloFusionAnalysis::EmitterFusionKind::kConcatenate);
+}
 
-  TF_ASSERT_OK_AND_ASSIGN(auto launch_dimensions,
-                          analysis_fused->GetLaunchDimensions());
-  EXPECT_EQ(launch_dimensions.num_blocks(), 125);
-  EXPECT_EQ(launch_dimensions.num_threads_per_block(), 32);
+TEST_F(HloFusionAnalysisTest, ExtractValidGpuBackendConfig) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule module
 
-  auto analysis_consumer = AnalyzeFusion(*root, device_info);
-  ASSERT_NE(analysis_consumer, std::nullopt);
-  EXPECT_EQ(analysis_consumer->GetEmitterFusionKind(),
-            HloFusionAnalysis::EmitterFusionKind::kTriton);
+    fused_computation.1 {
+      %x = s32[64] parameter(0)
+      %y = s32[64] parameter(1)
+      ROOT %root = s32[64] add(%x, %y)
+    }
+
+    fused_computation.2 {
+      %x = s32[64] parameter(0)
+      %y = s32[64] parameter(1)
+      ROOT %root = s32[64] add(%x, %y)
+    }
+
+    ENTRY entry {
+      %x = s32[64] parameter(0)
+      %y = s32[64] parameter(1)
+      %fusion.1 = s32[64] fusion(%x, %y), kind=kLoop, calls=fused_computation.1, backend_config={"fusion_backend_config": {kind: "__triton"}}
+      ROOT %fusion.2 = s32[64] fusion(%fusion.1, %y), kind=kLoop, calls=fused_computation.2
+    })"));
+
+  auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  auto* consumer = module->entry_computation()->root_instruction();
+  auto* producer = consumer->operand(0);
+
+  auto producer_analysis = HloFusionAnalysis::Create(*producer, device_info);
+  EXPECT_EQ(producer_analysis.fusion_backend_config().kind(),
+            kTritonFusionKind);
+
+  auto producer_consumer_analysis =
+      HloFusionAnalysis::Create(*producer, *consumer, device_info);
+  EXPECT_EQ(producer_consumer_analysis.fusion_backend_config().kind(),
+            kTritonFusionKind);
+}
+
+TEST_F(HloFusionAnalysisTest,
+       InvalidGpuBackendConfig_SingleInstruction_Ignored) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule module
+
+    ENTRY entry {
+      %x = s32[64,64,64] parameter(0)
+      %y = s32[64,64,64] parameter(1)
+      ROOT %root = s32[64,128,64] concatenate(x, y), dimensions={1}, backend_config={"outer_dimension_partitions": ["1"]}
+    })"));
+
+  auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  auto* root = module->entry_computation()->root_instruction();
+  auto analysis = HloFusionAnalysis::Create(*root, device_info);
+
+  EXPECT_TRUE(
+      protobuf_util::ProtobufEquals(analysis.fusion_backend_config(),
+                                    FusionBackendConfig::default_instance()));
+}
+
+TEST_F(HloFusionAnalysisTest,
+       InvalidGpuBackendConfig_ProducerConsumer_Ignored) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule module
+
+    fused_computation {
+      %x = s32[64] parameter(0)
+      %y = s32[64] parameter(1)
+      ROOT %root = s32[64] add(%x, %y)
+    }
+
+    ENTRY entry {
+      %x = s32[64] parameter(0)
+      %y = s32[64] parameter(1)
+      %fusion = s32[64] fusion(%x, %y), kind=kLoop, calls=fused_computation, backend_config={"invalid_field": "some_value"}
+      ROOT %root = s32[128] concatenate(fusion, y), dimensions={0}, backend_config={"invalid_field": "some_value"}
+    })"));
+
+  auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  auto* consumer = module->entry_computation()->root_instruction();
+  auto* producer = consumer->operand(0);
+  auto analysis = HloFusionAnalysis::Create(*producer, *consumer, device_info);
+
+  EXPECT_TRUE(
+      protobuf_util::ProtobufEquals(analysis.fusion_backend_config(),
+                                    FusionBackendConfig::default_instance()));
 }
 
 }  // namespace

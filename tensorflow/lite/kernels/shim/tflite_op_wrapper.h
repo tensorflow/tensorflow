@@ -70,8 +70,8 @@ struct AttrType {
 //              Attr<AttrName<a_type>, bool, float>,
 //              Attr<AttrName<b_type>, int32_t, int64_t>> x;
 // Result:
-//   std::variant<TmplOp<Rt, bool, int32_t>, TmplOp<Rt, bool, int64_t>,
-//                TmplOp<Rt, float, int32_t>, TmplOp<Rt, float, int64_t>> x;
+//   absl::variant<TmplOp<Rt, bool, int32_t>, TmplOp<Rt, bool, int64_t>,
+//                 TmplOp<Rt, float, int32_t>, TmplOp<Rt, float, int64_t>> x;
 
 // Prepends a type onto a tuple.
 template <typename T, typename... Us>

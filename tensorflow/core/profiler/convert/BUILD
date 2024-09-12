@@ -242,7 +242,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/profiler/utils:format_utils",
         "@local_tsl//tsl/profiler/utils:tf_op_utils",
-        "@local_tsl//tsl/util:stats_calculator_portable",
+        "@local_xla//xla/tsl/util:stats_calculator_portable",
     ],
 )
 
@@ -324,6 +324,7 @@ cc_library(
         "//tensorflow/core/profiler/utils:device_caps_utils",
         "//tensorflow/core/profiler/utils:event_span",
         "//tensorflow/core/profiler/utils:hardware_type_utils",
+        "//tensorflow/core/profiler/utils:hlo_proto_map",
         "//tensorflow/core/profiler/utils:kernel_stats_utils",
         "//tensorflow/core/profiler/utils:math_utils",
         "//tensorflow/core/profiler/utils:xplane_schema",
@@ -636,6 +637,7 @@ cc_library(
         ":xplane_to_tool_names",
         ":xplane_to_trace_container",
         "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/convert/trace_viewer:trace_events",
         "//tensorflow/core/profiler/convert/trace_viewer:trace_events_to_json",
         "//tensorflow/core/profiler/protobuf:dcn_slack_analysis_proto_cc",
         "//tensorflow/core/profiler/protobuf:hardware_types_proto_cc",
@@ -651,8 +653,8 @@ cc_library(
         "//tensorflow/core/profiler/utils:xplane_utils",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/profiler/convert:xplane_to_trace_events",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@local_xla//xla/tsl/profiler/convert:xplane_to_trace_events",
     ],
 )
 
@@ -725,9 +727,7 @@ cc_library(
     srcs = ["hlo_to_tools_data.cc"],
     hdrs = ["hlo_to_tools_data.h"],
     copts = tf_profiler_copts(),
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         ":hlo_proto_to_graph_view",
         ":hlo_proto_to_memory_visualization_utils",
@@ -736,6 +736,7 @@ cc_library(
         ":xplane_to_hlo",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/profiler/protobuf:memory_viewer_preprocess_proto_cc",
         "@com_google_absl//absl/strings",
         "@local_xla//xla/service:hlo_proto_cc",
     ],
@@ -753,6 +754,7 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:memory_viewer_preprocess_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -814,8 +816,9 @@ cc_library(
         "//tensorflow/core/profiler/utils:op_metrics_db_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/profiler/convert:xla_op_utils",
+        "@local_xla//xla/tsl/profiler/convert:xla_op_utils",
     ],
 )
 
@@ -825,13 +828,20 @@ cc_library(
     hdrs = ["hlo_proto_to_graph_view.h"],
     deps = [
         ":tool_options",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        # copybara:uncomment "//third_party/json",
+        # copybara:uncomment(b/360874576) "//tensorflow/compiler/mlir/lite/experimental/google/tooling/google:direct_hlo_to_json_graph_convert",
+        "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/service:hlo_graph_dumper",
+        "@local_xla//xla/service:hlo_proto_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/profiler/utils:hlo_module_utils",
         "//tensorflow/core/profiler/utils:hlo_proto_to_module",
-        "@local_xla//xla/hlo/ir:hlo",
-        "@local_xla//xla/service:hlo_graph_dumper",
-        "@local_xla//xla/service:hlo_proto_cc",
     ],
 )
 

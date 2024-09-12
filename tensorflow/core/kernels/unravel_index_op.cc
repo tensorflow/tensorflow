@@ -19,11 +19,11 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #define EIGEN_USE_THREADS
 
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 
 namespace tensorflow {
 
@@ -50,7 +50,9 @@ class UnravelIndexOp : public OpKernel {
                 errors::InvalidArgument(
                     "The indices can only be scalar or vector, got \"",
                     indices_tensor.shape().DebugString(), "\""));
-
+    OP_REQUIRES(ctx, indices_tensor.NumElements() > 0,
+                errors::InvalidArgument("received empty tensor indices: ",
+                                        indices_tensor.DebugString()));
     const Tensor& dims_tensor = ctx->input(1);
     OP_REQUIRES(
         ctx, TensorShapeUtils::IsVector(dims_tensor.shape()),

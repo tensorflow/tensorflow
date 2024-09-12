@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,10 +22,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "absl/types/variant.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_execution_profile.h"
@@ -36,7 +38,6 @@ limitations under the License.
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
@@ -85,7 +86,7 @@ class ExecutionInput {
 
   ~ExecutionInput();
 
-  ExecutionInput& operator=(ExecutionInput&&) = default;
+  ExecutionInput& operator=(ExecutionInput&&) noexcept = default;
 
   const Shape& shape() const {
     return dynamic_shape_ != nullptr ? *dynamic_shape_ : buffers_.shape();
@@ -95,9 +96,9 @@ class ExecutionInput {
     return host_shape_ != nullptr ? *host_shape_ : shape();
   }
 
-  Status SetDynamicShape(Shape dynamic_shape);
+  absl::Status SetDynamicShape(Shape dynamic_shape);
 
-  xla::StatusOr<xla::ShapedBuffer> ToShapedBuffer(
+  absl::StatusOr<xla::ShapedBuffer> ToShapedBuffer(
       se::DeviceMemoryAllocator* allocator, int device_ordinal) const;
 
   void SetBuffer(const ShapeIndex& index, MaybeOwningDeviceMemory buffer) {
@@ -156,13 +157,16 @@ class ExecutionOutput {
         to_be_released_(std::move(to_be_released)) {}
   // TODO(b/170310047): remove this overload.
   ExecutionOutput(Shape on_host_shape, Shape on_device_shape,
-                  se::DeviceMemoryAllocator* allocator, int device_ordinal)
-      : result_(std::move(on_device_shape), allocator, device_ordinal) {}
+                  se::DeviceMemoryAllocator* allocator, int device_ordinal,
+                  int physical_device_ordinal = -1)
+      : result_(std::move(on_device_shape), allocator, device_ordinal,
+                physical_device_ordinal) {}
   ExecutionOutput(Shape on_device_shape, se::DeviceMemoryAllocator* allocator,
-                  int device_ordinal)
-      : result_(std::move(on_device_shape), allocator, device_ordinal) {}
-  ExecutionOutput(ExecutionOutput&&) = default;
-  ExecutionOutput& operator=(ExecutionOutput&&) = default;
+                  int device_ordinal, int physical_device_ordinal = -1)
+      : result_(std::move(on_device_shape), allocator, device_ordinal,
+                physical_device_ordinal) {}
+  ExecutionOutput(ExecutionOutput&&) noexcept = default;
+  ExecutionOutput& operator=(ExecutionOutput&&) noexcept = default;
 
   ~ExecutionOutput() {
     // If the ExecutionOutput has not been committed, and if there are aliased
@@ -260,7 +264,7 @@ class Executable {
   // enabled.
   //
   // Returns a shaped buffer containing the result of the computation.
-  StatusOr<ScopedShapedBuffer> ExecuteOnStream(
+  absl::StatusOr<ScopedShapedBuffer> ExecuteOnStream(
       const ServiceExecutableRunOptions* run_options,
       absl::Span<const ShapedBuffer* const> arguments,
       HloExecutionProfile* hlo_execution_profile);
@@ -283,19 +287,19 @@ class Executable {
   // If the hlo_execution_profile is provided as non-nullptr, profiling will be
   // enabled. Note that profiling is tricky to use correctly, as the profiling
   // objects (when they exist) must out-live the task.
-  virtual StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
+  virtual absl::StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
       absl::Span<const ShapedBuffer* const> arguments,
       HloExecutionProfile* hlo_execution_profile);
 
   // Same as ExecuteAsyncOnStream(), but blocks waiting for the computation to
   // complete.
-  StatusOr<ExecutionOutput> ExecuteOnStream(
+  absl::StatusOr<ExecutionOutput> ExecuteOnStream(
       const ServiceExecutableRunOptions* run_options,
       std::vector<ExecutionInput> arguments,
       HloExecutionProfile* hlo_execution_profile);
 
-  virtual StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
+  virtual absl::StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
       std::vector<ExecutionInput> arguments,
       HloExecutionProfile* hlo_execution_profile) = 0;
@@ -304,26 +308,26 @@ class Executable {
   // streams. arguments[i] contains the arguments to the execution on
   // run_options[i]->stream() and the returned value is at index i of the
   // returned vector.
-  virtual StatusOr<std::vector<ScopedShapedBuffer>> ExecuteOnStreams(
+  virtual absl::StatusOr<std::vector<ScopedShapedBuffer>> ExecuteOnStreams(
       absl::Span<const ServiceExecutableRunOptions> run_options,
       absl::Span<const absl::Span<const ShapedBuffer* const>> arguments);
 
   // Convenience wrapper for calling Executable::ExecuteOnStream. Sets up a
   // timer for the execution, sets up HLO profiling if enabled, and fills in the
   // given ExecutionProfile if non-null.
-  StatusOr<ScopedShapedBuffer> ExecuteOnStreamWrapper(
+  absl::StatusOr<ScopedShapedBuffer> ExecuteOnStreamWrapper(
       const ServiceExecutableRunOptions* run_options,
       absl::Span<const ShapedBuffer* const> arguments);
 
-  StatusOr<ExecutionOutput> ExecuteOnStreamWrapper(
+  absl::StatusOr<ExecutionOutput> ExecuteOnStreamWrapper(
       const ServiceExecutableRunOptions* run_options,
       std::vector<ExecutionInput> arguments);
 
-  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStreamWrapper(
+  absl::StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStreamWrapper(
       const ServiceExecutableRunOptions* run_options,
       absl::Span<const ShapedBuffer* const> arguments);
 
-  StatusOr<ExecutionOutput> ExecuteAsyncOnStreamWrapper(
+  absl::StatusOr<ExecutionOutput> ExecuteAsyncOnStreamWrapper(
       const ServiceExecutableRunOptions* run_options,
       std::vector<ExecutionInput> arguments);
 
@@ -405,6 +409,12 @@ class Executable {
   // the program has finished since XRT doesn't support async deallocation.
   void MarkToBeReleasedArguments(absl::Span<ExecutionInput> arguments,
                                  ExecutionOutput& result);
+
+  // Returns the allocations resulting from buffer assignment, or an empty span
+  // if unimplemented.
+  virtual absl::Span<const BufferAllocation> GetAllocations() const {
+    return {};
+  }
 
  protected:
   // HloModule this was compiled from. BufferAssignment keeps pointers to

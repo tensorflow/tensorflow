@@ -28,6 +28,8 @@ cc_library(
     deps = [
         ":tfrt_fallback_opdefs_inc_gen",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:SideEffectInterfaces",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -42,7 +44,6 @@ cc_library(
         # copybara:uncomment "//learning/brain/experimental/tfrt:__subpackages__",
         # copybara:uncomment "//learning/brain/tfrt/tpu/compiler/mlir:__subpackages__",
         "//tensorflow/compiler/mlir/tfrt:__subpackages__",
-        "//tensorflow/core/runtime_fallback:__subpackages__",
         "//tensorflow/core/tfrt/saved_model:friends",
     ],
     deps = [
@@ -50,8 +51,12 @@ cc_library(
         ":tfrt_fallback_common",
         ":tfrt_fallback_opdefs",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:BytecodeOpInterface",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InliningUtils",
+        "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
         "@tf_runtime//:basic_kernels_opdefs",
         "@tf_runtime//:compiler_tfrt_op_interfaces",
@@ -78,6 +83,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:SideEffectInterfaces",
         "@tf_runtime//:basic_kernels_opdefs",
         "@tf_runtime//:core_runtime_opdefs",
         "@tf_runtime//:tensor_opdefs",
@@ -92,6 +98,7 @@ cc_library(
     deps = [
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
         "@tf_runtime//:basic_kernels_opdefs",
     ],
 )
@@ -251,6 +258,7 @@ cc_library(
         ":tfrt_fallback_opdefs",
         ":tfrt_gpu_opdefs_inc_gen",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:BytecodeOpInterface",
         "@llvm-project//mlir:IR",
     ],
 )

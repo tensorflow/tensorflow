@@ -16,7 +16,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -26,18 +25,33 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/test_util.h"
+#include "xla/tsl/framework/test_util/mock_serving_device_selector.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/resource_loader.h"
+#include "tensorflow/core/tfrt/ifrt/checkpoint_loader.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_model_context.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_model_restore_context.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/platform/threadpool.h"
+#include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfrt_stub {
 namespace {
+
+tsl::thread::ThreadPool& GetThreadPool() {
+  constexpr int kMaxParallelism = 16;
+  static tsl::thread::ThreadPool* thread_pool =
+      new tsl::thread::ThreadPool(tsl::Env::Default(), tsl::ThreadOptions(),
+                                  "IfrtSharding", kMaxParallelism);
+  return *thread_pool;
+}
 
 TEST(SavedModelIfrt, Basic) {
   std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
@@ -50,19 +64,39 @@ TEST(SavedModelIfrt, Basic) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
 
+  auto work_queue = tfrt::CreateMultiThreadedWorkQueue(
+      /*num_threads=*/4, /*num_blocking_threads=*/4);
+
+  tsl::test_util::MockServingDeviceSelector selector;
+  ifrt_serving::IfrtServingCoreSelector core_selector(
+      &selector, client->addressable_device_count());
+
   // Use IFRT compiler
   runtime->AddCreateRuntimeResourceFn(
       [&](tensorflow::tfrt_stub::ModelRuntimeContext& model_context) {
-        tensorflow::ifrt_serving::IfrtModelContext ifrt_model_context(client);
-
         model_context.resource_context()
             .CreateResource<tensorflow::ifrt_serving::IfrtModelContext>(
-                "IfrtModelContext", std::move(ifrt_model_context));
+                "IfrtModelContext", client, &core_selector, &GetThreadPool(),
+                /*compilation_environment_proto=*/nullptr);
+
+        tensorflow::ifrt_serving::IfrtModelContext* ifrt_model_context =
+            (*model_context.resource_context()
+                  .GetResource<tensorflow::ifrt_serving::IfrtModelContext>(
+                      "IfrtModelContext"));
+        ifrt_model_context->set_checkpoint_loader_queue(work_queue.get());
+        model_context.resource_context()
+            .CreateResource<tensorflow::ifrt_serving::IfrtModelRestoreContext>(
+                ifrt_serving::kIfrtModelRestoreContextName,
+                std::make_unique<tensorflow::ifrt_serving::CheckpointLoader>(
+                    &ifrt_model_context->GetRestoreTensorRegistry(),
+                    ifrt_model_context->checkpoint_loader_queue()));
+
         return absl::OkStatus();
       });
   tensorflow::ifrt_serving::IfrtBackendCompiler ifrt_compiler;
 
   auto options = DefaultSavedModelOptions(runtime.get());
+  options.graph_execution_options.enable_mlrt = true;
   options.enable_lazy_loading = true;
   options.lazy_loading_use_graph_executor = true;
   options.graph_execution_options.compile_options.backend_compiler =

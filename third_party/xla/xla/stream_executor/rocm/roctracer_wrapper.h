@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,16 +31,17 @@ limitations under the License.
 #include "xla/stream_executor/platform/dso_loader.h"
 #include "xla/stream_executor/platform/port.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/platform.h"
 
 namespace stream_executor {
 namespace wrap {
 
 #ifdef PLATFORM_GOOGLE
 
-#define ROCTRACER_API_WRAPPER(API_NAME)                          \
-  template <typename... Args>                                    \
-  auto API_NAME()(Args... args)->decltype(::API_NAME(args...)) { \
-    return ::API_NAME(args...);                                  \
+#define ROCTRACER_API_WRAPPER(API_NAME)                            \
+  template <typename... Args>                                      \
+  auto API_NAME(Args... args) -> decltype((::API_NAME)(args...)) { \
+    return (::API_NAME)(args...);                                  \
   }
 
 #else
@@ -52,7 +53,7 @@ namespace wrap {
     static FuncPtrT loaded = []() -> FuncPtrT {                               \
       static const char* kName = #API_NAME;                                   \
       void* f;                                                                \
-      auto s = tsl::Env::Default() -> GetSymbolFromLibrary(                   \
+      auto s = tsl::Env::Default()->GetSymbolFromLibrary(                     \
           stream_executor::internal::CachedDsoLoader::GetRoctracerDsoHandle() \
               .value(),                                                       \
           kName, &f);                                                         \

@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,6 +25,12 @@ namespace ifrt {
 // apart from atom program FuncOps (callee of `ifrt.Call`).
 inline constexpr llvm::StringLiteral kIfrtFunctionAttrName = "ifrt.function";
 
+// Name of UnitAttr on FuncOp to indicate it's an IFRT IR function that
+// only reshards arrays. While functions with kIfrtFunctionAttrName attribute
+// cannot be `ifrt.Call`ed, kIfrtReshardFunctionAttrName can be called.
+inline constexpr llvm::StringLiteral kIfrtReshardFunctionAttrName =
+    "ifrt.reshard_function";
+
 // Name of UnitAttr on arguments of FuncOp to indicate a donated input.
 // Must be used in a FuncOp with `ifrt.function` attr.
 inline constexpr llvm::StringLiteral kIfrtDonatedArgAttrName = "ifrt.donated";
@@ -32,6 +38,20 @@ inline constexpr llvm::StringLiteral kIfrtDonatedArgAttrName = "ifrt.donated";
 // Name of UnitAttr on CallOp used to indicate that the atom program is
 // in "local" view (i.e., already sharded).
 inline constexpr llvm::StringLiteral kIfrtLocalViewAttrName = "ifrt.local_view";
+
+// Name of StringAttr on CallOp used to store an optional key to use into a
+// mapping of user-provided compile options.
+inline constexpr llvm::StringLiteral kIfrtCompileOptionsKey =
+    "ifrt.compile_options_key";
+
+inline constexpr llvm::StringLiteral kIfrtDevicesAttrName = "ifrt.devices";
+inline constexpr llvm::StringLiteral kIfrtNumDevicesAttrName =
+    "ifrt.num_devices";
+inline constexpr llvm::StringLiteral kIfrtShardingAttrName = "ifrt.sharding";
+inline constexpr llvm::StringLiteral kIfrtEntryFunctionAttrName =
+    "ifrt.entry_function";
+
+inline constexpr llvm::StringLiteral kCalleeMainFuncName = "main";
 
 }  // namespace ifrt
 }  // namespace xla

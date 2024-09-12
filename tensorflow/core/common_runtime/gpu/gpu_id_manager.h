@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_ID_MANAGER_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_ID_MANAGER_H_
 
+#include "xla/tsl/framework/device_id.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tsl/framework/device_id.h"
 
 namespace tensorflow {
 

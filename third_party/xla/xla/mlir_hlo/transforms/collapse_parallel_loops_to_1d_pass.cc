@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Utils/Utils.h"
+#include "mlir/IR/PatternMatch.h"
 #include "transforms/passes.h"
 
 using ::mlir::scf::ParallelOp;
@@ -48,12 +49,13 @@ struct CollapseParallelLoopsTo1D
 using namespace mlir;
 
 void mlir::CollapseParallelLoopsTo1D::runOnOperation() {
+  IRRewriter rewriter(&getContext());
   getOperation()->walk([&](ParallelOp op) {
     unsigned numLoops = op.getNumLoops();
     if (numLoops == 1) return;
     std::vector<unsigned> combinedLoops(numLoops);
     std::iota(combinedLoops.begin(), combinedLoops.end(), 0u);
-    mlir::collapseParallelLoops(op, {combinedLoops});
+    mlir::collapseParallelLoops(rewriter, op, {combinedLoops});
   });
 }
 

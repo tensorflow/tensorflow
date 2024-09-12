@@ -31,7 +31,7 @@ struct Table::Rep {
   ~Rep() { delete index_block; }
 
   Options options;
-  Status status;
+  absl::Status status;
   RandomAccessFile* file;
   uint64 cache_id;
 
@@ -39,8 +39,8 @@ struct Table::Rep {
   Block* index_block;
 };
 
-Status Table::Open(const Options& options, RandomAccessFile* file, uint64 size,
-                   Table** table) {
+absl::Status Table::Open(const Options& options, RandomAccessFile* file,
+                         uint64 size, Table** table) {
   *table = nullptr;
   if (size < Footer::kEncodedLength) {
     return errors::DataLoss("file is too short to be an sstable");
@@ -48,8 +48,9 @@ Status Table::Open(const Options& options, RandomAccessFile* file, uint64 size,
 
   char footer_space[Footer::kEncodedLength];
   StringPiece footer_input;
-  Status s = file->Read(size - Footer::kEncodedLength, Footer::kEncodedLength,
-                        &footer_input, footer_space);
+  absl::Status s =
+      file->Read(size - Footer::kEncodedLength, Footer::kEncodedLength,
+                 &footer_input, footer_space);
   if (!s.ok()) return s;
 
   Footer footer;
@@ -108,7 +109,7 @@ Iterator* Table::BlockReader(void* arg, const StringPiece& index_value) {
 
   BlockHandle handle;
   StringPiece input = index_value;
-  Status s = handle.DecodeFrom(&input);
+  absl::Status s = handle.DecodeFrom(&input);
   // We intentionally allow extra stuff in index_value so that we
   // can add more features in the future.
 
@@ -157,10 +158,10 @@ Iterator* Table::NewIterator() const {
                              &Table::BlockReader, const_cast<Table*>(this));
 }
 
-Status Table::InternalGet(const StringPiece& k, void* arg,
-                          void (*saver)(void*, const StringPiece&,
-                                        const StringPiece&)) {
-  Status s;
+absl::Status Table::InternalGet(const StringPiece& k, void* arg,
+                                void (*saver)(void*, const StringPiece&,
+                                              const StringPiece&)) {
+  absl::Status s;
   Iterator* iiter = rep_->index_block->NewIterator();
   iiter->Seek(k);
   if (iiter->Valid()) {
@@ -186,7 +187,7 @@ uint64 Table::ApproximateOffsetOf(const StringPiece& key) const {
   if (index_iter->Valid()) {
     BlockHandle handle;
     StringPiece input = index_iter->value();
-    Status s = handle.DecodeFrom(&input);
+    absl::Status s = handle.DecodeFrom(&input);
     if (s.ok()) {
       result = handle.offset();
     } else {

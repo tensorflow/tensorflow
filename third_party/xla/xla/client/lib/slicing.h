@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,13 +23,6 @@ limitations under the License.
 #define XLA_CLIENT_LIB_SLICING_H_
 
 namespace xla {
-
-// Slices input starting from the base_indices and within the window_sizes,
-// using the supplied strides. This is the equivalent of the Python slicing op
-// [base_indices : base_indices+window_sizes : stride].
-XlaOp DynamicStridedSlice(XlaOp input, absl::Span<const XlaOp> base_indices,
-                          absl::Span<const int64_t> window_sizes,
-                          absl::Span<const int64_t> strides);
 
 // Updates a slice of 'x', i.e.,
 // x[start[0], ..., start[n]] = update

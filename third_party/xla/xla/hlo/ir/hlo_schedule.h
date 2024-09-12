@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,11 +23,11 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/status.h"
 
 namespace xla {
 
@@ -78,6 +78,14 @@ class HloInstructionSequence {
     *id_it = new_instruction->unique_id();
   }
 
+  // Adds the instruction to the sequence at a specified index,
+  void insert_instruction(HloInstruction* instruction, int64_t index) {
+    CHECK(0 <= index && index < size()) << "Index out of bounds";
+    instruction_sequence_.insert(instruction_sequence_.begin() + index,
+                                 instruction);
+    id_sequence_.insert(id_sequence_.begin() + index, instruction->unique_id());
+  }
+
   // Clears the sequence of all instructions.
   void clear() {
     instruction_sequence_.clear();
@@ -114,9 +122,9 @@ class HloSchedule {
   explicit HloSchedule(const HloModule* module) : module_(module) {}
 
   // (De)Serialize an HloSchedule to/from a HloScheduleProto.
-  static StatusOr<HloSchedule> CreateFromProto(const HloModule* module,
-                                               const HloScheduleProto& proto);
-  StatusOr<HloScheduleProto> ToProto() const;
+  static absl::StatusOr<HloSchedule> CreateFromProto(
+      const HloModule* module, const HloScheduleProto& proto);
+  absl::StatusOr<HloScheduleProto> ToProto() const;
 
   // Returns a reference to the sequence for the given computation.
   const HloInstructionSequence& sequence(
@@ -151,7 +159,8 @@ class HloSchedule {
   // Removes the computation from the sequences.
   void remove_computation(const HloComputation* computation) {
     auto it = sequences_.find(computation->unique_id());
-    CHECK(it != sequences_.end());
+    // The computation is not scheduled. Nothing to remove.
+    if (it == sequences_.end()) return;
     sequences_.erase(it);
     execution_threads_.erase(computation->unique_id());
   }
@@ -181,14 +190,14 @@ class HloSchedule {
   // remain in the same order in the updated schedule. Instructions which exist
   // in the module but not in the given schedule will be placed as early as
   // possible in the updated schedule.
-  Status Update(
+  absl::Status Update(
       const absl::flat_hash_set<absl::string_view>& execution_threads = {});
 
   // Verifies that the given schedule is valid for the given module.
   // Specifically, the schedule contains exactly the instructions in the
   // non-fusion computations in the module and every dependency in the module is
   // satisfied in the schedule.
-  Status Verify() const;
+  absl::Status Verify() const;
 
   std::string ToString() const;
 
@@ -198,7 +207,7 @@ class HloSchedule {
 
  private:
   // Updates the instruction sequence for the given computation.
-  Status UpdateComputationSchedule(const HloComputation* computation);
+  absl::Status UpdateComputationSchedule(const HloComputation* computation);
 
   const HloModule* module_;
 

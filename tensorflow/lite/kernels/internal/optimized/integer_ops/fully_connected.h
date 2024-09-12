@@ -29,18 +29,18 @@ namespace optimized_integer_ops {
 
 template <typename InputScalar, typename DstScalar>
 inline void FullyConnectedPerChannel(
-    const FullyConnectedParams& params, const int32* output_multiplier,
+    const FullyConnectedParams& params, const int32_t* output_multiplier,
     const int* output_shift, const RuntimeShape& input_shape,
     const InputScalar* input_data, const RuntimeShape& filter_shape,
-    const int8* filter_data, const RuntimeShape& bias_shape,
-    const int32* bias_data, const RuntimeShape& output_shape,
+    const int8_t* filter_data, const RuntimeShape& bias_shape,
+    const int32_t* bias_data, const RuntimeShape& output_shape,
     DstScalar* output_data, CpuBackendContext* cpu_backend_context) {
   ruy::profiler::ScopeLabel label("FullyConnectedInt8/8bit");
 
-  const int32 input_offset = params.input_offset;
-  const int32 output_offset = params.output_offset;
-  const int32 output_activation_min = params.quantized_activation_min;
-  const int32 output_activation_max = params.quantized_activation_max;
+  const int32_t input_offset = params.input_offset;
+  const int32_t output_offset = params.output_offset;
+  const int32_t output_activation_min = params.quantized_activation_min;
+  const int32_t output_activation_max = params.quantized_activation_max;
   TFLITE_DCHECK_GE(filter_shape.DimensionsCount(), 2);
   TFLITE_DCHECK_GE(output_shape.DimensionsCount(), 1);
   // TODO(b/62193649): This really should be:
@@ -62,7 +62,7 @@ inline void FullyConnectedPerChannel(
   const bool use_caching =
       (cpu_backend_context != nullptr) && cpu_backend_context->use_caching();
 
-  cpu_backend_gemm::MatrixParams<int8> lhs_params;
+  cpu_backend_gemm::MatrixParams<int8_t> lhs_params;
   lhs_params.rows = filter_rows;
   lhs_params.cols = filter_cols;
   lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
@@ -84,7 +84,7 @@ inline void FullyConnectedPerChannel(
   dst_params.order = cpu_backend_gemm::Order::kColMajor;
   dst_params.zero_point = output_offset;
   cpu_backend_gemm::GemmParams<
-      int32, DstScalar,
+      int32_t, DstScalar,
       cpu_backend_gemm::QuantizationFlavor::kIntegerWithPerRowMultiplier>
       gemm_params;
   gemm_params.bias = bias_data;
@@ -101,18 +101,18 @@ template <typename InputScalar, typename DstScalar>
 inline void FullyConnected(
     const FullyConnectedParams& params, const RuntimeShape& input_shape,
     const InputScalar* input_data, const RuntimeShape& filter_shape,
-    const int8* filter_data, const RuntimeShape& bias_shape,
-    const int32* bias_data, const RuntimeShape& output_shape,
+    const int8_t* filter_data, const RuntimeShape& bias_shape,
+    const int32_t* bias_data, const RuntimeShape& output_shape,
     DstScalar* output_data, CpuBackendContext* cpu_backend_context) {
   ruy::profiler::ScopeLabel label("FullyConnectedInt8/8bit");
 
-  const int32 input_offset = params.input_offset;
-  const int32 filter_offset = params.weights_offset;
-  const int32 output_offset = params.output_offset;
-  const int32 output_multiplier = params.output_multiplier;
+  const int32_t input_offset = params.input_offset;
+  const int32_t filter_offset = params.weights_offset;
+  const int32_t output_offset = params.output_offset;
+  const int32_t output_multiplier = params.output_multiplier;
   const int output_shift = params.output_shift;
-  const int32 output_activation_min = params.quantized_activation_min;
-  const int32 output_activation_max = params.quantized_activation_max;
+  const int32_t output_activation_min = params.quantized_activation_min;
+  const int32_t output_activation_max = params.quantized_activation_max;
   TFLITE_DCHECK_GE(filter_shape.DimensionsCount(), 2);
   TFLITE_DCHECK_GE(output_shape.DimensionsCount(), 1);
   // TODO(b/62193649): This really should be:
@@ -134,7 +134,7 @@ inline void FullyConnected(
   const bool use_caching =
       (cpu_backend_context != nullptr) && cpu_backend_context->use_caching();
 
-  cpu_backend_gemm::MatrixParams<int8> lhs_params;
+  cpu_backend_gemm::MatrixParams<int8_t> lhs_params;
   lhs_params.rows = filter_rows;
   lhs_params.cols = filter_cols;
   lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
@@ -155,7 +155,7 @@ inline void FullyConnected(
   dst_params.cols = batches;
   dst_params.order = cpu_backend_gemm::Order::kColMajor;
   dst_params.zero_point = output_offset;
-  cpu_backend_gemm::GemmParams<int32, DstScalar> gemm_params;
+  cpu_backend_gemm::GemmParams<int32_t, DstScalar> gemm_params;
   gemm_params.bias = bias_data;
   gemm_params.clamp_min = output_activation_min;
   gemm_params.clamp_max = output_activation_max;

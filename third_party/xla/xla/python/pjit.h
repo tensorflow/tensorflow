@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,12 +17,11 @@ limitations under the License.
 #define XLA_PYTHON_PJIT_H_
 
 // placeholder for index annotation headers
-#include "pybind11/pybind11.h"  // from @pybind11
+#include "nanobind/nanobind.h"
 
 namespace jax {
 
-void BuildPjitSubmodule(pybind11::module& m);
-
+void BuildPjitSubmodule(nanobind::module_& m);
 }
 
 #endif  // XLA_PYTHON_PJIT_H_

@@ -34,6 +34,8 @@ limitations under the License.
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/root_dataset.h"
 #include "tensorflow/core/data/serialization_utils.h"
+#include "tensorflow/core/data/tf_data_memory_logger.h"
+#include "tensorflow/core/data/tfdataz_metrics.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/device_factory.h"
@@ -76,13 +78,27 @@ OpKernelContext::Params CreateParams(
 
 Iterator::Iterator(IteratorBase* iterator, IteratorContext* ctx,
                    SerializationContext* serialization_ctx)
-    : iterator_(iterator), ctx_(ctx), serialization_ctx_(serialization_ctx) {}
+    : iterator_(iterator), ctx_(ctx), serialization_ctx_(serialization_ctx) {
+  if (DatasetBaseIterator* dataset_iterator =
+          dynamic_cast<DatasetBaseIterator*>(iterator_.get())) {
+    tf_dataz_metrics_collector_ = std::make_shared<TfDatazMetricsCollector>(
+        *Env::Default(), dataset_iterator, ctx_->model());
+    TfDatazMetricsRegistry::Register(tf_dataz_metrics_collector_);
+    EnsureIteratorMemoryLoggerStarted();
+  }
+}
+
+Iterator::~Iterator() {
+  if (tf_dataz_metrics_collector_) {
+    TfDatazMetricsRegistry::Deregister(tf_dataz_metrics_collector_);
+  }
+}
 
 Status Iterator::GetNext(std::vector<Tensor>* outputs, bool* end_of_input) {
   return iterator_->GetNext(ctx_.get(), outputs, end_of_input);
 }
 
-StatusOr<std::vector<Tensor>> Iterator::Save() {
+absl::StatusOr<std::vector<Tensor>> Iterator::Save() {
   VariantTensorDataWriter writer;
   TF_RETURN_IF_ERROR(iterator_->Save(serialization_ctx_.get(), &writer));
   std::vector<std::unique_ptr<VariantTensorData>> data;
@@ -141,7 +157,7 @@ Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
                              tsl::core::RefCountPtr<Rendezvous>* r) {
         *r = tsl::core::RefCountPtr<Rendezvous>(
             new IntraProcessRendezvous(device_mgr));
-        return OkStatus();
+        return absl::OkStatus();
       }});
 
   string fetch_node = "";
@@ -176,7 +192,7 @@ Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
   *result = absl::WrapUnique(new Dataset(
       finalized_dataset, dataset, device_mgr.release(), pflr.release(),
       flib_def.release(), pool.release(), std::move(runner)));
-  return OkStatus();
+  return absl::OkStatus();
 }  // static
 
 Status Dataset::MakeIterator(
@@ -215,7 +231,7 @@ Status Dataset::MakeIterator(
       ctx.get(), /*parent=*/nullptr, "Iterator", &iterator));
   *result = absl::WrapUnique(new Iterator(iterator.release(), ctx.release(),
                                           serialization_ctx.release()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status Dataset::MakeIterator(std::unique_ptr<Iterator>* result) {

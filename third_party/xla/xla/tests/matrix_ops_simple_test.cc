@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ limitations under the License.
 #if TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
 #endif
+#include "absl/status/statusor.h"
 #include "xla/array2d.h"
 #include "xla/client/local_client.h"
 #include "xla/client/xla_builder.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/reference_util.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/literal_test_util.h"

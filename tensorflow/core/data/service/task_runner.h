@@ -51,7 +51,7 @@ class TaskIterator {
 
   // Saves a checkpoint of the iterator. Returns Tensors that can be called with
   // `Restore()`.
-  virtual StatusOr<std::vector<Tensor>> Save() {
+  virtual absl::StatusOr<std::vector<Tensor>> Save() {
     return errors::Unimplemented(
         "Serializing a tf.data service task iterator is unsupported.");
   }
@@ -77,7 +77,7 @@ class StandaloneTaskIterator : public TaskIterator {
                          std::unique_ptr<standalone::Iterator> iterator);
   Status GetNext(std::vector<Tensor>& element, bool& end_of_sequence) override;
   int64_t Cardinality() const override;
-  StatusOr<std::vector<Tensor>> Save() override;
+  absl::StatusOr<std::vector<Tensor>> Save() override;
   Status Restore(const std::vector<Tensor>& saved_iterator) override;
   std::shared_ptr<model::Model> model() const override;
 
@@ -130,7 +130,8 @@ class FirstComeFirstServedTaskRunner : public TaskRunner {
   void RunPrefetchThread();
 
   // Gets the next element from the input iterator.
-  StatusOr<GetElementResult> GetNextFromInputIterator() TF_LOCKS_EXCLUDED(mu_);
+  absl::StatusOr<GetElementResult> GetNextFromInputIterator()
+      TF_LOCKS_EXCLUDED(mu_);
 
   const std::shared_ptr<model::Model> model_;
   mutex mu_;
@@ -177,7 +178,7 @@ class CachingTaskRunner : public TaskRunner {
    public:
     explicit GetElementResultSequence(
         FirstComeFirstServedTaskRunner& fcfs_task_runner);
-    StatusOr<GetElementResult> GetNext() override;
+    absl::StatusOr<GetElementResult> GetNext() override;
     size_t GetElementSizeBytes(const GetElementResult& element) const override;
 
    private:
@@ -229,7 +230,7 @@ class PrefetchThread {
   // Buffered results for the next round.
   std::vector<std::unique_ptr<Element>> buffer_ TF_GUARDED_BY(mu_);
   // The status if the prefetch thread fails.
-  Status status_ TF_GUARDED_BY(mu_) = OkStatus();
+  Status status_ TF_GUARDED_BY(mu_) = absl::OkStatus();
   // Condition variable notified when elements are added to or removed from
   // `buffer_`, or when `status_` is changed.
   condition_variable cv_;

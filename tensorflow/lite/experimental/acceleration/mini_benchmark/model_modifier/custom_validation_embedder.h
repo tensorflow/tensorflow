@@ -18,6 +18,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/schema/schema_generated.h"

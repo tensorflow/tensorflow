@@ -36,9 +36,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/python/mlir.h"
 #endif
 
-#include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_executor_to_graph.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
@@ -89,7 +89,7 @@ EagerContext& GlobalPythonEagerContext() {
   return *ctx;
 }
 
-StatusOr<FunctionDef> Runtime::GetFunctionProto(StringPiece name) {
+absl::StatusOr<FunctionDef> Runtime::GetFunctionProto(StringPiece name) {
   EagerContext& ctx = this->eager_ctx_;
 
   const FunctionDef* f = ctx.FindFunctionDef(std::string(name));
@@ -123,7 +123,8 @@ Status Runtime::CreateFunction(OpaqueTfFuncOp* fop) {
   GraphExportConfig config;
   FunctionDef fdef;
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      ConvertMlirFunctionToFunctionLibraryDef(fop_proper, config, &fdef),
+      tf2xla::v2::ConvertMlirFunctionToFunctionLibraryDef(fop_proper, config,
+                                                          &fdef),
       "creating function ", fname);
   return CreateFunction(fdef);
 }
@@ -170,7 +171,7 @@ Status Runtime::TransformFunction(StringPiece name, StringPiece pipeline_name,
           CreateFunction(reinterpret_cast<OpaqueTfgGraphFuncOp*>(&fn)),
           absl::StrCat("updating function ", fn.getName().str()));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (dialect == Dialect::TF) {
@@ -196,7 +197,7 @@ Status Runtime::TransformFunction(StringPiece name, StringPiece pipeline_name,
           CreateFunction(reinterpret_cast<OpaqueTfFuncOp*>(&fn)),
           absl::StrCat("updating function ", fn.getName().str()));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   return Status(
@@ -205,7 +206,7 @@ Status Runtime::TransformFunction(StringPiece name, StringPiece pipeline_name,
                    ". Supported dialects are Dialect::TFG and Dialect::TF."));
 }
 
-StatusOr<ReturnValues> Runtime::CallFunction(
+absl::StatusOr<ReturnValues> Runtime::CallFunction(
     StringPiece name, absl::Span<AbstractTensorHandle* const> args) {
   EagerContext& ctx = this->eager_ctx_;
 

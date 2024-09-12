@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -72,7 +72,7 @@ HloModuleGroupProto HloModuleGroup::ToProto() const {
   return proto;
 }
 
-/* static */ StatusOr<HloModuleGroup> HloModuleGroup::CreateFromProto(
+/* static */ absl::StatusOr<HloModuleGroup> HloModuleGroup::CreateFromProto(
     const HloModuleGroupProto& proto,
     absl::Span<const HloModuleConfig> module_configs) {
   TF_RET_CHECK(!proto.name().empty()) << "Module group name cannot be empty";

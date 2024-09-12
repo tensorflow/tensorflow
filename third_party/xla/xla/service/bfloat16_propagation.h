@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -68,7 +68,7 @@ class BFloat16Propagation : public HloModulePass {
   // Runs the pass on the given module. Returns whether the module was changed
   // (precision reductions were added).
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
@@ -159,19 +159,19 @@ class BFloat16Propagation : public HloModulePass {
 
   // Resolves inconsistencies introduced by this pass for fusions with
   // tuple-type output.
-  Status ResolveInconsistentFusions(
+  absl::Status ResolveInconsistentFusions(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   // Converts the literals in kConstant HLOs which have their types changed to
   // BF16 by this pass.
-  Status ResolveConvertedConstants(
+  absl::Status ResolveConvertedConstants(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   // Skips no-op conversions (same source and target shapes) that can be
   // produced this pass, i.e., replaces them in their uses with their operands.
-  Status SkipNoopConversions(
+  absl::Status SkipNoopConversions(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 

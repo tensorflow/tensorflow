@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/python/util/function_parameter_canonicalizer.h"
 
+#include "absl/base/attributes.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/python/lib/core/py_util.h"

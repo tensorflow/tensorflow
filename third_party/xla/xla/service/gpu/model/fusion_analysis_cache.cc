@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 
-#include <optional>
 #include <utility>
 
 #include "absl/synchronization/mutex.h"
@@ -24,7 +23,7 @@ limitations under the License.
 
 namespace xla::gpu {
 
-const std::optional<HloFusionAnalysis>& HloFusionAnalysisCache::Get(
+const HloFusionAnalysis& HloFusionAnalysisCache::Get(
     const HloInstruction& instruction) {
   {
     absl::MutexLock lock(&mutex_);
@@ -34,8 +33,8 @@ const std::optional<HloFusionAnalysis>& HloFusionAnalysisCache::Get(
     }
   }
 
-  std::optional<HloFusionAnalysis> analysis =
-      AnalyzeFusion(instruction, device_info_);
+  HloFusionAnalysis analysis =
+      HloFusionAnalysis::Create(instruction, device_info_);
   absl::MutexLock lock(&mutex_);
 
   // If some other thread created an entry for this key concurrently, return
@@ -45,10 +44,11 @@ const std::optional<HloFusionAnalysis>& HloFusionAnalysisCache::Get(
     return it->second;
   }
 
-  return analyses_[instruction.unique_id()] = std::move(analysis);
+  return analyses_.emplace(instruction.unique_id(), std::move(analysis))
+      .first->second;
 }
 
-const std::optional<HloFusionAnalysis>& HloFusionAnalysisCache::Get(
+const HloFusionAnalysis& HloFusionAnalysisCache::Get(
     const HloInstruction& producer, const HloInstruction& consumer) {
   std::pair<int, int> key{producer.unique_id(), consumer.unique_id()};
   {
@@ -59,8 +59,8 @@ const std::optional<HloFusionAnalysis>& HloFusionAnalysisCache::Get(
     }
   }
 
-  std::optional<HloFusionAnalysis> analysis =
-      AnalyzeProducerConsumerFusion(producer, consumer, device_info_);
+  HloFusionAnalysis analysis =
+      HloFusionAnalysis::Create(producer, consumer, device_info_);
   absl::MutexLock lock(&mutex_);
 
   // If some other thread created an entry for this key concurrently, return
@@ -74,11 +74,11 @@ const std::optional<HloFusionAnalysis>& HloFusionAnalysisCache::Get(
       producer.unique_id());
   consumers_for_producers_[producer.unique_id()].push_back(
       consumer.unique_id());
-  return producer_consumer_analyses_[key] = std::move(analysis);
+  return producer_consumer_analyses_.emplace(key, std::move(analysis))
+      .first->second;
 }
 
 void HloFusionAnalysisCache::Invalidate(const HloInstruction& instruction) {
-  absl::MutexLock lock(&mutex_);
   analyses_.erase(instruction.unique_id());
 
   if (auto consumers =
@@ -96,8 +96,6 @@ void HloFusionAnalysisCache::Invalidate(const HloInstruction& instruction) {
 }
 
 void HloFusionAnalysisCache::Clear() {
-  absl::MutexLock lock(&mutex_);
-
   analyses_.clear();
   producer_consumer_analyses_.clear();
   consumers_for_producers_.clear();

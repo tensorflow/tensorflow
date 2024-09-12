@@ -6,7 +6,6 @@ cc_library(
     name = "hlo_test_lib",
     testonly = True,
     srcs = ["hlo_test_lib.cc"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla:error_spec",
         "//xla/tests:hlo_test_base",
@@ -17,6 +16,7 @@ cc_library(
 [hlo_test(
     name = hlo + "_test",
     hlo = hlo,
+    tags = (["no_rocm"] if hlo == "rand_000079.hlo" else []),  # No int8
 ) for hlo in glob(
     include = ["rand_*.hlo"],
     exclude = [

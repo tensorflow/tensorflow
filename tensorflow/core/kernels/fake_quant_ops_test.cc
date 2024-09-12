@@ -53,8 +53,8 @@ class QuantOpsTest : public OpsTestBase {
   void RunTestFakeQuantWithMinMaxArgs(const int num_bits,
                                       const bool narrow_range, const float min,
                                       const float max, const TensorShape& shape,
-                                      const gtl::ArraySlice<float> data,
-                                      gtl::ArraySlice<float> expected_data,
+                                      const absl::Span<const float> data,
+                                      absl::Span<const float> expected_data,
                                       const double atol = -1.0,
                                       const double rtol = -1.0,
                                       const DeviceType device = DEVICE_CPU) {
@@ -88,8 +88,8 @@ class QuantOpsTest : public OpsTestBase {
   void RunTestFakeQuantWithMinMaxVars(const int num_bits,
                                       const bool narrow_range, const float min,
                                       const float max, const TensorShape& shape,
-                                      const gtl::ArraySlice<float> data,
-                                      gtl::ArraySlice<float> expected_data,
+                                      const absl::Span<const float> data,
+                                      absl::Span<const float> expected_data,
                                       const double atol = -1.0,
                                       const double rtol = -1.0,
                                       const DeviceType device = DEVICE_CPU) {
@@ -125,9 +125,9 @@ class QuantOpsTest : public OpsTestBase {
 
   void RunTestFakeQuantWithMinMaxVarsPerChannel(
       const int num_bits, const bool narrow_range,
-      const TensorShape& minmax_shape, const gtl::ArraySlice<float> min,
-      const gtl::ArraySlice<float> max, const TensorShape& shape,
-      const gtl::ArraySlice<float> data, gtl::ArraySlice<float> expected_data,
+      const TensorShape& minmax_shape, const absl::Span<const float> min,
+      const absl::Span<const float> max, const TensorShape& shape,
+      const absl::Span<const float> data, absl::Span<const float> expected_data,
       const double atol = -1.0, const double rtol = -1.0,
       const DeviceType device = DEVICE_CPU) {
     if (device == DEVICE_GPU) {

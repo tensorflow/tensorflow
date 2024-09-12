@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,13 +18,13 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 
 namespace xla {
 class TupleUtil {
@@ -60,7 +60,7 @@ class TupleUtil {
   // new_instruction. If the replacement instruction has a different shape than
   // the old one, we insert a bitcast if insert_bitcast_if_different_shape is
   // set to true.
-  static StatusOr<HloInstruction*> ReplaceTupleWith(
+  static absl::StatusOr<HloInstruction*> ReplaceTupleWith(
       HloInstruction* new_instruction, HloInstruction* tuple,
       ShapeIndex shape_index, bool insert_bitcast_if_different_shape = true);
 

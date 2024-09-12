@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,10 +20,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/shape_util.h"
-#include "xla/status_macros.h"
-#include "xla/statusor.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -53,7 +53,7 @@ bool Convolution4DExpander::InstructionMatchesPattern(
   return false;
 }
 
-StatusOr<HloInstruction*> Convolution4DExpander::ExpandInstruction(
+absl::StatusOr<HloInstruction*> Convolution4DExpander::ExpandInstruction(
     HloInstruction* instruction) {
   HloComputation* computation = instruction->parent();
   ConvolutionDimensionNumbers dim_nums =

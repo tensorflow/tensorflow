@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,8 +21,8 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/status/statusor.h"
 #include "xla/literal.h"
-#include "xla/statusor.h"
 #include "xla/text_literal_reader.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"

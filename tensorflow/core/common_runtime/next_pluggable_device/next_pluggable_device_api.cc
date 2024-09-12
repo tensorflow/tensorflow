@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <string>
 
+#include "xla/tsl/c/tsl_status_internal.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/plugin_c_api.h"
-#include "tsl/c/tsl_status_internal.h"
 #include "tsl/platform/errors.h"
 
 namespace tensorflow {
@@ -29,7 +29,7 @@ const TFNPD_Api* TfnpdApi() { return tfnpd_api; }
 
 void SetTfnpdApi(const TFNPD_Api* api) { tfnpd_api = api; }
 
-tsl::StatusOr<TFNPD_PluginParams> InitNextPluggableDevicePlugin(
+absl::StatusOr<TFNPD_PluginParams> InitNextPluggableDevicePlugin(
     TFNPDInitPluginFn init_fn) {
   TFNPD_PluginParams params{TFNPD_PLUGIN_PARAMS_STRUCT_SIZE};
   TSL_Status c_status;

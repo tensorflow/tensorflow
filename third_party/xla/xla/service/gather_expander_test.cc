@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -43,9 +43,9 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
 
-  Status status = GatherExpander{GatherExpander::kEliminateAllGathers}
-                      .Run(module.get())
-                      .status();
+  absl::Status status = GatherExpander{GatherExpander::kEliminateAllGathers}
+                            .Run(module.get())
+                            .status();
   EXPECT_EQ(status.code(), tsl::error::UNIMPLEMENTED);
 
   ASSERT_THAT(

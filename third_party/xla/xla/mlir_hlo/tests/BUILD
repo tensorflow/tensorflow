@@ -3,7 +3,6 @@ load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 load("@llvm-project//llvm:lit_test.bzl", "lit_test", "package_path")
 
 package(
-    default_visibility = ["//visibility:public"],
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
@@ -28,6 +27,7 @@ package(
             "nomsan",  # The execution engine doesn't work with msan, see b/248097619.
         ],
         deps = ["@pypi_lit//:pkg"],
+        deps = ["@pypi_lit//:pkg"],  # copybara:comment
     )
     for src in glob(["**/*.mlir"])
 ]
@@ -35,7 +35,6 @@ package(
 cc_library(
     name = "capi_test",
     srcs = ["capi_test.c"],
-    visibility = ["//visibility:public"],
     deps = [
         "//xla/mlir_hlo:CAPI",
     ],

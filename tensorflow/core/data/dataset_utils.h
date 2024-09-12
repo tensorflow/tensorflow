@@ -37,9 +37,6 @@ namespace data {
 // should be supplied by the auto-sharding rewrite.
 constexpr int kShardHint = -1;
 
-// The initial parallelism value before Autotune has a chance to optimize.
-constexpr int kAutotuneDefaultParallelism = 16;
-
 // Creates a resource handle with a unique name for the given resource where
 // the resource is managed by the Resource Manager.
 template <typename T>
@@ -53,7 +50,7 @@ Status CreateWeakHandle(OpKernelContext* ctx, T* resource,
 
   *handle = MakeResourceHandle(container_name, unique_name, *ctx->device(),
                                TypeIndex::Make<T>());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Creates a ref-counting resource handle for the given resource, where the
@@ -65,7 +62,7 @@ Status CreateHandle(OpKernelContext* ctx, T* resource, ResourceHandle* handle) {
       ResourceHandle::MakeRefCountingHandle(resource, ctx->device()->name());
   TF_RETURN_IF_ERROR(
       mgr->CreateUnowned<T>(handle->container(), handle->name(), resource));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // TODO(b/198162355): Merge this class with ResourceOpKernel.
@@ -282,38 +279,16 @@ Status ProcessBatch(int64_t batch_size, int64_t num_elements,
                     IteratorContext* ctx, std::vector<Tensor>* output,
                     bool* end_of_sequence, std::vector<Tensor>* batch);
 
-// Constructs and stores the parameters for the CopyBatch function.
-struct CopyBatchParams {
-  Allocator* allocator;
-  std::function<void(std::function<void()>)>* runner;
-  int64 runner_threadpool_size;
-
-  explicit CopyBatchParams(IteratorContext* ctx) {
-    allocator = ctx->allocator({});
-    runner = ctx->runner();
-    runner_threadpool_size = ctx->runner_threadpool_size();
-  }
-
-  explicit CopyBatchParams(OpKernelContext* ctx) {
-    allocator = ctx->get_allocator({});
-    runner = ctx->runner();
-    runner_threadpool_size = GetRunnerThreadpoolSizeFromOpKernelContext(ctx);
-  }
-};
-
 // Copies the input elements to a batch.
 //
 // The `batch_elements` argument contains the individual elements to copy into a
 // batch. The `parallel_copy` argument indicates whether to parallelize the
-// copy. The `allocation_callback` argument can be used to pass a callback to
-// invoke upon successful allocation of the memory for the batch. The
-// `out_tensors` argument will be used to store the resulting batch (one for
+// copy.
+// The `out_tensors` argument will be used to store the resulting batch (one for
 // each component of the input).
-Status CopyBatch(CopyBatchParams params,
-                 const std::vector<std::vector<Tensor>>& batch_elements,
-                 bool parallel_copy,
-                 std::function<Status()> allocation_callback,
-                 std::vector<Tensor>* out_tensors);
+Status CopyBatch(AnyContext ctx,
+                 std::vector<std::vector<Tensor>>&& batch_elements,
+                 bool parallel_copy, std::vector<Tensor>* out_tensors);
 
 // Computes the set of experiments to apply based on the job name, task id,
 // rollout percentage of registered experiments, and the

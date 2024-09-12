@@ -15,7 +15,10 @@ limitations under the License.
 
 #include <vector>
 
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/PrettyStackTrace.h"
@@ -24,6 +27,7 @@ limitations under the License.
 #include "llvm/TableGen/Record.h"
 #include "llvm/TableGen/TableGenBackend.h"
 #include "mlir/TableGen/Operator.h"  // from @llvm-project
+#include "mlir/TableGen/Trait.h"  // from @llvm-project
 
 using llvm::LessRecord;
 using llvm::raw_ostream;
@@ -50,7 +54,8 @@ static bool OpQuantSpecWriter(raw_ostream &os, RecordKeeper &records) {
   llvm::sort(defs, LessRecord());
 
   OUT(0) << "static std::unique_ptr<quant::OpQuantSpec> "
-            "GetOpQuantSpec(mlir::Operation *op) {\n";
+            "GetOpQuantSpec(mlir::Operation *op, bool "
+            "disable_per_channel_for_dense_layers = false) {\n";
   // TODO(b/176258587): Move to OpTrait if this should be generalized.
   // Add special handling for LSTM.
   OUT(2) << "if (auto lstm_op = llvm::dyn_cast<TFL::LSTMOp>(op)) {\n";
@@ -94,7 +99,9 @@ static bool OpQuantSpecWriter(raw_ostream &os, RecordKeeper &records) {
         // There is a "QuantChannelDim" trait, set the quantization dimension.
         if (coeff_index_trait_regex.match(trait_str, &matches)) {
           OUT(4) << "spec->coeff_op_quant_dim[tfl.GetCoefficientOperandIndex()"
-                 << "] = tfl.GetQuantizationDim();\n";
+                 << "] = llvm::dyn_cast<TFL::FullyConnectedOp>(op) && "
+                    "disable_per_channel_for_dense_layers ? -1 :  "
+                    "tfl.GetQuantizationDim();\n";
           matches.clear();
         }
 

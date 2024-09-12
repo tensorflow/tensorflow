@@ -21,10 +21,11 @@ namespace tsl {
 
 class ResourceTagger::ResourceTaggerImpl {
  public:
-  ResourceTaggerImpl(StringPiece key, StringPiece value) {}
+  ResourceTaggerImpl(absl::string_view key, absl::string_view value) {}
 };
 
-ResourceTagger::ResourceTagger(StringPiece key, StringPiece value) {}
+ResourceTagger::ResourceTagger(absl::string_view key, absl::string_view value) {
+}
 
 ResourceTagger::~ResourceTagger() {}
 

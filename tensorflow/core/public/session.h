@@ -27,22 +27,13 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/threadpool_options.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session_options.h"
-
-namespace tsl {
-namespace thread {
-struct ThreadPoolOptions;
-}
-}  // namespace tsl
 
 namespace tensorflow {
 
 class DeviceMgr;
-
-namespace thread {
-using tsl::thread::ThreadPoolOptions;
-}
 
 /// \brief A Session instance lets a caller drive a TensorFlow graph
 /// computation.

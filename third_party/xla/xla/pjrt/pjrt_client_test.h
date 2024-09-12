@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,8 +24,7 @@ limitations under the License.
 namespace xla {
 
 void RegisterTestClientFactory(
-    std::function<StatusOr<std::unique_ptr<PjRtClient>>()> factory);
-
+    std::function<absl::StatusOr<std::unique_ptr<PjRtClient>>()> factory);
 }
 
 #endif  // XLA_PJRT_PJRT_CLIENT_TEST_H_

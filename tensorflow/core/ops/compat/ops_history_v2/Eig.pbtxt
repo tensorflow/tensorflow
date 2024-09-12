@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "Eig"
   input_arg {
     name: "input"

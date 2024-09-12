@@ -71,7 +71,6 @@ cc_library(
 tf_proto_library(
     name = "test_proto",
     srcs = ["test.proto"],
-    cc_api_version = 2,
 )
 
 tf_generate_proto_text_sources(

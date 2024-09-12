@@ -53,14 +53,14 @@ class TestOptimizer : public CustomGraphOptimizer {
 
   Status Init(const tensorflow::RewriterConfig_CustomGraphOptimizer* config =
                   nullptr) override {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* optimized_graph) override {
     optimized_ = true;
     *optimized_graph = item.graph;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -83,7 +83,7 @@ class TestOptimizerWithParams : public TestOptimizer {
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
     CHECK(config != nullptr);
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -107,7 +107,7 @@ class GrapplerItemPropertiesAccumulator : public CustomGraphOptimizer {
 
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
@@ -116,7 +116,7 @@ class GrapplerItemPropertiesAccumulator : public CustomGraphOptimizer {
     if (optimization_options_) {
       optimization_options_->insert({item.id, item.optimization_options()});
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -711,7 +711,7 @@ class SleepingOptimizer : public CustomGraphOptimizer {
 
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
@@ -720,7 +720,7 @@ class SleepingOptimizer : public CustomGraphOptimizer {
     Env::Default()->SleepForMicroseconds(1000000);
     GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
     optimized_graph->add_node();
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -1201,14 +1201,14 @@ class TfDataTestOptimizer : public CustomGraphOptimizer {
 
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* optimized_graph) override {
     ++count_;
     *optimized_graph = item.graph;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

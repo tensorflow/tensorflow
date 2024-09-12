@@ -22,6 +22,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/str_format.h"
 #include "tensorflow/lite/array.h"
+#include "tensorflow/lite/c/common.h"
 
 using ::testing::FloatNear;
 

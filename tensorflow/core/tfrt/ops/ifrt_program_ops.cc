@@ -25,6 +25,7 @@ REGISTER_OP("IfrtCall")
     .Attr("Tin: list(type) >= 0")
     .Attr("Tout: list(type) >= 0")
     .Attr("program_id: int")
+    .Attr("variable_arg_indices: list(int)")
     .SetIsStateful()
     .SetShapeFn(tensorflow::shape_inference::UnknownShape)
     .Doc(R"(
@@ -39,7 +40,40 @@ in their SavedModel and instead rely on Ifrt Serving's mechanism that
 automatically inserts this op with graph rewrite.
 
 program_id: int64 id that can be used to look up compiled programs from
-  `ServingExecutableRegistry`.
+ServingExecutableRegistry`.
+
+variable_arg_indices: must be in sorted ascending order. The argument at position
+variable_arg_indices[k] in tpu program is already loaded as an ifrt array and
+the input `args[variable_arg_indices[k]]` is the key to look for this loaded array.
+)");
+
+REGISTER_OP("IfrtLoadVariable")
+    .Input("variable: Tin")
+    .Output("array_key: Tout")
+    .Output("tensor: Tout")
+    .Attr("Tin: type")
+    .Attr("Tout: type")
+    .Attr("used_by_host: bool")
+    .SetIsStateful()
+    .SetShapeFn(tensorflow::shape_inference::UnknownShape)
+    .Doc(R"(
+This op loads a restored variable tensor as a tensor future. It is areplacement of `tf.ReadVariableOp`.
+
+This op returns a scalar string tensor containing the restored variable name, which 
+is composed from `container_name` and `shared_name` from a `var_handle` and can be
+used as a key within the runtime, as well as a future for the tensor.
+
+Note that this op is not part of a stable interface. Users must not use this op
+in their SavedModel and instead rely on Ifrt Serving's mechanism that
+automatically inserts this op with graph rewrite.
+
+variable: the variable handle of the variable tensor to be loaded.
+array_key: the key to be used to look up the loaded array by the 'IfrtCall' op.
+tensor: the future of the loaded tensor. The future contains a valid tensor if `use_by_host` is true.
+'used_by_host': a boolean indicating whether the variable is used by the host OP
+or excelusively by the TPU.
+
+
 )");
 
 }  // namespace tfrt_stub

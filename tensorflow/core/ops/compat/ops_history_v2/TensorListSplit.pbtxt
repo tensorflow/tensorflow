@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "TensorListSplit"
   input_arg {
     name: "tensor"

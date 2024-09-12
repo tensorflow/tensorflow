@@ -18,7 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/schema/mutable/schema_generated.h"
+#include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
 
 namespace tflite {
 // Update minimum runtime version of the given TFL flatbuffer model.

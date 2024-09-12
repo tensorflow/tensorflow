@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,31 +15,36 @@ limitations under the License.
 
 #include "xla/service/hlo_constant_folding.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
 
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/permutation_util.h"
+#include "xla/primitive_util.h"
 #include "xla/service/hlo_parser.h"
-#include "xla/service/hlo_pass_fix.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/literal_test_util.h"
-#include "xla/types.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
+namespace op = xla::testing::opcode_matchers;
 namespace m = xla::match;
-
 using HloConstantFoldingTest = HloTestBase;
 
 TEST_F(HloConstantFoldingTest, ConvertF32ToS64) {
@@ -238,6 +243,33 @@ TEST_F(HloConstantFoldingTest, ConstantFoldReduce) {
                    .GetFirstElement<int32_t>());
 }
 
+constexpr absl::string_view kConstantFoldReduceWithMetadata = R"(
+  HloModule ConstantFoldReduce
+
+  add {
+    a = s32[] parameter(0)
+    b = s32[] parameter(1)
+    ROOT add = s32[] add(a, b)
+  }
+
+  ENTRY r {
+    x = s32[3] constant({1, 2, 3}), metadata={op_name="constant"}
+    init = s32[] constant(0), metadata={op_name="zero_constant"}
+    ROOT reduce = s32[] reduce(x, init), metadata={op_name="reduce"}, dimensions={0}, to_apply=add
+  })";
+
+TEST_F(HloConstantFoldingTest, ConstantFoldReduceCheckMetadata) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto m, ParseAndReturnVerifiedModule(kConstantFoldReduceWithMetadata));
+  HloConstantFolding const_folder;
+  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(m.get()));
+  EXPECT_TRUE(result);
+  OpMetadata reduce_metadata;
+  reduce_metadata.set_op_name("reduce");
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              AllOf(op::Constant(), op::Metadata(reduce_metadata)));
+}
+
 TEST_F(HloConstantFoldingTest, ConstantFoldReduceNoLayout) {
   TF_ASSERT_OK_AND_ASSIGN(auto m,
                           ParseAndReturnVerifiedModule(kConstantFoldReduce));
@@ -269,6 +301,47 @@ TEST_F(HloConstantFoldingTest, DoesNotFoldLargePad) {
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Pad(m::Constant(), m::Constant())));
+}
+
+TEST_F(HloConstantFoldingTest, DoesNotFoldPadBroadcast) {
+  const char* const kConstantFoldPadBroadcast = R"(
+  HloModule ConstantFoldLargePad
+
+  ENTRY r {
+    a = f32[] constant(239)
+    broadcast_a = f32[4] broadcast(a), dimensions={}
+    b = f32[] constant(42)
+    ROOT pad = f32[8] pad(f32[4] broadcast_a, f32[] b), padding=4_0
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kConstantFoldPadBroadcast));
+  HloConstantFolding const_folder;
+  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module.get()));
+  EXPECT_FALSE(result);
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Pad(m::Broadcast(), m::Constant())));
+}
+
+TEST_F(HloConstantFoldingTest, DoesNotFoldSlicesWithLargeOperand) {
+  const char* const kModuleStr = R"(
+  HloModule test
+
+  ENTRY r {
+    a = f32[] constant(42)
+    broadcast = f32[1000000000]{0} broadcast(a), dimensions={}
+    slice1 = f32[10000]{0} slice(broadcast), slice={[0:10000]}
+    slice2 = f32[10000]{0} slice(broadcast), slice={[10000:20000]}
+    ROOT add = f32[10000]{0} add(slice1, slice2)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding const_folder;
+  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module.get()));
+  EXPECT_FALSE(result);
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Add(m::Slice(), m::Slice())));
 }
 
 TEST_F(HloConstantFoldingTest, DontFoldSubcomputationContainingAfterAll) {
@@ -344,6 +417,32 @@ TEST_F(HloConstantFoldingTest, FoldOpsWhereOneOperandIsBroadcast) {
                                   m::Constant(),
                                   m::Constant()  //
                                   )));
+}
+
+TEST_F(HloConstantFoldingTest, FoldInt4Ops) {
+  const char* const kModuleStr = R"(
+  HloModule test
+
+  ENTRY entry {
+    c0 = s4[2]{0:E(4)} constant({1, 2})
+    c1 = s4[2]{0:E(4)} constant({3, 4})
+    add1 = s4[2]{0:E(4)} add(c0, c1)
+    c2 = s4[]{:E(4)} constant(5)
+    add2 = s4[2]{0:E(4)} add(c0, s4[2]{0:E(4)} broadcast(c2))
+    ROOT root = tuple(add1, add2)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&constant_folding, module.get()));
+  EXPECT_TRUE(result);
+  auto is_4_bit = [](const HloInstruction* instr) {
+    return instr->shape().layout().element_size_in_bits() == 4;
+  };
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(m::Constant().WithPredicate(is_4_bit),
+                                  m::Constant().WithPredicate(is_4_bit))));
 }
 
 TEST_F(HloConstantFoldingTest, BigReduceWindow) {

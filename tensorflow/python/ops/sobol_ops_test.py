@@ -140,13 +140,25 @@ class SobolSampleOpTest(test_util.TensorFlowTestCase):
           skip=constant_op.constant([1])))
 
   @test_util.run_in_graph_and_eager_modes
-  def testDimNumResultsOverflow(self):
+  def test_dim_num_results_overflow(self):
     with self.assertRaisesRegex(
         (ValueError, errors.InvalidArgumentError),
         r'num_results\*dim must be less than 2147483647'):
       self.evaluate(
           gen_math_ops.sobol_sample(
               dim=2560, num_results=16384000, skip=0, dtype=dtypes.float32))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_num_results_skip_overflow(self):
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        r'num_results\+skip must be less than 2147483647',
+    ):
+      self.evaluate(
+          gen_math_ops.sobol_sample(
+              dim=1, num_results=1, skip=2147483647, dtype=dtypes.float32
+          )
+      )
 
 
 if __name__ == '__main__':

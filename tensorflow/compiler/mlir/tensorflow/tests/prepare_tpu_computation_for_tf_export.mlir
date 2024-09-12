@@ -167,9 +167,25 @@ func.func @UnsupportedOp(%arg0: tensor<i32>) -> tensor<i32> {
 
 // _XlaHostComputeMlir with manual_sharding should not fall back to
 // XlaHostCompute, because XlaHostCompute does not support manual_sharding.
+// Instead, it is skipped and the MlirXlaOpKernel is expected to handle it.
 
 func.func @HostComputeManualNoFallback(%arg0: tensor<i32>) -> () {
-  // expected-error @+1 {{manual_sharding not supported with fallback}}
+  // CHECK: "tf._XlaHostComputeMlir"
   %1 = "tf._XlaHostComputeMlir"(%arg0) {recv_key = "host_compute_channel_recv1", send_key = "host_compute_channel_send1", host_mlir_module = "", manual_sharding = true} : (tensor<i32>) -> (tensor<f32>)
   func.return
 }
+
+// -----
+
+// CHECK-LABEL: test_xla_call_module_with_host_communicative_subcomputation
+func.func @test_xla_call_module_with_host_communicative_subcomputation() {
+  "tf.XlaCallModule"() {Sout = [], device = "", dim_args_spec = [], function_list = [@callee], module = "", platforms = [], version = 4 : i64} : () -> ()
+  func.return
+}
+
+// CHECK-LABEL: callee
+func.func private @callee(%arg0: tensor<i32>) {
+   "tf.XlaHostCompute"(%arg0) <{ancestors = [],  key = "@host_func", recv_key = "", send_key = "", shapes = []}> {_xla_original_oc_node_name = "hcb0", _xla_token_input_nodes = ["_xla_token_arg_node"]} : (tensor<i32>) -> ()
+   return
+ }
+

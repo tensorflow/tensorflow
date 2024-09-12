@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "InfeedEnqueue"
   input_arg {
     name: "input"

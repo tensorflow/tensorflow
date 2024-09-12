@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,18 +16,17 @@ limitations under the License.
 #include "xla/pjrt/gpu/se_gpu_pjrt_compiler.h"
 
 #include <memory>
-#include <optional>
-#include <utility>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/client/xla_computation.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/status_macros.h"
+#include "xla/stream_executor/platform/initialize.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "xla/client/local_client.h"
@@ -41,20 +40,22 @@ limitations under the License.
 #include "xla/service/hlo_proto_util.h"
 #include "xla/service/local_service.h"
 #include "xla/service/local_service_utils.h"
-#include "xla/stream_executor/cuda/cuda_platform_id.h"
 #endif
 
 #if GOOGLE_CUDA
 #include "xla/service/gpu/nvptx_compiler.h"
+#include "xla/stream_executor/cuda/cuda_platform_id.h"
 #elif TENSORFLOW_USE_ROCM
 #include "xla/service/gpu/amdgpu_compiler.h"
+#include "xla/stream_executor/rocm/rocm_platform_id.h"
 #endif
 
 namespace xla {
 namespace {
 
 bool IsGpuClient(const PjRtClient& client) {
-  return client.platform_id() == CudaId() || client.platform_id() == RocmId();
+  return client.platform_id() == CudaId() || client.platform_id() == RocmId() ||
+         client.platform_id() == SyclId();
 }
 
 bool IsSameTopology(const PjRtTopologyDescription& topology1,
@@ -104,13 +105,24 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
 
   CompileOptions input_options = options;
   if (!options.target_config) {
-    if (!client) {
+    if (client != nullptr) {
+      TF_RETURN_IF_ERROR(IsValidTopologyAndClientForCompile(topology, client));
+      return client->Compile(computation, options);
+    }
+    auto attr = topology.Attributes();
+    if (auto it = attr.find("target_config"); it != attr.end()) {
+      auto target_config_str = std::get<std::string>(it->second);
+      stream_executor::GpuTargetConfigProto gpu_target_config_proto;
+      if (!gpu_target_config_proto.ParseFromString(target_config_str)) {
+        return FailedPrecondition("Failed to parse GpuTargetConfigProto");
+      }
+      options.target_config.emplace(
+          Compiler::TargetConfig(gpu_target_config_proto));
+    } else {
       return absl::UnimplementedError(
           "Compilation without client and without target_config specified is "
           "not implemented");
     }
-    TF_RETURN_IF_ERROR(IsValidTopologyAndClientForCompile(topology, client));
-    return client->Compile(computation, options);
   }
   TF_RETURN_IF_ERROR(options.ApplyAllOptionOverrides());
   std::vector<const Shape*> argument_layout_pointers;
@@ -135,27 +147,30 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
   Compiler::CompileOptions opts;
   opts.target_config = options.target_config;
 
-  if (!options.executable_build_options.run_backend_only()) {
-    TF_ASSIGN_OR_RETURN(
-        hlo_module, gpu_compiler.RunHloPasses(std::move(hlo_module),
-                                              /*stream_exec=*/nullptr, opts));
-  }
-
   AotCompilationOptions aot_options(gpu_compiler.PlatformId());
   aot_options.set_target_config(*options.target_config);
+  aot_options.set_run_backend_only(
+      options.executable_build_options.run_backend_only());
 
   const int num_replicas = hlo_module->config().replica_count();
   const int num_partitions = hlo_module->config().num_partitions();
   const std::string name = hlo_module->name();
+  const std::string fingerprint = hlo_module->GetFingerprint128();
+  const int num_outputs = hlo_module->result_shape().IsTuple()
+                              ? hlo_module->result_shape().tuple_shapes_size()
+                              : 1;
   auto unique_module_group =
       std::make_unique<HloModuleGroup>(std::move(hlo_module));
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
       gpu_compiler.CompileAheadOfTime(std::move(unique_module_group),
                                       aot_options));
+  std::vector<std::vector<absl::string_view>> output_memory_kinds(1);
+  output_memory_kinds[0].resize(num_outputs,
+                                StreamExecutorGpuHbmMemorySpace::kKind);
   return std::make_unique<StreamExecutorExecutable>(
       std::move(input_options), std::move(aot_results), num_replicas,
-      num_partitions, name);
+      num_partitions, name, fingerprint, std::move(output_memory_kinds));
 #else
   return absl::InternalError(
       "GPU Compilation requires the target to be built with CUDA or "
@@ -174,7 +189,8 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
   TF_RETURN_IF_ERROR(MlirToXlaComputation(
       module, xla_computation,
       /*use_tuple_args=*/options.parameter_is_tupled_arguments,
-      /*return_tuple=*/false));
+      /*return_tuple=*/false,
+      /*use_shardy=*/false));
   return Compile(std::move(input_options), xla_computation, topology, client);
 #else
   return absl::InternalError(
@@ -183,8 +199,15 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
 #endif
 }
 
-REGISTER_MODULE_INITIALIZER(pjrt_register_se_gpu_compiler, {
+#if TENSORFLOW_USE_ROCM
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(pjrt_register_se_gpu_compiler, {
+  PjRtRegisterCompiler(RocmName(),
+                       std::make_unique<StreamExecutorGpuCompiler>());
+});
+#else
+STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(pjrt_register_se_gpu_compiler, {
   PjRtRegisterCompiler(CudaName(),
                        std::make_unique<StreamExecutorGpuCompiler>());
 });
+#endif
 }  // namespace xla

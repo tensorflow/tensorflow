@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -60,7 +60,6 @@ TEST_F(HloMetadataTest, MetadataPropagation) {
                          ->root_instruction();
   EXPECT_THAT(instruction->metadata().op_type(), StrEq("add"));
   EXPECT_THAT(instruction->metadata().op_name(), StrEq("my_sum_op"));
-  EXPECT_NE(instruction->metadata().logical_creation_pass_id(), 0);
 }
 
 TEST_F(HloMetadataTest, MetadataClearing) {

@@ -37,7 +37,7 @@ mlir::LogicalResult ExtractTfVersions(mlir::ModuleOp module,
 
 // Returns TensorFlow GraphDef producer version for the given module. Returns an
 // error if the version information is missing for the module or is not valid.
-::tsl::StatusOr<int64_t> GetTfGraphProducerVersion(mlir::ModuleOp module);
+absl::StatusOr<int64_t> GetTfGraphProducerVersion(mlir::ModuleOp module);
 
 }  // namespace tensorflow
 

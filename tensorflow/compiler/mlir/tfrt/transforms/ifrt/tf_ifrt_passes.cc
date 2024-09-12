@@ -27,11 +27,12 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/data_dumper_logger_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
-#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/rewrite_cluster_to_ifrt_call.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
 
 namespace tensorflow {
@@ -42,6 +43,52 @@ using mlir::LogicalResult;
 using mlir::OpPassManager;
 using mlir::PassManager;
 using mlir::func::FuncOp;
+
+void AddClusterToIfrtRuntimeOpsPassPipeline(OpPassManager& pm,
+                                            llvm::StringRef module_name) {
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::CreateExecutorDialectToFunctionalConversionPass());
+
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
+
+  pm.addNestedPass<mlir::func::FuncOp>(CreateTfIdentityPropagationPass());
+
+  pm.addNestedPass<mlir::func::FuncOp>(CreateTfRestoreSplittingPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
+  pm.addNestedPass<mlir::func::FuncOp>(CreateTfRestorePruningPass());
+  pm.addNestedPass<mlir::func::FuncOp>(CreateTfRestoreMergingPass());
+
+  pm.addPass(CreateLowerToIfrtRestoreVariablePass());
+
+  pm.addPass(CreateRewriteClusterToIfrtCallPass());
+
+  // After device program is extracted, we can clean up device attributes from
+  // all ops.
+  pm.addNestedPass<mlir::func::FuncOp>(CreateTfDeviceCleanupPass());
+
+  // Sink VarHandle with ReadVariableOp: subsequent SinkVariableAsNamedArrayPass
+  // rely on the co-existence of VarHandle and ReadVariable in the same
+  // function.
+  // First, we inline all the function calls. This will sink VarHandle
+  // with ReadVariable in most cases. Then SinkInvariantOpsPass will sink
+  // VarHandle to a few special Ops that inliner does not handle.
+  // TODO(b/319045348): the bridge before this pipeline already does some
+  // inlining. Consider removing this inliner.
+  pm.addPass(mlir::createInlinerPass());
+  pm.addPass(::tensorflow::CreateSinkInInvariantOpsPass());
+
+  // Decompose resource ops as resource variables are loaded by ReadVariableOp
+  // and can be lowered to IfrtLoadVariableOp in the subsequent
+  // SinkVariableAsNamedArrayPass.
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::TFDevice::CreateDecomposeResourceOpsPass());
+
+  // Sink variable tensor as named array in IFRT.
+  pm.addPass(CreateSinkVariableAsNamedArrayPass());
+}
+
+}  // namespace
 
 // Setup the input pass manager to enable IR dumping after each pass.
 // Note a side effect of this method is that multi threading will be disabled.
@@ -60,19 +107,6 @@ void EnablePassIRPrinting(PassManager& pm, const std::string& dump_group_name,
       /*print_module_scope=*/true));
   pm.enableTiming();
 }
-
-void AddClusterToIfrtRuntimeOpsPassPipeline(OpPassManager& pm,
-                                            llvm::StringRef module_name) {
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::CreateExecutorDialectToFunctionalConversionPass());
-
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
-
-  pm.addPass(CreateRewriteClusterToIfrtCallPass());
-}
-
-}  // namespace
 
 absl::Status RunClusterToIfrtRuntimeOpsPassPipeline(
     mlir::ModuleOp module, llvm::StringRef module_name) {
@@ -112,9 +146,7 @@ absl::Status RunClusterToIfrtRuntimeOpsPassPipeline(
 }
 
 // Register all IfrtPass
-void RegisterTfIfrtPasses() {
-  mlir::registerPass([]() { return CreateRewriteClusterToIfrtCallPass(); });
-}
+void RegisterTfIfrtPasses() { registerTfrtIfrtServingPasses(); }
 
 }  // namespace ifrt_serving
 }  // namespace tensorflow

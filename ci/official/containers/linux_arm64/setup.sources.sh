@@ -39,7 +39,7 @@ cat >/etc/apt/sources.list.d/custom.list <<SOURCES
 deb http://ppa.launchpad.net/deadsnakes/ppa/ubuntu focal main
 deb-src http://ppa.launchpad.net/deadsnakes/ppa/ubuntu focal main
 
-# LLVM/Clang 17 repository
-deb http://apt.llvm.org/focal/ llvm-toolchain-focal-17 main
-deb-src http://apt.llvm.org/focal/ llvm-toolchain-focal-17 main
+# LLVM/Clang 18 repository
+deb http://apt.llvm.org/focal/ llvm-toolchain-focal-18 main
+deb-src http://apt.llvm.org/focal/ llvm-toolchain-focal-18 main
 SOURCES

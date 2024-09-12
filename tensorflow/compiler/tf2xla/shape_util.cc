@@ -45,14 +45,14 @@ Status PopulateInfeedLayoutVector(const xla::Shape& shape,
   } else {
     layouts->insert(layouts->end(), shape.rank(), -1);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Populate the output layout unless the minor_to_major array contains all -1
 // value, in which case the layout is considered missing and the API returns
 // false.
-StatusOr<bool> MakeLayout(absl::Span<const int64_t> minor_to_major,
-                          xla::Layout* layout) {
+absl::StatusOr<bool> MakeLayout(absl::Span<const int64_t> minor_to_major,
+                                xla::Layout* layout) {
   if (std::all_of(minor_to_major.begin(), minor_to_major.end(),
                   [](int64_t dim) { return dim == -1; })) {
     return false;
@@ -83,7 +83,7 @@ Status AssignLayout(
     layout = layout_func(*shape);
   }
   *shape->mutable_layout() = layout;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -100,7 +100,7 @@ Status XLAShapeToTensorShape(const xla::Shape& shape,
   for (int i = 0; i < shape.rank(); ++i) {
     TF_RETURN_IF_ERROR(tensor_shape->AddDimWithStatus(shape.dimensions(i)));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Convert a TensorShape into the equivalent XLA Shape proto.
@@ -110,7 +110,7 @@ Status TensorShapeToXLAShape(DataType dtype,
   xla::PrimitiveType type;
   TF_RETURN_IF_ERROR(DataTypeToPrimitiveType(dtype, &type));
   *shape = TensorShapeToXLAShape(type, tensor_shape);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status TensorShapeToBoundedXLAShape(DataType dtype,
@@ -122,7 +122,7 @@ Status TensorShapeToBoundedXLAShape(DataType dtype,
   if (tensor_shape.unknown_rank()) {
     // For unknown shape, create a rank 1 size 0 tensor.
     *shape = xla::ShapeUtil::MakeShapeWithDenseLayout(type, {0}, {0});
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (tensor_shape.dims() != bound.dims()) {
@@ -157,7 +157,7 @@ Status TensorShapeToBoundedXLAShape(DataType dtype,
     }
   }
   *shape = result;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 xla::Shape TensorShapeToXLAShape(xla::PrimitiveType type,
@@ -190,11 +190,11 @@ Status TensorShapeToXLAShape(DataType dtype, const TensorShape& tensor_shape,
   xla::PrimitiveType type;
   TF_RETURN_IF_ERROR(DataTypeToPrimitiveType(dtype, &type));
   *shape = TensorShapeToXLAShape(type, tensor_shape);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<xla::Shape> TensorShapeToXLAShape(DataType dtype,
-                                           const TensorShape& tensor_shape) {
+absl::StatusOr<xla::Shape> TensorShapeToXLAShape(
+    DataType dtype, const TensorShape& tensor_shape) {
   xla::Shape out;
   TF_RETURN_IF_ERROR(TensorShapeToXLAShape(dtype, tensor_shape, &out));
   return out;
@@ -214,7 +214,7 @@ xla::Shape TensorShapeToXLAShape(xla::PrimitiveType type,
   return xla::ShapeUtil::MakeShapeWithDenseLayout(type, dimensions, layout);
 }
 
-StatusOr<std::vector<int>> GetShapeLayoutVector(const xla::Shape& shape) {
+absl::StatusOr<std::vector<int>> GetShapeLayoutVector(const xla::Shape& shape) {
   std::vector<int> layouts;
   TF_RETURN_IF_ERROR(PopulateInfeedLayoutVector(shape, &layouts));
   return layouts;
@@ -272,7 +272,7 @@ Status GetShapeWithLayout(
     VLOG(4) << "Shape[] = "
             << xla::ShapeUtil::HumanStringWithLayout(*output_shape);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

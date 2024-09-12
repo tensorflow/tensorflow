@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,12 +19,17 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/client/client.h"
 #include "xla/client/xla_computation.h"
 #include "xla/service/compile_only_service.h"
 #include "xla/service/compiler.h"
-#include "xla/statusor.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -53,7 +58,7 @@ class CompileOnlyClient : public Client {
   // This is intended for use in static compilation. The |options|
   // parameter describes the target for which the compiler should emit
   // code. |metadata|, if provided, is populated during compilation.
-  StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+  absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(
       absl::Span<const AotXlaComputationInstance> computations,
       const AotCompilationOptions& options,
@@ -61,7 +66,7 @@ class CompileOnlyClient : public Client {
 
   // Create a Hlo module config for the given program shape and arguments.
   // execution_options is optional; if not given a default is used.
-  StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
+  absl::StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
       const ProgramShape& program_shape,
       absl::Span<const Shape* const> argument_shapes,
       const ExecutionOptions* execution_options);

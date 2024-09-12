@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ limitations under the License.
 
 namespace xla {
 namespace {
-Status CanonicalizeNonTupleConditional(HloInstruction* conditional) {
+absl::Status CanonicalizeNonTupleConditional(HloInstruction* conditional) {
   TF_RET_CHECK(conditional->opcode() == HloOpcode::kConditional);
   for (auto* branch : conditional->called_computations()) {
     HloInstruction* root = branch->root_instruction();
@@ -39,11 +39,11 @@ Status CanonicalizeNonTupleConditional(HloInstruction* conditional) {
   auto gte = parent->AddInstruction(
       HloInstruction::CreateGetTupleElement(root_shape, new_conditional, 0));
   TF_RETURN_IF_ERROR(parent->ReplaceInstruction(conditional, gte));
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
-StatusOr<bool> ConditionalCanonicalizer::Run(
+absl::StatusOr<bool> ConditionalCanonicalizer::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(

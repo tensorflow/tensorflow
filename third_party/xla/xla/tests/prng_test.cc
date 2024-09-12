@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
-#include "unsupported/Eigen/SpecialFunctions"  // from @eigen_archive
+#include "unsupported/Eigen/SpecialFunctions"
 #include "xla/client/local_client.h"
 #include "xla/client/xla_builder.h"
 #include "xla/literal.h"

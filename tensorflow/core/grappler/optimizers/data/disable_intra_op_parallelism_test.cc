@@ -108,8 +108,8 @@ TEST_P(IntraOpNotSetTest, IntraOpParallelism) {
        NDef("stop", "Const", {}, {{"value", 10}, {"dtype", DT_INT32}}),
        NDef("step", "Const", {}, {{"value", 1}, {"dtype", DT_INT32}}),
        NDef("range", "RangeDataset", {"start", "stop", "step"},
-            {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
-             {"output_types", gtl::ArraySlice<DataType>{}}}),
+            {{"output_shapes", absl::Span<const TensorShape>{}},
+             {"output_types", absl::Span<const DataType>{}}}),
        NDef("Sink", op, {"range"}, {})});
   EXPECT_FALSE(graph_utils::ContainsNodeWithOp("MaxIntraOpParallelismDataset",
                                                item.graph));
@@ -163,8 +163,8 @@ TEST(AutotuneWithModelTest, IntraOpParallelism) {
        NDef("stop", "Const", {}, {{"value", 10}, {"dtype", DT_INT32}}),
        NDef("step", "Const", {}, {{"value", 1}, {"dtype", DT_INT32}}),
        NDef("range", "RangeDataset", {"start", "stop", "step"},
-            {{"output_shapes", gtl::ArraySlice<TensorShape>{}},
-             {"output_types", gtl::ArraySlice<DataType>{}}}),
+            {{"output_shapes", absl::Span<const TensorShape>{}},
+             {"output_types", absl::Span<const DataType>{}}}),
        NDef("model", "ModelDataset", {"range"}, {}),
        NDef("Sink", "Identity", {"model"}, {})});
   EXPECT_FALSE(graph_utils::ContainsNodeWithOp("MaxIntraOpParallelismDataset",

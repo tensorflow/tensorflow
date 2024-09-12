@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,12 +21,16 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
-#include "llvm/IR/Constants.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/Metadata.h"
+#include "xla/layout_util.h"
+#include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/shape_util.h"
-#include "xla/types.h"
+#include "xla/shape.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {

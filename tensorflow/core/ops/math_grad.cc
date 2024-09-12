@@ -40,7 +40,7 @@ Status GradForUnaryCwise(FunctionDef* g, std::vector<FDH::Node> nodes) {
       {{"T: {half, float, double}"}},
       // Nodes
       nodes);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status AbsGrad(const AttrSlice& attrs, FunctionDef* g) {
@@ -386,7 +386,7 @@ Status CastGrad(const AttrSlice& attrs, FunctionDef* g) {
       {{"SrcT: type"}, {"DstT: type"}},
       // Nodes
       {{{"dx"}, "Cast", {"dy"}, {{"SrcT", "$DstT"}, {"DstT", "$SrcT"}}}});
-  return OkStatus();
+  return absl::OkStatus();
   // clang-format on
 }
 REGISTER_OP_GRADIENT("Cast", CastGrad);
@@ -427,7 +427,7 @@ Status GradForBinaryCwise(FunctionDef* g, std::vector<FDH::Node> body) {
       {{"T: {half, float, double}"}},
       // Nodes
       nodes);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status AddGrad(const AttrSlice& attrs, FunctionDef* g) {
@@ -676,7 +676,7 @@ Status SelectGrad(const AttrSlice& attrs, FunctionDef* g) {
         {{"dy"}, "Select", {"c", "zeros", "dz"}, {{"T", "$T"}}},
       });
   // clang-format on
-  return OkStatus();
+  return absl::OkStatus();
 }
 REGISTER_OP_GRADIENT("Select", SelectGrad);
 
@@ -731,7 +731,7 @@ Status GradForReductionOp(FunctionDef* g, std::vector<FDH::Node> body) {
                    nodes,
                    // Return values
                    {{"dx", "dx:output:0"}, {"di", "di:y:0"}});
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status SumGrad(const AttrSlice& attrs, FunctionDef* g) {
@@ -794,7 +794,7 @@ Status MinMaxGradHelper(const string& op, const AttrSlice& attrs,
         {{"di"}, "ZerosLike", {"i"}, {{"T", DT_INT32}}}
       });
   // clang-format on
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status MaxGrad(const AttrSlice& attrs, FunctionDef* g) {
@@ -830,9 +830,9 @@ static Status MatMulGradHelper(FunctionDef* g, const string& opname,
   // broadcasting-specific ops.
   if (enable_broadcasting) {
     std::vector<FDH::Node> unbroadcast_gradients = {
-        FDH::Const<int32>("zero", gtl::ArraySlice<int32>{0}),
-        FDH::Const<int32>("one", gtl::ArraySlice<int32>{1}),
-        FDH::Const<int32>("minustwo", gtl::ArraySlice<int32>{-2}),
+        FDH::Const<int32>("zero", absl::Span<const int32>{0}),
+        FDH::Const<int32>("one", absl::Span<const int32>{1}),
+        FDH::Const<int32>("minustwo", absl::Span<const int32>{-2}),
         // Compute the batch shapes of the inputs (all but last two dims).
         {{"sx"}, "Shape", {"x"}, {{"T", "$T"}}},
         {{"sy"}, "Shape", {"y"}, {{"T", "$T"}}},
@@ -862,7 +862,7 @@ static Status MatMulGradHelper(FunctionDef* g, const string& opname,
       {{"T: {half, float, double}"}},
       // Nodes
       nodes);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status MatMulGradCommon(const string& opname, const string& attr_adj_x,

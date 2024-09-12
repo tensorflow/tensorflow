@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -26,14 +26,16 @@ limitations under the License.
 #include "xla/client/xla_computation.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/backend.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_module_util.h"
 #include "xla/service/service.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {
@@ -63,7 +65,7 @@ std::optional<const OpMetadata*> ParameterMetadata(
 }
 }  // namespace
 
-StatusOr<std::unique_ptr<HloModuleConfig>> GetHloModuleConfig(
+absl::StatusOr<std::unique_ptr<HloModuleConfig>> GetHloModuleConfig(
     const XlaComputation& computation,
     absl::Span<const Shape* const> argument_layouts,
     const ExecutableBuildOptions& build_options, ServiceOptions* options,

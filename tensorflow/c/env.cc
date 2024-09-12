@@ -16,10 +16,15 @@ limitations under the License.
 #include "tensorflow/c/env.h"
 
 #include "tensorflow/c/c_api_macros.h"
+#include "tensorflow/c/tf_file_statistics.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/file_statistics.h"
+#include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 struct TF_StringStream {

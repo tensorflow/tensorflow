@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -58,11 +58,13 @@ TEST(HloOpcodeTest, OpcodeProperties) {
       case HloOpcode::kAllReduceStart:
       case HloOpcode::kAllToAll:
       case HloOpcode::kCall:
+      case HloOpcode::kCollectiveBroadcast:
       case HloOpcode::kCollectivePermute:
       case HloOpcode::kCollectivePermuteStart:
       case HloOpcode::kConcatenate:
       case HloOpcode::kConditional:
       case HloOpcode::kCustomCall:
+      case HloOpcode::kDot:  // Sparse dot has an extra meta argument.
       case HloOpcode::kDynamicSlice:
       case HloOpcode::kDynamicUpdateSlice:
       case HloOpcode::kDynamicReshape:

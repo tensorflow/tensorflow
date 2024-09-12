@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ImportEvent"
   input_arg {
     name: "writer"

@@ -28,6 +28,10 @@ limitations under the License.
 #include "tsl/platform/setround.h"
 #include "tsl/platform/tracing.h"
 
+#ifdef DNNL_AARCH64_USE_ACL
+#include "tsl/platform/cpu_info.h"
+#endif  // DNNL_AARCH64_USE_ACL
+
 #ifdef TENSORFLOW_THREADSCALING_EXPERIMENTAL
 ABSL_FLAG(float, tensorflow_num_threads_scale_factor, 1.0,
           "Allows to scale all Tensorflow ThreadPools. Total number of threads "
@@ -106,6 +110,14 @@ ThreadPool::ThreadPool(Env* env, const ThreadOptions& thread_options,
                        const string& name, int num_threads,
                        bool low_latency_hint, Eigen::Allocator* allocator) {
   CHECK_GE(num_threads, 1);
+
+#ifdef DNNL_AARCH64_USE_ACL
+  // To avoid cost of swapping in and out threads from running processes
+  // we do not use all available cores to parallelise TF operations.
+  if (num_threads == tsl::port::NumTotalCPUs() && num_threads >= 16) {
+    num_threads = num_threads - 1;
+  }
+#endif  // DNNL_AARCH64_USE_ACL
 
 #ifdef TENSORFLOW_THREADSCALING_EXPERIMENTAL
   CHECK_GT(absl::GetFlag(FLAGS_tensorflow_num_threads_scale_factor), 0);

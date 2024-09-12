@@ -1543,7 +1543,7 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
     default:
       TF_LITE_KERNEL_LOG(
           context,
-          "Only float32 and uint8 and int8 are supported currently, got %d.",
+          "Only float32 and uint8 and int8 are supported currently, got %s.",
           TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
@@ -1754,7 +1754,6 @@ TfLiteStatus GeluEval(TfLiteContext* context, TfLiteNode* node) {
           TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
-  return kTfLiteOk;
 }
 
 }  // namespace activations

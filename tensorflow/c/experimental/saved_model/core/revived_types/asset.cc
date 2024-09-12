@@ -21,10 +21,11 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
+#include "tensorflow/c/experimental/saved_model/core/revived_types/tensorhandle_convertible.h"
 #include "tensorflow/c/tensor_interface.h"
 #include "tensorflow/cc/saved_model/constants.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 

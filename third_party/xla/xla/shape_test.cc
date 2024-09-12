@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -90,6 +90,13 @@ TEST_F(ShapeTest, DynamicShapeToString) {
   EXPECT_EQ("f32[?,784]", unbounded_.ToString());
 }
 
+TEST_F(ShapeTest, DeleteDimensions) {
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {5, 3, 2, 7, 9},
+                                                    {2, 0, 1, 4, 3});
+  shape.DeleteDimensions({1, 2, 3});
+  EXPECT_EQ(shape, ShapeUtil::MakeShapeWithDenseLayout(F32, {5, 9}, {0, 1}));
+}
+
 TEST_F(ShapeTest, EqualityTest) {
   // Different layouts.
   EXPECT_NE(ShapeUtil::MakeShapeWithDenseLayout(F32, {23, 44}, {1, 0}),
@@ -106,6 +113,26 @@ TEST_F(ShapeTest, EqualityTest) {
   // Equal shapes.
   EXPECT_EQ(ShapeUtil::MakeShapeWithDenseLayout(F32, {23, 44}, {1, 0}),
             ShapeUtil::MakeShapeWithDenseLayout(F32, {23, 44}, {1, 0}));
+}
+
+TEST_F(ShapeTest, IsInteger) {
+  EXPECT_FALSE(opaque_.IsInteger());
+  EXPECT_FALSE(token_.IsInteger());
+  EXPECT_TRUE(matrix_.IsInteger());
+  EXPECT_FALSE(tuple_.IsInteger());
+  EXPECT_FALSE(nested_tuple_.IsInteger());
+
+  Shape u32_shape = ShapeUtil::MakeShape(U32, {1});
+  EXPECT_TRUE(u32_shape.IsInteger());
+
+  Shape f32_shape = ShapeUtil::MakeShape(F32, {1});
+  EXPECT_FALSE(f32_shape.IsInteger());
+
+  Shape integer_tuple = ShapeUtil::MakeTupleShape({u32_shape, u32_shape});
+  EXPECT_TRUE(integer_tuple.IsInteger());
+
+  Shape mixed_type_tuple = ShapeUtil::MakeTupleShape({u32_shape, f32_shape});
+  EXPECT_FALSE(mixed_type_tuple.IsInteger());
 }
 
 TEST_F(ShapeTest, IsStatic) {
@@ -163,6 +190,15 @@ TEST_F(ShapeTest, IsDynamicDimension) {
 
   EXPECT_TRUE(unbounded_.is_dynamic_dimension(0));
   EXPECT_FALSE(unbounded_.is_dynamic_dimension(1));
+}
+
+TEST_F(ShapeTest, IsStaticDimension) {
+  Shape dynamic_matrix = matrix_;
+  dynamic_matrix.set_dynamic_dimension(1, true);
+  EXPECT_TRUE(dynamic_matrix.is_static_dimension(0));
+  EXPECT_FALSE(dynamic_matrix.is_static_dimension(1));
+  EXPECT_FALSE(unbounded_.is_static_dimension(0));
+  EXPECT_TRUE(unbounded_.is_static_dimension(1));
 }
 
 TEST_F(ShapeTest, ProgramShapeToFromProto) {
@@ -234,6 +270,15 @@ TEST_F(ShapeTest, ProgramShapeToString) {
       "-> "
       "((opaque[], f32[], u32[1,2], s32[3,4]), u32[1,2], token[])",
       prog.ToString());
+}
+
+TEST_F(ShapeTest, IgnoreSplitsComparison) {
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {256, 256}, {1, 0});
+  Shape other_shape = shape;
+  SplitConfig split_config(/*dimension=*/0, {128});
+  other_shape.mutable_layout()->add_split_configs(split_config);
+
+  EXPECT_TRUE(Shape::Equal().IgnoreSplitConfigInLayout()(shape, other_shape));
 }
 
 TEST_F(ShapeTest, SupportsAbslHash) {

@@ -57,9 +57,16 @@ fi
 venv=$(mktemp -d)
 "python${TFCI_PYTHON_VERSION}" -m venv "$venv"
 python="$venv/bin/python3"
+# TODO(b/361598556) Remove the check after TF NumPy 2 upgrade
+# Update deps versions for NumPy 2.
+if [[ "$TFCI_WHL_NUMPY_VERSION" == 2 ]]; then
+  "$python" -m pip install numpy==2.0.0 scipy==1.13.0 ml-dtypes==0.4.0 h5py==3.11.0
+fi
 "$python" -m pip install *.whl $TFCI_PYTHON_VERIFY_PIP_INSTALL_ARGS
-"$python" -c 'import tensorflow as tf; t1=tf.constant([1,2,3,4]); t2=tf.constant([5,6,7,8]); print(tf.add(t1,t2).shape)'
-"$python" -c 'import sys; import tensorflow as tf; sys.exit(0 if "keras" in tf.keras.__name__ else 1)'
+if [[ "$TFCI_WHL_IMPORT_TEST_ENABLE" == "1" ]]; then
+  "$python" -c 'import tensorflow as tf; t1=tf.constant([1,2,3,4]); t2=tf.constant([5,6,7,8]); print(tf.add(t1,t2).shape)'
+  "$python" -c 'import sys; import tensorflow as tf; sys.exit(0 if "keras" in tf.keras.__name__ else 1)'
+fi
 # VERY basic check to ensure the [and-cuda] package variant is installable.
 # Checks TFCI_BAZEL_COMMON_ARGS for "gpu" or "cuda", implying that the test is
 # relevant. All of the GPU test machines have CUDA installed via other means,

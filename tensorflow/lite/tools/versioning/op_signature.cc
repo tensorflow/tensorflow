@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/stderr_reporter.h"
 
@@ -163,6 +164,15 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
           subgraph->tensors()->Get(op->inputs()->Get(1));
       op_sig.ext_options.fully_connected.sparse_weight =
           (weight_tensor->sparsity() != nullptr);
+      const QuantizationParameters* weight_quant =
+          weight_tensor->quantization();
+      if (weight_quant && weight_quant->scale() &&
+          weight_quant->scale()->size() && weight_tensor->shape() &&
+          weight_tensor->shape()->size()) {
+        op_sig.ext_options.fully_connected.is_per_channel_quantized =
+            weight_quant->scale()->size() > 1 &&
+            weight_quant->scale()->size() == weight_tensor->shape()->Get(0);
+      }
     } break;
 
     case BuiltinOperator_MUL: {
@@ -256,6 +266,18 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
     case BuiltinOperator_ADD: {
       if (subgraph->tensors()->Get(op->inputs()->Get(0))->quantization()) {
         op_sig.ext_options.add.input_quantized = true;
+      }
+    } break;
+
+    case BuiltinOperator_EMBEDDING_LOOKUP: {
+      const Tensor* table_tensor =
+          subgraph->tensors()->Get(op->inputs()->Get(1));
+      const QuantizationParameters* table_quant = table_tensor->quantization();
+      if (table_quant && table_quant->scale() && table_quant->scale()->size() &&
+          table_tensor->shape() && table_tensor->shape()->size()) {
+        op_sig.ext_options.embedding_lookup.is_per_channel_quantized =
+            table_quant->scale()->size() > 1 &&
+            table_quant->scale()->size() == table_tensor->shape()->Get(0);
       }
     } break;
 

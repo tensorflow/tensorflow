@@ -36,7 +36,9 @@ limitations under the License.
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/service/worker_impl.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/dataset.pb.h"
+#include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -50,15 +52,19 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/host_info.h"
 
 namespace tensorflow {
 namespace data {
 
-StatusOr<std::unique_ptr<DataServiceWorkerClient>>
-CreateDataServiceWorkerClient(const std::string& dispatcher_protocol,
-                              const DataTransferServerInfo& info) {
+absl::StatusOr<std::unique_ptr<DataServiceWorkerClient>>
+CreateDataServiceWorkerClient(
+    const std::string& dispatcher_protocol, const DataTransferServerInfo& info,
+    const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info,
+    Allocator* allocator) {
   auto client = std::make_unique<DataServiceWorkerClient>(
-      info.address(), dispatcher_protocol, info.protocol());
+      info.address(), dispatcher_protocol, info.protocol(),
+      accelerator_device_info, allocator);
   TF_RETURN_IF_ERROR(client->Initialize());
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       client->CheckCompatibility(info.compatibility_info()),
@@ -77,15 +83,16 @@ Status DataServiceWorkerClient::GetElement(const GetElementRequest& req,
 Status DataServiceWorkerClient::EnsureInitialized() {
   mutex_lock l(mu_);
   if (client_) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   TF_RETURN_IF_ERROR(DataTransferClient::Build(
-      GetDataTransferProtocol(), {protocol_, address_}, &client_));
-  return OkStatus();
+      GetDataTransferProtocol(),
+      {protocol_, address_, accelerator_device_info_, allocator_}, &client_));
+  return absl::OkStatus();
 }
 
 std::string DataServiceWorkerClient::GetDataTransferProtocol() const {
-  if (LocalWorkers::Get(address_) != nullptr) {
+  if (ForceLocalProtocol(address_)) {
     return kLocalTransferProtocol;
   }
   return transfer_protocol_;
@@ -96,7 +103,8 @@ void DataServiceWorkerClient::TryCancel() { client_->TryCancel(); }
 class GrpcDataTransferClient : public DataTransferClient {
  public:
   GrpcDataTransferClient(std::shared_ptr<grpc::ChannelCredentials> credentials,
-                         std::string address) {
+                         std::string address, Allocator* allocator)
+      : allocator_(allocator) {
     VLOG(2) << "Create GrpcDataTransferClient for worker " << address << ".";
     grpc::ChannelArguments args;
     args.SetMaxReceiveMessageSize(-1);
@@ -145,7 +153,11 @@ class GrpcDataTransferClient : public DataTransferClient {
       case GetElementResponse::kUncompressed:
         for (const auto& component : resp.uncompressed().components()) {
           result.components.emplace_back();
-          if (!result.components.back().FromProto(component)) {
+          bool success =
+              allocator_ != nullptr
+                  ? result.components.back().FromProto(allocator_, component)
+                  : result.components.back().FromProto(component);
+          if (!success) {
             return errors::Internal("Failed to parse tensor.");
           }
         }
@@ -153,7 +165,7 @@ class GrpcDataTransferClient : public DataTransferClient {
       case GetElementResponse::ELEMENT_NOT_SET:
         break;
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   void TryCancel() override {
@@ -166,6 +178,7 @@ class GrpcDataTransferClient : public DataTransferClient {
   }
 
  private:
+  Allocator* const allocator_;
   mutex mu_;
   std::unique_ptr<WorkerService::Stub> stub_;
   // Set of all currently active clients contexts. Used to support
@@ -186,9 +199,9 @@ class GrpcTransferClientRegistrar {
           std::shared_ptr<grpc::ChannelCredentials> credentials;
           TF_RETURN_IF_ERROR(CredentialsFactory::CreateClientCredentials(
               config.protocol, &credentials));
-          *out = std::make_unique<GrpcDataTransferClient>(credentials,
-                                                          config.address);
-          return OkStatus();
+          *out = std::make_unique<GrpcDataTransferClient>(
+              credentials, config.address, config.allocator);
+          return absl::OkStatus();
         });
   }
 };
@@ -234,10 +247,10 @@ class LocalDataTransferClient : public DataTransferClient {
       return errors::Cancelled(absl::Substitute(
           "Client for worker $0 has been cancelled.", worker_address_));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  StatusOr<std::shared_ptr<DataServiceWorkerImpl>> GetWorker(
+  absl::StatusOr<std::shared_ptr<DataServiceWorkerImpl>> GetWorker(
       const GetElementRequest& req) const {
     std::shared_ptr<DataServiceWorkerImpl> worker =
         LocalWorkers::Get(worker_address_);
@@ -263,11 +276,19 @@ class LocalTransferClientRegistrar {
         kLocalTransferProtocol, [](DataTransferClient::Config config,
                                    std::unique_ptr<DataTransferClient>* out) {
           *out = std::make_unique<LocalDataTransferClient>(config.address);
-          return OkStatus();
+          return absl::OkStatus();
         });
   }
 };
 static LocalTransferClientRegistrar local_client_registrar;
+
+bool ForceLocalProtocol(const std::string& worker_address) {
+  // TODO(b/291994182): Use remote workers in unit tests.
+  if (tsl::port::JobUid() == -1) {
+    return false;
+  }
+  return LocalWorkers::Get(worker_address) != nullptr;
+}
 
 }  // namespace data
 }  // namespace tensorflow

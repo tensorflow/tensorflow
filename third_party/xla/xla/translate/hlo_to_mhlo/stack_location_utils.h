@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef XLA_TRANSLATE_HLO_TO_MHLO_STACK_LOCATION_UTILS_H_
 #define XLA_TRANSLATE_HLO_TO_MHLO_STACK_LOCATION_UTILS_H_
 
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/Location.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo.pb.h"
 

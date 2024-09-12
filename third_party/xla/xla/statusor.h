@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,12 +15,11 @@ limitations under the License.
 #ifndef XLA_STATUSOR_H_
 #define XLA_STATUSOR_H_
 
-#include "xla/status.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 
-// Use steam_executor's StatusOr so we don't duplicate code.
+// Use steam_executor's absl::StatusOr so we don't duplicate code.
 using tsl::StatusOr;  // TENSORFLOW_STATUS_OK
 
 }  // namespace xla

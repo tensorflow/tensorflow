@@ -46,16 +46,16 @@ class TextLineReader : public ReaderBase {
       if (absl::IsOutOfRange(status)) {
         // We ignore an end of file error when skipping header lines.
         // We will end up skipping this file.
-        return OkStatus();
+        return absl::OkStatus();
       }
       TF_RETURN_IF_ERROR(status);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status OnWorkFinishedLocked() override {
     input_buffer_.reset(nullptr);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status ReadLocked(tstring* key, tstring* value, bool* produced,
@@ -69,7 +69,7 @@ class TextLineReader : public ReaderBase {
     }
     if (absl::IsOutOfRange(status)) {  // End of file, advance to the next.
       *at_end = true;
-      return OkStatus();
+      return absl::OkStatus();
     } else {  // Some other reading error
       return status;
     }

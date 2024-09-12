@@ -1,5 +1,5 @@
-// RUN: tf-quant-opt %s -split-input-file -quant-insert-quantized-functions -quant-quantize-composite-functions='target-opset=XLA' | FileCheck %s
-// RUN: tf-quant-opt %s -split-input-file -quant-insert-quantized-functions -quant-quantize-composite-functions='target-opset=XLA enable-per-channel-quantization=true' | FileCheck --check-prefix=PerChannel %s
+// RUN: tf-quant-opt %s -split-input-file -quant-insert-quantized-functions -quant-quantize-composite-functions='quantization-method=ptq target-opset=XLA' | FileCheck %s
+// RUN: tf-quant-opt %s -split-input-file -quant-insert-quantized-functions -quant-quantize-composite-functions='quantization-method=ptq target-opset=XLA enable-per-channel-quantization=true' | FileCheck --check-prefix=PerChannel %s
 
 module {
   func.func @conv_with_single_layer(%arg0: tensor<1x2x2x3xf32>) -> (tensor<*xf32>) {
@@ -211,9 +211,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
     %3 = "quantfork.qcast"(%2) : (tensor<1x3x1x1xf32>) -> tensor<1x3x1x1x!quant.uniform<i8:f32, 0.0011764706057660721:-43>>
     %4 = "quantfork.dcast"(%3) : (tensor<1x3x1x1x!quant.uniform<i8:f32, 0.0011764706057660721:-43>>) -> tensor<1x3x1x1xf32>
     %5 = "tf.PartitionedCall"(%4, %arg1, %cst_1) {_tfl_quant_trait = "fully_quantizable", config = "", config_proto = "", executor_type = "", f = @composite_gather_fn_1} : (tensor<1x3x1x1xf32>, tensor<1xi32>, tensor<i32>) -> tensor<1x3x1x1xf32>
-    %6 = "quantfork.qcast"(%5) : (tensor<1x3x1x1xf32>) -> tensor<1x3x1x1x!quant.uniform<i8:f32, 0.0011764706057660721:-43>>
-    %7 = "quantfork.dcast"(%6) : (tensor<1x3x1x1x!quant.uniform<i8:f32, 0.0011764706057660721:-43>>) -> tensor<1x3x1x1xf32>
-    return %7 : tensor<1x3x1x1xf32>
+    return %5 : tensor<1x3x1x1xf32>
   }
   func.func private @composite_gather_fn_1(%arg0: tensor<1x3x1x1xf32>, %arg1: tensor<1xi32>, %arg2: tensor<i32>) -> tensor<1x3x1x1xf32> attributes {tf_quant.composite_function} {
     %0 = "tf.GatherV2"(%arg0, %arg1, %arg2) {attr_map = "0:batch_dims", batch_dims = 0 : i64, device = ""} : (tensor<1x3x1x1xf32>, tensor<1xi32>, tensor<i32>) -> tensor<1x3x1x1xf32>
@@ -231,7 +229,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
 // CHECK: %[[quantized_conv:.*]] = "tf.PartitionedCall"(%[[quantized_input]]
 // CHECK-SAME: f = @quantized_conv2d_fn_0
 // CHECK: %[[quantized_gather:.*]] = "tf.PartitionedCall"(%[[quantized_conv]]
-// CHECK-SAME: f = @quantized_gather_float_output_fn_0
+// CHECK-SAME: f = @quantized_gather_hybrid_fn_0
 // return %[[quantized_gather]] : tensor<1x3x1x1xf32>
 
 // CHECK: -------- Quantization Summary --------

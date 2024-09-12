@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -45,9 +45,6 @@ XlaOp Reciprocal(XlaOp operand);
 
 // Computes an approximation of the error function complement (1 - erf(x)).
 XlaOp Erfc(XlaOp x);
-
-// Computes an approximation of the error function.
-XlaOp Erf(XlaOp x);
 
 // Computes an approximation of the inverse of the error function.
 XlaOp ErfInv(XlaOp x);

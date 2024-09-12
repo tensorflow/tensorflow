@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "RiscFft"
   input_arg {
     name: "input"

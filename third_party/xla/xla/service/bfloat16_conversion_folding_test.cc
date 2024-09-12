@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,11 +15,17 @@ limitations under the License.
 
 #include "xla/service/bfloat16_conversion_folding.h"
 
+#include <cstdint>
+#include <optional>
+
+#include "absl/status/statusor.h"
+#include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/float_support.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
@@ -75,7 +81,7 @@ class BFloat16ConversionFoldingTest : public HloTestBase {
   bool FoldConversions(HloModule* module) {
     TestBFloat16Support bfloat16_support_;
     BFloat16ConversionFolding fold(&bfloat16_support_);
-    StatusOr<bool> result = fold.Run(module);
+    absl::StatusOr<bool> result = fold.Run(module);
     EXPECT_IS_OK(result.status());
     return result.value();
   }
@@ -239,7 +245,7 @@ TEST_F(BFloat16ConversionFoldingTest, FoldAllReduceTupleOutput) {
 
   HloInstruction* crs = builder.AddInstruction(HloInstruction::CreateAllReduce(
       ShapeUtil::MakeTupleShape({f32_shape, f32_shape}), {convert_a, b}, sum,
-      /*replica_groups=*/{},
+      /*device_list=*/CollectiveDeviceList(),
       /*constrain_layout=*/false,
       /*channel_id=*/std::nullopt, /*use_global_device_ids=*/false));
   HloInstruction* gte_a = builder.AddInstruction(

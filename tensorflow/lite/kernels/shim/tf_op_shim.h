@@ -21,13 +21,15 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/registration/registration.h"
 #include "tensorflow/core/framework/shape_inference.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/kernels/shim/op_kernel.h"
 #include "tensorflow/lite/kernels/shim/shape.h"
+#include "tsl/platform/macros.h"
 
 // This file contains the TF adapter. That is, it takes a `OpKernelShim`
 // class and provides a TF kernel out of it.
@@ -51,9 +53,9 @@ class TfInvokeContext : public InvokeContext<TfInvokeContext> {
  public:
   explicit TfInvokeContext(::tensorflow::OpKernelContext* context);
   // Read an input tensor
-  ConstTensorViewOr GetInput(const int idx) const;
+  ConstTensorViewOr GetInput(int idx) const;
   // Get a mutable output tensor
-  TensorViewOr GetOutput(const int idx, const Shape& shape) const;
+  TensorViewOr GetOutput(int idx, const Shape& shape) const;
   // Number of input tensors
   int NumInputs() const;
   // Number of output tensors
@@ -70,11 +72,11 @@ class TfShapeInferenceContext
   explicit TfShapeInferenceContext(
       ::tensorflow::shape_inference::InferenceContext* context);
   // Read an input tensor shape
-  ShapeOr GetInputShape(const int idx) const;
+  ShapeOr GetInputShape(int idx) const;
   // Set an output tensor shape
-  absl::Status SetOutputShape(const int idx, const Shape& shape);
+  absl::Status SetOutputShape(int idx, const Shape& shape);
   // Read an input tensor during shape inference
-  ConstTensorViewOr GetInputTensor(const int idx) const;
+  ConstTensorViewOr GetInputTensor(int idx) const;
   // Read a given attribute
   absl::StatusOr<AttrValue> GetAttr(const std::string& attr_name) const;
   // Number of input tensors

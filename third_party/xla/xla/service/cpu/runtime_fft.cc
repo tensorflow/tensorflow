@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,9 +23,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/attributes.h"
-#include "ducc/google/fft.h"  // from @ducc
-#include "Eigen/ThreadPool"  // from @eigen_archive
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive  // For ThreadPoolDevice.
+#include "ducc/google/fft.h"
+#include "Eigen/ThreadPool"
+#include "unsupported/Eigen/CXX11/Tensor"  // For ThreadPoolDevice.
 #include "xla/executable_run_options.h"
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_DuccFft(

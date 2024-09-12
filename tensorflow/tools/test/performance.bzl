@@ -49,7 +49,7 @@ def tf_cc_logged_benchmark(
         deps = [
             "@absl_py//absl:app",
             "@absl_py//absl/flags",
-            "//tensorflow/core:protos_all_py_pb2",
+            "@org_tensorflow//tensorflow/core:protos_all_py",
             "//tensorflow/python/platform:gfile",
             "//tensorflow/python/platform:test",
             "//tensorflow/python/platform:tf_logging",

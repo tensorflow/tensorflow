@@ -386,10 +386,10 @@ def banded_triangular_solve(
          [0.  ],
          [0.25]], dtype=float32)>
   >>> are_equal = soln == tf.linalg.banded_triangular_solve(x2, tf.ones([3, 1]))
-  >>> tf.reduce_all(are_equal).numpy()
+  >>> print(tf.reduce_all(are_equal).numpy())
   True
   >>> are_equal = soln == tf.linalg.triangular_solve(z, tf.ones([3, 1]))
-  >>> tf.reduce_all(are_equal).numpy()
+  >>> print(tf.reduce_all(are_equal).numpy())
   True
 
   Storing 2 superdiagonals of a 4x4 matrix. Because of the 'LEFT_RIGHT' padding
@@ -413,7 +413,7 @@ def banded_triangular_solve(
          [-0.25     ]], dtype=float32)>
   >>> are_equal = (soln == tf.linalg.triangular_solve(
   ...   z, tf.ones([4, 1]), lower=False))
-  >>> tf.reduce_all(are_equal).numpy()
+  >>> print(tf.reduce_all(are_equal).numpy())
   True
 
 

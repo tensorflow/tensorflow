@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,16 +16,23 @@ limitations under the License.
 #include "xla/service/flatten_call_graph.h"
 
 #include <memory>
+#include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/call_graph.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 
 namespace xla {
-
 namespace {
 
 // Helper to replace the called computation at a while, call, conditional or
@@ -62,13 +69,12 @@ void ReplaceCalledComputation(HloInstruction* instruction,
       }
       break;
     }
-    case HloOpcode::kAsyncStart:
-    case HloOpcode::kAsyncUpdate:
-    case HloOpcode::kAsyncDone: {
-      computation->RemoveAsyncInstruction(instruction);
+    case HloOpcode::kAsyncStart: {
+      CHECK(computation->IsAsyncComputation());
+      computation->RemoveAsyncStart();
       instruction->ReplaceCalledComputations(
           [&](HloComputation*) { return new_computation; });
-      new_computation->AddAsyncInstruction(*instruction);
+      new_computation->AddAsyncStart(instruction);
       break;
     }
     default:
@@ -77,13 +83,8 @@ void ReplaceCalledComputation(HloInstruction* instruction,
 }
 
 // Flatten a single call graph node. Expects to visit nodes in postorder.
-Status FlattenNode(const CallGraphNode& node) {
+absl::Status FlattenNode(const CallGraphNode& node) {
   HloComputation* computation = node.computation();
-  // Flatten async computations so that different async ops that belong to the
-  // same async group id call the same computation but async ops that have
-  // different async group ids call a different computation. This map maps from
-  // the async group id to the associated computation.
-  absl::flat_hash_map<int64_t, HloComputation*> async_computations;
   HloModule* module = computation->parent();
   // Clone callee for all call-sites except the first one.
   for (int i = 0; i < node.caller_callsites().size(); ++i) {
@@ -100,33 +101,10 @@ Status FlattenNode(const CallGraphNode& node) {
       continue;
     }
 
-    // For async computations, look up in the async computations map and use the
-    // computation for the group id, if available. Otherwise, clone the
-    // computation.
-    HloComputation* clone;
-    if (computation->IsAsyncComputation()) {
-      HloInstruction* caller = call_site.instruction();
-      TF_RET_CHECK(caller->async_group_id().has_value());
-      auto async_computation_it =
-          async_computations.find(*caller->async_group_id());
-      if (async_computation_it != async_computations.end()) {
-        if (computation != async_computation_it->second) {
-          ReplaceCalledComputation(call_site.instruction(), computation,
-                                   async_computation_it->second);
-        }
-        continue;
-      } else if (async_computations.empty()) {
-        async_computations[*caller->async_group_id()] = computation;
-        continue;
-      }
-      clone = module->AddEmbeddedComputation(computation->Clone());
-      ReplaceCalledComputation(call_site.instruction(), computation, clone);
-      async_computations[*call_site.instruction()->async_group_id()] = clone;
-    } else {
-      // Clone computation for the remaining sequential context call sites.
-      clone = module->AddEmbeddedComputation(computation->Clone());
-      ReplaceCalledComputation(call_site.instruction(), computation, clone);
-    }
+    // Clone computation for the remaining sequential context call sites.
+    HloComputation* clone =
+        module->AddEmbeddedComputation(computation->Clone());
+    ReplaceCalledComputation(call_site.instruction(), computation, clone);
     // Clone the sub-tree of all computations called from this node.
     std::vector<HloComputation*> worklist;
     worklist.push_back(clone);
@@ -147,19 +125,59 @@ Status FlattenNode(const CallGraphNode& node) {
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
+}
+
+// Annotates flatten computations with callee instruction types.
+absl::Status AnnotateNode(const CallGraphNode& node) {
+  for (auto& callsite : node.callsites()) {
+    HloInstruction* instruction = callsite.instruction();
+
+    if (instruction->opcode() == HloOpcode::kFusion) {
+      for (HloComputation* computation : instruction->called_computations()) {
+        computation->SetFusionInstruction(instruction);
+      }
+
+    } else if (instruction->opcode() == HloOpcode::kCustomCall) {
+      for (HloComputation* computation : instruction->called_computations()) {
+        computation->SetCustomCallInstruction(instruction);
+      }
+
+    } else if (hlo_query::IsCollectiveCommunicationOp(instruction->opcode())) {
+      for (HloComputation* computation : instruction->called_computations()) {
+        computation->SetCollectiveCallInstruction(instruction);
+      }
+
+    } else if (instruction->opcode() == HloOpcode::kWhile) {
+      instruction->while_body()->SetWhileCallInstruction(instruction);
+
+    } else if (instruction->opcode() == HloOpcode::kConditional) {
+      for (HloComputation* branch : instruction->branch_computations()) {
+        branch->SetConditionalCallInstruction(instruction);
+      }
+    }
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace
 
-StatusOr<bool> FlattenCallGraph::Run(
+absl::StatusOr<bool> FlattenCallGraph::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(3, "Before flatten call graph:\n" + module->ToString());
 
-  std::unique_ptr<CallGraph> call_graph =
-      CallGraph::Build(module, execution_threads);
-  TF_RETURN_IF_ERROR(call_graph->VisitNodes(FlattenNode));
+  {  // Flatten original call graph.
+    std::unique_ptr<CallGraph> call_graph =
+        CallGraph::Build(module, execution_threads);
+    TF_RETURN_IF_ERROR(call_graph->VisitNodes(FlattenNode));
+  }
+
+  {  // Annotate flattened computations with callee types.
+    std::unique_ptr<CallGraph> call_graph =
+        CallGraph::Build(module, execution_threads);
+    TF_RETURN_IF_ERROR(call_graph->VisitNodes(AnnotateNode));
+  }
 
   XLA_VLOG_LINES(3, "After flatten call graph:\n" + module->ToString());
   return true;

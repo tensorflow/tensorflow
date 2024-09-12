@@ -194,8 +194,6 @@ def create_keras_history(tensors):
 # (Only via Savedmodels). It may also change the semantics of whether
 # generated random numbers are generated once and re-used, or recomputed
 # each time.
-# Note: This path triggers for TPUEstimators / xla compiled graphs regardless
-# of this setting.
 _UNSAFE_GRAPH_OP_LAYER_CREATION = False
 
 

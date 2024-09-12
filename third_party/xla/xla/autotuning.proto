@@ -11,8 +11,6 @@ import "google/protobuf/any.proto";
 import "google/protobuf/duration.proto";
 import "tsl/protobuf/dnn.proto";
 
-option go_package = "github.com/google/tsl/tsl/go/protobuf/for_core_protos_go_proto";
-
 message CudnnVersion {
   int32 major = 1;
   int32 minor = 2;
@@ -82,6 +80,7 @@ message AutotuneResult {
     int64 split_k = 4;
     int64 num_stages = 5;
     int64 num_warps = 6;
+    int64 num_ctas = 7;
   }
 
   int64 scratch_bytes = 8;
@@ -114,5 +113,9 @@ message AutotuningLog {
 
   string blas_version = 6;
 
-  // Next ID: 7
+  string fusion_name = 7;
+
+  int64 fusion_count = 8;
+
+  // Next ID: 9
 }

@@ -46,7 +46,7 @@ class BlockHandle {
   void set_size(uint64 size) { size_ = size; }
 
   void EncodeTo(string* dst) const;
-  Status DecodeFrom(StringPiece* input);
+  absl::Status DecodeFrom(StringPiece* input);
 
   // Maximum encoding length of a BlockHandle
   enum { kMaxEncodedLength = 10 + 10 };
@@ -71,7 +71,7 @@ class Footer {
   void set_index_handle(const BlockHandle& h) { index_handle_ = h; }
 
   void EncodeTo(string* dst) const;
-  Status DecodeFrom(StringPiece* input);
+  absl::Status DecodeFrom(StringPiece* input);
 
   // Encoded length of a Footer.  Note that the serialization of a
   // Footer will always occupy exactly this many bytes.  It consists
@@ -99,8 +99,8 @@ struct BlockContents {
 
 // Read the block identified by "handle" from "file".  On failure
 // return non-OK.  On success fill *result and return OK.
-extern Status ReadBlock(RandomAccessFile* file, const BlockHandle& handle,
-                        BlockContents* result);
+extern absl::Status ReadBlock(RandomAccessFile* file, const BlockHandle& handle,
+                              BlockContents* result);
 
 // Implementation details follow.  Clients should ignore,
 

@@ -80,7 +80,7 @@ class FlatMap {
 
   // Move constructor leaves src in a valid but unspecified state (same as
   // std::unordered_map).
-  FlatMap(FlatMap&& src) : rep_(std::move(src.rep_)) {}
+  FlatMap(FlatMap&& src) noexcept : rep_(std::move(src.rep_)) {}
 
   template <typename InputIter>
   FlatMap(InputIter first, InputIter last, size_t N = 1,
@@ -100,14 +100,14 @@ class FlatMap {
 
   // Move-assignment operator leaves src in a valid but unspecified state (same
   // as std::unordered_map).
-  FlatMap& operator=(FlatMap&& src) {
+  FlatMap& operator=(FlatMap&& src) noexcept {
     rep_.MoveFrom(std::move(src.rep_));
     return *this;
   }
 
   ~FlatMap() {}
 
-  void swap(FlatMap& x) { rep_.swap(x.rep_); }
+  void swap(FlatMap& x) noexcept { rep_.swap(x.rep_); }
   void clear_no_resize() { rep_.clear_no_resize(); }
   void clear() { rep_.clear(); }
   void reserve(size_t N) { rep_.Resize(std::max(N, size())); }

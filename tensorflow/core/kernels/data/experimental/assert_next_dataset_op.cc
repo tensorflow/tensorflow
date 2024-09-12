@@ -68,7 +68,7 @@ class AssertNextDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -85,7 +85,7 @@ class AssertNextDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(b->AddVector(transformations_, &transformations_node));
     TF_RETURN_IF_ERROR(
         b->AddDataset(this, {input_graph_node, transformations_node}, output));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -132,13 +132,13 @@ class AssertNextDatasetOp::Dataset : public DatasetBase {
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
       TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
-      return OkStatus();
+      return absl::OkStatus();
     }
 
    private:

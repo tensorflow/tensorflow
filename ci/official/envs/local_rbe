@@ -1,7 +1,0 @@
-# Use RBE and Resultstore. If using Docker, requires passthrough of gcloud credentials.
-TFCI_DOCKER_ARGS="$TFCI_DOCKER_ARGS -v $HOME/.config/gcloud:/root/.config/gcloud"
-if [[ "$TFCI_BAZEL_COMMON_ARGS" =~ gpu|cuda ]]; then
-  TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --config rbe_linux_cuda"
-else
-  TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --config rbe_linux_cpu"
-fi

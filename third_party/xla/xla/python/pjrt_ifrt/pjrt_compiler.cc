@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,10 +20,21 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "llvm/Support/Casting.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_compiler.h"
+#include "xla/python/ifrt/compiler.h"
+#include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/hlo/hlo_program.h"
+#include "xla/python/ifrt/program.h"
+#include "xla/python/ifrt/topology.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/pjrt_ifrt/pjrt_executable.h"
+#include "xla/python/pjrt_ifrt/pjrt_topology.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -31,12 +42,12 @@ namespace ifrt {
 
 char PjRtCompiler::ID = 0;
 
-StatusOr<std::unique_ptr<LoadedExecutable>> PjRtCompiler::Compile(
+absl::StatusOr<std::unique_ptr<LoadedExecutable>> PjRtCompiler::Compile(
     std::unique_ptr<Program> program, std::unique_ptr<CompileOptions> options) {
   DCHECK(this);
-  const auto* xla_program = llvm::dyn_cast<XlaProgram>(program.get());
+  const auto* xla_program = llvm::dyn_cast<HloProgram>(program.get());
   if (xla_program == nullptr) {
-    return absl::InvalidArgumentError("PjRtCompiler requires an XlaProgram");
+    return absl::InvalidArgumentError("PjRtCompiler requires an HloProgram");
   }
   TF_ASSIGN_OR_RETURN(auto xla_compile_options,
                       GetXlaCompileOptions(std::move(options)));
@@ -46,7 +57,29 @@ StatusOr<std::unique_ptr<LoadedExecutable>> PjRtCompiler::Compile(
       std::move(xla_compile_options->loaded_host_callbacks));
 }
 
-StatusOr<std::unique_ptr<LoadedExecutable>>
+absl::StatusOr<std::unique_ptr<Executable>> PjRtCompiler::Compile(
+    std::unique_ptr<Program> program, const Topology& topology,
+    std::unique_ptr<CompileOptions> options) {
+  DCHECK(this);
+  const auto* xla_program = llvm::dyn_cast<HloProgram>(program.get());
+  if (xla_program == nullptr) {
+    return absl::InvalidArgumentError("PjRtCompiler requires an HloProgram");
+  }
+  TF_ASSIGN_OR_RETURN(auto xla_compile_options,
+                      GetXlaCompileOptions(std::move(options)));
+  const auto* pjrt_topology = llvm::dyn_cast<PjRtTopology>(&topology);
+  if (pjrt_topology == nullptr) {
+    return absl::InvalidArgumentError("PjRtCompiler requires a PjRtTopology");
+  }
+  TF_ASSIGN_OR_RETURN(
+      auto executable,
+      PjRtCompile(xla_compile_options->compile_options,
+                  xla_program->mlir_module, *pjrt_topology->description()));
+  return PjRtExecutable::Create(std::move(executable),
+                                std::move(xla_compile_options));
+}
+
+absl::StatusOr<std::unique_ptr<LoadedExecutable>>
 PjRtCompiler::DeserializeLoadedExecutable(
     absl::string_view serialized,
     std::unique_ptr<DeserializeExecutableOptions> options) {
@@ -54,11 +87,13 @@ PjRtCompiler::DeserializeLoadedExecutable(
   TF_ASSIGN_OR_RETURN(auto xla_deserialize_options,
                       GetXlaDeserializeExecutableOptions(std::move(options)));
   TF_ASSIGN_OR_RETURN(
-      auto pjrt_loaded_executble,
+      auto pjrt_loaded_executable,
       client_->pjrt_client()->DeserializeExecutable(
           serialized, std::move(xla_deserialize_options->compile_options)));
   return PjRtLoadedExecutable::Create(
-      client_, std::move(pjrt_loaded_executble),
+      client_,
+      std::shared_ptr<xla::PjRtLoadedExecutable>(
+          std::move(pjrt_loaded_executable)),
       std::move(xla_deserialize_options->loaded_host_callbacks));
 }
 

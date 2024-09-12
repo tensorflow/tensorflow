@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,36 +16,56 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_SUPPORT_SHARDING_CONVERSIONS_H_
 #define XLA_PYTHON_IFRT_SUPPORT_SHARDING_CONVERSIONS_H_
 
-#include <vector>
-
-#include "absl/types/span.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
-#include "xla/shape.h"
-#include "xla/statusor.h"
+#include "xla/python/ifrt/sharding.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace ifrt {
 namespace support {
 
-// Converts ShardingParam to OpSharding.
+// Converts a Sharding to an OpSharding.
 //
-// This assumes that `sharding_param` is valid.
+// The function currently supports only `ShardingParamSharding`. It assumes that
+// `sharding_param` is valid.
+//
+// Returns error if the given sharding is of a type for which conversion is
+// not supported.
+absl::StatusOr<OpSharding> ToOpSharding(const Sharding& sharding);
+
+// Converts ShardingParam and a device_mapping to OpSharding.
+//
+// The function assumes that `sharding_param` is valid. The logical device
+// ids from `sharding_param` are used as indices into the device_mapping to
+// obtain the device ids to create the OpSharding.
 //
 // Returns error when `device_mapping` can't map the logical devices in
 // `sharding_param`.
-StatusOr<OpSharding> ToOpSharding(const ShardingParam& sharding_param,
-                                  absl::Span<const int> device_mapping);
+absl::StatusOr<OpSharding> ToOpSharding(
+    const ShardingParam& sharding_param,
+    const tsl::RCReference<xla::ifrt::DeviceList>& device_mapping);
 
-// Converts HloSharding to OpSharding.
+// Converts ShardingParam to HloSharding.
+//
+// This assumes that `sharding_param` is valid.
+// The returned HloSharding uses the same logical device ids as the
+// given ShardingParam.
+absl::StatusOr<HloSharding> ToHloSharding(const ShardingParam& sharding_param);
+
+// Converts HloSharding to ShardingParam.
 //
 // It assumes that `hlo_sharding` is valid.
 //
 // Returns error when `hlo_sharding` cannot be converted to sharding param.
-StatusOr<ShardingParam> ToShardingParam(const HloSharding& hlo_sharding,
-                                        const Shape& shape,
-                                        const std::vector<int>& axis_sizes);
+// Only a subset of HloShardings are supported: REPLICATED (including MAXIMAL
+// on single-device), partially replicated, fully partitioned shardings.
+// (Non-fully-replicated) MAXIMAL and MANUAL shardings are not supported.
+absl::StatusOr<ShardingParam> ToShardingParam(const HloSharding& hlo_sharding,
+                                              int rank, int num_devices);
 
 }  // namespace support
 }  // namespace ifrt

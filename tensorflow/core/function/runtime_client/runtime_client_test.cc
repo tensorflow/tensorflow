@@ -208,7 +208,7 @@ TEST(GlobalContext, Basic) {
   Runtime rt(GlobalEagerContext());
   TF_ASSERT_OK(rt.CreateFunction(MakeNullaryFunction()));
 
-  StatusOr<ReturnValues> rets = rt.CallFunction("NullaryFunction", {});
+  absl::StatusOr<ReturnValues> rets = rt.CallFunction("NullaryFunction", {});
   TF_ASSERT_OK(rets.status());
   ASSERT_EQ(rets->size(), 1);
   ASSERT_EQ(rets->at(0)->DataType(), DT_INT32);
@@ -220,7 +220,7 @@ TEST(CreateTest, Call) {
   Runtime rt(*ctx);
   TF_ASSERT_OK(rt.CreateFunction(MakeNullaryFunction()));
 
-  StatusOr<ReturnValues> rets = rt.CallFunction("NullaryFunction", {});
+  absl::StatusOr<ReturnValues> rets = rt.CallFunction("NullaryFunction", {});
   TF_ASSERT_OK(rets.status());
   ASSERT_EQ(rets->size(), 1);
   ASSERT_EQ(rets->at(0)->DataType(), DT_INT32);
@@ -232,7 +232,7 @@ TEST(CreateTest, GetRoundtrip) {
   Runtime rt(*ctx);
   TF_ASSERT_OK(rt.CreateFunction(MakeNullaryFunction()));
 
-  StatusOr<FunctionDef> fdef_ret = rt.GetFunctionProto("NullaryFunction");
+  absl::StatusOr<FunctionDef> fdef_ret = rt.GetFunctionProto("NullaryFunction");
   TF_ASSERT_OK(fdef_ret.status());
 
   FunctionDef fdef = *fdef_ret;
@@ -240,7 +240,7 @@ TEST(CreateTest, GetRoundtrip) {
 
   TF_ASSERT_OK(rt.CreateFunction(fdef));
 
-  StatusOr<ReturnValues> rets = rt.CallFunction("SecondFunction", {});
+  absl::StatusOr<ReturnValues> rets = rt.CallFunction("SecondFunction", {});
   TF_ASSERT_OK(rets.status());
   ASSERT_EQ(rets->size(), 1);
   ASSERT_EQ(rets->at(0)->DataType(), DT_INT32);
@@ -276,7 +276,7 @@ TEST(CreateTest, MlirFromGraphDef) {
       reinterpret_cast<OpaqueTfgGraphFuncOp*>(&fop);
   TF_ASSERT_OK(rt.CreateFunction(opaque_fop));
 
-  StatusOr<ReturnValues> rets = rt.CallFunction("NullaryFunction", {});
+  absl::StatusOr<ReturnValues> rets = rt.CallFunction("NullaryFunction", {});
   TF_ASSERT_OK(rets.status());
   ASSERT_EQ(rets->size(), 1);
   ASSERT_EQ(rets->at(0)->DataType(), DT_INT32);
@@ -288,7 +288,7 @@ TEST(CallTest, Nullary) {
   Runtime rt(*ctx);
   TF_ASSERT_OK(rt.CreateFunction(MakeNullaryFunction()));
 
-  StatusOr<ReturnValues> rets = rt.CallFunction("NullaryFunction", {});
+  absl::StatusOr<ReturnValues> rets = rt.CallFunction("NullaryFunction", {});
   TF_ASSERT_OK(rets.status());
   ASSERT_EQ(rets->size(), 1);
   ASSERT_EQ(rets->at(0)->DataType(), DT_INT32);
@@ -301,7 +301,8 @@ TEST(CallTest, Unary) {
   TF_ASSERT_OK(rt.CreateFunction(MakeUnaryFunction()));
 
   auto x = IntScalarTensor(*ctx, 1);
-  StatusOr<ReturnValues> rets = rt.CallFunction("UnaryFunction", {x.get()});
+  absl::StatusOr<ReturnValues> rets =
+      rt.CallFunction("UnaryFunction", {x.get()});
   TF_ASSERT_OK(rets.status());
   ASSERT_EQ(rets->size(), 1);
   ASSERT_EQ(rets->at(0)->DataType(), DT_INT32);
@@ -315,7 +316,7 @@ TEST(CallTest, Binary) {
 
   auto x = IntScalarTensor(*ctx, 1);
   auto y = IntScalarTensor(*ctx, 1);
-  StatusOr<ReturnValues> rets =
+  absl::StatusOr<ReturnValues> rets =
       rt.CallFunction("BinaryFunction", {x.get(), y.get()});
   TF_ASSERT_OK(rets.status());
   ASSERT_EQ(rets->size(), 1);
@@ -333,7 +334,7 @@ TEST(TransformTest, TestPassOnBinaryFunction) {
 
   auto x = IntScalarTensor(*ctx, 2);
   auto y = IntScalarTensor(*ctx, 3);
-  StatusOr<ReturnValues> rets =
+  absl::StatusOr<ReturnValues> rets =
       rt.CallFunction("BinaryFunction", {x.get(), y.get()});
   TF_ASSERT_OK(rets.status());
   ASSERT_EQ(rets->size(), 1);
@@ -352,7 +353,7 @@ TEST(TransformTest, TestPassOnMultiplyFunction) {
 
   auto x = IntScalarTensor(*ctx, 2);
   auto y = IntScalarTensor(*ctx, 3);
-  StatusOr<ReturnValues> rets =
+  absl::StatusOr<ReturnValues> rets =
       rt.CallFunction("MultiplyFunction", {x.get(), y.get()});
   TF_ASSERT_OK(rets.status());
   ASSERT_EQ(rets->size(), 1);
@@ -372,7 +373,7 @@ TEST(TransformTest, TestMixedPassesOnBinaryFunction) {
 
   auto x = IntScalarTensor(*ctx, 2);
   auto y = IntScalarTensor(*ctx, 3);
-  StatusOr<ReturnValues> rets =
+  absl::StatusOr<ReturnValues> rets =
       rt.CallFunction("BinaryFunction", {x.get(), y.get()});
   TF_ASSERT_OK(rets.status());
   ASSERT_EQ(rets->size(), 1);

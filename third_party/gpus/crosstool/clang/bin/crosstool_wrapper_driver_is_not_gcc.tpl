@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -41,7 +41,7 @@ import os
 import subprocess
 import re
 import sys
-import pipes
+import shlex
 
 # Template values set by cuda_autoconf.
 CPU_COMPILER = ('%{cpu_compiler}')
@@ -51,6 +51,8 @@ NVCC_PATH = '%{nvcc_path}'
 PREFIX_DIR = os.path.dirname(HOST_COMPILER_PATH)
 USE_CLANG_COMPILER = '%{use_clang_compiler}'
 NVCC_VERSION = '%{cuda_version}'
+TMPDIR= '%{tmpdir}'
+
 
 def Log(s):
   print('gpus/crosstool: {0}'.format(s))
@@ -292,6 +294,8 @@ def InvokeNvcc(argv, log=False):
 
 
 def main():
+  if TMPDIR and not USE_CLANG_COMPILER:
+    os.environ['TMPDIR'] = TMPDIR
   parser = ArgumentParser()
   parser.add_argument('-x', nargs=1)
   parser.add_argument('--cuda_log', action='store_true')
@@ -299,7 +303,7 @@ def main():
 
   if args.x and args.x[0] == 'cuda':
     if args.cuda_log: Log('-x cuda')
-    leftover = [pipes.quote(s) for s in leftover]
+    leftover = [shlex.quote(s) for s in leftover]
     if args.cuda_log: Log('using nvcc')
     return InvokeNvcc(leftover, log=args.cuda_log)
 

@@ -19,16 +19,26 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/types/optional.h"
-#include "llvm/Support/FormatVariadic.h"
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/collectives.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/shape_utils.h"
-#include "tensorflow/dtensor/mlir/spmd_expander_common.h"
 #include "tensorflow/dtensor/mlir/value_utils.h"
 
 namespace tensorflow {
@@ -262,7 +272,7 @@ Status GatherNdGetInputLayoutFromOutput(const Layout& output_layout,
   TF_ASSIGN_OR_RETURN(*params_layout, Layout::GetLayout(params_specs, mesh));
   TF_ASSIGN_OR_RETURN(*indices_layout, Layout::GetLayout(indices_specs, mesh));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace

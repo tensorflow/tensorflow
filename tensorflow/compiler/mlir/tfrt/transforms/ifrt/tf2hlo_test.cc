@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "mlir/IR/AsmState.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -32,14 +33,13 @@ limitations under the License.
 #include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/test_util.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor_shape.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/statusor.h"
 
@@ -95,8 +95,14 @@ TEST(Tf2HloTest, Empty) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
 
-  auto result = CompileTfToHlo(mlir_module.get(), {}, "main", *client,
-                               tensorflow::IdentityShapeRepresentationFn());
+  TF_ASSERT_OK_AND_ASSIGN(
+      tensorflow::tpu::TPUCompileMetadataProto compile_metadata,
+      GetCompileMetadata(mlir_module.get(), *client));
+  TF_ASSERT_OK(UpdateCompileMetadata(compile_metadata, {}));
+
+  auto result =
+      CompileTfToHlo(mlir_module.get(), {}, "main", *client, compile_metadata,
+                     tensorflow::IdentityShapeRepresentationFn());
 
   TF_ASSERT_OK(result.status());
 }
@@ -124,12 +130,17 @@ TEST(Tf2HloTest, Tuple) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
 
-  std::vector<tensorflow::Tensor> tensors;
-  tensorflow::Tensor x(DT_FLOAT, tensorflow::TensorShape({1, 3}));
-  tensorflow::Tensor y(DT_FLOAT, tensorflow::TensorShape({3, 1}));
-  tensors.push_back(x);
-  tensors.push_back(y);
-  auto result = CompileTfToHlo(mlir_module.get(), tensors, "main", *client,
+  std::vector<DtypeAndShape> dtype_and_shapes;
+  dtype_and_shapes.push_back(DtypeAndShape{DT_FLOAT, {1, 3}});
+  dtype_and_shapes.push_back(DtypeAndShape{DT_FLOAT, {3, 1}});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      tensorflow::tpu::TPUCompileMetadataProto compile_metadata,
+      GetCompileMetadata(mlir_module.get(), *client));
+  TF_ASSERT_OK(UpdateCompileMetadata(compile_metadata, dtype_and_shapes));
+
+  auto result = CompileTfToHlo(mlir_module.get(), dtype_and_shapes, "main",
+                               *client, compile_metadata,
                                tensorflow::IdentityShapeRepresentationFn());
 
   TF_ASSERT_OK(result.status());
@@ -158,11 +169,16 @@ TEST(Tf2HloTest, Spmd) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
 
-  std::vector<tensorflow::Tensor> tensors;
-  tensorflow::Tensor x(DT_FLOAT, tensorflow::TensorShape({4, 64}));
-  tensors.push_back(x);
+  std::vector<DtypeAndShape> dtype_and_shapes;
+  dtype_and_shapes.push_back(DtypeAndShape{DT_FLOAT, {4, 64}});
 
-  auto result = CompileTfToHlo(mlir_module.get(), tensors, "main", *client,
+  TF_ASSERT_OK_AND_ASSIGN(
+      tensorflow::tpu::TPUCompileMetadataProto compile_metadata,
+      GetCompileMetadata(mlir_module.get(), *client));
+  TF_ASSERT_OK(UpdateCompileMetadata(compile_metadata, dtype_and_shapes));
+
+  auto result = CompileTfToHlo(mlir_module.get(), dtype_and_shapes, "main",
+                               *client, compile_metadata,
                                tensorflow::IdentityShapeRepresentationFn());
 
   LOG(INFO) << result->compile_metadata;
@@ -227,15 +243,18 @@ TEST(Tf2HloTest, UsingDefaultDeviceAssignment) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
 
-  std::vector<tensorflow::Tensor> tensors;
-  tensorflow::Tensor x(DT_FLOAT, tensorflow::TensorShape({4, 64}));
-  tensorflow::Tensor y(DT_FLOAT, tensorflow::TensorShape({64, 10}));
-  tensorflow::Tensor z(DT_FLOAT, tensorflow::TensorShape({1, 4}));
-  tensors.push_back(x);
-  tensors.push_back(y);
-  tensors.push_back(z);
+  std::vector<DtypeAndShape> dtype_and_shapes;
+  dtype_and_shapes.push_back(DtypeAndShape{DT_FLOAT, {4, 64}});
+  dtype_and_shapes.push_back(DtypeAndShape{DT_FLOAT, {64, 10}});
+  dtype_and_shapes.push_back(DtypeAndShape{DT_FLOAT, {1, 4}});
 
-  auto result = CompileTfToHlo(mlir_module.get(), tensors, "main", *client,
+  TF_ASSERT_OK_AND_ASSIGN(
+      tensorflow::tpu::TPUCompileMetadataProto compile_metadata,
+      GetCompileMetadata(mlir_module.get(), *client));
+  TF_ASSERT_OK(UpdateCompileMetadata(compile_metadata, dtype_and_shapes));
+
+  auto result = CompileTfToHlo(mlir_module.get(), dtype_and_shapes, "main",
+                               *client, compile_metadata,
                                tensorflow::IdentityShapeRepresentationFn());
 
   LOG(INFO) << result->compile_metadata;
@@ -300,6 +319,52 @@ TEST(Tf2HloTest, UsingDefaultDeviceAssignment) {
       &expected_compile_metadata));
 
   EXPECT_THAT(result->compile_metadata, EqualsProto(expected_compile_metadata));
+}
+
+// Multiple input and multiple out.
+TEST(Tf2HloTest, XlaCallHostCallback) {
+  // Create test input module
+  constexpr absl::string_view kDataDirectory =
+      "tensorflow/compiler/mlir/tfrt/transforms/ifrt/testdata";
+  std::string mlir_module_path = tensorflow::GetDataDependencyFilepath(
+      absl::StrCat(kDataDirectory, "/xla_call_host_callback.mlir"));
+
+  mlir::DialectRegistry registry;
+  mlir::registerAllDialects(registry);
+  mlir::RegisterAllTensorFlowDialects(registry);
+
+  mlir::MLIRContext context(registry);
+
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
+      mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path,
+                                            mlir::ParserConfig(&context));
+
+  ASSERT_TRUE(mlir_module);
+  ASSERT_TRUE(mlir_module.get() != nullptr);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
+                          xla::ifrt::test_util::GetClient());
+
+  std::vector<DtypeAndShape> dtype_and_shapes;
+  dtype_and_shapes.push_back(DtypeAndShape{DT_INT32, {1}});
+  dtype_and_shapes.push_back(DtypeAndShape{DT_INT32, {1}});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      tensorflow::tpu::TPUCompileMetadataProto compile_metadata,
+      GetCompileMetadata(mlir_module.get(), *client));
+  TF_ASSERT_OK(UpdateCompileMetadata(compile_metadata, dtype_and_shapes));
+
+  auto result = CompileTfToHlo(mlir_module.get(), dtype_and_shapes, "main",
+                               *client, compile_metadata,
+                               tensorflow::IdentityShapeRepresentationFn());
+
+  TF_ASSERT_OK(result.status());
+
+  ASSERT_EQ((*result).host_compute_metadata.device_to_host().size(), 1);
+  ASSERT_EQ(
+      (*result).host_compute_metadata.device_to_host().begin()->metadata_size(),
+      2);
+  ASSERT_EQ((*result).host_compute_metadata.host_to_device().size(), 0);
 }
 
 }  // namespace

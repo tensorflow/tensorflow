@@ -148,7 +148,7 @@ struct SpaceToBatchFunctor<CPUDevice, T, NUM_BLOCK_DIMS, B2S> {
           block_offsets, batch_tensor_shape, &batch_tensor_strides[1],
           batch_tensor_ptr + batch_tensor_b * batch_tensor_strides[0]);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

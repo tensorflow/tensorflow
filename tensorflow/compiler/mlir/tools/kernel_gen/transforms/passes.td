@@ -52,8 +52,6 @@ def FuncToJITInvocationPass : Pass<"func-to-jit-invocation", "mlir::func::FuncOp
                  "llvm::cl::ZeroOrMore">,
       ListOption<"unroll_factors_", "unroll-factors", "int64_t",
                  "Unrolling in each tile dimension", "llvm::cl::ZeroOrMore">,
-      Option<"max_supported_rank_", "max-supported-rank", "int64_t",
-             /*default=*/"", "Max rank that this kernel supports">,
       Option<"enable_ftz_", "enable-ftz", "bool", /*default=*/"",
              "Enable the denormal flush to zero mode when generating code">,
       Option<"index_64bit_", "index_64bit", "bool", /*default=*/"",

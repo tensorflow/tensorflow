@@ -20,9 +20,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/toco/tensorflow_graph_matching/cluster.h"
-#include "tensorflow/lite/toco/tensorflow_graph_matching/cluster_utils.h"
-#include "tensorflow/lite/toco/tensorflow_graph_matching/resolve_cluster.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -30,6 +27,10 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/lite/toco/tensorflow_graph_matching/cluster.h"
+#include "tensorflow/lite/toco/tensorflow_graph_matching/cluster_utils.h"
+#include "tensorflow/lite/toco/tensorflow_graph_matching/resolve_cluster.h"
+#include "tensorflow/lite/toco/toco_port.h"
 
 using tensorflow::GraphDef;
 using tensorflow::NodeDef;

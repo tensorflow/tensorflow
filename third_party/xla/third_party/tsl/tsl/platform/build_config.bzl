@@ -2,8 +2,6 @@
 
 load(
     "//tsl/platform/default:build_config.bzl",
-    _if_llvm_aarch64_available = "if_llvm_aarch64_available",
-    _if_llvm_system_z_available = "if_llvm_system_z_available",
     _pyx_library = "pyx_library",
     _tf_additional_all_protos = "tf_additional_all_protos",
     _tf_additional_core_deps = "tf_additional_core_deps",
@@ -36,14 +34,12 @@ load(
     _tf_pyclif_proto_library = "tf_pyclif_proto_library",
     _tf_resource_deps = "tf_resource_deps",
     _tf_stream_executor_deps = "tf_stream_executor_deps",
-    _tf_testing_deps = "tf_testing_deps",
     _tf_windows_aware_platform_deps = "tf_windows_aware_platform_deps",
     _tsl_cc_test = "tsl_cc_test",
+    _tsl_grpc_credentials_deps = "tsl_grpc_credentials_deps",
     _tsl_protobuf_deps = "tsl_protobuf_deps",
 )
 
-if_llvm_aarch64_available = _if_llvm_aarch64_available
-if_llvm_system_z_available = _if_llvm_system_z_available
 pyx_library = _pyx_library
 tf_additional_all_protos = _tf_additional_all_protos
 tf_additional_core_deps = _tf_additional_core_deps
@@ -76,7 +72,7 @@ tf_py_clif_cc = _tf_py_clif_cc
 tf_pyclif_proto_library = _tf_pyclif_proto_library
 tf_resource_deps = _tf_resource_deps
 tf_stream_executor_deps = _tf_stream_executor_deps
-tf_testing_deps = _tf_testing_deps
 tf_windows_aware_platform_deps = _tf_windows_aware_platform_deps
 tsl_protobuf_deps = _tsl_protobuf_deps
 tsl_cc_test = _tsl_cc_test
+tsl_grpc_credentials_deps = _tsl_grpc_credentials_deps

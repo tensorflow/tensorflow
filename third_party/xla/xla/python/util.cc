@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,20 +15,38 @@ limitations under the License.
 
 #include "xla/python/util.h"
 
-#include <memory>
-#include <utility>
 #include <vector>
 
-#include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_future.h"
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "xla/python/ifrt/array.h"
-#include "xla/status.h"
+#include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/future.h"
+#include "xla/python/ifrt/value.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
 
 namespace xla {
 
-Status AwaitBuffersReady(ifrt::Array* ifrt_array) {
-  Status s = ifrt_array->GetReadyFuture().Await();
+absl::Status AwaitBuffersReady(absl::Span<ifrt::Array* const> ifrt_arrays) {
+  if (ifrt_arrays.empty()) {
+    return absl::OkStatus();
+  }
+
+  ifrt::Future<> future;
+  if (ifrt_arrays.size() == 1) {
+    future = ifrt_arrays[0]->GetReadyFuture();
+  } else {
+    std::vector<tsl::RCReference<ifrt::Value>> values;
+    values.reserve(ifrt_arrays.size());
+    for (ifrt::Array* const ifrt_array : ifrt_arrays) {
+      values.push_back(tsl::FormRef(ifrt_array));
+    }
+    ifrt::Client* const client = ifrt_arrays.front()->client();
+    future = client->GetReadyFuture(values);
+  }
+
+  absl::Status s = future.Await();
   if (!s.ok()) {
     // Fix up error string because some clients rely on it.
     if (s.message() == "GetReadyFuture() called on deleted or donated buffer") {

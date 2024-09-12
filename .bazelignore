@@ -12,6 +12,3 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-# The requirements updater has its own WORKSPACE file
-ci/official/requirements_updater

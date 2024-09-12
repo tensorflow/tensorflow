@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,10 +21,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/client/xla_builder.h"
-#include "xla/statusor.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
@@ -117,7 +117,7 @@ xla::XlaOp BatchDot(
 // NOTE: This function is meant for testing, there is no need to call it
 // directly.
 
-StatusOr<std::array<std::vector<int64_t>, 3>> ParseEinsumString(
+absl::StatusOr<std::array<std::vector<int64_t>, 3>> ParseEinsumString(
     absl::string_view einsum_config, int64_t x_rank, int64_t y_rank);
 
 // If an einsum config does not contain an -> one will be added and the output

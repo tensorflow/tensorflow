@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,6 +24,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/btree_map.h"
+#include "absl/container/btree_set.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -31,8 +34,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape_util.h"
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 
 namespace xla {
 namespace spmd {
@@ -42,20 +43,38 @@ constexpr double kInfinityCost = 1e20;
 
 // Type alias
 template <typename Key, typename Value>
-using StableHashMap = ::absl::flat_hash_map<Key, Value>;
+using StableMap = absl::btree_map<Key, Value>;
 template <typename Key>
-using StableHashSet = ::absl::flat_hash_set<Key>;
+using StableSet = absl::btree_set<Key>;
+
+struct CompareHloInstruction {
+  bool operator()(const HloInstruction* a, const HloInstruction* b) const {
+    return a->name() < b->name();
+  }
+};
+
+template <typename Value>
+using ConstInstructionMap =
+    absl::btree_map<const HloInstruction*, Value, CompareHloInstruction>;
+template <typename Value>
+using InstructionMap =
+    absl::btree_map<HloInstruction*, Value, CompareHloInstruction>;
+
+using ConstInstructionSet =
+    absl::btree_set<const HloInstruction*, CompareHloInstruction>;
+using InstructionSet = absl::btree_set<HloInstruction*, CompareHloInstruction>;
 
 // Map an instruction to its depth.
-using InstructionDepthMap = StableHashMap<const HloInstruction*, int64_t>;
+using InstructionDepthMap = ConstInstructionMap<int64_t>;
 // Map an instruction to its batch dimension.
-using InstructionBatchDimMap = StableHashMap<std::string, int>;
+using InstructionBatchDimMap = StableMap<std::string, int>;
 // Map an instruction to its alias source parameter.
-using AliasMap = StableHashMap<const HloInstruction*, HloInstruction*>;
+using AliasMap = ConstInstructionMap<HloInstruction*>;
 // Map an instruction to its resharding cache.
 using ReshardingCache =
-    StableHashMap<const HloInstruction*,
-                  std::vector<std::pair<HloSharding, HloInstruction*>>>;
+    ConstInstructionMap<std::vector<std::pair<HloSharding, HloInstruction*>>>;
+// Resharding costs for each operand
+using ReshardingCosts = std::vector<std::vector<double>>;
 
 // One sharding strategy
 struct ShardingStrategy {
@@ -68,7 +87,8 @@ struct ShardingStrategy {
   // i-th operand's j-th strategy to this strategy.
   // If there is only one tuple operand,resharding_costs[i][j] is the resharding
   // cost from i-th tuple element's j-th strategy.
-  std::vector<std::vector<double>> resharding_costs;
+  ReshardingCosts communication_resharding_costs;
+  ReshardingCosts memory_resharding_costs;
   // Optional: the required shardings of operands.
   // This is used to guide the SPMD partitioner.
   std::vector<std::optional<HloSharding>> input_shardings;
@@ -78,14 +98,25 @@ struct ShardingStrategy {
   }
 
   std::string ToStringLong() const {
-    std::vector<std::string> resharding_vector_strings;
-    resharding_vector_strings.reserve(resharding_costs.size());
-    for (const auto& v : resharding_costs) {
-      resharding_vector_strings.push_back(
+    std::vector<std::string> communication_resharding_vector_strings;
+    communication_resharding_vector_strings.reserve(
+        communication_resharding_costs.size());
+    for (const auto& v : communication_resharding_costs) {
+      communication_resharding_vector_strings.push_back(
           absl::StrCat("[", absl::StrJoin(v, ", "), "]"));
     }
-    std::string resharding_cost_str =
-        absl::StrCat("{", absl::StrJoin(resharding_vector_strings, ", "), "}");
+    std::string communication_resharding_cost_str = absl::StrCat(
+        "{", absl::StrJoin(communication_resharding_vector_strings, ", "), "}");
+
+    std::vector<std::string> memory_resharding_vector_strings;
+    memory_resharding_vector_strings.reserve(memory_resharding_costs.size());
+    for (const auto& v : memory_resharding_costs) {
+      memory_resharding_vector_strings.push_back(
+          absl::StrCat("[", absl::StrJoin(v, ", "), "]"));
+    }
+    std::string memory_resharding_cost_str = absl::StrCat(
+        "{", absl::StrJoin(memory_resharding_vector_strings, ", "), "}");
+
     std::string input_sharding_str = "{";
     for (const auto& s : input_shardings) {
       if (!s.has_value()) {
@@ -105,12 +136,13 @@ struct ShardingStrategy {
       }
     }
     input_sharding_str += "}\n";
-    return absl::StrCat(name, ", ", output_sharding.ToString(),
-                        ", compute_cost=", compute_cost,
-                        ", communication_cost=", communication_cost,
-                        ", memory_cost=", memory_cost,
-                        ", resharding_costs=", resharding_cost_str,
-                        ", input_shardings=", input_sharding_str);
+    return absl::StrCat(
+        name, ", ", output_sharding.ToString(), ", compute_cost=", compute_cost,
+        ", communication_cost=", communication_cost,
+        ", memory_cost=", memory_cost,
+        ", communication_resharding_costs=", communication_resharding_cost_str,
+        ", memory_resharding_costs=", memory_resharding_cost_str,
+        ", input_shardings=", input_sharding_str);
   }
 
   bool operator==(const ShardingStrategy& other) const {
@@ -118,7 +150,9 @@ struct ShardingStrategy {
            compute_cost == other.compute_cost &&
            communication_cost == other.communication_cost &&
            memory_cost == other.memory_cost &&
-           resharding_costs == other.resharding_costs &&
+           communication_resharding_costs ==
+               other.communication_resharding_costs &&
+           memory_resharding_costs == other.memory_resharding_costs &&
            input_shardings == other.input_shardings;
   }
 };
@@ -129,6 +163,10 @@ using NodeStrategyIdx = int64_t;  // An index into a node's strategy vector.
 using EdgeStrategyIdx = int64_t;  // An index into an edge's strategy vector.
 using LivenessIdx = int64_t;      // An index into the liveness vector.
 using AliasIdx = int64_t;         // An index into the alias vector.
+
+// Various classes needed to support strategy shaving.
+using NodeStrategy = std::pair<NodeIdx, NodeStrategyIdx>;
+using NodeStrategies = StableSet<NodeStrategy>;
 
 // A group of strategy choices (along with details like index values)
 // for each instruction.
@@ -196,6 +234,27 @@ struct StrategyGroup {
     }
     return result;
   }
+
+  void ForEachLeafStrategyGroup(
+      absl::FunctionRef<void(const StrategyGroup&)> fn) const {
+    if (is_tuple) {
+      for (const std::unique_ptr<StrategyGroup>& child : childs) {
+        fn(*child);
+      }
+    } else {
+      fn(*this);
+    }
+  }
+
+  void ForEachLeafStrategyGroup(absl::FunctionRef<void(StrategyGroup&)> fn) {
+    if (is_tuple) {
+      for (std::unique_ptr<StrategyGroup>& child : childs) {
+        fn(*child);
+      }
+    } else {
+      fn(*this);
+    }
+  }
 };
 
 // Type aliases.
@@ -205,8 +264,7 @@ using LivenessNodeSet = std::vector<std::vector<NodeIdx>>;
 // A liveness set using edge indices instead of HLO values.
 using LivenessEdgeSet = std::vector<std::vector<EdgeIdx>>;
 // Map an instruction to its strategy group.
-using StrategyMap =
-    StableHashMap<const HloInstruction*, std::unique_ptr<StrategyGroup>>;
+using StrategyMap = ConstInstructionMap<std::unique_ptr<StrategyGroup>>;
 // The list of all strategy groups.
 using StrategyGroups = std::vector<StrategyGroup*>;
 // The list of all dot instruction pairs that can be optimized by
@@ -214,7 +272,7 @@ using StrategyGroups = std::vector<StrategyGroup*>;
 using AssociativeDotPairs =
     std::vector<std::pair<const StrategyGroup*, const StrategyGroup*>>;
 // The set of all alias pairs
-using AliasSet = StableHashSet<std::pair<NodeIdx, NodeIdx>>;
+using AliasSet = StableSet<std::pair<NodeIdx, NodeIdx>>;
 
 }  // namespace spmd
 }  // namespace xla

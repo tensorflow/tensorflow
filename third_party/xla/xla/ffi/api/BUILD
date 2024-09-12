@@ -1,8 +1,9 @@
-load("//xla:xla.bzl", "xla_cc_test")
-load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla:xla.bzl", "xla_cc_test")
+load("//xla/tsl:tsl.default.bzl", "filegroup")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
 )
 
@@ -22,63 +23,76 @@ package(
 # `ffi.h` defines builtin decoding for canonical XLA types, but users can add their own decodings
 # with template specializations.
 
+# A user of the FFI interface will only need the three headers included in the `all_headers`
+# filegroup: `api.h`, `c_api.h`, and `ffi.h`.
+filegroup(
+    name = "all_headers",
+    srcs = [
+        "api.h",
+        "c_api.h",
+        "ffi.h",
+    ],
+)
+
 filegroup(
     name = "api_headers",
     srcs = ["api.h"],
-    visibility = ["//visibility:public"],
 )
 
 filegroup(
     name = "c_api_headers",
     srcs = ["c_api.h"],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "api",
     hdrs = [":api_headers"],
-    visibility = ["//visibility:public"],
+    visibility = ["//visibility:private"],
     deps = [":c_api"],
 )
 
 cc_library(
     name = "c_api",
     hdrs = ["c_api.h"],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "c_api_internal",
     hdrs = ["c_api_internal.h"],
-    visibility = ["//visibility:public"],
     deps = [":c_api"],
 )
 
 cc_library(
     name = "ffi",
     hdrs = ["ffi.h"],
-    visibility = ["//visibility:public"],
     deps = [
         ":api",
         ":c_api",
     ],
 )
 
-#===-------------------------------------------------------------------------------------------===//
-# Internal tests for XLA FFI API
-#===-------------------------------------------------------------------------------------------===//
-
 xla_cc_test(
     name = "ffi_test",
     srcs = ["ffi_test.cc"],
     deps = [
+        ":c_api",
         ":ffi",
+        "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/ffi:call_frame",
+        "//xla/ffi:execution_context",
+        "//xla/ffi:execution_state",
         "//xla/ffi:ffi_api",
+        "//xla/ffi:type_id_registry",
         "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:device_memory_allocator",
+        "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/log:check",
-        "@local_tsl//tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:test",

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,6 +23,12 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/service/hlo_module_config.h"
+#include "tsl/platform/macros.h"
 // The source_location.h is not available in open source.
 #if defined(PLATFORM_GOOGLE)
 #include "absl/types/source_location.h"
@@ -148,7 +154,7 @@ class InstructionFusion : public HloModulePass {
   // Run instruction fusion on the given computation. Returns whether the
   // computation was changed (instructions were fused).
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
@@ -166,8 +172,9 @@ class InstructionFusion : public HloModulePass {
                                             const HloInstruction* consumer);
 
  protected:
-  // Returns a list of computations on which Fusion is performed.
-  virtual std::vector<HloComputation*> GetFusionComputations(
+  // Returns a list of computations that are not fusion computations. These
+  // computations contain instructions which are candidates for fusions.
+  virtual std::vector<HloComputation*> GetNonFusionComputations(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 
@@ -190,6 +197,16 @@ class InstructionFusion : public HloModulePass {
   // Subtypes can override this with target-specific heuristics.
   virtual FusionDecision ShouldFuse(HloInstruction* consumer,
                                     int64_t operand_index);
+
+  // Returns whether a 'producer' at given operand index can be fused into the
+  // consumer. It uses the provided function to check the legality of a possible
+  // fusion when either the producer or the consumer contains an operation which
+  // updates an operand in place.
+  virtual FusionDecision ShouldFuse(
+      HloInstruction* consumer, int64_t operand_index,
+      std::function<FusionDecision(const HloInstruction*,
+                                   const HloInstruction*)>
+          inplace_op_fusion_decider);
 
   // Returns whether multi-output fusion can be applied to fuse `producer` into
   // `consumer`. In contrast to "regular" fusion, the `producer` is not

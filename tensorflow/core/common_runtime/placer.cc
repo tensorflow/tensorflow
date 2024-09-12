@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/path.h"
@@ -86,7 +87,7 @@ Status GetFileName(string base_name, string* fname) {
 
   base_name = MakeUniqueFilename(base_name);
   *fname = absl::StrCat(result, "/", base_name);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void DumpColocationGraph(const string& base_name,
@@ -115,6 +116,42 @@ void DumpColocationGraph(const string& base_name,
 bool IsGeneratorNode(const Node* node) {
   return node->num_inputs() == 0 && node->num_outputs() == 1 &&
          !IsRefType(node->output_type(0));
+}
+
+// If a node is an Identity op with input and output on the same device,
+// assign this Identity the same device. If the node already has a requested
+// or assigned device, don't touch it.
+bool MatchIdentityOperation(const Node* node) {
+  if (!node) {
+    return false;
+  }
+
+  if (!node->IsIdentity()) {
+    return false;
+  }
+
+  if (node->has_assigned_device_name()) {
+    return false;
+  }
+
+  if (!node->requested_device().empty()) {
+    return false;
+  }
+
+  // Strictly only check for IDENTITY nodes with only 1 input and
+  // 1 output edge.
+  if (node->in_edges().size() != 1) {
+    return false;
+  }
+
+  if (node->out_edges().size() != 1) {
+    return false;
+  }
+
+  const Node* input = *node->in_nodes().begin();
+  const Node* output = *node->out_nodes().begin();
+
+  return input->requested_device() == output->requested_device();
 }
 
 void LogDeviceAssignment(const Node* node, bool log_device_placement) {
@@ -147,7 +184,7 @@ Status AssignAndLog(int assigned_device, Node* node,
   TF_RETURN_IF_ERROR(colocation_graph->LimitToAssignedDevice(*node));
 
   LogDeviceAssignment(node, log_device_placement);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -254,10 +291,10 @@ Status Placer::Run(const GraphOptimizationPassOptions& options) {
     // to perform good placement we can add an interface for this.
     int assigned_device = -1;
 
-    // Heuristic B: If the node only operates on metadata, not data,
-    // then it is desirable to place that metadata node with its
+    // Heuristic B: If the node only operates on metadata (not data) or is
+    // an identity node, then it is desirable to place that node with its
     // input.
-    if (IsMetadata(node)) {
+    if (IsMetadata(node) || MatchIdentityOperation(node)) {
       // Make sure that the input device type is in the list of supported
       // device types for this node.
       const Node* input = (*node->in_edges().begin())->src();
@@ -327,7 +364,7 @@ Status Placer::Run(const GraphOptimizationPassOptions& options) {
         strings::StrCat(options.debug_filename_prefix, "colocation_graph"),
         colocation_graph);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool Placer::CanAssignToDevice(const string& candidate_device_name,

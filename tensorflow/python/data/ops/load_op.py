@@ -18,6 +18,8 @@ import os
 import time
 from typing import Any, Callable, Optional, Union
 
+from absl import logging
+
 from google.protobuf import message
 from google.protobuf import text_format
 from tensorflow.core.protobuf import snapshot_pb2
@@ -32,18 +34,22 @@ from tensorflow.python.platform import gfile
 # TODO(b/238903802): Use TypeSpec serialization methods directly.
 from tensorflow.python.saved_model import nested_structure_coder
 
-# For distributed snapshot load V2, if the snapshot does not exist in this time,
-# wait and retry. Raises an ValueError on timeout.
-_LOAD_TIMEOUT_SECONDS = 1800
+# For distributed snapshot load V2, retries loading after this time, if the
+# snapshot is not ready yet.
+_RETRY_INTERVAL_SEC = 5
 
 
 def _load(  # pylint: disable=unused-private-name
     path: str,
     element_spec: Any,
     compression: Optional[str],
-    reader_func: Optional[Callable[[dataset_ops.Dataset], dataset_ops.Dataset]]
+    reader_func: Optional[Callable[[dataset_ops.Dataset], dataset_ops.Dataset]],
+    wait: bool,
 ) -> dataset_ops.Dataset:
   """Loads dataset from tf.data snapshot."""
+
+  if wait:
+    return _load_with_retry(path, element_spec, compression, reader_func)
 
   if reader_func is None:
     reader_func = lambda datasets: datasets.interleave(  # pylint:disable=g-long-lambda
@@ -51,18 +57,15 @@ def _load(  # pylint: disable=unused-private-name
         cycle_length=multiprocessing.cpu_count(),
         num_parallel_calls=dataset_ops.AUTOTUNE)
 
-  if element_spec is None:
-    with gfile.GFile(
-        os.path.join(path, dataset_ops.DATASET_SPEC_FILENAME), "rb") as f:
-      encoded_spec = f.read()
-    element_spec = _parse_element_spec(encoded_spec)
-
   distributed_snapshot_metadata = _load_distributed_snapshot_metadata(path)
   if distributed_snapshot_metadata:
     _validate_snapshot(
         path, distributed_snapshot_metadata, element_spec, compression)
     return _load_distributed_snapshot(
         path, distributed_snapshot_metadata, reader_func)
+
+  if element_spec is None:
+    element_spec = _load_element_spec(path)
   return _LoadDataset(path, element_spec, compression, reader_func)
 
 
@@ -73,18 +76,22 @@ def _load_with_retry(  # pylint: disable=unused-private-name
     reader_func: Optional[
         Callable[[dataset_ops.Dataset], dataset_ops.Dataset]] = None,
 ) -> dataset_ops.Dataset:
-  """Tries loading the snapshot. Retries if not found with a timeout."""
+  """Tries loading the snapshot. Retries if not found."""
 
-  deadline = time.time() + _LOAD_TIMEOUT_SECONDS
-  error = None
-  while time.time() < deadline:
+  while True:
     try:
-      return dataset_ops.Dataset.load(
-          path, element_spec, compression, reader_func)
-    except errors.NotFoundError as e:
-      error = e
-      time.sleep(10)
-  raise error
+      dataset = dataset_ops.Dataset.load(
+          path=path,
+          element_spec=element_spec,
+          compression=compression,
+          reader_func=reader_func,
+          wait=False)
+      logging.info("Load tf.data snapshot at %s.", path)
+      return dataset
+    except (errors.NotFoundError, FileNotFoundError):
+      logging.info(
+          "Could not find tf.data snapshot at %s. Will wait and retry.", path)
+      time.sleep(_RETRY_INTERVAL_SEC)
 
 
 def _load_distributed_snapshot_metadata(
@@ -99,10 +106,12 @@ def _load_distributed_snapshot_metadata(
     DistributedSnapshotMetadata if the snapshot is a distributed snapshot.
     Returns None if it is a non-distributed snapshot.
   """
+  metadata_file = _pywrap_snapshot_utils.TF_DATA_SnapshotMetadataFilePath(path)
+  if not gfile.Exists(metadata_file):
+    return None
+
   try:
-    with gfile.GFile(
-        _pywrap_snapshot_utils.TF_DATA_SnapshotMetadataFilePath(path), "r"
-    ) as f:
+    with gfile.GFile(metadata_file, "r") as f:
       return text_format.ParseLines(
           f, snapshot_pb2.DistributedSnapshotMetadata())
   except (
@@ -127,6 +136,42 @@ def _load_distributed_snapshot(
           element_spec=_parse_element_spec(metadata.element_spec),
           compression=metadata.compression))
   return reader_func(dataset)
+
+
+def _load_element_spec(path: str) -> Any:
+  """Loads the dataset element spec.
+
+  Args:
+    path: Base path of the snapshot.
+
+  Returns:
+    Dataset element_spec.
+
+  Raises:
+    NotFoundError if the element spec file does not exist or cannot be decoded.
+  """
+  dataset_spec_filename = os.path.join(path, dataset_ops.DATASET_SPEC_FILENAME)
+  if not gfile.Exists(dataset_spec_filename):
+    raise errors.NotFoundError(
+        node_def=None, op=None,
+        message="tf.data snapshot element_spec file not found: "
+                f"{dataset_spec_filename}.")
+
+  with gfile.GFile(dataset_spec_filename, "rb") as f:
+    encoded_spec = f.read()
+  try:
+    return _parse_element_spec(encoded_spec)
+  except nested_structure_coder.NotEncodableError as e:
+    raise errors.NotFoundError(
+        node_def=None, op=None,
+        message="tf.data snapshot element_spec file not found or invalid: "
+                f"{dataset_spec_filename}.") from e
+
+
+def _parse_element_spec(encoded_element_spec: Union[bytes, str]) -> Any:
+  struct_pb = nested_structure_coder.struct_pb2.StructuredValue()
+  struct_pb.ParseFromString(encoded_element_spec)
+  return nested_structure_coder.decode_proto(struct_pb)
 
 
 class _LoadDataset(dataset_ops.DatasetSource):
@@ -232,9 +277,3 @@ def _validate_snapshot(
         f"Failed to load tf.data snapshot at {path}. User specified "
         f"compression {compression}, but the actual compression is "
         f"{metadata.compression}.")
-
-
-def _parse_element_spec(encoded_element_spec: Union[bytes, str]) -> Any:
-  struct_pb = nested_structure_coder.struct_pb2.StructuredValue()
-  struct_pb.ParseFromString(encoded_element_spec)
-  return nested_structure_coder.decode_proto(struct_pb)

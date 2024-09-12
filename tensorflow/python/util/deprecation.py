@@ -747,10 +747,6 @@ class HiddenTfApiAttribute(property):
   front of the name (e.g. ClassName._variables). This doesn't work when
   attributes or methods are inherited from a parent class. To hide inherited
   attributes, set their values to be `deprecation.hide_attribute_from_api`.
-  For example, this is used in V2 Estimator to hide the deprecated
-  export_savedmodel method:
-    class EstimatorV2(Estimator):
-       export_savedmodel = deprecation.hide_attribute_from_api('...')
   """
 
   def __init__(self, deprecation_message):

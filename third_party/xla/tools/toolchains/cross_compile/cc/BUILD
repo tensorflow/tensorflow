@@ -15,10 +15,7 @@ cc_toolchain_suite(
     },
 )
 
-filegroup(
-    name = "empty",
-    visibility = ["//visibility:public"],
-)
+filegroup(name = "empty")
 
 # We define a wraper ("cc_wrapper.sh") around the compiler to replace all paths
 # in the binary (bazel-out/.../path/to/original/library.so) by the paths
@@ -27,7 +24,6 @@ filegroup(
 filegroup(
     name = "cc_wrapper_and_macos_sysroot",
     srcs = ["cc_wrapper.sh"] + glob(["MacOSX.sdk/**"]),
-    visibility = ["//visibility:public"],
 )
 
 cc_toolchain(
@@ -66,15 +62,15 @@ cc_toolchain_config(
     cpu = "k8",
     cxx_builtin_include_directories = [
         "/dt9/",
-        "/usr/lib/llvm-17/include/",
-        "/usr/lib/llvm-17/lib/clang/17/include",
+        "/usr/lib/llvm-18/include/",
+        "/usr/lib/llvm-18/lib/clang/18/include",
     ],
     dbg_compile_flags = ["-g"],
     host_system_name = "linux",
     link_flags = [
         "--target=x86_64-unknown-linux-gnu",
         "-fuse-ld=lld",
-        "--ld-path=/usr/lib/llvm-17/bin/ld.lld",
+        "--ld-path=/usr/lib/llvm-18/bin/ld.lld",
         "-Wl,--undefined-version",
     ],
     link_libs = [
@@ -94,14 +90,14 @@ cc_toolchain_config(
     target_libc = "",
     target_system_name = "x86_64-unknown-linux-gnu",
     tool_paths = {
-        "gcc": "/usr/lib/llvm-17/bin/clang",
-        "ld": "/usr/lib/llvm-17/bin/ld.lld",
-        "ar": "/usr/lib/llvm-17/bin/llvm-ar",
-        "cpp": "/usr/lib/llvm-17/bin/clang++",
-        "llvm-cov": "/usr/lib/llvm-17/bin/llvm-cov",
-        "nm": "/usr/lib/llvm-17/bin/llvm-nm",
-        "objdump": "/usr/lib/llvm-17/bin/llvm-objdump",
-        "strip": "/usr/lib/llvm-17/bin/llvm-strip",
+        "gcc": "/usr/lib/llvm-18/bin/clang",
+        "ld": "/usr/lib/llvm-18/bin/ld.lld",
+        "ar": "/usr/lib/llvm-18/bin/llvm-ar",
+        "cpp": "/usr/lib/llvm-18/bin/clang++",
+        "llvm-cov": "/usr/lib/llvm-18/bin/llvm-cov",
+        "nm": "/usr/lib/llvm-18/bin/llvm-nm",
+        "objdump": "/usr/lib/llvm-18/bin/llvm-objdump",
+        "strip": "/usr/lib/llvm-18/bin/llvm-strip",
     },
     toolchain_identifier = "linux_x86_toolchain",
     unfiltered_compile_flags = [
@@ -152,15 +148,15 @@ cc_toolchain_config(
     cpu = "aarch64",
     cxx_builtin_include_directories = [
         "/dt10/",
-        "/usr/lib/llvm-17/include/",
-        "/usr/lib/llvm-17/lib/clang/17/include",
+        "/usr/lib/llvm-18/include/",
+        "/usr/lib/llvm-18/lib/clang/18/include",
     ],
     dbg_compile_flags = ["-g"],
     host_system_name = "linux",
     link_flags = [
         "--target=aarch64-unknown-linux-gnu",
         "-fuse-ld=lld",
-        "--ld-path=/usr/lib/llvm-17/bin/ld.lld",
+        "--ld-path=/usr/lib/llvm-18/bin/ld.lld",
         "-Wl,--undefined-version",
     ],
     link_libs = [
@@ -180,14 +176,14 @@ cc_toolchain_config(
     target_libc = "",
     target_system_name = "aarch64-unknown-linux-gnu",
     tool_paths = {
-        "gcc": "/usr/lib/llvm-17/bin/clang",
-        "ld": "/usr/lib/llvm-17/bin/ld.lld",
-        "ar": "/usr/lib/llvm-17/bin/llvm-ar",
-        "cpp": "/usr/lib/llvm-17/bin/clang++",
-        "llvm-cov": "/usr/lib/llvm-17/bin/llvm-cov",
-        "nm": "/usr/lib/llvm-17/bin/llvm-nm",
-        "objdump": "/usr/lib/llvm-17/bin/llvm-objdump",
-        "strip": "/usr/lib/llvm-17/bin/llvm-strip",
+        "gcc": "/usr/lib/llvm-18/bin/clang",
+        "ld": "/usr/lib/llvm-18/bin/ld.lld",
+        "ar": "/usr/lib/llvm-18/bin/llvm-ar",
+        "cpp": "/usr/lib/llvm-18/bin/clang++",
+        "llvm-cov": "/usr/lib/llvm-18/bin/llvm-cov",
+        "nm": "/usr/lib/llvm-18/bin/llvm-nm",
+        "objdump": "/usr/lib/llvm-18/bin/llvm-objdump",
+        "strip": "/usr/lib/llvm-18/bin/llvm-strip",
     },
     toolchain_identifier = "linux_aarch64_toolchain",
     unfiltered_compile_flags = [
@@ -218,7 +214,7 @@ cc_toolchain_config(
     name = "macos_x86_toolchain_config",
     abi_libc_version = "darwin_x86_64",
     abi_version = "darwin_x86_64",
-    builtin_sysroot = "tensorflow/tools/toolchains/cross_compile/cc/MacOSX.sdk",
+    builtin_sysroot = "tools/toolchains/cross_compile/cc/MacOSX.sdk",
     compile_flags = [
         "--target=x86_64-apple-darwin",
         "-fstack-protector",
@@ -242,8 +238,8 @@ cc_toolchain_config(
     cpu = "darwin",
     cxx_builtin_include_directories = [
         "%sysroot%/usr/include",
-        "/usr/lib/llvm-17/include/",
-        "/usr/lib/llvm-17/lib/clang/17/include",
+        "/usr/lib/llvm-18/include/",
+        "/usr/lib/llvm-18/lib/clang/18/include",
         "%sysroot%/System/Library/Frameworks/Security.framework/Headers",
         "%sysroot%/System/Library/Frameworks/CoreFoundation.framework/Headers",
         "%sysroot%/System/Library/Frameworks/SystemConfiguration.framework/Headers",
@@ -254,7 +250,7 @@ cc_toolchain_config(
         "--target=x86_64-apple-darwin",
         "-lSystem",
         "-fuse-ld=lld",
-        "--ld-path=/usr/lib/llvm-17/bin/ld64.lld",
+        "--ld-path=/usr/lib/llvm-18/bin/ld64.lld",
         "-headerpad_max_install_names",
         "-Wl,-undefined,dynamic_lookup",
         # Target Catalina as the minimum supported OS
@@ -278,13 +274,13 @@ cc_toolchain_config(
     target_system_name = "x86_64-apple-macosx10.15",
     tool_paths = {
         "gcc": "cc_wrapper.sh",
-        "ld": "/usr/lib/llvm-17/bin/ld64.lld",
-        "ar": "/usr/lib/llvm-17/bin/llvm-libtool-darwin",
-        "cpp": "/usr/lib/llvm-17/bin/clang++",
-        "llvm-cov": "/usr/lib/llvm-17/bin/llvm-cov",
-        "nm": "/usr/lib/llvm-17/bin/llvm-nm",
-        "objdump": "/usr/lib/llvm-17/bin/llvm-objdump",
-        "strip": "/usr/lib/llvm-17/bin/llvm-strip",
+        "ld": "/usr/lib/llvm-18/bin/ld64.lld",
+        "ar": "/usr/lib/llvm-18/bin/llvm-libtool-darwin",
+        "cpp": "/usr/lib/llvm-18/bin/clang++",
+        "llvm-cov": "/usr/lib/llvm-18/bin/llvm-cov",
+        "nm": "/usr/lib/llvm-18/bin/llvm-nm",
+        "objdump": "/usr/lib/llvm-18/bin/llvm-objdump",
+        "strip": "/usr/lib/llvm-18/bin/llvm-strip",
     },
     toolchain_identifier = "macos_x86_toolchain",
     unfiltered_compile_flags = [

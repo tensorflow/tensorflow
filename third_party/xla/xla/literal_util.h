@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/functional/function_ref.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
@@ -43,9 +44,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
+#include "xla/tsl/lib/core/bitmap.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/bitmap.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 
@@ -76,6 +76,8 @@ class LiteralUtil {
   // literal's linear representation in memory.
   template <typename NativeT>
   static Literal CreateR0(NativeT value);
+  template <typename T>
+  static Literal CreateR0(PrimitiveType primitive_type, T value);
   template <typename NativeT>
   static Literal CreateR1(absl::Span<const NativeT> values);
   static Literal CreateR1(const tsl::core::Bitmap& values);
@@ -121,11 +123,14 @@ class LiteralUtil {
   // Creates a scalar literal value containing the NaN value of the given
   // primitive type. Fail for non-inexact types. For complex types, returns a
   // nan + nan * j value.
-  static StatusOr<Literal> NanValue(PrimitiveType primitive_type);
+  static absl::StatusOr<Literal> NanValue(PrimitiveType primitive_type);
   // Creates a literal of the given shape where each element is `value`.
   template <typename NativeT>
   static Literal CreateFullWithDescendingLayout(
       absl::Span<const int64_t> dimensions, NativeT value);
+  template <typename NativeT>
+  static Literal CreateFull(absl::Span<const int64_t> dimensions,
+                            NativeT value);
 
   // Creates a new literal from an Array type. The variants not ending with
   // WithLayout use the default XLA layout for the literal's linear
@@ -173,9 +178,19 @@ class LiteralUtil {
       std::initializer_list<std::initializer_list<NativeT>> values,
       int64_t projection_p, int64_t projection_z);
 
-  // Returns an identity matrix (rank 2) with the given row and column count.
+  // Returns a scalar matrix (rank 2) of the given size and scalar value.
+  template <typename NativeT>
+  static Literal MakeScalarMatrixR2(int64_t size, NativeT scalar);
+
+  // Returns an identity matrix (rank 2) of the given size.
   template <typename NativeT>
   static Literal MakeIdentityR2(int64_t size);
+
+  // Creates fingerprint input where each entry encodes its row and column
+  // scaled by the given scale.
+  template <typename NativeT>
+  static Literal CreateFingerprintMatixR2(int64_t m, int64_t n,
+                                          NativeT scale = 1);
 
   // Returns a tuple literal composed of given literals. Data is copied from the
   // given elements into the returned literal.
@@ -249,28 +264,29 @@ class LiteralUtil {
 
   // Creates a literal with the supplied shape, and uses the provided value
   // generator to populate the literal's values.
-  // Returns the new literal object, or an error Status if failed.
+  // Returns the new literal object, or an error absl::Status if failed.
   template <PrimitiveType type, typename T = primitive_util::NativeTypeOf<type>>
-  static StatusOr<Literal> CreateLiteralWithGenerator(
+  static absl::StatusOr<Literal> CreateLiteralWithGenerator(
       const Shape& shape,
       absl::FunctionRef<T(absl::Span<const int64_t>)> generator);
 
   // Creates a literal with the supplied shape, and initializes the literal
   // values using a normal distribution with given mean and stddev standard
   // deviation, and using the engine as entropy generator.
-  // Returns the new literal object, or an error Status if failed.
+  // Returns the new literal object, or an error absl::Status if failed.
   template <PrimitiveType type, typename E,
             typename T = primitive_util::NativeTypeOf<type>>
-  static StatusOr<Literal> CreateRandomLiteral(const Shape& shape, E* engine,
-                                               T mean, T stddev);
+  static absl::StatusOr<Literal> CreateRandomLiteral(const Shape& shape,
+                                                     E* engine, T mean,
+                                                     T stddev);
 
   // Creates a literal with the supplied shape, and initializes the literal
   // values using a normal distribution with given mean and stddev standard
   // deviation.
-  // Returns the new literal object, or an error Status if failed.
+  // Returns the new literal object, or an error absl::Status if failed.
   template <PrimitiveType type, typename T = primitive_util::NativeTypeOf<type>>
-  static StatusOr<Literal> CreateRandomLiteral(const Shape& shape, T mean,
-                                               T stddev);
+  static absl::StatusOr<Literal> CreateRandomLiteral(const Shape& shape, T mean,
+                                                     T stddev);
 
   //
   // End of factory methods.
@@ -295,6 +311,17 @@ template <typename NativeT>
       primitive_util::NativeToPrimitiveType<NativeT>(), {}));
   literal.Set({}, value);
   return literal;
+}
+
+template <typename T>
+/* static */ Literal LiteralUtil::CreateR0(PrimitiveType primitive_type,
+                                           T value) {
+  return primitive_util::ArrayTypeSwitch<Literal>(
+      [&value](auto type) {
+        using NativeT = primitive_util::NativeTypeOf<type>;
+        return CreateR0(static_cast<NativeT>(value));
+      },
+      primitive_type);
 }
 
 template <typename NativeT>
@@ -502,12 +529,32 @@ template <typename NativeT>
   return CreateFromArrayWithLayout(values, layout);
 }
 
-// Returns an identity matrix (rank 2) with the given row and column count.
+// Creates a squared scalar matrix of given size.
+template <typename NativeT>
+/* static */ Literal LiteralUtil::MakeScalarMatrixR2(int64_t size,
+                                                     NativeT scalar) {
+  Array2D<NativeT> array(size, size, NativeT(0));
+  for (int64_t i = 0; i < size; ++i) {
+    array(i, i) = scalar;
+  }
+  return CreateR2FromArray2D(array);
+}
+
 template <typename NativeT>
 /* static */ Literal LiteralUtil::MakeIdentityR2(int64_t size) {
-  Array2D<NativeT> array(size, size, 0);
-  for (int64_t i = 0; i < size; ++i) {
-    array(i, i) = 1;
+  return MakeScalarMatrixR2<NativeT>(size, NativeT(1));
+}
+
+template <typename NativeT>
+/* static */ Literal LiteralUtil::CreateFingerprintMatixR2(int64_t m, int64_t n,
+                                                           NativeT scale) {
+  NativeT row_factor = log10(m) + 1;
+  NativeT col_factor = log10(n) + 1;
+  Array2D<NativeT> array(m, n, NativeT(0));
+  for (int64_t i = 0; i < m; ++i) {
+    for (int64_t j = 0; j < n; ++j) {
+      array(i, i) = scale * (row_factor * i + col_factor * j);
+    }
   }
   return CreateR2FromArray2D(array);
 }
@@ -521,8 +568,17 @@ template <typename NativeT>
   return literal;
 }
 
+template <typename NativeT>
+/* static */ Literal LiteralUtil::CreateFull(
+    absl::Span<const int64_t> dimensions, NativeT value) {
+  Literal literal(ShapeUtil::MakeShape(
+      primitive_util::NativeToPrimitiveType<NativeT>(), dimensions));
+  literal.PopulateWithValue(value);
+  return literal;
+}
+
 template <PrimitiveType type, typename T>
-/* static */ StatusOr<Literal> LiteralUtil::CreateLiteralWithGenerator(
+/* static */ absl::StatusOr<Literal> LiteralUtil::CreateLiteralWithGenerator(
     const Shape& shape,
     absl::FunctionRef<T(absl::Span<const int64_t>)> generator) {
   using NativeT = primitive_util::NativeTypeOf<type>;
@@ -534,7 +590,7 @@ template <PrimitiveType type, typename T>
 }
 
 template <PrimitiveType type, typename E, typename T>
-/* static */ StatusOr<Literal> LiteralUtil::CreateRandomLiteral(
+/* static */ absl::StatusOr<Literal> LiteralUtil::CreateRandomLiteral(
     const Shape& shape, E* engine, T mean, T stddev) {
   using NativeT = primitive_util::NativeTypeOf<type>;
   std::normal_distribution<double> generator(mean, stddev);
@@ -545,7 +601,7 @@ template <PrimitiveType type, typename E, typename T>
 }
 
 template <PrimitiveType type, typename T>
-/* static */ StatusOr<Literal> LiteralUtil::CreateRandomLiteral(
+/* static */ absl::StatusOr<Literal> LiteralUtil::CreateRandomLiteral(
     const Shape& shape, T mean, T stddev) {
   std::minstd_rand0 engine;
   return CreateRandomLiteral<type>(shape, &engine, mean, stddev);

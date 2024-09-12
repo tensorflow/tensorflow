@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,11 +30,14 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/host/host_platform_id.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/types.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
@@ -58,30 +61,31 @@ class GenericTransferManagerTest : public ::testing::Test {
   void SetUp() override {
     TF_ASSERT_OK_AND_ASSIGN(
         se::Platform * platform,
-        se::MultiPlatformManager::PlatformWithId(se::host::kHostPlatformId));
+        se::PlatformManager::PlatformWithId(se::host::kHostPlatformId));
     TF_ASSERT_OK_AND_ASSIGN(stream_executor_, platform->ExecutorForDevice(0));
-    stream_.emplace(stream_executor_);
-    stream_->Init();
-    ASSERT_TRUE(stream_->ok());
+    TF_ASSERT_OK_AND_ASSIGN(stream_, stream_executor_->CreateStream());
+    allocator_ =
+        std::make_unique<se::StreamExecutorMemoryAllocator>(stream_executor_);
   }
 
   ScopedShapedBuffer AllocateBuffer(const Shape& shape) {
-    auto buffer = transfer_manager_.AllocateScopedShapedBuffer(
-        shape, stream_executor_->GetAllocator(),
-        /*device_ordinal=*/0);
+    auto buffer =
+        transfer_manager_.AllocateScopedShapedBuffer(shape, allocator_.get(),
+                                                     /*device_ordinal=*/0);
     return std::move(buffer.value());
   }
 
   PackingTransferManager transfer_manager_;
   se::StreamExecutor* stream_executor_;
-  std::optional<se::Stream> stream_;
+  std::unique_ptr<se::Stream> stream_;
+  std::unique_ptr<se::DeviceMemoryAllocator> allocator_;
 };
 
 TEST_F(GenericTransferManagerTest, TransferLiteralToDevice) {
   ScopedShapedBuffer buffer = AllocateBuffer(ShapeUtil::MakeShape(U16, {2, 2}));
   Literal literal = LiteralUtil::CreateR2<uint16_t>({{1, 2}, {3, 4}});
-  TF_ASSERT_OK(transfer_manager_.TransferLiteralToDevice(&stream_.value(),
-                                                         literal, buffer));
+  TF_ASSERT_OK(transfer_manager_.TransferLiteralToDevice(stream_.get(), literal,
+                                                         buffer));
 
   se::DeviceMemoryBase device_mem = buffer.buffers().element({});
   uint16_t* device_ptr = static_cast<uint16_t*>(device_mem.opaque());
@@ -114,7 +118,7 @@ TEST_F(GenericTransferManagerTest, TransferLiteralToDeviceInt4) {
     transfer_manager_.pack_subbyte_types_ = pack;
     ScopedShapedBuffer buffer =
         AllocateBuffer(ShapeUtil::MakeShape(S4, {2, 2}));
-    TF_ASSERT_OK(transfer_manager_.TransferLiteralToDevice(&stream_.value(),
+    TF_ASSERT_OK(transfer_manager_.TransferLiteralToDevice(stream_.get(),
                                                            literal, buffer));
     se::DeviceMemoryBase device_mem = buffer.buffers().element({});
     ASSERT_EQ(device_mem.size(), pack ? 2 : 4);
@@ -141,7 +145,7 @@ TEST_F(GenericTransferManagerTest, TransferLiteralFromDevice) {
   TF_ASSERT_OK_AND_ASSIGN(
       Literal literal,
       transfer_manager_.TransferManager::TransferLiteralFromDevice(
-          &stream_.value(), buffer));
+          stream_.get(), buffer));
   EXPECT_TRUE(LiteralTestUtil::Equal(
       literal, LiteralUtil::CreateR2<uint16_t>({{1, 2}, {3, 4}})));
 }
@@ -170,7 +174,7 @@ TEST_F(GenericTransferManagerTest, TransferLiteralFromDeviceInt4) {
     TF_ASSERT_OK_AND_ASSIGN(
         Literal literal,
         transfer_manager_.TransferManager::TransferLiteralFromDevice(
-            &stream_.value(), buffer));
+            stream_.get(), buffer));
     EXPECT_TRUE(LiteralTestUtil::Equal(
         literal,
         LiteralUtil::CreateR2<s4>({{s4{1}, s4{-2}}, {s4{-3}, s4{4}}})));

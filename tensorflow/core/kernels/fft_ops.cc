@@ -727,14 +727,16 @@ class FFTGPUBase : public FFTBase {
 
     // Create a new plan if one doesn't exist.  Otherwise, we need only set
     // the scratch allocator.
+    auto fft = stream->parent()->AsFft();
+    OP_REQUIRES(ctx, fft != nullptr, absl::InternalError("No FFT for stream."));
     if (plan == nullptr) {
-      plan = stream->parent()->AsFft()->CreateBatchedPlanWithScratchAllocator(
+      plan = fft->CreateBatchedPlanWithScratchAllocator(
           stream, fft_rank, fft_shape, input_embed, input_stride,
           input_distance, output_embed, output_stride, output_distance,
           kFftType, kInPlaceFft, batch_size, &scratch_allocator);
     } else {
-      stream->parent()->AsFft()->UpdatePlanWithScratchAllocator(
-          stream, plan.get(), &scratch_allocator);
+      fft->UpdatePlanWithScratchAllocator(stream, plan.get(),
+                                          &scratch_allocator);
     }
 
     OP_REQUIRES(
@@ -807,17 +809,21 @@ class FFTGPUBase : public FFTBase {
         AsDeviceMemory<InT>(in.flat<InT>().data(), input_shape.num_elements());
     auto dst = AsDeviceMemory<OutT>(out->flat<OutT>().data(),
                                     output_shape.num_elements());
+    auto fft = stream->parent()->AsFft();
+    OP_REQUIRES(ctx, fft != nullptr, absl::InternalError("No FFT for stream."));
     OP_REQUIRES(
-        ctx, stream->ThenFft(plan, src, &dst).ok(),
+        ctx, fft->DoFft(stream, plan, src, &dst),
         errors::Internal("fft failed : type=", static_cast<int>(fft_type),
                          " in.shape=", input_shape.DebugString()));
     if (!IsForward()) {
       typedef typename RealTypeFromComplexType<OutT>::RealT RealT;
       RealT alpha = 1.0 / output_distance;
+      auto blas = stream->parent()->AsBlas();
+      OP_REQUIRES(ctx, blas != nullptr,
+                  absl::InternalError("No Blas for stream."));
       OP_REQUIRES(
           ctx,
-          stream->ThenBlasScal(output_shape.num_elements(), alpha, &dst, 1)
-              .ok(),
+          blas->DoBlasScal(stream, output_shape.num_elements(), alpha, &dst, 1),
           errors::Internal("BlasScal failed : in.shape=",
                            input_shape.DebugString()));
     }
@@ -909,16 +915,18 @@ class FFTNGPUBase : public FFTNBase {
         plan = std::move(*plan_or);
       }
     }
+    auto fft = stream->parent()->AsFft();
+    OP_REQUIRES(ctx, fft != nullptr, absl::InternalError("No FFT for stream."));
     // Create a new plan if one doesn't exist.  Otherwise, we need only set
     // the scratch allocator.
     if (plan == nullptr) {
-      plan = stream->parent()->AsFft()->CreateBatchedPlanWithScratchAllocator(
+      plan = fft->CreateBatchedPlanWithScratchAllocator(
           stream, fft_rank, fft_shape, input_embed, input_stride,
           input_distance, output_embed, output_stride, output_distance,
           kFftType, kInPlaceFft, batch_size, &scratch_allocator);
     } else {
-      stream->parent()->AsFft()->UpdatePlanWithScratchAllocator(
-          stream, plan.get(), &scratch_allocator);
+      fft->UpdatePlanWithScratchAllocator(stream, plan.get(),
+                                          &scratch_allocator);
     }
 
     OP_REQUIRES(
@@ -989,17 +997,21 @@ class FFTNGPUBase : public FFTNBase {
         AsDeviceMemory<InT>(in.flat<InT>().data(), input_shape.num_elements());
     auto dst = AsDeviceMemory<OutT>(out->flat<OutT>().data(),
                                     output_shape.num_elements());
-    OP_REQUIRES(ctx, stream->ThenFft(plan, src, &dst).ok(),
+    auto fft = stream->parent()->AsFft();
+    OP_REQUIRES(ctx, fft != nullptr, absl::InternalError("No FFT for stream."));
+    OP_REQUIRES(ctx, fft->DoFft(stream, plan, src, &dst),
                 absl::InternalError(absl::StrCat(
                     "fft failed : type=", static_cast<int>(fft_type),
                     " in.shape=", input_shape.DebugString())));
     if (!IsForward()) {
       typedef typename RealTypeFromComplexType<OutT>::RealT RealT;
       RealT alpha = 1.0 / output_distance;
+      auto blas = stream->parent()->AsBlas();
+      OP_REQUIRES(ctx, blas != nullptr,
+                  absl::InternalError("No blas for stream."));
       OP_REQUIRES(
           ctx,
-          stream->ThenBlasScal(output_shape.num_elements(), alpha, &dst, 1)
-              .ok(),
+          blas->DoBlasScal(stream, output_shape.num_elements(), alpha, &dst, 1),
           absl::InternalError(absl::StrCat("BlasScal failed : in.shape=",
                                            input_shape.DebugString())));
     }

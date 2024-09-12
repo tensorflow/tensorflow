@@ -344,11 +344,12 @@ class MklConvCustomBackpropInputOp
       const Tensor& filter_tensor = MklGetInput(context, kFilterIdx);
       const Tensor& diff_dst_tensor = MklGetInput(context, kOutbpropIdx);
 
-      OP_REQUIRES(
-          context, diff_dst_tensor.dims() == 4 || diff_dst_tensor.dims() == 5,
-          errors::InvalidArgument("input_sizes must be 4 or 5-dimensional, "
-                                  "got: ",
-                                  diff_dst_tensor.dims()));
+      OP_REQUIRES(context,
+                  diff_dst_tensor.dims() == 4 || diff_dst_tensor.dims() == 5,
+                  absl::InvalidArgumentError(
+                      absl::StrCat("input_sizes must be 4 or 5-dimensional, "
+                                   "got: ",
+                                   diff_dst_tensor.dims())));
 
       if (std::is_same<T, float>::value) {
         (void)SetFPMathMode();
@@ -431,7 +432,7 @@ class MklConvCustomBackpropInputOp
 
       auto mkl_fmt_tag = MklTensorFormatToMklDnnDataFormat(tf_fmt);
       OP_REQUIRES(context, mkl_fmt_tag != memory::format_tag::undef,
-                  errors::InvalidArgument("Invalid data format"));
+                  absl::InvalidArgumentError("Invalid data format"));
 
       // If filter is in MKL layout, then simply grab filter layout;
       // otherwise, construct filter in TF layout.
@@ -543,9 +544,9 @@ class MklConvCustomBackpropInputOp
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
                          string(__FILE__) + ":" + std::to_string(__LINE__);
-      OP_REQUIRES_OK(
-          context,
-          errors::Aborted("Operation received an exception:", error_msg));
+      OP_REQUIRES_OK(context,
+                     absl::AbortedError(absl::StrCat(
+                         "Operation received an exception:", error_msg)));
     }
   }
 
@@ -671,6 +672,7 @@ class MklConvCustomBackpropInputOp
 
 TF_CALL_float(REGISTER_MKL_CPU_KERNELS);
 TF_CALL_bfloat16(REGISTER_MKL_CPU_KERNELS);
+TF_CALL_half(REGISTER_MKL_CPU_KERNELS);
 
 #undef REGISTER_MKL_CPU_KERNELS
 #undef SET_MKL_LAYOUT

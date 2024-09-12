@@ -112,7 +112,7 @@ Status GetTrtRewriterConfig(const TfTrtConversionParams& params,
   opt_config->set_remapping(RewriterConfig_Toggle::RewriterConfig_Toggle_OFF);
 
   // If the graph has QDQ nodes, then we need to disable folding of the
-  // QDQ with constants. Otherwise, the conversion will not work corectly.
+  // QDQ with constants. Otherwise, the conversion will not work correctly.
   // Ideally, we do this after segmentation and outlining of TRT regions to
   // functions, but we currently lack that capability. Disabling QDQ-const
   // folding doesn't matter if you don't have QDQ nodes, so we always enable
@@ -264,7 +264,7 @@ Status GetResourceManager(const NodeDef& node, Session* session,
   return OkStatus();
 }
 
-// Looks up the cache resurce associated with the TRT node.
+// Looks up the cache resource associated with the TRT node.
 Status GetEngineCacheResource(const NodeDef& node, Session* session,
                               TRTEngineCacheResource** resource) {
   ResourceMgr* rm;

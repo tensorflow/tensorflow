@@ -121,7 +121,15 @@ absl::string_view GpuModelName(const DeviceCapabilities& device_cap) {
           return "Nvidia GPU (Turing)";
         }
       case 8:
-        return "Nvidia GPU (Ampere)";
+        if (device_cap.compute_capability().minor() < 9) {
+          return "Nvidia GPU (Ampere)";
+        } else {
+          return "Nvidia GPU (Ada Lovelace)";
+        }
+      case 9:
+        return "Nvidia GPU (Hopper)";
+      case 10:
+        return "Nvidia GPU (Blackwell)";
       default:
         return "Nvidia GPU";
     }

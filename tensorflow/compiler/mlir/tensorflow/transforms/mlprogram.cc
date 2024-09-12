@@ -31,7 +31,8 @@ limitations under the License.
 namespace tensorflow {
 
 void PopulateLowerToMlProgramAndHloPipeline(mlir::OpPassManager& pm) {
-  tensorflow::tf2xla::internal::AddNonTPUBridgeClusteringPipelinePasses(pm);
+  tensorflow::tf2xla::internal::AddNonReplicatedBridgeClusteringPipelinePasses(
+      pm);
 
   // Remove unused global tensors, or make then immutable if possible.
   pm.addPass(mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/collective_rma_distributed.h"
 
+#include <memory>
+
 #include "google/protobuf/any.pb.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
@@ -60,7 +62,7 @@ static std::unique_ptr<Device> NewDevice(const string& type, const string& name,
    public:
     explicit FakeDevice(const DeviceAttributes& attr, Allocator* allocator)
         : Device(nullptr, attr), allocator_(allocator) {}
-    Status Sync() override { return OkStatus(); }
+    Status Sync() override { return absl::OkStatus(); }
     Allocator* GetAllocator(AllocatorAttributes) override { return allocator_; }
 
    private:
@@ -104,7 +106,7 @@ class FakeWorker : public TestWorkerInterface {
     for (const auto& da : dev_attr) {
       *response->add_device_attributes() = da;
     }
-    done(OkStatus());
+    done(absl::OkStatus());
   }
 
   void RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
@@ -202,7 +204,7 @@ class FakeCache : public TestWorkerCache {
     for (const auto& it : resp.device_attributes()) {
       if (it.name() == device) {
         *locality = it.locality();
-        done(OkStatus());
+        done(absl::OkStatus());
         return;
       }
     }
@@ -253,9 +255,9 @@ class CollRMADistTest
       DefineWorker(name, device_type, num_devices);
     }
     // All tests simulate requests from worker 0 to worker 1.
-    rma_.reset(new CollectiveRemoteAccessDistributed(
+    rma_ = std::make_unique<CollectiveRemoteAccessDistributed>(
         device_mgrs_[0], dev_resolvers_[dev0_worker_name], work_queue_, &wc_,
-        kStepId, "/job:worker/replica:0/task:0"));
+        kStepId, "/job:worker/replica:0/task:0");
 
     const int kNumElts = 8;
     expected_value_ = Tensor(DT_FLOAT, {kNumElts});

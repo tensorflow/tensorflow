@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -44,49 +44,29 @@ using BufferizePatternsCallback = std::function<void(
 // Passes
 //===----------------------------------------------------------------------===//
 
-#define GEN_PASS_DECL_BUFFERPACKING
 #define GEN_PASS_DECL_FINALBUFFERIZEPASS
-#define GEN_PASS_DECL_PROPAGATESTATICSHAPESTOKERNELPASS
 #define GEN_PASS_DECL_TILELOOPSPASS
 #define GEN_PASS_DECL_GENERICHOSTTOLLVMPASS
 #define GEN_PASS_DECL_VECTORIZECOPYPASS
 #include "transforms/passes.h.inc"
 
-/// Creates a pass that merges smaller buffer into bigger buffer to optimize
-/// memory consumption.
-std::unique_ptr<OperationPass<func::FuncOp>> createBufferPackingPass(
-    unsigned windowSize = 5);
-
-/// Creates a pass that tests the useranges of the UserangeAnalysis.
-std::unique_ptr<OperationPass<func::FuncOp>> createTestUserangePass();
-
-/// Creates a pass that prints the analysis results of ShapeComponentsAnalysis.
-std::unique_ptr<OperationPass<func::FuncOp>>
-createTestShapeComponentAnalysisPass();
-
-/// Creates a pass that computes the allocated memory.
-std::unique_ptr<OperationPass<func::FuncOp>> createMemoryCountPass();
-
 // Pass to lower index cast on tensors to tensor dialect.
+// Note: dependency from XLA:CPU:NEXT.
 std::unique_ptr<OperationPass<func::FuncOp>> createLowerIndexCastPass();
 
 // Pass to tranform compute computations (hlo and linalg) on values to their
 // corresponding counterparts on buffers. Also bufferizes function signatures.
+// Note: dependency from kernelgen.
 std::unique_ptr<OperationPass<ModuleOp>> createComputeOpAndFuncBufferizePass();
 
 // Pass to tranform computations on values to their corresponding parts on
 // buffers.
+// Note: dependency from kernelgen.
 std::unique_ptr<OperationPass<ModuleOp>> createFinalBufferizePass();
 
 std::unique_ptr<OperationPass<ModuleOp>> createFinalBufferizePass(
     uint64_t alignment, BufferizeDialectsCallback dc = {},
     BufferizePatternsCallback pc = {});
-
-// Pass to propagate static shapes to kernel, reducing the kernel arguments
-// from a flattened memref to a single pointer. The pointer is converted to
-// `pointer_type`, if provided.
-std::unique_ptr<OperationPass<ModuleOp>>
-createPropagateStaticShapesToKernelPass(Type pointerType = {});
 
 // Creates a pass for collapsing multidimensional parallel loops into 1D loops.
 std::unique_ptr<OperationPass<>> createCollapseParallelLoopsTo1DPass();
@@ -106,12 +86,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> createNaiveCopyRemovalPass();
 /// Pass to vectorize `memref.copy`.
 std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeCopyPass();
 
-/// Registers the test pass for erasing transform dialect ops.
-void registerTestHloTransformDialectEraseSchedulePass();
-
-/// Registers the test pass for applying transform dialect ops.
-void registerTestHloTransformDialectInterpreterPass();
-
 namespace hlo {
 std::unique_ptr<OperationPass<ModuleOp>> createOneShotBufferizePass();
 
@@ -120,9 +94,6 @@ std::unique_ptr<OperationPass<ModuleOp>> createGenericHostToLLVMPass(
 
 std::unique_ptr<OperationPass<func::FuncOp>> createUnbufferizePass();
 std::unique_ptr<OperationPass<func::FuncOp>> createAllocToArgPass();
-
-// Unrolls scf.for loops with static iteration count no larger than 8.
-std::unique_ptr<Pass> createUnrollLoopsPass();
 
 #define GEN_PASS_REGISTRATION
 #include "transforms/passes.h.inc"

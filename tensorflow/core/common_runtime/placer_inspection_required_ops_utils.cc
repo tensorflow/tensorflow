@@ -44,7 +44,7 @@ Status Set(const Node& node, bool value, bool* is_deep,
            std::vector<absl::optional<bool>>* cache) {
   *is_deep = value;
   (*cache)[node.id()] = value;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -59,7 +59,7 @@ Status PlacerInspectionRequiredOpChecker::IsPlacerInspectionRequired(
     const Node& node, bool* is_deep) {
   if (cache_[node.id()].has_value()) {
     *is_deep = cache_[node.id()].value();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (!IsFunctionCall(node)) {
@@ -91,7 +91,7 @@ Status GetFunctionDefAndAttrs(const FunctionLibraryDefinition& flib_def,
         "Failed to find function \"", function_name,
         "\" in function library: ", flib_def.ToProto().DebugString());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 FunctionStack::FunctionStack(const string& function_name)
@@ -194,7 +194,7 @@ Status AddInputIdentity(Node* node, int input_idx, Graph* graph,
 
   VLOG(6) << "Successfully inserted identity. Modified node: \n"
           << node->DebugString();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 struct EdgePtrCompare {
@@ -218,7 +218,7 @@ Status AddOutputIdentities(Node* node, Graph* graph,
 
     TF_ASSIGN_OR_RETURN(*identity_node, graph->AddNode(identity_def));
     graph->AddEdge(node, src_output, *identity_node, 0);
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   // output_used[i] == true iff `node`'s i'th output is used
@@ -264,7 +264,7 @@ Status AddOutputIdentities(Node* node, Graph* graph,
             << " -> <no consumer>: \n"
             << identity_node->DebugString();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status IsolateNode(Node* node, Graph* graph) {
@@ -281,7 +281,7 @@ Status IsolateNode(Node* node, Graph* graph) {
     TF_RETURN_IF_ERROR(AddInputIdentity(node, i, graph, &node_names));
   }
   TF_RETURN_IF_ERROR(AddOutputIdentities(node, graph, &node_names));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -305,7 +305,7 @@ Status IsolatePlacerInspectionRequiredOps(
     TF_RETURN_IF_ERROR(IsolateNode(node, graph));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

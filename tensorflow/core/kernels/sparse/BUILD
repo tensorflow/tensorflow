@@ -1,16 +1,16 @@
 # Description: Op kernels for sparse matrix operations.
 
 load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm",
+)
+load(
     "//tensorflow:tensorflow.bzl",
     "if_cuda_or_rocm",
     "tf_cc_test",
 )
 load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load(
-    "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm",
-)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -53,11 +53,12 @@ tf_kernel_library(
     ],
     hdrs = [
         "kernels.h",
+        "mat_mul_op.h",
         "transpose_op.h",
         "zeros_op.h",
     ],
     gpu_deps = [
-        "@local_xla//xla/stream_executor/cuda:cuda_activation",
+        "@local_xla//xla/stream_executor/gpu:scoped_activate_context",
         "//tensorflow/core/kernels:gpu_device_array",
     ],
     gpu_srcs = [

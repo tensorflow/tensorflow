@@ -119,7 +119,8 @@ TEST_F(XlaCompilerOptionsTest, PjRtOptionsXlaDevice) {
       /*pjrt_device_metadata=*/nullptr, custom_allocator);
 
   XlaCompiler::Options options = GenerateCompilerOptionsForPjRt(
-      *device_setup_.flr(), device, platform_info);
+      *device_setup_.flr(), device, platform_info,
+      /*pjrt_device_compiler=*/nullptr);
 
   EXPECT_EQ(options.device_type, compilation_device_type);
   EXPECT_EQ(options.device_ordinal, 0);
@@ -154,7 +155,8 @@ TEST_F(XlaCompilerOptionsTest, PjRtOptionsPjRtBaseDevice) {
       /*device_allocator=*/nullptr);
 
   XlaCompiler::Options options = GenerateCompilerOptionsForPjRt(
-      *device_setup_.flr(), device, platform_info);
+      *device_setup_.flr(), device, platform_info,
+      /*pjrt_device_compiler=*/nullptr);
 
   EXPECT_EQ(options.device_type, compilation_device_type);
   EXPECT_EQ(options.device_ordinal, 0);

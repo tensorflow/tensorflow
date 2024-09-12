@@ -45,7 +45,7 @@ class RemoteTensorHandleData {
   Status NumDims(int* num_dims) const;
   Status Dim(int dim_index, int64_t* dim) const;
   Status NumElements(int64_t* num_elements) const;
-  Status Unprotect() { return OkStatus(); }
+  Status Unprotect() { return absl::OkStatus(); }
 
   bool IsReady() const;
   Status WaitReady(const char* caller) const;

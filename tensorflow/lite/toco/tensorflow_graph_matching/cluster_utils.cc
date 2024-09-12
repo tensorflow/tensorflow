@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <string>
-#include "tensorflow/lite/toco/toco_types.h"
 namespace toco {
 
 bool StrContains(const std::string& x, const std::string& search_pattern) {

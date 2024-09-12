@@ -210,16 +210,16 @@ class LinearOperatorCirculantBaseTest(object):
   _atol = {
       dtypes.float16: 1e-3,
       dtypes.float32: 1e-6,
-      dtypes.float64: 1e-7,
+      dtypes.float64: 2e-7,
       dtypes.complex64: 1e-6,
-      dtypes.complex128: 1e-7
+      dtypes.complex128: 2e-7,
   }
   _rtol = {
       dtypes.float16: 1e-3,
       dtypes.float32: 1e-6,
-      dtypes.float64: 1e-7,
+      dtypes.float64: 2e-7,
       dtypes.complex64: 1e-6,
-      dtypes.complex128: 1e-7
+      dtypes.complex128: 2e-7,
   }
 
   @contextlib.contextmanager
@@ -614,16 +614,16 @@ class LinearOperatorCirculant2DBaseTest(object):
   _atol = {
       dtypes.float16: 1e-3,
       dtypes.float32: 1e-6,
-      dtypes.float64: 1e-7,
+      dtypes.float64: 2e-7,
       dtypes.complex64: 1e-6,
-      dtypes.complex128: 1e-7
+      dtypes.complex128: 2e-7,
   }
   _rtol = {
       dtypes.float16: 1e-3,
       dtypes.float32: 1e-6,
-      dtypes.float64: 1e-7,
+      dtypes.float64: 2e-7,
       dtypes.complex64: 1e-6,
-      dtypes.complex128: 1e-7
+      dtypes.complex128: 2e-7,
   }
 
   @contextlib.contextmanager

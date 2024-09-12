@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "xla/service/indexed_array_analysis.h"
 
+#include <gtest/gtest.h>
+#include "absl/log/log.h"
 #include "absl/strings/ascii.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_utils.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {

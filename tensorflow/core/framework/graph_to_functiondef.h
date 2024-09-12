@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_GRAPH_TO_FUNCTIONDEF_H_
 #define TENSORFLOW_CORE_FRAMEWORK_GRAPH_TO_FUNCTIONDEF_H_
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -59,6 +60,11 @@ Status GraphToFunctionDef(const Graph& graph, const string& name,
 Status GraphToFunctionDef(const Graph& graph, const string& name,
                           const std::vector<std::string>& output_names,
                           FunctionDef* fdef);
+
+Status GraphToFunctionDef(
+    std::unique_ptr<Graph> graph, const string& name,
+    const std::function<std::optional<string>(const Node*)>& control_ret,
+    FunctionDef* fdef);
 
 }  // namespace tensorflow
 

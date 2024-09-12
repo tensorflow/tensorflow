@@ -162,7 +162,7 @@ Status PartitionedCallOp::FillOutputDevices(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status PartitionedCallOp::Instantiate(FunctionLibraryRuntime* lib,
@@ -227,7 +227,7 @@ Status PartitionedCallOp::Instantiate(FunctionLibraryRuntime* lib,
 
   TF_RETURN_IF_ERROR(
       lib->Instantiate(func_->name(), AttrSlice(&func_->attr()), opts, handle));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void PartitionedCallOp::RunFunction(FunctionLibraryRuntime::Handle handle,
@@ -257,7 +257,7 @@ void PartitionedCallOp::RunFunction(FunctionLibraryRuntime::Handle handle,
 
   std::vector<Tensor>* rets = new std::vector<Tensor>;
   const string& func_name = func_->name();
-  profiler::TraceMe trace_me("PartitionedCallOp");
+  tsl::profiler::TraceMe trace_me("PartitionedCallOp");
   lib->Run(run_opts, handle, inputs, rets,
            [rets, done = std::move(done), ctx, func_name,
             step_container](const Status& status) {

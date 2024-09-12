@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,21 +16,29 @@ limitations under the License.
 #ifndef XLA_SERVICE_ALGEBRAIC_SIMPLIFIER_H_
 #define XLA_SERVICE_ALGEBRAIC_SIMPLIFIER_H_
 
-#include <array>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
-#include "absl/container/inlined_vector.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal.h"
 #include "xla/service/hlo_pass_interface.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -71,6 +79,11 @@ class AlgebraicSimplifierOptions {
     return conv_is_lowerable_callback_(reverse_dims);
   }
 
+  void set_conv_is_lowerable_callback(
+      ConvIsLowerableCallback conv_is_lowerable_callback) {
+    conv_is_lowerable_callback_ = std::move(conv_is_lowerable_callback);
+  }
+
   // If is_layout_sensitive is true, then the simplifier preserves layout during
   // transformation. Otherwise, layout is ignored.
   void set_is_layout_sensitive(bool is_layout_sensitive) {
@@ -96,6 +109,33 @@ class AlgebraicSimplifierOptions {
     return associative_reordering_threshold_;
   }
 
+  void set_use_convert_constant_folding(bool use_convert_constant_folding) {
+    use_convert_constant_folding_ = use_convert_constant_folding;
+  }
+
+  bool use_convert_constant_folding() const {
+    return use_convert_constant_folding_;
+  }
+
+  void set_raise_slice_and_reduce_through_dot(
+      bool raise_slice_and_reduce_through_dot) {
+    raise_slice_and_reduce_through_dot_ = raise_slice_and_reduce_through_dot;
+  }
+
+  bool raise_slice_and_reduce_through_dot() const {
+    return raise_slice_and_reduce_through_dot_;
+  }
+
+  void set_raise_slice_and_reduce_through_dot_threshold(
+      double raise_slice_and_reduce_through_dot_threshold) {
+    raise_slice_and_reduce_through_dot_threshold_ =
+        raise_slice_and_reduce_through_dot_threshold;
+  }
+
+  double raise_slice_and_reduce_through_dot_threshold() const {
+    return raise_slice_and_reduce_through_dot_threshold_;
+  }
+
   // Enable dot simplification on platforms where it is profitable.
   void set_enable_dot_strength_reduction(bool enable_dot_strength_reduction) {
     enable_dot_strength_reduction_ = enable_dot_strength_reduction;
@@ -112,6 +152,14 @@ class AlgebraicSimplifierOptions {
 
   bool enable_dot_to_multiply_rewrite() const {
     return enable_dot_to_multiply_rewrite_;
+  }
+
+  void set_enable_move_dot_param_to_rhs(bool enable_move_dot_param_to_rhs) {
+    enable_move_dot_param_to_rhs_ = enable_move_dot_param_to_rhs;
+  }
+
+  bool enable_move_dot_param_to_rhs() const {
+    return enable_move_dot_param_to_rhs_;
   }
 
   // This platform will not run the DotDecomposer to canonicalize dots.
@@ -233,9 +281,23 @@ class AlgebraicSimplifierOptions {
         enable_unconditional_reduce_of_concat_replacement;
   }
 
+  // Indicates whether running on CPU
+  bool executing_on_cpu() const { return executing_on_cpu_; }
+  void set_executing_on_cpu(bool executing_on_cpu) {
+    executing_on_cpu_ = executing_on_cpu;
+  }
+
+  // Option to disable conversion of dynamic-slice to slice.
+  void set_disable_dynamic_slice_to_slice_conversion(bool disable) {
+    disable_dynamic_slice_to_slice_conversion_ = disable;
+  }
+  bool disable_dynamic_slice_to_slice_conversion() const {
+    return disable_dynamic_slice_to_slice_conversion_;
+  }
+
  private:
   // Metadata struct can be used to store any metadata information encapsulated
-  // with the AlgebraicSimplierOptions that can be later used in an
+  // with the AlgebraicSimplifierOptions that can be later used in an
   // AlgebraicSimplifier pass. For example,
   // cudnn_batchnorm_forward_training_metadata can be used to store the name of
   // a custom call. If the custom call is
@@ -252,6 +314,7 @@ class AlgebraicSimplifierOptions {
   bool enable_dot_strength_reduction_{true};
   bool supports_non_canonical_dots_{true};
   bool enable_dot_to_multiply_rewrite_{true};
+  bool enable_move_dot_param_to_rhs_{false};
   bool enable_conv_simplification_{true};
   bool enable_conv_operand_swap_{true};
   bool enable_scalar_multiply_reduction_{false};
@@ -264,8 +327,13 @@ class AlgebraicSimplifierOptions {
   int64_t very_small_gather_size_{4};
   bool minmax_propagate_nan_{true};
   bool enable_unconditional_reduce_of_concat_replacement_{true};
+  bool executing_on_cpu_{false};
   bool use_associative_reordering_{false};
   double associative_reordering_threshold_{2.0};
+  bool raise_slice_and_reduce_through_dot_{false};
+  double raise_slice_and_reduce_through_dot_threshold_{2.0};
+  bool use_convert_constant_folding_{false};
+  bool disable_dynamic_slice_to_slice_conversion_{false};
   Metadata metadata_;
 };
 
@@ -282,7 +350,7 @@ class AlgebraicSimplifier : public HloModulePass {
   // Run algebraic simplification on the given computation. Returns whether the
   // computation was changed.
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
@@ -309,99 +377,104 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
                                       AlgebraicSimplifier* simplifier)
       : options_(options), simplifier_(simplifier) {}
 
-  Status HandleAbs(HloInstruction* abs) override;
+  absl::Status HandleAbs(HloInstruction* abs) override;
 
-  Status HandleAdd(HloInstruction* add) override;
+  absl::Status HandleAdd(HloInstruction* add) override;
 
-  Status HandleAnd(HloInstruction* logical_and) override;
+  absl::Status HandleAllToAll(HloInstruction* all_to_all) override;
 
-  Status HandleBitcast(HloInstruction* bitcast) override;
+  absl::Status HandleAnd(HloInstruction* logical_and) override;
 
-  Status HandleBitcastConvert(HloInstruction* bitcast) override;
+  absl::Status HandleBitcast(HloInstruction* bitcast) override;
 
-  Status HandleBroadcast(HloInstruction* broadcast) override;
+  absl::Status HandleBitcastConvert(HloInstruction* bitcast) override;
 
-  Status HandleCompare(HloInstruction* compare) override;
+  absl::Status HandleBroadcast(HloInstruction* broadcast) override;
 
-  Status HandleConcatenate(HloInstruction* concatenate) override;
+  absl::Status HandleCompare(HloInstruction* compare) override;
 
-  Status HandleConstant(HloInstruction* constant) override;
+  absl::Status HandleConcatenate(HloInstruction* concatenate) override;
 
-  Status HandleCopy(HloInstruction* copy) override;
+  absl::Status HandleConstant(HloInstruction* constant) override;
 
-  Status HandleConvert(HloInstruction* convert) override;
+  absl::Status HandleCopy(HloInstruction* copy) override;
 
-  Status HandleComplex(HloInstruction* complex) override;
+  absl::Status HandleConvert(HloInstruction* convert) override;
 
-  Status HandleReal(HloInstruction* real) override;
+  absl::Status HandleComplex(HloInstruction* complex) override;
 
-  Status HandleImag(HloInstruction* imag) override;
+  absl::Status HandleCustomCall(HloInstruction* custom_call) override;
 
-  Status HandleIota(HloInstruction* instruction) override;
+  absl::Status HandleReal(HloInstruction* real) override;
 
-  Status HandleConvolution(HloInstruction* convolution) override;
+  absl::Status HandleImag(HloInstruction* imag) override;
 
-  Status HandleDivide(HloInstruction* divide) override;
+  absl::Status HandleIota(HloInstruction* instruction) override;
 
-  Status HandleDot(HloInstruction* dot) override;
+  absl::Status HandleConvolution(HloInstruction* convolution) override;
 
-  Status HandleGather(HloInstruction* gather) override;
+  absl::Status HandleDivide(HloInstruction* divide) override;
 
-  Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
+  absl::Status HandleDot(HloInstruction* dot) override;
 
-  Status HandleLog(HloInstruction* log) override;
+  absl::Status HandleGather(HloInstruction* gather) override;
 
-  Status HandleMaximum(HloInstruction* maximum) override;
+  absl::Status HandleGetTupleElement(
+      HloInstruction* get_tuple_element) override;
 
-  Status HandleMinimum(HloInstruction* minimum) override;
+  absl::Status HandleLog(HloInstruction* log) override;
 
-  Status HandleClamp(HloInstruction* clamp) override;
+  absl::Status HandleMaximum(HloInstruction* maximum) override;
 
-  Status HandleMultiply(HloInstruction* multiply) override;
+  absl::Status HandleMinimum(HloInstruction* minimum) override;
 
-  Status HandleNegate(HloInstruction* negate) override;
+  absl::Status HandleClamp(HloInstruction* clamp) override;
 
-  Status HandleNot(HloInstruction* logical_not) override;
+  absl::Status HandleMultiply(HloInstruction* multiply) override;
 
-  Status HandleOptimizationBarrier(HloInstruction* barrier) override;
+  absl::Status HandleNegate(HloInstruction* negate) override;
 
-  Status HandleOr(HloInstruction* logical_or) override;
+  absl::Status HandleNot(HloInstruction* logical_not) override;
 
-  Status HandlePad(HloInstruction* pad) override;
+  absl::Status HandleOptimizationBarrier(HloInstruction* barrier) override;
 
-  Status HandlePower(HloInstruction* power) override;
+  absl::Status HandleOr(HloInstruction* logical_or) override;
 
-  Status HandleRemainder(HloInstruction* remainder) override;
+  absl::Status HandlePad(HloInstruction* pad) override;
 
-  Status HandleReshape(HloInstruction* reshape) override;
+  absl::Status HandlePower(HloInstruction* power) override;
 
-  Status HandleReduce(HloInstruction* hlo) override;
+  absl::Status HandleRemainder(HloInstruction* remainder) override;
 
-  Status HandleReduceWindow(HloInstruction* hlo) override;
+  absl::Status HandleReshape(HloInstruction* reshape) override;
 
-  Status HandleReverse(HloInstruction* reverse) override;
+  absl::Status HandleReduce(HloInstruction* hlo) override;
 
-  Status HandleRsqrt(HloInstruction* rsqrt) override;
+  absl::Status HandleReduceWindow(HloInstruction* hlo) override;
 
-  Status HandleSlice(HloInstruction* slice) override;
+  absl::Status HandleReverse(HloInstruction* reverse) override;
 
-  Status HandleSqrt(HloInstruction* sqrt) override;
+  absl::Status HandleRsqrt(HloInstruction* rsqrt) override;
 
-  Status HandleDynamicSlice(HloInstruction* dynamic_slice) override;
+  absl::Status HandleSlice(HloInstruction* slice) override;
 
-  Status HandleDynamicUpdateSlice(
+  absl::Status HandleSqrt(HloInstruction* sqrt) override;
+
+  absl::Status HandleDynamicSlice(HloInstruction* dynamic_slice) override;
+
+  absl::Status HandleDynamicUpdateSlice(
       HloInstruction* dynamic_update_slice) override;
-  Status HandleScatter(HloInstruction* hlo) override;
+  absl::Status HandleScatter(HloInstruction* hlo) override;
 
-  Status HandleSelect(HloInstruction* select) override;
+  absl::Status HandleSelect(HloInstruction* select) override;
 
-  Status HandleSort(HloInstruction* sort) override;
+  absl::Status HandleSort(HloInstruction* sort) override;
 
-  Status HandleTranspose(HloInstruction* transpose) override;
+  absl::Status HandleTranspose(HloInstruction* transpose) override;
 
-  Status HandleSubtract(HloInstruction* sub) override;
+  absl::Status HandleSubtract(HloInstruction* sub) override;
 
-  Status HandleMap(HloInstruction* map) override;
+  absl::Status HandleMap(HloInstruction* map) override;
 
   // Runs the visitor on a computation.
   bool Run(HloComputation* computation,
@@ -417,6 +490,15 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   static std::vector<std::vector<int64_t>> InvertBitcastDimMap(
       const Shape& original_shape, const Shape& bitcast_shape,
       const std::vector<std::vector<int64_t>>& original_map);
+
+  // Checks if the output of a given instruction is guaranteed to be
+  // non-negative. e.g. abs
+  static bool IsNonNegative(const HloInstruction* hlo,
+                            const AlgebraicSimplifierOptions& options);
+
+  // Check if the opcode of a given instruction is a non-decreasing function
+  // asymptotically satisfying |f(x)| <= |x|
+  static bool IsNondecreasingSublinear(const HloInstruction* hlo);
 
   // Modify the layout dimensions of result_shape, so that it becomes the
   // re-shaped result of applying bitcast to the original_shape, by using
@@ -441,12 +523,12 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
  private:
   // Removes degenerate dimension from dot.
-  StatusOr<bool> RemoveDegenerateDimensionFromDot(HloInstruction* dot);
+  absl::StatusOr<bool> RemoveDegenerateDimensionFromDot(HloDotInstruction* dot);
 
   // Moves the transpose to the broadcast if possible. Can also be called with a
   // bitcast transpose.
-  Status SimplifyTransposeOfBroadcast(HloInstruction* transpose,
-                                      absl::Span<const int64_t> dimensions);
+  absl::Status SimplifyTransposeOfBroadcast(
+      HloInstruction* transpose, absl::Span<const int64_t> dimensions);
 
   // Converts to primitive type if the input hlo is not that type, otherwise
   // returns the original hlo.
@@ -464,7 +546,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   // Transposes a dot operand such that the batch dimensions are the most major,
   // and the contracting dimensions are most minor.
-  StatusOr<HloInstruction*> NormalizeDotOperandToBatchMajorAndContractingMinor(
+  absl::StatusOr<HloInstruction*>
+  NormalizeDotOperandToBatchMajorAndContractingMinor(
       HloInstruction* dot_operand, absl::Span<const int64_t> batch_dimensions,
       absl::Span<const int64_t> contracting_dimensions);
 
@@ -475,7 +558,12 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   //
   //   LHS [batch dims..., non-contracting dim, contracting dim]
   //   RHS [batch dims..., contracting dim, non-contracting dim].
-  StatusOr<bool> RemoveTransposesFromDotOperands(HloInstruction* dot);
+  absl::StatusOr<bool> RemoveTransposesFromDotOperands(HloDotInstruction* dot);
+
+  // Swap the operands of dots, if one operand is "parameter-like" (i.e. a
+  // parameter, or a pointwise transformation of a parameter), so the
+  // "parameter-like" operand (e.g. a weight tensor) is placed on the RHS.
+  absl::StatusOr<bool> MoveDotParamToRhs(HloDotInstruction* dot);
 
   // Helper method to perform and add reduction on a list of dimensions.
   HloInstruction* AddReduce(HloInstruction* hlo, absl::Span<const int64_t> dims,
@@ -483,7 +571,7 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   // Move scalar multiply to the smallest side of convolution to
   // reduce multiply computations.
-  Status ScalarMultiplyReduction(HloInstruction* dot);
+  absl::Status ScalarMultiplyReduction(HloInstruction* dot);
 
   // Convenience method for replacing an instruction with a bitcast. If operand
   // is not null, then the bitcast will use the specified operand instead of the
@@ -519,20 +607,21 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   // A Broadcast that feeds an element-wise operation with a unique non-scalar
   // operand can sink to after the operation.
-  StatusOr<bool> TryToSinkBroadcastAfterOpWithUniqueNonScalarOperand(
+  absl::StatusOr<bool> TryToSinkBroadcastAfterOpWithUniqueNonScalarOperand(
       HloInstruction* broadcast);
 
-  StatusOr<HloInstruction*> OptimizeDotOfConcat(HloInstruction* dot);
-  StatusOr<HloInstruction*> OptimizeDotOfConcatHelper(
+  absl::StatusOr<HloInstruction*> OptimizeDotOfConcat(HloInstruction* dot);
+  absl::StatusOr<HloInstruction*> OptimizeDotOfConcatHelper(
       HloInstruction* dot, HloInstruction* lhs, int64_t lhs_contracting_dim,
       HloInstruction* rhs, int64_t rhs_contracting_dim, bool swapped);
 
-  StatusOr<HloInstruction*> OptimizeDotOfGather(HloInstruction* dot);
+  absl::StatusOr<HloInstruction*> OptimizeDotOfGather(HloInstruction* dot);
 
-  StatusOr<HloInstruction*> OptimizeDotOfReorderContractingDims(
+  absl::StatusOr<HloInstruction*> OptimizeDotOfReorderContractingDims(
       HloInstruction* dot);
 
-  StatusOr<HloInstruction*> AssociativeReorderDotOperator(HloInstruction* dot);
+  absl::StatusOr<HloInstruction*> AssociativeReorderDotOperator(
+      HloDotInstruction* dot);
 
   HloComputation* GetOrCreateScalarAddComputation(PrimitiveType type) {
     HloComputation*& scalar_add_computation = scalar_add_computations_[type];
@@ -556,37 +645,43 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   // Tries to fold a kPad in the input or filter into the convolution
   // instruction's window.
-  virtual StatusOr<bool> FoldConvInputPad(HloInstruction* convolution);
-  StatusOr<bool> FoldConvFilterPad(HloInstruction* convolution);
+  virtual absl::StatusOr<bool> FoldConvInputPad(HloInstruction* convolution);
+  absl::StatusOr<bool> FoldConvFilterPad(HloInstruction* convolution);
 
   // Tries to swap convolution operands if they would result in a more efficient
   // convolution.
-  StatusOr<bool> SwapConvOperands(HloInstruction* convolution);
+  absl::StatusOr<bool> SwapConvOperands(HloInstruction* convolution);
+
+  // Checks if the given convolution is in BF16 and is oneDNN rewritable, if not
+  // then it promotes the data type of the convolution to F32
+  absl::StatusOr<bool> IsOneDnnRewritableBF16Conv(HloInstruction** convolution);
 
   // Tries to use a kDot in place of the given convolution.
-  StatusOr<bool> SimplifyConvToDot(HloInstruction* convolution);
+  absl::StatusOr<bool> SimplifyConvToDot(HloInstruction* convolution);
   // Tries to use a multiplication in place of the given convolution.
-  StatusOr<bool> SimplifyConvToMultiply(HloInstruction* convolution);
+  absl::StatusOr<bool> SimplifyConvToMultiply(HloInstruction* convolution);
 
   // Tries to simplify a slice where the result of the slice is a scalar.
-  StatusOr<bool> TrySimplifyScalarSlice(HloInstruction* slice);
+  absl::StatusOr<bool> TrySimplifyScalarSlice(HloInstruction* slice);
 
   // Tries to convert slice(reshape(X)) into reshape(slice(X))
-  StatusOr<bool> TryToReorderSliceAndReshape(HloInstruction* slice);
+  absl::StatusOr<bool> TryToReorderSliceAndReshape(HloInstruction* slice);
 
   // Tries to convert slice(reverse(X)) into reverse(slice(X))
-  StatusOr<bool> TryToReorderSliceAndReverse(HloInstruction* slice);
+  absl::StatusOr<bool> TryToReorderSliceAndReverse(HloInstruction* slice);
 
   // Tries to simplify `(and (< a N) (< a K))` in cases where `N <= K` into
   // `(< a N)`. This is crucial for being able to figure out the loop trip
   // count.
   //
   // Assumes that the input is conjunction.
-  StatusOr<bool> TrySimplifyTautologicalCompare(HloInstruction* conjunction);
+  absl::StatusOr<bool> TrySimplifyTautologicalCompare(
+      HloInstruction* conjunction);
 
   // Tries to simlplify (bitcast-convert (concat (bitcast-convert A) ...)) where
   // the types of inner and outer bitcast-convert cancel out.
-  StatusOr<bool> TrySimplifyTautologicalBitcastConvert(HloInstruction* bitcast);
+  absl::StatusOr<bool> TrySimplifyTautologicalBitcastConvert(
+      HloInstruction* bitcast);
 
   // Tries to remove surrounding converts around a binary op where the op has a
   // more precise type than its inputs and output.
@@ -596,7 +691,7 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   //  where TS is a smaller point type than TL (ex, TS=fp16, TL=fp32)
   // ->
   // bin_op<TS>(data1<TS>, data2<TS>)
-  Status TryRemoveUpcastAndDowncastSurroundingBinaryOp(
+  absl::Status TryRemoveUpcastAndDowncastSurroundingBinaryOp(
       HloInstruction* convert_instruction);
 
   // Useful when we want to use the same visitor over multiple computations.

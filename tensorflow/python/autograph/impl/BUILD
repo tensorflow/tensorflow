@@ -56,9 +56,7 @@ py_strict_library(
 py_strict_library(
     name = "conversion",
     srcs = ["conversion.py"],
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/python/autograph/core:config",
         "//tensorflow/python/autograph/pyct:cache",

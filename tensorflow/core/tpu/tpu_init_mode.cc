@@ -55,7 +55,7 @@ Status SetTPUInitMode(const TPUInitMode mode) {
     }
     init_mode = mode;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 TPUInitMode GetTPUInitMode() {

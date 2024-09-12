@@ -20,8 +20,8 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "xla/tsl/framework/device_type.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tsl/framework/device_type.h"
 
 namespace tensorflow {
 namespace tfrt_compiler {

@@ -113,6 +113,7 @@ typedef enum TfLiteStatus {
 } TfLiteStatus;
 
 /// Types supported by tensor
+// LINT.IfChange
 typedef enum {
   kTfLiteNoType = 0,
   kTfLiteFloat32 = 1,
@@ -133,7 +134,9 @@ typedef enum {
   kTfLiteUInt32 = 16,
   kTfLiteUInt16 = 17,
   kTfLiteInt4 = 18,
+  kTfLiteBFloat16 = 19,
 } TfLiteType;
+// LINT.ThenChange(//tensorflow/lite/profiling/proto/model_runtime_info.proto:EdgeDataType)
 
 /// Legacy. Will be deprecated in favor of `TfLiteAffineQuantization`.
 /// If per-layer quantization is specified this field will still be populated in

@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -116,7 +116,7 @@ static void CreateLoopInvariantCopy(
 }
 }  // namespace
 
-StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::
+absl::StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::
     TryHoistingInvariantInstructionsFromWhileBody(HloInstruction* while_instr) {
   auto print_no_metadata = HloPrintOptions{}.set_print_metadata(false);
 
@@ -337,7 +337,7 @@ StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::
   return true;
 }
 
-StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::Run(
+absl::StatusOr<bool> WhileLoopExpensiveInvariantCodeMotion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(2) << "HLO module before WhileLoopExpensiveInvariantCodeMotion:";

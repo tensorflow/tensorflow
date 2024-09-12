@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// IWYU pragma: private, include "third_party/tensorflow/compiler/xla/stream_executor/stream_executor.h"
+// IWYU pragma: private, include "xla/stream_executor/stream_executor.h"
 
 #ifndef XLA_STREAM_EXECUTOR_PLATFORM_PORT_H_
 #define XLA_STREAM_EXECUTOR_PLATFORM_PORT_H_

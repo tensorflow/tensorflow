@@ -36,9 +36,9 @@ void BlockHandle::EncodeTo(string* dst) const {
   core::PutVarint64(dst, size_);
 }
 
-Status BlockHandle::DecodeFrom(StringPiece* input) {
+absl::Status BlockHandle::DecodeFrom(StringPiece* input) {
   if (core::GetVarint64(input, &offset_) && core::GetVarint64(input, &size_)) {
-    return OkStatus();
+    return absl::OkStatus();
   } else {
     return errors::DataLoss("bad block handle");
   }
@@ -56,7 +56,7 @@ void Footer::EncodeTo(string* dst) const {
   assert(dst->size() == original_size + kEncodedLength);
 }
 
-Status Footer::DecodeFrom(StringPiece* input) {
+absl::Status Footer::DecodeFrom(StringPiece* input) {
   const char* magic_ptr = input->data() + kEncodedLength - 8;
   const uint32 magic_lo = core::DecodeFixed32(magic_ptr);
   const uint32 magic_hi = core::DecodeFixed32(magic_ptr + 4);
@@ -66,7 +66,7 @@ Status Footer::DecodeFrom(StringPiece* input) {
     return errors::DataLoss("not an sstable (bad magic number)");
   }
 
-  Status result = metaindex_handle_.DecodeFrom(input);
+  absl::Status result = metaindex_handle_.DecodeFrom(input);
   if (result.ok()) {
     result = index_handle_.DecodeFrom(input);
   }
@@ -78,8 +78,8 @@ Status Footer::DecodeFrom(StringPiece* input) {
   return result;
 }
 
-Status ReadBlock(RandomAccessFile* file, const BlockHandle& handle,
-                 BlockContents* result) {
+absl::Status ReadBlock(RandomAccessFile* file, const BlockHandle& handle,
+                       BlockContents* result) {
   result->data = StringPiece();
   result->cacheable = false;
   result->heap_allocated = false;
@@ -94,7 +94,8 @@ Status ReadBlock(RandomAccessFile* file, const BlockHandle& handle,
 
   char* buf = new char[n + kBlockTrailerSize];
   StringPiece contents;
-  Status s = file->Read(handle.offset(), n + kBlockTrailerSize, &contents, buf);
+  absl::Status s =
+      file->Read(handle.offset(), n + kBlockTrailerSize, &contents, buf);
   if (!s.ok()) {
     delete[] buf;
     return s;
@@ -159,7 +160,7 @@ Status ReadBlock(RandomAccessFile* file, const BlockHandle& handle,
       return errors::DataLoss("bad block type");
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace table

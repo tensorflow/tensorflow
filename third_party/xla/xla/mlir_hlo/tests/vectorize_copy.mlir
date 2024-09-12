@@ -1,7 +1,6 @@
 // RUN: mlir-hlo-opt %s --vectorize-copy --split-input-file | FileCheck %s
 
-func.func @vectorize_copy(%arg: memref<2x2xf32>) -> memref<2x2xf32> {
-  %subview = memref.subview %arg[0, 0] [2, 2] [1, 1] : memref<2x2xf32> to memref<2x2xf32, strided<[16, 1]>>
+func.func @vectorize_copy(%subview: memref<2x2xf32, strided<[16, 1]>>) -> memref<2x2xf32> {
   %alloc = memref.alloc() : memref<2x2xf32>
   memref.copy %subview, %alloc : memref<2x2xf32, strided<[16, 1]>> to memref<2x2xf32>
   return %alloc : memref<2x2xf32>

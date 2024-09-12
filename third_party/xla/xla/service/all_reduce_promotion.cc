@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -61,7 +61,7 @@ AllReducePromotion::AllReducePromotion(
     absl::Span<std::pair<PrimitiveType, PrimitiveType> const> from_to_types)
     : pass_(from_to_types, IsAllReduce, CloneAllReduce) {}
 
-StatusOr<bool> AllReducePromotion::Run(
+absl::StatusOr<bool> AllReducePromotion::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   return pass_.Run(module, execution_threads);

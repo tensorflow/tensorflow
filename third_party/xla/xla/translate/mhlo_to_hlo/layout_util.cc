@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "xla/translate/mhlo_to_hlo/layout_util.h"
 
+#include "absl/status/status.h"
+
 namespace mlir {
 
 // Rewrites the layout of xla_shape if there is tiled sharding.
-xla::Status RewriteLayoutWithShardedShape(
+absl::Status RewriteLayoutWithShardedShape(
     const std::optional<xla::HloSharding>& sharding, bool use_fast_memory,
     const LayoutPreferenceFn& layout_preference_fn,
     const ShapeRepresentationFn& shape_representation_fn,
@@ -58,12 +60,12 @@ xla::Status RewriteLayoutWithShardedShape(
             : per_device_xla_shape);
     *xla_shape->mutable_layout() = per_device_xla_shape.layout();
   }
-  return xla::OkStatus();
+  return absl::OkStatus();
 }
 
 // There is a shape_representation_fn or sharding for an output, this function
 // uses a reshape to fix the layout.
-xla::StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
+absl::StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
     xla::XlaBuilder* builder, xla::XlaOp original, xla::Shape original_shape,
     const LayoutPreferenceFn& layout_preference_fn,
     const ShapeRepresentationFn& shape_representation_fn,
@@ -105,6 +107,7 @@ xla::StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
       to_shape.set_dynamic_dimension(i, original_shape.is_dynamic_dimension(i));
     }
   }
+  xla::XlaScopedShardingAssignment scoped_sharding(builder, sharding);
   return xla::Reshape(to_shape, original);
 }
 

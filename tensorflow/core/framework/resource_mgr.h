@@ -21,6 +21,7 @@ limitations under the License.
 #include <typeindex>
 #include <typeinfo>
 #include <unordered_map>
+#include <variant>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/variant.h"
@@ -250,7 +251,7 @@ class ResourceMgr {
     }
   };
   struct ResourceAndName {
-    absl::variant<core::RefCountPtr<ResourceBase>, core::WeakPtr<ResourceBase>>
+    std::variant<core::RefCountPtr<ResourceBase>, core::WeakPtr<ResourceBase>>
         resource;
     std::unique_ptr<std::string> name;
 
@@ -679,7 +680,7 @@ Status ResourceMgr::LookupMany(
       (*resources)[i].reset(resource);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Simple wrapper to allow conditional dynamic / static casts.
@@ -776,7 +777,7 @@ template <typename T>
 Status ValidateDeviceAndType(OpKernelContext* ctx, const ResourceHandle& p) {
   TF_RETURN_IF_ERROR(internal::ValidateDevice(ctx, p));
   TF_RETURN_IF_ERROR(p.ValidateType<T>());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace internal
@@ -803,7 +804,7 @@ Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p,
     TF_ASSIGN_OR_RETURN(*value, p.GetResource<T>());
     // Transfers out a new reference.
     (*value)->Ref();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   return ctx->resource_manager()->Lookup<T, use_dynamic_cast>(p.container(),
@@ -824,7 +825,7 @@ Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p,
   TF_RETURN_IF_ERROR(LookupResource<T, false>(ctx, p, &raw_ptr));
   value->reset(raw_ptr);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Similar to Lookup, but looks up multiple resources at once, with only a
@@ -871,7 +872,7 @@ Status LookupOrCreateResource(OpKernelContext* ctx, const ResourceHandle& p,
   TF_RETURN_IF_ERROR(LookupOrCreateResource<T>(ctx, p, &raw_ptr, creator));
   value->reset(raw_ptr);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Deletes the resource pointed by "p", using the resource manager in "ctx".
@@ -882,7 +883,7 @@ Status DeleteResource(OpKernelContext* ctx, const ResourceHandle& p) {
   // NOTE(feyu): if we can convert all resources handle to ref-counting, then
   // DeleteResource can be removed.
   if (p.IsRefCounting()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   return ctx->resource_manager()->Delete<T>(p.container(), p.name());
 }
