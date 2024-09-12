@@ -194,21 +194,24 @@ def create_build_file(
 
 def _create_symlinks(repository_ctx, local_path, dirs):
     for dir in dirs:
-        repository_ctx.symlink(
-            "{path}/{dir}".format(
-                path = local_path,
-                dir = dir,
-            ),
-            dir,
+        dir_path = "{path}/{dir}".format(
+            path = local_path,
+            dir = dir,
         )
+        if not repository_ctx.path(local_path).exists:
+            fail("%s directory doesn't exist!" % dir_path)
+        repository_ctx.symlink(dir_path, dir)
 
 def _create_libcuda_symlinks(
         repository_ctx,
         lib_name_to_version_dict):
     if repository_ctx.name == "cuda_driver":
-        repository_ctx.symlink("lib/libcuda.so.{}".format(
+        nvidia_driver_path = "lib/libcuda.so.{}".format(
             lib_name_to_version_dict["%{libcuda_version}"],
-        ), "lib/libcuda.so.1")
+        )
+        if not repository_ctx.path(nvidia_driver_path).exists:
+            fail("%s doesn't exist!" % nvidia_driver_path)
+        repository_ctx.symlink(nvidia_driver_path, "lib/libcuda.so.1")
         repository_ctx.symlink("lib/libcuda.so.1", "lib/libcuda.so")
 
 def use_local_path(repository_ctx, local_path, dirs):
