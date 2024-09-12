@@ -165,18 +165,18 @@ if collaborator_build:
 EXTRA_PACKAGES = {}
 EXTRA_PACKAGES['and-cuda'] = [
     # TODO(nluehr): set nvidia-* versions based on build components.
-    'nvidia-cublas-cu12 == 12.3.4.1',
-    'nvidia-cuda-cupti-cu12 == 12.3.101',
-    'nvidia-cuda-nvcc-cu12 == 12.3.107',
-    'nvidia-cuda-nvrtc-cu12 == 12.3.107',
-    'nvidia-cuda-runtime-cu12 == 12.3.101',
-    'nvidia-cudnn-cu12 == 8.9.7.29',
-    'nvidia-cufft-cu12 == 11.0.12.1',
-    'nvidia-curand-cu12 == 10.3.4.107',
-    'nvidia-cusolver-cu12 == 11.5.4.101',
-    'nvidia-cusparse-cu12 == 12.2.0.103',
+    'nvidia-cublas-cu12 == 12.5.3.2',
+    'nvidia-cuda-cupti-cu12 == 12.5.82',
+    'nvidia-cuda-nvcc-cu12 == 12.5.82',
+    'nvidia-cuda-nvrtc-cu12 == 12.5.82',
+    'nvidia-cuda-runtime-cu12 == 12.5.82',
+    'nvidia-cudnn-cu12 == 9.3.0.75',
+    'nvidia-cufft-cu12 == 11.2.3.61',
+    'nvidia-curand-cu12 == 10.3.6.82',
+    'nvidia-cusolver-cu12 == 11.6.3.83',
+    'nvidia-cusparse-cu12 == 12.5.1.3',
     'nvidia-nccl-cu12 == 2.21.5',
-    'nvidia-nvjitlink-cu12 == 12.3.101',
+    'nvidia-nvjitlink-cu12 == 12.5.82',
 ]
 
 DOCLINES = __doc__.split('\n')
