@@ -1050,7 +1050,7 @@ absl::StatusOr<Value> EmitTiledHloInstruction(
 
   // Slice is currently supported only as an operation on indices
   // which is pushed to loads and stores. We don't generate any further code.
-  if (IsSliceWithUnitStrides(hlo)) {
+  if (hlo->opcode() == HloOpcode::kSlice) {
     return values[tiled_hlo.operand(0)];
   }
 
@@ -2702,6 +2702,32 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
   return absl::OkStatus();
 }
 
+// Computes the base pointer offset for the given tile multi-index and hlo shape
+// taking into account the physical layout of the hlo buffer.
+absl::StatusOr<Value> ComputeBasePtrOffset(
+    ImplicitLocOpBuilder b, ValueRange tile_multi_index,
+    const TiledHloInstruction& tiled_hlo) {
+  const Shape& shape = tiled_hlo.hlo()->shape();
+  Shape linear_shape = ShapeUtil::MakeShape(shape.element_type(),
+                                            {ShapeUtil::ElementsIn(shape)});
+
+  // Bitcast map gives an indexing map from the parameter shape (multi-index) to
+  // a linear index respecting physical layout of the memory.
+  auto bitcast_map = GetBitcastMap(shape, linear_shape, b.getContext());
+
+  TF_ASSIGN_OR_RETURN(IndexingMap tile_offsets_indexing,
+                      tiled_hlo.tile_offsets_indexing());
+
+  auto compose_indexing_maps =
+      ComposeIndexingMaps(tile_offsets_indexing, bitcast_map);
+  compose_indexing_maps.Simplify();
+
+  return b.create<ma::IndexCastUIOp>(
+      b.getI64Type(), mlir_converter::ApplyIndexing(compose_indexing_maps,
+                                                    /*dims=*/tile_multi_index,
+                                                    /*symbols=*/{}, b)[0]);
+}
+
 namespace ir_emitter_triton_internal {
 
 SmallVector<Value, 3> ComputeDelinearizedTileIndex(
@@ -2756,16 +2782,35 @@ absl::StatusOr<MakeTensorPtrOpAndBoundaryChecks> CreateMakeTensorPtrOp(
   SmallVector<int64_t> padded_tile_sizes =
       GetPaddedTileSizes(tiled_hlo.tile_sizes());
 
-  llvm::SmallVector<Value> parent_shape;
+  llvm::SmallVector<Value> residual_shape;
   llvm::SmallVector<Value> offsets;
   llvm::SmallVector<int32_t> order;
   llvm::SmallVector<int32_t> boundary_checks;
 
   for (int dim_idx = 0; dim_idx < padded_tile_sizes.size(); ++dim_idx) {
-    parent_shape.push_back(
-        CreateConst(b, b.getI64Type(), shape.dimensions(dim_idx)));
-    offsets.push_back(b.create<ma::IndexCastOp>(
-        b.getI32Type(), tile_offsets_as_indices[dim_idx]));
+    // In general, there are two options for computing a block:
+    //
+    //   - Output a TensorPtr whose base pointer is the base pointer of the
+    //     TiledHloInstruction and provide the necessary offsets so that Triton
+    //     can compute the pointer to the block specific to the given pid. This
+    //     option yields simpler code, but has limitations. Triton cannot handle
+    //     many combinations of strides and offsets. E.g., if we want to slice
+    //     [10] with [1:5:2], we have no way of specifying this: Triton
+    //     always multiplies the stride by the offset, and with a stride of 2
+    //     it's not possible to start reading from element 1.
+    //
+    //   - Output a TensorPtr that points directly to the tile specific to the
+    //     pid. All offset computation is done in advance. MakeTensorPtrOp
+    //     sees 0 offsets. This allows Triton to read any block regardless of
+    //     strides size or offsets. To make sure that masking is correct, we
+    //     compute a "residual shape" which is the original parent shape minus
+    //     the offsets.
+    Value parent_size =
+        CreateConst(b, b.getI64Type(), shape.dimensions(dim_idx));
+    Value offset = b.create<ma::IndexCastOp>(b.getI64Type(),
+                                             tile_offsets_as_indices[dim_idx]);
+    residual_shape.push_back(b.create<ma::SubIOp>(parent_size, offset));
+    offsets.push_back(CreateConst(b, b.getI32Type(), 0));
 
     // TODO(b/342989850): Clarify and comment what `order` exactly is. It's not
     // entirely clear from the Triton docs.
@@ -2776,10 +2821,14 @@ absl::StatusOr<MakeTensorPtrOpAndBoundaryChecks> CreateMakeTensorPtrOp(
     }
   }
 
+  TF_ASSIGN_OR_RETURN(Value ptr_offset,
+                      ComputeBasePtrOffset(b, tile_multi_index, tiled_hlo));
+  auto tile_ptr = AddPtr(b, parent_base_ptr, ptr_offset);
+
   return MakeTensorPtrOpAndBoundaryChecks{
       b.create<mt::MakeTensorPtrOp>(
-          /*base=*/parent_base_ptr,
-          /*shape=*/parent_shape,
+          /*base=*/tile_ptr,
+          /*shape=*/residual_shape,
           /*strides=*/strides,
           /*offsets=*/offsets,
           /*tensorShape=*/llvm::to_vector_of<int32_t>(padded_tile_sizes),
