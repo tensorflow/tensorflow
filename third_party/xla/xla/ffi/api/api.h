@@ -22,6 +22,7 @@ limitations under the License.
 #include <complex>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <initializer_list>
 #include <iterator>
@@ -893,19 +894,19 @@ struct CtxDecoding;
 // stage FFI handler can return an FFI handler state, while at execution stage
 // we only support returning a status-like type.
 //
-// Asynchronous FFI handlers can return encoded result as a discriminated union
-// of an error and a future (std::variant<XLA_FFI_Error*, XLA_FFI_Future*>),
-// where an error can be used to return synchronous errors (i.e., invalid
-// arguments), and a future can be used to return asynchronous completion. See
-// example of such encoding in result encoding for `Future`.
+// Asynchronous FFI handlers can return encoded result as an `XLA_FFI_Future*`
+// or as an `std::variant` of `XLA_FFI_Error*` and `XLA_FFI_Future*`, where an
+// error can be used to return synchronous errors (i.e., invalid arguments), and
+// a future can be used to return asynchronous completion. See example of such
+// encoding in result encoding for `Future`.
 //
-// Example: encoding `tsl::AsyncValueRef<tsl::Chain>` result
+// Example: encoding `xla::ffi::Future` result
 //
 //   template<ExecutionStage stage>
-//   struct ResultEncoding<state, tsl::AsyncValueRef<tsl::Chain>> {
+//   struct ResultEncoding<state, xla::ffi::Future> {
 //     std::variant<XLA_FFI_Error*, XLA_FFI_Future*> Encode(
 //       const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx,
-//       tsl::AsyncValueRef<tsl::Chain> async_value) {...}
+//       xla::ffi::Future future) {...}
 //   }
 //
 template <ExecutionStage stage, typename T>
@@ -1510,34 +1511,43 @@ class Handler : public Ffi {
     auto encoded = ResultEncoding<stage, ResultType>::Encode(
         call_frame->api, call_frame->ctx, std::move(result));
 
-    // We do support two kinds of FFI handlers: (1) synchronous handlers that
-    // can return an error, and (2) asynchronous handlers that can return an
-    // error or a future that will signal completion asynchronously.
+    // We do support three kinds of FFI result encodings:
+    //   (1) Synchronous handlers that return result encoded as XLA_FFI_Error*
+    //   (2) Asynchronous handlers that return result encoded as XLA_FFI_Future*
+    //   (3) Handlers that can return either (1) or (2)
     static constexpr bool kIsEncodedError =
         std::is_same_v<decltype(encoded), XLA_FFI_Error*>;
+    static constexpr bool kIsEncodedFuture =
+        std::is_same_v<decltype(encoded), XLA_FFI_Future*>;
     static constexpr bool kIsEncodedErrorOrFuture =
         std::is_same_v<decltype(encoded),
                        std::variant<XLA_FFI_Error*, XLA_FFI_Future*>>;
 
-    static_assert(kIsEncodedError || kIsEncodedErrorOrFuture,
-                  "Unsupported result encoding");
+    static_assert(
+        kIsEncodedError || kIsEncodedFuture || kIsEncodedErrorOrFuture,
+        "Unsupported result encoding type");
+
+    if constexpr (kIsEncodedError) {
+      return encoded;
+    }
+
+    if constexpr (kIsEncodedFuture) {
+      call_frame->future = encoded;
+      assert(call_frame->future != nullptr);
+      return nullptr;
+    }
 
     if constexpr (kIsEncodedErrorOrFuture) {
-      // Synchronous errors reported immediately to the caller (i.e., failed to
-      // parse arguments), and futures passed to the caller via the call frame,
-      // and it's up to the caller to wait for the future to complete.
-      if (XLA_FFI_Error** err = std::get_if<XLA_FFI_Error*>(&encoded)) {
-        return *err;
+      if (encoded.index() == 0) {
+        return std::get<0>(encoded);
       } else {
-        call_frame->future = std::get<XLA_FFI_Future*>(encoded);
+        call_frame->future = std::get<1>(encoded);
         assert(call_frame->future != nullptr);
         return nullptr;
       }
-
-    } else {
-      // Synchronous errors reported immediately to the caller.
-      return encoded;
     }
+
+    std::abort();  // unreachable
   }
 
   XLA_FFI_Error* FailedDecodeError(const XLA_FFI_CallFrame* call_frame,

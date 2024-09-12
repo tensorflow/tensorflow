@@ -37,12 +37,19 @@ limitations under the License.
 #include "xla/ffi/ffi_api.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/chain.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
+#include "tsl/platform/threadpool.h"
+
+#define EIGEN_USE_THREADS
+#include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla::ffi {
 
@@ -997,6 +1004,37 @@ TEST(FfiTest, AllowRegisterDuplicateWhenEqual) {
   auto status = TakeStatus(Ffi::RegisterStaticHandler(
       GetXlaFfiApi(), "duplicate-when-equal", "Host", NoOp));
   TF_ASSERT_OK(status);
+}
+
+TEST(FfiTest, AsyncHandler) {
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "ffi-test", 2);
+  Eigen::ThreadPoolDevice device(pool.AsEigenThreadPool(), pool.NumThreads());
+
+  int32_t value = 0;
+
+  // Handler completes execution asynchronously on a given thread pool.
+  auto fn = [&](const Eigen::ThreadPoolDevice* device) {
+    auto async_value = tsl::MakeConstructedAsyncValueRef<tsl::Chain>();
+
+    device->enqueueNoNotification([&, async_value]() mutable {
+      value = 42;
+      async_value.SetStateConcrete();
+    });
+
+    return async_value;
+  };
+
+  auto handler = Ffi::Bind().Ctx<IntraOpThreadPool>().To(fn);
+  CallFrame call_frame =
+      CallFrameBuilder(/*num_args=*/0, /*num_rets=*/0).Build();
+
+  CallOptions options;
+  options.backend_options = CallOptions::CpuOptions{&device};
+
+  auto status = Call(*handler, call_frame, options);
+  TF_ASSERT_OK(status);
+
+  EXPECT_EQ(value, 42);
 }
 
 TEST(FfiTest, Metadata) {

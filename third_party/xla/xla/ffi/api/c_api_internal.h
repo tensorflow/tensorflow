@@ -42,6 +42,11 @@ extern "C" {
 // caller.
 typedef XLA_FFI_Error* XLA_FFI_INTERNAL_Error_Forward(void* status);
 
+// Forwards `tsl::AsyncValue` object pointed to by `async_value` to XLA FFI
+// future. Pointer ownership stays with the caller. Constructed XLA_FFI_Error
+// adds +1 reference to the underlying async value object.
+typedef XLA_FFI_Future* XLA_FFI_INTERNAL_Future_Forward(void* async_value);
+
 // Returns a pointer to main compute stream (`se::Stream` pointer). In
 // contrast to public C API which returns a pointer to underlying platform
 // stream (i.e. cudaStream_t for CUDA backend), this API returns a pointer to
@@ -87,6 +92,7 @@ typedef void* XLA_FFI_INTERNAL_IntraOpThreadPool_Get(
 
 struct XLA_FFI_InternalApi {
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_Error_Forward);
+  _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_Future_Forward);
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_Stream_Get);
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_DeviceOrdinal_Get);
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(

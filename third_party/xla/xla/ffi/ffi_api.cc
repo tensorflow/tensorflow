@@ -46,8 +46,10 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -750,6 +752,14 @@ static XLA_FFI_Error* XLA_FFI_INTERNAL_Error_Forward(void* status) {
   return new XLA_FFI_Error{std::move(*absl_status)};
 }
 
+static XLA_FFI_Future* XLA_FFI_INTERNAL_Future_Forward(void* async_value) {
+  auto* tsl_async_value = reinterpret_cast<tsl::AsyncValue*>(async_value);
+  DCHECK(tsl_async_value) << "Async value must not be null";
+
+  return new XLA_FFI_Future{
+      tsl::AsyncValueRef<tsl::Chain>(tsl::FormRef(tsl_async_value))};
+}
+
 static void* XLA_FFI_INTERNAL_Stream_Get(XLA_FFI_ExecutionContext* ctx) {
   if (auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
           &ctx->backend_context)) {
@@ -809,6 +819,7 @@ extern "C" const XLA_FFI_Api* XLA_FFI_GetApi() { return GetXlaFfiApi(); }
 
 static XLA_FFI_InternalApi internal_api = {
     XLA_FFI_INTERNAL_Error_Forward,
+    XLA_FFI_INTERNAL_Future_Forward,
     XLA_FFI_INTERNAL_Stream_Get,
     XLA_FFI_INTERNAL_DeviceOrdinal_Get,
     XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get,
