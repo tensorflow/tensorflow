@@ -277,6 +277,7 @@ cc_library(
     ]) + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
         "//xla/stream_executor/cuda:cuda_platform_id",
+        "//xla/stream_executor/cuda:cuda_activation_header",
         "//xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
         "//xla/service/gpu:nvptx_compiler_impl",
     ]) + if_rocm([
