@@ -12154,5 +12154,46 @@ ENTRY main {
   EXPECT_THAT(add, op::Sharding("{devices=[1,1,16,64]<=[64,16]T(1,0)}"));
 }
 
+// Modified from b/357703299. Check that we do not propagate sharding to
+// SPMDShardToFullShape.
+TEST_F(ShardingPropagationTest, CallPropagationWithSPMDShardToFullShape) {
+  const absl::string_view hlo_string = R"(
+HloModule module
+
+called_computation {
+  p0 = bf16[4096,4096] parameter(0)
+  %add_called_comp = bf16[4096,4096] add(p0, p0)
+  ROOT tuple = (bf16[4096,4096]) tuple(add_called_comp)
+}
+
+ENTRY main {
+  %param0 = bf16[4096,4096] parameter(0)
+  %add = bf16[4096,4096] add(param0, param0)
+  %custom-call.1 = bf16[4096,4096]{1,0} custom-call(add), custom_call_target="Sharding", sharding={devices=[2,1,2]<=[4] last_tile_dim_replicate}
+  %custom-call.2 = bf16[2048,4096]{1,0} custom-call(custom-call.1), custom_call_target="SPMDFullToShardShape", sharding={manual}
+  %custom-call.3 = bf16[2048,4096]{1,0} custom-call(custom-call.2), custom_call_target="Sharding", sharding={manual}
+  %custom-call.4 = bf16[4096,4096]{1,0} custom-call(bf16[2048,4096]{1,0} %custom-call.3), custom_call_target="SPMDShardToFullShape", sharding={devices=[2,1,2]<=[4] last_tile_dim_replicate}
+  ROOT %call = (bf16[4096,4096]) call(custom-call.4), to_apply=%called_computation, sharding={devices=[2,2]<=[4]}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(
+          /*is_spmd=*/true, /*propagate_metadata=*/true,
+          /*allow_spmd_sharding_propagation_to_output=*/{false},
+          /*allow_spmd_sharding_propagation_to_parameters=*/{false})
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  auto* custom_call_4 = FindInstruction(module.get(), "custom-call.4");
+  ASSERT_NE(custom_call_4, nullptr);
+  auto* operand = custom_call_4->operand(0);
+  EXPECT_THAT(operand, op::Shape("bf16[2048,4096]"));
+  EXPECT_THAT(custom_call_4, op::Shape("bf16[4096,4096]"));
+  EXPECT_THAT(custom_call_4,
+              op::Sharding("{devices=[2,1,2]<=[4] last_tile_dim_replicate}"));
+}
+
 }  // namespace
 }  // namespace xla

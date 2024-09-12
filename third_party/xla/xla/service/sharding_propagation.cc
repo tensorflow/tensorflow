@@ -2910,6 +2910,7 @@ absl::StatusOr<bool> ShardingPropagation::Run(
     }
   };
 
+  absl::flat_hash_set<const HloInstruction*> provided_shardings;
   // If instruction is a while, or the root or a parameter of a while body,
   // then propagate its sharding to the while instruction, to its body root,
   // and to its condition parameter.
@@ -2921,8 +2922,10 @@ absl::StatusOr<bool> ShardingPropagation::Run(
               auto related_instructions = get_related_instructions(search_inst);
               if (absl::c_count(related_instructions, instruction)) {
                 for (HloInstruction* inst : related_instructions) {
-                  if (!inst->has_sharding() ||
-                      inst->sharding() != instruction->sharding()) {
+                  // Do not touch shardings that we are not allowed to change
+                  if ((!inst->has_sharding() ||
+                       inst->sharding() != instruction->sharding()) &&
+                      !provided_shardings.contains(inst)) {
                     VLOG(2) << "Add computation sharding: " << inst->name()
                             << " " << instruction->sharding().ToString();
                     inst->copy_sharding(instruction);
@@ -3004,7 +3007,6 @@ absl::StatusOr<bool> ShardingPropagation::Run(
   }
   // Collect all pre-sharded instructions as we aren't allowed to modify their
   // sharding.
-  absl::flat_hash_set<const HloInstruction*> provided_shardings;
   for (const HloComputation* computation :
        module->computations(execution_threads)) {
     for (const HloInstruction* inst : computation->instructions()) {
