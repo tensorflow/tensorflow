@@ -256,18 +256,6 @@ class DeviceDescription {
   // 3.5".
   const std::string &platform_version() const { return platform_version_; }
 
-  // Returns the driver version interfacing with the underlying platform. Vendor
-  // dependent format.
-  const std::string &driver_version_string() const {
-    return driver_version_string_;
-  }
-
-  // Return the runtime version, if one is provided by the underlying platform.
-  // Vendor dependent format / usefulness.
-  const std::string &runtime_version_string() const {
-    return runtime_version_string_;
-  }
-
   // Returns the driver version interfacing with the underlying platform.
   // Note for CUDA this returns the CUDA Toolkit version the driver ships with.
   SemanticVersion driver_version() const { return driver_version_; }
@@ -489,12 +477,6 @@ class DeviceDescription {
   void set_platform_version(std::string value) {
     platform_version_ = std::move(value);
   }
-  void set_driver_version_string(std::string value) {
-    driver_version_string_ = std::move(value);
-  }
-  void set_runtime_version_string(std::string value) {
-    runtime_version_string_ = std::move(value);
-  }
   void set_driver_version(const SemanticVersion &value) {
     driver_version_ = value;
   }
@@ -565,8 +547,6 @@ class DeviceDescription {
   // N.B. If another field is added, update ToMap() above.
   std::string device_vendor_ = kUndefinedString;
   std::string platform_version_ = kUndefinedString;
-  std::string driver_version_string_ = kUndefinedString;
-  std::string runtime_version_string_ = kUndefinedString;
   std::string pci_bus_id_ = kUndefinedString;
   std::string name_ = kUndefinedString;
   std::string model_str_ = kUndefinedString;

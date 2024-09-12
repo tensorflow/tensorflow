@@ -30,8 +30,6 @@ TEST(DeviceDescription, DefaultConstruction) {
   constexpr SemanticVersion kZeroVersion = {0, 0, 0};
   EXPECT_EQ(desc.driver_version(), kZeroVersion);
   EXPECT_EQ(desc.runtime_version(), kZeroVersion);
-  EXPECT_EQ(desc.driver_version_string(), "<undefined>");
-  EXPECT_EQ(desc.runtime_version_string(), "<undefined>");
   EXPECT_EQ(desc.pci_bus_id(), "<undefined>");
 }
 

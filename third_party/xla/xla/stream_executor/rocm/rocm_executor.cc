@@ -602,15 +602,6 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
   DeviceDescription desc;
 
   {
-    int version = GpuDriver::GetDriverVersion().value_or(-1);
-    std::string augmented_driver_version = absl::StrFormat(
-        "%d (%s)", version,
-        rocm::DriverVersionStatusToString(Diagnostician::FindDsoVersion())
-            .c_str());
-    desc.set_driver_version_string(augmented_driver_version);
-  }
-
-  {
     std::string pci_bus_id = GpuDriver::GetPCIBusID(device);
 
     // Lower the hex characters to match sysfs.
@@ -689,7 +680,6 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
       GpuDriver::GetMaxRegistersPerBlock(device).value());
   desc.set_threads_per_warp(GpuDriver::GetThreadsPerWarp(device).value());
   desc.set_registers_per_core_limit(64 * 1024);
-  desc.set_runtime_version_string(std::to_string(TF_ROCM_VERSION));
   desc.set_compile_time_toolkit_version(
       SemanticVersion{HIP_VERSION_MAJOR, HIP_VERSION_MINOR, HIP_VERSION_PATCH});
   desc.set_runtime_version(
