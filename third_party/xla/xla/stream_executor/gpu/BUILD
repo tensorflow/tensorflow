@@ -57,7 +57,7 @@ package(
         "//xla/pjrt:__subpackages__",
         "//xla/service/gpu:__subpackages__",
         "//xla/stream_executor:__subpackages__",
-        "//tensorflow/core/common_runtime/gpu:__subpackages__",
+        "//tensorflow/core:__subpackages__",
         "//third_party/sparse_conv:__subpackages__",
         "//waymo/ml/compiler/triton:__subpackages__",
     ]),
