@@ -1724,5 +1724,12 @@ absl::StatusOr<int> GpuDriver::GetMaxOccupiedBlocksPerCore(
   return max_blocks;
 }
 
+absl::StatusOr<size_t> GpuDriver::GraphGetNodeCount(GpuGraphHandle graph) {
+  size_t num_nodes;
+  TF_RETURN_IF_ERROR(
+      cuda::ToStatus(cuGraphGetNodes(graph, /*nodes=*/nullptr, &num_nodes)));
+  return num_nodes;
+}
+
 }  // namespace gpu
 }  // namespace stream_executor
