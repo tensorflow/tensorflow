@@ -51,7 +51,6 @@ limitations under the License.
 #include "xla/service/rendezvous.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/event.h"
-#include "xla/stream_executor/gpu/gpu_activation.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
