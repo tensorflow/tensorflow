@@ -50,6 +50,7 @@ load(
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = internal_visibility([
+        "//learning/dist_belief_extra/gpu:__subpackages__",
         "//tensorflow/compiler/tf2xla:__subpackages__",
         "//xla:__subpackages__",
         "//tensorflow/core/kernels:__subpackages__",
