@@ -1014,6 +1014,28 @@ func.func @FuseTransposeIntoBMM_LHS(%arg0: tensor<1x4x1440x256xf32>, %arg1: tens
   // CHECK: return %0 : tensor<1x4x256x256xf32>
 }
 
+// CHECK-LABEL: @FuseSqueezingReshapesAroundBMM
+func.func @FuseSqueezingReshapesAroundBMM(%arg0: tensor<1x128x8x256xf32>) -> (tensor<1x128xf32>) {
+  %cst_2 = arith.constant dense<9.0> : tensor<2048x1792xf32>
+  %cst_14 = arith.constant dense<[1, 128, 1792]> : tensor<3xi32>
+  %cst_15 = arith.constant dense<[128, 2048]> : tensor<2xi32>
+  %cst_16 = arith.constant dense<2> : tensor<1xi32>
+  %0 = "tfl.reshape"(%arg0, %cst_15) : (tensor<1x128x8x256xf32>, tensor<2xi32>) -> tensor<128x2048xf32>
+  %1 = "tfl.batch_matmul"(%0, %cst_2) <{adj_x = false, adj_y = false, asymmetric_quantize_inputs = false}> : (tensor<128x2048xf32>, tensor<2048x1792xf32>) -> tensor<128x1792xf32>
+  %2 = "tfl.reshape"(%1, %cst_14) : (tensor<128x1792xf32>, tensor<3xi32>) -> tensor<1x128x1792xf32>
+  %3 = tfl.mul %2, %2 {fused_activation_function = "NONE"} : tensor<1x128x1792xf32>
+  %4 = "tfl.sum"(%3, %cst_16) <{keep_dims = false}> : (tensor<1x128x1792xf32>, tensor<1xi32>) -> tensor<1x128xf32>
+  return %4 : tensor<1x128xf32>
+  // CHECK:  %cst = arith.constant dense<9.000000e+00> : tensor<2048x1792xf32>
+  // CHECK:  %cst_0 = arith.constant dense<2> : tensor<1xi32>
+  // CHECK:  %cst_1 = arith.constant dense<[1, 128, 2048]> : tensor<3xi32>
+  // CHECK:  %0 = "tfl.reshape"(%arg0, %cst_1) : (tensor<1x128x8x256xf32>, tensor<3xi32>) -> tensor<1x128x2048xf32>
+  // CHECK:  %1 = "tfl.batch_matmul"(%0, %cst) <{adj_x = false, adj_y = false, asymmetric_quantize_inputs = false}> : (tensor<1x128x2048xf32>, tensor<2048x1792xf32>) -> tensor<1x128x1792xf32>
+  // CHECK:  %2 = tfl.mul %1, %1 {fused_activation_function = "NONE"} : tensor<1x128x1792xf32>
+  // CHECK:  %3 = "tfl.sum"(%2, %cst_0) <{keep_dims = false}> : (tensor<1x128x1792xf32>, tensor<1xi32>) -> tensor<1x128xf32>
+  // CHECK:  return %3 : tensor<1x128xf32>
+}
+
 // CHECK-LABEL: @FuseFullyConnectedReshapeAddConst
 // FOLD-LABEL: @FuseFullyConnectedReshapeAddConst
 func.func @FuseFullyConnectedReshapeAddConst(%arg0: tensor<40x37xf32>, %arg1: tensor<40x37xf32>) -> tensor<40x40xf32> {

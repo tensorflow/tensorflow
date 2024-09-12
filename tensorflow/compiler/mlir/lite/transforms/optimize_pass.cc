@@ -2675,7 +2675,11 @@ void OptimizePass::runOnOperation() {
   RewritePatternSet phase_0_patterns(&getContext());
   phase_0_patterns
       .add<SqueezeReshapesAroundBroadcastOp, RemoveReshapeAfterFullyConnected,
-           RemoveReshapeBeforeFullyConnected, ConvertTFLBroadcastToMulOp>(ctx);
+           RemoveReshapeBeforeFullyConnected, ConvertTFLBroadcastToMulOp,
+           FuseOutputReshape_BatchMatMulWithFlattenedContractingDims,
+           FuseSqueezingLhsReshapeIntoFC_Output,
+           FuseReshapesAroundBatchMatMulLHS, FuseReshapesAroundBatchMatMulLHS1>(
+          ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_0_patterns));
 
   // Potentially the binary ops might be fused together, like hard_swish, thus
