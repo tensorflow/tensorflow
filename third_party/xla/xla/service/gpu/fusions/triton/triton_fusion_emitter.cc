@@ -787,16 +787,13 @@ absl::StatusOr<Value> EmitReduce(
     input = b.create<ma::SelectOp>(mask, input, neutral);
   }
 
-  // Triton actually only performs reductions on float32 inputs, and we must
-  // thus upcast/downcast our input if its data type is different.
-  input = Cast(b, input, b.getF32Type());
-
   mt::ReduceOp reduction = b.create<mt::ReduceOp>(input, reduction_dimension);
   {
+    TF_ASSIGN_OR_RETURN(Type result_ty,
+                        TritonType(b, hlo_reduce.shape().element_type()));
     mlir::Location loc = b.getLoc();
-    mlir::Block* reducer =
-        b.createBlock(&reduction->getRegion(0), {},
-                      {b.getF32Type(), b.getF32Type()}, {loc, loc});
+    mlir::Block* reducer = b.createBlock(&reduction->getRegion(0), {},
+                                         {result_ty, result_ty}, {loc, loc});
 
     HloComputation* reduction_computation = hlo_reduce.to_apply();
 
@@ -830,16 +827,13 @@ absl::StatusOr<Value> EmitReduce(
 
   Value result = reduction.getResult().front();
 
-  // We want to return a tensor of float32, but the ReturnReduceOp produces an
-  // f32 constant when reducing a single dim. To convert to a tensor we splat
-  // the result.
+  // We want to return a tensor, but the ReturnReduceOp produces a raw scalar
+  // when reducing a single dim. To convert to a tensor we splat the result.
   if (!mlir::dyn_cast<TensorValue>(reduction.getResult().front())) {
     result = Splat(b, result, {});
   }
 
-  TF_ASSIGN_OR_RETURN(Type result_ty,
-                      TritonType(b, hlo_reduce.shape().element_type()));
-  return Cast(b, result, result_ty);
+  return result;
 }
 
 // Emit code corresponding to a fusion instruction somehow nested within the

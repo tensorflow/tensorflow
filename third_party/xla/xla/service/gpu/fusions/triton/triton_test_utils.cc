@@ -189,6 +189,11 @@ std::string TritonSupportTestTwoTypesAndDeviceToString(
                       "_", ComputeCapabilityToString(cc));
 }
 
+std::string TritonSupportTestTypeToString(
+    const ::testing::TestParamInfo<PrimitiveType>& data) {
+  return primitive_util::LowercasePrimitiveTypeName(data.param);
+}
+
 namespace {
 
 // This function does nothing if the input module already has an entry

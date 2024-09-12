@@ -146,6 +146,9 @@ std::string TritonSupportTestTypeAndOpcodeAndDeviceToString(
 std::string TritonSupportTestTwoTypesAndDeviceToString(
     const ::testing::TestParamInfo<std::tuple<PrimitiveType, PrimitiveType,
                                               se::GpuComputeCapability>>& data);
+
+std::string TritonSupportTestTypeToString(
+    const ::testing::TestParamInfo<PrimitiveType>& data);
 }  //  namespace xla::gpu
 
 #endif  // XLA_SERVICE_GPU_FUSIONS_TRITON_TRITON_TEST_UTILS_H_

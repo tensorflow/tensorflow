@@ -522,14 +522,7 @@ ENTRY triton_computation {
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
-
-  bool skip_failure_branch_to_avoid_crash =
-      data_type == PrimitiveType::F8E4M3FN &&
-      std::holds_alternative<se::CudaComputeCapability>(cc) &&
-      !std::get<se::CudaComputeCapability>(cc).IsAtLeastHopper();
-
-  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc,
-                 skip_failure_branch_to_avoid_crash);
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc);
 }
 
 TEST_F(ReduceTest, IsTritonSupportedReductionWithMultidimensionalTile) {
@@ -601,13 +594,7 @@ ENTRY triton_computation {
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
 
-  bool skip_failure_branch_to_avoid_crash =
-      data_type == PrimitiveType::F8E4M3FN &&
-      std::holds_alternative<se::CudaComputeCapability>(cc) &&
-      !std::get<se::CudaComputeCapability>(cc).IsAtLeastHopper();
-
-  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc,
-                 skip_failure_branch_to_avoid_crash);
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc);
 }
 
 TEST_P(ReduceTest,
@@ -728,18 +715,9 @@ ENTRY triton_computation {
   // TODO(b/361526623): Reduce the cases where setting
   // skip_failure_branch_to_avoid_crash is needed.
   bool skip_failure_branch_to_avoid_crash =
-      data_type == PrimitiveType::F8E4M3FN &&
-      std::holds_alternative<se::CudaComputeCapability>(cc) &&
-      !std::get<se::CudaComputeCapability>(cc).IsAtLeastHopper();
-
-  skip_failure_branch_to_avoid_crash |=
-      (data_type == S8 || data_type == S16 || data_type == S32 ||
-       data_type == S64 || data_type == PrimitiveType::F16 ||
-       data_type == PrimitiveType::BF16 ||
-       data_type == PrimitiveType::F8E4M3FN ||
-       data_type == PrimitiveType::F8E5M2) &&
-      (opcode == HloOpcode::kRemainder || opcode == HloOpcode::kPower ||
-       opcode == HloOpcode::kAtan2);
+      opcode == HloOpcode::kDivide &&
+      (data_type == BF16 || data_type == F16 || data_type == F8E4M3FN ||
+       data_type == F8E5M2);
 
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc,
                  skip_failure_branch_to_avoid_crash);

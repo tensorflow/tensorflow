@@ -391,6 +391,7 @@ xla_test(
     tags = ["no_mac"],
     deps = [
         ":triton_support",
+        ":triton_test_utils",
         "//xla:comparison_util",
         "//xla:error_spec",
         "//xla:xla_data_proto_cc",
