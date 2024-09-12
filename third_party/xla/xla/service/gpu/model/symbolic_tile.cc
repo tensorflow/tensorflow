@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/service/gpu/model/affine_map_evaluator.h"
 #include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/service/gpu/model/indexing_map.h"
 
@@ -833,6 +834,36 @@ void ConstraintExpression::And(ConjointConstraints conjunction) {
 
   is_satisfiable_ = !new_constraints.empty();
   disjoint_conjoint_constraints_ = std::move(new_constraints);
+}
+
+bool ConstraintExpression::IsSatisfiedBy(
+    absl::Span<const int64_t> parameters) const {
+  if (IsAlwaysSatisfied()) {
+    return true;
+  }
+
+  if (!is_satisfiable_) {
+    return false;
+  }
+
+  bool constraints_are_satisfied = false;
+  for (const ConstraintExpression::ConjointConstraints& conjunction :
+       disjoint_conjoint_constraints_) {
+    bool conjunction_is_satisfied = true;
+    for (const auto& [constrained_expr, interval] : conjunction) {
+      int64_t constrained_value =
+          EvaluateAffineExpr(constrained_expr, /*dim_values=*/parameters);
+
+      if (constrained_value < interval.lower ||
+          constrained_value > interval.upper) {
+        conjunction_is_satisfied = false;
+        break;
+      }
+    }
+    constraints_are_satisfied |= conjunction_is_satisfied;
+  }
+
+  return constraints_are_satisfied;
 }
 
 std::string ConstraintExpression::ToString(

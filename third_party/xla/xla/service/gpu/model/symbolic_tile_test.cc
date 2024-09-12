@@ -1218,6 +1218,38 @@ TEST_F(ConstraintExpressionTest, SimplifyRemovesRedundantConstraints) {
                                "d0 in [0, 0] || d0 in [0, 0] && d1 in [1, 1]"));
 }
 
+TEST_F(ConstraintExpressionTest, ConstraintSatisfactionIsEvaluatedCorrectly) {
+  Constraint c0 = GetConstraint("d0 mod 6", 0, 0);
+  Constraint c1 = GetConstraint("d1 mod 8", 0, 0);
+  Constraint c2 = GetConstraint("d0 mod 13", 0, 0);
+
+  ConjointConstraints conjunction_0{c0, c1};
+  ConjointConstraints conjunction_1{c1, c2};
+
+  ConstraintExpression constraints;
+  constraints.Or(conjunction_0);
+  constraints.Or(conjunction_1);
+
+  // Parameters {6, 8} satisfy these constraints.
+  std::vector<int64_t> possible_tile_parameters({6, 8});
+  EXPECT_TRUE(constraints.IsSatisfiedBy(possible_tile_parameters));
+
+  // Parameters {13, 8} should also satisfy these constraints.
+  std::vector<int64_t> other_possible_tile_parameters({13, 8});
+  EXPECT_TRUE(constraints.IsSatisfiedBy(other_possible_tile_parameters));
+
+  // However, tile sizes {6, 7} do not satisfy these constraints.
+  std::vector<int64_t> impossible_tile_parameters({6, 7});
+  EXPECT_FALSE(constraints.IsSatisfiedBy(impossible_tile_parameters));
+
+  // Anything satisfies an always satisfied constraint expression.
+  EXPECT_TRUE(ConstraintExpression().IsSatisfiedBy(impossible_tile_parameters));
+
+  // Nothing satisfies an unsatisfiable constraint expression.
+  EXPECT_FALSE(ConstraintExpression::GetUnsatisfiableConstraintExpression()
+                   .IsSatisfiedBy(possible_tile_parameters));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

@@ -50,7 +50,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/hlo_traversal.h"
-#include "xla/service/gpu/model/affine_map_evaluator.h"
 #include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
@@ -423,31 +422,7 @@ absl::StatusOr<bool> SymbolicTileAnalysis::ParametersSatisfyConstraints(
     }
   }
 
-  // Handle the unconstrained case.
-  if (constraints_.IsAlwaysSatisfied()) {
-    return true;
-  }
-
-  // TODO(bchetioui): replace with convenience methods in
-  // `ConstraintExpression`.
-  bool constraints_are_satisfied = false;
-  for (const ConstraintExpression::ConjointConstraints& conjunction :
-       constraints_.DisjointConjointConstraints()) {
-    bool conjunction_is_satisfied = true;
-    for (const auto& [constrained_expr, interval] : conjunction) {
-      int64_t constrained_value =
-          EvaluateAffineExpr(constrained_expr, /*dim_values=*/tile_parameters);
-
-      if (constrained_value < interval.lower ||
-          constrained_value > interval.upper) {
-        conjunction_is_satisfied = false;
-        break;
-      }
-    }
-    constraints_are_satisfied |= conjunction_is_satisfied;
-  }
-
-  return constraints_are_satisfied;
+  return constraints_.IsSatisfiedBy(tile_parameters);
 }
 
 absl::StatusOr<TiledHloComputation>

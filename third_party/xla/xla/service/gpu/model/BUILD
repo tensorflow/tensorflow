@@ -565,6 +565,7 @@ cc_library(
     srcs = ["symbolic_tile.cc"],
     hdrs = ["symbolic_tile.h"],
     deps = [
+        ":affine_map_evaluator",
         ":affine_map_printer",
         ":indexing_analysis",
         "@com_google_absl//absl/algorithm:container",

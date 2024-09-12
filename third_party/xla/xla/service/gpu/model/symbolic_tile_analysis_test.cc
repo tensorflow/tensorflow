@@ -511,10 +511,10 @@ ENTRY main {
     EXPECT_THAT(conjunction, SizeIs(2));
 
   // We expect the constraints here to be
-  //    6 mod s0 in [0, 0] && 8 mod s1 in [0, 0] ||
-  //    6 mod s0 in [0, 0] && s1 mod 8 in [0, 0] ||
-  //    8 mod s1 in [0, 0] && s0 mod 6 in [0, 0] ||
-  //    s0 mod 6 in [0, 0] && s1 mod 8 in [0, 0],
+  //    6 mod d0 in [0, 0] && 8 mod s1 in [0, 0] ||
+  //    6 mod d0 in [0, 0] && d1 mod 8 in [0, 0] ||
+  //    8 mod d1 in [0, 0] && d0 mod 6 in [0, 0] ||
+  //    d0 mod 6 in [0, 0] && d1 mod 8 in [0, 0],
   // Tile sizes {6, 8} satisfy these constraints.
   std::vector<int64_t> possible_tile_parameters({6, 8});
   EXPECT_THAT(analysis->ParametersSatisfyConstraints(possible_tile_parameters),
