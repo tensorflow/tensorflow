@@ -27,26 +27,7 @@ class StreamExecutor;
 
 namespace gpu {
 
-class GpuExecutor;
-
-// Activates a context within an enclosing scope.
-class ScopedActivateExecutorContext {
- public:
-  // Form that takes a GPU executor.
-  explicit ScopedActivateExecutorContext(GpuExecutor* gpu_exec);
-
-  // Form that takes an executor and extracts a GPU Executor --
-  // fatal failure if it is not a GPU executor.
-  explicit ScopedActivateExecutorContext(StreamExecutor* stream_exec);
-
-  ~ScopedActivateExecutorContext();
-
- private:
-  ScopedActivateContext* driver_scoped_activate_context_;
-
-  ScopedActivateExecutorContext(const ScopedActivateExecutorContext&) = delete;
-  void operator=(const ScopedActivateExecutorContext&) = delete;
-};
+using ScopedActivateExecutorContext = ScopedActivateContext;
 
 }  // namespace gpu
 }  // namespace stream_executor
