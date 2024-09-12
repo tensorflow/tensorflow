@@ -173,3 +173,13 @@ Learn more about the
 ## License
 
 [Apache License 2.0](LICENSE)
+## Recent Updates
+
+### Version 1.1 (2024-09-15)
+- Added instructions for using the updated features.
+- Improved the example usage section for better clarity.
+
+### Usage Instructions
+- To calculate simple interest, provide the principal amount, the annual interest rate, and the time period in years.
+- Example: `./simple-interest.sh`
+
