@@ -821,12 +821,11 @@ Status TfrtSessionFactory::NewSession(const SessionOptions& options,
 
   *out_session = nullptr;
 
+  absl::MutexLock lock(&mutex_);
   std::vector<std::unique_ptr<Device>> devices;
   TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(
       options, "/job:localhost/replica:0/task:0", &devices));
   device_manager_ = std::make_unique<StaticDeviceMgr>(std::move(devices));
-
-  absl::MutexLock lock(&mutex_);
   if (!IsInitialized()) {
     TF_RETURN_IF_ERROR(InitializeLocked({}));
     TF_RETURN_IF_ERROR(InitializerRegistry::Get().RunInitializer(runtime_));
