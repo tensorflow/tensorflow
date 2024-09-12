@@ -940,8 +940,7 @@ TEST(GpuCommandBufferTest, ConditionalIfElse) {
   ASSERT_EQ(dst, expected_mul);
 }
 
-// TODO(b/362769658): Enable when fixed.
-TEST(GpuCommandBufferTest, DISABLED_ConditionalCaseEmptyGraph) {
+TEST(GpuCommandBufferTest, ConditionalCaseEmptyGraph) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
