@@ -499,7 +499,6 @@ void NVPTXBackendInit(const DebugOptions& debug_options) {
   FeedLLVMWithFlags({
       "-slp-vectorize-hor=false",
       "-slp-max-reg-size=32",
-      "-slp-max-vf=4",
   });
 
   llvm_ir::InitializeLLVMCommandLineOptions(

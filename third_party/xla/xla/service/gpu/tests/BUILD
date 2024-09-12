@@ -633,6 +633,7 @@ lit_test_suite(
             "reduce_f64_column.hlo",
             "reduce_large_row_to_scalar.hlo",
             "reduce_row_vectorized.hlo",
+            "reduce_to_scalar_vectorized.hlo",
             "reduce_unnested.hlo",
             "reduce_variadic_column.hlo",
             "reduction_vectorization_sm_all.hlo",
