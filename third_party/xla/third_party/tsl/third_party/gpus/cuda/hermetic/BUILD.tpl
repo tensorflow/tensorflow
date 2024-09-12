@@ -80,8 +80,11 @@ cc_library(
 )
 
 alias(
-  name = "cuda_driver",
-  actual = "@cuda_cudart//:cuda_driver",
+    name = "cuda_driver",
+    actual = select({
+        "@cuda_driver//:forward_compatibility": "@cuda_driver//:nvidia_driver",
+        "//conditions:default": "@cuda_cudart//:cuda_driver",
+    }),
 )
 
 alias(

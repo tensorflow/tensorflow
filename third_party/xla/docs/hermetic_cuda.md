@@ -536,3 +536,14 @@ projects:
    The flag is needed to make sure that CUDA dependencies are properly provided
    to test executables. The flag is false by default to avoid unwanted coupling
    of Google-released Python wheels to CUDA binaries.
+
+4. To enforce CUDA forward compatibility mode, add
+   `--@cuda_driver//:enable_forward_compatibility=true` flag to your bazel
+   command. You can provide it either directly in a shell or in `.bazelrc`:
+   ```
+   test:cuda --@cuda_driver//:enable_forward_compatibility=true
+   ```
+
+   Forward compatibility mode should be enforced only when it is appropriate -
+   see [NVIDIA documentation](https://docs.nvidia.com/deploy/cuda-compatibility/index.html#forward-compatibility-support-across-major-toolkit-versions) for the
+   details.
