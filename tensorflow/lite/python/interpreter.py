@@ -602,7 +602,7 @@ class Interpreter:
     Returns:
       A dictionary containing the following fields of the tensor:
         'name': The tensor name.
-        'index': The tensor index in the interpreter.
+        'index': The tensor index in the subgraph.
         'shape': The shape of the tensor.
         'quantization': Deprecated, use 'quantization_parameters'. This field
             only works for per-tensor quantization, whereas
@@ -645,7 +645,7 @@ class Interpreter:
             'zero_points': tensor_quantization_params[1],
             'quantized_dimension': tensor_quantization_params[2],
         },
-        'sparsity_parameters': tensor_sparsity_params
+        'sparsity_parameters': tensor_sparsity_params,
     }
 
     return details
@@ -662,21 +662,36 @@ class Interpreter:
         self._get_op_details(idx) for idx in range(self._interpreter.NumNodes())
     ]
 
-  def get_tensor_details(self):
-    """Gets tensor details for every tensor with valid tensor details.
+  def num_subgraphs(self):
+    """Returns the number of subgraphs in the model."""
+    return self._interpreter.NumSubgraphs()
+
+  def get_tensor_details(self, subgraph_index=0):
+    """Gets tensor details for every tensor with valid tensor details from a subgraph.
 
     Tensors where required information about the tensor is not found are not
     added to the list. This includes temporary tensors without a name.
+
+    Args:
+      subgraph_index: Index of the subgraph to fetch the tensor.
 
     Returns:
       A list of dictionaries containing tensor information.
     """
     tensor_details = []
-    for idx in range(self._interpreter.NumTensors(0)):
+    num_subgraphs = self._interpreter.NumSubgraphs()
+    if subgraph_index < 0 or subgraph_index >= num_subgraphs:
+      raise ValueError(
+          f'subgraph_index is out of range: {subgraph_index} for the model,'
+          f' which has {num_subgraphs} subgraphs.'
+      )
+
+    for idx in range(self._interpreter.NumTensors(subgraph_index)):
       try:
-        tensor_details.append(self._get_tensor_details(idx, subgraph_index=0))
+        tensor_details.append(self._get_tensor_details(idx, subgraph_index))
       except ValueError:
         pass
+
     return tensor_details
 
   def get_input_details(self):
