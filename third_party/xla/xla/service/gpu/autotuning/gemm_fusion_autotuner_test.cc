@@ -985,18 +985,19 @@ ENTRY entry {
   ROOT r = f8e5m2[256,128]{1,0} fusion(f8e5m2[256,256]{1,0} %p0, f8e4m3fn[128,256]{1,0} %p1), kind=kCustom, calls=%gemm_fusion_dot_computation, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__triton_gemm"},"force_earliest_schedule":false}
 })")
                                                   .value();
-  GemmFusionAutotunerImpl::TilingConfigs configs;
-  configs.emplace_back(DynCast<HloFusionInstruction>(
-                           module->entry_computation()->root_instruction()),
-                       std::vector<GemmFusionAutotunerImpl::Config>{
-                           GemmFusionAutotunerImpl::Config(TritonGemmConfig(
-                               /*block_m=*/32,
-                               /*block_n=*/64,
-                               /*block_k=*/64,
-                               /*split_k=*/4,
-                               /*num_stages=*/1,
-                               /*num_warps=*/4,
-                               /*num_ctas=*/1))});
+  GemmFusionAutotunerImpl::BackendConfigs configs;
+  configs.emplace_back(
+      DynCast<HloFusionInstruction>(
+          module->entry_computation()->root_instruction()),
+      std::vector<GemmFusionAutotunerImpl::BackendConfig>{
+          GemmFusionAutotunerImpl::BackendConfig(TritonGemmConfig(
+              /*block_m=*/32,
+              /*block_n=*/64,
+              /*block_k=*/64,
+              /*split_k=*/4,
+              /*num_stages=*/1,
+              /*num_warps=*/4,
+              /*num_ctas=*/1))});
   CHECK_OK(autotuner.CompileAll(*compile_util, configs));
 }
 
