@@ -74,13 +74,20 @@ void CleanUpHloModuleForGraphviz(HloModule* hlo_module) {
   }
 }
 
-// This follows ModelExplorer's logic to get id of a layer.
+// In ModelExplorer's logic, id of a layer is a nested namespace:
+// <section_layer_name>/<computation_layer_name>/<instruction_layer_name>
+// 1. for fusion instruction:
+// <parent_computation_name>/<instruction_name>___group___.
+// 2. for computation: <computation_name>___group___.
+// Since the `section` layer in ME concept is formed on client, we are not able
+// to encode that into the nested namespace here if the section will exist.
 std::string GetLayerId(absl::string_view namespace_name) {
-  // TODO(b/361833306): support nested namespace.
   return absl::StrCat(namespace_name, "___group___");
 }
 
 #ifdef PLATFORM_GOOGLE
+// Add a custom group node on the graph level, for the center node chosen by the
+// user set its attributes like `id`, `name` or `opcode` in `graph_json`.
 void AddCenterNodeMetadata(nlohmann::json& graph_json, std::string id,
                            absl::string_view name, absl::string_view opcode) {
   nlohmann::json centerGroupNodeAttributes;
@@ -99,9 +106,10 @@ void AddGraphMetadata(std::string& graph_json_str,
                       const HloInstruction& instr) {
 #ifdef PLATFORM_GOOGLE
   nlohmann::json graph_json = nlohmann::json::parse(graph_json_str);
-  auto id = instr.opcode() == xla::HloOpcode::kFusion
-                ? GetLayerId(instr.name())
-                : absl::StrCat(instr.unique_id());
+  auto id =
+      instr.opcode() == xla::HloOpcode::kFusion
+          ? GetLayerId(absl::StrCat(instr.parent()->name(), "/", instr.name()))
+          : absl::StrCat(instr.unique_id());
   AddCenterNodeMetadata(graph_json, id, instr.name(),
                         HloOpcodeString(instr.opcode()));
   graph_json_str = graph_json.dump();
