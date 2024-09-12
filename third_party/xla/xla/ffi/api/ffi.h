@@ -27,7 +27,9 @@ limitations under the License.
 #include <complex>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
+#include <iostream>
 #include <limits>
 #include <memory>
 #include <numeric>
@@ -1009,6 +1011,66 @@ struct ResultEncoding<ExecutionStage::kInstantiate,
     }
 
     return internal::CreateError(api, state.error());
+  }
+};
+
+// Encodes `Future` as an asynchronous FFI result.
+template <ExecutionStage stage>
+struct ResultEncoding<stage, Future> {
+  static std::variant<XLA_FFI_Error*, XLA_FFI_Future*> Encode(
+      const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx, Future future) {
+    // TODO(ezhulenev): Add benchmarks for asynchronous FFI handlers, and
+    // optimize the fast path for returning completed futures.
+
+    // Create XLA_FFI_Future object that will signal completion to the runtime.
+    XLA_FFI_Future_Create_Args args;
+    args.struct_size = XLA_FFI_Future_Create_Args_STRUCT_SIZE;
+    args.extension_start = nullptr;
+    args.future = nullptr;
+
+    if (auto* err = api->XLA_FFI_Future_Create(&args)) {
+      return err;
+    }
+
+    assert(args.future != nullptr && "XLA_FFI_Future_Create failed");
+
+    future.OnReady([api, f = args.future](const std::optional<Error>& error) {
+      // When the OnReady callback is invoked, we no longer have access to the
+      // diagnostics, and can't signal an error to the runtime. We chose to
+      // abort execution, because otherwise it will lead to a deadlock. However
+      // we should never get to this point, because execution must be aborted on
+      // a synchronous path when checking XLA FFI version compatibility.
+      auto abort_on_error = [api](XLA_FFI_Error* err) {
+        if (XLA_FFI_PREDICT_TRUE(err == nullptr)) {
+          return;
+        }
+
+        std::cerr << "Failed to signal XLA_FFI_Future completion: "
+                  << internal::GetErrorMessage(api, err) << std::endl;
+        internal::DestroyError(api, err);
+        std::abort();
+      };
+
+      if (XLA_FFI_PREDICT_FALSE(error.has_value())) {
+        XLA_FFI_Future_SetError_Args args;
+        args.struct_size = XLA_FFI_Future_SetError_Args_STRUCT_SIZE;
+        args.extension_start = nullptr;
+        args.future = f;
+        args.error = internal::CreateError(api, *error);
+
+        abort_on_error(api->XLA_FFI_Future_SetError(&args));
+
+      } else {
+        XLA_FFI_Future_SetAvailable_Args args;
+        args.struct_size = XLA_FFI_Future_SetAvailable_Args_STRUCT_SIZE;
+        args.extension_start = nullptr;
+        args.future = f;
+
+        abort_on_error(api->XLA_FFI_Future_SetAvailable(&args));
+      }
+    });
+
+    return args.future;
   }
 };
 

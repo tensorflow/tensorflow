@@ -300,17 +300,6 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Future_Create_Args, extension_start);
 
 typedef XLA_FFI_Error* XLA_FFI_Future_Create(XLA_FFI_Future_Create_Args* args);
 
-struct XLA_FFI_Future_Destroy_Args {
-  size_t struct_size;
-  XLA_FFI_Extension_Base* extension_start;
-  XLA_FFI_Future* future;
-};
-
-XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Future_Destroy_Args, future);
-
-typedef XLA_FFI_Error* XLA_FFI_Future_Destroy(
-    XLA_FFI_Future_Destroy_Args* args);
-
 struct XLA_FFI_Future_SetAvailable_Args {
   size_t struct_size;
   XLA_FFI_Extension_Base* extension_start;
@@ -423,6 +412,11 @@ struct XLA_FFI_CallFrame {
   XLA_FFI_Args args;
   XLA_FFI_Rets rets;
   XLA_FFI_Attrs attrs;
+
+  // XLA FFI handler implementation can use `future` to signal a result of
+  // asynchronous computation to the XLA runtime. XLA runtime will keep all
+  // arguments, results and attributes alive until `future` is completed.
+  XLA_FFI_Future* future;  // out
 };
 
 XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_CallFrame, attrs);
@@ -667,7 +661,6 @@ struct XLA_FFI_Api {
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_DeviceMemory_Free);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_ThreadPool_Schedule);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Future_Create);
-  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Future_Destroy);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Future_SetAvailable);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Future_SetError);
 };

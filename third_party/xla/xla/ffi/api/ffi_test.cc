@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -1176,6 +1177,38 @@ TEST(FfiTest, ThreadPool) {
 
   auto status = Call(*handler, call_frame, options);
   TF_ASSERT_OK(status);
+}
+
+TEST(FfiTest, AsyncHandler) {
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "ffi-test", 2);
+  Eigen::ThreadPoolDevice device(pool.AsEigenThreadPool(), pool.NumThreads());
+
+  int32_t value = 0;
+
+  // Handler completes execution asynchronously on a given thread pool.
+  auto fn = [&](ThreadPool thread_pool) -> Future {
+    Promise promise;
+    Future future(promise);
+
+    thread_pool.Schedule([&, promise = std::move(promise)]() mutable {
+      value = 42;
+      promise.SetAvailable();
+    });
+
+    return future;
+  };
+
+  auto handler = Ffi::Bind().Ctx<ThreadPool>().To(fn);
+  CallFrame call_frame =
+      CallFrameBuilder(/*num_args=*/0, /*num_rets=*/0).Build();
+
+  CallOptions options;
+  options.backend_options = CallOptions::CpuOptions{&device};
+
+  auto status = Call(*handler, call_frame, options);
+  TF_ASSERT_OK(status);
+
+  EXPECT_EQ(value, 42);
 }
 
 TEST(FfiTest, Metadata) {

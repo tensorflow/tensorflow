@@ -34,6 +34,7 @@ limitations under the License.
 #include <tuple>
 #include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
 // This is a header-only base C++ library that defines templates for decoding
@@ -214,7 +215,7 @@ class Ffi {
   static auto BindTo(Fn fn, std::initializer_list<Traits> traits = {});
 
   virtual ~Ffi() = default;
-  virtual XLA_FFI_Error* Call(const XLA_FFI_CallFrame* call_frame) const = 0;
+  virtual XLA_FFI_Error* Call(XLA_FFI_CallFrame* call_frame) const = 0;
 
   // Registers FFI handler bundle with an XLA runtime under the given name on a
   // given platform.
@@ -882,15 +883,31 @@ struct CtxDecoding;
 // Example: encoding `absl::Status` result
 //
 //   template<ExecutionStage stage>
-//   struct ResultEncoding<absl::Status> {
+//   struct ResultEncoding<stage, absl::Status> {
 //     XLA_FFI_Error* Encode(const XLA_FFI_Api* api,
 //                           XLA_FFI_ExecutionContext* ctx,
-//.                          absl::Status status) {...}
+//                           absl::Status status) {...}
 //   }
 //
 // Result encoding is execution stage specific, for example at instantiation
 // stage FFI handler can return an FFI handler state, while at execution stage
 // we only support returning a status-like type.
+//
+// Asynchronous FFI handlers can return encoded result as a discriminated union
+// of an error and a future (std::variant<XLA_FFI_Error*, XLA_FFI_Future*>),
+// where an error can be used to return synchronous errors (i.e., invalid
+// arguments), and a future can be used to return asynchronous completion. See
+// example of such encoding in result encoding for `Future`.
+//
+// Example: encoding `tsl::AsyncValueRef<tsl::Chain>` result
+//
+//   template<ExecutionStage stage>
+//   struct ResultEncoding<state, tsl::AsyncValueRef<tsl::Chain>> {
+//     std::variant<XLA_FFI_Error*, XLA_FFI_Future*> Encode(
+//       const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx,
+//       tsl::AsyncValueRef<tsl::Chain> async_value) {...}
+//   }
+//
 template <ExecutionStage stage, typename T>
 struct ResultEncoding;
 
@@ -1327,7 +1344,14 @@ class Handler : public Ffi {
   using ResultType = std::invoke_result_t<Fn, FnArgType<Ts>...>;
 
  public:
-  XLA_FFI_Error* Call(const XLA_FFI_CallFrame* call_frame) const override {
+  // We deliberately opt-out from the cognitive complexity check, as this
+  // function is on a hot path, any any attempt to split it leads to measurable
+  // regressions in microbenchmarks. It is a straight line block of mostly
+  // constexpr conditionals, that gets optimized to a much smaller code size in
+  // all template instantiations.
+  //
+  // NOLINTNEXTLINE(readability-function-cognitive-complexity)
+  XLA_FFI_Error* Call(XLA_FFI_CallFrame* call_frame) const override {
     // Sanity checking call frame struct size.
     if (XLA_FFI_Error* err = CheckStructSize(
             call_frame->api, "XLA_FFI_CallFrame", XLA_FFI_CallFrame_STRUCT_SIZE,
@@ -1460,7 +1484,7 @@ class Handler : public Ffi {
 
   template <size_t... Is>
   XLA_FFI_ATTRIBUTE_ALWAYS_INLINE XLA_FFI_Error* Call(
-      const XLA_FFI_CallFrame* call_frame, std::index_sequence<Is...>) const {
+      XLA_FFI_CallFrame* call_frame, std::index_sequence<Is...>) const {
     // A helper structure to allow each decoder find the correct offset.
     internal::DecodingOffsets offsets;
 
@@ -1483,8 +1507,37 @@ class Handler : public Ffi {
     }
 
     ResultType result = fn_(std::move(*std::get<Is>(args))...);
-    return ResultEncoding<stage, ResultType>::Encode(
+    auto encoded = ResultEncoding<stage, ResultType>::Encode(
         call_frame->api, call_frame->ctx, std::move(result));
+
+    // We do support two kinds of FFI handlers: (1) synchronous handlers that
+    // can return an error, and (2) asynchronous handlers that can return an
+    // error or a future that will signal completion asynchronously.
+    static constexpr bool kIsEncodedError =
+        std::is_same_v<decltype(encoded), XLA_FFI_Error*>;
+    static constexpr bool kIsEncodedErrorOrFuture =
+        std::is_same_v<decltype(encoded),
+                       std::variant<XLA_FFI_Error*, XLA_FFI_Future*>>;
+
+    static_assert(kIsEncodedError || kIsEncodedErrorOrFuture,
+                  "Unsupported result encoding");
+
+    if constexpr (kIsEncodedErrorOrFuture) {
+      // Synchronous errors reported immediately to the caller (i.e., failed to
+      // parse arguments), and futures passed to the caller via the call frame,
+      // and it's up to the caller to wait for the future to complete.
+      if (XLA_FFI_Error** err = std::get_if<XLA_FFI_Error*>(&encoded)) {
+        return *err;
+      } else {
+        call_frame->future = std::get<XLA_FFI_Future*>(encoded);
+        assert(call_frame->future != nullptr);
+        return nullptr;
+      }
+
+    } else {
+      // Synchronous errors reported immediately to the caller.
+      return encoded;
+    }
   }
 
   XLA_FFI_Error* FailedDecodeError(const XLA_FFI_CallFrame* call_frame,
