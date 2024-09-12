@@ -43,14 +43,21 @@ using ::tsl::testing::IsOkAndHolds;
 
 class TritonEmitterConstraintsTest : public HloTestBase {
  public:
-  std::optional<SymbolicTileAnalysis> TryAnalyzeModule(HloModule* module) {
+  std::optional<SymbolicTileAnalysis> TryAnalyzeModule(
+      HloModule* module, bool with_triton_emitter_specific_constraints = true) {
+    EmitterSpecificConstraintsBuilder constraints_builder = nullptr;
+
+    if (with_triton_emitter_specific_constraints) {
+      constraints_builder =
+          TritonEmitterConstraints::GetBuilder(device_description_);
+    }
+
     SymbolicTileAnalysisOrError analysis_or_error =
         SymbolicTileAnalysis::AnalyzeComputation(
             *module->entry_computation()
                  ->root_instruction()
                  ->fused_instructions_computation(),
-            &mlir_context_,
-            TritonEmitterConstraints::GetBuilder(device_description_));
+            &mlir_context_, constraints_builder);
 
     if (std::holds_alternative<SymbolicTileAnalysis>(analysis_or_error)) {
       return std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
@@ -143,6 +150,50 @@ ENTRY entry_computation {
   // than the hardware limit of 2^32 - 1.
   EXPECT_THAT(analysis->ParametersSatisfyConstraints({1, 1}),
               IsOkAndHolds(false));
+}
+
+TEST_F(TritonEmitterConstraintsTest, CustomReshapeConstraintsAreEnforced) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+triton_computation {
+  p = s8[36] parameter(0)
+  ROOT bitcast = s8[6,6] bitcast(p)
+}
+
+ENTRY entry_computation {
+  p = s8[36] parameter(0)
+  ROOT fusion = s8[6,6] fusion(p), kind=kCustom, calls=triton_computation
+})"));
+
+  std::optional<SymbolicTileAnalysis> analysis_without_triton_constraints =
+      TryAnalyzeModule(module.get(),
+                       /*with_triton_emitter_specific_constraints=*/false);
+
+  ASSERT_TRUE(analysis_without_triton_constraints.has_value());
+
+  // (2, 6) is a theoretically valid tiling for this reshape, so
+  // SymbolicTileAnalysis should allow it.
+  EXPECT_THAT(
+      analysis_without_triton_constraints->ParametersSatisfyConstraints({2, 6}),
+      IsOkAndHolds(true));
+
+  std::optional<SymbolicTileAnalysis> analysis_with_triton_constraints =
+      TryAnalyzeModule(module.get(),
+                       /*with_triton_emitter_specific_constraints=*/true);
+
+  ASSERT_TRUE(analysis_with_triton_constraints.has_value());
+
+  // (2, 6) is a theoretically valid tiling for this reshape, but it won't
+  // work because of Triton's power of two restriction. Thus, we should reject
+  // it here.
+  EXPECT_THAT(
+      analysis_with_triton_constraints->ParametersSatisfyConstraints({2, 6}),
+      IsOkAndHolds(false));
+
+  // However, (1, 6) is valid and should still work.
+  EXPECT_THAT(
+      analysis_with_triton_constraints->ParametersSatisfyConstraints({1, 6}),
+      IsOkAndHolds(true));
 }
 
 }  // namespace
