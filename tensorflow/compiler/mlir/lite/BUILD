@@ -488,6 +488,17 @@ cc_library(
 )
 
 cc_library(
+    name = "pass_registry_utils",
+    hdrs = ["transforms/pass_registry_utils.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pass",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+cc_library(
     name = "tensorflow_lite",
     srcs = [
         "ir/tfl_canonicalize.inc",
@@ -495,6 +506,7 @@ cc_library(
     hdrs = [
         "ir/tfl_ops.h",
         "transforms/optimize_pass.h",
+        "transforms/pass_registry_utils.h",
         "transforms/passes.h",
         "utils/attribute_utils.h",
         "utils/utils.h",
@@ -505,6 +517,7 @@ cc_library(
         ":cost_estimators",
         ":optimize_pass_options",
         ":pass",
+        ":pass_registry_utils",
         ":size_utils",
         ":tensorflow_lite_canonicalize_inc_gen",
         ":tensorflow_lite_op_enums_inc_gen",
@@ -1576,6 +1589,7 @@ cc_library(
         ":common",
         ":fake_quant_utils",
         ":pass",
+        ":pass_registry_utils",
         ":tensorflow_lite_d2s",  # buildcleaner: keep
         ":tensorflow_lite_legalize_tf",  # buildcleaner: keep
         ":tensorflow_lite_optimize",  # buildcleaner: keep

@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/pass_registry_utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 
 namespace mlir {
@@ -52,6 +53,16 @@ class Type;
 
 namespace TFL {
 
+////////////////////////////////////////////////////////////////////////////////
+// Forward declarations
+////////////////////////////////////////////////////////////////////////////////
+
+struct OptimizePassOptions;
+
+////////////////////////////////////////////////////////////////////////////////
+// Utilities for backward compatibility
+////////////////////////////////////////////////////////////////////////////////
+
 // Creates an instance of the TensorFlow Lite dialect LegalizeTF pass.
 // When the given run_tfl_runtime_verification value is true, it will check each
 // TFL builtin op towards the TFL runtime capability and the incompatible TF ops
@@ -62,7 +73,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateLegalizeTFPass(
 std::unique_ptr<OperationPass<func::FuncOp>> CreateLegalizeTFPass();
 
 // Creates an instance of the TensorFlow Lite dialect Optimize pass.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizePass();
+inline std::unique_ptr<mlir::Pass> CreateOptimizePass() {
+  return Create<OptimizePass>();
+}
 
 // Creates an instance of the Tensorflow Lite batch matmul Optimize pass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizeBatchMatmulPass();
@@ -256,7 +269,6 @@ CreatePartitionedTopologicalSortPass();
 #define GEN_PASS_DECL_LEGALIZETFPASS
 #define GEN_PASS_DECL_LOWERSTATICTENSORLISTPASS
 #define GEN_PASS_DECL_MODIFYIONODESPASS
-#define GEN_PASS_DECL_OPTIMIZEPASS
 #define GEN_PASS_DECL_POSTQUANTIZEPASS
 #define GEN_PASS_DECL_PREPARECOMPOSITEFUNCTIONSPASS
 #define GEN_PASS_DECL_PREPAREDYNAMICRANGEQUANTIZEPASS
@@ -271,10 +283,6 @@ CreatePartitionedTopologicalSortPass();
 // Creates an instance of the TensorFlow Lite dialect LegalizeTF pass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateLegalizeTFPass(
     const LegalizeTFPassOptions& options);
-
-// Creates an instance of the TensorFlow Lite dialect Optimize pass.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizePass(
-    const OptimizePassOptions& options);
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareTFPass(
@@ -294,19 +302,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateRaiseCustomOpsPass(
 std::unique_ptr<OperationPass<func::FuncOp>> CreateDefaultQuantParamsPass(
     const DefaultQuantParamsPassOptions& options);
 
-inline void registerOptimizePass() {
-  auto pass_argument = OptimizePass::GetArgument();
-  auto pass_description = OptimizePass::GetDescription();
-  PassPipelineRegistration<OptimizePassOptions>(
-      pass_argument, pass_description,
-      [](OpPassManager& pm, const OptimizePassOptions& options) {
-        pm.addPass(CreateOptimizePass(options));
-      });
-}
-
 inline void registerTensorFlowLitePasses() {
   registerTensorFlowLiteTdPasses();
-  registerOptimizePass();
+  Register<OptimizePass, OptimizePassOptions>();
 }
 
 }  // namespace TFL

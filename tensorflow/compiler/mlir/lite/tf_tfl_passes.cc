@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/transforms.h"
 #include "tensorflow/compiler/mlir/lite/transforms/pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/pass_registry_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/toco_pass_options_setter.h"
 #include "tensorflow/compiler/mlir/lite/utils/fake_quant_utils.h"
@@ -529,8 +530,8 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
       pass_manager->addPass(mlir::TFL::CreatePushTransposeThroughEwisePass());
 
       // Add TFLite optimize pass.
-      std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>> optimize_pass =
-          mlir::TFL::CreateOptimizePass();
+      std::unique_ptr<mlir::Pass> optimize_pass =
+          mlir::TFL::Create<mlir::TFL::OptimizePass>();
       auto pass_ptr =
           dynamic_cast<mlir::TFL::MutableOptionsPass*>(optimize_pass.get());
       if (pass_ptr) pass_ptr->ApplyOptionsVisitor(toco_pass_options_setter);

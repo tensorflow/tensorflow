@@ -2721,15 +2721,6 @@ void OptimizePass::runOnOperation() {
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
 }
 
-// Creates an instance of the TensorFlow Lite dialect Optimize pass.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizePass(
-    const OptimizePassOptions &options) {
-  return std::make_unique<OptimizePass>(options);
-}
-
-std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizePass() {
-  return std::make_unique<OptimizePass>();
-}
 
 }  // namespace TFL
 }  // namespace mlir
