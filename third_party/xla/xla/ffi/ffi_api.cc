@@ -20,6 +20,7 @@ limitations under the License.
 #include <exception>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -131,20 +132,59 @@ static XLA_FFI_ExecutionContext CreateExecutionContext(
 //===----------------------------------------------------------------------===//
 
 absl::Status TakeStatus(XLA_FFI_Error* error) {
-  if (error == nullptr) return absl::OkStatus();
+  if (ABSL_PREDICT_TRUE(error == nullptr)) return absl::OkStatus();
   absl::Status status = std::move(error->status);
   delete error;
   return status;
 }
 
-absl::Status Call(Ffi& handler, CallFrame& call_frame,
-                  const CallOptions& options, ExecutionStage stage) {
+tsl::AsyncValueRef<tsl::Chain> TakeFuture(XLA_FFI_Future* future) {
+  // Non-reference-counted async value ref for synchronous FFI handlers.
+  static tsl::AsyncValueOwningRef<tsl::Chain>* chain = [] {
+    auto* storage = new tsl::internal::AsyncValueStorage<tsl::Chain>();
+    return new tsl::AsyncValueOwningRef<tsl::Chain>(
+        tsl::MakeAvailableAsyncValueRef<tsl::Chain>(*storage));
+  }();
+
+  if (ABSL_PREDICT_TRUE(future == nullptr)) return chain->AsRef();
+
+  // Keeps XLA_FFI_Future alive until it is completed.
+  absl::Cleanup delete_future = [future] { delete future; };
+
+  // If the future is already completed, immediately return the underlying async
+  // value and destroy the XLA_FFI_Future.
+  if (ABSL_PREDICT_TRUE(future->async_value.IsAvailable())) {
+    return std::move(future->async_value);
+  }
+
+  // If the future is not completed, return a copy of the underlying async value
+  // and keep XLA_FFI_Future alive until it is completed.
+  tsl::AsyncValueRef<tsl::Chain> async_value = future->async_value;
+  async_value.AndThen([delete_future = std::move(delete_future)] {});
+  return async_value;
+}
+
+template <typename Handler>
+static absl::StatusOr<XLA_FFI_Future*> Call(Handler& handler,
+                                            CallFrame& call_frame,
+                                            const CallOptions& options,
+                                            ExecutionStage stage) {
   XLA_FFI_ExecutionContext ctx = CreateExecutionContext(options);
   XLA_FFI_CallFrame ffi_call_frame = call_frame.Build(
       GetXlaFfiApi(), &ctx, static_cast<XLA_FFI_ExecutionStage>(stage));
+
   XLA_FFI_Error* error = nullptr;
+
+  // FFI handlers might be defined in external libraries and use exceptions, so
+  // take extra care to catch them and convert to a status.
   try {
-    error = handler.Call(&ffi_call_frame);
+    if constexpr (std::is_same_v<Handler, Ffi>) {
+      error = handler.Call(&ffi_call_frame);
+    } else if constexpr (std::is_same_v<Handler, XLA_FFI_Handler*>) {
+      error = (*handler)(&ffi_call_frame);
+    } else {
+      static_assert(sizeof(Handler) == 0, "Unsupported handler type");
+    }
   } catch (std::exception& e) {
     return Unknown("XLA FFI call failed: %s", e.what());
   }
@@ -154,51 +194,53 @@ absl::Status Call(Ffi& handler, CallFrame& call_frame,
   if (error != nullptr) {
     DCHECK_EQ(ffi_call_frame.future, nullptr)
         << "Error must not be used together with a future";
+    return TakeStatus(error);
   }
 
-  // Wait for the completion of asynchronous work launched by the handler.
-  if (XLA_FFI_Future* future = ffi_call_frame.future;
-      ABSL_PREDICT_FALSE(future != nullptr)) {
-    absl::Cleanup delete_future = [&] { delete future; };
-    tsl::BlockUntilReady(future->async_value);
-    if (ABSL_PREDICT_FALSE(future->async_value.IsError())) {
-      return future->async_value.GetError();
-    }
-  }
+  return ffi_call_frame.future;
+}
 
-  return TakeStatus(error);
+static absl::Status BlockUntilReady(XLA_FFI_Future* future) {
+  if (ABSL_PREDICT_TRUE(future == nullptr)) return absl::OkStatus();
+
+  tsl::AsyncValueRef<tsl::Chain> av = TakeFuture(future);
+  tsl::BlockUntilReady(av);
+  return ABSL_PREDICT_FALSE(av.IsError()) ? av.GetError() : absl::OkStatus();
+}
+
+absl::Status Call(Ffi& handler, CallFrame& call_frame,
+                  const CallOptions& options, ExecutionStage stage) {
+  TF_ASSIGN_OR_RETURN(XLA_FFI_Future * future,
+                      Call<Ffi>(handler, call_frame, options, stage));
+  return BlockUntilReady(future);
 }
 
 absl::Status Call(XLA_FFI_Handler* handler, CallFrame& call_frame,
                   const CallOptions& options, XLA_FFI_ExecutionStage stage) {
-  XLA_FFI_ExecutionContext ctx = CreateExecutionContext(options);
-  XLA_FFI_CallFrame ffi_call_frame =
-      call_frame.Build(GetXlaFfiApi(), &ctx, stage);
-  XLA_FFI_Error* error = nullptr;
-  try {
-    error = (*handler)(&ffi_call_frame);
-  } catch (std::exception& e) {
-    return Unknown("XLA FFI call failed: %s", e.what());
-  }
+  TF_ASSIGN_OR_RETURN(
+      XLA_FFI_Future * future,
+      Call<XLA_FFI_Handler*>(handler, call_frame, options,
+                             static_cast<ExecutionStage>(stage)));
+  return BlockUntilReady(future);
+}
 
-  // If FFI handler returned synchronous error, it must not launch any
-  // asynchronous work that can also return an error.
-  if (error != nullptr) {
-    DCHECK_EQ(ffi_call_frame.future, nullptr)
-        << "Error must not be used together with a future";
-  }
+tsl::AsyncValueRef<tsl::Chain> CallAsync(Ffi& handler, CallFrame& call_frame,
+                                         const CallOptions& options,
+                                         ExecutionStage stage) {
+  TF_ASSIGN_OR_RETURN(XLA_FFI_Future * future,
+                      Call<Ffi>(handler, call_frame, options, stage));
+  return TakeFuture(future);
+}
 
-  // Wait for the completion of asynchronous work launched by the handler.
-  if (XLA_FFI_Future* future = ffi_call_frame.future;
-      ABSL_PREDICT_FALSE(future != nullptr)) {
-    absl::Cleanup delete_future = [&] { delete future; };
-    tsl::BlockUntilReady(future->async_value);
-    if (ABSL_PREDICT_FALSE(future->async_value.IsError())) {
-      return future->async_value.GetError();
-    }
-  }
-
-  return TakeStatus(error);
+tsl::AsyncValueRef<tsl::Chain> CallAsync(XLA_FFI_Handler* handler,
+                                         CallFrame& call_frame,
+                                         const CallOptions& options,
+                                         XLA_FFI_ExecutionStage stage) {
+  TF_ASSIGN_OR_RETURN(
+      XLA_FFI_Future * future,
+      Call<XLA_FFI_Handler*>(handler, call_frame, options,
+                             static_cast<ExecutionStage>(stage)));
+  return TakeFuture(future);
 }
 
 static XLA_FFI_Metadata BuildMetadata() {
