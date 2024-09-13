@@ -77,10 +77,10 @@ MemoryUsage GetMemoryUsage() {
 
 void MemoryUsage::AllStatsToStream(std::ostream* stream) const {
   *stream << "max resident set size/physical footprint = "
-          << mem_footprint_kb / 1024.0 << " MB, total non-mmapped heap size = "
-          << total_allocated_bytes / 1024.0 / 1024.0
+          << mem_footprint_kb / 1000.0 << " MB, total non-mmapped heap size = "
+          << total_allocated_bytes / 1000.0 / 1000.0
           << " MB, in-use heap size = "
-          << in_use_allocated_bytes / 1024.0 / 1024.0 << " MB";
+          << in_use_allocated_bytes / 1000.0 / 1000.0 << " MB";
 }
 
 }  // namespace memory
