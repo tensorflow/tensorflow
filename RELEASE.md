@@ -40,6 +40,12 @@
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 *   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
 
+*   `tf.lite`:
+    *   The LiteRT [repo](https://github.com/google-ai-edge/LiteRT) is
+    live (see [announcement](https://developers.googleblog.com/en/tensorflow-lite-is-now-litert/)), which means that in the coming months there will be changes to the development experience 
+    for TFLite. The TF Lite Runtime source will be moved later this year,
+    and sometime after that we will start accepting contributions through that repo.
+
 ### Bug Fixes and Other Changes
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
