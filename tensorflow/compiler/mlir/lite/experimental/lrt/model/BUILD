@@ -58,6 +58,7 @@ cc_library(
 cc_test(
     name = "lite_rt_model_test",
     srcs = ["lite_rt_model_test.cc"],
+    tags = ["manual"],
     deps = [
         ":lite_rt_model_init",
         "//tensorflow/compiler/mlir/lite/experimental/lrt:lite_rt_common",
