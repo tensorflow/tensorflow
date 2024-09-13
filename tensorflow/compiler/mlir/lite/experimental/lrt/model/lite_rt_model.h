@@ -115,6 +115,7 @@ struct LrtModelT {
   // Subgraphs that have been unpacked into usable types.
   std::vector<LrtSubgraphT> subgraphs;
 
+  // TODO: b/365299994 - Delete this.
   // Shared views of remaining unpacked flatbuffer data.
   std::vector<std::shared_ptr<tflite::SubGraphT>> flatbuffer_subgraphs;
 

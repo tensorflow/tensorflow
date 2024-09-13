@@ -16,7 +16,6 @@
 #define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_MODEL_LITE_RT_MODEL_INIT_H_
 
 #include "tensorflow/compiler/mlir/lite/experimental/lrt/api/lite_rt_model_api.h"
-#include "tensorflow/lite/schema/schema_generated.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -30,6 +29,12 @@ LrtStatus LoadModel(const uint8_t* buf, size_t buf_size, LrtModel* model);
 
 // Destroy model and any associated storage.
 void ModelDestroy(LrtModel model);
+
+// Serializes model to bytes. NOTE this destroys the model before it returns.
+// NOTE: Caller takes ownership of `buf`. Flatbuffers are packed into their
+// arrays back to front, so the valid flatbuffer is buf[offset, size].
+LrtStatus SerializeModel(LrtModel model, uint8_t** buf, size_t* size,
+                         size_t* offset);
 
 #ifdef __cplusplus
 }

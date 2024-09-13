@@ -23,6 +23,7 @@
 #include <cstdint>
 #include <list>
 #include <memory>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -38,6 +39,7 @@
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/stderr_reporter.h"
 
+// NOLINTBEGIN
 void SetFbVerifyOptions(flatbuffers::Verifier::Options& opts) {
 #ifndef NDEBUG
   opts.assert = true;
@@ -300,3 +302,159 @@ LrtStatus LoadModelFromFile(const char* path, LrtModel* model) {
 }
 
 void ModelDestroy(LrtModel model) { delete model; }
+
+//===----------------------------------------------------------------------===//
+//                                 Serialize                                  //
+//===----------------------------------------------------------------------===//
+
+class ModelRepacker {
+ public:
+  static LrtStatus Repack(LrtModel model);
+
+ private:
+  static void BuildOpCodeMap(LrtModel model,
+                             std::unordered_map<LrtOpCode, uint32_t>& map);
+
+  explicit ModelRepacker(LrtModel model) : model_(model) {
+    BuildOpCodeMap(model_, op_code_map_);
+  }
+
+  LrtStatus SerializeTensor(LrtTensor tensor, tflite::TensorT& target);
+
+  LrtStatus SerializeOp(
+      LrtOp op, tflite::OperatorT& target,
+      const std::unordered_map<LrtTensor, int32_t>& tensor_map);
+
+  LrtStatus SerializeSubgraph(LrtSubgraph subgraph, tflite::SubGraphT& target);
+
+  uint32_t SubmitBuffer(std::unique_ptr<tflite::BufferT> buffer) {
+    OldFb().buffers.push_back(std::move(buffer));
+    return OldFb().buffers.size() - 1;
+  }
+
+  tflite::ModelT& OldFb() { return *model_->flatbuffer_model; }
+
+  LrtModel model_;
+  std::unordered_map<LrtOpCode, uint32_t> op_code_map_;
+};
+
+void ModelRepacker::BuildOpCodeMap(
+    LrtModel model, std::unordered_map<LrtOpCode, uint32_t>& map) {
+  // TODO: b/365299994 - Also add partition/custom op to op code map.
+  const auto& codes = model->flatbuffer_model->operator_codes;
+  for (int i = 0; i < codes.size(); ++i) {
+    const auto tfl_code = codes[i]->builtin_code;
+    map.insert({static_cast<LrtOpCode>(tfl_code), i});
+  }
+}
+
+LrtStatus ModelRepacker::SerializeTensor(LrtTensor tensor,
+                                         tflite::TensorT& target) {
+  target.has_rank = true;
+  const auto& type = tensor->type_detail.ranked_tensor_type;
+  // TODO: b/365299994 - Map lrt element types to flatbuffer elements types.
+  target.type = tflite::TensorType_FLOAT32;
+
+  for (int i = 0; i < type.layout.rank; ++i) {
+    target.shape.push_back(type.layout.dimensions[i]);
+  }
+
+  target.buffer = SubmitBuffer(std::move(tensor->buffer.fb_buffer));
+
+  return StatusOk();
+}
+
+LrtStatus ModelRepacker::SerializeOp(
+    LrtOp op, tflite::OperatorT& target,
+    const std::unordered_map<LrtTensor, int32_t>& tensor_map) {
+  target.opcode_index = op_code_map_.at(op->op_code);
+
+  for (auto in : op->inputs) {
+    target.inputs.push_back(tensor_map.at(in));
+  }
+
+  for (auto out : op->outputs) {
+    target.outputs.push_back(tensor_map.at(out));
+  }
+
+  // TODO: b/365299994 - Support options in serialize.
+  // TODO: b/365299994 - Support exotic op fields in serialize.
+
+  return StatusOk();
+}
+
+LrtStatus ModelRepacker::SerializeSubgraph(LrtSubgraph subgraph,
+                                           tflite::SubGraphT& target) {
+  std::unordered_map<LrtTensor, int32_t> tensor_map;
+
+  for (auto tensor : subgraph->tensors) {
+    tensor_map.insert({tensor, tensor_map.size()});
+    target.tensors.push_back(std::make_unique<tflite::TensorT>());
+    LRT_RETURN_STATUS_IF_NOT_OK(
+        SerializeTensor(tensor, *target.tensors.back()));
+  }
+
+  for (auto op : subgraph->ops) {
+    target.operators.push_back(std::make_unique<tflite::OperatorT>());
+    LRT_RETURN_STATUS_IF_NOT_OK(
+        SerializeOp(op, *target.operators.back(), tensor_map));
+  }
+
+  for (auto in : subgraph->inputs) {
+    target.inputs.push_back(tensor_map.at(in));
+  }
+
+  for (auto out : subgraph->outputs) {
+    target.outputs.push_back(tensor_map.at(out));
+  }
+
+  return StatusOk();
+}
+
+LrtStatus ModelRepacker::Repack(LrtModel model) {
+  ModelRepacker repacker(model);
+
+  auto& target = repacker.OldFb();
+
+  target.subgraphs.clear();
+  target.buffers.clear();
+  target.buffers.push_back(std::make_unique<tflite::BufferT>());
+
+  for (auto& subgraph : model->subgraphs) {
+    target.subgraphs.push_back(std::make_unique<tflite::SubGraphT>());
+    LRT_RETURN_STATUS_IF_NOT_OK(
+        repacker.SerializeSubgraph(&subgraph, *target.subgraphs.back()));
+  }
+
+  return StatusOk();
+}
+
+LrtStatus SerializeModel(LrtModel model, uint8_t** buf, size_t* size,
+                         size_t* offset) {
+  // Destroy model before return.
+  UniqueLrtModel u_model(model);
+
+  LRT_RETURN_STATUS_IF_NOT_OK_MSG(ModelRepacker::Repack(model),
+                                  "Failed to repack model.");
+
+  flatbuffers::FlatBufferBuilder b;
+  auto model_offset = tflite::Model::Pack(b, model->flatbuffer_model.get());
+  tflite::FinishModelBuffer(b, model_offset);
+
+  size_t new_buf_size;
+  size_t new_buf_offset;
+
+  uint8_t* new_buf = b.ReleaseRaw(new_buf_size, new_buf_offset);
+
+  LRT_RETURN_STATUS_IF_NOT_OK_MSG(
+      VerifyFlatbuffer(new_buf + new_buf_offset, new_buf_size - new_buf_offset),
+      "Failed to verify flatbuffer");
+
+  *buf = new_buf;
+  *size = new_buf_size;
+  *offset = new_buf_offset;
+
+  return StatusOk();
+}
+
+// NOLINTEND

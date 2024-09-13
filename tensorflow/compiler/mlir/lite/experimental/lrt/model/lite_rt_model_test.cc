@@ -12,10 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <cstddef>
+#include <cstdint>
 // NOLINTNEXTLINE
 #include <filesystem>
 #include <fstream>
+#include <string>
 #include <string_view>
+#include <vector>
 
 #include <gmock/gmock.h>  // IWYU pragma: keep
 #include <gtest/gtest.h>
@@ -25,12 +29,48 @@
 #include "tensorflow/compiler/mlir/lite/experimental/lrt/api/lite_rt_model_api.h"
 #include "tensorflow/compiler/mlir/lite/experimental/lrt/lite_rt_common.h"
 #include "tensorflow/compiler/mlir/lite/experimental/lrt/lite_rt_op_code.h"
+#include "tensorflow/compiler/mlir/lite/experimental/lrt/lite_rt_support.h"
 #include "tensorflow/compiler/mlir/lite/experimental/lrt/model/lite_rt_model_init.h"
 #include "tensorflow/compiler/mlir/lite/experimental/lrt/test_data/test_data_util.h"
 
 namespace {
 
+inline UniqueLrtModel LoadModelThroughRoundTrip(std::string_view path) {
+  auto model = LoadTestFileModel(path);
+
+  uint8_t* buf = nullptr;
+  size_t buf_size;
+  size_t offset;
+
+  LRT_CHECK_STATUS_OK_MSG(
+      SerializeModel(model.release(), &buf, &buf_size, &offset),
+      "Failed to serialize model");
+
+  // Reload model.
+  LrtModel result = nullptr;
+  LRT_CHECK_STATUS_OK_MSG(LoadModel(buf + offset, buf_size - offset, &result),
+                          "Failed to re load model");
+  delete[] buf;
+
+  return UniqueLrtModel(result);
+}
+
 class TestWithPath : public ::testing::TestWithParam<std::string_view> {};
+
+class TopologyTest : public ::testing::TestWithParam<LrtModel> {
+ public:
+  static std::vector<LrtModel> MakeTestModels(
+      const std::vector<std::string>& paths) {
+    std::vector<LrtModel> result;
+
+    for (auto p : paths) {
+      result.push_back(LoadTestFileModel(p).release());
+      result.push_back(LoadModelThroughRoundTrip(p).release());
+    }
+
+    return result;
+  }
+};
 
 TEST(LrtModelTest, TestLoadTestDataBadFilepath) {
   LrtModel model = nullptr;
@@ -59,8 +99,24 @@ TEST(LrtModelTest, TestLoadTestDataBadFileData) {
   // NOLINTEND
 }
 
+TEST(TestSerializeModel, TestAllocations) {
+  auto model = LoadTestFileModel("add_simple.tflite");
+
+  uint8_t* buf = nullptr;
+  size_t buf_size;
+  size_t offset;
+
+  ASSERT_STATUS_OK(SerializeModel(model.release(), &buf, &buf_size, &offset));
+
+  delete[] buf;
+}
+
 TEST_P(TestWithPath, TestConstructDestroy) {
   UniqueLrtModel model = LoadTestFileModel(GetParam());
+}
+
+TEST_P(TestWithPath, TestConstructDestroyRoundTrip) {
+  UniqueLrtModel model = LoadModelThroughRoundTrip(GetParam());
 }
 
 INSTANTIATE_TEST_SUITE_P(InstTestWithPath, TestWithPath,
@@ -68,8 +124,10 @@ INSTANTIATE_TEST_SUITE_P(InstTestWithPath, TestWithPath,
                                            "add_cst.tflite",
                                            "simple_multi_op.tflite"));
 
-TEST(LrtModelTest, TestBuildModelAddSimple) {
-  auto model = LoadTestFileModel("add_simple.tflite");
+using AddSimpleTest = TopologyTest;
+
+TEST_P(AddSimpleTest, TestBuildModelAddSimple) {
+  UniqueLrtModel model(GetParam());
 
   // func(arg0)
   //  output = tfl.add(arg0, arg0)
@@ -108,8 +166,14 @@ TEST(LrtModelTest, TestBuildModelAddSimple) {
   ASSERT_TRUE(graph_tools::MatchNoBuffer(subgraph_inputs[0]));
 }
 
-TEST(LrtModelTest, TestBuildModelAddCst) {
-  auto model = LoadTestFileModel("add_cst.tflite");
+INSTANTIATE_TEST_SUITE_P(
+    AddSimpleTests, AddSimpleTest,
+    ::testing::ValuesIn(TopologyTest::MakeTestModels({"add_simple.tflite"})));
+
+using AddCstTest = TopologyTest;
+
+TEST_P(AddCstTest, TestBuildModelAddCst) {
+  UniqueLrtModel model(GetParam());
 
   // func(arg0)
   //  cst = ConstantTensor([1, 2, 3, 4])
@@ -150,8 +214,14 @@ TEST(LrtModelTest, TestBuildModelAddCst) {
   ASSERT_TRUE(graph_tools::MatchNoBuffer(subgraph_inputs[0]));
 }
 
-TEST(LrtModelTest, TestSimpleMultiAdd) {
-  auto model = LoadTestFileModel("simple_multi_op.tflite");
+INSTANTIATE_TEST_SUITE_P(
+    AddCstTests, AddCstTest,
+    ::testing::ValuesIn(TopologyTest::MakeTestModels({"add_cst.tflite"})));
+
+using SimpleMultiOpTest = TopologyTest;
+
+TEST_P(SimpleMultiOpTest, TestBuildModelSimpleMultiAdd) {
+  UniqueLrtModel model(GetParam());
 
   // func.func @main(arg0)
   //   0 = tfl.add arg0, arg0
@@ -186,5 +256,9 @@ TEST(LrtModelTest, TestSimpleMultiAdd) {
                                        {float_2by2_type, float_2by2_type},
                                        {float_2by2_type}, kLrtOpCodeTflMul));
 }
+
+INSTANTIATE_TEST_SUITE_P(SimpleMultiOpTests, SimpleMultiOpTest,
+                         ::testing::ValuesIn(TopologyTest::MakeTestModels(
+                             {"simple_multi_op.tflite"})));
 
 }  // namespace
