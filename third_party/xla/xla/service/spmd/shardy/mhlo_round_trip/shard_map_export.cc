@@ -300,7 +300,9 @@ class ShardMapExportPass
     }
   }
 
-  StringRef getArgument() const override { return "xla-sdy-shard-map-export"; }
+  StringRef getArgument() const override {
+    return "xla-mhlo-round-trip-shard-map-export";
+  }
 
   StringRef getDescription() const override {
     return "Replaces sdy::ManualComputationOp with the pattern that XLA "
@@ -314,12 +316,12 @@ class ShardMapExportPass
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> createShardMapExportPass() {
+std::unique_ptr<mlir::Pass> createMhloRoundTripShardMapExportPass() {
   return std::make_unique<ShardMapExportPass>();
 }
 
-void registerShardMapExportPass() {
-  mlir::registerPass(createShardMapExportPass);
+void registerMhloRoundTripShardMapExportPass() {
+  mlir::registerPass(createMhloRoundTripShardMapExportPass);
 }
 
 }  // namespace sdy

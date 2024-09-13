@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/service/spmd/shardy/sdy_round_trip/export_shardings.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/import_shardings.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
+#include "xla/service/spmd/shardy/sdy_round_trip/shard_map_export.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/test_utils/mhlo_to_hlo_to_mhlo.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/test_utils/testing_pipeline.h"
 
@@ -60,7 +61,7 @@ int main(int argc, char** argv) {
 
   xla::sdy::registerMhloExportPipeline();
   xla::sdy::registerMhloExportShardingsPass();
-  xla::sdy::registerShardMapExportPass();
+  xla::sdy::registerMhloRoundTripShardMapExportPass();
   xla::sdy::registerExportOpsPass();
 
   xla::sdy::registerSdyRoundTripMhloToHloToMhloPass();
@@ -68,6 +69,7 @@ int main(int argc, char** argv) {
   xla::sdy::registerSdyRoundTripImportShardingsPass();
   xla::sdy::registerSdyRoundTripExportOpsPass();
   xla::sdy::registerSdyRoundTripExportPipeline();
+  xla::sdy::registerSdyRoundTripShardMapExportPass();
   xla::sdy::registerSdyRoundTripImportPipeline();
   xla::sdy::registerSdyRoundTripTestingPipeline();
 

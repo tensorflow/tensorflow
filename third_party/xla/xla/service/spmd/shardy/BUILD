@@ -151,6 +151,7 @@ xla_cc_binary(
         "//xla/service/spmd/shardy/sdy_round_trip:export_shardings",
         "//xla/service/spmd/shardy/sdy_round_trip:import_shardings",
         "//xla/service/spmd/shardy/sdy_round_trip:pipelines",
+        "//xla/service/spmd/shardy/sdy_round_trip:shard_map_export",
         "//xla/service/spmd/shardy/sdy_round_trip/test_utils:mhlo_to_hlo_to_mhlo",
         "//xla/service/spmd/shardy/sdy_round_trip/test_utils:testing_pipeline",
         "@llvm-project//mlir:AllPassesAndDialects",

@@ -73,6 +73,24 @@ cc_library(
 )
 
 cc_library(
+    name = "shard_map_export",
+    srcs = ["shard_map_export.cc"],
+    hdrs = ["shard_map_export.h"],
+    deps = [
+        "//xla/service/spmd/shardy:constants",
+        "//xla/service/spmd/shardy:utils",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+cc_library(
     name = "pipelines",
     srcs = ["pipelines.cc"],
     hdrs = ["pipelines.h"],
