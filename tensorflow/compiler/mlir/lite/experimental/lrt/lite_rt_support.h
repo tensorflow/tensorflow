@@ -198,7 +198,7 @@ class LrtResult {
 #define LRT_ASSIGN_OR_RETURN_VAL(decl, expr, val) \
   _ASSIGN_OR_RETURN_VAL(decl, expr, val, _CONCAT_NAME(_result, __COUNTER__))
 
-#define _STATUS_FROM_RESULT(result) StatusFromCode(result.Code());
+#define _STATUS_FROM_RESULT(result) StatusCreate(result.Code());
 
 #define _ASSIGN_OR_RETURN_STATUS(decl, expr, result) \
   _ASSIGN_OR_RETURN_VAL(decl, expr, _STATUS_FROM_RESULT(result), result)
