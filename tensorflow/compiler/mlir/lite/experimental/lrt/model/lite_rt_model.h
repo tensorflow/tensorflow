@@ -117,4 +117,13 @@ struct LrtModelT {
   std::unique_ptr<tflite::ModelT> flatbuffer_model;
 };
 
+//
+// Utils
+//
+
+// Used for communicating selections of ops.
+struct LrtOpListT {
+  std::vector<LrtOp> ops;
+};
+
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_MODEL_LITE_RT_MODEL_H_

@@ -48,6 +48,11 @@ LrtStatus GetModelMainSubgraph(LrtModel model,
 
 void ModelDestroy(LrtModel model) { delete model; }
 
+LrtStatus PushOp(LrtOpList op_list, LrtOp op) {
+  op_list->ops.push_back(op);
+  return StatusOk();
+}
+
 //
 // Subgraph
 //
