@@ -23,6 +23,7 @@ package_group(
     packages = [
         "//tensorflow/core/tfrt/ifrt/...",
         "//third_party/australis/...",
+        "//third_party/gxlang/...",
         "//third_party/openxla_pjrt_plugin/...",
         "//third_party/py/jax/...",
     ],
