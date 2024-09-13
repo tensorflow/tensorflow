@@ -1,24 +1,3 @@
-# Packages needed to install Python from source
-# See https://github.com/pyenv/pyenv/wiki#suggested-build-environment
-build-essential
-curl
-libbz2-dev
-libffi-dev
-liblzma-dev
-libncurses5-dev
-libreadline-dev
-libsqlite3-dev
-libssl-dev
-libxml2-dev
-libxmlsec1-dev
-llvm
-make
-tk-dev
-wget
-xz-utils
-zlib1g-dev
-git
-
 # Packages needed to build devtoolset
 file
 flex
@@ -30,3 +9,26 @@ unar
 wget
 xz-utils
 cpio
+
+# Other build-related tools
+apt-transport-https
+autoconf
+automake
+build-essential
+ca-certificates
+llvm-18
+clang-18
+clang-tidy-18
+lld-18
+clang-format-12
+curl
+gdb
+git
+jq
+rsync
+sudo
+swig
+unzip
+vim
+zip
+

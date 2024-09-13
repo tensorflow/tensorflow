@@ -22,10 +22,14 @@ else
   PROFILE_JSON_PATH="$TFCI_OUTPUT_DIR/profile.json.gz"
 fi
 
+echo "quoct here in  pycpp.sh"
+docker ps -a
+tfrun bazel test $TFCI_BAZEL_COMMON_ARGS --profile "$PROFILE_JSON_PATH"  --config="${TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX}_pycpp_test"
+
 if [[ $TFCI_PYCPP_SWAP_TO_BUILD_ENABLE == 1 ]]; then
    tfrun bazel build $TFCI_BAZEL_COMMON_ARGS --profile "$PROFILE_JSON_PATH" --config="${TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX}_pycpp_test"
 else
-   tfrun bazel test $TFCI_BAZEL_COMMON_ARGS --profile "$PROFILE_JSON_PATH"  --config="${TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX}_pycpp_test"
+   tfrun bazel test $TFCI_BAZEL_COMMON_ARGS --profile "$PROFILE_JSON_PATH"  --config="${TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX}_pycpp_test" --test_sharding_strategy=disabled --action_env=LD_DEBUG=files,libs --action_env=NCCL_DEBUG=INFO
 fi
 
 # Note: the profile can be viewed by visiting chrome://tracing in a Chrome browser.

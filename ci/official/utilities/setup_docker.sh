@@ -23,12 +23,11 @@ if [[ "$TFCI_DOCKER_PULL_ENABLE" == 1 ]]; then
   docker pull "$TFCI_DOCKER_IMAGE"
 fi 
 
-if [[ "$TFCI_DOCKER_REBUILD_ENABLE" == 1 ]]; then
-  DOCKER_BUILDKIT=1 docker build --cache-from "$TFCI_DOCKER_IMAGE" -t "$TFCI_DOCKER_IMAGE" $TFCI_DOCKER_REBUILD_ARGS
-  if [[ "$TFCI_DOCKER_REBUILD_UPLOAD_ENABLE" == 1 ]]; then
-    docker push "$TFCI_DOCKER_IMAGE"
-  fi
-fi
+echo "quoct building $TFCI_DOCKER_IMAGE"
+DOCKER_BUILDKIT=1 docker build -t "$TFCI_DOCKER_IMAGE" $TFCI_DOCKER_REBUILD_ARGS
+
+echo "quoct done building $TFCI_DOCKER_IMAGE"
+docker image ls
 
 # Keep the existing "tf" container if it's already present.
 # The container is not cleaned up automatically! Remove it with:
@@ -49,6 +48,7 @@ if ! docker container inspect tf >/dev/null 2>&1 ; then
     echo "GCE_METADATA_HOST=$IP_ADDR" > $env_file
   fi
 
+  echo "quoct running bazel test"
   docker run $TFCI_DOCKER_ARGS --name tf -w "$WORKING_DIR" -itd --rm \
       -v "$TFCI_GIT_DIR:$WORKING_DIR" \
       --env-file "$env_file" \
@@ -61,6 +61,25 @@ if ! docker container inspect tf >/dev/null 2>&1 ; then
     CONTAINER_IP_ADDR=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' tf)
     netsh advfirewall firewall add rule name="Allow Metadata Proxy" dir=in action=allow protocol=TCP localport=80 remoteip="$CONTAINER_IP_ADDR"
   fi
+
+  echo "quoct getting logs"
+  docker logs -f tf
+
+  echo "quoct hereeee"
+  docker ps -a
+  docker inspect tf
+
+  docker exec --gpus all -v /home/kbuilder/.config/gcloud:/root/.config/gcloud --name tf -w /tmpfs/src/copybara -t --rm -v /tmpfs/src/copybara:/tmpfs/src/copybara --env-file "$env_file" gcr.io/tensorflow-sigs/build:674430781-python3.10 -- bazel test --repo_env=TF_PYTHON_VERSION=3.11 --config release_gpu_linux --config rbe_linux_cuda --profile /tmpfs/src/copybara/build_output/profile.json.gz --config=linux_cuda_pycpp_test
+
+  sleep 10;
+  echo "quoct inspecting"
+  docker ps -a
+  docker inspect tf
+
+  sleep 60;
+  echo "quoct inspecting"
+  docker ps -a
+  docker inspect tf
 
 fi
 tfrun() { docker exec tf "$@"; }

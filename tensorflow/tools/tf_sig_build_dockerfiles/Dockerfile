@@ -1,11 +1,20 @@
 ################################################################################
-FROM ubuntu:22.04@sha256:adbb90115a21969d2fe6fa7f9af4253e16d45f8d4c1e930182610c4731962658 as builder
+FROM nvcr.io/nvidia/driver:550-5.15.0-1065-nvidia-ubuntu22.04 AS devel
 ################################################################################
 
+RUN echo "quoct test"
+
 # Install devtoolset build dependencies
-COPY setup.packages.sh setup.packages.sh
-COPY builder.packages.txt builder.packages.txt
-RUN /setup.packages.sh /builder.packages.txt
+COPY setup.sources.sh /setup.sources.sh
+COPY setup.packages.sh /setup.packages.sh
+COPY builder.packages.txt /builder.packages.txt
+
+RUN ls -l
+RUN ls -l /setup.sources.sh
+RUN ls -l /setup.packages.sh
+RUN ls -l /builder.packages.txt
+
+RUN /setup.sources.sh && /setup.packages.sh /builder.packages.txt
 
 # Install devtoolset-9 in /dt9 with glibc 2.17 and libstdc++ 4.8, for building
 # manylinux2014-compatible packages.
@@ -14,19 +23,6 @@ COPY builder.devtoolset/rpm-patch.sh /rpm-patch.sh
 COPY builder.devtoolset/build_devtoolset.sh /build_devtoolset.sh
 COPY builder.devtoolset/glibc2.17-inline.patch /glibc2.17-inline.patch
 RUN /build_devtoolset.sh devtoolset-9 /dt9
-
-################################################################################
-FROM nvidia/cuda:12.3.2-base-ubuntu22.04@sha256:8cecfe099315f73127d6d5cc43fce32c7ffff4ea0460eefac48f2b7d811ce857 as devel
-################################################################################
-COPY --from=builder /dt9 /dt9
-
-# Install required development packages but delete unneeded CUDA bloat
-# CUDA must be cleaned up in the same command to prevent Docker layer bloating
-COPY setup.sources.sh /setup.sources.sh
-COPY setup.packages.sh /setup.packages.sh
-COPY setup.cuda.sh /setup.cuda.sh
-COPY devel.packages.txt /devel.packages.txt
-RUN /setup.sources.sh && /setup.packages.sh /devel.packages.txt && /setup.cuda.sh
 
 # Make sure clang is on the path
 RUN ln -s /usr/lib/llvm-18/bin/clang /usr/bin/clang
@@ -57,10 +53,10 @@ ARG CACHEBUSTER=0
 RUN echo $CACHEBUSTER
 
 # Setup Python environment. PYTHON_VERSION is e.g. "python3.8"
-ARG PYTHON_VERSION
-COPY setup.python.sh /setup.python.sh
-COPY devel.requirements.txt /devel.requirements.txt
-RUN /setup.python.sh $PYTHON_VERSION devel.requirements.txt
+#ARG PYTHON_VERSION
+#COPY setup.python.sh /setup.python.sh
+#COPY devel.requirements.txt /devel.requirements.txt
+#RUN /setup.python.sh $PYTHON_VERSION devel.requirements.txt
 
 # Setup build and environment
 COPY devel.usertools /usertools
