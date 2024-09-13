@@ -256,6 +256,11 @@ TEST_P(NVPTXCompilationTests, CompileProgram) {
               tsl::testing::IsOkAndHolds(::testing::NotNull()));
 }
 
+MATCHER(MatchesSectionNameAndBinarySize, "") {
+  return std::get<0>(arg).first == std::get<1>(arg).first &&
+         std::get<0>(arg).second.size() == std::get<1>(arg).second.size();
+}
+
 TEST_P(NVPTXCompilationTests, CompareBinaryOutput) {
   std::string_view name = std::get<0>(GetParam());
   std::string_view hlo_text = GetHlo(name);
@@ -278,15 +283,10 @@ TEST_P(NVPTXCompilationTests, CompareBinaryOutput) {
   absl::StatusOr<std::unique_ptr<Executable>> executable =
       compile(compilation_method, linking_method);
 
-  // Non parallel compilation (PtxLinkingMethod::kNone) generates slightly
-  // different code (different register assignment, different instruction
-  // ordering). Ideally we would do a fuzzy match, but for now let's just not
-  // compare between parallel and non-parallel compilation.
-  const PtxLinkingMethod reference_linking_method =
-      linking_method == PtxLinkingMethod::kNone ? PtxLinkingMethod::kNone
-                                                : PtxLinkingMethod::kNvLink;
+  constexpr PtxLinkingMethod kReferenceLinkingMethod =
+      PtxLinkingMethod::kNvJitLink;
   absl::StatusOr<std::unique_ptr<Executable>> reference =
-      compile(PtxCompilationMethod::kPtxas, reference_linking_method);
+      compile(PtxCompilationMethod::kPtxas, kReferenceLinkingMethod);
 
   EXPECT_THAT(executable, tsl::testing::IsOkAndHolds(::testing::NotNull()));
   EXPECT_THAT(reference, tsl::testing::IsOkAndHolds(::testing::NotNull()));
@@ -349,7 +349,21 @@ TEST_P(NVPTXCompilationTests, CompareBinaryOutput) {
   TF_ASSERT_OK_AND_ASSIGN(auto reference_text_sections,
                           get_text_sections(reference_binary));
 
-  EXPECT_THAT(executable_text_sections, ::testing::Eq(reference_text_sections));
+  if (linking_method == kReferenceLinkingMethod) {
+    EXPECT_THAT(executable_text_sections,
+                ::testing::Eq(reference_text_sections));
+    return;
+  }
+
+  // Different linking methods lead to slightly different code (different
+  // register assignment, different instruction ordering). Ideally we would
+  // disassemble the code and check for equivalence, but for now let's only
+  // compare the text section names and their sizes. If it turns out that
+  // this doesn't bring the necessary coverage or that it's too unstable
+  // we have to revisit that.
+  EXPECT_THAT(executable_text_sections,
+              ::testing::Pointwise(MatchesSectionNameAndBinarySize(),
+                                   reference_text_sections));
 }
 
 INSTANTIATE_TEST_SUITE_P(
