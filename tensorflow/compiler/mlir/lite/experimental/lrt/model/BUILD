@@ -63,6 +63,7 @@ cc_test(
         ":lite_rt_model_init",
         "//tensorflow/compiler/mlir/lite/experimental/lrt:lite_rt_common",
         "//tensorflow/compiler/mlir/lite/experimental/lrt:lite_rt_op_code",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt:lite_rt_support",
         "//tensorflow/compiler/mlir/lite/experimental/lrt/api:graph_tools",
         "//tensorflow/compiler/mlir/lite/experimental/lrt/api:lite_rt_model_api",
         "//tensorflow/compiler/mlir/lite/experimental/lrt/test_data:test_data_util",

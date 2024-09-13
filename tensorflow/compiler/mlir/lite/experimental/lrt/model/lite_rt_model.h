@@ -15,6 +15,11 @@
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_MODEL_LITE_RT_MODEL_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_MODEL_LITE_RT_MODEL_H_
 
+#ifndef NDEBUG
+#include <cstdio>
+#include <iostream>
+#endif
+
 #include <list>
 #include <vector>
 
@@ -125,5 +130,94 @@ struct LrtModelT {
 struct LrtOpListT {
   std::vector<LrtOp> ops;
 };
+
+namespace debug {
+
+// TODO: b/365299994 - Flesh out printing api and move elsewhere.
+inline void DumpOp(LrtOp op) {
+#ifndef NDEBUG
+  using DumpInfo = std::pair<std::vector<std::string>, std::string>;
+
+  auto op_name = [&](LrtOp op) -> std::string {
+    switch (op->op_code) {
+      case kLrtOpCodeTflAdd:
+        return "TFL_ADD";
+      case kLrtOpCodeTflMul:
+        return "TFL_MUL";
+      case kLrtOpCodeTflCustom:
+        return "TFL_CUSTOM_OP";
+      default:
+        return "UKNOWN_OP_CODE";
+    }
+  };
+
+  // TODO: b/365299994 - Pull tensor dump into separate functiona nd
+  // only dump relevant topology when called in DumpOp.
+  auto tensor_dump = [&](LrtTensor tensor) -> DumpInfo {
+    DumpInfo result;
+
+    for (int i = 0; i < tensor->users.size(); ++i) {
+      auto& user = result.first.emplace_back();
+      char* s;
+      asprintf(&s, "%s [%lu], ", op_name(tensor->users[i]).c_str(),
+               tensor->user_arg_inds[i]);
+      user.assign(s);
+      free(s);
+    }
+
+    if (tensor->defining_op != nullptr) {
+      char* s;
+      asprintf(&s, "%s [%lu], ", op_name(tensor->defining_op).c_str(),
+               tensor->defining_op_out_ind);
+      result.second.assign(s);
+      free(s);
+    } else {
+      result.second = "NO DEF OP";
+    }
+
+    return result;
+  };
+
+  auto validate_tensor = [](LrtTensor tensor) -> void {
+    if (tensor->users.size() != tensor->user_arg_inds.size()) {
+      LRT_FATAL("Invalid tensor.");
+    }
+  };
+
+  auto print_dump = [](const DumpInfo& info) {
+    std::cerr << "    DEFINING OP: " << info.second << "\n";
+    for (const auto& user : info.first) {
+      std::cerr << "    USER:        " << user << "\n";
+    }
+  };
+
+  std::cerr << op_name(op) << " {\n";
+
+  for (auto inp : op->inputs) {
+    validate_tensor(inp);
+    std::cerr << "  INPUT: \n";
+    print_dump(tensor_dump(inp));
+    std::cerr << "\n";
+  }
+
+  for (auto out : op->outputs) {
+    validate_tensor(out);
+    std::cerr << "  OUTPUT:\n";
+    print_dump(tensor_dump(out));
+    if (out != op->outputs.back()) {
+      std::cerr << "\n";
+    }
+  }
+
+  std::cerr << "}\n";
+#endif
+}
+
+}  // namespace debug
+
+// TODO: b/365299994 - Make dumping a generic streamable.
+#define LRT_DUMP_OP(op) \
+  _LRT_D_MSG("");       \
+  debug::DumpOp(op);
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_MODEL_LITE_RT_MODEL_H_

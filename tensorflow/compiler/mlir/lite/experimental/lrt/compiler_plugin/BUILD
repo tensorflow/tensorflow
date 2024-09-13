@@ -26,3 +26,28 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/experimental/lrt/api:lite_rt_model_api",
     ],
 )
+
+cc_library(
+    name = "algo",
+    hdrs = ["algo.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/lite/experimental/lrt:lite_rt_op_code",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/api:lite_rt_model_api",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/model:lite_rt_model",
+    ],
+)
+
+cc_test(
+    name = "algo_test",
+    srcs = ["algo_test.cc"],
+    tags = ["no_oss"],
+    deps = [
+        ":algo",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt:lite_rt_op_code",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/api:graph_tools",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/api:lite_rt_model_api",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/model:lite_rt_model",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/test_data:test_data_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
