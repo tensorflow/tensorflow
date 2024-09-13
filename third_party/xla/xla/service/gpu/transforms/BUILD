@@ -1890,6 +1890,7 @@ cc_library(
         "//xla/service:logical_buffer",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:cublas_cudnn",
+        "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:matmul_utils",
         "//xla/service/gpu:reduction_utils",
         "//xla/service/gpu:stream_executor_util",
