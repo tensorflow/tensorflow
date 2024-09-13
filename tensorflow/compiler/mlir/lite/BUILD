@@ -1758,6 +1758,7 @@ cc_library(
     copts = tflite_copts_warnings(),
     visibility = [
         "//tensorflow/compiler/mlir/lite/core:__pkg__",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt:__subpackages__",
         "//tensorflow/lite:__pkg__",
         "//tensorflow/lite/core:__pkg__",
     ],

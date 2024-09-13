@@ -18,19 +18,17 @@ package(
 )
 
 # TODO: b/365295276 - Make custom rule and move to `.sh`.
-IN_DIR = "third_party/tensorflow/compiler/mlir/lite/experimental/lrt/test_data"
 
 OUT_DIR = "$(RULEDIR)"
 
 CONVERTER = "//tensorflow/compiler/mlir/lite:tf_tfl_translate"
 
 CMD = """
-for mlir_file in {in_dir}/*.mlir; do
+for mlir_file in $(SRCS); do
     $(location {converter}) --input-mlir $$mlir_file --o={out_dir}/$$(basename $$mlir_file .mlir).tflite
 done
 """.format(
     converter = CONVERTER,
-    in_dir = IN_DIR,
     out_dir = OUT_DIR,
 )
 
@@ -40,4 +38,18 @@ genrule(
     outs = [s.removesuffix(".mlir") + ".tflite" for s in glob(["*.mlir"])],
     cmd = CMD,
     tools = ["//tensorflow/compiler/mlir/lite:tf_tfl_translate"],
+)
+
+cc_library(
+    name = "test_data_util",
+    testonly = 1,
+    hdrs = ["test_data_util.h"],
+    data = [":tflite_test_data"],
+    deps = [
+        "//tensorflow/compiler/mlir/lite/experimental/lrt:lite_rt_support",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/api:lite_rt_model_api",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/model:lite_rt_model_init",
+        "@com_google_absl//absl/log:check",
+        "@local_tsl//tsl/platform",
+    ],
 )

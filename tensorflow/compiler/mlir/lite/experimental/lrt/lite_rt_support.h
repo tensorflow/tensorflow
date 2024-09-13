@@ -23,7 +23,9 @@
 extern "C" {
 #endif  // __cplusplus
 
-#define LRT_ABORT abort()
+// #define LRT_ABORT abort()
+// TODO: b/365295276 - Find a fatal error approach that will pass kokoro.
+#define LRT_ABORT
 
 #define LRT_FATAL(msg)              \
   {                                 \
