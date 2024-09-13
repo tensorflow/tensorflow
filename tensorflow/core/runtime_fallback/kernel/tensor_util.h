@@ -63,16 +63,16 @@ tfrt::AsyncValueRef<TensorWrapperType> TransferTensorToDevice(
   if (src.dtype() == tensorflow::DT_VARIANT) {
     attr.set_on_host(true);
   }
-  tensorflow::Tensor dst(dst_device->GetAllocator(attr), src.dtype(),
-                         src.shape());
+  auto dst_ref = tfrt::MakeAvailableAsyncValueRef<tensorflow::Tensor>(
+      dst_device->GetAllocator(attr), src.dtype(), src.shape());
   if (src.shape().num_elements() == 0) {
-    return tfrt::MakeAvailableAsyncValueRef<TensorWrapperType>(dst);
+    return tfrt::MakeAvailableAsyncValueRef<TensorWrapperType>(dst_ref.get());
   }
 
   auto result = tfrt::MakeUnconstructedAsyncValueRef<TensorWrapperType>();
   bool enqueued = tfrt::EnqueueBlockingWork(
       exec_ctx.host(), [result = result.CopyRef(), src_cpu, dst_cpu, src_device,
-                        dst_device, src, dst = std::move(dst)]() mutable {
+                        dst_device, src, dst_ref = dst_ref]() mutable {
         tensorflow::DeviceContext* src_device_context = nullptr;
         if (!src_cpu) {
           src_device_context =
@@ -95,21 +95,18 @@ tfrt::AsyncValueRef<TensorWrapperType> TransferTensorToDevice(
           result.SetError(absl::InternalError(s.message()));
           return;
         }
-        tensorflow::Notification n;
-        tensorflow::Status status;
         tensorflow::CopyTensor::ViaDMA(
             "copy", src_device_context, dst_device_context, src_device,
             dst_device, tensorflow::AllocatorAttributes(),
-            tensorflow::AllocatorAttributes(), &src, &dst,
+            tensorflow::AllocatorAttributes(), &src, &dst_ref.get(),
             0 /*dev_to_dev_stream_index*/,
-            [&status, &n](const tensorflow::Status& s) {
-              status = s;
-              n.Notify();
+            [dst_ref = dst_ref, result = result](const tensorflow::Status& s) {
+              if (s.ok()) {
+                result.emplace(dst_ref.get());
+              } else {
+                result.SetError(absl::InternalError(s.message()));
+              }
             });
-        n.WaitForNotification();
-        if (status.ok()) {
-          result.emplace(std::move(dst));
-        }
       });
 
   if (!enqueued) {
