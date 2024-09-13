@@ -1387,6 +1387,10 @@ class Context:
     gpu_options = self._compute_gpu_options()
     config.gpu_options.MergeFrom(gpu_options)
 
+    # Configure pluggable_device_options
+    pluggable_device_options = self._compute_pluggable_device_options()
+    config.pluggable_device_options.MergeFrom(pluggable_device_options)
+
     # Configure collective ops
     if self._collective_leader:
       config.experimental.collective_group_leader = self._collective_leader
@@ -1413,18 +1417,22 @@ class Context:
 
     return config
 
-  def _compute_gpu_options(self):
-    """Build the GPUOptions proto."""
+  def _compute_device_options(self, device_type="GPU"):
+    """Build the GPUOptions proto for GPU or PluggableDevice."""
+    if device_type not in ["GPU", "PluggableDevice"]:
+      raise ValueError(
+          "device types other than GPU and PluggableDevice are not supported."
+      )
     visible_device_list = []
     virtual_devices = []
     gpu_index = -1
     memory_growths = set()
-    gpu_devices = self.list_physical_devices("GPU")
-    pluggable_devices = self._pluggable_devices
-    compatible_devices = gpu_devices
-    for dev in pluggable_devices:
-      if dev not in gpu_devices:
-        compatible_devices.append(dev)
+    compatible_devices = (
+        self.list_physical_devices("GPU")
+        if device_type == "GPU"
+        else self._pluggable_devices
+    )
+    support_virtual_devices = device_type == "GPU"
     for dev in compatible_devices:
       gpu_index += 1
 
@@ -1435,7 +1443,7 @@ class Context:
       memory_growths.add(growth)
       visible_device_list.append(str(gpu_index))
 
-      if self._virtual_device_map:
+      if support_virtual_devices and self._virtual_device_map:
         vdevs = self._virtual_device_map.get(dev, [])
         device_ordinals = []
         device_limits = []
@@ -1481,6 +1489,14 @@ class Context:
             virtual_devices=virtual_devices
         ),
     )
+
+  def _compute_gpu_options(self):
+    """Build the GPUOptions proto for GPU."""
+    return self._compute_device_options(device_type="GPU")
+
+  def _compute_pluggable_device_options(self):
+    """Build the GPUOptions proto for PluggableDevice."""
+    return self._compute_device_options(device_type="PluggableDevice")
 
   @property
   def function_call_options(self):
