@@ -125,21 +125,6 @@ cc_library(
 )
 
 cc_library(
-    name = "rocm_activation",
-    srcs = [],
-    hdrs = if_rocm_is_configured(["rocm_activation.h"]),
-    deps = if_rocm_is_configured([
-        # keep sorted
-        ":rocm_driver",
-        "//xla/stream_executor",
-        "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor/gpu:gpu_activation",
-        "//xla/stream_executor/platform",
-        "@local_config_rocm//rocm:rocm_headers",
-    ]),
-)
-
-cc_library(
     name = "rocm_event",
     srcs = if_rocm_is_configured(["rocm_event.cc"]),
     hdrs = if_rocm_is_configured(["rocm_event.h"]),
