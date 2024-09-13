@@ -22,7 +22,6 @@ limitations under the License.
 #include "xla/service/spmd/shardy/round_trip_common/convert_sharding_custom_calls.h"
 #include "xla/service/spmd/shardy/round_trip_common/import_constants.h"
 #include "xla/service/spmd/shardy/round_trip_common/open_while_free_vars_sharding.h"
-#include "xla/service/spmd/shardy/round_trip_common/shard_map_import.h"
 
 namespace xla {
 namespace sdy {
@@ -52,7 +51,6 @@ void addCommonPreImportPasses(mlir::OpPassManager& pm) {
 }
 
 void addCommonPostImportPasses(mlir::OpPassManager& pm) {
-  pm.addPass(createShardMapImportPass());
   pm.addPass(createConvertShardingCustomCallsPass());
   pm.addNestedPass<FuncOp>(createOpenWhileFreeVarsShardingPass());
 }

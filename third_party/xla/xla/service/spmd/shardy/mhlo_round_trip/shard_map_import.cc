@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/spmd/shardy/round_trip_common/shard_map_import.h"
+#include "xla/service/spmd/shardy/mhlo_round_trip/shard_map_import.h"
 
 #include <cstdint>
 #include <memory>
@@ -503,11 +503,13 @@ class ShardMapImportPass
     }
   }
 
-  StringRef getArgument() const override { return "xla-sdy-shard-map-import"; }
+  StringRef getArgument() const override {
+    return "xla-mhlo-round-trip-shard-map-import";
+  }
 
   StringRef getDescription() const override {
-    return "Replaces a CallOp pattern unique to JAX shard_map with a "
-           "ManualComputationOp.";
+    return "Replaces a CallOp pattern unique to JAX shard_map through GSPMD "
+           "lowering with a ManualComputationOp.";
   }
 
   void getDependentDialects(mlir::DialectRegistry& registry) const final {
@@ -517,12 +519,12 @@ class ShardMapImportPass
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> createShardMapImportPass() {
+std::unique_ptr<mlir::Pass> createMhloRoundTripShardMapImportPass() {
   return std::make_unique<ShardMapImportPass>();
 }
 
-void registerShardMapImportPass() {
-  mlir::registerPass(createShardMapImportPass);
+void registerMhloRoundTripShardMapImportPass() {
+  mlir::registerPass(createMhloRoundTripShardMapImportPass);
 }
 
 }  // namespace sdy

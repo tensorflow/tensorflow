@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/spmd/shardy/constants.h"
+#include "xla/service/spmd/shardy/mhlo_round_trip/shard_map_import.h"
 #include "xla/service/spmd/shardy/round_trip_common/pipeline_passes.h"
 #include "xla/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/util.h"
@@ -647,6 +648,7 @@ void addMhloImportPipeline(mlir::OpPassManager& pm,
   addCommonPreImportPasses(pm);
   pm.addPass(createImportShardingsPass(allowPropagationToArgs,
                                        allowPropagationToResults));
+  pm.addPass(createMhloRoundTripShardMapImportPass());
   addCommonPostImportPasses(pm);
 }
 
