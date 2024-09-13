@@ -28,7 +28,6 @@ cc_library(
         "sparsify_model.h",
     ],
     deps = [
-        "//tensorflow/compiler/mlir/lite:common",
         "//tensorflow/compiler/mlir/lite:flatbuffer_translate_lib",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_d2s",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
@@ -43,6 +42,7 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
     ],
 )
 

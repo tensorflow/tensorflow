@@ -81,6 +81,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
 #include "tensorflow/compiler/mlir/lite/core/c/builtin_op_data.h"
 #include "tensorflow/compiler/mlir/lite/core/macros.h"
 #include "tensorflow/compiler/mlir/lite/delegates/flex/allowlisted_flex_ops.h"
@@ -114,7 +115,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/tstring.h"
-#include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/tools/versioning/op_version.h"
 #include "tensorflow/lite/tools/versioning/runtime_version.h"
 #include "tsl/platform/fingerprint.h"
@@ -548,7 +548,7 @@ class Translator {
   // the serialized output. Returns std::nullopt on unsupported, invalid inputs
   // or internal error.
   static std::optional<std::string> Translate(
-      ModuleOp module, const toco::TocoFlags& toco_flags,
+      ModuleOp module, const tflite::ConverterFlags& converter_flags,
       const std::unordered_set<std::string>& tags,
       OpOrArgNameMapper* op_or_arg_name_mapper,
       const std::map<std::string, std::string>& metadata,
@@ -557,7 +557,8 @@ class Translator {
 
  private:
   enum class OpType : char { kTfliteBuiltin, kSelectTf, kCustomOp };
-  explicit Translator(ModuleOp module, const toco::TocoFlags& toco_flags,
+  explicit Translator(ModuleOp module,
+                      const tflite::ConverterFlags& converter_flags,
                       const std::unordered_set<std::string>& saved_model_tags,
                       OpOrArgNameMapper* op_or_arg_name_mapper,
                       const std::map<std::string, std::string>& metadata,
@@ -566,24 +567,24 @@ class Translator {
         name_mapper_(*op_or_arg_name_mapper),
         builder_(kInitialBufferSize),
         saved_model_tags_(saved_model_tags),
-        allow_all_select_tf_ops_(toco_flags.allow_all_select_tf_ops()),
-        select_user_tf_ops_(toco_flags.select_user_tf_ops().begin(),
-                            toco_flags.select_user_tf_ops().end()),
+        allow_all_select_tf_ops_(converter_flags.allow_all_select_tf_ops()),
+        select_user_tf_ops_(converter_flags.select_user_tf_ops().begin(),
+                            converter_flags.select_user_tf_ops().end()),
         metadata_(metadata),
-        supported_backends_(toco_flags.supported_backends().begin(),
-                            toco_flags.supported_backends().end()),
-        use_buffer_offset_(toco_flags.use_buffer_offset()),
+        supported_backends_(converter_flags.supported_backends().begin(),
+                            converter_flags.supported_backends().end()),
+        use_buffer_offset_(converter_flags.use_buffer_offset()),
         custom_option_alignment_(custom_option_alignment) {
     // The first buffer must be empty according to the schema definition.
     empty_buffer_ = tflite::CreateBuffer(builder_);
     buffers_.push_back(empty_buffer_);
-    if (!toco_flags.force_select_tf_ops()) {
+    if (!converter_flags.force_select_tf_ops()) {
       enabled_op_types_.emplace(OpType::kTfliteBuiltin);
     }
-    if (toco_flags.enable_select_tf_ops()) {
+    if (converter_flags.enable_select_tf_ops()) {
       enabled_op_types_.emplace(OpType::kSelectTf);
     }
-    if (toco_flags.allow_custom_ops()) {
+    if (converter_flags.allow_custom_ops()) {
       enabled_op_types_.emplace(OpType::kCustomOp);
     }
     tf_dialect_ =
@@ -3404,7 +3405,7 @@ bool UpdateEntryFunction(ModuleOp module) {
 }
 
 std::optional<std::string> Translator::Translate(
-    ModuleOp module, const toco::TocoFlags& toco_flags,
+    ModuleOp module, const tflite::ConverterFlags& converter_flags,
     const std::unordered_set<std::string>& tags,
     OpOrArgNameMapper* op_or_arg_name_mapper,
     const std::map<std::string, std::string>& metadata,
@@ -3416,16 +3417,16 @@ std::optional<std::string> Translator::Translate(
   if (!UpdateEntryFunction(module)) return std::nullopt;
   if (!IsValidTFLiteMlirModule(module)) return std::nullopt;
   auto translator = std::unique_ptr<Translator>(
-      new Translator(module, toco_flags, tags, op_or_arg_name_mapper, metadata,
-                     custom_option_alignment));
+      new Translator(module, converter_flags, tags, op_or_arg_name_mapper,
+                     metadata, custom_option_alignment));
   translator->convert_stablehlo_ = serialize_stablehlo_ops;
   auto ret = translator->TranslateInternal();
   if (translator->require_use_buffer_offset_) {
     ret = std::nullopt;
-    auto new_toco_flags = toco_flags;
-    new_toco_flags.set_use_buffer_offset(true);
+    auto new_converter_flags = converter_flags;
+    new_converter_flags.set_use_buffer_offset(true);
     translator = std::unique_ptr<Translator>(
-        new Translator(module, new_toco_flags, tags, op_or_arg_name_mapper,
+        new Translator(module, new_converter_flags, tags, op_or_arg_name_mapper,
                        metadata, custom_option_alignment));
     return translator->TranslateInternal();
   }
@@ -3932,7 +3933,7 @@ bool MlirToFlatBufferTranslateFunction(mlir::ModuleOp module,
                                        std::string* serialized_flatbuffer,
                                        bool serialize_stablehlo_ops) {
   auto maybe_translated = Translator::Translate(
-      module, options.toco_flags, options.saved_model_tags,
+      module, options.converter_flags, options.saved_model_tags,
       options.op_or_arg_name_mapper, options.metadata, serialize_stablehlo_ops,
       options.custom_option_alignment);
   if (!maybe_translated) return false;

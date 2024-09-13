@@ -1452,6 +1452,9 @@ cc_library(
     }) +
     # The TF proto implementations that we will statically link here.
     [
+        "//tensorflow/compiler/mlir/lite:model_flags_proto_cc_impl",
+        "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc_impl",
+        "//tensorflow/compiler/mlir/lite:types_proto_cc_impl",
         "//tensorflow/compiler/mlir/lite/debug:debug_options_proto_cc_impl",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc_impl",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_options_proto_cc_impl",

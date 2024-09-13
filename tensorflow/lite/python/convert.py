@@ -24,6 +24,9 @@ import tempfile as _tempfile
 from typing import Optional
 import warnings
 
+from tensorflow.compiler.mlir.lite import converter_flags_pb2 as _conversion_flags_pb2
+from tensorflow.compiler.mlir.lite import model_flags_pb2 as _model_flags_pb2
+from tensorflow.compiler.mlir.lite import types_pb2 as _types_pb2
 from tensorflow.compiler.mlir.lite.metrics import converter_error_data_pb2
 from tensorflow.compiler.mlir.lite.python import wrap_converter
 from tensorflow.compiler.mlir.quantization.stablehlo import quantization_config_pb2
@@ -35,9 +38,6 @@ from tensorflow.lite.python.convert_phase import convert_phase
 from tensorflow.lite.python.convert_phase import ConverterError
 from tensorflow.lite.python.convert_phase import SubComponent
 from tensorflow.lite.python.metrics.wrapper import metrics_wrapper as _metrics_wrapper
-from tensorflow.lite.toco import model_flags_pb2 as _model_flags_pb2
-from tensorflow.lite.toco import toco_flags_pb2 as _conversion_flags_pb2
-from tensorflow.lite.toco import types_pb2 as _types_pb2
 from tensorflow.lite.tools import flatbuffer_utils
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
@@ -47,7 +47,7 @@ from tensorflow.python.util.tf_export import tf_export as _tf_export
 
 
 def _is_quantized_input_stats_required(
-    conversion_flags: _conversion_flags_pb2.TocoFlags,
+    conversion_flags: _conversion_flags_pb2.ConverterFlags,
 ) -> bool:
   """Checks if the `quantized_input_stats` flag is required for conversion.
 
@@ -81,7 +81,7 @@ def convert_tensor_tf_type_to_tflite_type(
     ValueError: If `tf_type` is unsupported.
 
   Returns:
-    tflite_type: TFLite type. Refer to lite/toco/types.proto.
+    tflite_type: TFLite type. Refer to compiler/mlir/lite/types.proto.
   """
   mapping = {
       dtypes.float16: _types_pb2.FLOAT16,
@@ -125,7 +125,7 @@ def convert_inference_tf_type_to_tflite_type(
     ValueError: If `tf_type` is unsupported.
 
   Returns:
-    tflite_type: TFLite type. Refer to lite/toco/types.proto.
+    tflite_type: TFLite type. Refer to compiler/mlir/lite/types.proto.
   """
   mapping = {
       dtypes.float32: _types_pb2.FLOAT,
@@ -312,7 +312,7 @@ def register_custom_opdefs(custom_opdefs_list):
 
 def convert(
     model_flags: _model_flags_pb2.ModelFlags,
-    conversion_flags: _conversion_flags_pb2.TocoFlags,
+    conversion_flags: _conversion_flags_pb2.ConverterFlags,
     input_data_str: Optional[str] = None,
     debug_info_str: Optional[str] = None,
     enable_mlir_converter: bool = True,
@@ -322,7 +322,7 @@ def convert(
   Args:
     model_flags: Proto describing model properties, see `model_flags.proto`.
     conversion_flags: Proto describing conversion properties, see
-      `toco/toco_flags.proto`.
+      `compiler/mlir/lite/converter_flags.proto`.
     input_data_str: Input data in serialized form (e.g. a graphdef is common, or
       it can be hlo text or proto)
     debug_info_str: Serialized `GraphDebugInfo` proto describing logging
@@ -396,7 +396,7 @@ def _run_deprecated_conversion_binary(
     model_flags_str: Serialized proto describing model properties, see
       `model_flags.proto`.
     conversion_flags_str: Serialized proto describing TFLite converter
-      properties, see `toco/toco_flags.proto`.
+      properties, see `compiler/mlir/lite/converter_flags.proto`.
     input_data_str: Input data in serialized form (e.g. a graphdef is common)
     debug_info_str: Serialized `GraphDebugInfo` proto describing logging
       information. (default None)
@@ -743,7 +743,7 @@ def build_conversion_flags(
   Raises:
     ValueError, if the input tensor type is unknown.
   """
-  conversion_flags = _conversion_flags_pb2.TocoFlags()
+  conversion_flags = _conversion_flags_pb2.ConverterFlags()
   conversion_flags.inference_type = convert_inference_tf_type_to_tflite_type(
       inference_type, usage="inference_type flag"
   )
@@ -861,7 +861,7 @@ def build_conversion_flags(
       enable_composite_direct_lowering
   )
   conversion_flags.model_origin_framework = (
-      _conversion_flags_pb2.TocoFlags.ModelOriginFramework.Value(
+      _conversion_flags_pb2.ConverterFlags.ModelOriginFramework.Value(
           model_origin_framework
       )
   )
