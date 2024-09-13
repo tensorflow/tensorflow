@@ -5231,7 +5231,7 @@ bool HloParserImpl::ParseAttributesAsProtoMessage(
   // Populate the storage of expected attributes from the protobuf description.
   for (int field_idx = 0; field_idx < descriptor->field_count(); field_idx++) {
     const tsl::protobuf::FieldDescriptor* fd = descriptor->field(field_idx);
-    const std::string& field_name = fd->name();
+    absl::string_view field_name = fd->name();
     switch (fd->type()) {
       case tsl::protobuf::FieldDescriptor::TYPE_BOOL: {
         bool_params.emplace_back(std::nullopt);

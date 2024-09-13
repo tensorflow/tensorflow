@@ -7892,6 +7892,7 @@ tf_kernel_library(
         "//tensorflow/core/util/proto:proto_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:variant",
         "@eigen_archive//:eigen3",
     ],
 )
