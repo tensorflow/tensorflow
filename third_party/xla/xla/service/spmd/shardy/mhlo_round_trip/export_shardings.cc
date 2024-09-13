@@ -233,7 +233,7 @@ class ExportMhloShardingsPass
 HloSharding convertToHloSharding(
     TensorShardingAttr sdySharding,
     std::function<MeshAttr(TensorShardingAttr)> getMeshAttr,
-    ArrayRef<AxisRefAttr> manualAxes) {
+    ArrayRef<StringAttr> manualAxes) {
   MeshAttr mesh = getMeshAttr(sdySharding);
 
   // If there are no axes, convert to:
@@ -250,6 +250,10 @@ HloSharding convertToHloSharding(
   SmallVector<OpSharding::Type> types;
   int64_t shardedPos = 0;
 
+  if (mesh.getAxes().size() == manualAxes.size()) {
+    return HloSharding::Manual();
+  }
+
   // Iterate the dim shardings.
   for (auto [index, dimSharding] :
        llvm::enumerate(sdySharding.getDimShardings())) {
@@ -263,9 +267,10 @@ HloSharding convertToHloSharding(
   if (!manualAxes.empty()) {
     types.push_back(OpSharding::MANUAL);
     int64_t& manualDim = tileAssignmentDims.emplace_back(1);
-    for (AxisRefAttr axisRef : manualAxes) {
-      manualDim *= axisRef.getSize(mesh);
-      axisRefToShardedPos[axisRef] = shardedPos++;
+    mlir::MLIRContext* context = sdySharding.getContext();
+    for (StringRef manualAxis : manualAxes) {
+      manualDim *= mesh.getAxisSize(manualAxis);
+      axisRefToShardedPos[AxisRefAttr::get(context, manualAxis)] = shardedPos++;
     }
   }
 
@@ -317,12 +322,11 @@ StringAttr convertToHloShardingAttr(
     Operation* op, ArrayRef<TensorShardingAttr> shardings,
     std::function<MeshAttr(TensorShardingAttr)> getMeshAttr,
     std::function<StringAttr(const HloSharding&)> getStringAttr,
-    ArrayRef<AxisRefAttr> manualAxes) {
+    ArrayRef<StringAttr> manualAxes) {
   assert(shardings.size() == op->getNumResults());
   if (op->getNumResults() == 1) {
-    TensorShardingAttr sdySharding = shardings.front();
     return getStringAttr(
-        convertToHloSharding(sdySharding, getMeshAttr, manualAxes));
+        convertToHloSharding(shardings.front(), getMeshAttr, manualAxes));
   }
 
   SmallVector<HloSharding> newShardings;

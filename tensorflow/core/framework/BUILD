@@ -38,6 +38,7 @@ default_visibility = [
     "//tensorflow/cc/saved_model:__subpackages__",
     #internal starburst clustering service,
     "//waymo/ml/deploy/benchmark:__subpackages__",
+    # copybara:uncomment #internal tuning service,
 ]
 
 package(

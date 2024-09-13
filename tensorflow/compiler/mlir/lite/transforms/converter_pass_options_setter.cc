@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/lite/transforms/toco_pass_options_setter.h"
+#include "tensorflow/compiler/mlir/lite/transforms/converter_pass_options_setter.h"
 
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_pass_options.h"
 #include "tensorflow/compiler/mlir/lite/transforms/pass_options.h"
@@ -21,12 +21,13 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 
-void TocoPassOptionsSetter::SetOptions(OptimizePassOptions& options) const {
+void ConverterPassOptionsSetter::SetOptions(
+    OptimizePassOptions& options) const {
   options.enable_canonicalization = true;
-  options.disable_fuse_mul_and_fc = toco_flags_.disable_fuse_mul_and_fc();
+  options.disable_fuse_mul_and_fc = converter_flags_.disable_fuse_mul_and_fc();
 }
 
-void TocoPassOptionsSetter::SetOptions(EmptyPassOptions& options) const {}
+void ConverterPassOptionsSetter::SetOptions(EmptyPassOptions& options) const {}
 
 }  // namespace TFL
 }  // namespace mlir

@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "llvm/Support/MathExtras.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -48,12 +49,68 @@ limitations under the License.
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
+namespace {
+
+// Returns the number of elements in the tile after each dimension is padded to
+// the next power of 2.
+// TODO(b/353484968): Delete this function once we have constraints to only
+// propagate tile sizes that are a power of 2.
+int64_t GetPaddedTileSize(absl::Span<int64_t const> tile_sizes) {
+  int64_t result = 1;
+  for (int64_t tile_size : tile_sizes) {
+    result *= llvm::PowerOf2Ceil(tile_size);
+  }
+  return result;
+}
+
+// Checks if the tile is too large to fit in registers and would result in
+// spilling.
+//
+// Spilling almost always causes significant performance regressions, so this
+// heuristic tries to be safe and increase recall at the cost of precision.
+bool DoesTileFitsInRegisters(int64_t tile_size,
+                             const se::DeviceDescription& device_info) {
+  // Register allocation happens at PTX->SASS level, so we can't know the exact
+  // number of registers used by a kernel. We make a few assumptions about the
+  // kernel we will generate (this may not hold in the future):
+  //
+  //  * We'll need at least 1 register to store 1 element of the tile.
+  //  * All values of the tile are live at the same time.
+  //  * If all values don't need to be live at the same time (for example to
+  //    compute a reduction), it will be modeled by an explicit loop with
+  //    smaller tiles inside during tiling propagation.
+  //
+  // TODO(b/363194951): Check how many registers we need for scratch memory
+  // for indexing computation and expensive instructions like exponential or
+  // cosine.
+  //
+  // TODO(b/363194951): Check how the number of registers used depends on the
+  // data type. `registers_per_block_limit()` returns the number of 32-bit
+  // registers. Check if 64-bit types need twice as many registers. Check if
+  // smaller types can fit into one register.
+  return tile_size <= device_info.registers_per_block_limit();
+}
+
+// Returns the number of warps to use based on the tile size. The numbers were
+// originally selected from Triton SoftMax reduction row length.
+// TODO(b/332714755): Make it smarter.
+int64_t GetNumWarps(int64_t tile_size) {
+  if (tile_size <= 512) return 1;
+  if (tile_size <= 1024) return 2;
+  if (tile_size <= 16384) return 4;
+  if (tile_size <= 32768) return 8;
+  if (tile_size <= 65536) return 16;
+  return 32;
+}
+
+}  // namespace
 
 int64_t GpuPerformanceModelWithIndexingAnalysis::FlopsPerElement(
     const HloInstruction* instr) {
@@ -297,44 +354,16 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledHloComputation(
   int64_t num_blocks = launch_dimensions.num_blocks();
 
   for (const auto& tiled_hlo : tiled_hlo_computation.instructions()) {
-    // Number of elements in the tile.
-    int64_t tile_size = Product(tiled_hlo->tile_sizes());
+    // Number of elements in the tile after padding.
+    int64_t padded_tile_size = GetPaddedTileSize(tiled_hlo->tile_sizes());
 
     // Check if the tile is too large to fit in registers and would result in
     // spilling.
-    //
-    // Spilling almost always causes significant performance regressions, so
-    // this heuristic tries be safe and increase recall at the cost of
-    // precision.
-    //
-    // Register allocation happens at PTX->SASS level, so we can't know the
-    // exact number of registers used by a kernel. We make a few assumptions
-    // about the kernel we will generate (this may not hold in the future):
-    //
-    //  * We'll need to at least 1 register to store 1 element of the tile.
-    //  * All value of the tile are live at the same time.
-    //  * If all values don't need to be live at the same time (for example to
-    //    compute a reduction), it will be modeled by an explicit loop with
-    //    smaller tiles inside during tiling propagation.
-    //
-    // TODO(b/363194951): Check how many registers we need for scratch memory
-    // for indexing computation and expensive instructions like exponential or
-    // cosine.
-    //
-    // TODO(b/363194951): Check how the number of registers used depends on the
-    // data type. `registers_per_block_limit()` returns the number of 32-bit
-    // registers. Check if 64-bit types need twice as many registers. Check if
-    // smaller types can fit into one register.
-    //
-    // TODO(b/363194951): Estimate performance regression due to spilling in
-    // terms of memory bandwidth instead of returning infinite run time.
-    if (tile_size > device_info_->registers_per_block_limit()) {
+    if (!DoesTileFitsInRegisters(padded_tile_size, *device_info_)) {
+      // TODO(b/363194951): Estimate performance regression due to spilling in
+      // terms of memory bandwidth instead of returning infinite run time.
       return EstimateRunTimeData::Infinite();
     }
-
-    // Total number of elements that are read from memory or computed for this
-    // tile across all blocks.
-    int64_t num_elements = num_blocks * tile_size;
 
     const HloInstruction* hlo = tiled_hlo->hlo();
 
@@ -346,9 +375,28 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledHloComputation(
     }
 
     if (fusion_adaptor.ContainsInstruction(hlo)) {
+      // Total number of elements computed for this tile across all blocks.
+      //
+      // Even if real `tile_size` is smaller than `padded_tile_size`, SM will
+      // still perform calculations on masked values, so they should count
+      // towards FLOPs.
+      int64_t num_elements = num_blocks * padded_tile_size;
+
       // Tiles inside the computation contribute to the total FLOPs count.
       flops += FlopsPerElement(hlo) * num_elements;
     } else {
+      // Number of elements in the tile.
+      int64_t tile_size = Product(tiled_hlo->tile_sizes());
+
+      // Total number of elements that are read from memory across all blocks.
+      //
+      // Triton requires that all tiles have dimensions that are padded to the
+      // next power of 2. However, the load masks the padded elements, so they
+      // are not read from memory, but set directly in registers. As a result,
+      // the number of elements read from memory is equal to the size of the
+      // original tile.
+      int64_t num_elements = num_blocks * tile_size;
+
       // Tiles of the operands of the fusion contribute to the total memory
       // read time.
       int64_t element_type_size =
@@ -435,23 +483,13 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTriton(
       launch_config->block_level_parameters.output_tile_sizes);
 }
 
-// Returns the number of warps to use based on the tile size. The numbers were
-// originally selected from Triton SoftMax reduction row length.
-// TODO(b/332714755): Make it smarter.
-int64_t GetNumWarps(int64_t tile_size) {
-  if (tile_size <= 512) return 1;
-  if (tile_size <= 1024) return 2;
-  if (tile_size <= 16384) return 4;
-  if (tile_size <= 32768) return 8;
-  if (tile_size <= 65536) return 16;
-  return 32;
-}
-
-LaunchDimensions GetLaunchDimensionsForTiledFusion(
+/*static*/
+LaunchDimensions
+GpuPerformanceModelWithIndexingAnalysis::GetLaunchDimensionsForTiledFusion(
     const TiledHloComputation& tiled_hlo_computation) {
   const auto* tiled_root = tiled_hlo_computation.GetRoot();
   int64_t num_blocks = tiled_hlo_computation.num_output_tiles();
-  int64_t num_warps = GetNumWarps(Product(tiled_root->tile_sizes()));
+  int64_t num_warps = GetNumWarps(GetPaddedTileSize(tiled_root->tile_sizes()));
 
   return {static_cast<uint64_t>(num_blocks),
           static_cast<uint64_t>(num_warps * WarpSize())};

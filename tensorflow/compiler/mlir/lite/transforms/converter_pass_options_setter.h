@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_TOCO_PASS_OPTIONS_SETTER_H_
-#define TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_TOCO_PASS_OPTIONS_SETTER_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_CONVERTER_PASS_OPTIONS_SETTER_H_
+#define TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_CONVERTER_PASS_OPTIONS_SETTER_H_
 
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
+#include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
 #include "tensorflow/compiler/mlir/lite/transforms/pass_options_setter.h"
-#include "tensorflow/lite/toco/toco_flags.pb.h"
 
 namespace mlir {
 namespace TFL {
@@ -27,22 +27,23 @@ class OptimizePass;
 class EmptyPassOptions;
 
 // PassOptionsSetter to set TFLite Converter Pass/Pipeline Options based on
-// TocoFlags and TFL::PassConfig values.
-class TocoPassOptionsSetter : public PassOptionsSetter {
+// ConverterFlags and TFL::PassConfig values.
+class ConverterPassOptionsSetter : public PassOptionsSetter {
  public:
-  explicit TocoPassOptionsSetter(const toco::TocoFlags& toco_flags,
-                                 const mlir::TFL::PassConfig& pass_config)
-      : toco_flags_(toco_flags), pass_config_(pass_config) {};
-  ~TocoPassOptionsSetter() override = default;
+  explicit ConverterPassOptionsSetter(
+      const tflite::ConverterFlags& converter_flags,
+      const mlir::TFL::PassConfig& pass_config)
+      : converter_flags_(converter_flags), pass_config_(pass_config) {};
+  ~ConverterPassOptionsSetter() override = default;
 
   void SetOptions(OptimizePassOptions& options) const override;
   void SetOptions(EmptyPassOptions& options) const override;
 
  private:
-  toco::TocoFlags toco_flags_;
+  tflite::ConverterFlags converter_flags_;
   mlir::TFL::PassConfig pass_config_;
 };
 }  // namespace TFL
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_TOCO_PASS_OPTIONS_SETTER_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_CONVERTER_PASS_OPTIONS_SETTER_H_

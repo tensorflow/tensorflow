@@ -410,7 +410,8 @@ void RewriteIRRuntimeFunctions(llvm::Module* module,
   rewrite_calls(kTanhV8F32SymbolName, GenerateVF32Tanh, /*vector_width=*/8);
   rewrite_calls(kTanhV16F32SymbolName, GenerateVF32Tanh, /*vector_width=*/16);
 
-  rewrite_calls("tanh", GenerateVF64Tanh, /*vector_width=*/1);
+  // TODO(penporn): Re-enable after fixing JAX issue #23590.
+  // rewrite_calls("tanh", GenerateVF64Tanh, /*vector_width=*/1);
 
   rewrite_calls("expf", GenerateVF32Exp, /*vector_width=*/1);
   rewrite_calls("llvm.exp.f32", GenerateVF32Exp, /*vector_width=*/1);

@@ -421,24 +421,6 @@ cuda_only_cc_library(
     alwayslink = True,
 )
 
-cc_library(
-    name = "cuda_dnn_headers",
-    textual_hdrs = ["cuda_dnn.h"],
-    deps = if_cuda_is_configured([
-        ":cuda_activation_header",
-        "//xla/stream_executor:dnn",
-        "//xla/stream_executor:plugin_registry",
-    ]) + [
-        "//xla/stream_executor",  # build_cleaner: keep
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/protobuf:dnn_proto_cc",
-    ],
-)
-
 gpu_kernel_library(
     name = "delay_kernel_cuda",
     srcs = [

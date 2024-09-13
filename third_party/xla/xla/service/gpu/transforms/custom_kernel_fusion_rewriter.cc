@@ -186,6 +186,13 @@ absl::StatusOr<bool> CustomKernelFusionRewriter::Run(
 
   // Collect all potential custom fusion matches in the module.
   for (HloComputation* computation : module->computations()) {
+    if (computation->FusionInstruction() != nullptr &&
+        computation->FusionInstruction()->fusion_kind() ==
+            HloInstruction::FusionKind::kCustom) {
+      // Skip computations based on a custom fusion to avoid recursive fusion.
+      return false;
+    }
+
     for (HloInstruction* instr : computation->instructions()) {
       auto matched = patterns_->Match(*device_, instr);
       matches.insert(matches.end(), matched.begin(), matched.end());

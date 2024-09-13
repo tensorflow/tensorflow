@@ -37,7 +37,10 @@ typedef enum {
   kLrtStatusErrorMissingInputTensor = 4,
   kLrtStatusErrorUnsupported = 5,
   kLrtStatusErrorNotFound = 6,
-  kLrtStatusBadFileOp = 7,
+
+  // File related errors.
+  kLrtStatusBadFileOp = 500,
+  kLrtStatusFlatbufferFailedVerify = 501,
 
   // IR related errors.
   kLrtParamIndexOOB = 1000,

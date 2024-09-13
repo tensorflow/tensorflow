@@ -536,6 +536,9 @@ message ConfigProto {
   // Options that apply to all GPUs.
   GPUOptions gpu_options = 6;
 
+  // Options that apply to pluggable devices.
+  GPUOptions pluggable_device_options = 18;
+
   // Whether soft placement is allowed. If allow_soft_placement is true,
   // an op will be placed on CPU if
   //   1. there's no GPU implementation for the OP
@@ -776,7 +779,7 @@ message ConfigProto {
 
   Experimental experimental = 16;
 
-  // Next: 18
+  // Next: 19
 }
 
 // Options for a single Run() call.

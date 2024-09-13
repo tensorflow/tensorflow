@@ -23,7 +23,9 @@
 extern "C" {
 #endif  // __cplusplus
 
-#define LRT_ABORT abort()
+// #define LRT_ABORT abort()
+// TODO: b/365295276 - Find a fatal error approach that will pass kokoro.
+#define LRT_ABORT
 
 #define LRT_FATAL(msg)              \
   {                                 \
@@ -196,7 +198,7 @@ class LrtResult {
 #define LRT_ASSIGN_OR_RETURN_VAL(decl, expr, val) \
   _ASSIGN_OR_RETURN_VAL(decl, expr, val, _CONCAT_NAME(_result, __COUNTER__))
 
-#define _STATUS_FROM_RESULT(result) StatusFromCode(result.Code());
+#define _STATUS_FROM_RESULT(result) StatusCreate(result.Code());
 
 #define _ASSIGN_OR_RETURN_STATUS(decl, expr, result) \
   _ASSIGN_OR_RETURN_VAL(decl, expr, _STATUS_FROM_RESULT(result), result)

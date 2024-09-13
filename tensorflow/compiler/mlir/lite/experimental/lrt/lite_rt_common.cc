@@ -23,6 +23,10 @@ LrtStatusCode GetStatusCode(LrtStatus status) { return status->code; }
 
 void StatusDestroy(LrtStatus status) { delete status; }
 
-LrtStatus StatusCreate(LrtStatusCode code) { return new LrtStatusT(code); }
+LrtStatus StatusCreate(LrtStatusCode code) {
+  auto* res = new LrtStatusT;
+  res->code = code;
+  return res;
+}
 
 LrtStatus StatusOk() { return StatusCreate(kLrtStatusOk); }

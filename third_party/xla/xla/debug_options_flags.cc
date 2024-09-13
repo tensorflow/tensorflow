@@ -288,6 +288,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_enable_triton_gemm_int4(false);
 
+  opts.set_xla_gpu_enable_pgle_accuracy_checker(false);
+
   opts.set_xla_gpu_executable_warn_stuck_timeout_seconds(10);
   opts.set_xla_gpu_executable_terminate_timeout_seconds(30);
   return opts;

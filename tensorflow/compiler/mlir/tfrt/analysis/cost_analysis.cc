@@ -15,8 +15,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/analysis/cost_analysis.h"
 
 #include <algorithm>
-#include <cassert>
-#include <cstdint>
 #include <string>
 #include <utility>
 
@@ -25,7 +23,6 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -42,31 +39,6 @@ namespace tfrt_compiler {
 namespace {
 
 constexpr int64_t kDefaultCheapCost = 1;
-
-mlir::Attribute GetOptionAttribute(mlir::Block& block,
-                                   llvm::StringRef attr_name) {
-  auto* parent = block.getParentOp();
-
-  // Try to use function-level option first.
-  if (auto func = llvm::dyn_cast<mlir::func::FuncOp>(parent)) {
-    if (auto attr = func->getAttr(attr_name)) {
-      return attr;
-    }
-  }
-
-  // If there is no function-level option, use module-level option.
-  auto module = parent->getParentOfType<mlir::ModuleOp>();
-  return module->getAttr(attr_name);
-}
-
-int64_t GetCostThresholdForBlock(mlir::Block& block) {
-  if (auto attr = GetOptionAttribute(block, "tfrt.cost_threshold")
-                      .dyn_cast_or_null<mlir::IntegerAttr>()) {
-    return attr.getInt();
-  }
-
-  return -1;
-}
 
 int64_t GetRankedTensorSize(mlir::TensorType type) {
   auto shape = type.getShape();
@@ -192,9 +164,6 @@ void CostAnalysis::AnalyzeArguments(mlir::func::FuncOp func_op) {
 }
 
 void CostAnalysis::AnalyzeBlock(mlir::Block* block) {
-  // `GetCostThresholdForBlock` has to be called before calling `EvaluateCost`
-  // to set up `cost_threshold_` first.
-  cost_threshold_ = GetCostThresholdForBlock(*block);
   for (auto& op : *block) {
     EvaluateCost(&op);
   }
@@ -242,10 +211,6 @@ void CostAnalysis::EvaluateCost(mlir::Operation* op) {
     return;
   }
 
-  if (llvm::isa<mlir::TF::IfOp>(op)) {
-    cost_map_[op] = cost_threshold_;
-    return;
-  }
   // For other ops, use the sum of input sizes as its cost.
   int64_t cost = kDefaultCheapCost;
   for (auto operand : op->getOperands()) {

@@ -30,10 +30,13 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_traversal.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
+#include "xla/service/gpu/model/symbolic_tile_analysis.h"
+#include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -457,6 +460,88 @@ ENTRY main {
                               *fusion_adaptor, /*launch_dimensions=*/{8, 32},
                               /*output_tile_sizes=*/{2, 40000}));
   EXPECT_TRUE(res2.IsInfinite());
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_UsesPaddedTileSizeForMemoryAccessTime) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+triton_softmax_computation {
+  param_0 = f32[65,65] parameter(0)
+  param_1 = f32[65,65] parameter(1)
+  ROOT add = f32[65,65] add(param_0, param_1)
+}
+
+ENTRY main {
+  param_0 = f32[65,65] parameter(0)
+  param_1 = f32[65,65] parameter(1)
+  ROOT triton_softmax = f32[65,65] fusion(param_0, param_1), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
+}
+)"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto tiling_result,
+      indexing_cost_model_.TryFindBestTilingForFusion(*fusion_adaptor));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto res, indexing_cost_model_.EstimateRunTimeForTiledFusion(
+                    *fusion_adaptor, /*launch_dimensions=*/{1, 2 * WarpSize()},
+                    /*output_tile_sizes=*/{65, 65}));
+
+  constexpr int64_t kParamSizeBytes = 65 * 65 * 4;
+  constexpr int64_t kPaddedOutputTileSize = 128 * 128;
+  constexpr int64_t kAddFlops = 3;
+
+  // Memory access time is estimated for the tile without padding to the power
+  // of 2, because padded values are set directly in registers.
+  EXPECT_EQ(res.bytes_read, 2 * kParamSizeBytes);
+
+  // Compute happens on all value in the tile, including padded ones.
+  EXPECT_EQ(res.flops, kPaddedOutputTileSize * kAddFlops);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       GetLaunchDimensionsForTiledFusion_IsSupported) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+triton_softmax_computation {
+  param_0 = f32[9,9,9] parameter(0)
+  param_1 = f32[9,9,9] parameter(1)
+  ROOT multiply = f32[9,9,9] multiply(param_0, param_1)
+}
+
+ENTRY main {
+  param_0 = f32[9,9,9] parameter(0)
+  param_1 = f32[9,9,9] parameter(1)
+  ROOT fusion = f32[9,9,9] fusion(param_0, param_1), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
+}
+)"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  SymbolicTileAnalysisOrError analysis_or_error =
+      SymbolicTileAnalysis::AnalyzeFusion(
+          *fusion_adaptor, &mlir_context_,
+          /*emitter_specific_constraints_builder=*/nullptr);
+  ASSERT_TRUE(std::holds_alternative<SymbolicTileAnalysis>(analysis_or_error));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      TiledHloComputation tiled_hlo_computation,
+      std::get<SymbolicTileAnalysis>(analysis_or_error)
+          .ComputeTiledHloInstructions(/*tile_parameters=*/{9, 9, 9}));
+
+  LaunchDimensions launch_dimensions = GpuPerformanceModelWithIndexingAnalysis::
+      GetLaunchDimensionsForTiledFusion(tiled_hlo_computation);
+  EXPECT_EQ(launch_dimensions.num_blocks(), 1);
+
+  // Tile size is 9 * 9 * 9 = 729 that corresponds to 2 warps. But we estimate
+  // the number of warps for padded tile that has size of 16 * 16 * 16 = 4096
+  // and corresponds to 4 warps.
+  EXPECT_EQ(launch_dimensions.num_threads_per_block(), 4 * WarpSize());
 }
 
 class FlopsPerElementTest : public GpuIndexingPerformanceModelTest {

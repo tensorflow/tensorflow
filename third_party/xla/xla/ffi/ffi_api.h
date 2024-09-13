@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/concurrency/chain.h"
 
 namespace xla::ffi {
 
@@ -73,15 +74,35 @@ struct CallOptions {
 };
 
 // Takes ownership of the XLA FFI error and returns underlying status. Frees
-// `error` if it's not nullptr; returns OK status otherwise.
+// `error` if it's not nullptr. If `error` is nullptr, returns OkStatus.
 absl::Status TakeStatus(XLA_FFI_Error* error);
 
-// Calls an XLA FFI handler with the given call frame and options.
+// Takes ownership of the XLA FFI future and returns underlying AsyncValue.
+// Frees `future` if it's not nullptr. If `future` is nullptr, returns available
+// async value.
+tsl::AsyncValueRef<tsl::Chain> TakeFuture(XLA_FFI_Future* future);
+
+// Calls an XLA FFI handler with the given call frame and options. This is a
+// synchronous call and it might block the caller thread if the handler is
+// asynchronous. It is unsafe to call if from a thread pool that runs tasks
+// scheduled by the handler itself.
 absl::Status Call(Ffi& handler, CallFrame& call_frame,
                   const CallOptions& options = {},
                   ExecutionStage stage = ExecutionStage::kExecute);
 
 absl::Status Call(
+    XLA_FFI_Handler* handler, CallFrame& call_frame,
+    const CallOptions& options = {},
+    XLA_FFI_ExecutionStage stage = XLA_FFI_ExecutionStage_EXECUTE);
+
+// Calls an XLA FFI handler with the given call frame and options. This is an
+// asynchronous call and it will not block the caller thread. Returned async
+// value will become available when the handler completes execution.
+tsl::AsyncValueRef<tsl::Chain> CallAsync(
+    Ffi& handler, CallFrame& call_frame, const CallOptions& options = {},
+    ExecutionStage stage = ExecutionStage::kExecute);
+
+tsl::AsyncValueRef<tsl::Chain> CallAsync(
     XLA_FFI_Handler* handler, CallFrame& call_frame,
     const CallOptions& options = {},
     XLA_FFI_ExecutionStage stage = XLA_FFI_ExecutionStage_EXECUTE);

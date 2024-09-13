@@ -1031,10 +1031,21 @@ TEST(FfiTest, AsyncHandler) {
   CallOptions options;
   options.backend_options = CallOptions::CpuOptions{&device};
 
-  auto status = Call(*handler, call_frame, options);
-  TF_ASSERT_OK(status);
+  {  // Synchronous call.
+    absl::Status status = Call(*handler, call_frame, options);
+    TF_ASSERT_OK(status);
+    EXPECT_EQ(value, 42);
+  }
 
-  EXPECT_EQ(value, 42);
+  value = 0;  // reset value between calls
+
+  {  // Asynchronous call.
+    tsl::AsyncValueRef<tsl::Chain> async_value =
+        CallAsync(*handler, call_frame, options);
+    tsl::BlockUntilReady(async_value);
+    ASSERT_TRUE(async_value.IsConcrete());
+    EXPECT_EQ(value, 42);
+  }
 }
 
 TEST(FfiTest, Metadata) {

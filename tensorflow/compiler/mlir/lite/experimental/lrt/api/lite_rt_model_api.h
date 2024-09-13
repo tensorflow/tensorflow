@@ -39,6 +39,9 @@ LITE_RT_DEFINE_HANDLE_ARRAY(LrtSubgraph);
 
 LITE_RT_DEFINE_HANDLE(LrtModel);
 
+// Append only list of ops.
+LITE_RT_DEFINE_HANDLE(LrtOpList);
+
 // For indexing into lrt collections or counting lrt things.
 typedef uint64_t lrt_param_index_t;
 
@@ -168,6 +171,8 @@ LrtStatus GetModelSubgraph(LrtModel model, lrt_param_index_t subgraph_index,
 // TODO: b/365299994 - Figure out signatures.
 LrtStatus GetModelMainSubgraph(LrtModel model,
                                lrt_param_index_t* main_subgraph_index);
+
+LrtStatus PushOp(LrtOpList op_list, LrtOp op);
 
 #ifdef __cplusplus
 }

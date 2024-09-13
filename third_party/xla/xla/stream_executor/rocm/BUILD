@@ -125,21 +125,6 @@ cc_library(
 )
 
 cc_library(
-    name = "rocm_activation",
-    srcs = [],
-    hdrs = if_rocm_is_configured(["rocm_activation.h"]),
-    deps = if_rocm_is_configured([
-        # keep sorted
-        ":rocm_driver",
-        "//xla/stream_executor",
-        "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor/gpu:gpu_activation",
-        "//xla/stream_executor/platform",
-        "@local_config_rocm//rocm:rocm_headers",
-    ]),
-)
-
-cc_library(
     name = "rocm_event",
     srcs = if_rocm_is_configured(["rocm_event.cc"]),
     hdrs = if_rocm_is_configured(["rocm_event.h"]),
@@ -295,7 +280,6 @@ cc_library(
         ":rocblas_if_static",
         ":rocm_executor",
         ":rocm_platform_id",
-        "//xla/stream_executor/gpu:gpu_activation",
         "//xla/stream_executor/platform",
         "//xla/stream_executor/platform:dso_loader",
         "//xla/tsl/util:determinism_for_kernels",
@@ -373,7 +357,6 @@ cc_library(
         "//xla/stream_executor",
         "//xla/stream_executor:fft",
         "//xla/stream_executor:plugin_registry",
-        "//xla/stream_executor/gpu:gpu_activation",
         "//xla/stream_executor/gpu:gpu_executor_header",
         "//xla/stream_executor/gpu:gpu_helpers_header",
         "//xla/stream_executor/gpu:gpu_kernel_header",
@@ -425,11 +408,11 @@ cc_library(
         "//xla/stream_executor:dnn",
         "//xla/stream_executor:event_based_timer",
         "//xla/stream_executor:plugin_registry",
-        "//xla/stream_executor/gpu:gpu_activation",
         "//xla/stream_executor/gpu:gpu_driver_header",
         "//xla/stream_executor/gpu:gpu_executor_header",
         "//xla/stream_executor/gpu:gpu_stream_header",
         "//xla/stream_executor/gpu:gpu_types_header",
+        "//xla/stream_executor/gpu:scoped_activate_context",
         "//xla/stream_executor/platform",
         "//xla/stream_executor/platform:dso_loader",
         "//xla/tsl/util:determinism_for_kernels",
@@ -584,7 +567,6 @@ cc_library(
         "//xla/stream_executor:blas",
         "//xla/stream_executor:event_based_timer",
         "//xla/stream_executor:host_or_device_scalar",
-        "//xla/stream_executor/gpu:gpu_activation",
         "//xla/stream_executor/gpu:gpu_blas_lt",
         "//xla/stream_executor/gpu:gpu_helpers_header",
         "//xla/stream_executor/gpu:gpu_stream_header",
