@@ -19,13 +19,15 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/convert/xplane_to_dcn_collective_stats.h"
 #include "tensorflow/core/profiler/convert/xplane_to_hlo.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
