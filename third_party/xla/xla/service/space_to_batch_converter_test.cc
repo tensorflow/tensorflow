@@ -351,5 +351,39 @@ TEST_F(SpaceToBatchConverterTest, DoNotPropagateOnTupleReduce) {
   EXPECT_THAT(root, op::Reduce());
 }
 
+TEST_F(SpaceToBatchConverterTest, ReduceDegenerateDim) {
+  std::string hlo_string = R"(
+  HloModule module
+
+  %region_42.4982  {
+    %Arg_0.38 = f32[] parameter(0)
+    %Arg_1.39 = f32[] parameter(1)
+    ROOT %add.40 = f32[] add(f32[] %Arg_0.38, f32[] %Arg_1.39)
+  }
+ 
+  ENTRY computation {
+    %p0 = f32[2,1,84,84,3]{4,3,2,1,0}  parameter(0)
+    %p1 = f32[3,3,3,3,32]{4,3,2,1,0} parameter(1)
+    %constant.10559 = f32[] constant(0)
+    %convolution.98 = f32[2,1,84,84,32]{4,3,2,1,0} convolution(%p0, %p1), 
+      window={size=3x3x3 pad=1_1x1_1x1_1}, dim_labels=b012f_012io->b012f
+      
+    ROOT %reduce.2606 = f32[2,84,84]{2,1,0} reduce(f32[2,1,84,84,32]{4,3,2,1,0} 
+      %convolution.98, f32[] %constant.10559), dimensions={1,4}, to_apply=%region_42.4982
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  auto computation = module->entry_computation();
+  SpaceToBatchConverter converter(
+      SpaceToBatchController{true, true, true, true, /*number_of_splits=*/8});
+  ASSERT_TRUE(converter.Run(module.get()).value());
+
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_THAT(root, op::Transpose());
+  EXPECT_THAT(root->operand(0), op::Slice());
+}
+
 }  // namespace
 }  // namespace xla
