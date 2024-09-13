@@ -192,7 +192,7 @@ absl::StatusOr<bool> AutotuneCustomKernelFusion(
   return previous_kernel_index != fastest_kernel_index;
 }
 
-bool IsCustomFusion(const HloComputation* computation) {
+bool IsCutlassCustomFusion(const HloComputation* computation) {
   if (!computation->IsFusionComputation()) {
     return false;
   }
@@ -212,8 +212,18 @@ bool IsCustomFusion(const HloComputation* computation) {
     return false;
   }
 
-  return gpu_backend_config->fusion_backend_config().kind() ==
-         kCustomFusionKind;
+  if (gpu_backend_config->fusion_backend_config().kind() != kCustomFusionKind) {
+    return false;
+  }
+
+  if (gpu_backend_config->fusion_backend_config()
+          .custom_fusion_config()
+          .name()
+          .rfind("cutlass", 0) != 0) {
+    return false;
+  }
+
+  return true;
 }
 }  // namespace
 
@@ -231,7 +241,7 @@ absl::StatusOr<bool> CustomKernelFusionAutotuner::Run(
 
   bool hlo_changed = false;
   for (const HloComputation* computation : module->computations()) {
-    if (IsCustomFusion(computation)) {
+    if (IsCutlassCustomFusion(computation)) {
       TF_ASSIGN_OR_RETURN(
           bool instruction_changed,
           AutotuneCustomKernelFusion(computation->FusionInstruction(), config_,
