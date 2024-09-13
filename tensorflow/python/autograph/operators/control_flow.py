@@ -856,7 +856,7 @@ def _py_while_stmt(test, body, get_state, set_state, opts):
           1,
           'Caught error while evaluating while loop condition',
           exc_info=True)
-      # TODO(mdan): distinguish beteen these two cases.
+      # TODO(mdan): distinguish between these two cases.
       raise NotImplementedError(
           'The condition of while loop started as non-Tensor, then changed to'
           ' Tensor. This may happen either because variables changed type, or'
