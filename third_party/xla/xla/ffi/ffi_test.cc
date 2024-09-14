@@ -1169,6 +1169,31 @@ void BM_AnyBufferArgX8(benchmark::State& state) {
 BENCHMARK(BM_AnyBufferArgX8);
 
 //===----------------------------------------------------------------------===//
+// BM_AsyncAnyBufferArgX1
+//===----------------------------------------------------------------------===//
+
+void BM_AsyncAnyBufferArgX1(benchmark::State& state) {
+  auto call_frame = WithBufferArgs(1).Build();
+
+  static tsl::AsyncValueOwningRef<tsl::Chain>* done = [] {
+    auto* storage = new tsl::internal::AsyncValueStorage<tsl::Chain>();
+    return new tsl::AsyncValueOwningRef<tsl::Chain>(
+        tsl::MakeAvailableAsyncValueRef<tsl::Chain>(*storage));
+  }();
+
+  auto handler = Ffi::Bind().Arg<AnyBuffer>().To([&](auto buffer) {
+    benchmark::DoNotOptimize(buffer);
+    return done->AsRef();
+  });
+
+  for (auto _ : state) {
+    CHECK_OK(Call(*handler, call_frame));
+  }
+}
+
+BENCHMARK(BM_AsyncAnyBufferArgX1);
+
+//===----------------------------------------------------------------------===//
 // BM_BufferArgX1
 //===----------------------------------------------------------------------===//
 

@@ -206,6 +206,11 @@ absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo::createChloLegalizeToStablehloPass());
   pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::stablehlo::createStablehloCreateCompatibilityExpanderPass(
+          {std::string(target)}));
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::stablehlo::createChloLegalizeToStablehloPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo::createShapeLegalizeToStablehloPass());
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
   pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
@@ -264,7 +269,6 @@ absl::StatusOr<std::string> Serialize(mlir::ModuleOp module,
     if (!llvm::isa<mlir::ModuleOp>(op) &&
         !llvm::isa<mlir::stablehlo::StablehloDialect, mlir::func::FuncDialect,
                    mlir::chlo::ChloDialect>(op->getDialect())) {
-      std::cout << op->getDialect()->getNamespace().str() << "\n";
       all_stablehlo = false;
       return mlir::WalkResult::interrupt();
     }

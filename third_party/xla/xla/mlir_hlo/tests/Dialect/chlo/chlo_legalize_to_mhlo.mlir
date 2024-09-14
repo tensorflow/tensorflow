@@ -2845,30 +2845,6 @@ func.func @next_after_f32(%x: tensor<2xf32>, %y: tensor<2xf32>) -> tensor<2xf32>
 
 // -----
 
-// CHECK-LABEL: @tan_f16
-// CHECK-SAME: (%[[ARG:.*]]: tensor<f16>)
-func.func @tan_f16(%arg : tensor<f16>) -> tensor<f16> {
-  // CHECK-HIGH-LEVEL: mhlo.tan
-  // CHECK: %[[RESULT:.*]] = mhlo.tan %[[ARG]] : tensor<f16>
-  // CHECK: return %[[RESULT]]
-  %1 = chlo.tan %arg : tensor<f16> -> tensor<f16>
-  func.return %1 : tensor<f16>
-}
-
-// -----
-
-// CHECK-LABEL: @tan_f32
-// CHECK-SAME: (%[[ARG:.*]]: tensor<f32>)
-func.func @tan_f32(%arg : tensor<f32>) -> tensor<f32> {
-  // CHECK-HIGH-LEVEL: mhlo.tan
-  // CHECK: %[[RESULT:.*]] = mhlo.tan %[[ARG]] : tensor<f32>
-  // CHECK: return %[[RESULT]]
-  %1 = chlo.tan %arg : tensor<f32> -> tensor<f32>
-  func.return %1 : tensor<f32>
-}
-
-// -----
-
 // CHECK-LABEL: @top_k
 // CHECK-SAME: (%[[ARG:.*]]: tensor<16x16xf32>)
 func.func @top_k(%arg : tensor<16x16xf32>) -> (tensor<16x8xf32>, tensor<16x8xi32>) {

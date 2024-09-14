@@ -195,6 +195,9 @@ void AddGraphTraceActivityEvent(CuptiEventCollectorDelegate &collector,
       /* .end_time_ns = */ graph_trace->end,
       /* .device_id = */ graph_trace->deviceId,
       /* .correlation_id = */ graph_trace->correlationId,
+      // This is device event where thread_id is meaningless, using its default
+      // value kInvalidThreadId here.
+      /* .thread_id = */ CuptiTracerEvent::kInvalidThreadId,
       /* .context_id = */ graph_trace->contextId,
       /* .stream_id = */ graph_trace->streamId,
       /* .graph_id = */ graph_trace->graphId,

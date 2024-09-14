@@ -35,7 +35,7 @@ limitations under the License.
 
 namespace tsl {
 
-using Slice = StringPiece;
+using Slice = absl::string_view;
 
 namespace table {
 
