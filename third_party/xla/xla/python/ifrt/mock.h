@@ -324,6 +324,12 @@ class MockSharding : public llvm::RTTIExtends<MockSharding, Sharding> {
             BasicDeviceList::Create({}), MemoryKind(),
             /*is_fully_replicated=*/false) {}
 
+  explicit MockSharding(tsl::RCReference<DeviceList> devices,
+                        MemoryKind memory_kind = MemoryKind(),
+                        bool is_fully_replicated = false)
+      : llvm::RTTIExtends<MockSharding, Sharding>(devices, memory_kind,
+                                                  is_fully_replicated) {}
+
   MOCK_METHOD(
       (absl::StatusOr<
           std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>),
