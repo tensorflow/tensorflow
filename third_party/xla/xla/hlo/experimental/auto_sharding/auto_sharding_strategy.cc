@@ -182,7 +182,7 @@ void GenerateScatterShardingFromOperands(
   // Infer output sharding from scatter indices sharding.
   HloSharding parallel_sharding_from_indices =
       hlo_sharding_util::InferGatherScatterParallelShardingFromOperandSharding(
-          scatter_indices->sharding(), scatter_indices->shape(), shape,
+          indices_sharding, scatter_indices->shape(), shape,
           absl::MakeConstSpan(scatter_parallel_dims->indices_parallel_dims),
           absl::MakeConstSpan(output_parallel_dims));
   yield_sharding(data_sharding, indices_sharding, update_sharding,
@@ -360,7 +360,6 @@ BuildStrategyAndCost(
              strategy_map.at(scatter_indices)->strategies,
              strategy_map.at(scatter_update)->strategies},
             [&](const std::vector<ShardingStrategy>& operand_shardings) {
-              LOG(INFO) << " COMB " << operand_shardings.size();
               GenerateScatterShardingFromOperands(
                   scatter, operand_shardings[0].output_sharding,
                   operand_shardings[1].output_sharding,
