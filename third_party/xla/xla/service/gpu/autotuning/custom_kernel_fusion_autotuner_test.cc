@@ -21,8 +21,8 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
-#include "xla/service/hlo_pass_pipeline.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/test.h"
