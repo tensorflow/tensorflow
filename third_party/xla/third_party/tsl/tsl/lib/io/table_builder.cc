@@ -31,7 +31,7 @@ namespace table {
 
 namespace {
 
-void FindShortestSeparator(string* start, const StringPiece& limit) {
+void FindShortestSeparator(string* start, const absl::string_view& limit) {
   // Find length of common prefix
   size_t min_length = std::min(start->size(), limit.size());
   size_t diff_index = 0;
@@ -48,7 +48,7 @@ void FindShortestSeparator(string* start, const StringPiece& limit) {
         diff_byte + 1 < static_cast<uint8>(limit[diff_index])) {
       (*start)[diff_index]++;
       start->resize(diff_index + 1);
-      assert(StringPiece(*start).compare(limit) < 0);
+      assert(absl::string_view(*start).compare(limit) < 0);
     }
   }
 }
@@ -116,12 +116,13 @@ TableBuilder::~TableBuilder() {
   delete rep_;
 }
 
-void TableBuilder::Add(const StringPiece& key, const StringPiece& value) {
+void TableBuilder::Add(const absl::string_view& key,
+                       const absl::string_view& value) {
   Rep* r = rep_;
   assert(!r->closed);
   if (!ok()) return;
   if (r->num_entries > 0) {
-    assert(key.compare(StringPiece(r->last_key)) > 0);
+    assert(key.compare(absl::string_view(r->last_key)) > 0);
     // See if this key+value would make our current block overly large.  If
     // so, emit the current block before adding this key/value
     const int kOverlyLargeBlockRatio = 2;
@@ -136,7 +137,7 @@ void TableBuilder::Add(const StringPiece& key, const StringPiece& value) {
     FindShortestSeparator(&r->last_key, key);
     string handle_encoding;
     r->pending_handle.EncodeTo(&handle_encoding);
-    r->index_block.Add(r->last_key, StringPiece(handle_encoding));
+    r->index_block.Add(r->last_key, absl::string_view(handle_encoding));
     r->pending_index_entry = false;
   }
 
@@ -170,9 +171,9 @@ void TableBuilder::WriteBlock(BlockBuilder* block, BlockHandle* handle) {
   //    crc: uint32
   assert(ok());
   Rep* r = rep_;
-  StringPiece raw = block->Finish();
+  absl::string_view raw = block->Finish();
 
-  StringPiece block_contents;
+  absl::string_view block_contents;
   CompressionType type = r->options.compression;
   // TODO(postrelease): Support more compression options: zlib?
   switch (type) {
@@ -199,7 +200,7 @@ void TableBuilder::WriteBlock(BlockBuilder* block, BlockHandle* handle) {
   block->Reset();
 }
 
-void TableBuilder::WriteRawBlock(const StringPiece& block_contents,
+void TableBuilder::WriteRawBlock(const absl::string_view& block_contents,
                                  CompressionType type, BlockHandle* handle) {
   Rep* r = rep_;
   handle->set_offset(r->offset);
@@ -211,7 +212,7 @@ void TableBuilder::WriteRawBlock(const StringPiece& block_contents,
     uint32 crc = crc32c::Value(block_contents.data(), block_contents.size());
     crc = crc32c::Extend(crc, trailer, 1);  // Extend crc to cover block type
     core::EncodeFixed32(trailer + 1, crc32c::Mask(crc));
-    r->status = r->file->Append(StringPiece(trailer, kBlockTrailerSize));
+    r->status = r->file->Append(absl::string_view(trailer, kBlockTrailerSize));
     if (r->status.ok()) {
       r->offset += block_contents.size() + kBlockTrailerSize;
     }
@@ -241,7 +242,7 @@ absl::Status TableBuilder::Finish() {
       FindShortSuccessor(&r->last_key);
       string handle_encoding;
       r->pending_handle.EncodeTo(&handle_encoding);
-      r->index_block.Add(r->last_key, StringPiece(handle_encoding));
+      r->index_block.Add(r->last_key, absl::string_view(handle_encoding));
       r->pending_index_entry = false;
     }
     WriteBlock(&r->index_block, &index_block_handle);

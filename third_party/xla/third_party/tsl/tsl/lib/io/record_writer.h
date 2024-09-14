@@ -77,7 +77,7 @@ class RecordWriter {
   // implicit Close() call in the destructor.
   ~RecordWriter();
 
-  absl::Status WriteRecord(StringPiece data);
+  absl::Status WriteRecord(absl::string_view data);
 
 #if defined(TF_CORD_SUPPORT)
   absl::Status WriteRecord(const absl::Cord& data);
