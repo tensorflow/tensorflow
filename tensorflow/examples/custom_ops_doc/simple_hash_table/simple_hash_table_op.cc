@@ -35,7 +35,7 @@ using ::tensorflow::shape_inference::ShapeHandle;
 
 Status ScalarOutput(InferenceContext* c) {
   c->set_output(0, c->Scalar());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status TwoScalarInputs(InferenceContext* c) {
