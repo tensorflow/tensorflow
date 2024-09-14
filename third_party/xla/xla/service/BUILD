@@ -5480,6 +5480,8 @@ xla_cc_test(
     ],
 )
 
+# Deprecated, use //third_party/tensorflow/compiler/xla/hlo/pass:hlo_pass #
+# instead.
 cc_library(
     name = "hlo_pass",
     hdrs = [
@@ -5491,54 +5493,26 @@ cc_library(
         "//xla:types",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:hlo_module_group",
+        "//xla/hlo/pass:hlo_pass",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
+# Deprecated, use
+# //third_party/tensorflow/compiler/xla/hlo/pass:hlo_pass_pipeline instead.
 cc_library(
     name = "hlo_pass_pipeline",
-    srcs = [
-        "hlo_pass_pipeline.cc",
-    ],
-    hdrs = [
-        "hlo_pass_pipeline.h",
-    ],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    hdrs = ["hlo_pass_pipeline.h"],
     deps = [
         ":compilation_stats",
-        ":dump",
-        ":hlo_graph_dumper",
         ":hlo_pass",
-        ":hlo_proto_util",
-        "//xla:status_macros",
         "//xla:types",
-        "//xla:util",
         "//xla/hlo/ir:hlo",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
+        "//xla/hlo/pass:hlo_pass_pipeline",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/profiler/lib:scoped_annotation",
-    ],
-)
-
-xla_cc_test(
-    name = "hlo_pass_pipeline_test",
-    srcs = ["hlo_pass_pipeline_test.cc"],
-    deps = [
-        ":hlo_parser",
-        ":hlo_pass_pipeline",
-        "//xla:util",
-        "//xla/hlo/ir:hlo",
-        "//xla/tests:hlo_test_base",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/lib/core:status_test_util",
     ],
 )
 
