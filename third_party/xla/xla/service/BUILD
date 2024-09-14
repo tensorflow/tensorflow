@@ -6512,6 +6512,7 @@ cc_library(
         ":host_offload_utils",
         ":pattern_matcher",
         "//xla:literal_util",
+        "//xla:shape_tree",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",

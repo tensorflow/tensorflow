@@ -4063,6 +4063,57 @@ TEST_F(HostOffloaderTest, MoveToHostInsideWhileLoopBodyShareSameBroadcast) {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
   EXPECT_TRUE(changed);
 }
+
+// Test to ensure HostOffloader removes redundant copies back to host when
+// the output is a non-tuple.
+TEST_F(HostOffloaderTest, RemoveRedundantCopiesBackToHostOutputIsNonTuple) {
+  const absl::string_view hlo_string = R"(
+    HloModule jit_main, input_output_alias={ {0}: (0, {}, may-alias), {1}: (1, {}, may-alias) }, entry_computation_layout={(f32[1048576]{0:T(1024)}, f32[25769803776]{0:T(1024)S(5)})->(f32[1048576]{0:T(1024)}, f32[25769803776]{0:T(1024)S(5)})}, allow_spmd_sharding_propagation_to_parameters={false,false}, allow_spmd_sharding_propagation_to_output={false,false}
+
+    %host_fn.6 (Arg_0.7: f32[25769803776]) -> f32[25769803776] {
+      %Arg_0.7 = f32[25769803776]{0} parameter(0), metadata={op_name="jit(main)/jit(main)/pjit"}
+      %constant.8 = f32[] constant(1)
+      %broadcast.9 = f32[25769803776]{0} broadcast(f32[] %constant.8), dimensions={}, metadata={op_name="jit(main)/jit(main)/jit(host_fn)/add" source_file="third_party/py/jax/tests/memories_test.py" source_line=1448}
+      ROOT %add.10 = f32[25769803776]{0} add(f32[25769803776]{0} %Arg_0.7, f32[25769803776]{0} %broadcast.9), frontend_attributes={_xla_compute_type="host"}, metadata={op_name="jit(main)/jit(main)/jit(host_fn)/add" source_file="third_party/py/jax/tests/memories_test.py" source_line=1448}
+    }, execution_thread="host"
+
+    ENTRY %main.17 (Arg_0.1: f32[1048576], Arg_1.2: f32[25769803776]) -> (f32[1048576], f32[25769803776]) {
+      %Arg_0.1 = f32[1048576]{0:T(1024)} parameter(0), sharding={replicated}, metadata={op_name="a"}
+      %constant.3 = f32[]{:T(128)} constant(1)
+      %broadcast.4 = f32[1048576]{0:T(1024)} broadcast(f32[]{:T(128)} %constant.3), dimensions={}, metadata={op_name="jit(main)/jit(main)/add" source_file="third_party/py/jax/tests/memories_test.py" source_line=1454}
+      %add.5 = f32[1048576]{0:T(1024)} add(f32[1048576]{0:T(1024)} %Arg_0.1, f32[1048576]{0:T(1024)} %broadcast.4), metadata={op_name="jit(main)/jit(main)/add" source_file="third_party/py/jax/tests/memories_test.py" source_line=1454}
+      %custom-call = f32[1048576]{0:T(1024)} custom-call(f32[1048576]{0:T(1024)} %add.5), custom_call_target="MoveToDevice"
+      %Arg_1.2 = f32[25769803776]{0:T(1024)} parameter(1), sharding={replicated}, metadata={op_name="b"}
+      %host-async-start = ((f32[25769803776]{0:T(1024)}), f32[25769803776]{0:T(1024)}, u32[]{:T(128)}) custom-call-start(f32[25769803776]{0:T(1024)} %Arg_1.2), async_execution_thread="host", custom_call_target="HostExecute", called_computations={%host_fn.6}, backend_config={"flag_configs":[],"scoped_memory_configs":[],"device_type":"DEVICE_TYPE_HOST","used_scoped_memory_configs":[]}
+      %host-async-done = f32[25769803776]{0:T(1024)} custom-call-done(((f32[25769803776]{0:T(1024)}), f32[25769803776]{0:T(1024)}, u32[]{:T(128)}) %host-async-start), backend_config={"flag_configs":[],"scoped_memory_configs":[],"device_type":"DEVICE_TYPE_HOST","used_scoped_memory_configs":[]}
+      %redundant-move-to-host = f32[25769803776]{0:T(1024)} custom-call(f32[25769803776]{0:T(1024)} %host-async-done), custom_call_target="MoveToHost"
+      ROOT %output_tuple = (f32[1048576]{0:T(1024)}, f32[25769803776]{0:T(1024)}) tuple(f32[1048576]{0:T(1024)} %custom-call, f32[25769803776]{0:T(1024)} %redundant-move-to-host), sharding={{replicated}, {replicated}}
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+  VLOG(1) << module->ToString();
+
+  HloInstruction* async_start =
+      FindInstruction(module.get(), "host-async-start");
+  ASSERT_NE(async_start, nullptr);
+  // Input is on host.
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(async_start->shape(), {0, 0}),
+                          Layout::kHostMemorySpace);
+  // Output is on host.
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(async_start->shape(), {1}),
+                          Layout::kHostMemorySpace);
+  HloInstruction* async_done = FindInstruction(module.get(), "host-async-done");
+  ASSERT_NE(async_done, nullptr);
+  TestShapeHasMemorySpace(async_done->shape(), Layout::kHostMemorySpace);
+
+  HloInstruction* output_tuple = FindInstruction(module.get(), "output_tuple");
+  ASSERT_NE(output_tuple, nullptr);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(output_tuple->shape(), {1}),
+                          Layout::kHostMemorySpace);
+}
 }  // namespace
 
 }  // namespace xla
