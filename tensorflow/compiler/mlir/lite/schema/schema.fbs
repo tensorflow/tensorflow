@@ -1550,6 +1550,9 @@ table Operator {
   // union is added, in the case of where BuitlinOptions2 runs out, a third
   // one can be added
   builtin_options_2 : BuiltinOptions2;
+
+  // Index into operators_debug_metadata list.
+  debug_metadata_index: int = -1;
 }
 
 // The root type, defining a subgraph, which typically represents an entire
@@ -1572,6 +1575,9 @@ table SubGraph {
 
   // Name of this subgraph (used for debugging).
   name:string;
+
+  // Index into subgraphs_debug_metadata list.
+  debug_metadata_index: int = -1;
 }
 
 // Table of raw data buffers (used for constant tensors). Referenced by tensors
