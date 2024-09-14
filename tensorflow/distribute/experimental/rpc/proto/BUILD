@@ -18,7 +18,6 @@ tf_proto_library(
     name = "tf_rpc_service_proto",
     srcs = ["tf_rpc_service.proto"],
     has_services = 1,
-    cc_stubby_versions = ["2"],
     create_go_proto = False,
     create_grpc_library = True,
     create_java_proto = False,

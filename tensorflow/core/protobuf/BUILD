@@ -89,7 +89,6 @@ tf_proto_library(
     name = "worker_service_proto",
     srcs = ["worker_service.proto"],
     has_services = 1,
-    cc_stubby_versions = ["2"],
     create_service = True,
     protodeps = [":worker_proto"],
 )
@@ -105,7 +104,6 @@ tf_proto_library(
     name = "master_service_proto",
     srcs = ["master_service.proto"],
     has_services = 1,
-    cc_stubby_versions = ["2"],
     create_service = True,
     protodeps = [":master_proto"],
 )
@@ -114,7 +112,6 @@ tf_proto_library(
     name = "eager_service_proto",
     srcs = ["eager_service.proto"],
     has_services = 1,
-    cc_stubby_versions = ["2"],
     create_grpc_library = True,
     create_service = True,
     protodeps = tf_additional_all_protos(),
