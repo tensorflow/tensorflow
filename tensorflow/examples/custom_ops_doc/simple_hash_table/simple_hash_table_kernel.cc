@@ -113,7 +113,7 @@ class SimpleHashTableResource : public ::tensorflow::ResourceBase {
     for (int64_t i = 0; i < key_values.size(); ++i) {
       gtl::InsertOrUpdate(&table_, key_values(i), value_values(i));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Create a debug string with the content of the map if this is small,
