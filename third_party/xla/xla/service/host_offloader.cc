@@ -63,8 +63,6 @@ namespace xla {
 
 namespace {
 
-using ::xla::host_memory_offload_annotations::kMoveToDeviceCustomCallTarget;
-using ::xla::host_memory_offload_annotations::kMoveToHostCustomCallTarget;
 using ::xla::host_offload_utils::InstructionAndShapeIndex;
 
 void SetMemorySpace(Shape* shape, int64_t memory_space_color) {
