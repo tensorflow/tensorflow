@@ -641,7 +641,7 @@ struct ResultEncoding<stage, tsl::AsyncValueRef<tsl::Chain>> {
                                 XLA_FFI_ExecutionContext* ctx,
                                 tsl::AsyncValueRef<tsl::Chain> async_value) {
     return api->internal_api->XLA_FFI_INTERNAL_Future_Forward(
-        async_value.GetAsyncValue());
+        async_value.release());
   }
 };
 

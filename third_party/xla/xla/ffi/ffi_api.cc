@@ -148,19 +148,18 @@ tsl::AsyncValueRef<tsl::Chain> TakeFuture(XLA_FFI_Future* future) {
 
   if (ABSL_PREDICT_TRUE(future == nullptr)) return chain->AsRef();
 
-  // Keeps XLA_FFI_Future alive until it is completed.
-  absl::Cleanup delete_future = [future] { delete future; };
-
   // If the future is already completed, immediately return the underlying async
-  // value and destroy the XLA_FFI_Future.
+  // value and delete the XLA_FFI_Future.
   if (ABSL_PREDICT_TRUE(future->async_value.IsAvailable())) {
-    return std::move(future->async_value);
+    tsl::AsyncValueRef<tsl::Chain> async_value = std::move(future->async_value);
+    delete future;
+    return async_value;
   }
 
   // If the future is not completed, return a copy of the underlying async value
   // and keep XLA_FFI_Future alive until it is completed.
   tsl::AsyncValueRef<tsl::Chain> async_value = future->async_value;
-  async_value.AndThen([delete_future = std::move(delete_future)] {});
+  async_value.AndThen([future] { delete future; });
   return async_value;
 }
 
@@ -799,7 +798,7 @@ static XLA_FFI_Future* XLA_FFI_INTERNAL_Future_Forward(void* async_value) {
   DCHECK(tsl_async_value) << "Async value must not be null";
 
   return new XLA_FFI_Future{
-      tsl::AsyncValueRef<tsl::Chain>(tsl::FormRef(tsl_async_value))};
+      tsl::AsyncValueRef<tsl::Chain>(tsl::TakeRef(tsl_async_value))};
 }
 
 static void* XLA_FFI_INTERNAL_Stream_Get(XLA_FFI_ExecutionContext* ctx) {
