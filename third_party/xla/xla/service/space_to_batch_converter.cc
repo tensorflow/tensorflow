@@ -1747,11 +1747,12 @@ bool ConvolutionVisitor::SupportedOpForPropagation(HloInstruction* consumer,
     const int64_t space_dim = result[DimMapper(SpaceToBatchDimMap::kSpace0)];
     // Support the trivial case where none of the batch and split spatial dim
     // are being reduced.
-    return !absl::c_linear_search(reduce_dims, batch_dim) &&
-           !absl::c_linear_search(reduce_dims, space_dim);
+    if (!absl::c_linear_search(reduce_dims, batch_dim) &&
+        !absl::c_linear_search(reduce_dims, space_dim)) {
+      return true;
+    }
 
-    // Support only the trivial case where both batch and split spatial dim are
-    // being reduced
+    // If both batch and space dim are being reduced, propagate.
     return absl::c_linear_search(reduce_dims, batch_dim) &&
            absl::c_linear_search(reduce_dims, space_dim);
   }
