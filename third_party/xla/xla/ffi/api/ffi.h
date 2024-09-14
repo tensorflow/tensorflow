@@ -1019,9 +1019,6 @@ template <ExecutionStage stage>
 struct ResultEncoding<stage, Future> {
   static std::variant<XLA_FFI_Error*, XLA_FFI_Future*> Encode(
       const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx, Future future) {
-    // TODO(ezhulenev): Add benchmarks for asynchronous FFI handlers, and
-    // optimize the fast path for returning completed futures.
-
     // Create XLA_FFI_Future object that will signal completion to the runtime.
     XLA_FFI_Future_Create_Args args;
     args.struct_size = XLA_FFI_Future_Create_Args_STRUCT_SIZE;
