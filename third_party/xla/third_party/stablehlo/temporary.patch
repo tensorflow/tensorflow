@@ -31,9 +31,12 @@ diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeTo
 diff --ruN a/stablehlo/stablehlo/dialect/Version.cpp b/stablehlo/stablehlo/dialect/Version.cpp
 --- stablehlo/stablehlo/dialect/Version.cpp
 +++ stablehlo/stablehlo/dialect/Version.cpp
-@@ -82,7 +82,7 @@
+@@ -80,9 +80,9 @@
+     case CompatibilityRequirement::NONE:
+       return Version::getCurrentVersion();
      case CompatibilityRequirement::WEEK_4:
-       return Version(1, 3, 0);  // v1.3.0 - Jul 15, 2024
+-      return Version(1, 3, 0);  // v1.3.0 - Jul 15, 2024
++      return Version(1, 5, 0);  // v1.3.0 - Aug 1, 2024
      case CompatibilityRequirement::WEEK_12:
 -      return Version(1, 0, 0);  // v1.0.0 - May 14, 2024
 +      return Version(1, 1, 0);  // v1.1.0 - May 30, 2024
