@@ -3328,6 +3328,19 @@ func.func @broadcast_add(%arg0: tensor<1x1xf32>, %arg1: tensor<1x1000xf32>) -> (
 
 // -----
 
+// CHECK-LABEL: broadcast_add_cst
+func.func @broadcast_add_cst(%arg1: tensor<1x1000xf32>) -> (tensor<1x1000xf32>, tensor<1x1000xf32>) {
+  %cst = mhlo.constant dense<1.200000e+01> : tensor<f32>
+  %0 = "mhlo.broadcast_in_dim"(%cst) <{broadcast_dimensions = dense<> : tensor<0xi64>}> : (tensor<f32>) -> tensor<1x1000xf32>
+  %1 = mhlo.add %0, %arg1 : tensor<1x1000xf32>
+  %2 = mhlo.add %arg1, %0 : tensor<1x1000xf32>
+  func.return %1, %2 : tensor<1x1000xf32>, tensor<1x1000xf32>
+}
+
+// CHECK: tfl.add{{.*}}(tensor<1x1000xf32>, tensor<f32>) -> tensor<1x1000xf32>
+
+// -----
+
 // CHECK-LABEL: broadcast_div
 func.func @broadcast_div(%arg0: tensor<1x1xf32>, %arg1: tensor<1x1000xf32>) -> (tensor<1x1000xf32>, tensor<1x1000xf32>) {
   %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}> : (tensor<1x1xf32>) -> tensor<1x1000xf32>

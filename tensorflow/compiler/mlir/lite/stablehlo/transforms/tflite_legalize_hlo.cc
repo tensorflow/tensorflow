@@ -364,6 +364,14 @@ void LegalizeHloToTfLitePass::runOnOperation() {
                                        std::move(patterns));
   }
 
+  {
+    OpPassManager phase_2("builtin.module");
+    phase_2.addPass(mlir::odml::CreateUnfoldSplatConstantPass());
+    if (failed(runPipeline(phase_2, getOperation()))) {
+      return signalPassFailure();
+    }
+  }
+
   ConversionTarget target(*context);
   target.addLegalDialect<TFL::TensorFlowLiteDialect, mhlo::MhloDialect>();
   target.addLegalOp<func::CallOp, func::ConstantOp, arith::ConstantOp>();
