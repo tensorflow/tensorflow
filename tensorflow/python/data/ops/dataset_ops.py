@@ -1168,7 +1168,7 @@ class DatasetV2(
   def fingerprint(self):
     """Computes the fingerprint of this `Dataset`.
 
-    If two datasets have the same fingerprint, it is guaranteeed that they
+    If two datasets have the same fingerprint, it is guaranteed that they
     would produce identical elements as long as the content of the upstream
     input files does not change and they produce data deterministically.
 
