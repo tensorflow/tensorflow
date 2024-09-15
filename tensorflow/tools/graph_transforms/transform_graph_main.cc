@@ -40,11 +40,6 @@ limitations under the License.
 // order_nodes - Sorts the GraphDef nodes in execution order, which can help
 //   simple inference engines that want to avoid complexity in their executors.
 
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/init_main.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/tools/graph_transforms/transform_graph.h"
 
 int main(int argc, char* argv[]) {
