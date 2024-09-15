@@ -17,6 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "third_party/protobuf/message_lite.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
@@ -25,7 +26,6 @@ limitations under the License.
 #include "tensorflow/tools/proto_splitter/cc/max_size.h"
 #include "tensorflow/tools/proto_splitter/cc/util.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/protobuf.h"
 
 namespace tensorflow {
 namespace tools::proto_splitter {
