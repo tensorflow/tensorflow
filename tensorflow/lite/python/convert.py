@@ -315,7 +315,6 @@ def convert(
     conversion_flags: _conversion_flags_pb2.ConverterFlags,
     input_data_str: Optional[str] = None,
     debug_info_str: Optional[str] = None,
-    enable_mlir_converter: bool = True,
 ):
   """Converts `input_data_str` to a TFLite model.
 
@@ -327,7 +326,6 @@ def convert(
       it can be hlo text or proto)
     debug_info_str: Serialized `GraphDebugInfo` proto describing logging
       information.
-    enable_mlir_converter: Enables MLIR-based conversion.
 
   Returns:
     Converted model in serialized form (e.g. a TFLITE model is common).
@@ -340,14 +338,13 @@ def convert(
   # Historically, deprecated conversion failures would trigger a crash, so we
   # attempt to run the converter out-of-process. The current MLIR conversion
   # pipeline surfaces errors instead, and can be safely run in-process.
-  if enable_mlir_converter or not _deprecated_conversion_binary:
+  if not _deprecated_conversion_binary:
     try:
       return wrap_converter.wrapped_convert(
           model_flags.SerializeToString(),
           conversion_flags.SerializeToString(),
           input_data_str,
           debug_info_str,
-          enable_mlir_converter,
       )
     except Exception as e:
       converter_error = ConverterError(str(e))
@@ -371,7 +368,6 @@ def convert(
               conversion_flags,
               input_data_str,
               debug_info_str,
-              enable_mlir_converter,
           )
       raise converter_error
 
@@ -909,7 +905,6 @@ def convert_graphdef_with_arrays(
   """
   model_flags = build_model_flags(**kwargs)
   conversion_flags = build_conversion_flags(**kwargs)
-  enable_mlir_converter = kwargs.get("enable_mlir_converter", True)
   quantized_input_stats = kwargs.get("quantized_input_stats", None)
 
   for idx, (name, shape) in enumerate(input_arrays_with_shape):
@@ -940,7 +935,6 @@ def convert_graphdef_with_arrays(
       conversion_flags,
       input_data.SerializeToString(),
       debug_info_str=None,
-      enable_mlir_converter=enable_mlir_converter,
   )
   return data
 
@@ -972,7 +966,6 @@ def convert_graphdef(input_data, input_tensors, output_tensors, **kwargs):
   conversion_flags = build_conversion_flags(**kwargs)
   saved_model_dir = kwargs.get("saved_model_dir", None)
   input_shapes = kwargs.get("input_shapes", None)
-  enable_mlir_converter = kwargs.get("enable_mlir_converter", True)
   quantized_input_stats = kwargs.get("quantized_input_stats", None)
   debug_info = kwargs.get("debug_info", None)
 
@@ -1030,7 +1023,6 @@ def convert_graphdef(input_data, input_tensors, output_tensors, **kwargs):
       conversion_flags,
       input_data.SerializeToString(),
       debug_info_str=debug_info.SerializeToString() if debug_info else None,
-      enable_mlir_converter=enable_mlir_converter,
   )
   return data
 
@@ -1047,7 +1039,6 @@ def convert_saved_model(**kwargs):
       conversion_flags,
       input_data_str=None,
       debug_info_str=None,
-      enable_mlir_converter=True,
   )
   return data
 
@@ -1075,7 +1066,6 @@ def convert_jax_hlo(input_content, input_names, is_proto_format, **kwargs):
       conversion_flags,
       input_data_str=input_content,
       debug_info_str=None,
-      enable_mlir_converter=True,
   )
   return data
 
@@ -1103,7 +1093,6 @@ def toco_convert(input_data, input_tensors, output_tensors, *args, **kwargs):
   Raises:
     Defined in `convert`.
   """
-  kwargs["enable_mlir_converter"] = kwargs.get("enable_mlir_converter", False)
   return convert_graphdef(
       input_data, input_tensors, output_tensors, *args, **kwargs
   )
