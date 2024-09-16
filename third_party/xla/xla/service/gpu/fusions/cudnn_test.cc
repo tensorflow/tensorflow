@@ -319,14 +319,14 @@ ENTRY e {
   EXPECT_TRUE(*RunCuDnnFileCheck(kHloText, R"(
 CHECK: "tensors"
 CHECK: "out"
-CHECK: "dim": [1,1,128]
-CHECK: "stride": [1,128,1]
+CHECK: "dim": [{{[[:space:]]*}}1,{{[[:space:]]*}}1,{{[[:space:]]*}}128{{[[:space:]]*}}]
+CHECK: "stride": [{{[[:space:]]*}}1,{{[[:space:]]*}}128,{{[[:space:]]*}}1{{[[:space:]]*}}]
 CHECK: "p0"
-CHECK: "dim": [1,1,64]
-CHECK: "stride": [1,64,1]
+CHECK: "dim": [{{[[:space:]]*}}1,{{[[:space:]]*}}1,{{[[:space:]]*}}64{{[[:space:]]*}}]
+CHECK: "stride": [{{[[:space:]]*}}1,{{[[:space:]]*}}64,{{[[:space:]]*}}1{{[[:space:]]*}}]
 CHECK: "p1"
-CHECK: "dim": [1,64,128]
-CHECK: "stride": [1,128,1]
+CHECK: "dim": [{{[[:space:]]*}}1,{{[[:space:]]*}}64,{{[[:space:]]*}}128{{[[:space:]]*}}]
+CHECK: "stride": [{{[[:space:]]*}}1,{{[[:space:]]*}}128,{{[[:space:]]*}}1{{[[:space:]]*}}]
   )"));
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
@@ -352,14 +352,14 @@ ENTRY e {
   EXPECT_TRUE(*RunCuDnnFileCheck(kHloText, R"(
 CHECK: "tensors"
 CHECK: "out"
-CHECK: "dim": [1,256,1]
-CHECK: "stride": [1,1,256]
+CHECK: "dim": [{{[[:space:]]*}}1,{{[[:space:]]*}}256,{{[[:space:]]*}}1{{[[:space:]]*}}]
+CHECK: "stride": [{{[[:space:]]*}}1,{{[[:space:]]*}}1,{{[[:space:]]*}}256{{[[:space:]]*}}]
 CHECK: "p0"
-CHECK: "dim": [1,256,64]
-CHECK: "stride": [1,1,256]
+CHECK: "dim": [{{[[:space:]]*}}1,{{[[:space:]]*}}256,{{[[:space:]]*}}64{{[[:space:]]*}}]
+CHECK: "stride": [{{[[:space:]]*}}1,{{[[:space:]]*}}1,{{[[:space:]]*}}256{{[[:space:]]*}}]
 CHECK: "p1"
-CHECK: "dim": [1,64,1]
-CHECK: "stride": [1,1,64]
+CHECK: "dim": [{{[[:space:]]*}}1,{{[[:space:]]*}}64,{{[[:space:]]*}}1{{[[:space:]]*}}]
+CHECK: "stride": [{{[[:space:]]*}}1,{{[[:space:]]*}}1,{{[[:space:]]*}}64{{[[:space:]]*}}]
   )"));
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
