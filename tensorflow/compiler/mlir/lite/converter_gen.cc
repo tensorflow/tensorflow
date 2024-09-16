@@ -203,7 +203,8 @@ static void EmitOperatorBuilders(const std::vector<Record *> &defs,
        << "const std::vector<int32_t>& results,"
        << (has_intermediates ? "const std::vector<int32_t>& intermediate_index,"
                              : "")
-       << "flatbuffers::FlatBufferBuilder *fbb) {\n";
+       << "flatbuffers::FlatBufferBuilder *fbb,"
+       << "int debug_metadata_index) {\n";
 
     // Inputs & outputs
     os << "  auto inputs = fbb->CreateVector(operands);\n"
@@ -241,7 +242,17 @@ static void EmitOperatorBuilders(const std::vector<Record *> &defs,
       const std::string option_name = GetOperatorOptionName(*def);
       os << "      tflite::BuiltinOptions2_" << option_name << ", "
          << "Create" << option_name << "(tflOp, fbb).Union()";
+    } else {
+      os << ",\n"
+         << "      /*large_custom_options_offset=*/0,\n"
+         << "      /*large_custom_options_size=*/0";
+      os << ",\n";
+      os << "      tflite::BuiltinOptions2_NONE, /*builtin_options2=*/0";
     }
+
+    os << ",\n"
+       << "      /*debug_metadata_index=*/debug_metadata_index";
+
     os << ");\n}\n\n";
   }
 }
@@ -338,7 +349,8 @@ static void EmitOperandNumbers(const RecordKeeper &record_keeper,
 //       const std::vector<int32_t>& operands,
 //       const std::vector<int32_t>& results,
 //       const std::vector<int32_t>& intermediates,
-//       flatbuffers::FlatBufferBuilder *fbb);
+//       flatbuffers::FlatBufferBuilder *fbb,
+//       std::optional<int> debug_metadata_index);
 static void EmitBuildOperator(const std::vector<Record *> &defs,
                               raw_ostream *ostream) {
   raw_ostream &os = *ostream;
@@ -350,7 +362,8 @@ static void EmitBuildOperator(const std::vector<Record *> &defs,
         "const std::vector<int32_t>& operands,"
         "const std::vector<int32_t>& results,"
         "const std::vector<int32_t>& intermediates,"
-        "flatbuffers::FlatBufferBuilder *fbb) {\n";
+        "flatbuffers::FlatBufferBuilder *fbb,"
+        "std::optional<int> debug_metadata_index) {\n";
 
   for (const auto *def : defs) {
     StringRef op_name = def->getName().drop_front(4);
@@ -361,7 +374,7 @@ static void EmitBuildOperator(const std::vector<Record *> &defs,
        << "    return " << GetOperatorBuilderName(def->getName())
        << "(tflOp, opcode_index, operands, results, "
        << (op_name.take_back(6) == "LSTMOp" ? "intermediates, " : "")
-       << "fbb);\n";
+       << "fbb, debug_metadata_index.value_or(-1));\n";
   }
 
   os << "  return std::nullopt;\n"
