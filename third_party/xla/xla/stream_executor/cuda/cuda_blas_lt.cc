@@ -319,11 +319,11 @@ auto BlasLt::GetMatmulPlan(const gpu::GemmConfig& cfg,
 
   if (xla::primitive_util::IsF8Type(lhs_layout.dtype) &&
       lhs_layout.order == gpu::MatrixLayout::Order::kColumnMajor) {
-    return xla::Internal("The F8 LHS must be column-major");
+    return xla::Internal("The F8 LHS must be row-major");
   }
   if (xla::primitive_util::IsF8Type(rhs_layout.dtype) &&
       rhs_layout.order == gpu::MatrixLayout::Order::kRowMajor) {
-    return xla::Internal("The F8 RHS must be row-major");
+    return xla::Internal("The F8 RHS must be column-major");
   }
 
   TF_ASSIGN_OR_RETURN(auto output_dtype,
