@@ -198,13 +198,19 @@ std::optional<DimOrdersAndReqs> GetOperandDimOrdersAndCombinedReqs(
   DimOrdersAndReqsOrError dim_orders_and_new_reqs =
       GetPropagatedDimOrdersAndRequirements(
           hlo, dim_order, TransformDirection::kOutputToInput, properties);
-  if (!std::holds_alternative<DimOrdersAndReqs>(dim_orders_and_new_reqs)) {
+  if (std::holds_alternative<FusionDecision>(dim_orders_and_new_reqs)) {
+    VLOG(5) << "Not fusing " << hlo.ToString()
+            << " to the output due to the decision: "
+            << std::get<FusionDecision>(dim_orders_and_new_reqs).Explain();
     return std::nullopt;
   }
   DotRequirementsOrError combined_reqs = CombineDotRequirements(
       requirements,
       std::get<DimOrdersAndReqs>(dim_orders_and_new_reqs).requirements);
-  if (!std::holds_alternative<DotRequirements>(combined_reqs)) {
+  if (std::holds_alternative<FusionDecision>(combined_reqs)) {
+    VLOG(5) << "Not fusing " << hlo.ToString()
+            << " to the output due to the decision: "
+            << std::get<FusionDecision>(combined_reqs).Explain();
     return std::nullopt;
   }
   return DimOrdersAndReqs{
@@ -223,13 +229,19 @@ std::optional<DimOrdersAndReqs> GetOperandDimOrdersAndCombinedReqsIfProfitable(
           hlo, TransformDirection::kOutputToInput,
           /*src_operand_index=*/std::nullopt, dim_order, gpu_version,
           properties);
-  if (!std::holds_alternative<DimOrdersAndReqs>(dim_orders_and_new_reqs)) {
+  if (std::holds_alternative<FusionDecision>(dim_orders_and_new_reqs)) {
+    VLOG(5) << "Not fusing " << hlo.ToString()
+            << " to the output due to the decision: "
+            << std::get<FusionDecision>(dim_orders_and_new_reqs).Explain();
     return std::nullopt;
   }
   DotRequirementsOrError combined_reqs = CombineDotRequirements(
       requirements,
       std::get<DimOrdersAndReqs>(dim_orders_and_new_reqs).requirements);
-  if (!std::holds_alternative<DotRequirements>(combined_reqs)) {
+  if (std::holds_alternative<FusionDecision>(combined_reqs)) {
+    VLOG(5) << "Not fusing " << hlo.ToString()
+            << " to the output due to the decision: "
+            << std::get<FusionDecision>(combined_reqs).Explain();
     return std::nullopt;
   }
   return DimOrdersAndReqs{
@@ -247,13 +259,19 @@ std::optional<DimOrdersAndReqs> GetUserDimOrdersAndCombinedReqsIfProfitable(
       GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
           user, TransformDirection::kInputToOutput, user.operand_index(&hlo),
           hlo_dim_order, gpu_version, properties);
-  if (!std::holds_alternative<DimOrdersAndReqs>(dim_orders_and_new_reqs)) {
+  if (std::holds_alternative<FusionDecision>(dim_orders_and_new_reqs)) {
+    VLOG(5) << "Not fusing " << user.ToString()
+            << " to the input due to the decision: "
+            << std::get<FusionDecision>(dim_orders_and_new_reqs).Explain();
     return std::nullopt;
   }
   DotRequirementsOrError combined_reqs = CombineDotRequirements(
       requirements,
       std::get<DimOrdersAndReqs>(dim_orders_and_new_reqs).requirements);
-  if (!std::holds_alternative<DotRequirements>(combined_reqs)) {
+  if (std::holds_alternative<FusionDecision>(combined_reqs)) {
+    VLOG(5) << "Not fusing " << user.ToString()
+            << " to the input due to the decision: "
+            << std::get<FusionDecision>(combined_reqs).Explain();
     return std::nullopt;
   }
   return DimOrdersAndReqs{
