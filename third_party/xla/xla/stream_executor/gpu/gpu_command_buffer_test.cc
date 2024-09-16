@@ -783,6 +783,10 @@ TEST(GpuCommandBufferTest, ConditionalIfWithMemset) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();
 
+  if (platform->id() == rocm::kROCmPlatformId) {
+    GTEST_SKIP() << "Not supported on ROCM";
+  }
+
   if (platform->id() == cuda::kCudaPlatformId &&
       executor->GetDeviceDescription().driver_version() <
           SemanticVersion{12, 4, 0}) {
