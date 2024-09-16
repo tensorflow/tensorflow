@@ -14,6 +14,5 @@ those to this list.
 """
 
 temporary_patch_list = [
-    "//third_party/triton:temporary/fix_index_cast_op_lowering_to_llvm.patch",
     # Add new patches just above this line
 ]
