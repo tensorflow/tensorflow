@@ -18,6 +18,9 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/log/check.h"
+#include "absl/strings/escaping.h"
+#include "mlir/AsmParser/AsmParser.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -57,6 +60,27 @@ void removeFrontendAttribute(mlir::func::FuncOp funcOp,
                              mlir::StringRef attributeName, int64_t argNum);
 
 void loadAllRequiredDialects(mlir::MLIRContext* context);
+
+// Parses `stringAttr` to an attribute of type `AttrTy`.
+//
+// NOTE: assumes `stringAttr` is of type `StringAttr`.
+template <typename AttrTy>
+AttrTy parseStringAttr(mlir::Attribute stringAttr) {
+  std::string value;
+  std::string error;
+  CHECK(absl::CUnescape(mlir::cast<mlir::StringAttr>(stringAttr).getValue(),
+                        &value, &error))
+      << error;
+  return mlir::cast<AttrTy>(
+      mlir::parseAttribute(value, stringAttr.getContext()));
+}
+
+// Parses `attrName` from `dictAttr` to an attribute of type `AttrTy`.
+template <typename AttrTy>
+AttrTy parseStringAttr(mlir::DictionaryAttr dictAttr,
+                       llvm::StringRef attrName) {
+  return parseStringAttr<AttrTy>(dictAttr.get(attrName));
+}
 
 }  // namespace sdy
 }  // namespace xla

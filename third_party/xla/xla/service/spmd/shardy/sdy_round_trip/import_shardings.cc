@@ -75,26 +75,6 @@ using ::mlir::sdy::MeshAttr;
 using ::mlir::sdy::TensorShardingAttr;
 using ::mlir::sdy::TensorShardingPerValueAttr;
 
-// Parses `stringAttr` to an attribute of type `AttrTy`.
-//
-// NOTE: assumes `stringAttr` is of type `StringAttr`.
-template <typename AttrTy>
-AttrTy parseStringAttr(Attribute stringAttr) {
-  std::string value;
-  std::string error;
-  CHECK(absl::CUnescape(mlir::cast<StringAttr>(stringAttr).getValue(), &value,
-                        &error))
-      << error;
-  return mlir::cast<AttrTy>(
-      mlir::parseAttribute(value, stringAttr.getContext()));
-}
-
-// Parses `attrName` from `dictAttr` to an attribute of type `AttrTy`.
-template <typename AttrTy>
-AttrTy parseStringAttr(DictionaryAttr dictAttr, llvm::StringRef attrName) {
-  return parseStringAttr<AttrTy>(dictAttr.get(attrName));
-}
-
 // Builds the shardings coming from Shardy previously. This means
 // the module was exported from Shardy and we are now round-tripping back.
 // This should happen after the meshes were created from the `ModuleOp` attrs
