@@ -208,3 +208,70 @@ func.func @materialize_and_insert(%input: tensor<32x64xf32>, %i: index,
   func.return %1 : tensor<32x64xf32>
 }
 // CHECK-NOT: unrealized_conversion_cast
+
+// -----
+
+func.func private @exp(%p0: tensor<32x64xcomplex<f32>>, %i: index, %j: index) -> complex<f32>
+
+#map = #xla_gpu.indexing_map<(d0, d1)[s0, s1] -> (d1*32+d0*2+s0, s1),
+  domain: d0 in [0, 32], d1 in [0, 8],
+  s0 in [0, 2], s1 in [0, 3], is_simplified: false>
+#map1 = #xla_gpu.indexing_map<(d0, d1)[s0, s1] -> (d0*2+s0, s1),
+  domain: d0 in [0, 32], d1 in [0, 2],
+  s0 in [0, 2], s1 in [0, 3], is_simplified: false>
+func.func @materialize_complex(
+  %input: tensor<32x64xcomplex<f32>>,
+  %output: tensor<32x64xcomplex<f32>>,
+  %d0: index,
+  %d1: index) -> !xla_gpu.indexed_vector<32x3x4xcomplex<f32>, #map1> {
+
+  %0 = xla_gpu.materialize @exp(%input) at #map(%d0, %d1)
+    : (tensor<32x64xcomplex<f32>>)
+    -> !xla_gpu.indexed_vector<32x3x4xcomplex<f32>, #map1>
+  func.return %0 : !xla_gpu.indexed_vector<32x3x4xcomplex<f32>, #map1>
+}
+
+// CHECK: %[[C0:.*]] = arith.constant 0 : index
+// CHECK: %[[C1:.*]] = arith.constant 1 : index
+// CHECK: xla_gpu.loop ({{.*}})[%[[I:.*]], %[[J:.*]]]
+// CHECK-SAME: iter_args(%[[ITER:.*]] = {{.*}})
+// CHECK: %[[PURE_CALL:.*]] = xla_gpu.pure_call
+// CHECK-SAME: complex<f32>
+// CHECK: %[[REAL:.*]] = complex.re %[[PURE_CALL]]
+// CHECK: %[[IMAG:.*]] = complex.im %[[PURE_CALL]]
+// CHECK: %[[TEMP:.*]] = vector.insert %[[REAL]], %[[ITER]] [%[[C0]], %[[I]], %[[J]]]
+// CHECK: %[[FINAL:.*]] = vector.insert %[[IMAG]], %[[TEMP]] [%[[C1]], %[[I]], %[[J]]]
+// CHECK: xla_gpu.yield %[[FINAL]] : vector<2x3x4xf32>
+
+// -----
+
+#map1 = #xla_gpu.indexing_map<(d0, d1)[s0, s1] -> (d0*2+s0, s1),
+  domain: d0 in [0, 32], d1 in [0, 2],
+  s0 in [0, 2], s1 in [0, 3], is_simplified: false>
+#map2 = #xla_gpu.indexing_map<(d0, d1) -> (d0, d1),
+  domain: d0 in [0, 32], d1 in [0, 2], is_simplified: false>
+func.func @insert_complex(
+  %input: !xla_gpu.indexed_vector<32x3x4xcomplex<f32>, #map1>,
+  %output: tensor<32x64xcomplex<f32>>,
+  %d0: index,
+  %d1: index) -> tensor<32x64xcomplex<f32>> {
+
+  %1 = xla_gpu.insert %input(%d0, %d1) into %output at #map2
+    : !xla_gpu.indexed_vector<32x3x4xcomplex<f32>, #map1>
+    -> tensor<32x64xcomplex<f32>>
+  func.return %1 : tensor<32x64xcomplex<f32>>
+}
+
+// CHECK-LABEL: @insert_complex
+// CHECK-SAME: %[[INPUT:.*]]: !xla_gpu.indexed_vector<32x3x4xcomplex<f32>
+// CHECK: %[[C0:.*]] = arith.constant 0 : index
+// CHECK: %[[C1:.*]] = arith.constant 1 : index
+// CHECK: %[[VECTOR:.*]] = builtin.unrealized_conversion_cast %[[INPUT]]
+// CHECK-SAME: to vector<2x3x4xf32>
+// CHECK: xla_gpu.loop ({{.*}})[%[[I:.*]], %[[J:.*]]]
+// CHECK-SAME: iter_args(%[[ITER:.*]] = {{.*}})
+// CHECK: %[[REAL:.*]] = vector.extract %[[VECTOR]][%[[C0]], %[[I]], %[[J]]]
+// CHECK: %[[IMAG:.*]] = vector.extract %[[VECTOR]][%[[C1]], %[[I]], %[[J]]]
+// CHECK: %[[COMPLEX:.*]] = complex.create %[[REAL]], %[[IMAG]]
+// CHECK: %[[INSERTED:.*]] = tensor.insert %[[COMPLEX]] into %[[ITER]]
+// CHECK: xla_gpu.yield %[[INSERTED]] : tensor<32x64xcomplex<f32>>

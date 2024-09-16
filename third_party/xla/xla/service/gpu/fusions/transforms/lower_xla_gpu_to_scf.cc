@@ -245,12 +245,16 @@ struct RewriteXlaGpuLoop : mlir::OpRewritePattern<LoopOp> {
 };
 
 mlir::VectorType getThreadLevelVectorType(IndexedVectorType indexed_vector) {
+  auto data_type = indexed_vector.getElementType();
   SmallVector<int64_t> vector_dims;
+  if (auto complex = mlir::dyn_cast<mlir::ComplexType>(data_type)) {
+    vector_dims.push_back(2);
+    data_type = complex.getElementType();
+  }
   IndexingMap map = indexed_vector.getIndexingMapAttr().getIndexingMap();
   for (auto bound : map.GetSymbolBounds()) {
     vector_dims.push_back(bound.GetLoopTripCount());
   }
-  auto data_type = indexed_vector.getElementType();
   return mlir::VectorType::get(vector_dims, data_type);
 }
 
@@ -260,9 +264,12 @@ struct RewriteMaterialize : mlir::OpRewritePattern<MaterializeOp> {
   mlir::LogicalResult matchAndRewrite(
       MaterializeOp op, mlir::PatternRewriter& rewriter) const override {
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    auto i0 = b.create<mlir::arith::ConstantIndexOp>(0);
+    auto i1 = b.create<mlir::arith::ConstantIndexOp>(1);
 
-    auto data_type = op.getResult().getType().getElementType();
     auto vec_type = getThreadLevelVectorType(op.getResult().getType());
+    auto maybe_complex_data_type = op.getResult().getType().getElementType();
+    auto data_type = vec_type.getElementType();
     Value init_vec;
     if (mlir::isa<mlir::IntegerType>(data_type)) {
       init_vec = b.create<mlir::arith::ConstantOp>(mlir::DenseElementsAttr::get(
@@ -280,13 +287,24 @@ struct RewriteMaterialize : mlir::OpRewritePattern<MaterializeOp> {
             ValueRange iter_args) {
           auto args = SmallVector<Value, 4>(op.getInput());
           args.insert(args.end(), map_results.begin(), map_results.end());
-          SmallVector<mlir::Type, 1> types{data_type};
-          auto call =
-              b.create<PureCallOp>(op.getCalleeAttr(), ValueRange{args}, types);
+          SmallVector<mlir::Type, 1> types{maybe_complex_data_type};
+          auto call_result =
+              b.create<PureCallOp>(op.getCalleeAttr(), ValueRange{args}, types)
+                  .getResult(0);
           SmallVector<mlir::OpFoldResult> offset(ivs);
           auto old_vec = iter_args.back();
-          Value new_vec = b.create<mlir::vector::InsertOp>(call.getResult(0),
-                                                           old_vec, offset);
+          Value new_vec;
+          if (mlir::isa<mlir::ComplexType>(call_result.getType())) {
+            auto real = b.create<mlir::complex::ReOp>(call_result);
+            auto imag = b.create<mlir::complex::ImOp>(call_result);
+            offset.insert(offset.begin(), i0.getResult());
+            new_vec = b.create<mlir::vector::InsertOp>(real, old_vec, offset);
+            offset.front() = i1.getResult();
+            new_vec = b.create<mlir::vector::InsertOp>(imag, new_vec, offset);
+          } else {
+            new_vec =
+                b.create<mlir::vector::InsertOp>(call_result, old_vec, offset);
+          }
           b.create<YieldOp>(new_vec);
         });
     auto convert = b.create<mlir::UnrealizedConversionCastOp>(
@@ -303,6 +321,8 @@ struct RewriteInsert : mlir::OpRewritePattern<InsertOp> {
   mlir::LogicalResult matchAndRewrite(
       InsertOp op, mlir::PatternRewriter& rewriter) const override {
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    auto i0 = b.create<mlir::arith::ConstantIndexOp>(0);
+    auto i1 = b.create<mlir::arith::ConstantIndexOp>(1);
     auto convert =
         b.create<mlir::UnrealizedConversionCastOp>(
              getThreadLevelVectorType(op.getSource().getType()), op.getSource())
@@ -318,13 +338,25 @@ struct RewriteInsert : mlir::OpRewritePattern<InsertOp> {
         [&](OpBuilder&, Location, ValueRange ivs, ValueRange map_results,
             ValueRange iter_args) {
           SmallVector<mlir::OpFoldResult> vector_offset(ivs);
-          auto scalar =
-              b.create<mlir::vector::ExtractOp>(convert, vector_offset);
+          Value scalar;
+          if (auto complex = mlir::dyn_cast<mlir::ComplexType>(
+                  op.getSource().getType().getElementType())) {
+            vector_offset.insert(vector_offset.begin(), i0.getResult());
+            auto real =
+                b.create<mlir::vector::ExtractOp>(convert, vector_offset);
+            vector_offset.front() = i1.getResult();
+            auto imag =
+                b.create<mlir::vector::ExtractOp>(convert, vector_offset);
+            scalar = b.create<mlir::complex::CreateOp>(complex, real, imag)
+                         .getResult();
+          } else {
+            scalar = b.create<mlir::vector::ExtractOp>(convert, vector_offset)
+                         .getResult();
+          }
           auto tensor_indices = b.create<ApplyIndexingOp>(
               map_results, ValueRange(), op.getMap().getIndexingMap());
           Value new_tensor = b.create<mlir::tensor::InsertOp>(
-              scalar.getResult(), iter_args.back(),
-              tensor_indices.getResults());
+              scalar, iter_args.back(), tensor_indices.getResults());
           b.create<YieldOp>(new_tensor);
         });
     rewriter.replaceOp(op, loop->getResults());
