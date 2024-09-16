@@ -554,57 +554,50 @@ UNARY_TEST(RoundNearestEven, {
   fesetround(curr_direction);
 })
 
-// Can be thought of as an absolute error of `<=
-// |std::numeric_limits<Native>::min()|`.
-template <typename NativeT>
-double ReciprocalAbsError(NativeT val) {
-  NativeT output = static_cast<NativeT>(1.0) / static_cast<NativeT>(val);
-
-  if (IsSubnormal(output)) {
-    return std::numeric_limits<NativeT>::min();
-  }
-
-  return 0.0;
-}
-
-template <typename NativeT>
-double ReciprocalAbsErrorBF16(NativeT val) {
-  NativeT output = static_cast<NativeT>(1.0) / static_cast<NativeT>(val);
-
-  if (IsSubnormalOrMinNormal(output)) {
-    return std::numeric_limits<NativeT>::min();
-  }
-
-  return 0.0;
-}
-
 UNARY_TEST(Reciprocal, {
-  auto error_spec_gen = +[](NativeT) {
+  // Can be thought of as an absolute error of `<=
+  // |std::numeric_limits<Native>::min()|`.
+  auto abs_err = +[](NativeT val) -> double {
+    NativeT output = static_cast<NativeT>(1.0) / val;
+    if (IsSubnormal(output)) {
+      return std::numeric_limits<NativeT>::min();
+    }
+    return 0.0;
+  };
+  auto abs_err_bf16 = +[](NativeT val) -> double {
+    NativeT output = static_cast<NativeT>(1.0) / val;
+    if (IsSubnormalOrMinNormal(output)) {
+      return std::numeric_limits<NativeT>::min();
+    }
+    return 0.0;
+  };
+
+  ErrorSpecGen error_spec_gen = [](NativeT) {
     return ErrorSpec::Builder().strict_signed_zeros().build();
   };
   if (IsCpu(platform_)) {
-    error_spec_gen = +[](NativeT val) {
+    error_spec_gen = [&](NativeT val) {
       return ErrorSpec::Builder()
-          .abs_err(ReciprocalAbsError(val))
+          .abs_err(abs_err(val))
           .strict_signed_zeros()
           .build();
     };
   }
   if (IsGpu(platform_)) {
-    error_spec_gen = +[](NativeT val) {
+    error_spec_gen = [&](NativeT val) {
       NativeT eps = std::numeric_limits<NativeT>::epsilon();
       return ErrorSpec::Builder()
-          .abs_err(ReciprocalAbsError(val))
+          .abs_err(abs_err(val))
           .rel_err(eps)
           .strict_signed_zeros()
           .build();
     };
   }
   if (IsTpu(platform_)) {
-    error_spec_gen = +[](NativeT val) {
+    error_spec_gen = [&](NativeT val) {
       if constexpr (std::is_same_v<NativeT, xla::bfloat16>) {
         return ErrorSpec::Builder()
-            .abs_err(ReciprocalAbsErrorBF16(val))
+            .abs_err(abs_err_bf16(val))
             .strict_signed_zeros()
             .build();
       } else if constexpr (std::is_same_v<NativeT, xla::half>) {
@@ -612,7 +605,7 @@ UNARY_TEST(Reciprocal, {
       } else if constexpr (std::is_same_v<NativeT, float>) {
         NativeT eps = std::numeric_limits<NativeT>::epsilon();
         return ErrorSpec::Builder()
-            .abs_err(ReciprocalAbsError(val))
+            .abs_err(abs_err(val))
             .rel_err(eps)
             .strict_signed_zeros()
             .build();
@@ -622,10 +615,10 @@ UNARY_TEST(Reciprocal, {
     };
   }
   if (IsPreV6Tpu(platform_)) {
-    error_spec_gen = +[](NativeT val) {
+    error_spec_gen = [&](NativeT val) {
       if constexpr (std::is_same_v<NativeT, xla::bfloat16>) {
         return ErrorSpec::Builder()
-            .abs_err(ReciprocalAbsErrorBF16(val))
+            .abs_err(abs_err_bf16(val))
             .strict_signed_zeros()
             .build();
       } else if constexpr (std::is_same_v<NativeT, xla::half>) {
@@ -633,7 +626,7 @@ UNARY_TEST(Reciprocal, {
       } else if constexpr (std::is_same_v<NativeT, float>) {
         NativeT eps = std::numeric_limits<NativeT>::epsilon();
         return ErrorSpec::Builder()
-            .abs_err(ReciprocalAbsError(val))
+            .abs_err(abs_err(val))
             .rel_err(34 * eps)
             .strict_signed_zeros()
             .build();
@@ -643,10 +636,10 @@ UNARY_TEST(Reciprocal, {
     };
   }
   if (IsPreV5Tpu(platform_)) {
-    error_spec_gen = +[](NativeT val) {
+    error_spec_gen = [&](NativeT val) {
       if constexpr (std::is_same_v<NativeT, xla::bfloat16>) {
         return ErrorSpec::Builder()
-            .abs_err(ReciprocalAbsErrorBF16(val))
+            .abs_err(abs_err_bf16(val))
             .strict_signed_zeros()
             .build();
       } else if constexpr (std::is_same_v<NativeT, xla::half>) {
@@ -654,7 +647,7 @@ UNARY_TEST(Reciprocal, {
       } else if constexpr (std::is_same_v<NativeT, float>) {
         NativeT eps = std::numeric_limits<NativeT>::epsilon();
         return ErrorSpec::Builder()
-            .abs_err(ReciprocalAbsError(val))
+            .abs_err(abs_err(val))
             .rel_err(136 * eps)
             .strict_signed_zeros()
             .build();
