@@ -1152,7 +1152,6 @@ PjRtCApiExecutable::GetHloModules() const {
   }
 
   if (program_format == ::pjrt::kMlirFormat) {
-    xla::HloProto hlo_proto;
     mlir::MLIRContext ctx;
     TF_ASSIGN_OR_RETURN(  // NOLINT(clang-diagnostic-pre-c++20-compat)
         mlir::OwningOpRef<mlir::ModuleOp> module,
