@@ -24,8 +24,10 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/device_description.h"
@@ -194,6 +196,35 @@ ENTRY entry_computation {
   EXPECT_THAT(
       analysis_with_triton_constraints->ParametersSatisfyConstraints({1, 6}),
       IsOkAndHolds(true));
+}
+
+TEST_F(TritonEmitterConstraintsTest,
+       ReshapeConstraintsAreNotDerivedForFusionOperands) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+triton_computation {
+  p = s8[6,6] parameter(0)
+  ROOT add = s8[6,6] add(p, p)
+}
+
+ENTRY entry_computation {
+  p = s8[36] parameter(0)
+  bitcast = s8[6,6] bitcast(p)
+  ROOT fusion = s8[6,6] fusion(bitcast),
+    kind=kCustom, calls=triton_computation
+})"));
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
+
+  const HloComputation* triton_computation =
+      FindComputation(module.get(), "triton_computation");
+
+  std::unique_ptr<EmitterSpecificConstraints> constraints =
+      TritonEmitterConstraints::GetBuilder(device_description_)(
+          analysis->GetSymbolicTiledHloComputation(),
+          *HloFusionAdaptor::ForComputation(triton_computation));
+  EXPECT_FALSE(reinterpret_cast<TritonEmitterConstraints*>(constraints.get())
+                   ->HasCustomConstraints());
 }
 
 }  // namespace

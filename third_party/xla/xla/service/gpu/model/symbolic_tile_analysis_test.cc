@@ -90,7 +90,8 @@ class FakeEmitterSpecificConstraints : public EmitterSpecificConstraints {
 
   static EmitterSpecificConstraintsBuilder GetBuilder() {
     return [](const std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>&
-                  instructions) {
+                  instructions,
+              const HloFusionAdaptor&) {
       const SymbolicTiledHloInstruction* root = instructions[0].get();
       int64_t dim0_size = root->hlo()->shape().dimensions(0);
       return std::make_unique<FakeEmitterSpecificConstraints>(
@@ -946,6 +947,77 @@ ENTRY main {
       (d0, d1, d2) -> (),
     is_simplified: true
   )"));
+}
+
+TEST_F(SymbolicTileAnalysisTest,
+       BailsOutOnReshapeWhenStandaloneSymbolicTileDerivationFails) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add_computation {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+fused_computation {
+  p0 = f32[2,128,128] parameter(0)
+  // We use two successive bitcasts here as a hack to produce the right
+  // failure---otherwise, the derivation failure may occur on the parameter
+  // instruction.
+  bitcast_fix = f32[16384,1,2] bitcast(p0)
+  bitcast = f32[2,128,128] bitcast(bitcast_fix)
+  c0 = f32[] constant(0)
+  reduce = f32[2,128] reduce(bitcast, c0), dimensions={2},
+    to_apply=add_computation
+}
+
+ENTRY main {
+  p0 = f32[2,128,128] parameter(0)
+  ROOT fusion = f32[2,128] fusion(p0), kind=kLoop, calls=fused_computation
+})"));
+
+  SymbolicTileAnalysisOrError analysis_or_error =
+      SymbolicTileAnalysis::AnalyzeComputation(
+          *module->entry_computation()
+               ->root_instruction()
+               ->fused_instructions_computation(),
+          &mlir_context_, /*emitter_specific_constraints_builder=*/nullptr);
+
+  EXPECT_TRUE(std::holds_alternative<FusionDecision>(analysis_or_error));
+  EXPECT_THAT(std::get<FusionDecision>(analysis_or_error).Explain(),
+              ::testing::HasSubstr("Bailing out on reshape"));
+}
+
+TEST_F(SymbolicTileAnalysisTest,
+       DoesNotBailOutOnFilteredOutHloIfThatHloIsOnlyAnOperand) {
+  // This is a regression test for a bug where we would refuse to tile a
+  // computation if its operand could not be tiled according to
+  // `SymbolicTileAnalysis`.
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+fused_computation {
+  p0 = f32[10,10] parameter(0)
+  ROOT reshape = f32[100] reshape(p0)
+}
+
+ENTRY main {
+  p0 = f32[10,2] parameter(0)
+  p1 = f32[2,10] parameter(1)
+  // Note: this will need upgrading once `SymbolicTileAnalysis` stops filtering
+  // out dots.
+  untileable_dot = f32[10,10] dot(p0, p1),
+    lhs_batch_dims={}, rhs_batch_dims={},
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT fusion = f32[100] fusion(untileable_dot),
+    kind=kLoop, calls=fused_computation
+})"));
+
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  EXPECT_TRUE(analysis.has_value());
 }
 
 }  // namespace

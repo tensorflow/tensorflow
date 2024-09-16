@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/AffineMap.h"
+#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/model/symbolic_tile.h"
 #include "xla/service/gpu/model/symbolic_tile_analysis.h"
 #include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
@@ -43,6 +44,8 @@ class TritonEmitterConstraints : public EmitterSpecificConstraints {
   absl::StatusOr<bool> ParametersSatisfyConstraints(
       absl::Span<const int64_t> tile_parameters) const override;
 
+  bool HasCustomConstraints() const { return !custom_constraints_.empty(); }
+
  private:
   // Holds a constraint expression over derived parameters (s'0, ..., s'm) where
   //   (s'0, ..., s'm) = tile_parameters_transform(tile_parameters).
@@ -63,7 +66,8 @@ class TritonEmitterConstraints : public EmitterSpecificConstraints {
   // Derives a vector of `CustomConstraints` to be checked within
   // `ParametersSatisfyConstraints` from a vector of
   // `SymbolicTiledHloInstruction`s representing a symbolically tiled HLO
-  // computation.
+  // computation. The fusion adaptor is used to figure out which instructions
+  // within the computation are operands of the fusion.
   //
   // Currently, this is used to work around an issue with reshapes/bitcasts when
   // instructions are tiled with non-power-of-2 shapes. The resulting custom
@@ -78,7 +82,8 @@ class TritonEmitterConstraints : public EmitterSpecificConstraints {
   // everywhere, and deprecate this.
   static std::vector<CustomConstraints> DeriveCustomConstraints(
       const std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>&
-          instructions);
+          instructions,
+      const HloFusionAdaptor& fusion_adaptor);
 
   // A collection of unique size maps from all the SymbolicTiledHloInstructions.
   //
