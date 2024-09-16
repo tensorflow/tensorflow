@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_HLO_MODULE_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_HLO_MODULE_UTILS_H_
 
+#include <cstddef>
 #include <string>
 
 #include "xla/hlo/ir/hlo_computation.h"
@@ -24,6 +25,9 @@ limitations under the License.
 
 namespace tensorflow {
 namespace profiler {
+
+// Sometimes HLO produce a huge string (>100MB). Limit the name size to 1MB.
+static constexpr size_t kMaxHlolNameSize = 1000000;
 
 inline const xla::HloInstruction* FindInstruction(const xla::HloModule& module,
                                                   std::string node_name) {
@@ -53,6 +57,23 @@ inline const xla::HloComputation* FindComputation(
     }
   }
   return nullptr;
+}
+
+inline std::string UncachedExpression(const xla::HloInstruction* instr,
+                                      bool skip_expression, size_t max_size) {
+  if (skip_expression) {
+    return "";
+  }
+  static const auto* hlo_print_options =
+      new xla::HloPrintOptions(xla::HloPrintOptions()
+                                   .set_print_metadata(false)
+                                   .set_print_backend_config(false)
+                                   .set_print_infeed_outfeed_config(false));
+  std::string expression = instr->ToString(*hlo_print_options);
+  if (expression.size() > max_size) {
+    expression.resize(max_size);
+  }
+  return expression;
 }
 }  // namespace profiler
 }  // namespace tensorflow
