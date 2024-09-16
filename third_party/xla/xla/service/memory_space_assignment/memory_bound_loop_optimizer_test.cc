@@ -66,6 +66,8 @@ namespace xla {
 namespace memory_space_assignment {
 namespace {
 
+using ::testing::ContainerEq;
+using ::testing::HasSubstr;
 constexpr int64_t kPointerSize = 8;
 
 int64_t ShapeSize(const Shape& shape) {
@@ -82,6 +84,185 @@ int64_t ReservedScopedMemoryFn(
         operands_in_alternate_memory,
     const absl::flat_hash_set<ShapeIndex>& outputs_in_alternate_memory) {
   return 0;
+}
+
+class LoopOptimizerBestFitHeapTest : public ::testing::Test {
+ public:
+  LoopOptimizerBestFitHeapTest()
+      : heap_(/*size_limit_per_heap=*/64, /*loop_size=*/6,
+              /*alignment_in_bytes=*/8) {}
+
+  bool IsAllocateSameEvenAndOddBetweenSuccessful(int64_t begin_idx_in_loop,
+                                                 int64_t end_idx_in_loop,
+                                                 int64_t size) {
+    EvenOddChunkPair chunks = heap_.AllocateSameEvenAndOddBetween(
+        begin_idx_in_loop, end_idx_in_loop, size);
+    return chunks.first.has_value() && chunks.second.has_value();
+  }
+
+  bool CanFindSameEvenAndOddAllocationBetween(int64_t begin_idx_in_loop,
+                                              int64_t end_idx_in_loop,
+                                              int64_t size) {
+    EvenOddChunkPair chunks = heap_.FindSameEvenAndOddAllocationBetween(
+        begin_idx_in_loop, end_idx_in_loop, size);
+    return chunks.first.has_value() && chunks.second.has_value();
+  }
+
+  bool IsAllocateEvenAndOddBetweenSuccessful(int64_t begin_idx_in_loop,
+                                             int64_t end_idx_in_loop,
+                                             int64_t size) {
+    EvenOddChunkPair chunks = heap_.AllocateEvenAndOddBetween(
+        begin_idx_in_loop, end_idx_in_loop, size);
+    return chunks.first.has_value() && chunks.second.has_value();
+  }
+
+  bool CanFindEvenAndOddAllocationBetween(int64_t begin_idx_in_loop,
+                                          int64_t end_idx_in_loop,
+                                          int64_t size) {
+    EvenOddChunkPair chunks = heap_.FindEvenAndOddAllocationBetween(
+        begin_idx_in_loop, end_idx_in_loop, size);
+    return chunks.first.has_value() && chunks.second.has_value();
+  }
+
+  std::string GetMemoryUsageAsciiArt() { return heap_.MemoryUsageToAsciiArt(); }
+
+ protected:
+  LoopOptimizerBestFitHeap heap_;
+};
+
+TEST_F(LoopOptimizerBestFitHeapTest, TestAllocateSameEvenAndOddBetween) {
+  EXPECT_TRUE(IsAllocateSameEvenAndOddBetweenSuccessful(3, 8, 16));
+  EXPECT_TRUE(IsAllocateSameEvenAndOddBetweenSuccessful(-3, 2, 16));
+  EXPECT_TRUE(IsAllocateSameEvenAndOddBetweenSuccessful(0, 2, 16));
+  EXPECT_TRUE(IsAllocateSameEvenAndOddBetweenSuccessful(3, 5, 16));
+  EXPECT_EQ(heap_.LastMemoryOffsetOccupied(), 48);
+  EXPECT_TRUE(IsAllocateSameEvenAndOddBetweenSuccessful(0, 5, 16));
+  EXPECT_FALSE(IsAllocateSameEvenAndOddBetweenSuccessful(0, 5, 16));
+  EXPECT_EQ(heap_.LastMemoryOffsetOccupied(), 64);
+  EXPECT_THAT(heap_.RemainingMemoryByTime(),
+              ContainerEq(std::vector<int64_t>{0, 0, 0, 0, 0, 0}));
+  std::string memory_usage = heap_.MemoryUsageToAsciiArt(2, 3);
+  // Expected memory usage ascii art string -
+  // Memory map for time: [12,23], memory_block_size: 16, group_size: 6
+  //
+  // ###### ###### 64
+  // ###### ###### 48
+  // ###### ###### 32
+  // ###### ###### 16
+  // 234567 890123
+  EXPECT_THAT(memory_usage, HasSubstr("Memory map for time: [12,23], "
+                                      "memory_block_size: 16, group_size: 6"));
+  EXPECT_THAT(memory_usage, HasSubstr("###### ###### 64"));
+  EXPECT_THAT(memory_usage, HasSubstr("###### ###### 48"));
+  EXPECT_THAT(memory_usage, HasSubstr("###### ###### 32"));
+  EXPECT_THAT(memory_usage, HasSubstr("###### ###### 16"));
+  EXPECT_THAT(memory_usage, HasSubstr("234567 890123"));
+}
+
+TEST_F(LoopOptimizerBestFitHeapTest, TestAllocateEvenAndOddBetween) {
+  EXPECT_TRUE(IsAllocateEvenAndOddBetweenSuccessful(3, 11, 16));
+  EXPECT_EQ(heap_.LastMemoryOffsetOccupied(), 32);
+  EXPECT_TRUE(IsAllocateEvenAndOddBetweenSuccessful(-3, 8, 16));
+  EXPECT_EQ(heap_.LastMemoryOffsetOccupied(), 64);
+  EXPECT_THAT(heap_.RemainingMemoryByTime(),
+              ContainerEq(std::vector<int64_t>{16, 16, 16, 0, 0, 0}));
+  std::string memory_usage = heap_.MemoryUsageToAsciiArt();
+  // Expected memory usage ascii art string -
+  // Memory map for time: [0,35], memory_block_size: 16, group_size: 6
+  //
+  //  ...... ...### ###### ###### ###### ###... 64
+  //  ...### ###### ###### ###### ###... ...... 48
+  //  ...... ...### ###### ...### ###### ...... 32
+  //  ...### ###### ...### ###### ...... ...... 16
+  //  012345 678901 234567 890123 456789 012345
+  EXPECT_THAT(
+      memory_usage,
+      HasSubstr(
+          "Memory map for time: [0,35], memory_block_size: 16, group_size: 6"));
+  EXPECT_THAT(memory_usage,
+              HasSubstr("...... ...### ###### ###### ###### ###... 64"));
+  EXPECT_THAT(memory_usage,
+              HasSubstr("...### ###### ###### ###### ###... ...... 48"));
+  EXPECT_THAT(memory_usage,
+              HasSubstr("...... ...### ###### ...### ###### ...... 32"));
+  EXPECT_THAT(memory_usage,
+              HasSubstr("...### ###### ...### ###### ...... ...... 16"));
+  EXPECT_THAT(memory_usage,
+              HasSubstr("012345 678901 234567 890123 456789 012345"));
+}
+
+TEST_F(LoopOptimizerBestFitHeapTest, TestRemoveChunk) {
+  EvenOddChunkPair chunks = heap_.AllocateEvenAndOddBetween(3, 11, 16);
+  EXPECT_TRUE(chunks.first.has_value() && chunks.second.has_value());
+  EvenOddChunkPair second_chunks = heap_.AllocateEvenAndOddBetween(-3, 8, 16);
+  EXPECT_TRUE(second_chunks.first.has_value() &&
+              second_chunks.second.has_value());
+  EXPECT_THAT(heap_.RemainingMemoryByTime(),
+              ContainerEq(std::vector<int64_t>{16, 16, 16, 0, 0, 0}));
+  EXPECT_EQ(heap_.LastMemoryOffsetOccupied(), 64);
+  std::string memory_usage = heap_.MemoryUsageToAsciiArt(2, 3);
+  // Expected memory usage ascii art string -
+  // Memory map for time: [12,23], memory_block_size: 16, group_size: 6
+  //
+  // ###### ###### 64
+  // ###### ###### 48
+  // ###### ...### 32
+  // ...### ###### 16
+  // 234567 890123
+  EXPECT_THAT(memory_usage, HasSubstr("Memory map for time: [12,23], "
+                                      "memory_block_size: 16, group_size: 6"));
+  EXPECT_THAT(memory_usage, HasSubstr("###### ###### 64"));
+  EXPECT_THAT(memory_usage, HasSubstr("###### ###### 48"));
+  EXPECT_THAT(memory_usage, HasSubstr("###### ...### 32"));
+  EXPECT_THAT(memory_usage, HasSubstr("...### ###### 16"));
+  EXPECT_THAT(memory_usage, HasSubstr("234567 890123"));
+  // We must 16 bytes of free memory in [0,2] with different offsets in even and
+  // odd iterations.
+  EXPECT_TRUE(CanFindEvenAndOddAllocationBetween(0, 2, 16));
+  // We must not find 16 bytes of free memory in [0,2] with same offsets in even
+  // and odd iterations.
+  EXPECT_FALSE(IsAllocateSameEvenAndOddBetweenSuccessful(0, 2, 16));
+  EXPECT_FALSE(CanFindEvenAndOddAllocationBetween(0, 11, 16));
+  heap_.RemoveEvenOddChunkPair(3, 11, chunks);
+  // We must find 16 bytes of free memory spanning 2 loop iterations with
+  // different offsets in even and odd iterations. It does not matter what time
+  // is picked as the start time as long as the span is less than or equal to 2
+  // iterations.
+  EXPECT_TRUE(CanFindEvenAndOddAllocationBetween(0, 11, 16));
+  EXPECT_TRUE(CanFindEvenAndOddAllocationBetween(-3, 8, 16));
+  // We must find 32 bytes of free memory less than or equal to one iteration
+  // with different offsets in even and odd iterations. It does not matter what
+  // time is picked as the start time.
+  EXPECT_TRUE(CanFindEvenAndOddAllocationBetween(0, 5, 32));
+  EXPECT_TRUE(CanFindEvenAndOddAllocationBetween(-1, 4, 32));
+  EXPECT_TRUE(CanFindEvenAndOddAllocationBetween(2, 7, 32));
+  // Spans more than one iteration.
+  EXPECT_FALSE(CanFindEvenAndOddAllocationBetween(0, 6, 32));
+  // We must be able to find 32 bytes of free memory spanning less than or equal
+  // to one iteration with same offsets in even and odd iterations. It does not
+  // matter what time is picked as the start time.
+  EXPECT_TRUE(CanFindSameEvenAndOddAllocationBetween(0, 5, 32));
+  EXPECT_TRUE(CanFindSameEvenAndOddAllocationBetween(-1, 4, 32));
+  EXPECT_TRUE(CanFindSameEvenAndOddAllocationBetween(2, 7, 32));
+  std::string updated_memory_usage = heap_.MemoryUsageToAsciiArt(2, 3);
+  // Expected updated memory usage ascii art string -
+  // Memory map for time: [12,23], memory_block_size: 16, group_size: 6
+  //
+  // ###### ###### 64
+  // ###### ###### 48
+  // ...... ...... 32
+  // ...... ...... 16
+  // 234567 890123
+  EXPECT_THAT(updated_memory_usage,
+              HasSubstr("Memory map for time: [12,23], "
+                        "memory_block_size: 16, group_size: 6"));
+  EXPECT_THAT(updated_memory_usage, HasSubstr("###### ###### 64"));
+  EXPECT_THAT(updated_memory_usage, HasSubstr("###### ###### 48"));
+  EXPECT_THAT(updated_memory_usage, HasSubstr("...... ...... 32"));
+  EXPECT_THAT(updated_memory_usage, HasSubstr("...... ...... 16"));
+  EXPECT_THAT(updated_memory_usage, HasSubstr("234567 890123"));
+  heap_.RemoveEvenOddChunkPair(-3, 8, second_chunks);
+  EXPECT_EQ(heap_.LastMemoryOffsetOccupied(), 0);
 }
 
 class MemoryBoundLoopOptimizerTest : public HloTestBase {
