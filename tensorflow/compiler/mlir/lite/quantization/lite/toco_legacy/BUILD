@@ -67,10 +67,10 @@ tf_cc_test(
     ],
     deps = [
         ":quantization_utils",
+        "//tensorflow/compiler/mlir/lite/core:absl_error_model_builder",
         "//tensorflow/compiler/mlir/lite/quantization/lite:test_util",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/compiler/mlir/lite/schema:schema_utils",
-        "//tensorflow/lite/core:framework",  # to remove when mlir version is ready.
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:path",
