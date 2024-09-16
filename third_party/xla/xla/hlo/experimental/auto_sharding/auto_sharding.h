@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_cost_graph.h"
@@ -131,12 +132,12 @@ HloSharding Tile(const Shape& shape, absl::Span<const int64_t> tensor_dims,
                  const DeviceMesh& device_mesh);
 
 std::vector<double> CommunicationReshardingCostVector(
-    const StrategyGroup* strategy_group, const Shape& shape,
+    const StrategyGroup& strategy_group, const Shape& shape,
     const HloSharding& required_sharding,
     const ClusterEnvironment& cluster_env);
 
 std::vector<double> MemoryReshardingCostVector(
-    const StrategyGroup* strategy_group, const Shape& operand_shape,
+    const StrategyGroup& strategy_group, const Shape& operand_shape,
     const HloSharding& required_sharding,
     const ClusterEnvironment& cluster_env);
 
@@ -146,17 +147,13 @@ std::unique_ptr<StrategyGroup> CreateLeafStrategyGroup(
     size_t instruction_id, const HloInstruction* ins,
     const StrategyMap& strategy_map, StrategyGroups& strategy_groups);
 
-void SetInNodesWithInstruction(std::unique_ptr<StrategyGroup>& strategy_group,
-                               const HloInstruction* ins,
-                               const StrategyMap& strategy_map);
-
-void RemoveDuplicatedStrategy(std::unique_ptr<StrategyGroup>& strategy_group);
+void RemoveDuplicatedStrategy(StrategyGroup& strategy_group);
 
 absl::Status FilterStrategy(const HloInstruction* ins, const Shape& shape,
-                            std::unique_ptr<StrategyGroup>& strategy_group,
                             const ClusterEnvironment& cluster_env,
                             const InstructionBatchDimMap& batch_map,
-                            const AutoShardingOption& option);
+                            const AutoShardingOption& option,
+                            StrategyGroup& strategy_group);
 
 absl::Status HandleDot(std::unique_ptr<StrategyGroup>& strategy_group,
                        StrategyGroups& strategy_groups,
@@ -242,10 +239,11 @@ void PopulateTemporalValues(const CostGraph& cost_graph,
 void AddReplicatedStrategy(
     const HloInstruction* ins, const Shape& shape,
     const ClusterEnvironment& cluster_env, const StrategyMap& strategy_map,
-    std::unique_ptr<StrategyGroup>& strategy_group, double replicated_penalty,
-    absl::flat_hash_set<int64_t> operands_to_consider_all_strategies_for = {});
+    double replicated_penalty,
+    absl::flat_hash_set<int64_t> operands_to_consider_all_strategies_for,
+    StrategyGroup& strategy_group);
 
-void CheckMemoryCosts(StrategyGroup* strategy_group, const Shape& shape);
+void CheckMemoryCosts(const StrategyGroup& strategy_group, const Shape& shape);
 
 // Choose an operand to follow. We choose to follow the operand with the highest
 // priority.
@@ -254,13 +252,12 @@ std::pair<int64_t, bool> ChooseOperandToFollow(
     const AliasMap& alias_map, int64_t max_depth, const HloInstruction* ins);
 
 void FillAllStrategiesForArray(
-    std::unique_ptr<StrategyGroup>& strategy_group, const HloInstruction* ins,
-    const Shape& shape, const ClusterEnvironment& cluster_env,
-    const StrategyMap& strategy_map, const AutoShardingOption& option,
-    double replicated_penalty, const InstructionBatchDimMap& batch_dim_map,
-    const CallGraph& call_graph, bool only_allow_divisible,
-    bool create_replicated_strategies,
-    bool create_partially_replicated_strategies);
+    const HloInstruction* ins, const Shape& shape,
+    const ClusterEnvironment& cluster_env, const StrategyMap& strategy_map,
+    const AutoShardingOption& option, double replicated_penalty,
+    const InstructionBatchDimMap& batch_dim_map, const CallGraph& call_graph,
+    bool only_allow_divisible, bool create_replicated_strategies,
+    bool create_partially_replicated_strategies, StrategyGroup& strategy_group);
 
 absl::StatusOr<std::unique_ptr<StrategyGroup>> CreateAllStrategiesGroup(
     const HloInstruction* ins, const Shape& shape, size_t instruction_id,
@@ -313,22 +310,19 @@ void EnumerateAll1DPartition(const HloInstruction* ins, const Shape& shape,
                              const DeviceMesh& device_mesh,
                              const ClusterEnvironment& cluster_env,
                              const StrategyMap& strategy_map,
-                             std::unique_ptr<StrategyGroup>& strategy_group,
                              bool only_allow_divisible,
                              const std::string& suffix,
-                             const CallGraph& call_graph);
+                             const CallGraph& call_graph,
+                             StrategyGroup& strategy_group);
 
 // Enumerate all partitions recursively.
-void EnumerateAllPartition(const HloInstruction* ins, const Shape& shape,
-                           const DeviceMesh& device_mesh,
-                           const ClusterEnvironment& cluster_env,
-                           const StrategyMap& strategy_map,
-                           std::unique_ptr<StrategyGroup>& strategy_group,
-                           const InstructionBatchDimMap& batch_dim_map,
-                           bool only_allow_divisible,
-                           const CallGraph& call_graph,
-                           int64_t partition_dimensions,
-                           const std::vector<int64_t>& tensor_dims = {});
+void EnumerateAllPartition(
+    const HloInstruction* ins, const Shape& shape,
+    const DeviceMesh& device_mesh, const ClusterEnvironment& cluster_env,
+    const StrategyMap& strategy_map,
+    const InstructionBatchDimMap& batch_dim_map, bool only_allow_divisible,
+    const CallGraph& call_graph, int64_t partition_dimensions,
+    const std::vector<int64_t>& tensor_dims, StrategyGroup& strategy_group);
 
 absl::StatusOr<std::unique_ptr<StrategyGroup>> FollowReduceStrategy(
     const HloInstruction* ins, const Shape& output_shape,
@@ -340,8 +334,8 @@ absl::StatusOr<std::unique_ptr<StrategyGroup>> FollowReduceStrategy(
 void GenerateOutfeedStrategy(const HloInstruction* ins, const Shape& shape,
                              const ClusterEnvironment& cluster_env,
                              const StrategyMap& strategy_map,
-                             std::unique_ptr<StrategyGroup>& strategy_group,
-                             double replicated_penalty);
+                             double replicated_penalty,
+                             StrategyGroup& strategy_group);
 
 std::pair<ReshardingCosts, ReshardingCosts>
 GenerateReshardingCostsAndMissingShardingsForAllOperands(
@@ -351,28 +345,27 @@ GenerateReshardingCostsAndMissingShardingsForAllOperands(
     std::vector<std::optional<HloSharding>>& input_shardings);
 
 std::unique_ptr<StrategyGroup> MaybeFollowInsStrategyGroup(
-    const StrategyGroup* src_strategy_group, const Shape& shape,
+    const StrategyGroup& src_strategy_group, const Shape& shape,
     size_t instruction_id, StrategyGroups& strategy_groups,
     const ClusterEnvironment& cluster_env,
     const StableMap<NodeIdx, std::vector<ShardingStrategy>>&
         pretrimmed_strategy_map);
 
 void RemoveShardingsWhereSmallDimsShardedAcrossManyDevices(
-    const Shape& shape, StrategyGroup* strategy_group,
-    bool instruction_has_user_sharding);
+    const Shape& shape, bool instruction_has_user_sharding,
+    StrategyGroup& strategy_group);
 
-void ScaleCostsWithExecutionCounts(StrategyGroup* strategy_group,
-                                   int64_t execution_count);
+void ScaleCostsWithExecutionCounts(int64_t execution_count,
+                                   StrategyGroup& strategy_group);
 
 // Existing shardings refer to the HloSharding field in the given
 // HloInstruction.
 void TrimOrGenerateStrategiesBasedOnExistingSharding(
-    const Shape& output_shape, StrategyGroup* strategy_group,
-    const StrategyMap& strategy_map,
+    const Shape& output_shape, const StrategyMap& strategy_map,
     const std::vector<HloInstruction*>& instructions,
     const HloSharding& existing_sharding, const ClusterEnvironment& cluster_env,
     StableMap<int64_t, std::vector<ShardingStrategy>>& pretrimmed_strategy_map,
-    const CallGraph& call_graph, bool strict);
+    const CallGraph& call_graph, bool strict, StrategyGroup& strategy_group);
 
 // Build possible sharding strategies and their costs for all instructions.
 absl::StatusOr<std::tuple<StrategyMap, StrategyGroups, AssociativeDotPairs>>

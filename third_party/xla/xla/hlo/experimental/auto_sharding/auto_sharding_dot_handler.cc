@@ -34,7 +34,6 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/array.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_device_mesh.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_option.h"
@@ -51,6 +50,7 @@ limitations under the License.
 #include "xla/service/dot_as_convolution_util.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/sharding_propagation.h"
+#include "xla/shape.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {
@@ -331,15 +331,15 @@ void HandlerBase::AppendNewStrategy(const std::string& name,
 
   for (int i = 0; i < ins_->operand_count(); ++i) {
     const HloInstruction* operand = ins_->operand(i);
+    const Shape& operand_shape = operand->shape();
+    const StrategyGroup& operand_strategy_group = *strategy_map_.at(operand);
     communication_resharding_costs.push_back(CommunicationReshardingCostVector(
-        strategy_map_.at(operand).get(), operand->shape(), input_specs[i],
-        cluster_env_));
+        operand_strategy_group, operand_shape, input_specs[i], cluster_env_));
     memory_resharding_costs.push_back(MemoryReshardingCostVector(
-        strategy_map_.at(operand).get(), operand->shape(), input_specs[i],
-        cluster_env_));
+        operand_strategy_group, operand_shape, input_specs[i], cluster_env_));
   }
 
-  strategy_group_->strategies.push_back(ShardingStrategy({
+  strategy_group_->AddStrategy(ShardingStrategy({
       name,
       output_spec,
       compute_cost,
@@ -462,15 +462,19 @@ std::optional<HloSharding> HandlerBase::GetShardingFromUser(
 }
 
 void HandlerBase::SortStrategies() {
+  auto strategies = strategy_group_->GetStrategies();
   absl::c_stable_sort(
-      strategy_group_->strategies,
-      [](const ShardingStrategy& s1, const ShardingStrategy& s2) {
+      strategies, [](const ShardingStrategy& s1, const ShardingStrategy& s2) {
         if (s1.memory_cost == s2.memory_cost) {
           return s1.name < s2.name;
         } else {
           return s1.memory_cost < s2.memory_cost;
         }
       });
+  strategy_group_->ClearStrategies();
+  for (const ShardingStrategy& strategy : strategies) {
+    strategy_group_->AddStrategy(strategy);
+  }
 }
 
 /************** DotHandler function definitions **************/
@@ -962,8 +966,8 @@ absl::Status ConvHandler::RegisterStrategies() {
   // and only keep the data parallel strategies.
   if (option_.force_batch_dim_to_mesh_dim >= 0 &&
       batch_map_.contains(GetBatchDimMapKey(ins_))) {
-    TF_RETURN_IF_ERROR(FilterStrategy(ins_, ins_->shape(), strategy_group_,
-                                      cluster_env_, batch_map_, option_));
+    TF_RETURN_IF_ERROR(FilterStrategy(ins_, ins_->shape(), cluster_env_,
+                                      batch_map_, option_, *strategy_group_));
   }
 
   SortStrategies();
