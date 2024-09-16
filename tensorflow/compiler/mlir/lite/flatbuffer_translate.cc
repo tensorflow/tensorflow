@@ -139,7 +139,7 @@ static opt<bool, true> use_buffer_offset_flag(
 // NOLINTNEXTLINE
 static opt<bool, true> emit_stablehlo_ops_flag(
     "emit-stablehlo-ops",
-    llvm::cl::desc("Wether serialize stablehlo ops or not"),
+    llvm::cl::desc("Whether serialize stablehlo ops or not"),
     llvm::cl::location(emit_stablehlo_ops), llvm::cl::init(false));
 
 // Flatbuffer import by default will also perform vhlo to stablehlo legalization
@@ -148,7 +148,7 @@ static opt<bool, true> emit_stablehlo_ops_flag(
 // NOLINTNEXTLINE
 static opt<bool, true> disable_vhlo_to_stablehlo_flag(
     "disable-vhlo-to-stablehlo",
-    llvm::cl::desc("Wether to deserialize to stablehlo ops or not"),
+    llvm::cl::desc("Whether to deserialize to stablehlo ops or not"),
     llvm::cl::location(disable_vhlo_to_stablehlo), llvm::cl::init(false));
 
 // NOLINTNEXTLINE
