@@ -60,6 +60,7 @@ package(
         "//tensorflow/core:__subpackages__",
         "//third_party/sparse_conv:__subpackages__",
         "//waymo/ml/compiler/triton:__subpackages__",
+        "//waymo/research/representation/threed:__subpackages__",
     ]),
     licenses = ["notice"],
 )
