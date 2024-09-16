@@ -365,6 +365,8 @@ const MegaScaleStatTypeMap& GetMegaScaleStatTypeMap() {
       {"chunk", kMegaScaleChunk},
       {"launch_id", kMegaScaleLaunchId},
       {"loop_iteration", kMegaScaleLoopIteration},
+      {"transmission_budget_us", kMegaScaleTransmissionBudgetUs},
+      {"delay_budget_us", kMegaScaleDelayBudgetUs},
       {"graph_protos", kMegaScaleGraphProtos},
       {"network_transport_latency_us", kMegaScaleNetworkTransportLatency},
   });
