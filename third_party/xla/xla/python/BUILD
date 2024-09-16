@@ -497,6 +497,8 @@ cc_library(
         "//xla/pjrt:exceptions",
         "//xla/pjrt:host_callback",
         "//xla/service:custom_call_status",
+        "//xla/service:custom_call_target_registry",
+        "//xla/service:platform_util",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -1219,6 +1221,7 @@ cc_library(
     deps = [
         ":nb_class_ptr",
         ":py_client",
+        ":py_client_gpu",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:status_casters",
         "//xla/pjrt/distributed:client",
