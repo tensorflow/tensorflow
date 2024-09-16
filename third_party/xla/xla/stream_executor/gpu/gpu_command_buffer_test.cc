@@ -1029,6 +1029,99 @@ TEST(GpuCommandBufferTest, ConditionalCaseEmptyGraph) {
   ASSERT_EQ(dst, expected_add);
 }
 
+class GpuCommandBufferCaseTest : public testing::TestWithParam<int> {
+ protected:
+  int GetNumCases() { return GetParam(); }
+
+  int GetEffectiveIndex(int i) {
+    return (i < 0 || i >= GetNumCases()) ? GetNumCases() - 1 : i;
+  }
+};
+
+TEST_P(GpuCommandBufferCaseTest, ConditionalMultiCase) {
+  Platform* platform = GpuPlatform();
+  StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  if (!IsAtLeastCuda12300(executor)) {
+    GTEST_SKIP() << "CUDA graph conditionals are not supported";
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+
+  // Load multiplication kernel.
+  MultiKernelLoaderSpec mul_spec(/*arity=*/3);
+  mul_spec.AddInProcessSymbol(internal::GetMulI32Kernel(), "MulI32");
+  TF_ASSERT_OK_AND_ASSIGN(auto mul, MulI32Kernel::Create(executor, mul_spec));
+
+  constexpr int64_t kLength = 1;
+  int64_t byte_length = sizeof(int32_t) * kLength;
+
+  // Prepare arguments: index=0
+  DeviceMemory<int32_t> index = executor->AllocateArray<int32_t>(1, 0);
+  TF_ASSERT_OK(stream->Memset32(&index, 0, sizeof(int32_t)));
+
+  const int kNumCases = GetNumCases();
+  std::vector<DeviceMemory<int32_t>> values;
+  std::vector<DeviceMemory<int32_t>> results;
+  std::vector<CommandBuffer::Builder> branches;
+  values.resize(kNumCases);
+  results.resize(kNumCases);
+  branches.resize(kNumCases);
+  for (int i = 0; i < kNumCases; ++i) {
+    values[i] = executor->AllocateArray<int32_t>(kLength, 0);
+    TF_ASSERT_OK(stream->Memset32(&values[i], i, byte_length));
+    results[i] = executor->AllocateArray<int32_t>(kLength, 0);
+    TF_ASSERT_OK(stream->Memset32(&results[i], 0, byte_length));
+    branches[i] = [&, i](CommandBuffer* branch_cmd) {
+      // result = i * i;
+      return branch_cmd->Launch(mul, ThreadDim(), BlockDim(kLength), values[i],
+                                values[i], results[i]);
+    };
+  }
+
+  // Create a command buffer with a single conditional operation.
+  auto cmd_buffer = executor->CreateCommandBuffer(primary).value();
+  TF_ASSERT_OK(cmd_buffer->Case(index, branches));
+  TF_ASSERT_OK(cmd_buffer->Finalize());
+
+  // We test the out of bounds cases as well ( i < 0, i >= kNumCases).
+  for (int i = -1; i <= kNumCases; ++i) {
+    // Set index.
+    TF_ASSERT_OK(stream->Memset32(&index, i, sizeof(int32_t)));
+
+    // Submit case.
+    TF_ASSERT_OK(cmd_buffer->Submit(stream.get()));
+    TF_ASSERT_OK(stream->BlockHostUntilDone());
+
+    int effective_index = GetEffectiveIndex(i);
+
+    // Check all results are 0 except case index submitted.
+    for (int z = 0; z < kNumCases; ++z) {
+      std::vector<int32_t> dst(kLength, 42);
+      TF_ASSERT_OK(stream->Memcpy(dst.data(), results[z], byte_length));
+
+      // Build expected result vector.
+      std::vector<int32_t> expected;
+      expected.resize(kLength);
+      for (int p = 0; p < kLength; ++p) {
+        if (effective_index == z) {
+          expected[p] = effective_index * effective_index;
+        } else {
+          expected[p] = 0;
+        }
+      }
+
+      ASSERT_EQ(dst, expected)
+          << "For result " << z << " after running case " << i;
+      TF_ASSERT_OK(stream->Memset32(&results[z], 0, byte_length));
+    }
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(ConditionalMultipleCaseTest, GpuCommandBufferCaseTest,
+                         testing::Range(1, 32),
+                         testing::PrintToStringParamName());
+
 TEST(GpuCommandBufferTest, ConditionalCase) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();

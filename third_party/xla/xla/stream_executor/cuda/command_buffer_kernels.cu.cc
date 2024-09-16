@@ -53,8 +53,18 @@ __global__ void SetCaseCondition(
     cudaGraphConditionalHandle h2, cudaGraphConditionalHandle h3,
     cudaGraphConditionalHandle h4, cudaGraphConditionalHandle h5,
     cudaGraphConditionalHandle h6, cudaGraphConditionalHandle h7,
-    int32_t* index, int32_t num_handles) {
+    int32_t* index, int32_t index_offset, int32_t num_handles,
+    bool enable_default_condition) {
   // Only handles in [0, num_handles) range are valid.
+  //
+  // index_offset specifies an offset that will be applied to the index value to
+  // determine which conditional handle to set:
+  //
+  // effective_index = index - index_offset
+  // handle[effective_index] = 1
+  //
+  // When enable_default_condition is true, the handle[num_handles-1] is set for
+  // any index < 0 or effective_index >= num_handles.
   //
   // We can't define a device function with dynamic number of handle arguments,
   // so we always pass 8 handles, but only some of them are valid. Size 8 picked
@@ -63,13 +73,14 @@ __global__ void SetCaseCondition(
                                                        h4, h5, h6, h7};
 
   // If branch index is out of range activate the last valid handle.
-  int32_t branch_index = *index;
-  if (branch_index < 0 || branch_index >= num_handles) {
-    branch_index = num_handles - 1;
+  int32_t effective_index = *index - index_offset;
+  if (enable_default_condition &&
+      (*index < 0 || effective_index >= num_handles)) {
+    effective_index = num_handles - 1;
   }
 
   for (int32_t i = 0; i < num_handles; ++i) {
-    if (branch_index == i) {
+    if (effective_index == i) {
       cudaGraphSetConditional(handles[i], 1);
     } else {
       cudaGraphSetConditional(handles[i], 0);
