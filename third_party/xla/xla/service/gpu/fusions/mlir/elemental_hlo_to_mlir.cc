@@ -1528,6 +1528,9 @@ ValueRange EmitLoopNestImpl(
   };
   scf::LoopNest loop_nest =
       scf::buildLoopNest(b, b.getLoc(), lbs, ubs, steps, iter_args_inits, bb);
+  if (loop_nest.results.empty()) {
+    return {};
+  }
   ValueRange result_range =
       loop_nest.results.front().getDefiningOp()->getResults();
   CHECK_EQ(result_range.size(), loop_nest.results.size())

@@ -1,0 +1,19 @@
+// RUN: test_correctness %s
+// RUN: fusion_to_mlir %s | FileCheck %s
+
+region {
+  param_0 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  ROOT add = f32[] add(param_0, param_1)
+}
+
+fused_computation {
+  p0 = f32[512,1280] parameter(0)
+  constant = f32[] constant(0)
+  reduce = f32[1280] reduce(p0, constant), dimensions={0}, to_apply=region
+  p1 = f32[512,1280] parameter(1)
+  ROOT tuple = (f32[1280], f32[512,1280]) tuple(reduce, p1)
+}
+
+// The two outputs are completely unrelated, so they're put in separate groups.
+// CHECK: scf.index_switch
