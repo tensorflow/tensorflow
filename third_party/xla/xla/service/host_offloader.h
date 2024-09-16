@@ -23,9 +23,9 @@
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_buffer.h"
-#include "xla/service/hlo_pass_interface.h"
 #include "xla/service/host_offload_utils.h"
 
 namespace xla {
