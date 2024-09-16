@@ -2,7 +2,7 @@ diff --git a/include/triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td b/include/
 index 04ba95196..192d8fab4 100644
 --- a/include/triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td
 +++ b/include/triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td
-@@ -1302,6 +1302,18 @@ elements along the K dim, or they use all elements of the tensor along the K dim
+@@ -1349,6 +1349,18 @@ elements along the K dim, or they use all elements of the tensor along the K dim
    }];
  }
  
@@ -33,7 +33,7 @@ index a87e1c44a..456a4f224 100644
  include "mlir/IR/OpBase.td"
  include "mlir/Interfaces/SideEffectInterfaces.td" // Pure
  include "mlir/Interfaces/InferTypeOpInterface.td" // SameOperandsAndResultType
-@@ -238,4 +239,19 @@ def TTG_LocalStoreOp : TTG_Op<"local_store", [DeclareOpInterfaceMethods<MemoryEf
+@@ -256,4 +257,19 @@ def TTG_LocalStoreOp : TTG_Op<"local_store", [DeclareOpInterfaceMethods<MemoryEf
    }];
  }
  
@@ -57,7 +57,7 @@ diff --git a/lib/Dialect/TritonGPU/IR/Dialect.cpp b/lib/Dialect/TritonGPU/IR/Dia
 index 012786dae..6043b764a 100644
 --- a/lib/Dialect/TritonGPU/IR/Dialect.cpp
 +++ b/lib/Dialect/TritonGPU/IR/Dialect.cpp
-@@ -498,6 +498,123 @@ getDefaultBlockedEncoding(MLIRContext *context, ArrayRef<int64_t> shape,
+@@ -497,6 +497,123 @@ getDefaultBlockedEncoding(MLIRContext *context, ArrayRef<int64_t> shape,
    return encoding;
  }
  
@@ -280,7 +280,7 @@ index d74e0a224..4e45f7c4c 100644
  static void createAsyncCopy(scf::ForOp &forOp, tt::LoadOp loadOp, Value alloc,
                              Value insertIdx, Value extractIdx,
                              tt::CoarseSchedule &schedule,
-@@ -248,19 +252,28 @@ getSharedEncIfAllUsersAreDotEnc(Value val, bool &incompatible) {
+@@ -236,19 +240,28 @@ getSharedEncIfAllUsersAreDotEnc(Value val, bool &incompatible) {
      } else {
        if (!isa<ttg::LocalLoadOp, ttg::ConvertLayoutOp>(user))
          return std::nullopt;
@@ -321,7 +321,7 @@ index d74e0a224..4e45f7c4c 100644
      }
      // Check that the shared encodings needed by the users are compatible.
      if (attr != nullptr && attr != tempAttr) {
-@@ -369,7 +382,7 @@ loadOpsToIndirectionLevelAndUse(scf::ForOp forOp) {
+@@ -357,7 +370,7 @@ loadOpsToIndirectionLevelAndUse(scf::ForOp forOp) {
        };
  
    for (Operation &op : forOp.getBody()->without_terminator()) {
@@ -330,7 +330,7 @@ index d74e0a224..4e45f7c4c 100644
        continue;
      seen.clear();
      dfs(&op, 0, &op);
-@@ -446,7 +459,7 @@ assignMemoryLayouts(llvm::SmallVector<std::tuple<Operation *, int, Operation *>>
+@@ -434,7 +447,7 @@ assignMemoryLayouts(llvm::SmallVector<std::tuple<Operation *, int, Operation *>>
          continue;
      }
  
@@ -339,7 +339,7 @@ index d74e0a224..4e45f7c4c 100644
        loadInfo.usedByDot = true;
        if (loadIsMMAv3(op)) {
          loadInfo.loadIsMMAV3 = true;
-@@ -472,7 +485,7 @@ assignMemoryLayouts(llvm::SmallVector<std::tuple<Operation *, int, Operation *>>
+@@ -460,7 +473,7 @@ assignMemoryLayouts(llvm::SmallVector<std::tuple<Operation *, int, Operation *>>
          // The codegen bug is caught by an assertion, so if you think you've
          // fixed it, feel free to delete this code and see if the assert still
          // fails.  :)
@@ -375,7 +375,7 @@ index 7affd8840..52aa2c131 100644
 --- a/third_party/nvidia/include/Dialect/NVGPU/IR/NVGPUOps.td
 +++ b/third_party/nvidia/include/Dialect/NVGPU/IR/NVGPUOps.td
 @@ -87,6 +87,15 @@ def NVGPU_WGMMAOp : NVGPU_Op<"wgmma", []> {
-   let assemblyFormat = "$opA `,` $opB (`,` $opC^)? attr-dict `:` functional-type(operands, $res)";
+   let assemblyFormat = "$opA `,` $opB `,` $useC (`,` $opC^)? attr-dict `:` functional-type(operands, $res)";
  }
  
 +def NVGPU_SparseWGMMAOp : NVGPU_Op<"wgmma_sp", []> {
@@ -409,11 +409,11 @@ diff --git a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TritonGPUToLLVM.cpp b/
 index f2742218e..4cb1fae93 100644
 --- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TritonGPUToLLVM.cpp
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TritonGPUToLLVM.cpp
-@@ -68,6 +68,7 @@ public:
+@@ -69,6 +69,7 @@ public:
      addIllegalDialect<triton::nvidia_gpu::TritonNvidiaGPUDialect>();
      addIllegalDialect<mlir::gpu::GPUDialect>();
      addLegalOp<mlir::UnrealizedConversionCastOp>();
 +    addLegalOp<triton::gpu::SparseDotOp>();  // Rewritten in a separate pass.
    }
  };
-
+ 
