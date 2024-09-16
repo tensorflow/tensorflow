@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/computation_layout.h"
@@ -253,6 +254,22 @@ class HloModuleConfig {
     static_device_assignment_ = device_assignment;
   }
 
+  // Checks if this config has a simulated device assignment.
+  bool has_pre_simulation_device_assignment() const {
+    return pre_simulation_device_assignment_.has_value();
+  }
+
+  // Getter and setter of the compile-time known device assignment.
+  const DeviceAssignment& pre_simulation_device_assignment() const {
+    CHECK(pre_simulation_device_assignment_.has_value());
+    return *pre_simulation_device_assignment_;
+  }
+
+  void set_pre_simulation_device_assignment(
+      const DeviceAssignment& device_assignment) {
+    pre_simulation_device_assignment_ = device_assignment;
+  }
+
   bool allow_separate_sharding_programs() const {
     return allow_separate_sharding_programs_;
   }
@@ -428,6 +445,9 @@ class HloModuleConfig {
 
   // Compile-time known device assignment.
   std::optional<DeviceAssignment> static_device_assignment_;
+
+  // Compile-time known device assignment.
+  std::optional<DeviceAssignment> pre_simulation_device_assignment_;
 
   bool allow_separate_sharding_programs_ = false;
 
