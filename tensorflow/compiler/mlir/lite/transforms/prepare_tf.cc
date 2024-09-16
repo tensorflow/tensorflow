@@ -46,6 +46,8 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
+#include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -80,7 +82,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/verification_utils.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/legalize_tf_with_tf2xla_passes.h"
-#include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 #define DEBUG_TYPE "tf-tfl-legalization"
@@ -793,7 +794,6 @@ struct ConvertTFStridedSlice : public RewritePattern {
   }
 };
 
-
 // The below pattern is equivalent to the DRR rule below
 // The checks are dependent on generated values, so we can't add
 // the checks on intermediate values, ideally we should find equivalent
@@ -1365,8 +1365,7 @@ LogicalResult ConvertTf2XlaOps(func::FuncOp func, MLIRContext *context) {
   RewritePatternSet patterns(context);
   mhlo::Tf2XlaTypeConverter converter;
   mhlo::PopulateLegalizeTfWithTf2XlaPatterns("XLA_CPU_JIT", patterns, context,
-                                             converter);
-  mhlo::PopulateLegalizeTfPatterns(context, &patterns);
+                                             converter, /*prefer_tf2xla=*/true);
   mlir::odml::PopulateLegalizeHloToTfPatterns(&patterns, context);
   mhlo::GatherOp::getCanonicalizationPatterns(patterns, context);
 
@@ -1620,7 +1619,7 @@ void PrepareTFPass::runOnOperation() {
   RewritePatternSet phase_3_patterns(ctx);
   auto func = getOperation();
 
-  // Check illegal ops in a TFLite pipeline (e.g. trainning only ops) , since
+  // Check illegal ops in a TFLite pipeline (e.g. training only ops) , since
   // PrepareTFPass is the very first TFLite pass in the pipeline.
   // TODO(jingpu): It might be better to split this check into its own pass
   // to make things more modular.

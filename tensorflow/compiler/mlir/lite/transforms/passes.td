@@ -328,10 +328,12 @@ def PrepareDynamicRangeQuantizePass : Pass<"tfl-prepare-quantize-dynamic-range",
 def PrepareTFPass : Pass<"tfl-prepare-tf", "mlir::func::FuncOp"> {
   let summary = "Prepare TF for legalization to TensorFlow Lite dialect.";
   let constructor = "CreatePrepareTFPass()";
-  let dependentDialects = ["TFL::TensorFlowLiteDialect",
+  let dependentDialects = [ "TFL::TensorFlowLiteDialect",
+    "mhlo::MhloDialect",
     "mlir::quant::QuantizationDialect",
     "mlir::quantfork::QuantizationForkDialect",
-    "mhlo::MhloDialect"
+    "mlir::tensor::TensorDialect",
+    "sparse_tensor::SparseTensorDialect"
   ];
   let options = [
       Option<"unfold_batch_matmul_", "unfold_batchmatmul",
