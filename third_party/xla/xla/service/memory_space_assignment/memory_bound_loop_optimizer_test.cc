@@ -702,10 +702,10 @@ TEST_F(MemoryBoundLoopOptimizerTest, SimplePrefetch) {
   )";
   int loop_start_idx;
   MemoryBoundLoopOptimizer* optimizer;
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndCreateOptimizer(hlo_loop_str,
-                                                  /*alternate_memory_size=*/128,
-                                                  loop_start_idx, &optimizer));
+  int64_t alternate_memory_size = 64;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndCreateOptimizer(hlo_loop_str, alternate_memory_size,
+                                           loop_start_idx, &optimizer));
 
   optimizer->Optimize();
   absl::flat_hash_set<HloUse> seen_uses;
@@ -732,6 +732,8 @@ TEST_F(MemoryBoundLoopOptimizerTest, SimplePrefetch) {
     EXPECT_TRUE(seen_uses.contains(HloUse{inst, 0})) << inst_name;
     EXPECT_TRUE(seen_uses.contains(HloUse{inst, 1})) << inst_name;
   }
+  EXPECT_EQ(optimizer->CalculateExecutionTime(), 1.875);
+  EXPECT_EQ(optimizer->MaxAlternateMemoryUsed(), alternate_memory_size);
 }
 
 // Specify a ReservedScopedMemoryFunction to the loop optimizer that causes each
@@ -907,10 +909,10 @@ TEST_F(MemoryBoundLoopOptimizerTest, PrefetchFifoOrderWithOverlap) {
 
   int loop_start_idx;
   MemoryBoundLoopOptimizer* optimizer;
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndCreateOptimizer(hlo_loop_str,
-                                                  /*alternate_memory_size=*/512,
-                                                  loop_start_idx, &optimizer));
+  int64_t alternate_memory_size = 432;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndCreateOptimizer(hlo_loop_str, alternate_memory_size,
+                                           loop_start_idx, &optimizer));
 
   optimizer->Optimize();
   // We expect the prefetches to be scheduled this way:
@@ -985,21 +987,28 @@ TEST_F(MemoryBoundLoopOptimizerTest, PrefetchFifoOrderWithOverlap) {
   // Check the memory used at each point of the loop.
   const std::vector<int64_t>& remaining_memory = optimizer->remaining_memory();
   // Time 0: 3 temporaries (16 B) + param0 (128 B) + param1 (128 B)
-  EXPECT_EQ(remaining_memory.at(0), 512 - (3 * 16 + 128 + 128));
+  EXPECT_EQ(remaining_memory.at(0),
+            alternate_memory_size - (3 * 16 + 128 + 128));
   // Time 1: 2 temporaries (16 B) + 2*param0 (128 B) + param1 (128 B)
   //         + param2 (16 B)
-  EXPECT_EQ(remaining_memory.at(1), 512 - (2 * 16 + 2 * 128 + 128 + 16));
+  EXPECT_EQ(remaining_memory.at(1),
+            alternate_memory_size - (2 * 16 + 2 * 128 + 128 + 16));
   // Times 2 and 3: 3 temporaries (16 B) + param0 (128 B) + param2 (16 B)
-  EXPECT_EQ(remaining_memory.at(2), 512 - (3 * 16 + 128 + 16));
-  EXPECT_EQ(remaining_memory.at(3), 512 - (3 * 16 + 128 + 16));
+  EXPECT_EQ(remaining_memory.at(2),
+            alternate_memory_size - (3 * 16 + 128 + 16));
+  EXPECT_EQ(remaining_memory.at(3),
+            alternate_memory_size - (3 * 16 + 128 + 16));
   // Times 4 to 13: 3 temporaries (16 B) + param0 (128 B) + param1 (128 B)
   //                + param2 (16 B)
   for (int i = 4; i <= 13; ++i) {
-    EXPECT_EQ(remaining_memory.at(i), 512 - (3 * 16 + 128 + 128 + 16));
+    EXPECT_EQ(remaining_memory.at(i),
+              alternate_memory_size - (3 * 16 + 128 + 128 + 16));
   }
   // Time 14: 2 temporaries (16 B) + param0 (128 B) + param1 (128 B)
   //          + param2 (16 B)
-  EXPECT_EQ(remaining_memory.at(14), 512 - (2 * 16 + 128 + 128 + 16));
+  EXPECT_EQ(remaining_memory.at(14),
+            alternate_memory_size - (2 * 16 + 128 + 128 + 16));
+  EXPECT_EQ(optimizer->MaxAlternateMemoryUsed(), alternate_memory_size);
 }
 
 TEST_F(MemoryBoundLoopOptimizerTest, PrefetchFifoOrderWithoutOverlap) {
@@ -1040,10 +1049,10 @@ TEST_F(MemoryBoundLoopOptimizerTest, PrefetchFifoOrderWithoutOverlap) {
 
   int loop_start_idx;
   MemoryBoundLoopOptimizer* optimizer;
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndCreateOptimizer(hlo_loop_str,
-                                                  /*alternate_memory_size=*/350,
-                                                  loop_start_idx, &optimizer));
+  int64_t alternate_memory_size = 192;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndCreateOptimizer(hlo_loop_str, alternate_memory_size,
+                                           loop_start_idx, &optimizer));
 
   optimizer->Optimize();
   // We expect the prefetches to be scheduled this way:
@@ -1085,6 +1094,7 @@ TEST_F(MemoryBoundLoopOptimizerTest, PrefetchFifoOrderWithoutOverlap) {
   }
   // We expect not to fully saturate the default memory bandwidth.
   EXPECT_GT(optimizer->CalculateExecutionTime(), 12.5);
+  EXPECT_EQ(optimizer->MaxAlternateMemoryUsed(), alternate_memory_size);
 }
 
 TEST_F(MemoryBoundLoopOptimizerTest, PrefetchFifoOrderWithOverlap2) {
@@ -1123,10 +1133,10 @@ TEST_F(MemoryBoundLoopOptimizerTest, PrefetchFifoOrderWithOverlap2) {
 
   int loop_start_idx;
   MemoryBoundLoopOptimizer* optimizer;
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndCreateOptimizer(hlo_loop_str,
-                                                  /*alternate_memory_size=*/512,
-                                                  loop_start_idx, &optimizer));
+  int64_t alternate_memory_size = 432;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndCreateOptimizer(hlo_loop_str, alternate_memory_size,
+                                           loop_start_idx, &optimizer));
 
   optimizer->Optimize();
   // We expect the prefetches to be scheduled this way:
@@ -1177,6 +1187,7 @@ TEST_F(MemoryBoundLoopOptimizerTest, PrefetchFifoOrderWithOverlap2) {
   // execution time:
   //  400 B / 32 B/s = 12.5 s.
   EXPECT_EQ(optimizer->CalculateExecutionTime(), 12.5);
+  EXPECT_EQ(optimizer->MaxAlternateMemoryUsed(), alternate_memory_size);
 }
 
 TEST_F(MemoryBoundLoopOptimizerTest, OptimizerEndToEnd) {
@@ -1291,23 +1302,24 @@ TEST_F(MemoryBoundLoopOptimizerTest, TempAndPinnedAllocations) {
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
-
-  TF_ASSERT_OK_AND_ASSIGN(auto optimizer,
-                          CreateOptimizer(19, 24, module.get(),
-                                          /*alternate_memory_size=*/512));
+  int64_t alternate_memory_size = 64;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto optimizer,
+      CreateOptimizer(19, 24, module.get(), alternate_memory_size));
   optimizer->Optimize();
 
   const std::vector<int64_t>& remaining_memory = optimizer->remaining_memory();
   // Time 0: 3 temporaries (16 B) + 1 pinned (16 B)
-  EXPECT_EQ(remaining_memory.at(0), 512 - (3 * 16 + 16));
+  EXPECT_EQ(remaining_memory.at(0), alternate_memory_size - (3 * 16 + 16));
   // Time 1: 3 temporaries (16 B) + 1 pinned (16 B)
-  EXPECT_EQ(remaining_memory.at(1), 512 - (3 * 16 + 16));
+  EXPECT_EQ(remaining_memory.at(1), alternate_memory_size - (3 * 16 + 16));
   // Time 2: 3 temporaries (16 B) + 1 pinned (16 B)
-  EXPECT_EQ(remaining_memory.at(2), 512 - (3 * 16 + 16));
+  EXPECT_EQ(remaining_memory.at(2), alternate_memory_size - (3 * 16 + 16));
   // Time 3: 3 temporaries (16 B) + 1 pinned (16 B)
-  EXPECT_EQ(remaining_memory.at(3), 512 - (3 * 16 + 16));
+  EXPECT_EQ(remaining_memory.at(3), alternate_memory_size - (3 * 16 + 16));
   // Time 4: 2 temporaries (16 B) + 1 pinned (16 B)
-  EXPECT_EQ(remaining_memory.at(4), 512 - (2 * 16 + 16));
+  EXPECT_EQ(remaining_memory.at(4), alternate_memory_size - (2 * 16 + 16));
+  EXPECT_EQ(optimizer->MaxAlternateMemoryUsed(), alternate_memory_size);
 }
 
 TEST_F(MemoryBoundLoopOptimizerTest, NegativeSavingNotPinned) {
@@ -1361,17 +1373,17 @@ TEST_F(MemoryBoundLoopOptimizerTest, NegativeSavingNotPinned) {
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
-
-  TF_ASSERT_OK_AND_ASSIGN(auto optimizer,
-                          CreateOptimizer(21, 27, module.get(),
-                                          /*alternate_memory_size=*/512));
+  int64_t alternate_memory_size = 52;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto optimizer,
+      CreateOptimizer(21, 27, module.get(), alternate_memory_size));
   optimizer->Optimize();
-
   const std::vector<int64_t>& remaining_memory = optimizer->remaining_memory();
   // We expect that pinned_prev_param0 would not get pinned due to negative
   // savings: 32(uses) -  28 * 16(size) = -416 Time 0: 3 temporaries (16 B) + 1
   // pinned (4 B)
-  EXPECT_EQ(remaining_memory.at(0), 512 - (3 * 16 + 4));
+  EXPECT_EQ(remaining_memory.at(0), alternate_memory_size - (3 * 16 + 4));
+  EXPECT_EQ(optimizer->MaxAlternateMemoryUsed(), alternate_memory_size);
 }
 
 TEST_F(MemoryBoundLoopOptimizerTest, OptimizerEndToEndWhileLoop) {

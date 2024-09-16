@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_MEMORY_BOUND_LOOP_OPTIMIZER_H_
 #define XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_MEMORY_BOUND_LOOP_OPTIMIZER_H_
 
+#include <algorithm>
 #include <cstdint>
 #include <list>
 #include <memory>
@@ -325,6 +326,11 @@ class MemoryBoundLoopOptimizer {
   // the allocation decisions so far.
   const std::vector<int64_t>& remaining_memory() const {
     return remaining_memory_;
+  }
+
+  int64_t MaxAlternateMemoryUsed() const {
+    return alternate_memory_size_ - *std::min_element(remaining_memory_.begin(),
+                                                      remaining_memory_.end());
   }
 
   // The loop start, end, and size accessors.
