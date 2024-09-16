@@ -576,11 +576,11 @@ absl::StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
       absl::c_for_each(literal.shape().dimensions(),
                        [&](int64_t dim) { total_elements *= dim; });
       if (total_elements > 1000) {
-        LOG(ERROR) << "argument literal is too large to print: "
-                   << literal.shape().ToString();
+        assertion_result << "argument literal is too large to print: "
+                         << literal.shape().ToString();
         continue;
       }
-      LOG(ERROR) << "argument literal: " << literal.ToString();
+      assertion_result << "argument literal: " << literal.ToString();
     }
   }
   return assertion_result;
