@@ -437,7 +437,6 @@ def tf_proto_library_cc(
         visibility = None,
         testonly = 0,
         cc_libs = [],
-        cc_stubby_versions = None,
         cc_grpc_version = None,
         use_grpc_namespace = False,
         j2objc_api_version = 1,
@@ -573,7 +572,6 @@ def tf_proto_library(
         visibility = None,
         testonly = 0,
         cc_libs = [],
-        cc_stubby_versions = None,
         cc_grpc_version = None,
         use_grpc_namespace = False,
         j2objc_api_version = 1,
@@ -596,7 +594,6 @@ def tf_proto_library(
         create_service,
         create_java_proto,
         create_kotlin_proto,
-        cc_stubby_versions,
         create_go_proto,
     )
 
