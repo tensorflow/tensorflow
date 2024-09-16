@@ -183,18 +183,33 @@ struct StrategyGroup {
   std::vector<const StrategyGroup*> in_nodes;
   // The followed strategy. Used for merging nodes.
   const StrategyGroup* following = nullptr;
-  // Used when is_tuple == False. Leaf strategy vector.
-  // A vector of strategy choices for the non-tuple output.
-  std::vector<ShardingStrategy> strategies;
-  // Used when is_tuple == True. A vector of pointers, each pointer is one
-  // StrategyGroup for one value in the output Tuple
-  std::vector<std::unique_ptr<StrategyGroup>> childs;
   // The index of this instruction in the HLO operand (or tuple shape) list.
   std::optional<int64_t> tuple_element_idx;
 
-  std::string ToString(size_t indention = 0) const {
+  StrategyGroup() = default;
+
+  StrategyGroup(bool is_tuple, NodeIdx node_idx, size_t instruction_id)
+      : is_tuple(is_tuple),
+        node_idx(node_idx),
+        instruction_id(instruction_id) {}
+
+  StrategyGroup(bool is_tuple, NodeIdx node_idx, size_t instruction_id,
+                const std::vector<const StrategyGroup*>& in_nodes,
+                const StrategyGroup* following,
+                const std::vector<ShardingStrategy>& strategies)
+      : is_tuple(is_tuple),
+        node_idx(node_idx),
+        instruction_id(instruction_id),
+        in_nodes(in_nodes),
+        following(following) {
+    for (const ShardingStrategy& strategy : strategies) {
+      AddStrategy(strategy);
+    }
+  }
+
+  std::string ToString(size_t indentation = 0) const {
     std::string str;
-    const std::string indent(indention, ' ');
+    const std::string indent(indentation, ' ');
     absl::StrAppend(&str, indent, "node_idx: ", node_idx, "\n");
     absl::StrAppend(&str, indent, "instruction id: ", instruction_id, "\n");
     absl::StrAppend(&str, indent, "is_tuple: ", is_tuple, "\n");
@@ -214,9 +229,9 @@ struct StrategyGroup {
                       " instruction_id=", i->instruction_id, "\n");
     }
     if (is_tuple) {
-      for (size_t i = 0; i < childs.size(); ++i) {
+      for (size_t i = 0; i < children.size(); ++i) {
         absl::StrAppend(&str, indent, "Tuple element #", i, ":\n");
-        absl::StrAppend(&str, childs[i]->ToString(indention + 2));
+        absl::StrAppend(&str, children[i]->ToString(indentation + 2));
       }
     } else {
       for (const auto& strategy : strategies) {
@@ -229,8 +244,8 @@ struct StrategyGroup {
   const StrategyGroup* GetSubStrategyGroup(const ShapeIndex& index) const {
     const StrategyGroup* result = this;
     for (auto index_element : index) {
-      CHECK_LE(index_element, result->childs.size());
-      result = result->childs.at(index_element).get();
+      CHECK_LE(index_element, result->children.size());
+      result = result->children.at(index_element).get();
     }
     return result;
   }
@@ -238,7 +253,7 @@ struct StrategyGroup {
   void ForEachLeafStrategyGroup(
       absl::FunctionRef<void(const StrategyGroup&)> fn) const {
     if (is_tuple) {
-      for (const std::unique_ptr<StrategyGroup>& child : childs) {
+      for (const std::unique_ptr<StrategyGroup>& child : children) {
         fn(*child);
       }
     } else {
@@ -248,13 +263,51 @@ struct StrategyGroup {
 
   void ForEachLeafStrategyGroup(absl::FunctionRef<void(StrategyGroup&)> fn) {
     if (is_tuple) {
-      for (std::unique_ptr<StrategyGroup>& child : childs) {
+      for (std::unique_ptr<StrategyGroup>& child : children) {
         fn(*child);
       }
     } else {
       fn(*this);
     }
   }
+
+  //////// Accessor methods for strategies ////////
+
+  void AddStrategy(const ShardingStrategy& strategy) {
+    strategies.push_back(strategy);
+  }
+
+  void ClearStrategies() { strategies.clear(); }
+
+  ShardingStrategy& GetStrategy(size_t strategy_idx) {
+    return strategies[strategy_idx];
+  }
+
+  const std::vector<ShardingStrategy>& GetStrategies() const {
+    return strategies;
+  }
+
+  //////// Accessor methods for children ////////
+
+  void AddChild(std::unique_ptr<StrategyGroup> child) {
+    children.push_back(std::move(child));
+  }
+
+  void ClearChildren() { children.clear(); }
+
+  StrategyGroup& GetChild(size_t child_idx) { return *children[child_idx]; }
+
+  const std::vector<std::unique_ptr<StrategyGroup>>& GetChildren() const {
+    return children;
+  }
+
+ private:
+  // Used when is_tuple == False. Leaf strategy vector.
+  // A vector of strategy choices for the non-tuple output.
+  std::vector<ShardingStrategy> strategies;
+  // Used when is_tuple == True. A vector of pointers, each pointer is one
+  // StrategyGroup for one value in the output Tuple
+  std::vector<std::unique_ptr<StrategyGroup>> children;
 };
 
 // Type aliases.

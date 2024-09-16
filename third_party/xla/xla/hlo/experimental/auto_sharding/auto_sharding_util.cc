@@ -826,30 +826,28 @@ bool AllInfinityCosts(
 // that were not intended to be replicated when being generating, but ending up
 // being replicated, which could happen when, for example, generating 2D
 // sharding for a 1D mesh shape.
-void RemoveDuplicatedStrategy(std::unique_ptr<StrategyGroup>& strategy_group) {
-  if (strategy_group->is_tuple) {
-    for (auto& child : strategy_group->childs) {
-      RemoveDuplicatedStrategy(child);
+void RemoveDuplicatedStrategy(StrategyGroup& strategy_group) {
+  if (strategy_group.is_tuple) {
+    for (auto& child : strategy_group.GetChildren()) {
+      RemoveDuplicatedStrategy(*child);
     }
     return;
   }
-  if (strategy_group->following || strategy_group->strategies.empty()) {
+  if (strategy_group.following || strategy_group.GetStrategies().empty()) {
     return;
   }
   std::vector<ShardingStrategy> new_vector;
   std::vector<ShardingStrategy> deduped_replicated_strategies;
   absl::flat_hash_set<std::string> added;
   size_t num_skipped_due_to_infinity_costs = 0;
-  for (size_t i = 0; i < strategy_group->strategies.size(); ++i) {
-    if (AllInfinityCosts(
-            strategy_group->strategies[i].communication_resharding_costs)) {
+  for (const ShardingStrategy& strategy : strategy_group.GetStrategies()) {
+    if (AllInfinityCosts(strategy.communication_resharding_costs)) {
       num_skipped_due_to_infinity_costs++;
       continue;
     }
-    std::string key = strategy_group->strategies[i].output_sharding.ToString();
-    if (!strategy_group->strategies[i].input_shardings.empty()) {
-      for (const auto& sharding :
-           strategy_group->strategies[i].input_shardings) {
+    std::string key = strategy.output_sharding.ToString();
+    if (!strategy.input_shardings.empty()) {
+      for (const auto& sharding : strategy.input_shardings) {
         key += "/" + (sharding.has_value() ? sharding->ToString() : "none");
       }
     }
@@ -857,14 +855,14 @@ void RemoveDuplicatedStrategy(std::unique_ptr<StrategyGroup>& strategy_group) {
       continue;
     }
     added.insert(key);
-    if (!strategy_group->strategies[i].output_sharding.IsReplicated()) {
-      new_vector.push_back(std::move(strategy_group->strategies[i]));
+    if (!strategy.output_sharding.IsReplicated()) {
+      new_vector.push_back(strategy);
     } else {
-      deduped_replicated_strategies.push_back(
-          std::move(strategy_group->strategies[i]));
+      deduped_replicated_strategies.push_back(strategy);
     }
   }
-  CHECK_LT(num_skipped_due_to_infinity_costs, strategy_group->strategies.size())
+  CHECK_LT(num_skipped_due_to_infinity_costs,
+           strategy_group.GetStrategies().size())
       << "All strategies removed due to infinite resharding costs";
   // Keeps replicated strategies as the last ones.
   if (!deduped_replicated_strategies.empty()) {
@@ -872,7 +870,10 @@ void RemoveDuplicatedStrategy(std::unique_ptr<StrategyGroup>& strategy_group) {
       new_vector.push_back(std::move(deduped_replicated_strategies[i]));
     }
   }
-  strategy_group->strategies = std::move(new_vector);
+  strategy_group.ClearStrategies();
+  for (const ShardingStrategy& strategy : new_vector) {
+    strategy_group.AddStrategy(strategy);
+  }
 }
 
 bool IsDivisible(const HloInstruction* ins, const DeviceMesh& device_mesh,
@@ -1770,13 +1771,13 @@ AliasSet BuildAliasSet(const HloModule* module,
       traverse_tuple_alias;
   traverse_tuple_alias = [&](const StrategyGroup* src_strategy_group,
                              const StrategyGroup* dst_strategy_group) {
+    const auto& src_children = src_strategy_group->GetChildren();
+    const auto& dst_children = dst_strategy_group->GetChildren();
     if (src_strategy_group->is_tuple) {
       CHECK(dst_strategy_group->is_tuple);
-      CHECK_EQ(src_strategy_group->childs.size(),
-               dst_strategy_group->childs.size());
-      for (size_t i = 0; i < src_strategy_group->childs.size(); ++i) {
-        traverse_tuple_alias(src_strategy_group->childs[i].get(),
-                             dst_strategy_group->childs[i].get());
+      CHECK_EQ(src_children.size(), dst_children.size());
+      for (size_t i = 0; i < src_children.size(); ++i) {
+        traverse_tuple_alias(src_children[i].get(), dst_children[i].get());
       }
     } else {
       alias_set.insert(
@@ -1794,17 +1795,19 @@ AliasSet BuildAliasSet(const HloModule* module,
 
     HloInstruction* param_ins = parameter_instructions[alias.parameter_number];
     if (alias.parameter_index.empty()) {
-      traverse_tuple_alias(
-          strategy_map.at(param_ins).get(),
-          strategy_map.at(output_tuple)->childs[output_index.front()].get());
+      traverse_tuple_alias(strategy_map.at(param_ins).get(),
+                           strategy_map.at(output_tuple)
+                               ->GetChildren()[output_index.front()]
+                               .get());
     } else {
       // parameter_instructions[alias.parameter_number] is a tuple.
       // alias.parameter_index.size() == 1 per the CHECK_LT statement.
-      traverse_tuple_alias(
-          strategy_map.at(param_ins)
-              ->childs[alias.parameter_index.front()]
-              .get(),
-          strategy_map.at(output_tuple)->childs[output_index.front()].get());
+      traverse_tuple_alias(strategy_map.at(param_ins)
+                               ->GetChildren()[alias.parameter_index.front()]
+                               .get(),
+                           strategy_map.at(output_tuple)
+                               ->GetChildren()[output_index.front()]
+                               .get());
     }
   });
 
@@ -1851,13 +1854,15 @@ absl::Status CheckAliasSetCompatibility(const AliasSet& alias_set,
 
     size_t compatible_cnt = 0;
     bool replicated = false;
-    for (size_t i = 0; i < src_strategy_group->strategies.size(); ++i) {
-      for (size_t j = 0; j < dst_strategy_group->strategies.size(); ++j) {
-        if (src_strategy_group->strategies[i].output_sharding ==
-            dst_strategy_group->strategies[j].output_sharding) {
+    for (size_t i = 0; i < src_strategy_group->GetStrategies().size(); ++i) {
+      const HloSharding& src_sharding =
+          src_strategy_group->GetStrategies()[i].output_sharding;
+      for (size_t j = 0; j < dst_strategy_group->GetStrategies().size(); ++j) {
+        const HloSharding& dst_sharding =
+            dst_strategy_group->GetStrategies()[j].output_sharding;
+        if (src_sharding == dst_sharding) {
           compatible_cnt += 1;
-          if (src_strategy_group->strategies[i]
-                  .output_sharding.IsReplicated()) {
+          if (src_sharding.IsReplicated()) {
             replicated = true;
           }
         }
@@ -1865,8 +1870,8 @@ absl::Status CheckAliasSetCompatibility(const AliasSet& alias_set,
     }
 
     if (compatible_cnt == 1 &&
-        (replicated && (src_strategy_group->strategies.size() > 1 ||
-                        dst_strategy_group->strategies.size() > 1))) {
+        (replicated && (src_strategy_group->GetStrategies().size() > 1 ||
+                        dst_strategy_group->GetStrategies().size() > 1))) {
       LOG(WARNING)
           << "Alias pair has only replicated strategy in common. This "
              "will result in choosing replicated strategy for these "
@@ -1909,13 +1914,16 @@ absl::StatusOr<AliasCompatibility> ComputeAliasCompatibility(
     const StrategyGroup* dst_strategy_group,
     const std::vector<HloInstruction*>& instructions) {
   AliasCompatibility alias_compatibility;
-  for (size_t i = 0; i < src_strategy_group->strategies.size(); ++i) {
-    for (size_t j = 0; j < dst_strategy_group->strategies.size(); ++j) {
-      if (src_strategy_group->strategies[i].output_sharding ==
-          dst_strategy_group->strategies[j].output_sharding) {
+  for (size_t i = 0; i < src_strategy_group->GetStrategies().size(); ++i) {
+    const HloSharding& src_sharding =
+        src_strategy_group->GetStrategies()[i].output_sharding;
+    for (size_t j = 0; j < dst_strategy_group->GetStrategies().size(); ++j) {
+      const HloSharding& dst_sharding =
+          dst_strategy_group->GetStrategies()[j].output_sharding;
+      if (src_sharding == dst_sharding) {
         alias_compatibility.src_compatible.push_back(i);
         alias_compatibility.dst_compatible.push_back(j);
-        if (src_strategy_group->strategies[i].output_sharding.IsReplicated()) {
+        if (src_sharding.IsReplicated()) {
           alias_compatibility.replicated = true;
         }
       }
@@ -1923,9 +1931,10 @@ absl::StatusOr<AliasCompatibility> ComputeAliasCompatibility(
   }
 
   int compatible_cnt = alias_compatibility.src_compatible.size();
-  if (compatible_cnt == 1 && (alias_compatibility.replicated &&
-                              (src_strategy_group->strategies.size() > 1 ||
-                               dst_strategy_group->strategies.size() > 1))) {
+  if (compatible_cnt == 1 &&
+      (alias_compatibility.replicated &&
+       (src_strategy_group->GetStrategies().size() > 1 ||
+        dst_strategy_group->GetStrategies().size() > 1))) {
     LOG(WARNING) << "Alias pair has only replicated strategy in common. This "
                     "will result in choosing replicated strategy for these "
                     "tensors and may result in large memory consumption: "
@@ -2024,7 +2033,7 @@ absl::Status RemoveFollowersIfMismatchedStrategies(
     if (auto it = followee_root_valid_strategies.find(idx);
         it != followee_root_valid_strategies.end()) {
       for (auto strategy_idx : it->second) {
-        if (strategy_group.strategies[strategy_idx].compute_cost !=
+        if (strategy_group.GetStrategies()[strategy_idx].compute_cost !=
             kInfinityCost) {
           return;
         }
