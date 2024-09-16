@@ -80,8 +80,10 @@ XlaOp EvaluateChebyshevPolynomial(XlaOp x, absl::Span<const FP> coefficients) {
 }  // namespace
 
 // Returns operation(operand), except if `operand` is one of the types in
-// upcast_types, in which case first converts it to F32, and then converts the
-// result down to the original type.
+// `upcast_types`. In such cases, it is first converted to F32, then the result
+// is converted back to the original type.
+// If `upcast_types` is empty, the default upcasting behavior is applied:
+// upcast if BitWidth <= 16.
 static XlaOp DoWithUpcastToF32(XlaOp operand,
                                absl::Span<const PrimitiveType> upcast_types,
                                const std::function<XlaOp(XlaOp)>& operation) {
@@ -89,7 +91,10 @@ static XlaOp DoWithUpcastToF32(XlaOp operand,
   return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(operand));
     PrimitiveType elem_ty = shape.element_type();
-    bool needs_upcast = absl::c_linear_search(upcast_types, elem_ty);
+    bool needs_upcast =
+        upcast_types.empty()
+            ? primitive_util::BitWidth(shape.element_type()) <= 16
+            : absl::c_linear_search(upcast_types, elem_ty);
 
     if (needs_upcast) {
       operand = ConvertElementType(operand, F32);
@@ -315,12 +320,10 @@ XlaOp Erfc(XlaOp x) {
     }
     // Erf(c)Impl don't have enough precision when run with bf16 intermediates
     // (not surprising!), so upcast to f32 in this case.
-    return DoWithUpcastToF32(
-        x, {BF16, F16, F8E5M2, F8E4M3FN, F8E4M3B11FNUZ, F8E5M2FNUZ, F8E4M3FNUZ},
-        [](XlaOp x) {
-          return Select(Gt(Abs(x), ScalarLike(x, 1)), ErfcImpl32(x),
-                        ScalarLike(x, 1) - ErfImpl32Cephes(x));
-        });
+    return DoWithUpcastToF32(x, {}, [](XlaOp x) {
+      return Select(Gt(Abs(x), ScalarLike(x, 1)), ErfcImpl32(x),
+                    ScalarLike(x, 1) - ErfImpl32Cephes(x));
+    });
   });
 }
 
@@ -492,9 +495,7 @@ XlaOp ErfInv(XlaOp x) {
     if (shape.element_type() == F64) {
       return ErfInv64(x);
     }
-    return DoWithUpcastToF32(
-        x, {BF16, F16, F8E5M2, F8E4M3FN, F8E4M3B11FNUZ, F8E5M2FNUZ, F8E4M3FNUZ},
-        [](XlaOp x) { return ErfInv32(x); });
+    return DoWithUpcastToF32(x, {}, [](XlaOp x) { return ErfInv32(x); });
   });
 }
 
@@ -622,10 +623,7 @@ XlaOp Lgamma(XlaOp input) {
     // F16 and BF16 don't provide sufficient precision for intermediate results
     // here (although it's better than you might expect!), so do the
     // computations in F32.
-    return DoWithUpcastToF32(
-        input,
-        {BF16, F16, F8E5M2, F8E4M3FN, F8E4M3B11FNUZ, F8E5M2FNUZ, F8E4M3FNUZ},
-        do_it);
+    return DoWithUpcastToF32(input, {}, do_it);
   });
 }
 
@@ -720,10 +718,7 @@ XlaOp Digamma(XlaOp input) {
   auto& b = *input.builder();
   return b.ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Digamma", input));
-    return DoWithUpcastToF32(
-        input,
-        {BF16, F16, F8E5M2, F8E4M3FN, F8E4M3B11FNUZ, F8E5M2FNUZ, F8E4M3FNUZ},
-        do_it);
+    return DoWithUpcastToF32(input, {}, do_it);
   });
 }
 
@@ -1211,9 +1206,8 @@ XlaOp Asin(XlaOp x) {
   };
   // These upcasts are not strictly necessary on all platforms to get within our
   // error tolerances, so we could relax this if it ever mattered.
-  return DoWithUpcastToF32(x, {F8E4M3FN, F8E5M2, BF16, F16}, [&](XlaOp x) {
-    return b->ReportErrorOrReturn(do_it(x));
-  });
+  return DoWithUpcastToF32(
+      x, {}, [&](XlaOp x) { return b->ReportErrorOrReturn(do_it(x)); });
 }
 
 XlaOp Atan(XlaOp x) { return Atan2(x, ScalarLike(x, 1.0)); }
