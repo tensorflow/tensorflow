@@ -50,9 +50,7 @@ cc_library(
     name = "command_buffer_cmd",
     srcs = ["command_buffer_cmd.cc"],
     hdrs = ["command_buffer_cmd.h"],
-    local_defines = if_cuda_is_configured([
-        "GOOGLE_CUDA=1",
-    ]),
+    tags = ["gpu"],
     deps = [
         ":annotation",
         ":custom_call_thunk",
@@ -76,7 +74,6 @@ cc_library(
         "//xla/service:computation_placer",
         "//xla/service:custom_call_status_internal",
         "//xla/service:custom_call_status_public_headers",
-        "//xla/service:executable",
         "//xla/service:global_device_id",
         "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu:launch_dimensions",
@@ -86,8 +83,8 @@ cc_library(
         "//xla/stream_executor",
         "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:dnn",
-        "//xla/stream_executor:lazy_op_runner",
         "//xla/stream_executor:trace_command_buffer_factory",
+        "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/stream_executor/gpu:gpu_stream_header",
         "//xla/stream_executor/gpu:gpu_types_header",
         "//xla/tsl/concurrency:ref_count",
@@ -114,6 +111,7 @@ cc_library(
     name = "command_buffer_cmd_emitter",
     srcs = ["command_buffer_cmd_emitter.cc"],
     hdrs = ["command_buffer_cmd_emitter.h"],
+    tags = ["gpu"],
     deps = [
         ":command_buffer_cmd",
         ":conditional_thunk",
@@ -144,9 +142,8 @@ cc_library(
 
 xla_test(
     name = "command_buffer_cmd_test",
-    srcs = if_gpu_is_configured(["command_buffer_cmd_test.cc"]),
+    srcs = ["command_buffer_cmd_test.cc"],
     backends = ["gpu"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
     deps = [
         ":command_buffer_cmd",
         ":thunk",
@@ -351,7 +348,7 @@ cc_library(
 
 xla_test(
     name = "dynamic_slice_thunk_test",
-    srcs = if_gpu_is_configured(["dynamic_slice_thunk_test.cc"]),
+    srcs = ["dynamic_slice_thunk_test.cc"],
     backend_tags = {
         "gpu_a100": if_google(["config-cuda-only"]),
         "gpu_v100": if_google(["config-cuda-only"]),
@@ -361,7 +358,6 @@ xla_test(
         "gpu_v100",
         "gpu_amd_any",
     ],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
     deps = [
         ":custom_call_thunk",
         ":dynamic_slice_thunk",
@@ -375,7 +371,6 @@ xla_test(
         "//xla/service:executable",
         "//xla/service:platform_util",
         "//xla/service/gpu:buffer_allocations",
-        "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu:matmul_utils",
         "//xla/stream_executor",
         "//xla/stream_executor:blas",
@@ -383,35 +378,33 @@ xla_test(
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream_executor_memory_allocator",
-        "//xla/stream_executor/gpu:gpu_test_kernels",
+        "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/stream_executor/gpu:gpu_types_header",
         "//xla/tsl/lib/core:status_test_util",
-        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
-    ] + if_cuda_is_configured([
-        "@local_config_cuda//cuda:cuda_headers",
-    ]),
+    ],
 )
 
 cc_library(
     name = "cholesky_thunk",
-    srcs = if_gpu_is_configured(["cholesky_thunk.cc"]),
-    hdrs = if_gpu_is_configured(["cholesky_thunk.h"]),
-    deps = if_gpu_is_configured([
+    srcs = ["cholesky_thunk.cc"],
+    hdrs = ["cholesky_thunk.h"],
+    tags = ["gpu"],
+    deps = [
+        "//xla:types",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:buffer_assignment",
         "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu:cusolver_context",
         "//xla/service/gpu:make_batch_pointers",
         "//xla/service/gpu/runtime:thunk",
-        "//xla:types",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/service:buffer_assignment",
-        "//xla/hlo/ir:hlo",
-        "@local_tsl//tsl/platform:logging",
         "//xla/stream_executor",
         "//xla/stream_executor:blas",
         "//xla/stream_executor:device_memory",
@@ -419,14 +412,16 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
         "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:status",
-    ]),
+    ],
 )
 
 cc_library(
     name = "command_buffer_thunk",
     srcs = ["command_buffer_thunk.cc"],
     hdrs = ["command_buffer_thunk.h"],
+    tags = ["gpu"],
     deps = [
         ":annotation",
         ":command_buffer_cmd",
@@ -463,7 +458,6 @@ xla_test(
         "gpu_v100",
         "gpu_amd_any",
     ],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
     deps = [
         ":command_buffer_cmd",
         ":command_buffer_thunk",
@@ -479,13 +473,16 @@ xla_test(
         "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu:matmul_utils",
+        "//xla/service/gpu/kernels:custom_kernel",
         "//xla/stream_executor",
         "//xla/stream_executor:blas",
         "//xla/stream_executor:command_buffer",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:semantic_version",
         "//xla/stream_executor:stream_executor_memory_allocator",
+        "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/stream_executor/gpu:gpu_test_kernels",
         "//xla/stream_executor/gpu:gpu_test_kernels_fatbin",
         "//xla/stream_executor/gpu:gpu_types_header",
@@ -497,9 +494,7 @@ xla_test(
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
         "@local_tsl//tsl/profiler/lib:profiler_lock",
-    ] + if_cuda_is_configured([
-        "@local_config_cuda//cuda:cuda_headers",
-    ]),
+    ],
 )
 
 cc_library(
@@ -530,17 +525,17 @@ cc_library(
     name = "convolution_thunk",
     srcs = ["convolution_thunk.cc"],
     hdrs = ["convolution_thunk.h"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
-        "TENSORFLOW_USE_ROCM=1",
-    ]),
     deps = [
         ":thunk",
         "//xla:util",
         "//xla/service:buffer_assignment",
         "//xla/service/gpu:gpu_conv_runner",
+        "//xla/service/gpu:stream_executor_util",
         "//xla/stream_executor",
         "//xla/stream_executor:dnn",
+        "//xla/stream_executor:lazy_op_runner",
         "//xla/stream_executor:scratch_allocator",
+        "//xla/stream_executor/rocm:rocm_platform_id",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
@@ -549,10 +544,8 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
-    ] + if_rocm_is_configured([
-        # keep sorted
-        "//xla/service/gpu:stream_executor_util",
-    ]),
+        "@local_tsl//tsl/platform:statusor",
+    ],
 )
 
 cc_library(
@@ -578,12 +571,10 @@ cc_library(
 
 cc_library(
     name = "cub_sort_thunk",
-    srcs = if_gpu_is_configured(["cub_sort_thunk.cc"]),
-    hdrs = if_gpu_is_configured(["cub_sort_thunk.h"]),
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
-        "TENSORFLOW_USE_ROCM=1",
-    ]),
-    deps = if_gpu_is_configured([
+    srcs = ["cub_sort_thunk.cc"],
+    hdrs = ["cub_sort_thunk.h"],
+    tags = ["gpu"],
+    deps = ([
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -606,9 +597,7 @@ cc_library(
     name = "custom_call_thunk",
     srcs = ["custom_call_thunk.cc"],
     hdrs = ["custom_call_thunk.h"],
-    local_defines = if_cuda_is_configured([
-        "GOOGLE_CUDA=1",
-    ]),
+    tags = ["gpu"],
     deps = [
         ":thunk",
         "//xla:executable_run_options",
@@ -880,9 +869,7 @@ cc_library(
     name = "nccl_collective_thunk",
     srcs = ["nccl_collective_thunk.cc"],
     hdrs = ["nccl_collective_thunk.h"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
-        "TENSORFLOW=1",
-    ]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     deps = [
         ":nccl_api",
         ":nccl_clique",
@@ -904,7 +891,6 @@ cc_library(
         "//xla/stream_executor",
         "//xla/stream_executor:event",
         "//xla/stream_executor/gpu:gpu_driver_header",
-        "//xla/stream_executor/gpu:gpu_stream",
         "//xla/stream_executor/gpu:gpu_types_header",
         "//xla/translate/mhlo_to_hlo:attribute_exporter",
         "@com_google_absl//absl/algorithm:container",
@@ -912,6 +898,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
@@ -920,11 +907,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
-    ] + if_cuda_is_configured([
-        "@local_config_nccl//:nccl",
-    ]) + if_rocm_is_configured([
-        "@local_config_rocm//rocm:rccl",
-    ]),
+    ],
 )
 
 cc_library(
@@ -1059,9 +1042,6 @@ cc_library(
     name = "sequential_thunk",
     srcs = ["sequential_thunk.cc"],
     hdrs = ["sequential_thunk.h"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
-        "TENSORFLOW_USE_ROCM=1",
-    ]),
     deps = [
         ":annotation",
         "//xla/service/gpu/runtime:thunk",
@@ -1136,6 +1116,7 @@ cc_library(
     name = "for_all_thunks",
     srcs = ["for_all_thunks.cc"],
     hdrs = ["for_all_thunks.h"],
+    tags = ["gpu"],
     deps = [
         ":command_buffer_thunk",
         ":conditional_thunk",
@@ -1151,6 +1132,7 @@ cc_library(
 xla_cc_test(
     name = "for_all_thunks_test",
     srcs = ["for_all_thunks_test.cc"],
+    tags = ["gpu"],
     deps = [
         ":command_buffer_cmd",
         ":command_buffer_thunk",
@@ -1168,11 +1150,11 @@ xla_cc_test(
 
 cc_library(
     name = "triangular_solve_thunk",
-    srcs = if_gpu_is_configured(["triangular_solve_thunk.cc"]),
-    hdrs = if_gpu_is_configured(["triangular_solve_thunk.h"]),
-    deps = if_gpu_is_configured([
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings:str_format",
+    srcs = ["triangular_solve_thunk.cc"],
+    hdrs = ["triangular_solve_thunk.h"],
+    tags = ["gpu"],
+    deps = [
+        "//xla:status_macros",
         "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -1185,10 +1167,12 @@ cc_library(
         "//xla/stream_executor:blas",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor/gpu:gpu_asm_opts",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:status",
-    ]) + ["//xla:status_macros"],
+    ],
 )
 
 cc_library(

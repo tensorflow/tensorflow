@@ -17,6 +17,7 @@ cc_library(
     name = "computation_partitioner",
     srcs = ["computation_partitioner.cc"],
     hdrs = ["computation_partitioner.h"],
+    tags = ["gpu"],
     deps = [
         ":type_util",
         "//xla:shape_util",
@@ -45,6 +46,7 @@ cc_library(
 xla_cc_test(
     name = "computation_partitioner_test",
     srcs = ["computation_partitioner_test.cc"],
+    tags = ["gpu"],
     deps = [
         ":computation_partitioner",
         "//xla/hlo/ir:hlo",
@@ -62,6 +64,7 @@ cc_library(
     name = "elemental_hlo_to_mlir",
     srcs = ["elemental_hlo_to_mlir.cc"],
     hdrs = ["elemental_hlo_to_mlir.h"],
+    tags = ["gpu"],
     deps = [
         ":computation_partitioner",
         ":type_util",
@@ -110,6 +113,7 @@ cc_library(
 xla_cc_test(
     name = "elemental_hlo_to_mlir_test",
     srcs = ["elemental_hlo_to_mlir_test.cc"],
+    tags = ["gpu"],
     deps = [
         ":computation_partitioner",
         ":elemental_hlo_to_mlir",
@@ -149,6 +153,7 @@ cc_library(
     name = "mlir_fusion_emitter",
     srcs = ["mlir_fusion_emitter.cc"],
     hdrs = ["mlir_fusion_emitter.h"],
+    tags = ["gpu"],
     deps = [
         ":computation_partitioner",
         ":elemental_hlo_to_mlir",
@@ -227,6 +232,7 @@ cc_library(
 xla_cc_test(
     name = "mlir_fusion_emitter_test",
     srcs = ["mlir_fusion_emitter_test.cc"],
+    tags = ["gpu"],
     deps = [
         ":computation_partitioner",
         ":mlir_fusion_emitter",

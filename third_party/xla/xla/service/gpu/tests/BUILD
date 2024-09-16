@@ -701,6 +701,7 @@ lit_test_suite(
 # cc_binary(
 #     name = "xla-opt",
 #     srcs = ["xla-opt.cc"],
+#     tags = ["gpu"],
 #     deps = [
 #         "//xla/service/gpu/fusions/transforms:passes",
 #         "//xla/service/gpu/fusions/triton:passes",

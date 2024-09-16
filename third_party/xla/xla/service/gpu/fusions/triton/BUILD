@@ -33,6 +33,7 @@ cc_library(
         "compilation_pipeline_rocm.cc",
     ]),
     hdrs = ["triton_fusion_emitter.h"],
+    tags = ["gpu"],
     deps = [
         ":passes",
         "//xla:autotuning_proto_cc",
@@ -289,6 +290,7 @@ cc_library(
     testonly = True,
     srcs = ["triton_test_utils.cc"],
     hdrs = ["triton_test_utils.h"],
+    tags = ["gpu"],
     deps = [
         ":triton_fusion_emitter",
         "//xla:shape_util",
@@ -325,6 +327,7 @@ cc_library(
 xla_cc_test(
     name = "triton_fusion_emitter_mem_utils_test",
     srcs = if_cuda_is_configured(["triton_fusion_emitter_mem_utils_test.cc"]),
+    tags = ["gpu"],
     deps = [
         ":triton_fusion_emitter",
         "//xla/hlo/ir:hlo",

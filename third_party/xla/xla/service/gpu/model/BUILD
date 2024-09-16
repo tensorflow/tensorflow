@@ -25,6 +25,7 @@ cc_library(
     name = "analytical_latency_estimator",
     srcs = ["analytical_latency_estimator.cc"],
     hdrs = ["analytical_latency_estimator.h"],
+    tags = ["gpu"],
     deps = [
         ":gpu_collective_performance_model",
         ":gpu_hlo_cost_analysis",
@@ -102,6 +103,7 @@ cc_library(
     name = "gpu_cost_model_stats_collection",
     srcs = ["gpu_cost_model_stats_collection.cc"],
     hdrs = ["gpu_cost_model_stats_collection.h"],
+    tags = ["gpu"],
     deps = [
         ":gpu_hlo_cost_analysis",
         ":gpu_performance_model",
@@ -121,6 +123,7 @@ cc_library(
 xla_cc_test(
     name = "gpu_cost_model_stats_collection_test",
     srcs = ["gpu_cost_model_stats_collection_test.cc"],
+    tags = ["gpu"],
     deps = [
         ":gpu_cost_model_stats_collection",
         ":gpu_hlo_cost_analysis",
@@ -191,6 +194,7 @@ cc_library(
     name = "gpu_performance_model_base",
     srcs = ["gpu_performance_model_base.cc"],
     hdrs = ["gpu_performance_model_base.h"],
+    tags = ["gpu"],
     deps = [
         ":fusion_analysis_cache",
         ":gpu_hlo_cost_analysis",
@@ -219,6 +223,7 @@ cc_library(
 xla_cc_test(
     name = "gpu_performance_model_base_test",
     srcs = ["gpu_performance_model_base_test.cc"],
+    tags = ["gpu"],
     deps = [
         ":gpu_hlo_cost_analysis",
         ":gpu_performance_model_base",
@@ -241,6 +246,7 @@ cc_library(
     name = "gpu_performance_model",
     srcs = ["gpu_performance_model.cc"],
     hdrs = ["gpu_performance_model.h"],
+    tags = ["gpu"],
     deps = [
         ":coalescing_analysis",
         ":gpu_hlo_cost_analysis",
@@ -263,6 +269,7 @@ cc_library(
 xla_cc_test(
     name = "gpu_performance_model_test",
     srcs = ["gpu_performance_model_test.cc"],
+    tags = ["gpu"],
     deps = [
         ":fusion_analysis_cache",
         ":gpu_hlo_cost_analysis",
@@ -294,6 +301,7 @@ cc_library(
     srcs = ["gpu_collective_performance_model.cc"],
     hdrs = ["gpu_collective_performance_model.h"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    tags = ["gpu"],
     deps = [
         ":coalescing_analysis",
         ":fusion_analysis_cache",
@@ -332,6 +340,7 @@ cc_library(
 xla_cc_test(
     name = "gpu_collective_performance_model_test",
     srcs = ["gpu_collective_performance_model_test.cc"],
+    tags = ["gpu"],
     deps = [
         "//xla/service/gpu:backend_configs_cc",
         "//xla/tests:hlo_test_base",
@@ -344,6 +353,7 @@ cc_library(
     name = "gpu_indexing_performance_model",
     srcs = ["gpu_indexing_performance_model.cc"],
     hdrs = ["gpu_indexing_performance_model.h"],
+    tags = ["gpu"],
     deps = [
         ":coalescing_analysis",
         ":fusion_analysis_cache",
@@ -384,6 +394,7 @@ cc_library(
 xla_cc_test(
     name = "gpu_indexing_performance_model_test",
     srcs = ["gpu_indexing_performance_model_test.cc"],
+    tags = ["gpu"],
     deps = [
         ":fusion_analysis_cache",
         ":gpu_hlo_cost_analysis",
@@ -802,6 +813,7 @@ cc_library(
     name = "coalescing_analysis",
     srcs = ["coalescing_analysis.cc"],
     hdrs = ["coalescing_analysis.h"],
+    tags = ["gpu"],
     deps = [
         ":affine_map_evaluator",
         ":indexing_analysis",
@@ -825,6 +837,7 @@ cc_library(
 xla_cc_test(
     name = "coalescing_analysis_test",
     srcs = ["coalescing_analysis_test.cc"],
+    tags = ["gpu"],
     deps = [
         ":coalescing_analysis",
         "//xla:shape_util",

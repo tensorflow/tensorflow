@@ -17,15 +17,15 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/string_view.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/service/buffer_assignment.h"
@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/gpu/gpu_types.h"  // IWYU pragma: keep
@@ -51,12 +52,6 @@ limitations under the License.
 #include "xla/types.h"  // IWYU pragma: keep
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
-
-#if GOOGLE_CUDA
-#define PLATFORM "CUDA"
-#elif TENSORFLOW_USE_ROCM
-#define PLATFORM "ROCM"
-#endif
 
 namespace xla::gpu {
 
@@ -398,7 +393,9 @@ XLA_FFI_DEFINE_HANDLER(kMemcpy, Memcpy,
                            .Arg<ffi::AnyBuffer>()  // src
                            .Ret<ffi::AnyBuffer>()  // dst
 );
-XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", PLATFORM,
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", "CUDA",
+                         kMemcpy);
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", "ROCM",
                          kMemcpy);
 
 TEST(DynamicSliceThunkTest, SlicedMemcpy) {
@@ -447,7 +444,11 @@ TEST(DynamicSliceThunkTest, SlicedMemcpy) {
 
   // Preparing custom call thunk: setting up call target and operands + results
   // buffers.
-  auto registration = xla::ffi::FindHandler("__xla_test$$memcpy", PLATFORM);
+  absl::string_view platform_name =
+      executor->GetPlatform()->id() == se::cuda::kCudaPlatformId ? "CUDA"
+                                                                 : "ROCM";
+  auto registration =
+      xla::ffi::FindHandler("__xla_test$$memcpy", platform_name);
   ASSERT_TRUE(registration.ok());
 
   std::vector<std::optional<CustomCallThunk::Slice>> operands{
@@ -607,7 +608,11 @@ TEST(DynamicSliceThunkTest, SlicedOutputMemcpy) {
 
   // Preparing custom call thunk: setting up call target and operands + results
   // buffers.
-  auto registration = xla::ffi::FindHandler("__xla_test$$memcpy", PLATFORM);
+  const absl::string_view platform_name =
+      executor->GetPlatform()->id() == se::cuda::kCudaPlatformId ? "CUDA"
+                                                                 : "ROCM";
+  auto registration =
+      xla::ffi::FindHandler("__xla_test$$memcpy", platform_name);
   ASSERT_TRUE(registration.ok());
 
   std::vector<std::optional<CustomCallThunk::Slice>> operands{
@@ -1248,7 +1253,11 @@ TEST(DynamicSliceThunkTest, SlicedMemcpyOOB) {
 
   // Preparing custom call thunk: setting up call target and operands + results
   // buffers.
-  auto registration = xla::ffi::FindHandler("__xla_test$$memcpy", PLATFORM);
+  absl::string_view platform_name =
+      executor->GetPlatform()->id() == se::cuda::kCudaPlatformId ? "CUDA"
+                                                                 : "ROCM";
+  auto registration =
+      xla::ffi::FindHandler("__xla_test$$memcpy", platform_name);
   ASSERT_TRUE(registration.ok());
 
   std::vector<std::optional<CustomCallThunk::Slice>> operands{

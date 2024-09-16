@@ -9,6 +9,7 @@ lit_test_suite(
     name = "tests",
     srcs = glob(["*.mlir"]),
     cfg = "//xla:lit.cfg.py",
+    tags = ["gpu"],
     tools = [
         "//xla/service/gpu/fusions/tools:mlir_fusions_opt",
         "@llvm-project//llvm:FileCheck",

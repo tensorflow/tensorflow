@@ -1443,6 +1443,7 @@ cc_library(
     name = "fusion_merger",
     srcs = ["fusion_merger.cc"],
     hdrs = ["fusion_merger.h"],
+    tags = ["gpu"],
     deps = [
         "//xla:shape_util",
         "//xla:util",
@@ -1471,6 +1472,7 @@ xla_cc_test(
     name = "fusion_merger_test",
     srcs = ["fusion_merger_test.cc"],
     tags = [
+        "gpu",
         "nomsan",
     ],
     deps = [
@@ -1994,6 +1996,7 @@ cc_library(
     name = "multi_output_fusion",
     srcs = ["multi_output_fusion.cc"],
     hdrs = ["multi_output_fusion.h"],
+    tags = ["gpu"],
     deps = [
         "//xla:debug_options_flags",
         "//xla:shape_util",
@@ -2025,6 +2028,7 @@ xla_cc_test(
     name = "multi_output_fusion_test",
     srcs = ["multi_output_fusion_test.cc"],
     tags = [
+        "gpu",
         "nomsan",
     ],
     deps = [
@@ -2086,6 +2090,7 @@ cc_library(
     name = "priority_fusion",
     srcs = ["priority_fusion.cc"],
     hdrs = ["priority_fusion.h"],
+    tags = ["gpu"],
     deps = [
         "//xla:debug_options_flags",
         "//xla:shape_util",
@@ -2137,6 +2142,7 @@ xla_cc_test(
     name = "priority_fusion_test",
     srcs = ["priority_fusion_test.cc"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    tags = ["gpu"],
     deps = [
         ":priority_fusion",
         "//xla:shape_util",
@@ -2522,6 +2528,7 @@ cc_library(
     name = "softmax_rewriter_triton",
     srcs = ["softmax_rewriter_triton.cc"],
     hdrs = ["softmax_rewriter_triton.h"],
+    tags = ["gpu"],
     deps = [
         ":reduction_dimension_grouper",
         ":reduction_splitter",
@@ -2568,6 +2575,7 @@ cc_library(
 xla_cc_test(
     name = "softmax_rewriter_triton_test",
     srcs = ["softmax_rewriter_triton_test.cc"],
+    tags = ["gpu"],
     deps = [
         ":softmax_rewriter_triton",
         "//xla:shape_util",
@@ -2593,11 +2601,9 @@ xla_cc_test(
 
 cc_library(
     name = "sort_rewriter",
-    srcs = if_gpu_is_configured(
-        ["sort_rewriter.cc"],
-        ["sort_rewriter_stub.cc"],
-    ),
+    srcs = ["sort_rewriter.cc"],
     hdrs = ["sort_rewriter.h"],
+    tags = ["gpu"],
     deps = [
         "//xla:comparison_util",
         "//xla:shape_util",
@@ -2620,7 +2626,7 @@ cc_library(
 
 xla_test(
     name = "sort_rewriter_test",
-    srcs = if_cuda_is_configured(["sort_rewriter_test.cc"]),
+    srcs = ["sort_rewriter_test.cc"],
     backends = ["gpu"],
     tags = ["no_oss"],
     deps = [

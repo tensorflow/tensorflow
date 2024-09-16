@@ -51,6 +51,7 @@ cc_library(
         "vectorize_loads_stores.cc",
     ],
     hdrs = ["passes.h"],
+    tags = ["gpu"],
     deps = [
         ":passes_inc_gen",
         "//xla:shape_util",

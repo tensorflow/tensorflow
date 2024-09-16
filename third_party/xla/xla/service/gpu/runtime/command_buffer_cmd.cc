@@ -45,6 +45,8 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
+#include "xla/service/custom_call_status.h"
+#include "xla/service/custom_call_status_internal.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
@@ -59,13 +61,14 @@ limitations under the License.
 #include "xla/service/gpu/runtime/nccl_collective_thunk.h"
 #include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/gpu/stream_executor_util.h"
-#include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/gpu/gpu_stream.h"
+#include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/stream_executor/lazy_op_runner.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/trace_command_buffer_factory.h"
@@ -77,13 +80,6 @@ limitations under the License.
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
-
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "xla/service/custom_call_status.h"
-#include "xla/service/custom_call_status_internal.h"
-#include "xla/stream_executor/gpu/gpu_stream.h"
-#include "xla/stream_executor/gpu/gpu_types.h"
-#endif
 
 namespace xla::gpu {
 
@@ -555,20 +551,20 @@ CommandBufferCmd::BufferUsageVector ComputationIdCmd::buffers() {
 
 absl::Status ComputationIdCmd::Initialize(const Thunk::InitializeParams& params,
                                           StateManager& state) {
-#if defined(GOOGLE_CUDA)
-  {
+  if (params.executor->GetPlatform()->id() == se::cuda::kCudaPlatformId) {
+    {
+      absl::MutexLock lock(&mutex_);
+      if (memset_kernels_.contains(params.executor)) return absl::OkStatus();
+    }
+
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
+                        CreateKernel("memset32", 3, kMemset32Kernel,
+                                     /*cubin_data=*/{}, params.executor,
+                                     /*shared_mem_bytes=*/0));
+
     absl::MutexLock lock(&mutex_);
-    if (memset_kernels_.contains(params.executor)) return absl::OkStatus();
+    memset_kernels_.emplace(params.executor, std::move(kernel));
   }
-
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
-                      CreateKernel("memset32", 3, kMemset32Kernel,
-                                   /*cubin_data=*/{}, params.executor,
-                                   /*shared_mem_bytes=*/0));
-
-  absl::MutexLock lock(&mutex_);
-  memset_kernels_.emplace(params.executor, std::move(kernel));
-#endif  // GOOGLE_CUDA
   return absl::OkStatus();
 }
 
@@ -595,24 +591,29 @@ absl::Status ComputationIdCmd::Record(
           << "; execution_scope_id=" << execution_scope_id.value();
   VLOG(5) << "  Id: " << dest_ << " (" << dst.opaque() << ")";
 
-#if defined(GOOGLE_CUDA)
-  se::Kernel* memset_kernel = [&] {
+  const bool has_memset_kernel = [&] {
     absl::MutexLock lock(&mutex_);
-    return memset_kernels_[execute_params.stream->parent()].get();
+    return memset_kernels_.contains(execute_params.stream->parent());
   }();
 
-  if (memset_kernel == nullptr) {
-    return absl::InternalError(
-        "Memset kernel not loaded on a command buffer executor");
-  }
+  if (has_memset_kernel) {
+    se::Kernel* memset_kernel = [&] {
+      absl::MutexLock lock(&mutex_);
+      return memset_kernels_[execute_params.stream->parent()].get();
+    }();
 
-  auto args = se::PackKernelArgs(/*shmem_bytes=*/0, int64_t{1}, value, dst);
-  return command_buffer->Launch(execution_scope_id, se::ThreadDim(1),
-                                se::BlockDim(1), *memset_kernel, *args);
-#else
-  return command_buffer->Memset(execution_scope_id, &dst, value,
-                                /*num_elements=*/1);
-#endif  // GOOGLE_CUDA
+    if (memset_kernel == nullptr) {
+      return absl::InternalError(
+          "Memset kernel not loaded on a command buffer executor");
+    }
+
+    auto args = se::PackKernelArgs(/*shmem_bytes=*/0, int64_t{1}, value, dst);
+    return command_buffer->Launch(execution_scope_id, se::ThreadDim(1),
+                                  se::BlockDim(1), *memset_kernel, *args);
+  } else {
+    return command_buffer->Memset(execution_scope_id, &dst, value,
+                                  /*num_elements=*/1);
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -1439,7 +1440,6 @@ absl::Status CustomCallCmd::RecordLegacyCustomCall(
     }
   }
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   TF_ASSIGN_OR_RETURN(
       auto nested_cmd,
       se::TraceCommandBufferFactory::Create(
@@ -1460,11 +1460,6 @@ absl::Status CustomCallCmd::RecordLegacyCustomCall(
 
   return command_buffer->AddNestedCommandBuffer(execution_scope_id,
                                                 *nested_cmd);
-#else   //  GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  return Unavailable(
-      "Custom calls on GPU are not supported in this configuration. Please "
-      "build with --config=cuda or --config=rocm");
-#endif  //   GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
 absl::Status CustomCallCmd::RecordXlaFfiCall(
@@ -1519,7 +1514,6 @@ absl::Status CustomCallCmd::RecordXlaFfiCall(
   builder.AddAttributes(attrs.Build());
   ffi::CallFrame call_frame = builder.Build();
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   TF_ASSIGN_OR_RETURN(
       auto nested_cmd,
       se::TraceCommandBufferFactory::Create(
@@ -1537,11 +1531,6 @@ absl::Status CustomCallCmd::RecordXlaFfiCall(
 
   return command_buffer->AddNestedCommandBuffer(execution_scope_id,
                                                 *nested_cmd);
-#else   //  GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  return Unavailable(
-      "Custom calls on GPU are not supported in this configuration. Please "
-      "build with --config=cuda or --config=rocm");
-#endif  //   GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
 
 CommandBufferCmd::BufferUsageVector CustomCallCmd::buffers() {

@@ -72,9 +72,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/gpu/scoped_activate_context.h"
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "xla/stream_executor/gpu/gpu_executor.h"
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
@@ -805,12 +803,10 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
   se::DeviceMemoryAllocator* const memory_allocator = run_options->allocator();
   se::StreamExecutor* executor = run_options->stream()->parent();
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   // GpuExecutable always bound to a single GpuContext during its execution, so
   // we activate it once to skip expensive context activations later.
   se::gpu::GpuExecutor* gpu_executor = se::gpu::ExtractGpuExecutor(executor);
   se::gpu::ScopedActivateContext activation(gpu_executor);
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
   // Force synchronous execution if the allocator requires it.
   const bool block_host_until_done =
