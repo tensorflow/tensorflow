@@ -326,3 +326,37 @@ func.func @block_id_constraints_mismatch(%input: tensor<32x64xf32>,
     : (tensor<32x64xf32>) -> !xla_gpu.indexed_vector<32x64xf32, #map1>
   func.return %0 : !xla_gpu.indexed_vector<32x64xf32, #map1>
 }
+
+// -----
+
+#map = #xla_gpu.indexing_map<(d0, d1)[s0, s1] -> (d1*32+d0*2+s0, s1),
+  domain: d0 in [0, 32], d1 in [0, 8], s0 in [0, 1], s1 in [0, 1],
+  is_simplified: false>
+#map1 = #xla_gpu.indexing_map<(d0, d1)[s0] -> (d0 mod 16 + s0, d1),
+  domain: d0 in [0, 32], d1 in [0, 2], s0 in [0, 1],
+  is_simplified: false>
+
+func.func @insert(%input: !xla_gpu.indexed_vector<32x64xf32, #map>,
+    %i: index, %j: index, %output: tensor<32x64xf32>) -> tensor<32x64xf32> {
+  // expected-error @+1 {{insert_op map must not have any symbols}}
+  %0 = xla_gpu.insert %input(%i, %j) into %output at #map1
+    : !xla_gpu.indexed_vector<32x64xf32, #map> -> tensor<32x64xf32>
+  func.return %0 : tensor<32x64xf32>
+}
+
+// -----
+
+#map = #xla_gpu.indexing_map<(d0, d1)[s0, s1] -> (d1*32+d0*2+s0, s1),
+  domain: d0 in [0, 32], d1 in [0, 8], s0 in [0, 1], s1 in [0, 1],
+  is_simplified: false>
+#map1 = #xla_gpu.indexing_map<(d0, d1, d2) -> (d0 mod 16, d1, d2),
+  domain: d0 in [0, 32], d1 in [0, 2], d2 in [0, 5],
+  is_simplified: false>
+
+func.func @insert(%input: !xla_gpu.indexed_vector<32x64xf32, #map>,
+    %i: index, %j: index, %output: tensor<32x64xf32>) -> tensor<32x64xf32> {
+  // expected-error @+1 {{source map result count must equal insert_op's map's dimension count}}
+  %0 = xla_gpu.insert %input(%i, %j) into %output at #map1
+    : !xla_gpu.indexed_vector<32x64xf32, #map> -> tensor<32x64xf32>
+  func.return %0 : tensor<32x64xf32>
+}

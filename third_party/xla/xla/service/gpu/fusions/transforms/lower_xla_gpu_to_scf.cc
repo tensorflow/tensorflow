@@ -311,7 +311,7 @@ struct RewriteInsert : mlir::OpRewritePattern<InsertOp> {
     //    indexed_vector index -> tensor index.
     // We get indexed_vector index by using its encoding map (source_map).
     // So we loop over indexed_vector encoding map and use the results as the
-    // symbols for InsertOp's map in order to get the final tensor index.
+    // dimensions for InsertOp's map in order to get the final tensor index.
     auto source_map = op.getSource().getType().getIndexingMapAttr();
     auto loop = b.create<LoopOp>(
         source_map, op.getIndices(), ValueRange{op.getDest()},
@@ -321,10 +321,10 @@ struct RewriteInsert : mlir::OpRewritePattern<InsertOp> {
           auto scalar =
               b.create<mlir::vector::ExtractOp>(convert, vector_offset);
           auto tensor_indices = b.create<ApplyIndexingOp>(
-              op.getIndices(), map_results, op.getMap().getIndexingMap());
+              map_results, ValueRange(), op.getMap().getIndexingMap());
           Value new_tensor = b.create<mlir::tensor::InsertOp>(
               scalar.getResult(), iter_args.back(),
-              tensor_indices->getResults());
+              tensor_indices.getResults());
           b.create<YieldOp>(new_tensor);
         });
     rewriter.replaceOp(op, loop->getResults());

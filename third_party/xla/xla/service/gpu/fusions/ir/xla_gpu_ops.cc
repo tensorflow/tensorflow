@@ -1036,6 +1036,23 @@ LogicalResult MaterializeOp::verify() {
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// InsertOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult InsertOp::verify() {
+  if (!getMap().getRangeVars().empty()) {
+    return emitOpError() << "insert_op map must not have any symbols";
+  }
+  int64_t vector_map_num_results =
+      getSource().getType().getIndexingMapAttr().getNumResults();
+  if (vector_map_num_results != getMap().getDimVars().size()) {
+    return emitOpError() << "source map result count must equal insert_op's "
+                            "map's dimension count";
+  }
+  return success();
+}
+
 }  // namespace gpu
 }  // namespace xla
 
