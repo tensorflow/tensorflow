@@ -2556,6 +2556,10 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
     pipeline.AddPass<SanitizeConstantNames>();
   }
 
+  if (module->config().debug_options().xla_gpu_enable_pgle_accuracy_checker()) {
+    AddHloVerifier(&main_pipeline,
+                   HloVerifierOpts{}.VerifyInstructionNameUnchanged());
+  }
   return main_pipeline.Run(module).status();
 }
 
