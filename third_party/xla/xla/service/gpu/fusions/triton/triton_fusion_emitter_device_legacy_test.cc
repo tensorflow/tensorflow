@@ -110,7 +110,6 @@ class TritonGemmTest : public TritonTest {
     // Always rewrite Gemms with Triton regardless of size.
     debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
     debug_options.set_xla_gpu_enable_triton_gemm_int4(true);
-    debug_options.set_xla_dump_to("-");
     return debug_options;
   }
 
