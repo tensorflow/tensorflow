@@ -55,7 +55,6 @@ limitations under the License.
 #include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tests/verified_hlo_module.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
@@ -1014,9 +1013,8 @@ TEST_F(GpuCompilerPassTest,
                 ->GetDeviceDescription()
                 .cuda_compute_capability();
 
-  if (cc.major != se::CudaComputeCapability::VOLTA) {
-    GTEST_SKIP();
-  }
+  bool expect_custom_kernel_fusion_rewriter_has_run =
+      cc.major == se::CudaComputeCapability::VOLTA;
 
   constexpr absl::string_view constant_module = R"(
 HloModule noop
@@ -1038,7 +1036,8 @@ ENTRY main {
         pass_metadata.pass_name() == "custom-kernel-fusion-rewriter";
   }
 
-  EXPECT_EQ(custom_kernel_fusion_rewriter_has_run, true);
+  EXPECT_EQ(custom_kernel_fusion_rewriter_has_run,
+            expect_custom_kernel_fusion_rewriter_has_run);
 }
 
 }  // namespace
