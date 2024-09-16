@@ -93,6 +93,10 @@ using absl::StrJoin;
 using std::nullopt;
 using std::optional;
 
+// VLOG levels for debug and error messages.
+const int8_t kDebugLevel = 10;
+const int8_t kErrorLevel = 1;
+
 // Creates and returns a schedule created using the order of the instructions in
 // the HloComputation::instructions() vectors in the module.
 HloSchedule ScheduleFromInstructionOrder(HloModule* module) {
@@ -708,7 +712,7 @@ bool HloParserImpl::Error(LocTy loc, absl::string_view msg) {
   error_lines.push_back(col == 0 ? "" : StrCat(std::string(col - 1, ' '), "^"));
 
   error_.push_back(StrJoin(error_lines, "\n"));
-  VLOG(1) << "Error: " << error_.back();
+  VLOG(kErrorLevel) << "Error: " << error_.back();
   return false;
 }
 
@@ -998,7 +1002,7 @@ bool HloParserImpl::ParseInstructionOutputOperandAliasing(
 }
 
 bool HloParserImpl::ParseCustomCallSchedule(CustomCallSchedule* result) {
-  VLOG(3) << "ParseCustomCallSchedule";
+  VLOG(kDebugLevel) << "ParseCustomCallSchedule";
   if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects custom-call schedule");
   }
@@ -1015,7 +1019,7 @@ bool HloParserImpl::ParseCustomCallSchedule(CustomCallSchedule* result) {
 }
 
 bool HloParserImpl::ParseCustomCallApiVersion(CustomCallApiVersion* result) {
-  VLOG(3) << "ParseCustomCallApiVersion";
+  VLOG(kDebugLevel) << "ParseCustomCallApiVersion";
   if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects custom-call API version");
   }
@@ -1033,7 +1037,7 @@ bool HloParserImpl::ParseCustomCallApiVersion(CustomCallApiVersion* result) {
 
 bool HloParserImpl::ParseSparsityDescriptor(
     std::vector<SparsityDescriptor>* result) {
-  VLOG(3) << "ParseSparsityDescriptor";
+  VLOG(kDebugLevel) << "ParseSparsityDescriptor";
   if (lexer_.GetKind() != TokKind::kSparsityDesc) {
     return TokenError("expects sparsity descriptor, e.g. L.0@2:4");
   }
@@ -3394,9 +3398,10 @@ bool HloParserImpl::ParseCollectiveDeviceList(
   // Iota tile assignment associated with collective device list should only
   // have 2 dimensions.
   if (tile_assignment_dimensions.size() != 2) {
-    VLOG(1) << "Expected tile assignment to have 2 dimensions for collective "
-               "device list but got "
-            << tile_assignment_dimensions.size();
+    VLOG(kErrorLevel)
+        << "Expected tile assignment to have 2 dimensions for collective "
+           "device list but got "
+        << tile_assignment_dimensions.size();
     return false;
   }
 
@@ -4718,7 +4723,7 @@ bool HloParserImpl::ParseAttributeHelper(
   if (!ParseAttributeName(&name)) {
     return Error(loc, "error parsing attributes");
   }
-  VLOG(3) << "Parsing attribute " << name;
+  VLOG(kDebugLevel) << "Parsing attribute " << name;
   if (!seen_attrs->insert(name).second) {
     return Error(loc, StrFormat("attribute %s already exists", name));
   }
@@ -5598,7 +5603,7 @@ bool HloParserImpl::ParseHloComputationList(
     if (!ParseHloComputation(&computation)) {
       return false;
     }
-    VLOG(3) << "parsed computation " << computation->name();
+    VLOG(kDebugLevel) << "parsed computation " << computation->name();
     result->push_back(computation);
     return true;
   };
@@ -6187,7 +6192,7 @@ bool HloParserImpl::CanBeShape() {
 }
 
 bool HloParserImpl::ParseName(std::string* result) {
-  VLOG(3) << "ParseName";
+  VLOG(kDebugLevel) << "ParseName";
   if (lexer_.GetKind() != TokKind::kIdent &&
       lexer_.GetKind() != TokKind::kName) {
     return TokenError("expects name");
@@ -6207,7 +6212,7 @@ bool HloParserImpl::ParseAttributeName(std::string* result) {
 }
 
 bool HloParserImpl::ParseString(std::string* result) {
-  VLOG(3) << "ParseString";
+  VLOG(kDebugLevel) << "ParseString";
   if (lexer_.GetKind() != TokKind::kString) {
     return TokenError("expects string");
   }
@@ -6217,7 +6222,7 @@ bool HloParserImpl::ParseString(std::string* result) {
 }
 
 bool HloParserImpl::ParseJsonDict(std::string* result) {
-  VLOG(3) << "ParseJsonDict";
+  VLOG(kDebugLevel) << "ParseJsonDict";
   if (lexer_.LexJsonDict() != TokKind::kString) {
     return TokenError("expects JSON dict");
   }
@@ -6307,7 +6312,7 @@ bool HloParserImpl::ParsePaddingConfig(PaddingConfig* padding) {
 bool HloParserImpl::ParseOriginalValue(
     optional<std::shared_ptr<OriginalValue>>* original_value,
     const Shape& shape) {
-  VLOG(3) << "ParseOriginalValue";
+  VLOG(kDebugLevel) << "ParseOriginalValue";
 
   if (!ParseToken(TokKind::kLbrace, "Expects '{'")) {
     return false;
@@ -6478,7 +6483,7 @@ bool HloParserImpl::ParseListShardingType(
 
 bool HloParserImpl::ParseOpcode(
     HloOpcode* opcode, std::optional<HloOpcode>* async_wrapped_opcode) {
-  VLOG(3) << "ParseOpcode";
+  VLOG(kDebugLevel) << "ParseOpcode";
   if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects opcode");
   }
@@ -6517,7 +6522,7 @@ bool HloParserImpl::ParseOpcode(
 }
 
 bool HloParserImpl::ParseFftType(FftType* result) {
-  VLOG(3) << "ParseFftType";
+  VLOG(kDebugLevel) << "ParseFftType";
   if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects fft type");
   }
@@ -6530,7 +6535,7 @@ bool HloParserImpl::ParseFftType(FftType* result) {
 }
 
 bool HloParserImpl::ParsePaddingType(PaddingType* result) {
-  VLOG(3) << "ParsePaddingType";
+  VLOG(kDebugLevel) << "ParsePaddingType";
   if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects padding type");
   }
@@ -6543,7 +6548,7 @@ bool HloParserImpl::ParsePaddingType(PaddingType* result) {
 }
 
 bool HloParserImpl::ParseComparisonDirection(ComparisonDirection* result) {
-  VLOG(3) << "ParseComparisonDirection";
+  VLOG(kDebugLevel) << "ParseComparisonDirection";
   if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects comparison direction");
   }
@@ -6559,7 +6564,7 @@ bool HloParserImpl::ParseComparisonDirection(ComparisonDirection* result) {
 }
 
 bool HloParserImpl::ParseComparisonType(Comparison::Type* result) {
-  VLOG(1) << "ParseComparisonType";
+  VLOG(kDebugLevel) << "ParseComparisonType";
   if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects comparison type");
   }
@@ -6574,7 +6579,7 @@ bool HloParserImpl::ParseComparisonType(Comparison::Type* result) {
 }
 
 bool HloParserImpl::ParseFusionKind(HloInstruction::FusionKind* result) {
-  VLOG(3) << "ParseFusionKind";
+  VLOG(kDebugLevel) << "ParseFusionKind";
   if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects fusion kind");
   }
@@ -6590,7 +6595,7 @@ bool HloParserImpl::ParseFusionKind(HloInstruction::FusionKind* result) {
 }
 
 bool HloParserImpl::ParseRandomDistribution(RandomDistribution* result) {
-  VLOG(3) << "ParseRandomDistribution";
+  VLOG(kDebugLevel) << "ParseRandomDistribution";
   if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects random distribution");
   }
@@ -6607,7 +6612,7 @@ bool HloParserImpl::ParseRandomDistribution(RandomDistribution* result) {
 }
 
 bool HloParserImpl::ParseRandomAlgorithm(RandomAlgorithm* result) {
-  VLOG(3) << "ParseRandomAlgorithm";
+  VLOG(kDebugLevel) << "ParseRandomAlgorithm";
   if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects random algorithm");
   }
@@ -6624,7 +6629,7 @@ bool HloParserImpl::ParseRandomAlgorithm(RandomAlgorithm* result) {
 }
 
 bool HloParserImpl::ParsePrecision(PrecisionConfig::Precision* result) {
-  VLOG(3) << "ParsePrecision";
+  VLOG(kDebugLevel) << "ParsePrecision";
   if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects random distribution");
   }
@@ -6640,7 +6645,7 @@ bool HloParserImpl::ParsePrecision(PrecisionConfig::Precision* result) {
 }
 
 bool HloParserImpl::ParseAlgorithm(PrecisionConfig::Algorithm* result) {
-  VLOG(3) << "ParseAlgorithm";
+  VLOG(kDebugLevel) << "ParseAlgorithm";
   if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects algorithm");
   }
@@ -6656,7 +6661,7 @@ bool HloParserImpl::ParseAlgorithm(PrecisionConfig::Algorithm* result) {
 }
 
 bool HloParserImpl::ParseInt64(int64_t* result) {
-  VLOG(3) << "ParseInt64";
+  VLOG(kDebugLevel) << "ParseInt64";
   if (lexer_.GetKind() != TokKind::kInt) {
     return TokenError("expects integer");
   }
@@ -6742,7 +6747,7 @@ bool HloParserImpl::ParseBool(bool* result) {
 }
 
 bool HloParserImpl::ParseToken(TokKind kind, const std::string& msg) {
-  VLOG(3) << "ParseToken " << TokKindToString(kind) << " " << msg;
+  VLOG(kDebugLevel) << "ParseToken " << TokKindToString(kind) << " " << msg;
   if (lexer_.GetKind() != kind) {
     return TokenError(msg);
   }
