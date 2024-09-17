@@ -157,9 +157,9 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
         "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:gpu_passes",  # fixdeps: keep
         "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:passes",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",
-        "@llvm-project//mlir:Support",
         "@local_xla//xla/mlir_hlo:all_passes",
         "@local_xla//xla/mlir_hlo:hlo_dialect_registration",
         "@stablehlo//:register",
