@@ -1058,11 +1058,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiWrongNumberOfArguments) {
   module->AddEntryComputation(builder.Build());
 
   auto status = Execute(std::move(module), {}).status();
-  // NOTE: In the current CPU implementation, the 'kInternal' status code is
-  // returned when the argument is invalid. This behavior differs from that of
-  // the GPU, which returns 'kInvalidArgument' in such case. When the CPU adopts
-  // the thunks runtime, the status code will be unified across both backends.
-  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
   EXPECT_THAT(status.message(), HasSubstr("Wrong number of arguments"));
 }
 
@@ -1085,11 +1081,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiWrongRankOfArgument) {
   module->AddEntryComputation(builder.Build());
 
   auto status = Execute(std::move(module), {}).status();
-  // NOTE: In the current CPU implementation, the 'kInternal' status code is
-  // returned when the argument is invalid. This behavior differs from that of
-  // the GPU, which returns 'kInvalidArgument' in such case. When the CPU adopts
-  // the thunks runtime, the status code will be unified across both backends.
-  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
   EXPECT_THAT(status.message(), HasSubstr("Wrong buffer rank"));
 }
 
@@ -1106,11 +1098,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiWrongDTypeOfArgument) {
   module->AddEntryComputation(builder.Build());
 
   auto status = Execute(std::move(module), {}).status();
-  // NOTE: In the current CPU implementation, the 'kInternal' status code is
-  // returned when the argument is invalid. This behavior differs from that of
-  // the GPU, which returns 'kInvalidArgument' in such case. When the CPU adopts
-  // the thunks runtime, the status code will be unified across both backends.
-  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
   EXPECT_THAT(status.message(), HasSubstr("Wrong buffer dtype"));
 }
 
@@ -1266,11 +1254,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiWrongEnumType) {
   module->AddEntryComputation(builder.Build());
 
   auto status = Execute(std::move(module), {}).status();
-  // NOTE: In the current CPU implementation, the 'kInternal' status code is
-  // returned when the argument is invalid. This behavior differs from that of
-  // the GPU, which returns 'kInvalidArgument' in such case. When the CPU adopts
-  // the thunks runtime, the status code will be unified across both backends.
-  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
   EXPECT_THAT(status.message(), HasSubstr("Wrong scalar data type"));
 }
 
