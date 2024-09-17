@@ -115,7 +115,7 @@ class OptimizeTfControlFlowSideEffectPass
 
     bool include_read_only = true;
     for (auto func : module.getOps<mlir::func::FuncOp>()) {
-      if (!IsSessionInitializer(func)) {
+      if (func.isPublic() && !IsSessionInitializer(func)) {
         functions.push_back(func);
 
         for (auto& op : func.front()) {

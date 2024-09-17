@@ -39,7 +39,6 @@ namespace tfrt_compiler {
 namespace {
 
 constexpr int64_t kDefaultCheapCost = 1;
-constexpr int64_t kDefaultUndecidedCost = -1;
 
 int64_t GetRankedTensorSize(mlir::TensorType type) {
   auto shape = type.getShape();
@@ -212,11 +211,6 @@ void CostAnalysis::EvaluateCost(mlir::Operation* op) {
     return;
   }
 
-  if (llvm::isa<mlir::TF::IfOp>(op)) {
-    ops_use_threshold_as_cost_.insert(op);
-    cost_map_[op] = kDefaultUndecidedCost;
-    return;
-  }
   // For other ops, use the sum of input sizes as its cost.
   int64_t cost = kDefaultCheapCost;
   for (auto operand : op->getOperands()) {
@@ -233,10 +227,6 @@ void CostAnalysis::EvaluateCost(mlir::Operation* op) {
   }
 
   cost_map_[op] = cost;
-}
-
-bool CostAnalysis::IsOpUsingThresholdAsCost(mlir::Operation* op) const {
-  return ops_use_threshold_as_cost_.contains(op);
 }
 
 }  // namespace tfrt_compiler
