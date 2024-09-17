@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -339,17 +340,13 @@ void HandlerBase::AppendNewStrategy(const std::string& name,
         operand_strategy_group, operand_shape, input_specs[i], cluster_env_));
   }
 
-  strategy_group_->AddStrategy(ShardingStrategy({
-      name,
-      output_spec,
-      compute_cost,
-      communication_cost,
-      static_cast<double>(
-          ByteSizeOfShapeWithSharding(ins_->shape(), output_spec)),
-      communication_resharding_costs,
-      memory_resharding_costs,
-      {input_specs.begin(), input_specs.end()},
-  }));
+  strategy_group_->AddStrategy(
+      ShardingStrategy({name, output_spec, compute_cost, communication_cost,
+                        static_cast<double>(ByteSizeOfShapeWithSharding(
+                            ins_->shape(), output_spec)),
+                        communication_resharding_costs,
+                        memory_resharding_costs}),
+      {input_specs.begin(), input_specs.end()});
 }
 
 // Given lhs and rhs dim maps, infers a sharding for the output by relying
@@ -462,18 +459,25 @@ std::optional<HloSharding> HandlerBase::GetShardingFromUser(
 }
 
 void HandlerBase::SortStrategies() {
-  auto strategies = strategy_group_->GetStrategies();
+  std::vector<std::pair<ShardingStrategy, InputShardings>> strategy_shardings;
+  for (size_t sid = 0; sid < strategy_group_->GetStrategies().size(); ++sid) {
+    const ShardingStrategy& strategy = strategy_group_->GetStrategy(sid);
+    const auto& input_shardings = strategy_group_->GetInputShardings(sid);
+    strategy_shardings.push_back({strategy, input_shardings});
+  }
   absl::c_stable_sort(
-      strategies, [](const ShardingStrategy& s1, const ShardingStrategy& s2) {
-        if (s1.memory_cost == s2.memory_cost) {
-          return s1.name < s2.name;
+      strategy_shardings,
+      [](const std::pair<ShardingStrategy, InputShardings>& s1,
+         const std::pair<ShardingStrategy, InputShardings>& s2) {
+        if (s1.first.memory_cost == s2.first.memory_cost) {
+          return s1.first.name < s2.first.name;
         } else {
-          return s1.memory_cost < s2.memory_cost;
+          return s1.first.memory_cost < s2.first.memory_cost;
         }
       });
   strategy_group_->ClearStrategies();
-  for (const ShardingStrategy& strategy : strategies) {
-    strategy_group_->AddStrategy(strategy);
+  for (const auto& [strategy, input_shardings] : strategy_shardings) {
+    strategy_group_->AddStrategy(strategy, input_shardings);
   }
 }
 

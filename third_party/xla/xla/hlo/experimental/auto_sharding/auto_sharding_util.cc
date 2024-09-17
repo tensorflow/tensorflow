@@ -836,18 +836,21 @@ void RemoveDuplicatedStrategy(StrategyGroup& strategy_group) {
   if (strategy_group.following || strategy_group.GetStrategies().empty()) {
     return;
   }
-  std::vector<ShardingStrategy> new_vector;
-  std::vector<ShardingStrategy> deduped_replicated_strategies;
+  std::vector<std::pair<ShardingStrategy, InputShardings>> new_vector;
+  std::vector<std::pair<ShardingStrategy, InputShardings>>
+      deduped_replicated_strategies;
   absl::flat_hash_set<std::string> added;
   size_t num_skipped_due_to_infinity_costs = 0;
-  for (const ShardingStrategy& strategy : strategy_group.GetStrategies()) {
+  for (size_t sid = 0; sid < strategy_group.GetStrategies().size(); ++sid) {
+    const ShardingStrategy& strategy = strategy_group.GetStrategy(sid);
     if (AllInfinityCosts(strategy.communication_resharding_costs)) {
       num_skipped_due_to_infinity_costs++;
       continue;
     }
     std::string key = strategy.output_sharding.ToString();
-    if (!strategy.input_shardings.empty()) {
-      for (const auto& sharding : strategy.input_shardings) {
+    const auto& input_shardings = strategy_group.GetInputShardings(sid);
+    if (!input_shardings.empty()) {
+      for (const auto& sharding : input_shardings) {
         key += "/" + (sharding.has_value() ? sharding->ToString() : "none");
       }
     }
@@ -856,9 +859,9 @@ void RemoveDuplicatedStrategy(StrategyGroup& strategy_group) {
     }
     added.insert(key);
     if (!strategy.output_sharding.IsReplicated()) {
-      new_vector.push_back(strategy);
+      new_vector.push_back({strategy, input_shardings});
     } else {
-      deduped_replicated_strategies.push_back(strategy);
+      deduped_replicated_strategies.push_back({strategy, input_shardings});
     }
   }
   CHECK_LT(num_skipped_due_to_infinity_costs,
@@ -871,8 +874,8 @@ void RemoveDuplicatedStrategy(StrategyGroup& strategy_group) {
     }
   }
   strategy_group.ClearStrategies();
-  for (const ShardingStrategy& strategy : new_vector) {
-    strategy_group.AddStrategy(strategy);
+  for (const auto& [strategy, input_shardings] : new_vector) {
+    strategy_group.AddStrategy(strategy, input_shardings);
   }
 }
 

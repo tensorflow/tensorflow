@@ -75,6 +75,8 @@ using ReshardingCache =
     ConstInstructionMap<std::vector<std::pair<HloSharding, HloInstruction*>>>;
 // Resharding costs for each operand
 using ReshardingCosts = std::vector<std::vector<double>>;
+// Optional shardings for each operand
+using InputShardings = std::vector<std::optional<HloSharding>>;
 
 // One sharding strategy
 struct ShardingStrategy {
@@ -89,9 +91,6 @@ struct ShardingStrategy {
   // cost from i-th tuple element's j-th strategy.
   ReshardingCosts communication_resharding_costs;
   ReshardingCosts memory_resharding_costs;
-  // Optional: the required shardings of operands.
-  // This is used to guide the SPMD partitioner.
-  std::vector<std::optional<HloSharding>> input_shardings;
 
   std::string ToString() const {
     return absl::StrCat(name, ", ", output_sharding.ToString());
@@ -117,32 +116,12 @@ struct ShardingStrategy {
     std::string memory_resharding_cost_str = absl::StrCat(
         "{", absl::StrJoin(memory_resharding_vector_strings, ", "), "}");
 
-    std::string input_sharding_str = "{";
-    for (const auto& s : input_shardings) {
-      if (!s.has_value()) {
-        input_sharding_str += "[*],";
-      } else if (s->IsReplicated()) {
-        input_sharding_str += "[R],";
-      } else {
-        if (s->ReplicateOnLastTileDim()) {
-          input_sharding_str +=
-              "[" + absl::StrJoin(s->tile_assignment().dimensions(), ", ") +
-              "]last_tile_dim_replicate,";
-        } else {
-          input_sharding_str +=
-              "[" + absl::StrJoin(s->tile_assignment().dimensions(), ", ") +
-              "],";
-        }
-      }
-    }
-    input_sharding_str += "}\n";
     return absl::StrCat(
         name, ", ", output_sharding.ToString(), ", compute_cost=", compute_cost,
         ", communication_cost=", communication_cost,
         ", memory_cost=", memory_cost,
         ", communication_resharding_costs=", communication_resharding_cost_str,
-        ", memory_resharding_costs=", memory_resharding_cost_str,
-        ", input_shardings=", input_sharding_str);
+        ", memory_resharding_costs=", memory_resharding_cost_str);
   }
 
   bool operator==(const ShardingStrategy& other) const {
@@ -152,8 +131,7 @@ struct ShardingStrategy {
            memory_cost == other.memory_cost &&
            communication_resharding_costs ==
                other.communication_resharding_costs &&
-           memory_resharding_costs == other.memory_resharding_costs &&
-           input_shardings == other.input_shardings;
+           memory_resharding_costs == other.memory_resharding_costs;
   }
 };
 
@@ -273,18 +251,31 @@ struct StrategyGroup {
 
   //////// Accessor methods for strategies ////////
 
-  void AddStrategy(const ShardingStrategy& strategy) {
+  void AddStrategy(const ShardingStrategy& strategy,
+                   const InputShardings& input_shardings = {}) {
     strategies.push_back(strategy);
+    strategy_input_shardings.push_back(input_shardings);
   }
 
-  void ClearStrategies() { strategies.clear(); }
+  void ClearStrategies() {
+    strategies.clear();
+    strategy_input_shardings.clear();
+  }
 
   ShardingStrategy& GetStrategy(size_t strategy_idx) {
     return strategies[strategy_idx];
   }
 
+  const InputShardings& GetInputShardings(size_t strategy_idx) const {
+    return strategy_input_shardings[strategy_idx];
+  }
+
   const std::vector<ShardingStrategy>& GetStrategies() const {
     return strategies;
+  }
+
+  const std::vector<InputShardings>& GetStrategyInputShardings() const {
+    return strategy_input_shardings;
   }
 
   //////// Accessor methods for children ////////
@@ -305,6 +296,8 @@ struct StrategyGroup {
   // Used when is_tuple == False. Leaf strategy vector.
   // A vector of strategy choices for the non-tuple output.
   std::vector<ShardingStrategy> strategies;
+  std::vector<InputShardings> strategy_input_shardings;
+
   // Used when is_tuple == True. A vector of pointers, each pointer is one
   // StrategyGroup for one value in the output Tuple
   std::vector<std::unique_ptr<StrategyGroup>> children;

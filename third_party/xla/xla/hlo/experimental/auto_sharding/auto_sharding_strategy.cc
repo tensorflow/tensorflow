@@ -336,17 +336,19 @@ BuildStrategyAndCost(
           double memory_cost =
               ByteSizeOfShapeWithSharding(ins->shape(), scatter_sharding);
 
-          std::vector<std::optional<HloSharding>> input_shardings_optional(
+          InputShardings input_shardings_optional(
               {data_sharding, indices_sharding, update_sharding});
           std::pair<ReshardingCosts, ReshardingCosts> resharding_costs =
               GenerateReshardingCostsAndMissingShardingsForAllOperands(
                   ins, scatter_sharding, strategy_map, cluster_env, call_graph,
                   input_shardings_optional);
 
-          strategy_group->AddStrategy(ShardingStrategy(
-              {name, scatter_sharding, compute_cost, communication_cost,
-               memory_cost, std::move(resharding_costs.first),
-               std::move(resharding_costs.second), input_shardings_optional}));
+          strategy_group->AddStrategy(
+              ShardingStrategy({name, scatter_sharding, compute_cost,
+                                communication_cost, memory_cost,
+                                std::move(resharding_costs.first),
+                                std::move(resharding_costs.second)}),
+              input_shardings_optional);
         };
 
         const HloScatterInstruction* scatter = Cast<HloScatterInstruction>(ins);
@@ -388,18 +390,20 @@ BuildStrategyAndCost(
           double compute_cost = 0, communication_cost = 0;
           double memory_cost =
               ByteSizeOfShapeWithSharding(gather_shape, output_sharding);
-          std::vector<std::optional<HloSharding>> input_shardings_optional(
+          InputShardings input_shardings_optional(
               {data_sharding, indices_sharding});
           std::pair<ReshardingCosts, ReshardingCosts> resharding_costs =
               GenerateReshardingCostsAndMissingShardingsForAllOperands(
                   ins, output_sharding, strategy_map, cluster_env, call_graph,
                   input_shardings_optional);
 
-          strategy_group->AddStrategy(ShardingStrategy(
-              {std::string(output_sharding.ToString()), output_sharding,
-               compute_cost, communication_cost, memory_cost,
-               std::move(resharding_costs.first),
-               std::move(resharding_costs.second), input_shardings_optional}));
+          strategy_group->AddStrategy(
+              ShardingStrategy({std::string(output_sharding.ToString()),
+                                output_sharding, compute_cost,
+                                communication_cost, memory_cost,
+                                std::move(resharding_costs.first),
+                                std::move(resharding_costs.second)}),
+              input_shardings_optional);
         };
 
         for (const ShardingStrategy& indices_strategy :
@@ -562,8 +566,8 @@ BuildStrategyAndCost(
                                 communication_cost,
                                 memory_cost,
                                 {communication_resharding_costs},
-                                {memory_resharding_costs},
-                                {input_spec}}));
+                                {memory_resharding_costs}}),
+              {input_spec});
         }
         break;
       }
@@ -671,7 +675,7 @@ BuildStrategyAndCost(
           }
 
           // Get a list of input shardings, each corresponds to an operand.
-          std::vector<std::optional<HloSharding>> input_shardings;
+          InputShardings input_shardings;
           for (int64_t k = 0; k < ins->operand_count(); ++k) {
             if (k == follow_idx ||
                 ToString(ins->operand(k)->shape().dimensions()) ==
@@ -694,14 +698,11 @@ BuildStrategyAndCost(
                   input_shardings);
 
           strategy_group->AddStrategy(
-              ShardingStrategy({name,
-                                *output_spec,
-                                compute_cost,
-                                communication_cost,
-                                memory_cost,
+              ShardingStrategy({name, *output_spec, compute_cost,
+                                communication_cost, memory_cost,
                                 std::move(resharding_costs.first),
-                                std::move(resharding_costs.second),
-                                {input_spec}}));
+                                std::move(resharding_costs.second)}),
+              {input_spec});
         }
 
         if (strategy_group->GetStrategies().empty()) {
@@ -1082,16 +1083,19 @@ BuildStrategyAndCost(
       auto it = absl::c_find(inst_indices, strategy_group->node_idx);
       if (it != inst_indices.end()) {
         CHECK(!strategy_group->is_tuple);
-        std::vector<ShardingStrategy> new_strategies;
+        std::vector<std::pair<ShardingStrategy, InputShardings>> new_strategies;
         int64_t idx = it - inst_indices.begin();
-        for (const auto& strategy : strategy_group->GetStrategies()) {
+        const auto& strategies = strategy_group->GetStrategies();
+        for (size_t sid = 0; sid < strategies.size(); ++sid) {
+          const ShardingStrategy& strategy = strategy_group->GetStrategy(sid);
+          const auto& input_shardings = strategy_group->GetInputShardings(sid);
           if (strategy.name == stra_names[idx]) {
-            new_strategies.push_back(strategy);
+            new_strategies.push_back({strategy, input_shardings});
           }
         }
         strategy_group->ClearStrategies();
-        for (const ShardingStrategy& strategy : new_strategies) {
-          strategy_group->AddStrategy(strategy);
+        for (const auto& [strategy, input_shardings] : new_strategies) {
+          strategy_group->AddStrategy(strategy, input_shardings);
         }
       }
     }

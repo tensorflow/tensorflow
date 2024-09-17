@@ -341,8 +341,7 @@ std::pair<ReshardingCosts, ReshardingCosts>
 GenerateReshardingCostsAndMissingShardingsForAllOperands(
     const HloInstruction* ins, const HloSharding& output_sharding,
     const StrategyMap& strategy_map, const ClusterEnvironment& cluster_env,
-    const CallGraph& call_graph,
-    std::vector<std::optional<HloSharding>>& input_shardings);
+    const CallGraph& call_graph, InputShardings& input_shardings);
 
 std::unique_ptr<StrategyGroup> MaybeFollowInsStrategyGroup(
     const StrategyGroup& src_strategy_group, const Shape& shape,
