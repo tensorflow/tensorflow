@@ -2319,7 +2319,6 @@ std::optional<GatherScatterParallelDims> GetGatherScatterBatchParallelDims(
       index_parallel_in_dim[i] = -1;
     }
   }
-  absl::c_sort(indices_parallel_dims);
   if (!indices_parallel_dims.empty()) {
     return GatherScatterParallelDims{
         indices_parallel_dims, operand_parallel_dims, index_parallel_in_dim};
@@ -2362,15 +2361,18 @@ GetGatherOutputOrScatterUpdateParallelDims(
     int64_t index_vector_dim, absl::Span<const int64_t> offset_or_window_dims) {
   absl::InlinedVector<int64_t, 1> output_parallel_dims;
   auto indices_parallel_dims = parallel_dim.indices_parallel_dims;
-  for (int i = 0, idx_dim = 0; i < shape.dimensions_size(); ++i) {
-    if (absl::c_linear_search(offset_or_window_dims, i)) {
-      continue;
+  for (int64_t indices_parallel_dim : indices_parallel_dims) {
+    for (int i = 0, idx_dim = 0; i < shape.dimensions_size(); ++i) {
+      if (absl::c_linear_search(offset_or_window_dims, i)) {
+        continue;
+      }
+      const int index_dim = idx_dim < index_vector_dim ? idx_dim : idx_dim + 1;
+      if (indices_parallel_dim == index_dim) {
+        output_parallel_dims.push_back(i);
+        break;
+      }
+      ++idx_dim;
     }
-    const int index_dim = idx_dim < index_vector_dim ? idx_dim : idx_dim + 1;
-    if (absl::c_binary_search(indices_parallel_dims, index_dim)) {
-      output_parallel_dims.push_back(i);
-    }
-    ++idx_dim;
   }
   return output_parallel_dims;
 }

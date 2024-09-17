@@ -684,11 +684,13 @@ absl::StatusOr<HloInstruction*> PartitionGatherIndexParallelDimensions(
           hlo_sharding_util::GroupShardingOnDims(new_indices.sharding(),
                                                  indices_parallel_dims);
       const GroupedSharding operand_grouped =
-          hlo_sharding_util::GroupShardingOnDims(operand.sharding(),
-                                                 operand_parallel_dims);
+          AlignGroupsWith(hlo_sharding_util::GroupShardingOnDims(
+                              operand.sharding(), operand_parallel_dims),
+                          new_indices_grouped);
       const GroupedSharding output_grouped =
-          hlo_sharding_util::GroupShardingOnDims(gather_output_sharding,
-                                                 output_parallel_dims);
+          AlignGroupsWith(hlo_sharding_util::GroupShardingOnDims(
+                              gather_output_sharding, output_parallel_dims),
+                          new_indices_grouped);
       PartitionedHlo per_group_operand =
           PerGroupPartitionedHlo(operand, operand_grouped, b, clean_ups);
       PartitionedHlo per_group_new_indices = PerGroupPartitionedHlo(
@@ -1130,11 +1132,13 @@ absl::StatusOr<HloInstruction*> PartitionScatterIndexParallelDimensions(
           hlo_sharding_util::GroupShardingOnDims(new_indices.sharding(),
                                                  indices_parallel_dims);
       const GroupedSharding operand_grouped =
-          hlo_sharding_util::GroupShardingOnDims(operands[0].sharding(),
-                                                 operand_parallel_dims);
+          AlignGroupsWith(hlo_sharding_util::GroupShardingOnDims(
+                              operands[0].sharding(), operand_parallel_dims),
+                          new_indices_grouped);
       const GroupedSharding update_grouped =
-          hlo_sharding_util::GroupShardingOnDims(updates[0].sharding(),
-                                                 update_parallel_dims);
+          AlignGroupsWith(hlo_sharding_util::GroupShardingOnDims(
+                              updates[0].sharding(), update_parallel_dims),
+                          new_indices_grouped);
       const GroupedSharding& output_grouped = operand_grouped;
       std::vector<PartitionedHlo> per_group_operands =
           PerGroupPartitionedHlos(operands, operand_grouped, b, clean_ups);
