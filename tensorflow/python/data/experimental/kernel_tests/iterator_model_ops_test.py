@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for tensorflow.python.data.experimental.ops.iterator_ops."""
+"""Tests for tensorflow.python.data.experimental.ops.iterator_model_ops."""
 
 from absl.testing import parameterized
 
-from tensorflow.python.data.experimental.ops import iterator_ops
+from tensorflow.python.data.experimental.ops import iterator_model_ops
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
@@ -24,7 +24,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.platform import test
 
 
-class IteratorOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
+class IteratorModelOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.v2_eager_only_combinations())
   def test_get_model_proto_not_empty(self):
@@ -37,7 +37,7 @@ class IteratorOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.with_options(options)
 
     iterator = iter(dataset)
-    model_proto = iterator_ops.get_model_proto(iterator)
+    model_proto = iterator_model_ops.get_model_proto(iterator)
     dataset_names = set(
         model_proto.nodes[key].name for key in model_proto.nodes
     )
@@ -64,7 +64,30 @@ class IteratorOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
         errors_impl.NotFoundError,
         "Did you disable autotune",
     ):
-      _ = iterator_ops.get_model_proto(iterator)
+      _ = iterator_model_ops.get_model_proto(iterator)
+
+  @combinations.generate(test_base.v2_eager_only_combinations())
+  def test_get_model_proto_from_numpy_iterator(self):
+    options = dataset_ops.options_lib.Options()
+    options.autotune.enabled = True
+
+    dataset = dataset_ops.Dataset.range(100000)
+    dataset = dataset.map(lambda x: ("tf.data", "is the best ML data loader."))
+    dataset = dataset.batch(5, drop_remainder=True, num_parallel_calls=1)
+    dataset = dataset.with_options(options)
+
+    iterator = dataset.as_numpy_iterator()
+
+    model_proto = iterator_model_ops.get_model_proto(iterator)
+    dataset_names = set(
+        model_proto.nodes[key].name for key in model_proto.nodes
+    )
+
+    self.assertNotEmpty(
+        dataset_names,
+        "The model proto from the iterator should contain at least 1"
+        " dataset op.",
+    )
 
   @combinations.generate(test_base.graph_only_combinations())
   def test_get_model_proto_unsupported_in_graph_mode(self):
@@ -73,7 +96,7 @@ class IteratorOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     iterator = dataset_ops.make_one_shot_iterator(dataset)
     with self.session():
       with self.assertRaises(ValueError):
-        _ = iterator_ops.get_model_proto(iterator)
+        _ = iterator_model_ops.get_model_proto(iterator)
 
 
 if __name__ == "__main__":
