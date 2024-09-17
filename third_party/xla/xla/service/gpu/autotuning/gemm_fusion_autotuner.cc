@@ -607,36 +607,38 @@ GemmFusionAutotunerImpl::GenerateConfigs(const HloFusionInstruction& fusion) {
   const HloDotInstruction* dot =
       Cast<HloDotInstruction>(hlo_query::GetFirstInstructionWithOpcode(
           *fusion.called_computations().at(0), HloOpcode::kDot));
-
-  // Add cuBLAS reference config, if available.
   std::vector<BackendConfig> configs;
-  if (algorithm_util::IsSupportedByCublasOrCublasLt(
-          dot->precision_config().algorithm()) &&
-      !dot->sparse_operands() && IsAutotuningEnabled()) {
-    configs.push_back(CuBlasConfig{});
-  }
 
-  // Add cuDNN plans, if available.
-  bool is_hopper =
-      !config_.IsDeviceless() && GetComputeCapability().IsAtLeastHopper();
-  bool is_cudnn_enabled =
-      debug_options_.xla_gpu_cudnn_gemm_fusion_level() > 0 && is_hopper &&
-      GetDnnVersionInfoOrDefault(config_.GetExecutor()).major_version() >= 9;
-  if ((IsFusionKind(fusion, kCuDnnFusionKind) && IsAutotuningEnabled()) ||
-      (IsFusionKind(fusion, kTritonGemmFusionKind) && is_cudnn_enabled &&
-       algorithm_util::IsSupportedByCudnn(
-           dot->precision_config().algorithm()) &&
-       !dot->sparse_operands() && IsAutotuningEnabled())) {
-    const int plan_count = GetCuDnnPlanCount(fusion, config_);
-    for (int plan_id = 0; plan_id < plan_count; ++plan_id) {
-      configs.push_back(CuDnnConfig{plan_id});
+  if (!debug_options_.xla_gpu_experimental_disable_binary_libraries()) {
+    // Add cuBLAS reference config, if available.
+    if (algorithm_util::IsSupportedByCublasOrCublasLt(
+            dot->precision_config().algorithm()) &&
+        !dot->sparse_operands() && IsAutotuningEnabled()) {
+      configs.push_back(CuBlasConfig{});
     }
-  }
-  if (IsFusionKind(fusion, kCuDnnFusionKind)) {
-    if (!IsAutotuningEnabled()) {
-      configs.push_back(CuDnnConfig{-1});
+
+    // Add cuDNN plans, if available.
+    bool is_hopper =
+        !config_.IsDeviceless() && GetComputeCapability().IsAtLeastHopper();
+    bool is_cudnn_enabled =
+        debug_options_.xla_gpu_cudnn_gemm_fusion_level() > 0 && is_hopper &&
+        GetDnnVersionInfoOrDefault(config_.GetExecutor()).major_version() >= 9;
+    if ((IsFusionKind(fusion, kCuDnnFusionKind) && IsAutotuningEnabled()) ||
+        (IsFusionKind(fusion, kTritonGemmFusionKind) && is_cudnn_enabled &&
+         algorithm_util::IsSupportedByCudnn(
+             dot->precision_config().algorithm()) &&
+         !dot->sparse_operands() && IsAutotuningEnabled())) {
+      const int plan_count = GetCuDnnPlanCount(fusion, config_);
+      for (int plan_id = 0; plan_id < plan_count; ++plan_id) {
+        configs.push_back(CuDnnConfig{plan_id});
+      }
     }
-    return configs;
+    if (IsFusionKind(fusion, kCuDnnFusionKind)) {
+      if (!IsAutotuningEnabled()) {
+        configs.push_back(CuDnnConfig{-1});
+      }
+      return configs;
+    }
   }
 
   // Add triton configs.

@@ -388,6 +388,11 @@ bool NVPTXCompiler::RequiresCollectiveScheduleLinearizer(
 absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
     HloPassPipeline* pipeline, HloModule* hlo_module,
     AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
+  if (hlo_module->config()
+          .debug_options()
+          .xla_gpu_experimental_disable_binary_libraries()) {
+    return absl::OkStatus();
+  }
   if (GpuConvAlgorithmPicker::IsEnabled(hlo_module)) {
     pipeline->AddPass<GpuConvAlgorithmPicker>(autotune_config);
   }
