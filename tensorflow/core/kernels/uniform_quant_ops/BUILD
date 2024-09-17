@@ -152,6 +152,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//third_party/protobuf",
         "@com_google_googletest//:gtest_main",
     ],
 )
