@@ -67,6 +67,7 @@ absl::StatusOr<HloInstruction*> InlineHloComputation(
     return it->second;
   };
 
+  absl::flat_hash_map<int64_t, int64_t> channel_ids;
   for (auto* inst : computation->MakeInstructionPostOrder()) {
     if (inst->opcode() == HloOpcode::kParameter) {
       replacements.emplace(inst, operands[inst->parameter_number()]);
@@ -80,9 +81,13 @@ absl::StatusOr<HloInstruction*> InlineHloComputation(
       auto* new_inst = builder->AddInstruction(
           inst->CloneWithNewOperands(inst->shape(), new_operands, &context));
       HloChannelInstruction* channel_instr =
-          DynCast<HloChannelInstruction>(new_inst);
+          DynCast<HloChannelInstruction>(inst);
       if (channel_instr && channel_instr->channel_id().has_value()) {
-        new_inst->set_channel_id(new_channel());
+        auto insert = channel_ids.emplace(*channel_instr->channel_id(), 0);
+        if (insert.second) {
+          insert.first->second = new_channel();
+        }
+        new_inst->set_channel_id(insert.first->second);
       }
       replacements.emplace(inst, new_inst);
     }
