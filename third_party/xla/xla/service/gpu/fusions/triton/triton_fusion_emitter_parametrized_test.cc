@@ -2211,8 +2211,7 @@ ENTRY main {
 ; CHECK:      ENTRY
 ; CHECK-DAG:    %[[P0:.*]] = f32[125,127]{1,0} parameter(0)
 ; CHECK-DAG:    %[[P1:.*]] = f32[10,125,127]{2,1,0} parameter(1)
-; CHECK-DAG:    %[[C0:.*]] = f32[] constant(0)
-; CHECK:        ROOT %[[FUSION:.*]] = f32[125,127]{1,0} fusion(%[[P0]], %[[P1]], %[[C0]])
+; CHECK:        ROOT %[[FUSION:.*]] = f32[125,127]{1,0} fusion(%[[P0]], %[[P1]])
 ; CHECK-SAME:       kind=kCustom
 ; CHECK-SAME:       __triton
 )";

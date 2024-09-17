@@ -1023,7 +1023,8 @@ absl::StatusOr<bool> PriorityFusion::Run(
     for (auto* constant : constants) {
       auto users = constant->users();
       for (auto* user : users) {
-        if (IsFusible(*user) && CanEmitInputFusedScatter(*constant, *user)) {
+        if ((IsFusible(*user) || IsGenericTritonFusion(*user)) &&
+            CanEmitInputFusedScatter(*constant, *user)) {
           Fuse(constant, user);
           changed = true;
         }

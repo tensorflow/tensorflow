@@ -818,6 +818,35 @@ TEST_F(PriorityFusionTest, FuseOnlySmallConstant) {
                   m::Add(m::Parameter(), m::Broadcast(m::Constant())))));
 }
 
+TEST_F(PriorityFusionTest, FuseSmallConstantIntoTritonFusion) {
+  auto module = *ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+add {
+  Arg_0 = f32[] parameter(0)
+  Arg_1 = f32[] parameter(1)
+  ROOT add = f32[] add(Arg_0, Arg_1)
+}
+
+triton_computation {
+  param_0 = f32[32,64] parameter(0)
+  param_1 = f32[] parameter(1)
+  ROOT reduce = f32[32] reduce(param_0, param_1), dimensions={1}, to_apply=add
+}
+
+ENTRY main {
+  param_0 = f32[32,64] parameter(0)
+  c_0 = f32[] constant(0)
+  ROOT triton_softmax = f32[32] fusion(param_0, c_0), kind=kCustom, calls=triton_computation, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["1"],"num_warps":"1"}}}
+})");
+  EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(true));
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_THAT(root, GmockMatch(m::Fusion(m::Parameter())));
+  EXPECT_THAT(root->fused_expression_root(),
+              GmockMatch(m::Reduce(m::Parameter(), m::Constant())));
+}
+
 TEST_F(PriorityFusionTest, DoNotFuseProducerConsumerMergedTooLarge) {
   auto module = *ParseAndReturnVerifiedModule(R"(
     HloModule module
