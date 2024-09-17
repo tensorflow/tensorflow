@@ -31,3 +31,5 @@ cc_library(
         "//tensorflow/lite/core/c:c_api_types",
     ],
 )
+
+exports_files(srcs = glob(["lite_rt*.h"]))

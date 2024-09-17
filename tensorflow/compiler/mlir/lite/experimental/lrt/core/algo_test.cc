@@ -15,11 +15,13 @@
 #include "tensorflow/compiler/mlir/lite/experimental/lrt/core/algo.h"
 
 #include <memory>
+#include <unordered_set>
 #include <vector>
 
 #include <gtest/gtest.h>
 #include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_model.h"
 #include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_op_code.h"
+#include "tensorflow/compiler/mlir/lite/experimental/lrt/cc/lite_rt_support.h"
 #include "tensorflow/compiler/mlir/lite/experimental/lrt/core/graph_tools.h"
 #include "tensorflow/compiler/mlir/lite/experimental/lrt/core/model.h"
 #include "tensorflow/compiler/mlir/lite/experimental/lrt/test_data/test_data_util.h"
@@ -28,6 +30,56 @@ namespace {
 
 using ::algo::DisjointSets;
 using ::algo::GraphSlicer;
+
+// NOLINTBEGIN
+bool HasValidGeneralTopology(LrtSubgraph subgraph) {
+  if (!::graph_tools::ValidateTopology(subgraph->ops)) {
+    _LRT_D_MSG("Failed validate op tolopology");
+    return false;
+  }
+
+  std::unordered_set<LrtTensor> implied_subgraph_outs;
+  for (auto tensor : subgraph->tensors) {
+    if (tensor->users.empty()) {
+      implied_subgraph_outs.insert(tensor);
+    }
+  }
+
+  if (implied_subgraph_outs.size() != subgraph->outputs.size()) {
+    _LRT_D_MSG("Outs not same size");
+    return false;
+  }
+
+  for (auto tensor : subgraph->outputs) {
+    if (!implied_subgraph_outs.contains(tensor)) {
+      _LRT_D_MSG("Mismatched subgraph outs");
+      return false;
+    }
+  }
+
+  std::unordered_set<LrtTensor> implied_subgraph_ins;
+  for (auto tensor : subgraph->tensors) {
+    if (tensor->defining_op == nullptr &&
+        tensor->buffer.fb_buffer->data.empty()) {
+      implied_subgraph_ins.insert(tensor);
+    }
+  }
+
+  if (implied_subgraph_ins.size() != subgraph->inputs.size()) {
+    _LRT_D_MSG("Ins not same size");
+    return false;
+  }
+
+  for (auto tensor : subgraph->inputs) {
+    if (!implied_subgraph_ins.contains(tensor)) {
+      _LRT_D_MSG("Mismatched subgraph ins");
+      return false;
+    }
+  }
+
+  return true;
+}
+// NOLINTEND
 
 TEST(TestPartitionsFromFlatList, SimpleMultiOp) {
   auto model = LoadTestFileModel("simple_multi_op.tflite");
@@ -50,6 +102,9 @@ TEST(TestPartitionsFromFlatList, SimpleMultiOp) {
     auto partitions = DisjointSets::GetPartitionsFromFlatList(partition);
     ASSERT_EQ(partitions.size(), 1);
     ASSERT_EQ(partitions.front().size(), 2);
+
+    EXPECT_EQ(partitions.front().at(0), partition.at(0));
+    EXPECT_EQ(partitions.front().at(1), partition.at(1));
   }
 
   {
@@ -87,6 +142,11 @@ TEST(TestPartitionsFromFlatList, SimpleMultiOp) {
     auto partitions = DisjointSets::GetPartitionsFromFlatList(partition);
     ASSERT_EQ(partitions.size(), 1);
     ASSERT_EQ(partitions.front().size(), 4);
+
+    EXPECT_EQ(partitions.front().at(0), partition.at(0));
+    EXPECT_EQ(partitions.front().at(1), partition.at(1));
+    EXPECT_EQ(partitions.front().at(2), partition.at(2));
+    EXPECT_EQ(partitions.front().at(3), partition.at(3));
   }
 }
 
@@ -94,6 +154,7 @@ TEST(TestSliceSubgraphSimpleMultiOp, OnePartition) {
   auto model = LoadTestFileModel("simple_multi_op.tflite");
 
   ASSERT_RESULT_OK_ASSIGN(auto subgraph, graph_tools::GetSubgraph(model.get()));
+
   ASSERT_RESULT_OK_ASSIGN(auto ops, graph_tools::GetSubgraphOps(subgraph));
 
   // func.func @main(arg0)
@@ -107,8 +168,12 @@ TEST(TestSliceSubgraphSimpleMultiOp, OnePartition) {
   partition.push_back(ops[1]);
   partition.push_back(ops[2]);
 
-  std::unique_ptr<LrtSubgraphT> sliced_graph =
-      GraphSlicer::SlicePartitionFromGraph(*subgraph, partition);
+  LrtSubgraph sliced_graph = &model->subgraphs.emplace_back();
+  auto* hal_cal_op =
+      GraphSlicer::SlicePartitionFromGraph(*subgraph, sliced_graph, partition);
+
+  ASSERT_TRUE(HasValidGeneralTopology(sliced_graph));
+  ASSERT_TRUE(HasValidGeneralTopology(subgraph));
 
   ASSERT_RESULT_OK_ASSIGN(auto edited_subgraph_ops,
                           graph_tools::GetSubgraphOps(subgraph));
@@ -119,17 +184,13 @@ TEST(TestSliceSubgraphSimpleMultiOp, OnePartition) {
   ASSERT_EQ(edited_subgraph_ops[2]->op_code, kLrtOpCodeTflAdd);
 
   ASSERT_RESULT_OK_ASSIGN(auto sliced_subgraph_ops,
-                          graph_tools::GetSubgraphOps(sliced_graph.get()));
+                          graph_tools::GetSubgraphOps(sliced_graph));
 
   ASSERT_EQ(sliced_subgraph_ops.size(), 2);
   ASSERT_EQ(sliced_subgraph_ops[0]->op_code, kLrtOpCodeTflMul);
   ASSERT_EQ(sliced_subgraph_ops[1]->op_code, kLrtOpCodeTflMul);
 
-  ASSERT_TRUE(graph_tools::ValidateTopology(edited_subgraph_ops));
-  ASSERT_TRUE(graph_tools::ValidateTopology(sliced_subgraph_ops));
-
-  auto* hal_cal_op = edited_subgraph_ops[1];
-  LRT_DUMP_OP(hal_cal_op);
+  ASSERT_EQ(hal_cal_op, edited_subgraph_ops[1]);
 
   {
     ASSERT_RESULT_OK_ASSIGN(auto hal_cal_op_ins,
@@ -141,7 +202,7 @@ TEST(TestSliceSubgraphSimpleMultiOp, OnePartition) {
                                                    edited_subgraph_ops[0]));
 
     ASSERT_RESULT_OK_ASSIGN(auto sliced_subgraph_inputs,
-                            graph_tools::GetSubgraphInputs(sliced_graph.get()));
+                            graph_tools::GetSubgraphInputs(sliced_graph));
 
     ASSERT_EQ(sliced_subgraph_inputs.size(), 1);
 
@@ -161,9 +222,8 @@ TEST(TestSliceSubgraphSimpleMultiOp, OnePartition) {
         hal_cal_op_out,
         {{edited_subgraph_ops.back(), 0}, {edited_subgraph_ops.back(), 1}}));
 
-    ASSERT_RESULT_OK_ASSIGN(
-        auto sliced_subgraph_outputs,
-        graph_tools::GetSubgraphOutputs(sliced_graph.get()));
+    ASSERT_RESULT_OK_ASSIGN(auto sliced_subgraph_outputs,
+                            graph_tools::GetSubgraphOutputs(sliced_graph));
 
     ASSERT_EQ(sliced_subgraph_outputs.size(), 1);
     ASSERT_TRUE(graph_tools::MatchTensorDefiningOp(
@@ -188,19 +248,24 @@ TEST(TestSliceSubgraphSimpleMultiOp, TwoPartitions) {
   std::vector<LrtOp> partition_1;
   partition_1.push_back(ops[0]);
 
-  std::unique_ptr<LrtSubgraphT> sliced_graph_1 =
-      GraphSlicer::SlicePartitionFromGraph(*subgraph, partition_1);
+  LrtSubgraph sliced_graph_1 = &model->subgraphs.emplace_back();
+  GraphSlicer::SlicePartitionFromGraph(*subgraph, sliced_graph_1, partition_1);
+
+  ASSERT_TRUE(HasValidGeneralTopology(sliced_graph_1));
+  ASSERT_TRUE(HasValidGeneralTopology(subgraph));
 
   std::vector<LrtOp> partition_2;
   partition_2.push_back(ops[2]);
   partition_2.push_back(ops[3]);
 
-  std::unique_ptr<LrtSubgraphT> sliced_graph_2 =
-      GraphSlicer::SlicePartitionFromGraph(*subgraph, partition_2);
+  LrtSubgraph sliced_graph_2 = &model->subgraphs.emplace_back();
+  GraphSlicer::SlicePartitionFromGraph(*subgraph, sliced_graph_2, partition_2);
+
+  ASSERT_TRUE(HasValidGeneralTopology(sliced_graph_2));
+  ASSERT_TRUE(HasValidGeneralTopology(subgraph));
 
   ASSERT_RESULT_OK_ASSIGN(auto edited_subgraph_ops,
                           graph_tools::GetSubgraphOps(subgraph));
-  ASSERT_TRUE(graph_tools::ValidateTopology(edited_subgraph_ops));
 
   ASSERT_EQ(edited_subgraph_ops.size(), 3);
   ASSERT_EQ(edited_subgraph_ops[0]->op_code, kLrtOpCodeTflCustom);
@@ -209,9 +274,7 @@ TEST(TestSliceSubgraphSimpleMultiOp, TwoPartitions) {
 
   {
     ASSERT_RESULT_OK_ASSIGN(auto sliced_ops,
-                            graph_tools::GetSubgraphOps(sliced_graph_1.get()));
-
-    ASSERT_TRUE(graph_tools::ValidateTopology(sliced_ops));
+                            graph_tools::GetSubgraphOps(sliced_graph_1));
 
     ASSERT_EQ(sliced_ops.size(), 1);
     ASSERT_EQ(sliced_ops[0]->op_code, kLrtOpCodeTflAdd);
@@ -219,17 +282,12 @@ TEST(TestSliceSubgraphSimpleMultiOp, TwoPartitions) {
 
   {
     ASSERT_RESULT_OK_ASSIGN(auto sliced_ops,
-                            graph_tools::GetSubgraphOps(sliced_graph_2.get()));
-
-    ASSERT_TRUE(graph_tools::ValidateTopology(sliced_ops));
+                            graph_tools::GetSubgraphOps(sliced_graph_2));
 
     ASSERT_EQ(sliced_ops.size(), 2);
     ASSERT_EQ(sliced_ops[0]->op_code, kLrtOpCodeTflMul);
     ASSERT_EQ(sliced_ops[1]->op_code, kLrtOpCodeTflAdd);
   }
 }
-
-// TODO: b/365339578 - Add more algo tests implicitly once end2end flow
-// is setup.
 
 }  // namespace

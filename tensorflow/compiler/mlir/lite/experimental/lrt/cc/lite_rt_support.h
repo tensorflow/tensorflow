@@ -21,8 +21,8 @@
 #include <variant>
 
 #include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_common.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_compiler_plugin.h"
 #include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_support.h"  // IWYU pragma: export
-
 #ifndef NDEBUG
 #include <iostream>  // IWYU pragma: keep
 #endif
@@ -41,15 +41,27 @@ struct LrtStatusDeleter {
   }
 };
 
-typedef std::unique_ptr<LrtStatusT, LrtStatusDeleter> LrtUniqueStatus;
+using UniqueLrtStatus = std::unique_ptr<LrtStatusT, LrtStatusDeleter>;
 
-inline LrtUniqueStatus UniqueStatusFromCode(LrtStatusCode code) {
-  return LrtUniqueStatus(StatusCreate(code));
+inline UniqueLrtStatus UniqueStatusFromCode(LrtStatusCode code) {
+  return UniqueLrtStatus(StatusCreate(code));
 }
 
-inline LrtUniqueStatus UniqueStatusOk() {
+inline UniqueLrtStatus UniqueStatusOk() {
   return UniqueStatusFromCode(kLrtStatusOk);
 }
+
+// TODO: b/365295276 - Put all smart pointer wrappers in support.h.
+struct LrtCompilerPluginDeleter {
+  void operator()(LrtCompilerPlugin plugin) {
+    if (plugin != nullptr) {
+      PluginDestroy(plugin);
+    }
+  }
+};
+
+using UniqueLrtCompilerPlugin =
+    std::unique_ptr<LrtCompilerPluginT, LrtCompilerPluginDeleter>;
 
 // `StatusOr` analog for lrt. Very basic currently.
 // TODO: b/365295276 - Figure out how to better infer template param

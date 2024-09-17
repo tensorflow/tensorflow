@@ -27,6 +27,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "flatbuffers/verifier.h"  // from @flatbuffers
 #include "tensorflow/compiler/mlir/lite/allocation.h"
 #include "tensorflow/compiler/mlir/lite/core/model_builder_base.h"
@@ -138,6 +139,22 @@ LrtStatus IsTensorSupported(const tflite::TensorT& tensor) {
     return StatusCreate(kLrtStatusErrorUnsupported);
   }
 
+  return StatusOk();
+}
+
+LrtStatus SetDefaultOptions(tflite::BuiltinOptionsUnion& opts, LrtOpCode code) {
+  switch (code) {
+    case kLrtOpCodeTflMul:
+      opts.Set(tflite::MulOptionsT());
+      break;
+    case kLrtOpCodeTflAdd:
+      opts.Set(tflite::AddOptionsT());
+      break;
+    case kLrtOpCodeTflCustom:
+      return StatusOk();
+    default:
+      return StatusCreate(kLrtStatusErrorUnsupported);
+  }
   return StatusOk();
 }
 
@@ -274,10 +291,10 @@ LrtStatus LoadModel(std::unique_ptr<tflite::ModelT> flatbuffer,
                     LrtModel* model) {
   auto lrt_model = std::make_unique<LrtModelT>();
   lrt_model->flatbuffer_model = std::move(flatbuffer);
+  lrt_model->subgraphs.reserve(100);
 
   LRT_RETURN_STATUS_IF_NOT_OK(ModelUnpacker::Unpack(lrt_model.get()));
 
-  lrt_model->flatbuffer_model->buffers.clear();
   lrt_model->flatbuffer_model->subgraphs.clear();
 
   *model = lrt_model.release();
@@ -341,11 +358,15 @@ class ModelRepacker {
 void ModelRepacker::BuildOpCodeMap(
     LrtModel model, std::unordered_map<LrtOpCode, uint32_t>& map) {
   // TODO: b/365299994 - Also add partition/custom op to op code map.
-  const auto& codes = model->flatbuffer_model->operator_codes;
+  auto& codes = model->flatbuffer_model->operator_codes;
   for (int i = 0; i < codes.size(); ++i) {
     const auto tfl_code = codes[i]->builtin_code;
     map.insert({static_cast<LrtOpCode>(tfl_code), i});
   }
+  auto& custom_op_code =
+      codes.emplace_back(std::make_unique<tflite::OperatorCodeT>());
+  custom_op_code->builtin_code = tflite::BuiltinOperator_CUSTOM;
+  map.insert({kLrtOpCodeTflCustom, codes.size() - 1});
 }
 
 LrtStatus ModelRepacker::SerializeTensor(LrtTensor tensor,
@@ -359,6 +380,7 @@ LrtStatus ModelRepacker::SerializeTensor(LrtTensor tensor,
     target.shape.push_back(type.layout.dimensions[i]);
   }
 
+  DCHECK(tensor->buffer.fb_buffer != nullptr) << "Submitting a null buffer";
   target.buffer = SubmitBuffer(std::move(tensor->buffer.fb_buffer));
 
   return StatusOk();
@@ -378,6 +400,9 @@ LrtStatus ModelRepacker::SerializeOp(
   }
 
   // TODO: b/365299994 - Support options in serialize.
+  LRT_RETURN_STATUS_IF_NOT_OK_MSG(
+      SetDefaultOptions(target.builtin_options, op->op_code),
+      "Failed serializing options");
   // TODO: b/365299994 - Support exotic op fields in serialize.
 
   return StatusOk();
@@ -403,7 +428,6 @@ LrtStatus ModelRepacker::SerializeSubgraph(LrtSubgraph subgraph,
   for (auto in : subgraph->inputs) {
     target.inputs.push_back(tensor_map.at(in));
   }
-
   for (auto out : subgraph->outputs) {
     target.outputs.push_back(tensor_map.at(out));
   }
@@ -416,14 +440,35 @@ LrtStatus ModelRepacker::Repack(LrtModel model) {
 
   auto& target = repacker.OldFb();
 
+  std::vector<std::pair<std::string, std::unique_ptr<tflite::BufferT>>>
+      metadata;
+  for (auto& flatbuffer_metadata : target.metadata) {
+    const auto metadata_buffer_ind = flatbuffer_metadata->buffer;
+    metadata.push_back({flatbuffer_metadata->name,
+                        std::move(target.buffers[metadata_buffer_ind])});
+  }
+
   target.subgraphs.clear();
   target.buffers.clear();
+  target.metadata.clear();
+  target.metadata_buffer.clear();
+
   target.buffers.push_back(std::make_unique<tflite::BufferT>());
 
   for (auto& subgraph : model->subgraphs) {
     target.subgraphs.push_back(std::make_unique<tflite::SubGraphT>());
     LRT_RETURN_STATUS_IF_NOT_OK(
         repacker.SerializeSubgraph(&subgraph, *target.subgraphs.back()));
+  }
+
+  for (auto& [name, buf] : metadata) {
+    const auto new_ind = target.buffers.size();
+    auto new_metadata = std::make_unique<tflite::MetadataT>();
+    new_metadata->name = name;
+    new_metadata->buffer = new_ind;
+    target.metadata.emplace_back(std::move(new_metadata));
+    target.metadata_buffer.push_back(new_ind);
+    target.buffers.emplace_back(std::move(buf));
   }
 
   return StatusOk();

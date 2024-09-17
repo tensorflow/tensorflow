@@ -17,10 +17,10 @@ limitations under the License.
 
 #include <vector>
 
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/service/batchnorm_expander.h"
 #include "xla/service/cholesky_expander.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/rng_bit_generator_expander.h"
 #include "xla/service/rng_expander.h"

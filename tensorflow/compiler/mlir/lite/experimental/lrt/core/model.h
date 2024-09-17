@@ -15,6 +15,7 @@
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_CORE_MODEL_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_CORE_MODEL_H_
 
+#include <sstream>
 #ifndef NDEBUG
 #include <cstdio>
 #include <iostream>
@@ -135,41 +136,48 @@ struct LrtOpListT {
 namespace debug {
 
 // TODO: b/365299994 - Flesh out printing api and move elsewhere.
-inline void DumpOp(LrtOp op) {
+inline void DumpOp(const LrtOpT& op) {
 #ifndef NDEBUG
   using DumpInfo = std::pair<std::vector<std::string>, std::string>;
 
-  auto op_name = [&](LrtOp op) -> std::string {
-    switch (op->op_code) {
+  auto op_name = [&](const LrtOpT& op) -> std::string {
+    std::stringstream result;
+    switch (op.op_code) {
       case kLrtOpCodeTflAdd:
-        return "TFL_ADD";
+        result << "TFL_ADD";
+        break;
       case kLrtOpCodeTflMul:
-        return "TFL_MUL";
+        result << "TFL_MUL";
+        break;
       case kLrtOpCodeTflCustom:
-        return "TFL_CUSTOM_OP";
+        result << "TFL_CUSTOM_OP";
+        break;
       default:
-        return "UKNOWN_OP_CODE";
+        result << "UKNOWN_OP_CODE: " << op.op_code;
+        break;
     }
+    result << " " << &op;
+    return result.str();
   };
 
   // TODO: b/365299994 - Pull tensor dump into separate functiona nd
   // only dump relevant topology when called in DumpOp.
-  auto tensor_dump = [&](LrtTensor tensor) -> DumpInfo {
+  auto tensor_dump = [&](const LrtTensorT& tensor) -> DumpInfo {
     DumpInfo result;
 
-    for (int i = 0; i < tensor->users.size(); ++i) {
+    for (int i = 0; i < tensor.users.size(); ++i) {
       auto& user = result.first.emplace_back();
       char* s;
-      asprintf(&s, "%s [%lu], ", op_name(tensor->users[i]).c_str(),
-               tensor->user_arg_inds[i]);
+      asprintf(&s, "%s [%lu], ", op_name(*tensor.users[i]).c_str(),
+               tensor.user_arg_inds[i]);
       user.assign(s);
       free(s);
     }
 
-    if (tensor->defining_op != nullptr) {
+    if (tensor.defining_op != nullptr) {
       char* s;
-      asprintf(&s, "%s [%lu], ", op_name(tensor->defining_op).c_str(),
-               tensor->defining_op_out_ind);
+      asprintf(&s, "%s [%lu], ", op_name(*tensor.defining_op).c_str(),
+               tensor.defining_op_out_ind);
       result.second.assign(s);
       free(s);
     } else {
@@ -179,33 +187,36 @@ inline void DumpOp(LrtOp op) {
     return result;
   };
 
-  auto validate_tensor = [](LrtTensor tensor) -> void {
-    if (tensor->users.size() != tensor->user_arg_inds.size()) {
+  auto validate_tensor = [](const LrtTensorT& tensor) -> void {
+    if (tensor.users.size() != tensor.user_arg_inds.size()) {
       LRT_FATAL("Invalid tensor.");
     }
   };
 
-  auto print_dump = [](const DumpInfo& info) {
-    std::cerr << "    DEFINING OP: " << info.second << "\n";
+  auto print_users = [](const DumpInfo& info) {
     for (const auto& user : info.first) {
-      std::cerr << "    USER:        " << user << "\n";
+      std::cerr << "    USER: " << user << "\n";
     }
+  };
+
+  auto print_def = [](const DumpInfo& info) {
+    std::cerr << "    DEFINING OP: " << info.second << "\n";
   };
 
   std::cerr << op_name(op) << " {\n";
 
-  for (auto inp : op->inputs) {
-    validate_tensor(inp);
-    std::cerr << "  INPUT: \n";
-    print_dump(tensor_dump(inp));
+  for (const auto& inp : op.inputs) {
+    validate_tensor(*inp);
+    std::cerr << "  INPUT: " << &inp << "\n";
+    print_def(tensor_dump(*inp));
     std::cerr << "\n";
   }
 
-  for (auto out : op->outputs) {
-    validate_tensor(out);
-    std::cerr << "  OUTPUT:\n";
-    print_dump(tensor_dump(out));
-    if (out != op->outputs.back()) {
+  for (const auto& out : op.outputs) {
+    validate_tensor(*out);
+    std::cerr << "  OUTPUT: " << &out << "\n";
+    print_users(tensor_dump(*out));
+    if (out != op.outputs.back()) {
       std::cerr << "\n";
     }
   }
