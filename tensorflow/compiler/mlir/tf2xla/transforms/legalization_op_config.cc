@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/transforms/legalization_op_config.h"
 
 #include "llvm/ADT/DenseSet.h"
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tpu_embedding_ops_registry.h"
 
@@ -79,6 +81,7 @@ const llvm::DenseSet<mlir::TypeID>& MlirAlwaysOps() {
       TypeID::get<TF::SoftmaxOp>(),
       TypeID::get<TF::SqrtOp>(),
       TypeID::get<TF::TanhOp>(),
+      TypeID::get<TF::XlaConvV2Op>(),
       TypeID::get<TF::XlaDotOp>(),
       TypeID::get<TF::XlaDotV2Op>(),
       TypeID::get<TF::XlaDynamicSliceOp>(),
@@ -339,7 +342,6 @@ bool IsOpTypeAllowedTf2XlaFallback(const TypeID& type_id) {
         TypeID::get<TF::XlaSendTPUEmbeddingGradientsOp>(),
         TypeID::get<TF::XlaBroadcastHelperOp>(),
         TypeID::get<TF::XlaCallModuleOp>(),
-        TypeID::get<TF::XlaConvV2Op>(),
         TypeID::get<TF::XlaCustomCallV2Op>(),
         TypeID::get<TF::XlaDynamicUpdateSliceOp>(),
         TypeID::get<TF::XlaKeyValueSortOp>(),
