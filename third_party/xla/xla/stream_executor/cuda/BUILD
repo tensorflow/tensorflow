@@ -268,15 +268,6 @@ xla_test(
     ],
 )
 
-# The activation library is tightly coupled to the executor library.
-# TODO(leary) split up cuda_executor.cc so that this can stand alone.
-cc_library(
-    name = "cuda_activation_header",
-    hdrs = ["cuda_activation.h"],
-    visibility = ["//visibility:public"],
-    deps = ["//xla/stream_executor/gpu:gpu_activation_header"],
-)
-
 cuda_only_cc_library(
     name = "cublas_lt_header",
     hdrs = [
