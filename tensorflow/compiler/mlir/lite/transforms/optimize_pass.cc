@@ -2717,6 +2717,44 @@ struct MoveReshapeAfterFullyConnected
   }
 };
 
+// When FullyConnected is followed by a Reshape op, the shape of the
+// FullyConnected's output doesn't matter. Enabling FC's keep_num_dims in such
+// case is valid and may help downstream runtime e.g. GPU delegate do better
+// layout planning.
+struct EnableFullyConnectedKeepNumDimsBeforeReshape
+    : public OpRewritePattern<TFL::ReshapeOp> {
+  explicit EnableFullyConnectedKeepNumDimsBeforeReshape(MLIRContext *context)
+      : OpRewritePattern<TFL::ReshapeOp>(context, /*benefit=*/0) {}
+
+  LogicalResult matchAndRewrite(TFL::ReshapeOp reshape,
+                                PatternRewriter &rewriter) const override {
+    auto fc = llvm::dyn_cast_or_null<TFL::FullyConnectedOp>(
+        reshape.getInput().getDefiningOp());
+
+    if (!fc || fc.getNumResults() != 1 || fc.getKeepNumDims()) {
+      return failure();
+    }
+
+    auto input_ty =
+        mlir::dyn_cast_or_null<RankedTensorType>(fc.getInput().getType());
+    auto fc_ty = mlir::dyn_cast_or_null<RankedTensorType>(fc.getType(0));
+    if (!input_ty || !fc_ty || input_ty.getRank() == 2) {
+      return failure();
+    }
+
+    llvm::SmallVector<int64_t> new_fc_shape(input_ty.getShape());
+    new_fc_shape.pop_back();
+    new_fc_shape.push_back(fc_ty.getShape().back());
+
+    rewriter.replaceOpWithNewOp<TFL::FullyConnectedOp>(
+        fc, RankedTensorType::get(new_fc_shape, fc_ty.getElementType()),
+        fc.getInput(), fc.getFilter(), fc.getBias(),
+        fc.getFusedActivationFunction(), fc.getWeightsFormat(),
+        /*keep_num_dims=*/true, fc.getAsymmetricQuantizeInputsAttr());
+    return success();
+  }
+};
+
 // Adds canonicalization patterns to the list of patterns.
 void AddCanonicalizationPatterns(MLIRContext *context,
                                  RewritePatternSet *patterns) {
@@ -2776,7 +2814,8 @@ void OptimizePass::runOnOperation() {
       RemoveReshapeBeforeFullyConnected, FuseUnpackAndConcatToReshape,
       OptimizeTopK, FuseAddAndStridedSlice,
       FuseReshapeAndTransposeAroundBatchMatmul,
-      FuseTransposeReshapeIntoBatchMatmul, MoveReshapeAfterFullyConnected>(ctx);
+      FuseTransposeReshapeIntoBatchMatmul, MoveReshapeAfterFullyConnected,
+      EnableFullyConnectedKeepNumDimsBeforeReshape>(ctx);
   if (!GetOptions().disable_fuse_mul_and_fc) {
     phase_2_patterns.add<FuseMulAndFullyConnected>(ctx);
   }
