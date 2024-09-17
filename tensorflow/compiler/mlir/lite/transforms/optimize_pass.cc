@@ -2731,7 +2731,8 @@ struct EnableFullyConnectedKeepNumDimsBeforeReshape
     auto fc = llvm::dyn_cast_or_null<TFL::FullyConnectedOp>(
         reshape.getInput().getDefiningOp());
 
-    if (!fc || fc.getNumResults() != 1 || fc.getKeepNumDims()) {
+    if (!fc || fc.getNumResults() != 1 || fc.getKeepNumDims() ||
+        !fc->hasOneUse()) {
       return failure();
     }
 
