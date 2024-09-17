@@ -1558,10 +1558,16 @@ LogicalResult FullyConnectedOp::fold(FoldAdaptor adaptor,
     return failure();
   }
 
+  auto is_foldable = [](llvm::ArrayRef<int64_t> shape) {
+    return shape.size() == 1 || (shape.size() == 2 && shape.front() == 1);
+  };
+
+  const bool weights_foldable = weights_type.getShape().size() == 2;
+  const bool bias_foldable = !has_bias || is_foldable(bias_type.getShape());
+
   // Folding only implemented for 1D input, 2D weights and 1D bias
-  if (input_type.getShape().size() != 1 ||
-      weights_type.getShape().size() != 2 ||
-      (has_bias && bias_type.getShape().size() != 1)) {
+  if (!is_foldable(input_type.getShape()) || !bias_foldable ||
+      !weights_foldable) {
     return failure();
   }
 
