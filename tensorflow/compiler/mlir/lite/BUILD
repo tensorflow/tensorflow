@@ -1766,6 +1766,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/experimental/lrt:__subpackages__",
         "//tensorflow/lite:__pkg__",
         "//tensorflow/lite/core:__pkg__",
+        "//tensorflow/lite/tools/optimize/calibration:__pkg__",
     ],
     deps = ["//tensorflow/compiler/mlir/lite/core/api:error_reporter"],
 )
