@@ -1552,6 +1552,12 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // Rewrite GEMMs with broadcasted inputs as strided GEMMs.
   pipeline.AddPass<GemmBroadcastFoldingRewriter>();
 
+  pipeline.AddPass<LayoutNormalization>(&NormalizeLayoutForGpuCustomCalls);
+
+  // Layout normalization will create scatters that are not simplified and
+  // also have unsorted update_window_dims.
+  pipeline.AddPass<ScatterSimplifier>();
+
   pipeline.AddPass<HostOffloadLegalize>(
       static_cast<int64_t>(stream_executor::MemoryType::kHost),
       /* after_layout= */ true);

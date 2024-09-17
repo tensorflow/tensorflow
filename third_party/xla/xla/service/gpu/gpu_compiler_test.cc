@@ -398,7 +398,19 @@ ENTRY main {
             HloOpcode::kAllGatherDone);
 }
 
-TEST_F(GpuCompilerTest,
+class GpuCompilerTestWithAutotuneDb : public GpuCompilerTest {
+ public:
+  static void SetUpTestSuite() {
+    std::string path =
+        tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service", "gpu",
+                          "gpu_compiler_test_autotune_db.textproto");
+    TF_EXPECT_OK(AutotunerUtil::LoadAutotuneResultsFromFile(path));
+  }
+
+  static void TearDownTestSuite() { AutotunerUtil::ClearAutotuneResults(); }
+};
+
+TEST_F(GpuCompilerTestWithAutotuneDb,
        GemmFusionIsNoOpWhenGemmFusionAutotunerFallsBackToCublas) {
   auto cc = backend()
                 .default_stream_executor()
@@ -443,17 +455,10 @@ ENTRY main {
   config.set_replica_count(1);
   config.set_num_partitions(1);
 
-  // Load autotuning DB. We shouldn't depend on actual execution times in a unit
-  // test.
-  std::string path =
-      tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service", "gpu",
-                        "gpu_compiler_test_autotune_db.textproto");
-  TF_EXPECT_OK(AutotunerUtil::LoadAutotuneResultsFromFile(path));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string, config));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> triton_enabled_module,
                           GetOptimizedModule(std::move(module)));
-  AutotunerUtil::ClearAutotuneResults();
   DebugOptions triton_disabled_debug_options = GetDebugOptionsForTest();
   triton_disabled_debug_options.set_xla_gpu_enable_dynamic_slice_fusion(false);
   triton_disabled_debug_options.set_xla_gpu_enable_triton_gemm(false);
@@ -471,6 +476,54 @@ ENTRY main {
   // enabling triton gemm
   EXPECT_EQ(triton_enabled_module->computation_count(),
             triton_disabled_module->computation_count());
+}
+
+TEST_F(GpuCompilerTestWithAutotuneDb,
+       CublasF8NumericallySameWithTritonFallbackAndWithoutTriton) {
+  auto cc = backend()
+                .default_stream_executor()
+                ->GetDeviceDescription()
+                .cuda_compute_capability();
+  if (!cc.IsAtLeastHopper()) {
+    GTEST_SKIP()
+        << "Autotuning results have only been generated for Hopper GPUs";
+  }
+  const absl::string_view hlo_string = R"(
+HloModule test 
+
+ENTRY main {
+  p0 = f8e4m3fn[12288,4096]{0,1} parameter(0)
+  p1 = f8e4m3fn[4096,16384]{0,1} parameter(1)
+  dot = bf16[12288,16384]{1,0} dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  bitcast = bf16[] constant(0.956)
+  broadcast = bf16[12288,16384]{1,0} broadcast(bitcast), dimensions={}
+  ROOT multiply = bf16[12288,16384]{1,0} multiply(dot, broadcast)
+  })";
+
+  HloModuleConfig config;
+  DebugOptions triton_enabled_debug_options = GetDebugOptionsForTest();
+  triton_enabled_debug_options
+      .set_xla_gpu_require_complete_aot_autotune_results(true);
+  config.set_debug_options(triton_enabled_debug_options);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string, config));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> triton_enabled_module,
+                          GetOptimizedModule(std::move(module)));
+
+  DebugOptions triton_disabled_debug_options = GetDebugOptionsForTest();
+  triton_disabled_debug_options.set_xla_gpu_enable_triton_gemm(false);
+  triton_disabled_debug_options.set_xla_gpu_cublas_fallback(true);
+  config.set_debug_options(triton_disabled_debug_options);
+
+  TF_ASSERT_OK_AND_ASSIGN(module,
+                          ParseAndReturnVerifiedModule(hlo_string, config));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> triton_disabled_module,
+                          GetOptimizedModule(std::move(module)));
+
+  EXPECT_TRUE(RunAndCompareTwoModules(std::move(triton_enabled_module),
+                                      std::move(triton_disabled_module),
+                                      ErrorSpec{1e-6, 1e-6}, false));
 }
 
 class FloatNormalizationTest : public GpuCompilerTest,
