@@ -44,7 +44,7 @@ struct ConvBackpropSpatialDimension {
 // Computed dimensions for a backwards convolution.
 struct ConvBackpropDimensions {
   // Information about each spatial dimension.
-  gtl::InlinedVector<ConvBackpropSpatialDimension, 3> spatial_dims;
+  absl::InlinedVector<ConvBackpropSpatialDimension, 3UL> spatial_dims;
 
   // Batch size.
   int64_t batch_size;
@@ -80,7 +80,7 @@ Status ConvBackpropComputeDimensions(StringPiece label, int num_spatial_dims,
 Status ConvBackpropComputeDimensionsV2(
     StringPiece label, int num_spatial_dims, const TensorShape& input_shape,
     const TensorShape& filter_shape, const TensorShape& out_backprop_shape,
-    const absl::Span<const int32>& dilations, const std::vector<int32>& strides,
+    absl::Span<const int32> dilations, const std::vector<int32>& strides,
     Padding padding, absl::Span<const int64_t> explicit_paddings,
     TensorFormat data_format, ConvBackpropDimensions* dims);
 

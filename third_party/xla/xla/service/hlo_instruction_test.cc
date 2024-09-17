@@ -2719,6 +2719,16 @@ TEST_F(HloInstructionTest, VerifyBodyComputationPointsToWhile) {
     }
   }
   EXPECT_EQ(num_while_body_comp, 1);
+
+  for (HloInstruction* instruction :
+       module->entry_computation()->instructions()) {
+    if (instruction->opcode() == HloOpcode::kWhile) {
+      HloComputation* while_body = instruction->while_body();
+      EXPECT_TRUE(while_body->IsWhileBodyComputation());
+      HloInstruction* while_back_ref = while_body->WhileCallInstruction();
+      EXPECT_EQ(while_back_ref->while_body(), while_body);
+    }
+  }
 }
 
 TEST_F(HloInstructionTest,

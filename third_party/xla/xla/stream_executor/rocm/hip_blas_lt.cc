@@ -21,11 +21,11 @@ limitations under the License.
 #include "rocm/rocm_config.h"
 #include "xla/primitive_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/util.h"
 
 #if TF_HIPBLASLT
 #include "xla/stream_executor/event_based_timer.h"
-#include "xla/stream_executor/gpu/gpu_activation.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/rocm/hip_blas_lt.h"
@@ -217,7 +217,7 @@ auto BlasLt::MatmulPlan::GetAlgorithms(size_t max_algorithm_count,
         hip_preference, HIPBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES,
         max_workspace_size));
 
-    gpu::ScopedActivateExecutorContext sac{blas_lt_ref_.parent_};
+    gpu::ScopedActivateContext sac{blas_lt_ref_.parent_};
 
     // hipBlasLt requires setting the bias pointer (even a dummy one), otherwise
     // no algorithms can be found for "bias epilogues". This is to be removed
@@ -459,7 +459,7 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
           "hipblaslt does not support auxiliary inputs / outputs");
     }
 
-    gpu::ScopedActivateExecutorContext sac{blas_lt_ref_.parent_};
+    gpu::ScopedActivateContext sac{blas_lt_ref_.parent_};
 
     if (palgo != nullptr) {
       SE_HIPBLAS_RETURN_IF_ERROR(wrap::hipblasLtMatmul(

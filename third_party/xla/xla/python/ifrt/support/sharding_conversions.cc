@@ -28,8 +28,10 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -50,7 +52,7 @@ absl::StatusOr<OpSharding> ToOpSharding(const Sharding& sharding) {
 
 absl::StatusOr<OpSharding> ToOpSharding(
     const ShardingParam& sharding_param,
-    const xla::ifrt::DeviceList& device_mapping) {
+    const tsl::RCReference<xla::ifrt::DeviceList>& device_mapping) {
   OpSharding op_sharding;
   {
     bool all_dim_replicated = true;
@@ -89,15 +91,18 @@ absl::StatusOr<OpSharding> ToOpSharding(
   sharding_param.minor_to_major().ToDeviceList(logical_device_ids);
   auto* tile_assignment_devices = op_sharding.mutable_tile_assignment_devices();
   tile_assignment_devices->Reserve(logical_device_ids.size());
+  const absl::Span<Device* const> device_mapping_devices =
+      device_mapping->devices();
   for (const int logical_device_id : logical_device_ids) {
-    if (logical_device_id < 0 || logical_device_id >= device_mapping.size()) {
+    if (logical_device_id < 0 ||
+        logical_device_id >= device_mapping_devices.size()) {
       return absl::OutOfRangeError(
           absl::StrCat("Can't map device with logical id ", logical_device_id,
                        ". The logical device id should be within [0, ",
-                       device_mapping.size(), ")."));
+                       device_mapping_devices.size(), ")."));
     }
     tile_assignment_devices->Add(
-        device_mapping[logical_device_id]->Id().value());
+        device_mapping_devices[logical_device_id]->Id().value());
   }
 
   return op_sharding;

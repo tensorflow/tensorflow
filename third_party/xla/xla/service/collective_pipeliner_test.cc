@@ -36,9 +36,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/hlo_parser.h"
-#include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/host_memory_offload_annotations.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
@@ -179,6 +179,66 @@ ENTRY entry {
   EXPECT_EQ(get_tuple_index->opcode(), HloOpcode::kGetTupleElement);
   EXPECT_EQ(get_tuple_value->tuple_index(), 1);
   EXPECT_EQ(get_tuple_index->tuple_index(), 3);
+}
+
+// A case where Bitcast will become the user of a pipelined instruction and
+// check if the DUS is pushed to the next iteration successfully. Absense of
+// Bitcast in acceptable users will break this test.
+TEST_F(CollectivePipelinerTest, BitcastAsUser) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+add {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
+
+while_cond {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  gte = s32[] get-tuple-element(param), index=0
+  constant.1 = s32[] constant(3)
+  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+}
+
+while_body {
+  param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+  current-loop-index = s32[] get-tuple-element(param), index=0
+  output-buffer = bf16[3,8,128] get-tuple-element(param), index=1
+  input-buffer = bf16[3,8,128] get-tuple-element(param), index=2
+  constant.1 = s32[] constant(1)
+  next-loop-index = s32[] add(current-loop-index, constant.1)
+  constant.0 = s32[] constant(0)
+  sliced-input-buffer = bf16[1,8,128] dynamic-slice(input-buffer, current-loop-index, constant.0, constant.0), dynamic_slice_sizes={1,8,128}
+
+  all-reduce = bf16[1,8,128] all-reduce(sliced-input-buffer), replica_groups={}, to_apply=add, channel_id=1
+  bitcast.0 = u16[3,8,128] bitcast(all-reduce)
+  bitcast.1 = bf16[3,8,128] bitcast(bitcast.0)
+
+  dynamic-update-slice = bf16[3,8,128] dynamic-update-slice(output-buffer, bitcast.1, current-loop-index, constant.0, constant.0)
+  ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(next-loop-index, dynamic-update-slice, input-buffer)
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = bf16[3,8,128] parameter(0)
+  tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(c0, p0, p0)
+  while = (s32[], bf16[3,8,128], bf16[3,8,128]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte1 = bf16[3,8,128] get-tuple-element(while), index=1
+}
+)";
+  auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
+  EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true).value());
+  XLA_VLOG_LINES(1, module->ToString());
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::DynamicUpdateSlice(_, op::Bitcast(), _, _, _));
+  const HloInstruction* cast_back = root->operand(1);
+  EXPECT_EQ(cast_back->opcode(), HloOpcode::kBitcast);
+  const HloInstruction* cast_to = cast_back->operand(0);
+  EXPECT_EQ(cast_to->opcode(), HloOpcode::kBitcast);
+  const HloInstruction* ar = cast_to->operand(0);
+  // check if all-reduce is pipelined
+  EXPECT_EQ(ar->opcode(), HloOpcode::kAllReduce);
 }
 
 TEST_F(CollectivePipelinerTest, TransformIncrementIndexByOneCollectivePermute) {
@@ -3083,6 +3143,16 @@ ENTRY entry {
   const HloInstruction* all_reduce2 = find_all_reduce(all_reduce1);
   EXPECT_NE(all_reduce2, nullptr);
   EXPECT_THAT(all_reduce2, op::AllReduce(op::GetTupleElement(op::While())));
+  // The root of while body should have a dynamic-update-slice operand which has
+  // a custom call at operand index 1.
+  const HloInstruction* while_instr =
+      FindInstruction(module.get(), HloOpcode::kWhile);
+  CHECK_NE(while_instr, nullptr);
+  const HloInstruction* dynamic_update_slice =
+      while_instr->while_body()->root_instruction()->operands().back();
+  CHECK_EQ(dynamic_update_slice->opcode(), HloOpcode::kDynamicUpdateSlice);
+  const HloInstruction* custom_call = dynamic_update_slice->operand(1);
+  CHECK(custom_call->IsCustomCall("SunkByPreviousStep"));
 }
 
 TEST_F(CollectivePipelinerTest, ForwardSinkFirstDimNotMatchingLoopCount) {
@@ -3375,6 +3445,7 @@ ENTRY entry {
   XLA_VLOG_LINES(1, module->ToString());
   const HloInstruction* while_instr =
       FindInstruction(module.get(), HloOpcode::kWhile);
+  CHECK_NE(while_instr, nullptr);
   EXPECT_TRUE(
       absl::c_any_of(while_instr->users(), [](const HloInstruction* user) {
         return absl::c_any_of(
@@ -3394,6 +3465,13 @@ ENTRY entry {
                                return operand->opcode() == HloOpcode::kReshape;
                              }),
             2);
+  // The root of while body should have a dynamic-update-slice operand which has
+  // a custom call at operand index 1.
+  const HloInstruction* dynamic_update_slice =
+      while_instr->while_body()->root_instruction()->operand(4);
+  CHECK_EQ(dynamic_update_slice->opcode(), HloOpcode::kDynamicUpdateSlice);
+  const HloInstruction* custom_call = dynamic_update_slice->operand(1);
+  CHECK(custom_call->IsCustomCall("SunkByPreviousStep"));
 }
 
 TEST_F(CollectivePipelinerTest, CollectiveWithMultipleDUSSameBuffer) {
@@ -3670,6 +3748,22 @@ ENTRY entry {
                   op::Reshape(op::Multiply()), op::Reshape(op::Divide()),
                   op::Reshape(op::Abs()), op::GetTupleElement(op::While()),
                   op::GetTupleElement(op::While()))));
+  // The root of while body should have two dynamic-update-slice operands each
+  // of which has a custom call at operand index 1.
+  std::function<bool(const HloInstruction*)> is_dus_with_custom_call =
+      [&](const HloInstruction* inst) -> bool {
+    if (inst->opcode() != HloOpcode::kDynamicUpdateSlice) {
+      return false;
+    }
+    return inst->operand(1)->IsCustomCall("SunkByPreviousStep");
+  };
+  const HloInstruction* while_instr =
+      FindInstruction(module.get(), HloOpcode::kWhile);
+  CHECK_NE(while_instr, nullptr);
+  CHECK(is_dus_with_custom_call(
+      while_instr->while_body()->root_instruction()->operand(7)));
+  CHECK(is_dus_with_custom_call(
+      while_instr->while_body()->root_instruction()->operand(8)));
 }
 
 }  // namespace

@@ -19,7 +19,7 @@ limitations under the License.
 include "mlir/Pass/PassBase.td"
 
 def SparseAddEncodingPass : Pass<"sparse-add-encoding", "mlir::ModuleOp"> {
-  let summary = "Adds sparse dot encoding.";
+  let summary = "Add sparse encoding for all the arguments of a SparseDotOp.";
   let options = [
     Option<"num_warps_", "num-warps", "int32_t", /*default=*/"4",
            "Number of warps">,
@@ -36,6 +36,10 @@ def SparseAddEncodingPass : Pass<"sparse-add-encoding", "mlir::ModuleOp"> {
 
 def SparseBlockedToMMAPass : Pass<"sparse-blocked-to-mma", "mlir::ModuleOp"> {
   let summary = "Add convert layouts to/from MMA before and after SparseDotOp.";
+  let description = [{
+     Add convert layouts to and from MMA before and after SparseDotOp. In MMAV3,
+     shared memory allocations will be used for A and B operands.
+  }];
   let dependentDialects = [
     "triton::gpu::TritonGPUDialect",
   ];
@@ -89,6 +93,17 @@ def PreventMmaV3LoopUnrollingPass
     this pragma prevents ptxas from doing more.
   }];
   let constructor = "CreatePreventMmaV3LoopUnrollingPass()";
+}
+
+
+def GeneralizeKernelSignaturePass
+    : Pass<"generalize-kernel-signature"> {
+  let summary = "Rewrite kernels to use generic data pointer arguments.";
+  let description = [{
+    Rewrite signatures of kernel functions from global pointers to generic
+    pointers and cast them to global ones within the kernel.
+  }];
+  let constructor = "CreateGeneralizeKernelSignaturePass()";
 }
 
 #endif  // XLA_SERVICE_GPU_FUSIONS_TRITON_PASSES_TD_

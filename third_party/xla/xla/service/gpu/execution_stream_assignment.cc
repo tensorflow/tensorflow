@@ -34,7 +34,8 @@ limitations under the License.
 
 namespace xla::gpu {
 
-ExecutionStreamAssignment::ExecutionStreamAssignment(const HloModule* module) {
+ExecutionStreamAssignment::ExecutionStreamAssignment(
+    const HloModule* module, ExecutionStreamAssignmentOptions options) {
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
 
   // We'll walk the `CallGraph` starting from the entrypoint. The instructions
@@ -69,6 +70,22 @@ ExecutionStreamAssignment::ExecutionStreamAssignment(const HloModule* module) {
     }
   };
 
+  // Assigns source and destination streams to an instruction and records it in
+  // async_instructions_.
+  auto assign_async_execution_streams =
+      [&](HloInstruction* instruction, ExecutionStreamId source_stream_id) {
+        AsyncExecutionStreamIds streams;
+        streams.source_stream_id = source_stream_id;
+        streams.destination_stream_id = next_stream_id;
+
+        CHECK(async_instructions_.try_emplace(instruction, streams).second);
+
+        next_stream_id++;
+        if (next_stream_id.value() > options.number_of_execution_streams) {
+          next_stream_id = ExecutionStreamId(1);
+        }
+      };
+
   while (!queue.empty()) {
     Pending pending = queue.front();
     queue.pop_front();
@@ -77,8 +94,14 @@ ExecutionStreamAssignment::ExecutionStreamAssignment(const HloModule* module) {
     // instructions. Asynchronous instructions will be handled afterwards.
     for (HloInstruction* instruction : pending.node->instructions()) {
       if (instruction->IsAsynchronous()) continue;
-      CHECK(sync_instructions_.try_emplace(instruction, pending.stream_id)
-                .second);
+      if (instruction->opcode() == HloOpcode::kCopyStart) {
+        // CopyStart is morally an async instruction, let us treat it
+        // as an async instruction.
+        assign_async_execution_streams(instruction, pending.stream_id);
+      } else {
+        CHECK(sync_instructions_.try_emplace(instruction, pending.stream_id)
+                  .second);
+      }
     }
 
     // Next, we'll process all callsites in the current computation.
@@ -88,14 +111,9 @@ ExecutionStreamAssignment::ExecutionStreamAssignment(const HloModule* module) {
         // Asynchronous calls will result in a new `ExecutionStreamId` being
         // dispensed for the called computations.
         CHECK_EQ(callsite.instruction()->opcode(), HloOpcode::kAsyncStart);
-        const ExecutionStreamId async_stream_id = next_stream_id++;
-        enqueue_called_computations(callsite, async_stream_id);
-
-        AsyncExecutionStreamIds streams;
-        streams.source_stream_id = pending.stream_id;
-        streams.destination_stream_id = async_stream_id;
-        CHECK(async_instructions_.try_emplace(callsite.instruction(), streams)
-                  .second);
+        enqueue_called_computations(callsite, next_stream_id);
+        assign_async_execution_streams(callsite.instruction(),
+                                       pending.stream_id);
       } else {
         // Synchronous calls will result in the called computations being
         // invoked using the same `ExecutionStreamId`.
@@ -146,7 +164,9 @@ ExecutionStreamAssignment::GetSyncExecutionStreamId(
 
 absl::StatusOr<ExecutionStreamAssignment::AsyncExecutionStreamIds>
 ExecutionStreamAssignment::GetAsyncExecutionStreamIds(
-    const HloAsyncInstruction* instruction) const {
+    const HloInstruction* instruction) const {
+  CHECK(instruction->IsAsynchronous() ||
+        instruction->opcode() == HloOpcode::kCopyStart);
   auto streams = async_instructions_.find(instruction);
   if (streams == async_instructions_.end()) {
     return StreamNotFoundError(instruction);

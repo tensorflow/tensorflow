@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
+#include <string>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -29,7 +30,6 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
-#include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/ffi/ffi_api.h"
@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -151,14 +152,6 @@ static bool IsCommand(const HloCustomCallInstruction* hlo,
     return true;
   }
 
-  // A special case for jax-triton kernel while it is not ported to FFI.
-  if (hlo->custom_call_target() == "triton_kernel_call" &&
-      // TODO(b/327718087): This is an ugly hack to prevent capturing triton
-      // custom calls that might do autotuning at run time.
-      !absl::StrContains(hlo->metadata().op_name(), "Autotuner")) {
-    return true;
-  }
-
   // Check if FFI handler is compatible with command buffers.
   auto registration = ffi::FindHandler(hlo->custom_call_target(), "gpu");
   return registration.ok()
@@ -232,6 +225,12 @@ static bool IsAsyncStartCommand(const HloInstruction* hlo,
   }
 
   if (hlo->opcode() == HloOpcode::kAsyncStart) {
+    if (IsCublasGemm(*hlo->async_wrapped_instruction())) {
+      return config.enabled_commands.contains(DebugOptions::CUBLAS);
+    }
+    if (hlo->async_wrapped_opcode() == HloOpcode::kFusion) {
+      return config.enabled_commands.contains(DebugOptions::FUSION);
+    }
     if (hlo->async_wrapped_opcode() == HloOpcode::kReduceScatter) {
       return config.enabled_commands.contains(DebugOptions::COLLECTIVES);
     }
@@ -248,6 +247,12 @@ static bool IsAsyncDoneCommand(const HloInstruction* hlo,
   }
 
   if (hlo->opcode() == HloOpcode::kAsyncDone) {
+    if (IsCublasGemm(*hlo->async_wrapped_instruction())) {
+      return config.enabled_commands.contains(DebugOptions::CUBLAS);
+    }
+    if (hlo->async_wrapped_opcode() == HloOpcode::kFusion) {
+      return config.enabled_commands.contains(DebugOptions::FUSION);
+    }
     if (hlo->async_wrapped_opcode() == HloOpcode::kReduceScatter) {
       return config.enabled_commands.contains(DebugOptions::COLLECTIVES);
     }
@@ -695,11 +700,8 @@ absl::StatusOr<HloComputation*> CommandBufferScheduling::RewriteCommandBuffer(
 //===----------------------------------------------------------------------===//
 
 CommandBufferScheduling::CommandBufferScheduling(
-    const se::DeviceDescription& device_description,
-    int32_t gpu_toolkit_version, int32_t gpu_driver_version)
-    : device_description_(device_description),
-      gpu_toolkit_version_(gpu_toolkit_version),
-      gpu_driver_version_(gpu_driver_version) {}
+    const se::DeviceDescription& device_description)
+    : device_description_(device_description) {}
 
 absl::StatusOr<bool> CommandBufferScheduling::Run(
     HloModule* module,
@@ -740,8 +742,9 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
         VLOG(1) << "Removed command buffer support for "
                 << DebugOptions::CommandBufferCmdType_Name(cmd)
                 << " as it's not supported with gpu toolkit version "
-                << gpu_toolkit_version_ << " and driver version "
-                << gpu_driver_version_
+                << device_description_.runtime_version()
+                << " and driver version "
+                << device_description_.driver_version()
                 << ". This might negatively impact peformance. To enable "
                 << DebugOptions::CommandBufferCmdType_Name(cmd)
                 << " support in command buffers use cuda-compat package: "
@@ -756,7 +759,9 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
 
   // Check if CUDA/ROCM driver supports required features.
   auto erase_cuda = [&](const se::CudaComputeCapability& cuda_comp) {
-    if (std::min(gpu_toolkit_version_, gpu_driver_version_) < 12030) {
+    if (std::min(device_description_.runtime_version(),
+                 device_description_.driver_version()) <
+        se::SemanticVersion{12, 3, 0}) {
       erase(kRequireTracing);       // cuStreamBeginCaptureToGraph
       erase(kRequireConditionals);  // on-device control flow
     }

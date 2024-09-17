@@ -43,6 +43,7 @@ using ::testing::UnorderedElementsAre;
 
 #if defined(PLATFORM_GOOGLE)
 using ::testing::EqualsProto;
+using ::testing::proto::IgnoringFields;
 using ::testing::proto::IgnoringRepeatedFieldOrdering;
 using ::testing::proto::Partially;
 #endif
@@ -391,39 +392,49 @@ TEST(XplaneUtilsTest, FindMutablePlanesWithPredicate) {
   ASSERT_EQ(p1, xplanes[0]);
 }
 
+// Test both step and op level aggregations.
 TEST(XplaneUtilsTest, TestAggregateXPlanes) {
   XPlane xplane;
   XPlaneBuilder builder(&xplane);
-  XEventMetadata* event_metadata1 = builder.GetOrCreateEventMetadata(1);
-  event_metadata1->set_name("EventMetadata1");
-  XEventMetadata* event_metadata2 = builder.GetOrCreateEventMetadata(2);
-  event_metadata2->set_name("EventMetadata2");
-  XEventMetadata* event_metadata3 = builder.GetOrCreateEventMetadata(3);
-  event_metadata3->set_name("EventMetadata3");
-  XEventMetadata* event_metadata4 = builder.GetOrCreateEventMetadata(4);
-  event_metadata4->set_name("EventMetadata4");
+  auto& event_metadata1 = *builder.GetOrCreateEventMetadata("EventMetadata1");
+  auto& event_metadata2 = *builder.GetOrCreateEventMetadata("EventMetadata2");
+  auto& event_metadata3 = *builder.GetOrCreateEventMetadata("EventMetadata3");
+  auto& event_metadata4 = *builder.GetOrCreateEventMetadata("EventMetadata4");
+  auto& step_event_metadata1 =
+      *builder.GetOrCreateEventMetadata("StepEventMetadata1");
+  auto& step_event_metadata2 =
+      *builder.GetOrCreateEventMetadata("StepEventMetadata2");
 
-  XLineBuilder line = builder.GetOrCreateLine(1);
+  XLineBuilder step_line = builder.GetOrCreateLine(1);
+  step_line.SetName(kStepLineName);
+  XEventBuilder step1 = step_line.AddEvent(step_event_metadata1);
+  step1.SetOffsetNs(0);
+  step1.SetDurationNs(10);
+  XEventBuilder step2 = step_line.AddEvent(step_event_metadata2);
+  step2.SetOffsetNs(10);
+  step2.SetDurationNs(10);
+
+  XLineBuilder line = builder.GetOrCreateLine(2);
   line.SetName(kTensorFlowOpLineName);
-  XEventBuilder event1 = line.AddEvent(*event_metadata1);
+  XEventBuilder event1 = line.AddEvent(event_metadata1);
   event1.SetOffsetNs(0);
   event1.SetDurationNs(5);
-  XEventBuilder event3 = line.AddEvent(*event_metadata3);
+  XEventBuilder event3 = line.AddEvent(event_metadata3);
   event3.SetOffsetNs(0);
   event3.SetDurationNs(2);
-  XEventBuilder event2 = line.AddEvent(*event_metadata2);
+  XEventBuilder event2 = line.AddEvent(event_metadata2);
   event2.SetOffsetNs(5);
   event2.SetDurationNs(5);
-  XEventBuilder event4 = line.AddEvent(*event_metadata2);
+  XEventBuilder event4 = line.AddEvent(event_metadata2);
   event4.SetOffsetNs(10);
   event4.SetDurationNs(5);
-  XEventBuilder event5 = line.AddEvent(*event_metadata4);
+  XEventBuilder event5 = line.AddEvent(event_metadata4);
   event5.SetOffsetNs(15);
   event5.SetDurationNs(6);
-  XEventBuilder event6 = line.AddEvent(*event_metadata1);
+  XEventBuilder event6 = line.AddEvent(event_metadata1);
   event6.SetOffsetNs(15);
   event6.SetDurationNs(4);
-  XEventBuilder event7 = line.AddEvent(*event_metadata3);
+  XEventBuilder event7 = line.AddEvent(event_metadata3);
   event7.SetOffsetNs(15);
   event7.SetDurationNs(3);
 
@@ -433,71 +444,77 @@ TEST(XplaneUtilsTest, TestAggregateXPlanes) {
 // Protobuf matchers are unavailable in OSS (b/169705709)
 #if defined(PLATFORM_GOOGLE)
   // TODO(b/238349654): Proto matcher are ineffective for XPlanes.
-  ASSERT_THAT(aggregated_xplane,
-              IgnoringRepeatedFieldOrdering(EqualsProto(
-                  R"pb(lines {
-                         id: 1
-                         name: "Framework Ops"
-                         events {
-                           metadata_id: 1
-                           duration_ps: 9000
-                           stats { metadata_id: 2 int64_value: 4000 }
-                           stats { metadata_id: 3 int64_value: 4000 }
-                           num_occurrences: 2
-                         }
-                         events {
-                           metadata_id: 3
-                           duration_ps: 5000
-                           stats { metadata_id: 2 int64_value: 2000 }
-                           num_occurrences: 2
-                         }
-                         events {
-                           metadata_id: 4
-                           duration_ps: 6000
-                           stats { metadata_id: 3 int64_value: 2000 }
-                           num_occurrences: 1
-                         }
-                         events {
-                           metadata_id: 2
-                           duration_ps: 10000
-                           stats { metadata_id: 2 int64_value: 5000 }
-                           num_occurrences: 2
-                         }
-                       }
-                       event_metadata {
-                         key: 1
-                         value { id: 1 name: "EventMetadata1" }
-                       }
-                       event_metadata {
-                         key: 2
-                         value { id: 2 name: "EventMetadata2" }
-                       }
-                       event_metadata {
-                         key: 3
-                         value { id: 3 name: "EventMetadata3" }
-                       }
-                       event_metadata {
-                         key: 4
-                         value { id: 4 name: "EventMetadata4" }
-                       }
-                       stat_metadata {
-                         key: 1
-                         value { id: 1 name: "total_profile_duration_ps" }
-                       }
-                       stat_metadata {
-                         key: 2
-                         value { id: 2 name: "min_duration_ps" }
-                       }
-                       stat_metadata {
-                         key: 3
-                         value { id: 3 name: "self_duration_ps" }
-                       }
-                       stat_metadata {
-                         key: 4
-                         value { id: 4 name: "group_id" }
-                       }
-                       stats { metadata_id: 1 uint64_value: 21000 }
-                  )pb")));
+  ASSERT_THAT(
+      aggregated_xplane,
+      IgnoringFields(
+          {"tensorflow.profiler.XEvent.metadata_id",
+           "tensorflow.profiler.XPlane.event_metadata"},
+          IgnoringRepeatedFieldOrdering(EqualsProto(
+              R"pb(lines {
+                     id: 1
+                     name: "Steps"
+                     events { metadata_id: 1 offset_ps: 0 duration_ps: 10000 }
+                     events {
+                       metadata_id: 2
+                       offset_ps: 10000
+                       duration_ps: 10000
+                     }
+                   }
+                   lines {
+                     id: 2
+                     name: "Framework Ops"
+                     events {
+                       metadata_id: 3
+                       duration_ps: 10000
+                       stats { metadata_id: 2 int64_value: 5000 }
+                       num_occurrences: 2
+                     }
+                     events {
+                       metadata_id: 4
+                       duration_ps: 5000
+                       stats { metadata_id: 2 int64_value: 2000 }
+                       num_occurrences: 2
+                     }
+                     events {
+                       metadata_id: 5
+                       duration_ps: 9000
+                       stats { metadata_id: 2 int64_value: 4000 }
+                       stats { metadata_id: 3 int64_value: 4000 }
+                       num_occurrences: 2
+                     }
+                     events {
+                       metadata_id: 6
+                       duration_ps: 6000
+                       stats { metadata_id: 3 int64_value: 2000 }
+                       num_occurrences: 1
+                     }
+                   }
+                   stat_metadata {
+                     key: 1
+                     value { id: 1 name: "total_profile_duration_ps" }
+                   }
+                   stat_metadata {
+                     key: 2
+                     value { id: 2 name: "min_duration_ps" }
+                   }
+                   stat_metadata {
+                     key: 3
+                     value { id: 3 name: "self_duration_ps" }
+                   }
+                   stat_metadata {
+                     key: 4
+                     value { id: 4 name: "group_id" }
+                   }
+                   stats { metadata_id: 1 uint64_value: 21000 }
+              )pb"))));
+  std::vector<std::string> event_metadata_names;
+  for (const auto& [id, event_metadata] : aggregated_xplane.event_metadata()) {
+    event_metadata_names.push_back(event_metadata.name());
+  }
+  EXPECT_THAT(event_metadata_names,
+              UnorderedElementsAre("EventMetadata1", "EventMetadata2",
+                                   "EventMetadata3", "EventMetadata4",
+                                   "StepEventMetadata1", "StepEventMetadata2"));
 #endif
 }
 

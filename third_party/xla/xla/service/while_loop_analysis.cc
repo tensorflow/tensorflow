@@ -60,8 +60,8 @@ static const HloInstruction* NonConstantOperand(const HloInstruction* instr) {
 // for the same value N, returns N.  Otherwise, returns nullopt.
 static optional<int64_t> GetGTEOperandIndex(const HloInstruction* instr,
                                             const HloInstruction* gte_operand) {
-  VLOG(2) << "GetGTEOperandIndex(" << instr->ToString() << ", "
-          << gte_operand->ToString() << ")";
+  VLOG(2) << "GetGTEOperandIndex(" << instr->ToString()
+          << ", GTE Operand: " << gte_operand->ToString() << ")";
 
   // All operands of `instr` must be either constants or of the form
   //   get-tuple-element(gte_operand, tuple_idx)
@@ -83,7 +83,9 @@ static optional<int64_t> GetGTEOperandIndex(const HloInstruction* instr,
     }
 
     if (!Match(possibly_gte_operand,
-               m::GetTupleElement(m::Op().Is(gte_operand)))) {
+               m::GetTupleElement(m::Op().Is(gte_operand))) &&
+        !Match(possibly_gte_operand,
+               m::GetTupleElement(m::CustomCall(m::Op().Is(gte_operand))))) {
       return nullopt;
     }
 
@@ -280,22 +282,68 @@ optional<int64_t> GetLoopInductionVarTupleIdx(const HloInstruction* while_op) {
     return nullopt;
   }
 
-  // The while_body computation should have the form
+  // The while_body computation should have one of the following forms:
   //
+  // Form 1:
   //   while_body_inc =
   //       op(constants, get-tuple-elem(while_body_param, N), constants)
   //   while_body_root = tuple(..., while_body_inc, ...)
   //
   // where while_body_inc is operand N of while_body_root.
+  //
+  // Form 2:
+  //   while_body_inc =
+  //       op(constants, get-tuple-elem(while_body_param, N), constants)
+  //   tuple = tuple(..., while_body_inc, ...)
+  //   while_body_root = custom-call(tuple)
+  //
+  // where while_body_inc is operand N of the tuple, and the tuple is the
+  // operand of the while_body_root custom-call instruction.
+  //
+  // Form 3:
+  //   while_body_inc =
+  //       op(constants, get-tuple-elem(while_body_param, N), constants)
+  //   while_body_root = custom-call(input1, ..., while_body_inc, ...)
+  //
+  // where while_body_inc is an operand of the while_body_root custom-call
+  // instruction, and the custom-call instruction does not have a tuple operand.
   auto* while_body = while_op->while_body();
   auto* while_body_root = while_body->root_instruction();
-  if (while_body_root->opcode() != HloOpcode::kTuple) {
-    VLOG(2) << "While body's root is not a tuple instruction: "
+  if (while_body_root->opcode() != HloOpcode::kTuple &&
+      while_body_root->opcode() != HloOpcode::kCustomCall) {
+    VLOG(2) << "While body's root is not a tuple or custom-call instruction: "
             << while_body_root->ToString();
     return nullopt;
   }
-
-  auto* while_body_inc = while_body_root->operand(*indvar_tuple_idx);
+  const HloInstruction* while_body_inc;
+  if (while_body_root->opcode() == HloOpcode::kTuple) {
+    while_body_inc = while_body_root->operand(*indvar_tuple_idx);
+  } else {
+    // Custom-call cases
+    if (while_body_root->operand_count() == 1 &&
+        while_body_root->operand(0)->opcode() == HloOpcode::kTuple) {
+      // Custom-call case
+      // Single tuple operand.
+      auto* while_body_root_input_tuple = while_body_root->operand(0);
+      if (*indvar_tuple_idx >= while_body_root_input_tuple->operand_count()) {
+        VLOG(2) << "Cannot find the induction variable in the output root "
+                   "custom-call "
+                << while_body_root->ToString();
+        return std::nullopt;
+      }
+      while_body_inc = while_body_root_input_tuple->operand(*indvar_tuple_idx);
+    } else {
+      // Custom-call case
+      // Operand is not single tuple.
+      if (*indvar_tuple_idx >= while_body_root->operand_count()) {
+        VLOG(2) << "Cannot find the induction variable in the output root "
+                   "custom-call "
+                << while_body_root->ToString();
+        return std::nullopt;
+      }
+      while_body_inc = while_body_root->operand(*indvar_tuple_idx);
+    }
+  }
   auto* while_body_param = while_body->parameter_instruction(0);
   optional<int64_t> while_body_indvar_tuple_idx =
       GetGTEOperandIndex(while_body_inc, while_body_param);
@@ -367,8 +415,28 @@ optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
   // Check that `i` goes as `i += k` in the while body where k is a natural
   // number.
   auto* while_body = while_op->while_body();
-  auto* while_body_indvar_update =
-      while_body->root_instruction()->mutable_operand(indvar_tuple_idx);
+  auto* while_body_root = while_body->root_instruction();
+  HloInstruction* while_body_indvar_update;
+
+  if (while_body_root->opcode() == HloOpcode::kCustomCall) {
+    // We know it must be a custom-call.
+    if (while_body_root->operand_count() == 1 &&
+        while_body_root->operand(0)->opcode() == HloOpcode::kTuple) {
+      // Custom-call case
+      // Single tuple operand.
+      auto* while_body_root_input_tuple = while_body_root->mutable_operand(0);
+      while_body_indvar_update =
+          while_body_root_input_tuple->mutable_operand(indvar_tuple_idx);
+    } else {
+      // Custom-call case
+      // Operand is not single tuple.
+      while_body_indvar_update =
+          while_body_root->mutable_operand(indvar_tuple_idx);
+    }
+  } else {
+    while_body_indvar_update =
+        while_body_root->mutable_operand(indvar_tuple_idx);
+  }
   auto* while_body_indvar = NonConstantOperand(while_body_indvar_update);
   HloInstruction* trip_count_increase_step_instr = nullptr;
   int64_t trip_count_step = 0;

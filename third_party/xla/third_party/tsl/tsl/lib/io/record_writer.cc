@@ -96,7 +96,7 @@ RecordWriter::~RecordWriter() {
   }
 }
 
-absl::Status RecordWriter::WriteRecord(StringPiece data) {
+absl::Status RecordWriter::WriteRecord(absl::string_view data) {
   if (dest_ == nullptr) {
     return absl::Status(absl::StatusCode::kFailedPrecondition,
                         "Writer not initialized or previously closed");
@@ -110,9 +110,9 @@ absl::Status RecordWriter::WriteRecord(StringPiece data) {
   char footer[kFooterSize];
   PopulateHeader(header, data.data(), data.size());
   PopulateFooter(footer, data.data(), data.size());
-  TF_RETURN_IF_ERROR(dest_->Append(StringPiece(header, sizeof(header))));
+  TF_RETURN_IF_ERROR(dest_->Append(absl::string_view(header, sizeof(header))));
   TF_RETURN_IF_ERROR(dest_->Append(data));
-  return dest_->Append(StringPiece(footer, sizeof(footer)));
+  return dest_->Append(absl::string_view(footer, sizeof(footer)));
 }
 
 #if defined(TF_CORD_SUPPORT)
@@ -130,9 +130,9 @@ absl::Status RecordWriter::WriteRecord(const absl::Cord& data) {
   char footer[kFooterSize];
   PopulateHeader(header, data);
   PopulateFooter(footer, data);
-  TF_RETURN_IF_ERROR(dest_->Append(StringPiece(header, sizeof(header))));
+  TF_RETURN_IF_ERROR(dest_->Append(absl::string_view(header, sizeof(header))));
   TF_RETURN_IF_ERROR(dest_->Append(data));
-  return dest_->Append(StringPiece(footer, sizeof(footer)));
+  return dest_->Append(absl::string_view(footer, sizeof(footer)));
 }
 #endif
 

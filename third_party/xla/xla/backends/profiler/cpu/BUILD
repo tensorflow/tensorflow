@@ -1,10 +1,10 @@
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load("@local_tsl//tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
 load(
     "//xla:xla.bzl",
     "xla_cc_test",
 )
 load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
@@ -33,12 +33,12 @@ cc_library(
         # copybara:uncomment "//tensorflow/core/profiler:internal",
     ]),
     deps = [
+        "//xla/tsl/profiler/backends/cpu:host_tracer_utils",
+        "//xla/tsl/profiler/backends/cpu:threadpool_listener",
+        "//xla/tsl/profiler/backends/cpu:traceme_recorder",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/profiler/backends/cpu:host_tracer_utils",
-        "@local_tsl//tsl/profiler/backends/cpu:threadpool_listener",
-        "@local_tsl//tsl/profiler/backends/cpu:traceme_recorder",
         "@local_tsl//tsl/profiler/lib:profiler_collection",
         "@local_tsl//tsl/profiler/lib:profiler_interface",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
@@ -116,7 +116,7 @@ cc_library(
     ]),
     deps = [
         "//xla/service:hlo_proto_cc",
-        "@local_tsl//tsl/profiler/convert:xla_op_utils",
+        "//xla/tsl/profiler/convert:xla_op_utils",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
         "@local_tsl//tsl/profiler/utils:xplane_builder",
         "@local_tsl//tsl/profiler/utils:xplane_schema",

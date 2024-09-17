@@ -34,7 +34,7 @@ limitations under the License.
 #include "tensorflow/core/util/permutation_input_iterator.h"
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
-#include "xla/stream_executor/cuda/cuda_activation.h"
+#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #elif (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 #include "tensorflow/core/platform/rocm.h"
 #endif
@@ -1315,7 +1315,7 @@ struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
       const GPUDevice& device = context->eigen_gpu_device();
       Toffsets num_unique = (*last_idx_host.data()) + 1;
 
-      se::gpu::ScopedActivateExecutorContext scoped_activation{
+      se::gpu::ScopedActivateContext scoped_activation{
           context->op_device_context()->stream()->parent()};
 
       TensorShape output_shape = dense_output_shape;

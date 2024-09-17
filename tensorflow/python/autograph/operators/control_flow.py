@@ -903,7 +903,7 @@ def _placeholder_value(like, shape_invariant, original=None):
       when a placeholder is needed.
 
   Returns:
-    Either a zero value of structure, shape and dtype mathing 'like', or
+    Either a zero value of structure, shape and dtype matching 'like', or
     'original', if no such zero value could be created.
   """
   if like is None:

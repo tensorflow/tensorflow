@@ -72,7 +72,8 @@ TEST(StablehloElementwise, MaxWorks) {
   model.PopulateTensor<float>(model.input1(), {1.2, 2.5, -1.2, 1});
   model.PopulateTensor<float>(model.input2(), {0.1, 3, 2, 0.5});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
-  EXPECT_THAT(model.GetOutput(), ElementsAreArray({1.2, 3.0, 2.0, 1.0}));
+  EXPECT_THAT(model.GetOutput(),
+              Pointwise(FloatingPointEq(), {1.2, 3.0, 2.0, 1.0}));
 }
 
 TEST(StablehloElementwise, MinWorks) {
@@ -82,7 +83,8 @@ TEST(StablehloElementwise, MinWorks) {
   model.PopulateTensor<float>(model.input1(), {1.2, 2.5, -1.2, 1});
   model.PopulateTensor<float>(model.input2(), {0.1, 3, 2, 0.5});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
-  EXPECT_THAT(model.GetOutput(), ElementsAreArray({0.1, 2.5, -1.2, 0.5}));
+  EXPECT_THAT(model.GetOutput(),
+              Pointwise(FloatingPointEq(), {0.1, 2.5, -1.2, 0.5}));
 }
 
 }  // namespace

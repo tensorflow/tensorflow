@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
+#include "mlir/IR/ValueRange.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
@@ -103,41 +104,6 @@ struct Val {
   Val Binop(int64_t rhs) const {
     return Binop<Op>(MakeConstant(rhs));
   }
-};
-
-template <typename OpTy, ma::CmpFPredicate pred>
-struct RewriteToCmpSelect : public mlir::OpRewritePattern<OpTy> {
-  using mlir::OpRewritePattern<OpTy>::OpRewritePattern;
-
-  RewriteToCmpSelect(mlir::MLIRContext* context, bool include_f32)
-      : mlir::OpRewritePattern<OpTy>(context), include_f32(include_f32) {}
-
-  mlir::LogicalResult matchAndRewrite(
-      OpTy op, mlir::PatternRewriter& rewriter) const override {
-    if (op.getType().isF32() && !include_f32) {
-      return rewriter.notifyMatchFailure(op, "not rewriting f32 min/max");
-    }
-
-    auto lhs_is_nan = rewriter.create<ma::CmpFOp>(
-        op.getLoc(), ma::CmpFPredicate::UNE, op.getLhs(), op.getLhs());
-    auto rhs_is_not_nan = rewriter.create<ma::CmpFOp>(
-        op.getLoc(), ma::CmpFPredicate::OEQ, op.getRhs(), op.getRhs());
-
-    auto return_lhs =
-        rewriter.create<ma::CmpFOp>(op.getLoc(), pred, op.getLhs(), op.getRhs())
-            .getResult();
-
-    // logic: isNaN(lhs) || (!isNan(rhs) && return_lhs) ? lhs : rhs
-    return_lhs = rewriter.create<ma::OrIOp>(
-        op.getLoc(), lhs_is_nan,
-        rewriter.create<ma::AndIOp>(op.getLoc(), rhs_is_not_nan, return_lhs));
-
-    rewriter.replaceOpWithNewOp<SelectOp>(op, op.getResult().getType(),
-                                          return_lhs, op.getLhs(), op.getRhs());
-    return mlir::success();
-  }
-
-  bool include_f32;
 };
 
 struct RewriteErf32Pattern : public mlir::OpRewritePattern<mlir::math::ErfOp> {
@@ -225,8 +191,10 @@ Value IsNaN(Value value, mlir::ImplicitLocOpBuilder& b) {
 
   assert(ty.getIntOrFloatBitWidth() == 8);
   Val bits{b.create<ma::BitcastOp>(b.getI8Type(), value), &b};
-  if (ty.isFloat8E5M2() || ty.isFloat8E4M3FN()) {
-    return (bits & 0x7F) == 0x7F;
+  if (ty.isFloat8E5M2()) {
+    return (bits & 0b0111'1111).cmp(ma::CmpIPredicate::ugt, 0b0111'1100);
+  } else if (ty.isFloat8E4M3FN()) {
+    return (bits & 0b0111'1111) == 0b0111'1111;
   }
   return bits == 0x80;
 }
@@ -264,12 +232,24 @@ Value EmitFloatConversion(Value value, mlir::FloatType to_ty,
                           mlir::ImplicitLocOpBuilder& b) {
   using ma::CmpIPredicate;
 
-  // This is a port of ConvertImpl in
-  // https://github.com/jax-ml/ml_dtypes/blob/main/ml_dtypes/include/float8.h
   auto from_ty = mlir::cast<mlir::FloatType>(value.getType());
   if (to_ty == b.getFloat8E5M2Type() && from_ty == b.getF16Type()) {
     return EmitF16ToF8e5m2(value, b);
   }
+
+  if (to_ty == b.getFloat8E5M2Type() && from_ty == b.getBF16Type()) {
+    // Going through f32 and f16 is significantly faster than the fallback code
+    // below.
+    return EmitF16ToF8e5m2(
+        b.create<ma::TruncFOp>(b.getF16Type(),
+                               b.create<ma::ExtFOp>(b.getF32Type(), value)),
+        b);
+  }
+
+  // Fallback code. The generated code here is not good. If you end up here,
+  // you might want to add a more specific conversion.
+  // This is a port of ConvertImpl in
+  // https://github.com/jax-ml/ml_dtypes/blob/main/ml_dtypes/include/float8.h
 
   int from_mantissa = GetSignificandBits(from_ty);
   int from_bias = GetExponentBias(from_ty);
@@ -647,10 +627,6 @@ class ExpandFloatOpsPass
   using ExpandFloatOpsPassBase::ExpandFloatOpsPassBase;
   void runOnOperation() override {
     mlir::RewritePatternSet patterns(&getContext());
-    patterns.add<RewriteToCmpSelect<ma::MinimumFOp, ma::CmpFPredicate::OLE>>(
-        &getContext(), /*include_f32=*/pre_ampere_);
-    patterns.add<RewriteToCmpSelect<ma::MaximumFOp, ma::CmpFPredicate::OGE>>(
-        &getContext(), /*include_f32=*/pre_ampere_);
     patterns.add<RewriteTruncFPattern, RewriteExtFPattern, RewriteAbsFPattern,
                  RewriteF8Cst, RewriteIToFpPattern<ma::SIToFPOp>,
                  RewriteIToFpPattern<ma::UIToFPOp>,
@@ -667,8 +643,8 @@ class ExpandFloatOpsPass
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> CreateExpandFloatOpsPass(bool pre_ampere) {
-  return createExpandFloatOpsPass(ExpandFloatOpsPassOptions{pre_ampere});
+std::unique_ptr<mlir::Pass> CreateExpandFloatOpsPass() {
+  return std::make_unique<ExpandFloatOpsPass>();
 }
 
 }  // namespace gpu

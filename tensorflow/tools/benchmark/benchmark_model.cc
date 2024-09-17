@@ -274,7 +274,7 @@ Status InitializeSession(int num_threads, const string& graph,
   LOG(INFO) << "Got config, " << config.device_count_size() << " devices";
 
   session->reset(tensorflow::NewSession(options));
-  graph_def->reset(new GraphDef());
+  *graph_def = std::make_unique<GraphDef>();
   tensorflow::GraphDef tensorflow_graph;
   Status s = ReadBinaryProto(Env::Default(), graph, graph_def->get());
   if (!s.ok()) {
@@ -533,7 +533,7 @@ int Main(int argc, char** argv) {
   stats_options.memory_limit = memory_limit;
   stats_options.show_type = show_type;
   stats_options.show_summary = show_summary;
-  stats.reset(new tensorflow::StatSummarizer(stats_options));
+  stats = std::make_unique<tensorflow::StatSummarizer>(stats_options);
 
   const double inter_inference_sleep_seconds =
       std::strtod(inference_delay.c_str(), nullptr);

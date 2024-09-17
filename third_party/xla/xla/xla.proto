@@ -28,7 +28,115 @@ message CompilationEnvironmentsProto {
 
 // Debugging options for XLA. These options may change at any time - there are
 // no guarantees about backward or forward compatibility for these fields.
+//
+// Debug options naming and organization:
+//
+// 1. Backend-agnostic options: `xla_$flag_name` - go first, and sorted
+//    alphabetically by the flag name.
+//
+// 2. Backend-specific options: `xla_$backend_$flag_name` - must be in the
+//    corresponding backend section, and sorted alphabetically by the flag name.
+//
 message DebugOptions {
+  //--------------------------------------------------------------------------//
+  // XLA backend-agnostic options.
+  //--------------------------------------------------------------------------//
+  // go/keep-sorted start
+
+  // go/keep-sorted end
+
+  //--------------------------------------------------------------------------//
+  // XLA:CPU options.
+  //--------------------------------------------------------------------------//
+
+  // go/keep-sorted start newline_separated=yes
+  //
+  // When true, XLA:CPU uses HLO module scheduler that is optimized for
+  // extracting concurrency at the cost of extra memory: we extend the live
+  // ranges of temporaries to allow XLA runtime to schedule independent
+  // operations in parallel on separate threads.
+  bool xla_cpu_enable_concurrency_optimized_scheduler = 307;
+
+  // When true, "unsafe" mathematical optimizations are enabled. These
+  // transformations include but are not limited to:
+  //
+  //  - Reducing the precision of operations (e.g. using an approximate sin
+  //    function, or transforming x/y into x * (1/y)).
+  //  - Assuming that operations never produce or consume NaN or +/- Inf (this
+  //    behavior can be adjusted using xla_cpu_fast_math_allow_{nans|infs}).
+  //  - Assuming that +0 and -0 are indistinguishable.
+  bool xla_cpu_enable_fast_math = 99;
+
+  // When false we lower the Minimum and Maximum hlos in the CPU backend such
+  // that Min(NotNaN, NaN) = Min(NaN, NotNaN) = NaN.  In other words, if flag
+  // this is false we always propagate NaNs through Min and Max.
+  //
+  // Note, this does not correspond to the exact same behavior as the gpu flag
+  // below!
+  bool xla_cpu_enable_fast_min_max = 140;
+
+  // When xla_cpu_enable_fast_math is true then this controls whether we forbid
+  // to use the reciprocal of an argument instead of division. Ignored when
+  // xla_cpu_enable_fast_math is false.
+  bool xla_cpu_fast_math_honor_division = 126;
+
+  // When xla_cpu_enable_fast_math is true then this controls whether we forbid
+  // to approximate calculations for functions. Ignored when
+  // xla_cpu_enable_fast_math is false.
+  bool xla_cpu_fast_math_honor_functions = 129;
+
+  // When xla_cpu_enable_fast_math is true then this controls whether we allow
+  // operations to produce infinites. Ignored when xla_cpu_enable_fast_math is
+  // false.
+  bool xla_cpu_fast_math_honor_infs = 121;
+
+  // When xla_cpu_enable_fast_math is true then this controls whether we allow
+  // operations to produce NaNs.  Ignored when xla_cpu_enable_fast_math is
+  // false.
+  bool xla_cpu_fast_math_honor_nans = 120;
+
+  // When true, XLA:CPU uses the thunk runtime to execute compiled program.
+  bool xla_cpu_use_thunk_runtime = 298;
+
+  // The number of parts to split the LLVM module into before codegen. This
+  // allows XLA to compile all parts in parallel, and resolve kernel symbols
+  // from different dynamic libraries.
+  int32 xla_cpu_parallel_codegen_split_count = 323;
+
+  // A `prefer-vector-width` value that is passed to the LLVM backend. Default
+  // value is `256` (AVX2 on x86 platforms).
+  int32 xla_cpu_prefer_vector_width = 308;
+
+  // go/keep-sorted end
+
+  //--------------------------------------------------------------------------//
+  // XLA:GPU options.
+  //--------------------------------------------------------------------------//
+  // go/keep-sorted start newline_separated=yes skip_lines=1
+
+  // Specifies the behavior of per kernel autotuning cache.
+  AutotuneCacheMode xla_gpu_experimental_autotune_cache_mode = 324;
+
+  // Gates the experimental feature coupling the Triton Softmax pattern matcher
+  // with priority fusion.
+  bool xla_gpu_experimental_enable_triton_softmax_priority_fusion = 325;
+
+  // Internal debug/testing flag to switch Triton GEMM fusions on or off.
+  bool xla_gpu_unsupported_enable_triton_gemm = 322;
+
+  // go/keep-sorted end
+
+  //--------------------------------------------------------------------------//
+  // XLA:TPU options.
+  //--------------------------------------------------------------------------//
+  // go/keep-sorted start
+
+  // go/keep-sorted end
+
+  //--------------------------------------------------------------------------//
+  // A bag of XLA options that have to be categorized.
+  //--------------------------------------------------------------------------//
+
   // Show addresses of HLO ops in graph dump.
   bool xla_hlo_graph_addresses = 2;
 
@@ -115,57 +223,8 @@ message DebugOptions {
   bool xla_cpu_use_mkl_dnn = 97;
 
   reserved 177;  // Was xla_cpu_use_xla_runtime
-  bool xla_cpu_use_thunk_runtime = 298;
-
-  // When true, XLA:CPU uses HLO module scheduler that is optimized for
-  // extracting concurrency at the cost of extra memory: we extend the live
-  // ranges of temporaries to allow XLA runtime to schedule independent
-  // operations in parallel on separate threads.
-  bool xla_cpu_enable_concurrency_optimized_scheduler = 307;
-
-  // A `prefer-vector-width` value that is passed to the LLVM backend. Default
-  // value is `256` (AVX2 on x86 platforms).
-  int32 xla_cpu_prefer_vector_width = 308;
 
   reserved 98;  // Was xla_gpu_max_kernel_unroll_factor
-
-  // When true, "unsafe" mathematical optimizations are enabled. These
-  // transformations include but are not limited to:
-  //
-  //  - Reducing the precision of operations (e.g. using an approximate sin
-  //    function, or transforming x/y into x * (1/y)).
-  //  - Assuming that operations never produce or consume NaN or +/- Inf (this
-  //    behavior can be adjusted using xla_cpu_fast_math_allow_{nans|infs}).
-  //  - Assuming that +0 and -0 are indistinguishable.
-  bool xla_cpu_enable_fast_math = 99;
-
-  // When xla_cpu_enable_fast_math is true then this controls whether we allow
-  // operations to produce NaNs.  Ignored when xla_cpu_enable_fast_math is
-  // false.
-  bool xla_cpu_fast_math_honor_nans = 120;
-
-  // When xla_cpu_enable_fast_math is true then this controls whether we allow
-  // operations to produce infinites. Ignored when xla_cpu_enable_fast_math is
-  // false.
-  bool xla_cpu_fast_math_honor_infs = 121;
-
-  // When xla_cpu_enable_fast_math is true then this controls whether we forbid
-  // to use the reciprocal of an argument instead of division. Ignored when
-  // xla_cpu_enable_fast_math is false.
-  bool xla_cpu_fast_math_honor_division = 126;
-
-  // When xla_cpu_enable_fast_math is true then this controls whether we forbid
-  // to approximate calculations for functions. Ignored when
-  // xla_cpu_enable_fast_math is false.
-  bool xla_cpu_fast_math_honor_functions = 129;
-
-  // When false we lower the Minimum and Maximum hlos in the CPU backend such
-  // that Min(NotNaN, NaN) = Min(NaN, NotNaN) = NaN.  In other words, if flag
-  // this is false we always propagate NaNs through Min and Max.
-  //
-  // Note, this does not correspond to the exact same behavior as the gpu flag
-  // below!
-  bool xla_cpu_enable_fast_min_max = 140;
 
   // When true we lower the Minimum and Maximum hlos in the GPU backend such
   // that Min(NotNaN, NaN) = Min(NaN, NotNaN) = NotNaN.  In other words, if flag
@@ -609,10 +668,11 @@ message DebugOptions {
 
   bool xla_gpu_exhaustive_tiling_search = 219;
 
-  bool xla_gpu_enable_triton_softmax_fusion = 220;
+  reserved 220;  // Was xla_gpu_enable_triton_softmax_fusion
 
   bool xla_gpu_enable_priority_fusion = 221;
-  bool xla_gpu_enable_triton_softmax_priority_fusion = 286;
+
+  reserved 286;  // Was xla_gpu_enable_triton_softmax_priority_fusion
 
   // File to write autotune results to. It will be a binary file unless the name
   // ends with .txt or .textproto. Warning: The results are written at every
@@ -763,7 +823,7 @@ message DebugOptions {
   // Current levels:
   // 0: Disabled.
   // 1: Fusions of GEMM, elementwise, transpose/reshape operations.
-  // 2: + Broadcasts.
+  // 2: + Broadcasts, slicing.
   // 3: + Nontrivial noncontracting dimension reshapes/transposes.
   int32 xla_gpu_cudnn_gemm_fusion_level = 285;
 
@@ -883,7 +943,35 @@ message DebugOptions {
   // If enabled, uses the libnvjitlink library for PTX compilation and linking
   bool xla_gpu_enable_libnvjitlink = 319;
 
-  // Next id: 320
+  // If enabled, generates triton gemm kernels for int4 inputs.
+  bool xla_gpu_enable_triton_gemm_int4 = 320;
+
+  // If true, XLA will wrap `dot` operations into async computations in an
+  // effort to parallelize matrix operations.
+  bool xla_gpu_async_dot = 321;
+
+  enum AutotuneCacheMode {
+    AUTOTUNE_CACHE_MODE_UNSPECIFIED = 0;
+
+    // If the cache exists per fusion autotuner loads it and terminates,
+    // otherwise runs autotuner and dumps the result.
+    AUTOTUNE_CACHE_MODE_UPDATE = 1;
+
+    // Sets readonly access to the cache for the per fusion autotuner. Same as
+    // above, but doesn't dump anything.
+    AUTOTUNE_CACHE_MODE_READ = 2;
+  }
+
+  // Enables strict PGLE checking. If an FDO profile is specified and latency
+  // hiding scheduler encounters missing instructions in the profile
+  // compilation will halt.
+  bool xla_gpu_enable_pgle_accuracy_checker = 326;
+
+  // Timeouts for RendezvousSingle stuck warning and termination.
+  int32 xla_gpu_executable_warn_stuck_timeout_seconds = 327;
+  int32 xla_gpu_executable_terminate_timeout_seconds = 328;
+
+  // Next id: 329
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -1038,7 +1126,7 @@ message ExecutionOptions {
 // Serialization of HloModuleConfig. See the C++ class definition for
 // descriptions of each field.
 // There are no guarantees of backwards or forwards compatibility.
-// Next id: 35.
+// Next id: 36.
 message HloModuleConfigProto {
   enum FusionConfigCollection {
     OFF = 0;       // Do not collect configuration.
@@ -1072,6 +1160,10 @@ message HloModuleConfigProto {
 
   DebugOptions debug_options = 14;
   DeviceAssignmentProto static_device_assignment = 15;
+  // The original device assignment before being changed by a simulator.
+  // Simulators, like HybridSim, may change the device assignment to a smaller
+  // topology, to make simulation easier.
+  DeviceAssignmentProto pre_simulation_device_assignment = 35;
   bool allow_separate_sharding_programs = 30;
   repeated ShardableValueUpdatePairProto shardable_value_update_pairs = 16;
   bool alias_passthrough_params = 17;

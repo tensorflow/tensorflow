@@ -58,7 +58,7 @@ class StringDest : public WritableFile {
   absl::Status Close() override { return absl::OkStatus(); }
   absl::Status Flush() override { return absl::OkStatus(); }
   absl::Status Sync() override { return absl::OkStatus(); }
-  absl::Status Append(StringPiece slice) override {
+  absl::Status Append(absl::string_view slice) override {
     contents_->append(slice.data(), slice.size());
     return absl::OkStatus();
   }
@@ -82,7 +82,7 @@ class StringSource : public RandomAccessFile {
   explicit StringSource(string* contents)
       : contents_(contents), force_error_(false) {}
 
-  absl::Status Read(uint64 offset, size_t n, StringPiece* result,
+  absl::Status Read(uint64 offset, size_t n, absl::string_view* result,
                     char* scratch) const override {
     if (force_error_) {
       force_error_ = false;
@@ -96,7 +96,7 @@ class StringSource : public RandomAccessFile {
     if (contents_->size() < offset + n) {
       n = contents_->size() - offset;
     }
-    *result = StringPiece(contents_->data() + offset, n);
+    *result = absl::string_view(contents_->data() + offset, n);
     return absl::OkStatus();
   }
 
@@ -133,7 +133,7 @@ class RecordioTest : public ::testing::Test {
 
   void Write(const string& msg) {
     ASSERT_TRUE(!reading_) << "Write() after starting to read";
-    TF_ASSERT_OK(writer_->WriteRecord(StringPiece(msg)));
+    TF_ASSERT_OK(writer_->WriteRecord(absl::string_view(msg)));
   }
 
 #if defined(TF_CORD_SUPPORT)
@@ -299,7 +299,7 @@ TEST_F(RecordioTest, NonSequentialReadsWithCompression) {
 }
 
 // Tests of all the error paths in log_reader.cc follow:
-void AssertHasSubstr(StringPiece s, StringPiece expected) {
+void AssertHasSubstr(absl::string_view s, absl::string_view expected) {
   EXPECT_TRUE(absl::StrContains(s, expected))
       << s << " does not contain " << expected;
 }

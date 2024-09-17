@@ -2870,6 +2870,24 @@ TEST_F(GatherShapeInferenceTest, TensorFlowGatherV2) {
       << ShapeUtil::HumanString(gather_shape);
 }
 
+TEST_F(GatherShapeInferenceTest, TensorFlowGatherBatchingDims) {
+  TF_ASSERT_OK_AND_ASSIGN(const Shape gather_shape,
+                          ShapeInference::InferGatherShape(
+                              ShapeUtil::MakeShape(F32, {100, 64, 5, 48}),
+                              ShapeUtil::MakeShape(S64, {5, 100, 32}),
+                              HloGatherInstruction::MakeGatherDimNumbers(
+                                  /*offset_dims=*/{3},
+                                  /*collapsed_slice_dims=*/{1},
+                                  /*start_index_map=*/{1},
+                                  /*index_vector_dim=*/3,
+                                  /*operand_batching_dims=*/{0, 2},
+                                  /*start_indices_batching_dims=*/{1, 0}),
+                              /*slice_sizes=*/{1, 1, 1, 8}));
+  EXPECT_TRUE(ShapeUtil::Equal(gather_shape,
+                               ShapeUtil::MakeShape(F32, {5, 100, 32, 8})))
+      << ShapeUtil::HumanString(gather_shape);
+}
+
 TEST_F(GatherShapeInferenceTest, TensorFlowGatherNd) {
   TF_ASSERT_OK_AND_ASSIGN(const Shape gather_shape,
                           ShapeInference::InferGatherShape(
@@ -3473,6 +3491,27 @@ TEST_P(ScatterShapeInferenceTest, TfScatterWithUpdatesBiggerThanInputV2) {
           /*inserted_window_dims=*/{0},
           /*scatter_dims_to_operand_dims=*/{1},
           /*index_vector_dim=*/1));
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(
+      statusor.status().message(),
+      HasSubstr("Bounds of the window dimensions of updates must not exceed "
+                "the bounds of the corresponding dimensions of operand."))
+      << statusor.status();
+}
+
+TEST_P(ScatterShapeInferenceTest,
+       TfScatterBatchingDimsWithUpdatesBiggerThanInput) {
+  const auto shapes = CreateShapes({100, 64, 48}, s64_tensor({100, 32}),
+                                   {100, 65, 32}, types());
+  const absl::StatusOr<Shape> statusor = ShapeInference::InferScatterShape(
+      shapes.ptrs, to_apply(types()),
+      HloScatterInstruction::MakeScatterDimNumbers(
+          /*update_window_dims=*/{1},
+          /*inserted_window_dims=*/{2},
+          /*scatter_dims_to_operand_dims=*/{1},
+          /*index_vector_dim=*/2,
+          /*input_batching_dims=*/{0},
+          /*scatter_indices_batching_dims=*/{0}));
   ASSERT_FALSE(statusor.ok());
   EXPECT_THAT(
       statusor.status().message(),

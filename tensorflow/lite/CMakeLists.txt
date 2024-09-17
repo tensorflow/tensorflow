@@ -275,12 +275,6 @@ list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*with_selected_ops\\.cc$")
 # Exclude tensorflow_profiler_logger files.
 list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*tensorflow_profiler_logger\\.cc$")
 
-if(_TFLITE_ENABLE_MMAP)
-  list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*mmap_allocation_disabled\\.cc$")
-else()
-  list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*mmap_allocation\\.cc$")
-endif()
-
 # Handle TFLite logging source.
 list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*minimal_logging_.*\\.cc$")
 if("${CMAKE_SYSTEM_NAME}" STREQUAL "Android")
@@ -676,19 +670,33 @@ set(_ALL_TFLITE_SRCS
   ${TFLITE_SOURCE_DIR}/internal/signature_def.h
   ${TFLITE_SOURCE_DIR}/kernels/internal/utils/sparsity_format_converter.cc
   ${TFLITE_SOURCE_DIR}/schema/conversion_metadata_generated.h
+  ${TFLITE_SOURCE_DIR}/schema/schema_generated.h
   ${TF_SOURCE_DIR}/compiler/mlir/lite/schema/schema_utils.cc
   ${TF_SOURCE_DIR}/compiler/mlir/lite/schema/schema_generated.h
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/schema/conversion_metadata_generated.h
   ${TF_SOURCE_DIR}/compiler/mlir/lite/utils/control_edges.h
   ${TF_SOURCE_DIR}/compiler/mlir/lite/utils/string_utils.cc
   ${TF_SOURCE_DIR}/compiler/mlir/lite/utils/string_utils.h
   ${TF_SOURCE_DIR}/compiler/mlir/lite/experimental/remat/metadata_util.h
   ${TF_SOURCE_DIR}/compiler/mlir/lite/experimental/remat/metadata_util.cc
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/macros.h
   ${TF_SOURCE_DIR}/compiler/mlir/lite/core/model_builder_base.h
   ${TF_SOURCE_DIR}/compiler/mlir/lite/core/model_builder_base.cc
   ${TF_SOURCE_DIR}/compiler/mlir/lite/core/api/error_reporter.h
   ${TF_SOURCE_DIR}/compiler/mlir/lite/core/api/error_reporter.cc
-  ${TFLITE_SOURCE_DIR}/schema/schema_generated.h
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/core/api/verifier.h
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/allocation.h
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/allocation.cc
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/mmap_allocation.cc
+  ${TF_SOURCE_DIR}/compiler/mlir/lite/mmap_allocation_disabled.cc
 )
+
+if(_TFLITE_ENABLE_MMAP)
+  list(FILTER _ALL_TFLITE_SRCS EXCLUDE REGEX ".*mmap_allocation_disabled\\.cc$")
+else()
+  list(FILTER _ALL_TFLITE_SRCS EXCLUDE REGEX ".*mmap_allocation\\.cc$")
+endif()
+
 add_library(tensorflow-lite
   ${_ALL_TFLITE_SRCS}
 )
@@ -777,6 +785,9 @@ set(TFLITE_GENERATED_HEADERS_DIR ${CMAKE_BINARY_DIR}/tensorflow/lite)
 
 # Add the profiling proto directory.
 add_subdirectory(${TFLITE_SOURCE_DIR}/profiling/proto)
+
+# Add the tf example directory.
+add_subdirectory(${TF_SOURCE_DIR}/core/example ${CMAKE_BINARY_DIR}/example_proto_generated)
 
 # The benchmark tool.
 add_subdirectory(${TFLITE_SOURCE_DIR}/tools/benchmark)

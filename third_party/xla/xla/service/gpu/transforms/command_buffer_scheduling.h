@@ -17,11 +17,13 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -77,9 +79,8 @@ class CommandBufferScheduling : public HloModulePass {
     const se::DeviceDescription& device_description;
   };
 
-  CommandBufferScheduling(const se::DeviceDescription& device_description,
-                          int32_t gpu_toolkit_version,
-                          int32_t gpu_driver_version);
+  explicit CommandBufferScheduling(
+      const se::DeviceDescription& device_description);
 
   absl::string_view name() const override {
     return "command-buffer-scheduling";
@@ -130,12 +131,6 @@ class CommandBufferScheduling : public HloModulePass {
 
  private:
   se::DeviceDescription device_description_;
-  // For NVIDIA gpus XLA can be compiled with a CUDA version that is larger than
-  // the version supported by the driver, e.g. we can compile for CUDA 12.3 but
-  // have 12.1 driver installed. When deciding what command buffer features we
-  // can use we have to consider both versions.
-  int32_t gpu_toolkit_version_;
-  int32_t gpu_driver_version_;
 };
 
 }  // namespace xla::gpu

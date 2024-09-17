@@ -400,7 +400,7 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
           << " with handle: " << handle;
   tsl::profiler::TraceMe trace_me(
       [&] {
-        return profiler::TraceMeEncode(
+        return tsl::profiler::TraceMeEncode(
             "RemoteCallOp",
             {{"func_name", func_name}, {"device", target_device}});
       },
@@ -411,7 +411,7 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
        target_device = std::move(function_target.first)](const Status& status) {
         tsl::profiler::TraceMe activity(
             [&] {
-              return profiler::TraceMeEncode(
+              return tsl::profiler::TraceMeEncode(
                   "RemoteCallOpDone",
                   {{"func_name", func_name}, {"device", target_device}});
             },
@@ -431,13 +431,13 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
 
 string RemoteCallOp::TraceString(const OpKernelContext& ctx,
                                  bool verbose) const {
-  string trace_string = profiler::TraceMeOp(
+  string trace_string = tsl::profiler::TraceMeOp(
       strings::StrCat(name_view(), "__", func_.name()), type_string_view());
   if (verbose) {
     string shape = ShapeTraceString(ctx);
     if (!shape.empty()) {
-      trace_string =
-          profiler::TraceMeEncode(std::move(trace_string), {{"shape", shape}});
+      trace_string = tsl::profiler::TraceMeEncode(std::move(trace_string),
+                                                  {{"shape", shape}});
     }
   }
   return trace_string;

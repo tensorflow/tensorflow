@@ -29,8 +29,10 @@ cc_library(
         "//xla/service:hlo_proto_cc",
         "//xla/stream_executor:dnn",
         "@com_google_absl//absl/status:statusor",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+        "@stablehlo//:base",
     ],
 )
 
@@ -63,12 +65,16 @@ cc_library(
 )
 
 cc_library(
-    name = "module_config_exporter",
-    srcs = ["module_config_exporter.cc"],
-    hdrs = ["module_config_exporter.h"],
+    name = "module_attributes_exporter",
+    srcs = ["module_attributes_exporter.cc"],
+    hdrs = ["module_attributes_exporter.h"],
     deps = [
+        "//xla:xla_data_proto_cc",
         "//xla/service:hlo_module_config",
+        "@com_google_absl//absl/status",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -93,7 +99,7 @@ cc_library(
         ":attribute_exporter",
         ":layout_util",
         ":location_exporter",
-        ":module_config_exporter",
+        ":module_attributes_exporter",
         ":operator_writer_inc",
         ":stack_frame_index_builder",
         ":type_to_shape",
@@ -118,6 +124,7 @@ cc_library(
         "//xla/mlir/utils:type_util",
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:mhlo_passes",
+        "//xla/service:computation_layout",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_parser",
         "//xla/service:hlo_proto_cc",
@@ -175,6 +182,24 @@ gentbl_cc_library(
         "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:SideEffectInterfacesTdFiles",
+    ],
+)
+
+xla_cc_test(
+    name = "mlir_hlo_to_hlo_test",
+    srcs = ["mlir_hlo_to_hlo_test.cc"],
+    deps = [
+        ":mlir_hlo_to_hlo",
+        "//xla/mlir/utils:error_util",
+        "//xla/tsl/lib/core:status_test_util",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:ShapeDialect",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+        "@stablehlo//:register",
     ],
 )
 

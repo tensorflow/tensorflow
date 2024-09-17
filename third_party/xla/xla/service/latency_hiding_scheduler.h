@@ -38,11 +38,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/map_util.h"
 #include "xla/service/hlo_alias_analysis.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/service/hlo_pass_interface.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape_util.h"
 #include "xla/xla.pb.h"
@@ -570,7 +570,7 @@ class HloScheduleGraph {
 
   void InitializeGraphAnalysis(const AsyncTracker* async_tracker);
 
-  // l of instructions in the original scheduled order. (Before scheduling).
+  // List of instructions in the original scheduled order. (Before scheduling).
   absl::Span<const HloInstruction* const> GetOriginalInstrList() const {
     return absl::MakeConstSpan(original_order_);
   }

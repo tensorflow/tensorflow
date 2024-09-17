@@ -177,7 +177,7 @@ Status PluggableDeviceFactory::CreateDevices(
   const absl::flat_hash_map<std::string, int64_t> device_count_map(
       options.config.device_count().begin(),
       options.config.device_count().end());
-  const auto& device_options = options.config.gpu_options();
+  const auto& device_options = options.config.pluggable_device_options();
   TF_ASSIGN_OR_RETURN(
       const size_t num_tf_devices,
       tsl::GetNumberTfDevicesAndConfigurePlatformDeviceId(
@@ -246,7 +246,7 @@ Status PluggableDeviceFactory::CreatePluggableDevice(
   PluggableDeviceProcessState* process_state =
       PluggableDeviceProcessState::singleton(device_type_, platform_name_);
   Allocator* device_allocator = process_state->GetPluggableDeviceAllocator(
-      options.config.gpu_options(), tf_device_id, memory_limit);
+      options.config.pluggable_device_options(), tf_device_id, memory_limit);
   if (device_allocator == nullptr) {
     return absl::InternalError(absl::StrCat(
         "Failed to get memory allocator for TF PluggableDevice ",

@@ -46,7 +46,7 @@ class SparseTensorsMap : public ResourceBase {
   typedef struct {
     Tensor indices;
     Tensor values;
-    gtl::InlinedVector<int64_t, 8> shape;
+    absl::InlinedVector<int64_t, 8UL> shape;
   } PersistentSparseTensor;
 
   Status AddSparseTensor(OpKernelContext* ctx, const SparseTensor& sp,
@@ -63,9 +63,10 @@ class SparseTensorsMap : public ResourceBase {
     {
       mutex_lock l(mu_);
       int64_t unique_st_handle = counter_++;  // increment is guarded on purpose
-      sp_tensors_[unique_st_handle] = PersistentSparseTensor{
-          ix, values,
-          gtl::InlinedVector<int64_t, 8>(sp.shape().begin(), sp.shape().end())};
+      sp_tensors_[unique_st_handle] =
+          PersistentSparseTensor{ix, values,
+                                 absl::InlinedVector<int64_t, 8UL>(
+                                     sp.shape().begin(), sp.shape().end())};
       *handle = unique_st_handle;
     }
     return absl::OkStatus();
@@ -267,7 +268,7 @@ class AddManySparseToTensorsMapOp : public SparseTensorAccessingOp {
     TensorShape tensor_input_shape;
     OP_REQUIRES_OK(context, TensorShape::BuildTensorShape(input_shape_vec,
                                                           &tensor_input_shape));
-    gtl::InlinedVector<int64_t, 8> std_order(rank);
+    absl::InlinedVector<int64_t, 8UL> std_order(rank);
     std::iota(std_order.begin(), std_order.end(), 0);
     SparseTensor input_st;
     OP_REQUIRES_OK(context, SparseTensor::Create(*input_indices, *input_values,
@@ -482,7 +483,7 @@ class TakeManySparseFromTensorsMapOp : public SparseTensorAccessingOp {
     }
 
     // Dimension 0 is the primary dimension.
-    gtl::InlinedVector<int64_t, 8> std_order(rank);
+    absl::InlinedVector<int64_t, 8UL> std_order(rank);
     std::iota(std_order.begin(), std_order.end(), 0);
 
     std::vector<SparseTensor> tensors_to_concat;

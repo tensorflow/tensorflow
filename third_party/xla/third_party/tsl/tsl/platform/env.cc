@@ -402,8 +402,10 @@ string Env::GetExecutablePath() {
   if (strstr(buf, "python") != nullptr) {
     // Discard the path of the python binary, and any flags.
     int fd = open("/proc/self/cmdline", O_RDONLY);
+    CHECK_NE(-1, fd);
     int cmd_length = read(fd, buf, PATH_MAX - 1);
     CHECK_NE(-1, cmd_length);
+    close(fd);
     int token_pos = 0;
     for (bool token_is_first_or_flag = true; token_is_first_or_flag;) {
       // Get token length, including null

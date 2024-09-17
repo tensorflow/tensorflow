@@ -50,11 +50,12 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/Passes.h"
-#include "shardy/dialect/sdy/ir/utils.h"
+#include "shardy/dialect/sdy/ir/register.h"
 #include "stablehlo/dialect/ChloOps.h"
 #include "stablehlo/dialect/Register.h"
 #include "stablehlo/dialect/Serialization.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "stablehlo/dialect/Version.h"
 #include "stablehlo/transforms/Passes.h"
 #include "xla/debug_options_flags.h"
 #include "xla/mlir/utils/error_util.h"
@@ -127,7 +128,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
   registry.insert<mlir::shape::ShapeDialect>();
   mlir::func::registerAllExtensions(registry);
   mlir::mhlo::registerAllMhloDialects(registry);
-  mlir::sdy::loadAllRequiredDialects(&context);
+  mlir::sdy::registerAllDialects(registry);
   mlir::stablehlo::registerAllDialects(registry);
   context.appendDialectRegistry(registry);
 
@@ -205,6 +206,11 @@ absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo::createChloLegalizeToStablehloPass());
   pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::stablehlo::createStablehloCreateCompatibilityExpanderPass(
+          {std::string(target)}));
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::stablehlo::createChloLegalizeToStablehloPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo::createShapeLegalizeToStablehloPass());
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
   pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
@@ -247,9 +253,9 @@ absl::Status UpgradeVersionedStablehlo(mlir::ModuleOp mlir_module) {
 
 std::string GetDefaultStablehloVersion() {
   // This version must be >=12w old.
-  // See https://github.com/openxla/stablehlo/tags
-  //   0.19.0 - Mar 13, 2024
-  return "0.19.0";
+  return mlir::vhlo::Version::fromCompatibilityRequirement(
+             mlir::vhlo::Version::CompatibilityRequirement::WEEK_12)
+      .toString();
 }
 
 absl::StatusOr<std::string> Serialize(mlir::ModuleOp module,
@@ -263,7 +269,6 @@ absl::StatusOr<std::string> Serialize(mlir::ModuleOp module,
     if (!llvm::isa<mlir::ModuleOp>(op) &&
         !llvm::isa<mlir::stablehlo::StablehloDialect, mlir::func::FuncDialect,
                    mlir::chlo::ChloDialect>(op->getDialect())) {
-      std::cout << op->getDialect()->getNamespace().str() << "\n";
       all_stablehlo = false;
       return mlir::WalkResult::interrupt();
     }

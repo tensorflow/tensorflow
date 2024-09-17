@@ -36,6 +36,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/nvPTXCompiler.h"
 #include "xla/stream_executor/cuda/ptx_compiler.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
+#include "xla/stream_executor/semantic_version.h"
 
 namespace stream_executor {
 
@@ -86,9 +87,9 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingLibNvPtxCompiler(
   absl::Cleanup compiler_cleaner = [&compiler_handle] {
     nvPTXCompilerDestroy(&compiler_handle);
   };
-
-  // If the target is sm_90, hard code it to sm_90a so that all instructions
-  // can be used. We don't need the portability that sm_90 gives.
+  // On Hopper, default to sm_90a so that all instructions can be used. But
+  // only sm_90 is forward compatible, so don't use sm_90a with newer hardware:
+  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#ptx-compatibility
   std::string_view extension = (cc_major == 9 && cc_minor == 0) ? "a" : "";
   std::string architecture = absl::StrCat("sm_", cc_major, cc_minor, extension);
 
@@ -153,6 +154,7 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingLibNvPtxCompiler(
   // Print the verbose output of ptxas.
   if (!info_log.empty()) {
     if (absl::StrContains(info_log, "warning")) {
+      LOG(INFO) << info_log;
       if (cancel_if_reg_spill &&
           absl::StrContains(info_log, "Registers are spilled")) {
         return absl::CancelledError(
@@ -174,11 +176,11 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingLibNvPtxCompiler(
   return cubin;
 }
 
-absl::StatusOr<LibNvPtxCompilerVersion> GetLibNvPtxCompilerVersion() {
+absl::StatusOr<SemanticVersion> GetLibNvPtxCompilerVersion() {
   unsigned major{}, minor{};
   RETURN_IF_NVPTXCOMPILER_ERROR(nvPTXCompilerGetVersion(&major, &minor));
 
-  return LibNvPtxCompilerVersion{major, minor, 0};
+  return SemanticVersion{major, minor, 0};
 }
 
 }  // namespace stream_executor

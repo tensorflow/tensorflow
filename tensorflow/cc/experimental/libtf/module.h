@@ -42,16 +42,16 @@ namespace impl {
 
 // Converts a SavedUserObject into its corresponding data structure.
 // TODO(b/185579152): This method returns empty data structures currently.
-tensorflow::StatusOr<Handle> BuildSavedUserObject(
+absl::StatusOr<Handle> BuildSavedUserObject(
     tensorflow::SavedObject saved_object_proto);
 
 // "Build" all SavedObjects, ie convert from proto to their runtime
 // representation, in the tf_package.
-tensorflow::StatusOr<std::vector<Handle>> BuildObjects(
+absl::StatusOr<std::vector<Handle>> BuildObjects(
     tensorflow::libexport::TFPackage& tf_package);
 
 // Convert tf_package to a program in the runtime.
-tensorflow::StatusOr<Handle> BuildProgram(
+absl::StatusOr<Handle> BuildProgram(
     runtime::Runtime runtime, tensorflow::libexport::TFPackage& tf_package);
 
 }  // namespace impl

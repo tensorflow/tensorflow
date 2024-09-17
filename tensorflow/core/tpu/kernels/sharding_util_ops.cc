@@ -178,7 +178,6 @@ class XlaSplitNDBaseOp : public XlaSplitNDShared<Device, T> {
       bool resource, OpKernelContext* ctx,
       const std::function<Status(const Tensor&)>& assign_or_copy_value_fn,
       const Tensor* input) {
-    const auto& input_shape = input->shape().dim_sizes();
 
     absl::string_view input_name = resource ? kResourceName : kTensorName;
     auto allocate_output_fn = [&](int i, const TensorShape& output_slice_shape,

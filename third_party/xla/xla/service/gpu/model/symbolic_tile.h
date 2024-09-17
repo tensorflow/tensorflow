@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_MODEL_SYMBOLIC_TILE_H_
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -96,6 +97,12 @@ class ConstraintExpression {
   bool IsAlwaysSatisfied() const {
     return is_satisfiable_ && disjoint_conjoint_constraints_.empty();
   }
+
+  // Returns `true` if the constraint expression is satisfied by the provided
+  // parameters, and `false` otherwise.  The caller is responsible for ensuring
+  // that the number of provided parameters is sufficient to verify the
+  // constraints.
+  bool IsSatisfiedBy(absl::Span<const int64_t> parameters) const;
 
   // Accessor for the underlying disjoint conjunctions of constraints. This is
   // expected to be empty if `is_satisfiable()` is `false`.

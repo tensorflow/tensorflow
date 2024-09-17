@@ -72,7 +72,7 @@ llvm::SmallVector<int64_t> PermuteShape(llvm::ArrayRef<int64_t> shape,
 
 // Determine if op commutes with transposes. Requires a strict
 // definition of Elementwise, all i/o shapes and types must be same-rank
-// broadcastable and fully static. Consider moving this into attribute later.
+// broadcastable. Consider moving this into attribute later.
 bool IsElementwise(Operation *op) {
   if (!(llvm::isa<TFL::AddOp, TFL::MulOp, TFL::DivOp, TFL::SubOp,
                   TFL::MaximumOp, TFL::MinimumOp>(op))) {
@@ -87,11 +87,6 @@ bool IsElementwise(Operation *op) {
       llvm::dyn_cast_or_null<RankedTensorType>(op->getResult(0).getType());
 
   if (!(opr1_type && opr2_type && res_type)) {
-    return false;
-  }
-
-  if (!opr1_type.hasStaticShape() && opr2_type.hasStaticShape() &&
-      res_type.hasStaticShape()) {
     return false;
   }
 

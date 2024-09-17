@@ -216,8 +216,8 @@ ENTRY entry_computation {
   auto launch_dimensions =
       GpuPerformanceModelBase::EstimateFusionLaunchDimensions(fusion_analysis);
 
-  EXPECT_EQ(launch_dimensions.num_blocks(), 16);
-  EXPECT_EQ(launch_dimensions.num_threads_per_block(), 1024);
+  EXPECT_EQ(launch_dimensions.num_blocks(), 128);
+  EXPECT_EQ(launch_dimensions.num_threads_per_block(), 128);
 }
 
 TEST_F(GpuPerformanceModelBaseTest,

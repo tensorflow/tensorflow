@@ -270,13 +270,13 @@ JAX_COMPOUND_OP_RECORDS = [
 ]
 
 JAX_BITWISE_OP_RECORDS = [
-    op_record("bitwise_and", 2, int_dtypes + unsigned_dtypes, all_shapes,
+    op_record("bitwise_and", 2, int_dtypes, all_shapes,
               jtu.rand_default, []),
-    op_record("bitwise_not", 1, int_dtypes + unsigned_dtypes, all_shapes,
+    op_record("bitwise_not", 1, int_dtypes, all_shapes,
               jtu.rand_default, []),
-    op_record("bitwise_or", 2, int_dtypes + unsigned_dtypes, all_shapes,
+    op_record("bitwise_or", 2, int_dtypes, all_shapes,
               jtu.rand_default, []),
-    op_record("bitwise_xor", 2, int_dtypes + unsigned_dtypes, all_shapes,
+    op_record("bitwise_xor", 2, int_dtypes, all_shapes,
               jtu.rand_default, []),
 ]
 
@@ -500,6 +500,8 @@ class LaxBackedNumpyTests(jtu.TestCase):
           *(_valid_dtypes_for_shape(s, rec.dtypes) for s in shapes)))
       for rec in itertools.chain(JAX_ONE_TO_ONE_OP_RECORDS,
                                  JAX_COMPOUND_OP_RECORDS)))
+  @unittest.skipIf(onp.__version__ >= onp.lib.NumpyVersion('2.0.0'),
+                   'tf numpy is implemented to be numpy 1.x compatible')
   def testOp(self, onp_op, lnp_op, rng_factory, shapes, dtypes, check_dtypes,
              tolerance, inexact, check_incomplete_shape):
     # TODO(b/147769803): Remove this skipping
@@ -969,16 +971,33 @@ class LaxBackedNumpyTests(jtu.TestCase):
     self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=False, atol=tol,
                           rtol=tol, check_incomplete_shape=True)
 
-  @named_parameters(jtu.cases_from_list(
-      {"testcase_name": "_{}_amin={}_amax={}".format(
-          jtu.format_shape_dtype_string(shape, dtype), a_min, a_max),
-       "shape": shape, "dtype": dtype, "a_min": a_min, "a_max": a_max,
-       "rng_factory": jtu.rand_default}
-      for shape in all_shapes for dtype in minus(number_dtypes, complex_dtypes)
-      for a_min, a_max in [(-1, None), (None, 1), (-1, 1),
-                           (-onp.ones(1), None),
-                           (None, onp.ones(1)),
-                           (-onp.ones(1), onp.ones(1))]))
+  @named_parameters(
+      jtu.cases_from_list(
+          {
+              "testcase_name": "_{}_amin={}_amax={}".format(
+                  jtu.format_shape_dtype_string(shape, dtype), a_min, a_max
+              ),
+              "shape": shape,
+              "dtype": dtype,
+              "a_min": a_min,
+              "a_max": a_max,
+              "rng_factory": jtu.rand_default,
+          }
+          for shape in all_shapes
+          for dtype in minus(number_dtypes, complex_dtypes)
+          for a_min, a_max in [
+              (-1, None),
+              (None, 1),
+              (-onp.ones(1), None),
+              (None, onp.ones(1)),
+          ]
+          + (
+              []
+              if onp.__version__ >= onp.lib.NumpyVersion("2.0.0")
+              else [(-1, 1), (-onp.ones(1), onp.ones(1))]
+          )
+      )
+  )
   def testClipStaticBounds(self, shape, dtype, a_min, a_max, rng_factory):
     rng = rng_factory()
     onp_fun = lambda x: onp.clip(x, a_min=a_min, a_max=a_max)
@@ -2692,19 +2711,38 @@ class LaxBackedNumpyTests(jtu.TestCase):
 
   @named_parameters(
       jtu.cases_from_list(
-        {"testcase_name": ("_start_shape={}_stop_shape={}_num={}_endpoint={}"
-                           "_retstep={}_dtype={}").format(
-            start_shape, stop_shape, num, endpoint, retstep, dtype),
-         "start_shape": start_shape, "stop_shape": stop_shape,
-         "num": num, "endpoint": endpoint, "retstep": retstep,
-         "dtype": dtype, "rng_factory": rng_factory}
-        for start_shape in [(), (2,), (2, 2)]
-        for stop_shape in [(), (2,), (2, 2)]
-        for num in [0, 1, 2, 5, 20]
-        for endpoint in [True, False]
-        for retstep in [True, False]
-        for dtype in number_dtypes + [None,]
-        for rng_factory in [jtu.rand_default]))
+          {
+              "testcase_name": (
+                  "_start_shape={}_stop_shape={}_num={}_endpoint={}"
+                  "_retstep={}_dtype={}"
+              ).format(start_shape, stop_shape, num, endpoint, retstep, dtype),
+              "start_shape": start_shape,
+              "stop_shape": stop_shape,
+              "num": num,
+              "endpoint": endpoint,
+              "retstep": retstep,
+              "dtype": dtype,
+              "rng_factory": rng_factory,
+          }
+          for start_shape in [(), (2,), (2, 2)]
+          for stop_shape in [(), (2,), (2, 2)]
+          for num in [0, 1, 2, 5, 20]
+          for endpoint in [True, False]
+          for retstep in [True, False]
+          for dtype in (
+              (
+                  float_dtypes
+                  + complex_dtypes
+                  + [
+                      None,
+                  ]
+              )
+              if onp.__version__ >= onp.lib.NumpyVersion("2.0.0")
+              else (number_dtypes + [None])
+          )
+          for rng_factory in [jtu.rand_default]
+      )
+  )
   def testLinspace(self, start_shape, stop_shape, num, endpoint,
                    retstep, dtype, rng_factory):
     if not endpoint and onp.issubdtype(dtype, onp.integer):
@@ -2784,22 +2822,43 @@ class LaxBackedNumpyTests(jtu.TestCase):
                               check_dtypes=False, atol=atol, rtol=tol,
                               check_incomplete_shape=True)
 
+
   @named_parameters(
       jtu.cases_from_list(
-        {"testcase_name": ("_start_shape={}_stop_shape={}_num={}_endpoint={}"
-                           "_dtype={}").format(
-            start_shape, stop_shape, num, endpoint, dtype),
-         "start_shape": start_shape,
-         "stop_shape": stop_shape,
-         "num": num, "endpoint": endpoint,
-         "dtype": dtype, "rng_factory": rng_factory}
-        for start_shape in [(), (2,), (2, 2)]
-        for stop_shape in [(), (2,), (2, 2)]
-        for num in [0, 1, 2, 5, 20]
-        for endpoint in [True, False]
-        # NB: numpy's geomspace gives nonsense results on integer types
-        for dtype in inexact_dtypes + [None,]
-        for rng_factory in [jtu.rand_default]))
+          {
+              "testcase_name": (
+                  "_start_shape={}_stop_shape={}_num={}_endpoint={}_dtype={}"
+              ).format(start_shape, stop_shape, num, endpoint, dtype),
+              "start_shape": start_shape,
+              "stop_shape": stop_shape,
+              "num": num,
+              "endpoint": endpoint,
+              "dtype": dtype,
+              "rng_factory": rng_factory,
+          }
+          for start_shape in [(), (2,), (2, 2)]
+          for stop_shape in [(), (2,), (2, 2)]
+          for num in [0, 1, 2, 5, 20]
+          for endpoint in [True, False]
+          # NB: numpy's geomspace gives nonsense results on integer types
+          for dtype in (
+              (
+                  float_dtypes
+                  + [
+                      None,
+                  ]
+              )
+              if onp.__version__ >= onp.lib.NumpyVersion("2.0.0")
+              else (
+                  inexact_dtypes
+                  + [
+                      None,
+                  ]
+              )
+          )
+          for rng_factory in [jtu.rand_default]
+      )
+  )
   def testGeomspace(self, start_shape, stop_shape, num,
                     endpoint, dtype, rng_factory):
     rng = rng_factory()
@@ -3103,3 +3162,4 @@ class NumpyGradTests(jtu.TestCase):
 
 if __name__ == "__main__":
   absltest.main()
+  

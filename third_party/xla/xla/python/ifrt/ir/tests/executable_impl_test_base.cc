@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
@@ -93,10 +94,10 @@ IfrtIrExecutableImplTestBase::LoadFromFile(absl::string_view file_path) {
 absl::StatusOr<tsl::RCReference<Array>>
 IfrtIrExecutableImplTestBase::CreateArray(
     absl::Span<void* const> per_shard_data, Shape shape, DType dtype,
-    ShardingParam sharding_param, DeviceList device_list) {
-  TF_RET_CHECK(per_shard_data.size() == device_list.devices().size())
+    ShardingParam sharding_param, tsl::RCReference<DeviceList> device_list) {
+  TF_RET_CHECK(per_shard_data.size() == device_list->devices().size())
       << "Inconsistent sizes. per_shard_data " << per_shard_data.size()
-      << " vs device_list " << device_list.devices().size();
+      << " vs device_list " << device_list->devices().size();
   TF_ASSIGN_OR_RETURN(
       std::shared_ptr<const Sharding> sharding,
       ShardingParamSharding::Create(sharding_param, device_list, MemoryKind()));
@@ -111,7 +112,8 @@ IfrtIrExecutableImplTestBase::CreateArray(
         client_->MakeArrayFromHostBuffer(
             per_shard_data[i], dtype, per_shard_shape,
             /*byte_strides=*/std::nullopt,
-            SingleDeviceSharding::Create(device_list[i], MemoryKind()),
+            SingleDeviceSharding::Create(device_list->devices()[i],
+                                         MemoryKind()),
             Client::HostBufferSemantics::kImmutableOnlyDuringCall,
             /*on_done_with_host_buffer=*/nullptr));
     per_shard_arrays.push_back(per_shard_array);
@@ -121,13 +123,14 @@ IfrtIrExecutableImplTestBase::CreateArray(
       ArrayCopySemantics::kAlwaysCopy);
 }
 
-absl::StatusOr<DeviceList> IfrtIrExecutableImplTestBase::PickDevices(
-    int count) {
+absl::StatusOr<tsl::RCReference<DeviceList>>
+IfrtIrExecutableImplTestBase::PickDevices(int count) {
   absl::Span<Device* const> devices = client_->devices();
   TF_RET_CHECK(count <= devices.size())
       << "Requested " << count << " devices. Only have " << devices.size();
   auto picked = devices.first(count);
-  return DeviceList(DeviceList::Devices(picked.begin(), picked.end()));
+  return BasicDeviceList::Create(
+      BasicDeviceList::Devices(picked.begin(), picked.end()));
 }
 
 }  // namespace test_util

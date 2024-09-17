@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
@@ -75,8 +76,8 @@ class TfHostCallback {
   std::vector<DtypeAndShape> result_type_and_shapes_;
 };
 
-absl::StatusOr<std::unique_ptr<tensorflow::StaticDeviceMgr>>
-CreateTfStaticDeviceMgr();
+absl::StatusOr<std::unique_ptr<tensorflow::DynamicDeviceMgr>>
+CreateTfDynamicDeviceMgr();
 
 }  // namespace ifrt_serving
 }  // namespace tensorflow

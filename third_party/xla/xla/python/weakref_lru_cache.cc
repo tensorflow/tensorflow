@@ -175,6 +175,9 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
           }
           auto it = cache->entries_.find(
               WeakrefCacheEntry{nb::borrow<nb::weakref>(weakref), cached_hash});
+          if (it == cache->entries_.end()) {
+            return;
+          }
           // Create temp-var to avoid re-entrant erase.
           auto tmp = std::move(it->second);
           cache->entries_.erase(it);

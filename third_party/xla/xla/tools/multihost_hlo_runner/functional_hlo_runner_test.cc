@@ -355,9 +355,9 @@ int main(int argc, char* argv[]) {
   xla::AppendDebugOptionsFlags(&flag_list);
   std::string usage = tsl::Flags::Usage(argv[0], flag_list);
   tsl::Flags::Parse(&argc, argv, flag_list);
+  testing::InitGoogleTest(&argc, argv);
   if (node_id >= 0) {
     return !xla::ShardedAutotuningWorksTestBody(node_id).ok();
   }
-  testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

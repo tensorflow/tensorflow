@@ -20,25 +20,23 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/stream_executor/gpu/context.h"
 
 namespace stream_executor::gpu {
-
-// Forward declaration.
-class GpuContext;
 
 struct GpuCollectives {
   // Allocates a collective device memory space of size bytes associated with
   // the given context.
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclmemalloc
-  static absl::StatusOr<void*> CollectiveMemoryAllocate(GpuContext* context,
+  static absl::StatusOr<void*> CollectiveMemoryAllocate(Context* context,
                                                         uint64_t bytes);
 
   // Deallocates a collective device memory space of size bytes associated with
   // the given context.
   //
   // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/comms.html#ncclmemfree
-  static absl::Status CollectiveMemoryDeallocate(GpuContext* context,
+  static absl::Status CollectiveMemoryDeallocate(Context* context,
                                                  void* location);
 };
 

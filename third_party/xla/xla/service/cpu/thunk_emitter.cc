@@ -28,6 +28,29 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/runtime/all_gather_thunk.h"
+#include "xla/backends/cpu/runtime/all_reduce_thunk.h"
+#include "xla/backends/cpu/runtime/all_to_all_thunk.h"
+#include "xla/backends/cpu/runtime/call_thunk.h"
+#include "xla/backends/cpu/runtime/collective_permute_thunk.h"
+#include "xla/backends/cpu/runtime/collective_thunk.h"
+#include "xla/backends/cpu/runtime/conditional_thunk.h"
+#include "xla/backends/cpu/runtime/convolution_thunk.h"
+#include "xla/backends/cpu/runtime/copy_thunk.h"
+#include "xla/backends/cpu/runtime/custom_call_thunk.h"
+#include "xla/backends/cpu/runtime/dot_thunk.h"
+#include "xla/backends/cpu/runtime/fft_thunk.h"
+#include "xla/backends/cpu/runtime/infeed_thunk.h"
+#include "xla/backends/cpu/runtime/kernel_thunk.h"
+#include "xla/backends/cpu/runtime/logical_id_thunk.h"
+#include "xla/backends/cpu/runtime/outfeed_thunk.h"
+#include "xla/backends/cpu/runtime/reduce_scatter_thunk.h"
+#include "xla/backends/cpu/runtime/resource_use.h"
+#include "xla/backends/cpu/runtime/rng_state_thunk.h"
+#include "xla/backends/cpu/runtime/sort_thunk.h"
+#include "xla/backends/cpu/runtime/thunk.h"
+#include "xla/backends/cpu/runtime/topk_thunk.h"
+#include "xla/backends/cpu/runtime/while_thunk.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -42,35 +65,14 @@ limitations under the License.
 #include "xla/service/cpu/dot_op_emitter.h"
 #include "xla/service/cpu/ir_emission_utils.h"
 #include "xla/service/cpu/ir_emitter2.h"
-#include "xla/service/cpu/runtime/all_gather_thunk.h"
-#include "xla/service/cpu/runtime/all_reduce_thunk.h"
-#include "xla/service/cpu/runtime/all_to_all_thunk.h"
-#include "xla/service/cpu/runtime/call_thunk.h"
-#include "xla/service/cpu/runtime/collective_permute_thunk.h"
-#include "xla/service/cpu/runtime/collective_thunk.h"
-#include "xla/service/cpu/runtime/conditional_thunk.h"
-#include "xla/service/cpu/runtime/convolution_thunk.h"
-#include "xla/service/cpu/runtime/copy_thunk.h"
-#include "xla/service/cpu/runtime/custom_call_thunk.h"
-#include "xla/service/cpu/runtime/dot_thunk.h"
-#include "xla/service/cpu/runtime/fft_thunk.h"
-#include "xla/service/cpu/runtime/infeed_thunk.h"
-#include "xla/service/cpu/runtime/kernel_thunk.h"
-#include "xla/service/cpu/runtime/logical_id_thunk.h"
-#include "xla/service/cpu/runtime/outfeed_thunk.h"
-#include "xla/service/cpu/runtime/reduce_scatter_thunk.h"
-#include "xla/service/cpu/runtime/resource_use.h"
-#include "xla/service/cpu/runtime/rng_state_thunk.h"
-#include "xla/service/cpu/runtime/sort_thunk.h"
-#include "xla/service/cpu/runtime/thunk.h"
-#include "xla/service/cpu/runtime/topk_thunk.h"
-#include "xla/service/cpu/runtime/while_thunk.h"
 #include "xla/service/cpu/target_machine_features.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -516,9 +518,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConcatenateKernelThunk(
                       ir_emitter_.EmitConcatenateHostKernel(concatenate));
   TF_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(instruction));
 
-  return ThunkSequence::Of<KernelThunk>(
-      ThunkInfo(instruction), buffers.arguments, buffers.results, kernel.name,
-      kernel.thread_dims, /*min_alignment=*/cpu_function_runtime::MinAlign());
+  return MakeKernelThunkSequence(
+      instruction, buffers, kernel,
+      /*min_alignment=*/cpu_function_runtime::MinAlign());
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitGetDimensionSizeThunk(
@@ -609,9 +611,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitElementalKernelThunk(
                       ir_emitter_.EmitElementalHostKernel(instruction));
   TF_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(instruction));
 
-  return ThunkSequence::Of<KernelThunk>(
-      ThunkInfo(instruction), buffers.arguments, buffers.results, kernel.name,
-      kernel.thread_dims, /*min_alignment=*/cpu_function_runtime::MinAlign());
+  return MakeKernelThunkSequence(
+      instruction, buffers, kernel,
+      /*min_alignment=*/cpu_function_runtime::MinAlign());
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitPadKernelThunk(
@@ -620,9 +622,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitPadKernelThunk(
   TF_ASSIGN_OR_RETURN(auto kernel, ir_emitter_.EmitPadHostKernel(padInstr));
   TF_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(padInstr));
 
-  return ThunkSequence::Of<KernelThunk>(
-      ThunkInfo(padInstr), buffers.arguments, buffers.results, kernel.name,
-      kernel.thread_dims, /*min_alignment=*/cpu_function_runtime::MinAlign());
+  return MakeKernelThunkSequence(
+      padInstr, buffers, kernel,
+      /*min_alignment=*/cpu_function_runtime::MinAlign());
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
@@ -631,9 +633,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
   TF_ASSIGN_OR_RETURN(auto kernel, ir_emitter_.EmitFusionHostKernel(fusion));
   TF_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(instruction));
 
-  return ThunkSequence::Of<KernelThunk>(
-      ThunkInfo(instruction), buffers.arguments, buffers.results, kernel.name,
-      kernel.thread_dims, /*min_alignment=*/cpu_function_runtime::MinAlign());
+  return MakeKernelThunkSequence(
+      instruction, buffers, kernel,
+      /*min_alignment=*/cpu_function_runtime::MinAlign());
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitReductionKernelThunk(
@@ -642,9 +644,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitReductionKernelThunk(
                       ir_emitter_.EmitReductionHostKernel(instruction));
   TF_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(instruction));
 
-  return ThunkSequence::Of<KernelThunk>(
-      ThunkInfo(instruction), buffers.arguments, buffers.results, kernel.name,
-      kernel.thread_dims, /*min_alignment=*/cpu_function_runtime::MinAlign());
+  return MakeKernelThunkSequence(
+      instruction, buffers, kernel,
+      /*min_alignment=*/cpu_function_runtime::MinAlign());
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitRngThunk(
@@ -799,9 +801,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDotThunk(
       TF_ASSIGN_OR_RETURN(auto buffers,
                           GetHostKernelAllocationSlices(instruction));
 
-      return ThunkSequence::Of<KernelThunk>(ThunkInfo(instruction),
-                                            buffers.arguments, buffers.results,
-                                            kernel.name, kernel.thread_dims);
+      return MakeKernelThunkSequence(instruction, buffers, kernel);
     }
 
     // Emit DotThunk implementing dot instruction as a library call.
@@ -980,9 +980,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSliceToDynamicThunk(
                       ir_emitter_.EmitSliceToDynamicHostKernel(instruction));
   TF_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(instruction));
 
-  return ThunkSequence::Of<KernelThunk>(
-      ThunkInfo(instruction), buffers.arguments, buffers.results, kernel.name,
-      kernel.thread_dims, /*min_alignment=*/cpu_function_runtime::MinAlign());
+  return MakeKernelThunkSequence(
+      instruction, buffers, kernel,
+      /*min_alignment=*/cpu_function_runtime::MinAlign());
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSelectAndScatterThunk(
@@ -991,9 +991,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSelectAndScatterThunk(
                       ir_emitter_.EmitSelectAndScatterHostKernel(instruction));
   TF_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(instruction));
 
-  return ThunkSequence::Of<KernelThunk>(ThunkInfo(instruction),
-                                        buffers.arguments, buffers.results,
-                                        kernel.name, kernel.thread_dims);
+  return MakeKernelThunkSequence(instruction, buffers, kernel);
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSliceThunk(
@@ -1010,9 +1008,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDynamicUpdateSliceThunk(
       auto kernel, ir_emitter_.EmitDynamicUpdateSliceHostKernel(instruction));
   TF_ASSIGN_OR_RETURN(auto buffers, GetHostKernelAllocationSlices(instruction));
 
-  return ThunkSequence::Of<KernelThunk>(ThunkInfo(instruction),
-                                        buffers.arguments, buffers.results,
-                                        kernel.name, kernel.thread_dims);
+  return MakeKernelThunkSequence(instruction, buffers, kernel);
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSortThunk(
@@ -1096,6 +1092,16 @@ absl::Status ThunkEmitter::ElementTypesSameAndSupported(
                          HloOpcodeString(instruction.opcode()));
   }
   return absl::OkStatus();
+}
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::MakeKernelThunkSequence(
+    const HloInstruction* instruction,
+    const ThunkEmitter::HostKernelAllocationSlices& buffers,
+    const IrEmitter2::KernelInfo& kernel,
+    std::optional<uint64_t> min_alignment) {
+  return ThunkSequence::Of<KernelThunk>(
+      ThunkInfo(instruction), buffers.arguments, buffers.results, kernel.name,
+      kernel.thread_dims, kernel.invariant_arguments, min_alignment);
 }
 
 }  // namespace xla::cpu

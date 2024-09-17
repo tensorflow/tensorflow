@@ -278,7 +278,6 @@ filegroup(
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
-        "//tensorflow/python:__pkg__",
         "//tensorflow/python/util:__pkg__",
     ],
 )
@@ -544,8 +543,6 @@ cc_library(
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/common_runtime/eager:__pkg__",
         "//tensorflow/core/framework:__pkg__",
-        "//tensorflow/core/platform:__pkg__",
-        "//tensorflow/python:__pkg__",
         "//tensorflow/python/eager:__pkg__",
         "//tensorflow/python/util:__pkg__",
     ],
@@ -651,7 +648,7 @@ cc_library(
     name = "incremental_barrier",
     srcs = ["incremental_barrier.cc"],
     hdrs = ["incremental_barrier.h"],
-    visibility = default_package_visibility + ["//tensorflow_serving:__subpackages__"],
+    visibility = default_package_visibility,
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/functional:bind_front",
@@ -958,16 +955,15 @@ tf_proto_library(
     name = "test_log_proto",
     srcs = ["test_log.proto"],
     make_default_target_header_only = True,
-    protodeps = ["@local_tsl//tsl/protobuf:test_log_proto"],
+    protodeps = ["@local_xla//xla/tsl/protobuf:test_log_proto"],
     # Not to be used outside of tensorflow/core.
     visibility = ["//tensorflow/core:__pkg__"],
-    exports = ["@local_tsl//tsl/protobuf:test_log_proto"],
+    exports = ["@local_xla//xla/tsl/protobuf:test_log_proto"],
 )
 
 tf_proto_library(
     name = "protos_test",
     srcs = ["example_proto_fast_parsing_test.proto"],
-    cc_api_version = 2,
     protodeps = ["//tensorflow/core:protos_all"],
     visibility = ["//visibility:public"],
 )
@@ -975,7 +971,6 @@ tf_proto_library(
 tf_proto_library(
     name = "event_proto",
     srcs = ["event.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         "//tensorflow/core/framework:summary_proto",
@@ -990,7 +985,6 @@ tf_proto_library(
 tf_proto_library(
     name = "saved_tensor_slice_proto",
     srcs = ["saved_tensor_slice.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         "//tensorflow/core/framework:resource_handle_proto",
@@ -1006,14 +1000,12 @@ tf_proto_library(
 tf_proto_library(
     name = "memmapped_file_system_proto",
     srcs = ["memmapped_file_system.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     visibility = ["//visibility:public"],
 )
 
 tf_proto_library(
     name = "protos_all",
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         ":event_proto",
@@ -1024,10 +1016,7 @@ tf_proto_library(
     tags = [
         "alt_dep=//third_party/tensorflow/core:protos_all",
     ],
-    visibility = [
-        "//tensorflow/core:__subpackages__",
-        "@local_tsl//tsl:__subpackages__",
-    ],
+    visibility = ["//tensorflow/core:__subpackages__"],
 )
 
 cc_library(

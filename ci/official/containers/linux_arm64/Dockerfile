@@ -1,5 +1,5 @@
 ################################################################################
-FROM ubuntu:20.04@sha256:0b897358ff6624825fb50d20ffb605ab0eaea77ced0adb8c6a4b756513dec6fc as builder
+FROM ubuntu:20.04@sha256:fa17826afb526a9fc7250e0fbcbfd18d03fe7a54849472f86879d8bf562c629e as builder
 ################################################################################
 
 # Install devtoolset build dependencies
@@ -61,6 +61,9 @@ RUN echo $CACHEBUSTER
 COPY devel.usertools /usertools
 COPY devel.bashrc /root/.bashrc
 COPY ld.so.conf /dt10/etc/
+
+# Make sure clang is on the path
+RUN ln -s /usr/lib/llvm-18/bin/clang /usr/bin/clang
 
 # Setup JAX Python environment.
 FROM devel as jax

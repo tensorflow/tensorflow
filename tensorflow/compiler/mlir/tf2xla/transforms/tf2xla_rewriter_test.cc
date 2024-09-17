@@ -299,6 +299,24 @@ TEST_F(Tf2XlaRewriterTest, DoesntEnforceCompileTimeConstantCheck) {
   TF_ASSERT_OK(LegalizeModule(kModuleWithNonConstParam));
 }
 
+TEST_F(Tf2XlaRewriterTest, CreatesDefaultValues) {
+  // If a TF op has default value attributes and the mlir is missing them then
+  // the LegalizeOp should insert the default values when converting the dialect
+  // op to a node def.
+  // TF.RandomUniform would fail without the seeds being set if they were not
+  // automatically inserted with the default values.
+  static constexpr char kModuleWithOpWithoutValuesThatShouldBeDefaulted[] = R"(
+  module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 1610 : i32}} {
+    func.func @main() -> tensor<1x2x3x4xf32> attributes {allow_soft_placement = false, tf.entry_function = {control_outputs = "", inputs = "_arg0,_arg1,_arg2", outputs = "_retval0"}} {
+      %cst = "tf.Const"() {value = dense<[1, 2, 3, 4]> : tensor<4xi32>} : () -> tensor<4xi32>
+      %0 = "tf.RandomUniform"(%cst) : (tensor<4xi32>) -> tensor<1x2x3x4xf32>
+      return %0 : tensor<1x2x3x4xf32>
+    }
+  })";
+
+  TF_ASSERT_OK(LegalizeModule(kModuleWithOpWithoutValuesThatShouldBeDefaulted));
+}
+
 TEST_F(Tf2XlaRewriterTest, ErrorsWithInvalidNumberOfParametersToArgs) {
   XlaBuilder builder("test_builder");
   XlaComputation to_apply;

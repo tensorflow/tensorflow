@@ -472,6 +472,8 @@ enum BuiltinOperator : int32 {
   STABLEHLO_RNG_BIT_GENERATOR = 204,
   REDUCE_WINDOW = 205 (deprecated),
   STABLEHLO_COMPOSITE = 206, // WARNING: No runtime support
+  STABLEHLO_SHIFT_LEFT = 207,
+  STABLEHLO_CBRT = 208, // WARNING: No runtime support
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -630,6 +632,7 @@ union BuiltinOptions2{
   StablehloRngBitGeneratorOptions,
   ReduceWindowOptions (deprecated),
   StableHLOCompositeOptions,
+  StablehloShiftLeftOptions,
 }
 
 table StablehloGatherOptions{
@@ -1497,6 +1500,9 @@ table StableHLOCompositeOptions {
   version:int32;
 }
 
+table StablehloShiftLeftOptions {
+}
+
 // An operator takes tensors as inputs and outputs. The type of operation being
 // performed is determined by an index into the list of valid OperatorCodes,
 // while the specifics of each operations is configured using builtin_options
@@ -1544,6 +1550,9 @@ table Operator {
   // union is added, in the case of where BuitlinOptions2 runs out, a third
   // one can be added
   builtin_options_2 : BuiltinOptions2;
+
+  // Index into operators_debug_metadata list.
+  debug_metadata_index: int = -1;
 }
 
 // The root type, defining a subgraph, which typically represents an entire
@@ -1566,6 +1575,9 @@ table SubGraph {
 
   // Name of this subgraph (used for debugging).
   name:string;
+
+  // Index into subgraphs_debug_metadata list.
+  debug_metadata_index: int = -1;
 }
 
 // Table of raw data buffers (used for constant tensors). Referenced by tensors

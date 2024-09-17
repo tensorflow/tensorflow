@@ -314,6 +314,7 @@ xla_cc_binary(
 xla_cc_binary(
     name = "hlo-opt",
     testonly = True,
+    linkopts = ["-Wl,-rpath,$$ORIGIN/../lit_lib"],
     deps = [
         "//xla/tools/hlo_opt:opt_main",
     ],
@@ -529,7 +530,6 @@ xla_cc_test(
 tf_proto_library(
     name = "run_hlo_module_proto",
     srcs = ["run_hlo_module.proto"],
-    cc_api_version = 2,
     protodeps = [
         "//xla:xla_data_proto",
     ],
@@ -722,7 +722,7 @@ xla_cc_test(
 cc_library(
     name = "driver",
     srcs = ["driver.cc"],
-    tags = ["nofixdeps"],
+    tags = if_google(["nofixdeps"]),
     deps = [],
 )
 
@@ -869,9 +869,6 @@ xla_test(
 xla_test(
     name = "xla_gpu_compile_lib_test",
     srcs = ["xla_gpu_compile_lib_test.cc"],
-    backend_tags = {
-        "gpu": ["requires-gpu-nvidia"] + if_google(["config-cuda-only"]),
-    },
     backends = [
         "gpu",
     ],
@@ -879,6 +876,10 @@ xla_test(
         ":data/add.hlo",
         "//xla/service:xla_aot_compile_test_gpu_target_config.prototxt",
         "//xla/service/gpu:gpu_compiler_test_autotune_db.textproto",
+    ],
+    tags = [
+        "config-cuda-only",
+        "no_rocm",
     ],
     deps = [
         ":xla_compile_lib",

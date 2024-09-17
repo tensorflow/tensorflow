@@ -55,16 +55,16 @@ class EmptyIterator : public Iterator {
  public:
   explicit EmptyIterator(const absl::Status& s) : status_(s) {}
   bool Valid() const override { return false; }
-  void Seek(const StringPiece& target) override {}
+  void Seek(const absl::string_view& target) override {}
   void SeekToFirst() override {}
   void Next() override { assert(false); }
-  StringPiece key() const override {
+  absl::string_view key() const override {
     assert(false);
-    return StringPiece();
+    return absl::string_view();
   }
-  StringPiece value() const override {
+  absl::string_view value() const override {
     assert(false);
-    return StringPiece();
+    return absl::string_view();
   }
   absl::Status status() const override { return status_; }
 

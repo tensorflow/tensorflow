@@ -429,7 +429,7 @@ absl::Status CreateRootTuple(
 absl::StatusOr<HloComputation*> CreateFusionBody(
     HloModule* module, DataflowPathView sliced_operand_paths,
     DataflowPathsView sliced_user_paths, DataflowPathView captures) {
-  HloComputation::Builder builder("address-computation");
+  HloComputation::Builder builder("dynamic-slice-fusion");
 
   // A mapping from original instructions to instructions in the fusion body.
   absl::flat_hash_map<const HloInstruction*, HloInstruction*> instr_mapping;
@@ -512,8 +512,9 @@ absl::StatusOr<bool> DynamicSliceFusionRewriter::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   absl::flat_hash_map<HloInstruction*,
                       std::pair<UseDefDataflowPaths, DefUseDataflowPaths>>
-      matches;
+      matches_kv;
 
+  std::vector<HloInstruction*> matches;
   // Collect all potential custom call matches in the non-fusion computations.
   for (HloComputation* computation : module->computations()) {
     if (computation->IsFusionComputation()) continue;
@@ -524,7 +525,8 @@ absl::StatusOr<bool> DynamicSliceFusionRewriter::Run(
         sliced_operand_paths = GetSlicedOperandPaths(instr);
         has_sliced_operand_paths = sliced_operand_paths.size() > 1;
       }
-      if (instr->opcode() == HloOpcode::kReduceScatter ||
+      if ((instr->opcode() == HloOpcode::kReduceScatter &&
+           instr->shape().IsArray()) ||
           IsLegacyCublasMatmul(*instr) || IsCustomCall(instr, platform_name_)) {
         DefUseDataflowPaths sliced_user_paths = GetSlicedUserPaths(instr);
         bool has_sliced_user_paths = absl::c_any_of(
@@ -540,8 +542,9 @@ absl::StatusOr<bool> DynamicSliceFusionRewriter::Run(
         }
 
         if (has_sliced_operand_paths || has_sliced_user_paths) {
-          matches[instr] = std::make_pair(std::move(sliced_operand_paths),
-                                          std::move(sliced_user_paths));
+          matches_kv[instr] = std::make_pair(std::move(sliced_operand_paths),
+                                             std::move(sliced_user_paths));
+          matches.push_back(instr);
         }
       }
     }
@@ -549,7 +552,8 @@ absl::StatusOr<bool> DynamicSliceFusionRewriter::Run(
 
   if (matches.empty()) return false;
 
-  for (auto& [hero, paths] : matches) {
+  for (HloInstruction* hero : matches) {
+    auto& paths = matches_kv[hero];
     auto& [sliced_operand_paths, sliced_user_paths] = paths;
     std::vector<HloInstruction*> matched_instrs;
     absl::c_copy(sliced_operand_paths, std::back_inserter(matched_instrs));

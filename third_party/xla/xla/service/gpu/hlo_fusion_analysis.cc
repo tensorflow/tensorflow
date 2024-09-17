@@ -77,8 +77,7 @@ std::optional<TransposeDescription> FindConsistentTransposeHero(
   std::vector<const HloInstruction*> non_transpose_roots;
 
   for (auto [root, hero] : llvm::zip(hlo_roots, heroes)) {
-    if (auto tr = GetDescriptionForTiledTransposeEmitter(root.instruction(),
-                                                         hero.instruction())) {
+    if (auto tr = GetDescriptionForTiledTransposeEmitter(hero.instruction())) {
       if (!tiled_transpose_hero) {
         // First transpose hero found.
         tiled_transpose_hero = tr;

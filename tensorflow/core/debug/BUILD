@@ -51,7 +51,6 @@ tf_proto_library(
         "debug_service.proto",
     ],
     has_services = 1,
-    cc_api_version = 2,
     create_grpc_library = True,
     protodeps = [
         ":debugger_event_metadata_proto",
@@ -63,7 +62,6 @@ tf_proto_library(
 tf_proto_library(
     name = "debugger_event_metadata_proto",
     srcs = ["debugger_event_metadata.proto"],
-    cc_api_version = 2,
 )
 
 cc_library(

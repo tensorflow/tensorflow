@@ -197,7 +197,7 @@ tf_kernel_library(
         "//tensorflow/core/util:determinism_for_kernels",
     ] + if_cuda_or_rocm([
         "//tensorflow/core/platform:stream_executor",
-        "@local_xla//xla/stream_executor/cuda:cuda_activation",
+        "@local_xla//xla/stream_executor/gpu:scoped_activate_context",
     ]),
 )
 
@@ -404,6 +404,17 @@ tf_cuda_cc_test(
     srcs = ["mirror_pad_op_benchmark_test.cc"],
     deps = [
         ":mirror_pad_op",
+    ] + IMAGE_TEST_DEPS,
+)
+
+tf_cc_test(
+    name = "scale_and_translate_op_benchmark_test",
+    srcs = ["scale_and_translate_op_benchmark_test.cc"],
+    deps = [
+        ":scale_and_translate_op",
+        "@com_google_benchmark//:benchmark",
+        "@local_tsl//tsl/platform:test_benchmark",
+        "@local_tsl//tsl/platform:test_main",
     ] + IMAGE_TEST_DEPS,
 )
 

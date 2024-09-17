@@ -85,6 +85,13 @@ constexpr char kErrorMessage[] = "error_message";
 // Period between reporting dataset statistics.
 constexpr int kStatsReportingPeriodMillis = 1000;
 
+// Factor used to determine the autotune parallelism limit when using an
+// unbounded threadpool. The limit is determined by multiplying this factor
+// by the default threadpool size, which is typically based on the number of
+// CPU cores. Without this limit, we see autotune sometimes choose unreasonably
+// large values for the parallelism, e.g. creating 300k threads.
+constexpr int kUnboundedThreadpoolAutotuningFactor = 10;
+
 }  // namespace
 
 class ParallelMapDatasetOp::Dataset : public DatasetBase {
@@ -338,12 +345,10 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
     std::shared_ptr<model::Node> CreateNode(
         IteratorContext* ctx, model::Node::Args args) const override {
       std::shared_ptr<model::Parameter> parameter;
-      // If unbounded threadpool is used, sets the max of `num_parallel_calls`
-      // to be infinite and lets Autotune find the right value that is under
-      // the ram budget.
-      double max_parallelism_value = use_unbounded_threadpool_
-                                         ? std::numeric_limits<double>::max()
-                                         : ctx->runner_threadpool_size();
+      double max_parallelism_value = ctx->runner_threadpool_size();
+      if (use_unbounded_threadpool_) {
+        max_parallelism_value *= kUnboundedThreadpoolAutotuningFactor;
+      }
       if (num_parallel_calls_ &&
           dataset()->num_parallel_calls_ == model::kAutotune) {
         parameter = model::MakeParameter(

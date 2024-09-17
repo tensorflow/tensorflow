@@ -18,10 +18,12 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/dynamic_annotations.h"
@@ -34,7 +36,11 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
+#include "xla/client/client_library.h"
+#include "xla/client/local_client.h"
 #include "xla/client/xla_builder.h"
+#include "xla/executable_run_options.h"
+#include "xla/ffi/execution_context.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -46,20 +52,26 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_target_registry.h"
+#include "xla/service/platform_util.h"
 #include "xla/service/service.h"
+#include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tests/test_utils.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 #define EIGEN_USE_THREADS
 #include "unsupported/Eigen/CXX11/Tensor"
+
+static const char* PLATFORM = "Host";
 
 namespace {
 void R0F32Add2(float* out, float** in) {
@@ -505,7 +517,7 @@ XLA_FFI_DEFINE_HANDLER(kAlwaysSucceed, AlwaysSucceed,
 );
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$always_succeed",
-                         "Host", kAlwaysSucceed);
+                         PLATFORM, kAlwaysSucceed);
 
 static absl::Status AlwaysFail(ResultBufferBase, int32_t value) {
   return absl::InternalError(absl::StrCat("Failed: ", value));
@@ -517,8 +529,8 @@ XLA_FFI_DEFINE_HANDLER(kAlwaysFail, AlwaysFail,
                            .Attr<int32_t>("value")  // value
 );
 
-XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$always_fail", "Host",
-                         kAlwaysFail);
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$always_fail",
+                         PLATFORM, kAlwaysFail);
 
 static absl::Status FfiR0F32Add2(R0F32Buffer in, R0F32ResultBuffer out) {
   auto in_data = in.typed_data();
@@ -534,7 +546,7 @@ XLA_FFI_DEFINE_HANDLER(kFfiR0F32Add2, FfiR0F32Add2,
 );
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiR0F32Add2",
-                         "Host", kFfiR0F32Add2);
+                         PLATFORM, kFfiR0F32Add2);
 
 template <PrimitiveType dtype>
 static absl::Status R0FAdd2(AnyBuffer in, ResultBufferBase out) {
@@ -571,7 +583,7 @@ XLA_FFI_DEFINE_HANDLER(kFfiR0FAdd2BufferBase, FfiR0FAdd2BufferBase,
 );
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
-                         "__xla_test$$FfiR0FAdd2BufferBase", "Host",
+                         "__xla_test$$FfiR0FAdd2BufferBase", PLATFORM,
                          kFfiR0FAdd2BufferBase);
 
 static absl::Status FfiR0F32AddN(R0F32Buffer in, R0F32ResultBuffer out,
@@ -589,7 +601,7 @@ XLA_FFI_DEFINE_HANDLER(kFfiR0F32AddN, FfiR0F32AddN,
                            .Attr<float>("n"));
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiR0F32AddN",
-                         "Host", kFfiR0F32AddN);
+                         PLATFORM, kFfiR0F32AddN);
 
 static absl::Status FfiR0F32AddNPointer(R0F32Buffer in, R0F32ResultBuffer out,
                                         float* n) {
@@ -606,7 +618,7 @@ XLA_FFI_DEFINE_HANDLER(kFfiR0F32AddNPointer, FfiR0F32AddNPointer,
                            .Attr<ffi::Pointer<float>>("n"));
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiR0F32AddNPointer",
-                         "Host", kFfiR0F32AddNPointer);
+                         PLATFORM, kFfiR0F32AddNPointer);
 
 static absl::Status FfiF32ReduceSum(F32Buffer in, R0F32ResultBuffer out) {
   auto in_data = in.typed_data();
@@ -626,7 +638,7 @@ XLA_FFI_DEFINE_HANDLER(kFfiF32ReduceSum, FfiF32ReduceSum,
 );
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiF32ReduceSum",
-                         "Host", kFfiF32ReduceSum);
+                         PLATFORM, kFfiF32ReduceSum);
 
 static absl::Status FfiF32Accumulate(F32Buffer in, InitMethod init,
                                      R0F32ResultBuffer out,
@@ -663,7 +675,7 @@ XLA_FFI_DEFINE_HANDLER(kFfiF32Accumulate, FfiF32Accumulate,
                            .Attr<BinaryOp>("binary_op"));
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiF32Accumulate",
-                         "Host", kFfiF32Accumulate);
+                         PLATFORM, kFfiF32Accumulate);
 
 static absl::Status FfiF32Add1ToValues(F32Buffer in, F32ResultBuffer out) {
   auto in_data = in.typed_data();
@@ -690,7 +702,7 @@ XLA_FFI_DEFINE_HANDLER(kFfiF32Add1ToValues, FfiF32Add1ToValues,
 );
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiF32Add1ToValues",
-                         "Host", kFfiF32Add1ToValues);
+                         PLATFORM, kFfiF32Add1ToValues);
 
 static absl::Status FfiF32TupleSwap(R0F32Buffer in0, R0F32Buffer in1,
                                     R0F32ResultBuffer out0,
@@ -713,7 +725,7 @@ XLA_FFI_DEFINE_HANDLER(kFfiF32TupleSwap, FfiF32TupleSwap,
 );
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiF32TupleSwap",
-                         "Host", kFfiF32TupleSwap);
+                         PLATFORM, kFfiF32TupleSwap);
 
 static absl::Status FfiTupleRotate(R0F32Buffer in0, R0F32Buffer in1,
                                    R0F32Buffer in2, R0F32Buffer in3,
@@ -749,7 +761,7 @@ XLA_FFI_DEFINE_HANDLER(kFfiTupleRotate, FfiTupleRotate,
 );
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$FfiTupleRotate",
-                         "Host", kFfiTupleRotate);
+                         PLATFORM, kFfiTupleRotate);
 
 static absl::Status VerifyR2Dimensions(ffi::AnyBuffer in, int32_t rows,
                                        int32_t cols) {
@@ -780,7 +792,7 @@ XLA_FFI_DEFINE_HANDLER(kVerifyR2Dimensions, VerifyR2Dimensions,
                            .Attr<int32_t>("cols"));
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$VerifyR2Dimensions",
-                         "Host", kVerifyR2Dimensions);
+                         PLATFORM, kVerifyR2Dimensions);
 
 static absl::Status SwapTupleAnyBuffersToS16U32(ffi::AnyBuffer in_1,
                                                 ffi::AnyBuffer in_2,
@@ -802,7 +814,7 @@ XLA_FFI_DEFINE_HANDLER(kSwapTupleAnyBuffersToS16U32,
                            .Ret<ffi::BufferR0<U32>>());
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
-                         "__xla_test$$SwapTupleAnyBuffersToS16U32", "Host",
+                         "__xla_test$$SwapTupleAnyBuffersToS16U32", PLATFORM,
                          kSwapTupleAnyBuffersToS16U32);
 
 static absl::Status SwapTupleU32S16ToS16U32(ffi::BufferR0<U32> in_1,
@@ -824,7 +836,7 @@ XLA_FFI_DEFINE_HANDLER(kSwapTupleU32S16ToS16U32, SwapTupleU32S16ToS16U32,
                             .Ret<ffi::BufferR0<U32>>()));
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
-                         "__xla_test$$SwapTupleU32S16ToS16U32", "Host",
+                         "__xla_test$$SwapTupleU32S16ToS16U32", PLATFORM,
                          kSwapTupleU32S16ToS16U32);
 
 static absl::Status HandleTupleDifferentRanks(ffi::BufferR0<U32> x_1,
@@ -865,7 +877,7 @@ XLA_FFI_DEFINE_HANDLER(kHandleTupleDifferentRanks, HandleTupleDifferentRanks,
                            .Ret<ffi::BufferR3<F32>>());
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
-                         "__xla_test$$HandleTupleDifferentRanks", "Host",
+                         "__xla_test$$HandleTupleDifferentRanks", PLATFORM,
                          kHandleTupleDifferentRanks);
 
 static absl::Status CustomCallWithIntraOpThreadPool(
@@ -899,7 +911,7 @@ XLA_FFI_DEFINE_HANDLER(kIntraOpThreadPool, CustomCallWithIntraOpThreadPool,
                            .Ctx<ffi::IntraOpThreadPool>());
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
-                         "__xla_test$$intra_op_thread_pool", "Host",
+                         "__xla_test$$intra_op_thread_pool", PLATFORM,
                          kIntraOpThreadPool);
 
 }  // namespace
@@ -936,7 +948,7 @@ XLA_FFI_DEFINE_HANDLER(kConcat3Vectors, Concat3Vectors,
                            .Ret<ffi::BufferR2<F32>>());
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$Concat3Vectors",
-                         "Host", kConcat3Vectors);
+                         PLATFORM, kConcat3Vectors);
 
 using FfiCustomCallTest = CustomCallTest;
 
@@ -1662,6 +1674,297 @@ XLA_TEST_F(FfiCustomCallTest, IntraOpThreadPool) {
 
   auto status = Execute(std::move(module), {}).status();
   EXPECT_EQ(status, absl::OkStatus());
+}
+
+//===----------------------------------------------------------------------===//
+// Stateful XLA:FFI handler
+//===----------------------------------------------------------------------===//
+
+struct SomeState {
+  explicit SomeState(float value) : value(value) {}
+  float value = 0;
+};
+
+int instantiate_called_counter = 0;
+
+// Every time custom call HLO operation is instantiated as a CPU runtime Thunk,
+// XLA calls instantiate callback to create a new instance of the handler state,
+// that will be passed to all other FFI handler calls.
+static absl::StatusOr<std::unique_ptr<SomeState>> InstantiateState() {
+  ++instantiate_called_counter;
+  return std::make_unique<SomeState>(42.f);
+}
+
+// At run time we can access the state created by the instantiate callback.
+static absl::Status IncrementState(R0F32ResultBuffer out, SomeState* state) {
+  state->value += 1.f;
+  auto out_data = out->typed_data();
+  *out_data = state->value;
+  return absl::OkStatus();
+}
+
+XLA_FFI_DEFINE_HANDLER(kInstantiateState, InstantiateState,
+                       ffi::Ffi::BindInstantiate());
+
+XLA_FFI_DEFINE_HANDLER(
+    kIncrementState, IncrementState,
+    ffi::Ffi::Bind().Ret<R0F32Buffer>().Ctx<ffi::State<SomeState>>());
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$ffi_execution_state",
+                         PLATFORM,
+                         {
+                             /*instantiate=*/kInstantiateState,
+                             /*prepare=*/nullptr,
+                             /*initialize=*/nullptr,
+                             /*execute=*/kIncrementState,
+                         });
+
+float last_value = 0.f;
+
+// Similar to InstantiateState above, but takes initial value as an attribute.
+static absl::StatusOr<std::unique_ptr<SomeState>> InstantiateStateWithAttribute(
+    float initial_value) {
+  last_value = initial_value;
+  return std::make_unique<SomeState>(initial_value);
+}
+
+// Similar to IncrementState above, but with attributes. No attribute is used
+// here, but still their type and number must match the instantiate callback.
+static absl::Status IncrementStateWithAttribute(
+    R0F32ResultBuffer out, SomeState* state,
+    [[maybe_unused]] float initial_value) {
+  return IncrementState(out, state);
+}
+
+XLA_FFI_DEFINE_HANDLER(
+    kInstantiateStateWithAttribute, InstantiateStateWithAttribute,
+    ffi::Ffi::BindInstantiate().Attr<float>("initial_value"));
+
+XLA_FFI_DEFINE_HANDLER(kIncrementStateWithAttribute,
+                       IncrementStateWithAttribute,
+                       ffi::Ffi::Bind()
+                           .Ret<R0F32Buffer>()
+                           .Ctx<ffi::State<SomeState>>()
+                           .Attr<float>("initial_value"));
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
+                         "__xla_test$$ffi_execution_state_with_attrs", "Host",
+                         {
+                             /*instantiate=*/kInstantiateStateWithAttribute,
+                             /*prepare=*/nullptr,
+                             /*initialize=*/nullptr,
+                             /*execute=*/kIncrementStateWithAttribute,
+                         });
+
+// This test doesn't care about execution results, its intent is just to test if
+// instantiate function was called.
+TEST_F(CustomCallTest, FfiExecutionStateInstantiate) {
+  const char* const kModuleStr = R"(
+    HloModule m
+    ENTRY test {
+      ROOT result = f32[] custom-call(), custom_call_target=
+        "__xla_test$$ffi_execution_state", api_version=API_VERSION_TYPED_FFI
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+
+  // Execute the module, but don't verify the results.
+  instantiate_called_counter = 0;
+  auto result = Execute(std::move(module), {});
+
+  // Check that instantiate callback was called. Even though we don't care about
+  // the result in this test, log it in case of failure to help debugging.
+  EXPECT_EQ(instantiate_called_counter, 1) << result.status();
+}
+
+TEST_F(CustomCallTest, FfiExecutionStateExecute) {
+  // Module that calls custom call in a loop two times.
+  const char* const kModuleStr = R"(
+    HloModule m
+    lt2 (arg: (s32[], f32[])) -> pred[] {
+      arg = (s32[], f32[]) parameter(0)
+      i =  s32[] get-tuple-element(arg), index=0
+      two = s32[] constant(2)
+      ROOT result = pred[] compare(i, two), direction=LT
+    }
+
+    incr_i_and_call_custom_call (arg: (s32[], f32[])) -> (s32[], f32[]) {
+      arg = (s32[], f32[]) parameter(0)
+      i =  s32[] get-tuple-element(arg), index=0
+      one = s32[] constant(1)
+      i_incr = s32[] add(i, one)
+      custom_call = f32[] custom-call(), custom_call_target=
+        "__xla_test$$ffi_execution_state", api_version=API_VERSION_TYPED_FFI
+      ROOT result = (s32[], f32[]) tuple(i_incr, custom_call)
+    }
+
+    ENTRY test {
+      i = s32[] constant(0)
+      placeholder = f32[] constant(0.0)
+      tuple = (s32[], f32[]) tuple(i, placeholder)
+      while = (s32[], f32[]) while(tuple), body=incr_i_and_call_custom_call,
+        condition=lt2
+      ROOT result = f32[] get-tuple-element(while), index=1
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+
+  // Custom call called twice, starting value is hardcoded in the instantiate
+  // callback as 42.0, so we expect 44.0 as a result.
+  Literal expected = LiteralUtil::CreateR0<float>(44.f);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
+  EXPECT_EQ(result, expected);
+}
+
+// Similarly to FfiExecutionStateInstantiate, this test doesn't care about
+// execution results, its intent is just to test if instantiate function was
+// called (with correct attributes).
+TEST_F(CustomCallTest, FfiExecutionStateInstantiateWithAttribute) {
+  const char* const kModuleStr = R"(
+    HloModule m
+    ENTRY test {
+      ROOT result = f32[] custom-call(), custom_call_target=
+        "__xla_test$$ffi_execution_state_with_attrs",
+        api_version=API_VERSION_TYPED_FFI,
+        backend_config="{initial_value = 43.0 : f32}"
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+
+  // Execute the module, but don't verify the results.
+  last_value = 0;
+  auto result = Execute(std::move(module), {});
+
+  // Check that the correct instantiate callback was called. Even though we
+  // don't care about the result in this test, log it in case of failure to help
+  // debugging.
+  EXPECT_EQ(last_value, 43.f) << result.status();
+}
+
+TEST_F(CustomCallTest, FfiExecutionStateExecuteWithAttribute) {
+  // Module that calls custom call in a loop three times, with initial value set
+  // to 43.0.
+  const char* const kModuleStr = R"(
+    HloModule m
+    lt3 (arg: (s32[], f32[])) -> pred[] {
+      arg = (s32[], f32[]) parameter(0)
+      i =  s32[] get-tuple-element(arg), index=0
+      three = s32[] constant(3)
+      ROOT result = pred[] compare(i, three), direction=LT
+    }
+
+    incr_i_and_call_custom_call (arg: (s32[], f32[])) -> (s32[], f32[]) {
+      arg = (s32[], f32[]) parameter(0)
+      i =  s32[] get-tuple-element(arg), index=0
+      one = s32[] constant(1)
+      i_incr = s32[] add(i, one)
+      custom_call = f32[] custom-call(), custom_call_target=
+        "__xla_test$$ffi_execution_state_with_attrs",
+        api_version=API_VERSION_TYPED_FFI,
+        backend_config="{initial_value = 43.0 : f32}"
+      ROOT result = (s32[], f32[]) tuple(i_incr, custom_call)
+    }
+
+    ENTRY test {
+      i = s32[] constant(0)
+      placeholder = f32[] constant(0.0)
+      tuple = (s32[], f32[]) tuple(i, placeholder)
+      while = (s32[], f32[]) while(tuple), body=incr_i_and_call_custom_call,
+        condition=lt3
+      ROOT result = f32[] get-tuple-element(while), index=1
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+
+  // Custom call called three times, with initial value set to 43.0. So we
+  // expect 46.0 as a result.
+  Literal expected = LiteralUtil::CreateR0<float>(46.f);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
+  EXPECT_EQ(result, expected);
+}
+
+//===----------------------------------------------------------------------===//
+// XLA:FFI handler with execution context
+//===----------------------------------------------------------------------===//
+
+// Arbitrary user-defined context passed via the execution context side channel
+// to a custom call handlers.
+struct SomeExtraContext {
+  explicit SomeExtraContext(int32_t value) : value(value) {}
+  int32_t value;
+  bool executed = false;
+};
+
+template <ffi::ExecutionStage stage>
+static absl::Status ExecutionContext(ffi::Result<ffi::AnyBuffer>,
+                                     SomeExtraContext* ctx) {
+  if (ctx->value != 42) return absl::InternalError("Unexpected value");
+  if constexpr (stage == ffi::ExecutionStage::kExecute) {
+    ctx->executed = true;
+  }
+
+  return absl::OkStatus();
+}
+
+XLA_FFI_DEFINE_HANDLER(kExecutionContextExecute,
+                       ExecutionContext<ffi::ExecutionStage::kExecute>,
+                       ffi::Ffi::Bind<ffi::ExecutionStage::kExecute>()
+                           .Ret<ffi::AnyBuffer>()
+                           .Ctx<ffi::UserData<SomeExtraContext>>());
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "xla.cpu.ffi_execution_context",
+                         PLATFORM,
+                         {
+                             /*instantiate=*/nullptr,
+                             /*prepare=*/nullptr,
+                             /*initialize=*/nullptr,
+                             /*execute=*/kExecutionContextExecute,
+                         });
+
+static absl::StatusOr<LocalClient*> CreateClient() {
+  TF_ASSIGN_OR_RETURN(se::Platform * platform,
+                      PlatformUtil::GetPlatform(PLATFORM));
+  LocalClientOptions client_options(platform, 1, 1, std::nullopt);
+  return xla::ClientLibrary::GetOrCreateLocalClient(client_options);
+}
+
+TEST_F(CustomCallClientAPITest, FfiExecutionContext) {
+  XlaBuilder b(TestName());
+  const Shape shape = ShapeUtil::MakeShape(F32, {});
+  CustomCall(&b, "xla.cpu.ffi_execution_context", /*operands=*/{}, shape,
+             /*opaque=*/"",
+             /*has_side_effect=*/false,
+             /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+             /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+             /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto local_client, CreateClient());
+  EXPECT_NE(local_client->device_count(), 0);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      local_client->Compile(computation, /*argument_layouts=*/{},
+                            /*options=*/{}));
+
+  ffi::ExecutionContext execution_context;
+  TF_ASSERT_OK(execution_context.Emplace<SomeExtraContext>(42));
+
+  ExecutableRunOptions run_options;
+  run_options.set_allocator(local_client->backend().memory_allocator());
+  run_options.set_ffi_execution_context(&execution_context);
+
+  std::vector<const xla::ShapedBuffer*> args;
+  TF_ASSERT_OK_AND_ASSIGN(auto result, executable[0]->Run(args, run_options));
+  TF_ASSERT_OK_AND_ASSIGN(auto* user_context,
+                          execution_context.Lookup<SomeExtraContext>());
+  EXPECT_TRUE(user_context->executed);
 }
 
 }  // namespace

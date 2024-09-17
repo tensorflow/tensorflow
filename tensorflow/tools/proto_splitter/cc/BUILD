@@ -179,11 +179,11 @@ cc_library(
     hdrs = ["graph_def_splitter.h"],
     deps = [
         ":composable_splitter",
+        ":composable_splitter_base",
         ":large_node_splitter",
         ":max_size",
         ":repeated_field_splitter",
         ":size_splitter",
-        ":split",
         ":util",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
@@ -309,18 +309,15 @@ tf_cc_test(
 
 cc_library(
     name = "large_node_splitter",
-    srcs = ["large_node_splitter.cc"],
     hdrs = ["large_node_splitter.h"],
     deps = [
         ":composable_splitter",
+        ":composable_splitter_base",
         ":max_size",
         ":size_splitter",
         ":util",
-        "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 

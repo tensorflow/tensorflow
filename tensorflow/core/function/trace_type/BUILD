@@ -158,7 +158,6 @@ tf_proto_library(
     srcs = [
         "serialization.proto",
     ],
-    cc_api_version = 2,
     visibility = ["//tensorflow:internal"],
 )
 
@@ -167,7 +166,6 @@ tf_proto_library(
     srcs = [
         "serialization_test.proto",
     ],
-    cc_api_version = 2,
     protodeps = [
         ":serialization_proto",
     ],
@@ -179,7 +177,6 @@ tf_proto_library(
     srcs = [
         "default_types.proto",
     ],
-    cc_api_version = 2,
     protodeps = [
         ":serialization_proto",
     ],

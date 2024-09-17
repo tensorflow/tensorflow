@@ -1245,9 +1245,10 @@ Queue<TaskType>::ScheduleBatchWithEagerSplit() {
       // BatchPaddingPolicy::kMinimizeTpuCostPerRequest. We do this before
       // starting a new batch because starting a new batch will close the old
       // batch, making it read-only.
+      Batch<TaskType>& old_batch = *batches[0];
       std::vector<std::unique_ptr<TaskType>> trimmed_tasks;
       MaybeBatchDown(
-          /* batch= */ *batches[0],
+          /* batch= */ old_batch,
           /* allowed_batch_sizes= */ options_.allowed_batch_sizes,
           /* disable_padding= */ options_.disable_padding,
           /* batch_padding_policy= */ options_.batch_padding_policy,
@@ -1265,12 +1266,21 @@ Queue<TaskType>::ScheduleBatchWithEagerSplit() {
         // TODO - b/325954758: Reconsider the starting time of a trimmed batch.
         //
         // Ideally, we'd set open_batch_start_time_micros_ to time we received
-        // the first task, but we don't have this information here, so we're
-        // using NOW as the timestamp. An alternative solution that doesn't
-        // require adding time to each task would be to assume that requests
-        // arrived at a steady rate and therefore use a point between the old
-        // value of open_batch_start_time_micros_ and NOW.
-        open_batch_start_time_micros_ = env_->NowMicros();
+        // the first task in the open batch, but we don't have this information
+        // here. For now, we're trying as alternative solution that doesn't
+        // require adding time to each task: assume that requests arrived at a
+        // steady rate and therefore use a point between the old value of
+        // open_batch_start_time_micros_ and NOW.
+        //
+        // Let's say that originally, the batch had 10 requests, and we want to
+        // schedule a batch of size 8 and leave 2 requests in the open batch
+        // (new_batch). Then, variable `position` is 0.8, which means we have to
+        // set open_batch_start_time_micros_ to be at a position of 80% between
+        // open_batch_start_time_micros_ and now.
+        double position = static_cast<double>(old_batch.size()) /
+                          (old_batch.size() + new_batch.size());
+        open_batch_start_time_micros_ +=
+            (env_->NowMicros() - open_batch_start_time_micros_) * position;
       }
     }
 

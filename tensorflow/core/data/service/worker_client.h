@@ -22,11 +22,8 @@ limitations under the License.
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/worker.pb.h"
-#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace data {
@@ -84,6 +81,10 @@ CreateDataServiceWorkerClient(
     const std::string& dispatcher_protocol, const DataTransferServerInfo& info,
     const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info,
     Allocator* allocator);
+
+// If true, clients should use local protocol for data transfer (disregarding
+// any other user-specified or runtime-defaulted protocol).
+bool ForceLocalProtocol(const std::string& worker_address);
 
 }  // namespace data
 }  // namespace tensorflow

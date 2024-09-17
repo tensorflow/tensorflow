@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/cpu/benchmarks/hlo_benchmark_runner.h"
 #include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/test_benchmark.h"
 
@@ -57,13 +58,45 @@ static void BM_ReduceAddF32(benchmark::State& state) {
   CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}));
 }
 
-BENCHMARK(BM_ReduceAddF32)
-    ->MeasureProcessCPUTime()
-    ->Arg(128)
-    ->Arg(256)
-    ->Arg(512)
-    ->Arg(1024)
-    ->Arg(8192)
-    ->Arg(16384);
+static void BM_ReduceAddBF16(benchmark::State& state) {
+  int64_t d0 = state.range(0);
+
+  std::string_view hlo = R"(
+    HloModule reduce_add_bf16_$d0
+
+    add {
+      p0 = bf16[] parameter(0)
+      p1 = bf16[] parameter(1)
+      ROOT add = bf16[] add(p0, p1)
+    }
+
+    ENTRY e {
+      p0 = bf16[1,2,1,$d0,256] parameter(0)
+      c0 = bf16[] constant(0)
+      ROOT reduce = bf16[1,2] reduce(p0, c0), dimensions={2,3,4}, to_apply=add
+    }
+  )";
+
+  std::minstd_rand0 engine;
+
+  auto shape = ShapeUtil::MakeShape(BF16, {1, 2, 1, d0, 256});
+  auto p0 = *LiteralUtil::CreateRandomLiteral<BF16>(shape, &engine, 1.0f, 0.1f);
+
+  std::vector<const Literal*> args = {&p0};
+  CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}));
+}
+
+#define BENCHMARK_SIZES(NAME)   \
+  BENCHMARK(NAME)               \
+      ->MeasureProcessCPUTime() \
+      ->Arg(128)                \
+      ->Arg(256)                \
+      ->Arg(512)                \
+      ->Arg(1024)               \
+      ->Arg(8192)               \
+      ->Arg(16384)
+
+BENCHMARK_SIZES(BM_ReduceAddF32);
+BENCHMARK_SIZES(BM_ReduceAddBF16);
 
 }  // namespace xla::cpu

@@ -697,28 +697,29 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
   ... )
 
   The expected output of its iterations is:
-
-  >>> for element in dataset.as_numpy_iterator():
-  ...   print(element)
-  (4.28e10, 5.55e6, 12)
-  (-5.3e14, 0.0, 2)
+  >>> for n0, n1, n2 in dataset.as_numpy_iterator():
+  ...   print(n0, n1, n2)
+  4.28e10 5.55e6 12
+  -5.3e14 0.0 2
 
   See
   https://www.tensorflow.org/tutorials/load_data/csv#tfdataexperimentalcsvdataset
   for more in-depth example usage.
   """
 
-  def __init__(self,
-               filenames,
-               record_defaults,
-               compression_type=None,
-               buffer_size=None,
-               header=False,
-               field_delim=",",
-               use_quote_delim=True,
-               na_value="",
-               select_cols=None,
-               exclude_cols=None):
+  def __init__(
+      self,
+      filenames,
+      record_defaults,
+      compression_type=None,
+      buffer_size=None,
+      header=False,
+      field_delim=",",
+      use_quote_delim=True,
+      na_value="",
+      select_cols=None,
+      exclude_cols=None,
+  ):
     """Creates a `CsvDataset` by reading and decoding CSV files.
 
     Args:

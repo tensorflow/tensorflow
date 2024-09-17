@@ -303,6 +303,7 @@ filegroup(
         "ring_reducer.h",
         "session_factory.h",
         "shared_counter.h",
+        "simplify_ici_dummy_variables_pass.h",
         "single_threaded_cpu_device.h",
         "stats_publisher_interface.h",
         "step_stats_collector.h",
@@ -1208,6 +1209,23 @@ cc_library(
 )
 
 cc_library(
+    name = "simplify_ici_dummy_variables_pass",
+    srcs = ["simplify_ici_dummy_variables_pass.cc"],
+    hdrs = ["simplify_ici_dummy_variables_pass.h"],
+    copts = tf_copts(),
+    deps = [
+        ":colocate_predecessor_trees_pass",
+        ":optimization_registry",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core/framework:tensor_proto_cc",
+        "//tensorflow/core/framework:tensor_shape_proto_cc",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "local_device",
     srcs = ["local_device.cc"],
     hdrs = ["local_device.h"],
@@ -2021,6 +2039,7 @@ tf_cuda_library(
         ":session_factory",
         ":session_options",
         ":session_state",
+        ":simplify_ici_dummy_variables_pass",
         ":single_threaded_cpu_device",
         ":stats_publisher_interface",
         ":step_stats_collector",
@@ -2401,6 +2420,7 @@ tf_cc_tests(
         "pending_counts_test.cc",
         "placer_inspection_required_ops_utils_test.cc",
         "session_test.cc",
+        "simplify_ici_dummy_variables_pass_test.cc",
         "threadpool_device_test.cc",
     ],
     create_named_test_suite = True,
@@ -2435,6 +2455,7 @@ tf_cc_tests(
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/nccl:collective_communicator",
         "//tensorflow/core/platform:regexp",
+        "//tensorflow/core/platform:resource_loader",
         "//tensorflow/core/util:protos_test_cc",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
@@ -2657,6 +2678,7 @@ tf_cuda_cc_test(
     deps = [
         ":memory_types",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -2667,7 +2689,6 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:cast_op",
-        "@eigen_archive//:eigen3",
     ],
 )
 

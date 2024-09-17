@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor::gpu {
 
@@ -179,7 +178,7 @@ class GpuCommandBuffer : public CommandBuffer {
                   GpuGraphConditionalHandle, GpuGraphConditionalHandle,
                   GpuGraphConditionalHandle, GpuGraphConditionalHandle,
                   GpuGraphConditionalHandle, GpuGraphConditionalHandle,
-                  DeviceMemory<int32_t>, int32_t>;
+                  DeviceMemory<int32_t>, int32_t, int32_t, bool>;
 
   using SetForConditionKernel =
       TypedKernel<GpuGraphConditionalHandle, DeviceMemory<int32_t>, int32_t>;
@@ -352,20 +351,6 @@ class GpuCommandBuffer : public CommandBuffer {
   SetWhileConditionKernel set_while_condition_kernel_;
   NoOpKernel noop_kernel_;
 };
-
-//===----------------------------------------------------------------------===//
-// Implementation details device kernels required by GpuCommandBuffer.
-//===----------------------------------------------------------------------===//
-
-// See `cuda_conditional_kernels.cc` for CUDA implementation. These are
-// various kernels that update Gpu conditionals based on the device memory
-// values, and allow implementing on-device control flow via conditional command
-// buffers.
-std::string_view GetSetIfConditionKernel();
-std::string_view GetSetIfElseConditionKernel();
-std::string_view GetSetCaseConditionKernel();
-std::string_view GetSetForConditionKernel();
-std::string_view GetSetWhileConditionKernel();
 
 }  // namespace stream_executor::gpu
 

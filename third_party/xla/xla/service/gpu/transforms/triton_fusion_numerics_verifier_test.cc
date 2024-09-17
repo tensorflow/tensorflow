@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "tsl/platform/status_matchers.h"
 
 namespace xla::gpu {
 namespace {
@@ -43,7 +45,8 @@ class TritonFusionNumericsVerifierTest
  public:
   DebugOptions GetDebugOptionsForTest() override {
     auto options = HloTestBase::GetDebugOptionsForTest();
-    options.set_xla_gpu_enable_triton_softmax_fusion(true);
+    options.set_xla_gpu_experimental_enable_triton_softmax_priority_fusion(
+        true);
     options.set_xla_gpu_verify_triton_fusion_numerics(true);
     return options;
   }
@@ -185,6 +188,61 @@ TEST_F(TritonFusionNumericsVerifierTest, CheckMismatch) {
       fusion_f16->GetModule()->config(), *stream);
 
   EXPECT_FALSE(cmp.ok());
+}
+
+// By default, AutotunerCompileUtil filters out kernels that cause registers to
+// spill. Verify that the numerics verifier still runs on those kernels.
+TEST_F(TritonFusionNumericsVerifierTest,
+       CompilationSucceedsEvenIfKernelWillSpillRegisters) {
+  auto module = Module(R"(
+HloModule m
+
+add {
+  Arg_0 = f32[] parameter(0)
+  Arg_1 = f32[] parameter(1)
+  ROOT add = f32[] add(Arg_0, Arg_1)
+}
+
+triton_softmax_computation {
+  param_0 = f32[16,256000] parameter(0)
+  constant_0 = f32[] constant(0)
+  reduce_0 = f32[16]{0} reduce(param_0, constant_0), dimensions={1}, to_apply=add
+  broadcast_0 = f32[16,256000]{1,0} broadcast(reduce_0), dimensions={0}
+  ROOT multiply = f32[16,256000]{1,0} multiply(param_0, broadcast_0)
+}
+
+ENTRY main {
+  param_0 = f32[16,256000] parameter(0)
+  ROOT triton_softmax = f32[16,256000]{1,0} fusion(param_0), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tile_sizes":["1","256000"],"num_warps":"32"}}}
+}
+  )",
+                       "");
+
+  // At this point all HLO passes have been executed successfully, because the
+  // Module() function hasn't failed. In particular the numerics verification
+  // pass should have also run and **not** found any issues. Below we just
+  // ensure that the pass has indeed been correctly enabled and that there are
+  // Triton Fusions in the input module.
+  EXPECT_TRUE(HloPassHasRun(*module, TritonFusionNumericsVerifier::Name()));
+  auto fusion = TritonFusion(*module);
+  EXPECT_NE(fusion, nullptr);
+
+  AutotuneConfig autotune_config = CreateAutotuneConfig();
+  AutotunerCompileUtil compile_util =
+      CreateAutotunerCompileUtil(autotune_config);
+  auto compilation_result =
+      triton_fusion_numerics_pass_internal::CompileAndRunFusion(
+          compile_util, *fusion, autotune_config, GetDebugOptionsForTest(),
+          /*clear_backend_config=*/false);
+
+  // Verify that the compilation with default flags fails. The compilation
+  // fails, because the kernel will spill registers, but the error is
+  // overwritten inside the autotuner utils and returns a generic error.
+  EXPECT_FALSE(compilation_result.ok());
+  EXPECT_THAT(compilation_result.status(),
+              tsl::testing::StatusIs(absl::StatusCode::kInternal));
+  EXPECT_THAT(compilation_result.status().message(),
+              ::testing::HasSubstr("Failed to compile Triton fusion"));
 }
 
 INSTANTIATE_TEST_SUITE_P(TritonFusionNumericsVerifierTestSuite,

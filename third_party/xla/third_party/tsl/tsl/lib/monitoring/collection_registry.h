@@ -272,7 +272,7 @@ class CollectionRegistry {
     CollectionFunction collection_function;
     uint64 registration_time_millis;
   };
-  std::map<StringPiece, CollectionInfo> registry_ TF_GUARDED_BY(mu_);
+  std::map<absl::string_view, CollectionInfo> registry_ TF_GUARDED_BY(mu_);
 
   CollectionRegistry(const CollectionRegistry&) = delete;
   void operator=(const CollectionRegistry&) = delete;

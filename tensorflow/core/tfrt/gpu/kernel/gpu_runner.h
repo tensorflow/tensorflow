@@ -38,15 +38,15 @@ namespace gpu {
 constexpr char kGpuRunnerResourceName[] = "GpuRunnerResource";
 
 struct GpuRunInputs {
-  llvm::SmallVector<tfrt_stub::FallbackTensor>* args;
+  std::vector<tfrt_stub::FallbackTensor> args;
   int num_outputs;
-  tfrt::ArrayRef<int64_t> resource_indices;
-  tfrt::ArrayRef<int64_t> used_output_indices;
+  std::vector<int64_t> resource_indices;
+  std::vector<int64_t> used_output_indices;
   std::string func_name;
   Device* cpu_device;
-  absl::flat_hash_map<int, Device*>* gpu_devices;
+  absl::flat_hash_map<int, Device*> gpu_devices;
   const tfd::KernelFallbackCompatRequestState* fallback_request_state;
-  const tfrt::ExecutionContext* exec_ctx;
+  tfrt::HostContext* host_ctx;
 };
 
 class GpuRunner {
@@ -58,7 +58,7 @@ class GpuRunner {
   // `run_inputs`, and returns the output tensor AsyncValues.
   absl::StatusOr<
       llvm::SmallVector<tfrt::AsyncValueRef<tfrt_stub::FallbackTensor>>>
-  Run(const GpuRunInputs& run_inputs);
+  Run(GpuRunInputs run_inputs);
 
  private:
   tsl::ServingDeviceSelector* serving_device_selector_;

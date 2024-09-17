@@ -214,7 +214,7 @@ class MaxShardSizePolicy(sharding_util.ShardingCallback):
         self._device = shardable_tensor.device
         self._root_tensor = shardable_tensor.tensor
         self._slice_spec = shardable_tensor.slice_spec
-        # If the tensor has already been sliced, maked sure to keep track of its
+        # If the tensor has already been sliced, make sure to keep track of its
         # parent tensor's shape & offset. These will be used when creating slice
         # specs later.
         if self._slice_spec:

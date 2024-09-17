@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_padding_requirements.h"
 #include "xla/service/gpu/fusions/triton/triton_support.h"
+#include "xla/service/gpu/fusions/triton/triton_support_legacy.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
@@ -197,13 +198,19 @@ std::optional<DimOrdersAndReqs> GetOperandDimOrdersAndCombinedReqs(
   DimOrdersAndReqsOrError dim_orders_and_new_reqs =
       GetPropagatedDimOrdersAndRequirements(
           hlo, dim_order, TransformDirection::kOutputToInput, properties);
-  if (!std::holds_alternative<DimOrdersAndReqs>(dim_orders_and_new_reqs)) {
+  if (std::holds_alternative<FusionDecision>(dim_orders_and_new_reqs)) {
+    VLOG(5) << "Not fusing " << hlo.ToString()
+            << " to the output due to the decision: "
+            << std::get<FusionDecision>(dim_orders_and_new_reqs).Explain();
     return std::nullopt;
   }
   DotRequirementsOrError combined_reqs = CombineDotRequirements(
       requirements,
       std::get<DimOrdersAndReqs>(dim_orders_and_new_reqs).requirements);
-  if (!std::holds_alternative<DotRequirements>(combined_reqs)) {
+  if (std::holds_alternative<FusionDecision>(combined_reqs)) {
+    VLOG(5) << "Not fusing " << hlo.ToString()
+            << " to the output due to the decision: "
+            << std::get<FusionDecision>(combined_reqs).Explain();
     return std::nullopt;
   }
   return DimOrdersAndReqs{
@@ -222,13 +229,19 @@ std::optional<DimOrdersAndReqs> GetOperandDimOrdersAndCombinedReqsIfProfitable(
           hlo, TransformDirection::kOutputToInput,
           /*src_operand_index=*/std::nullopt, dim_order, gpu_version,
           properties);
-  if (!std::holds_alternative<DimOrdersAndReqs>(dim_orders_and_new_reqs)) {
+  if (std::holds_alternative<FusionDecision>(dim_orders_and_new_reqs)) {
+    VLOG(5) << "Not fusing " << hlo.ToString()
+            << " to the output due to the decision: "
+            << std::get<FusionDecision>(dim_orders_and_new_reqs).Explain();
     return std::nullopt;
   }
   DotRequirementsOrError combined_reqs = CombineDotRequirements(
       requirements,
       std::get<DimOrdersAndReqs>(dim_orders_and_new_reqs).requirements);
-  if (!std::holds_alternative<DotRequirements>(combined_reqs)) {
+  if (std::holds_alternative<FusionDecision>(combined_reqs)) {
+    VLOG(5) << "Not fusing " << hlo.ToString()
+            << " to the output due to the decision: "
+            << std::get<FusionDecision>(combined_reqs).Explain();
     return std::nullopt;
   }
   return DimOrdersAndReqs{
@@ -246,13 +259,19 @@ std::optional<DimOrdersAndReqs> GetUserDimOrdersAndCombinedReqsIfProfitable(
       GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
           user, TransformDirection::kInputToOutput, user.operand_index(&hlo),
           hlo_dim_order, gpu_version, properties);
-  if (!std::holds_alternative<DimOrdersAndReqs>(dim_orders_and_new_reqs)) {
+  if (std::holds_alternative<FusionDecision>(dim_orders_and_new_reqs)) {
+    VLOG(5) << "Not fusing " << user.ToString()
+            << " to the input due to the decision: "
+            << std::get<FusionDecision>(dim_orders_and_new_reqs).Explain();
     return std::nullopt;
   }
   DotRequirementsOrError combined_reqs = CombineDotRequirements(
       requirements,
       std::get<DimOrdersAndReqs>(dim_orders_and_new_reqs).requirements);
-  if (!std::holds_alternative<DotRequirements>(combined_reqs)) {
+  if (std::holds_alternative<FusionDecision>(combined_reqs)) {
+    VLOG(5) << "Not fusing " << user.ToString()
+            << " to the input due to the decision: "
+            << std::get<FusionDecision>(combined_reqs).Explain();
     return std::nullopt;
   }
   return DimOrdersAndReqs{
@@ -664,6 +683,28 @@ absl::StatusOr<FusionDecision> CreateDotFusion(
         const_cast<HloInstruction*>(fused_output_and_reqs.original_hlo);
   }
 
+  // We cannot handle int4 parameters if the batch dimension is the minor one.
+  // The cost of analysis could be expensive, so we only do it if we have to.
+  bool has_int4_param =
+      absl::c_any_of(fusion_inputs, [](const HloInstruction* hlo) {
+        return hlo->shape().element_type() == PrimitiveType::S4;
+      });
+  if (has_int4_param) {
+    // Trace the position of the batch dimension of the dot to the parameters.
+    auto analysis_or = TritonFusionAnalysis::Execute(dot);
+    if (analysis_or.ok()) {
+      const auto& analysis = analysis_or.value();
+      if (!analysis.IsBatchDimMinorForInt4Parameter(
+              dot, TritonFusionAnalysis::Scope::LHS) ||
+          !analysis.IsBatchDimMinorForInt4Parameter(
+              dot, TritonFusionAnalysis::Scope::RHS)) {
+        return InvalidArgument(
+            "Fusion is not possible because the parameter with the type S4 has "
+            "minor batch dimension.");
+      }
+    }
+  }
+
   const PrecisionConfig::Algorithm algorithm =
       dot.precision_config().algorithm();
   if (algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6 ||
@@ -782,7 +823,6 @@ absl::StatusOr<bool> RunOnComputation(
   TF_RETURN_IF_ERROR(computation->Accept(&visitor));
   return visitor.changed();
 }
-
 
 }  // namespace
 

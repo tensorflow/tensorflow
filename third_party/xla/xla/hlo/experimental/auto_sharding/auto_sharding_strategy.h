@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/container/btree_map.h"
 #include "absl/container/btree_set.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -74,6 +75,8 @@ using ReshardingCache =
     ConstInstructionMap<std::vector<std::pair<HloSharding, HloInstruction*>>>;
 // Resharding costs for each operand
 using ReshardingCosts = std::vector<std::vector<double>>;
+// Optional shardings for each operand
+using InputShardings = std::vector<std::optional<HloSharding>>;
 
 // One sharding strategy
 struct ShardingStrategy {
@@ -88,9 +91,6 @@ struct ShardingStrategy {
   // cost from i-th tuple element's j-th strategy.
   ReshardingCosts communication_resharding_costs;
   ReshardingCosts memory_resharding_costs;
-  // Optional: the required shardings of operands.
-  // This is used to guide the SPMD partitioner.
-  std::vector<std::optional<HloSharding>> input_shardings;
 
   std::string ToString() const {
     return absl::StrCat(name, ", ", output_sharding.ToString());
@@ -116,32 +116,12 @@ struct ShardingStrategy {
     std::string memory_resharding_cost_str = absl::StrCat(
         "{", absl::StrJoin(memory_resharding_vector_strings, ", "), "}");
 
-    std::string input_sharding_str = "{";
-    for (const auto& s : input_shardings) {
-      if (!s.has_value()) {
-        input_sharding_str += "[*],";
-      } else if (s->IsReplicated()) {
-        input_sharding_str += "[R],";
-      } else {
-        if (s->ReplicateOnLastTileDim()) {
-          input_sharding_str +=
-              "[" + absl::StrJoin(s->tile_assignment().dimensions(), ", ") +
-              "]last_tile_dim_replicate,";
-        } else {
-          input_sharding_str +=
-              "[" + absl::StrJoin(s->tile_assignment().dimensions(), ", ") +
-              "],";
-        }
-      }
-    }
-    input_sharding_str += "}\n";
     return absl::StrCat(
         name, ", ", output_sharding.ToString(), ", compute_cost=", compute_cost,
         ", communication_cost=", communication_cost,
         ", memory_cost=", memory_cost,
         ", communication_resharding_costs=", communication_resharding_cost_str,
-        ", memory_resharding_costs=", memory_resharding_cost_str,
-        ", input_shardings=", input_sharding_str);
+        ", memory_resharding_costs=", memory_resharding_cost_str);
   }
 
   bool operator==(const ShardingStrategy& other) const {
@@ -151,8 +131,7 @@ struct ShardingStrategy {
            memory_cost == other.memory_cost &&
            communication_resharding_costs ==
                other.communication_resharding_costs &&
-           memory_resharding_costs == other.memory_resharding_costs &&
-           input_shardings == other.input_shardings;
+           memory_resharding_costs == other.memory_resharding_costs;
   }
 };
 
@@ -182,18 +161,33 @@ struct StrategyGroup {
   std::vector<const StrategyGroup*> in_nodes;
   // The followed strategy. Used for merging nodes.
   const StrategyGroup* following = nullptr;
-  // Used when is_tuple == False. Leaf strategy vector.
-  // A vector of strategy choices for the non-tuple output.
-  std::vector<ShardingStrategy> strategies;
-  // Used when is_tuple == True. A vector of pointers, each pointer is one
-  // StrategyGroup for one value in the output Tuple
-  std::vector<std::unique_ptr<StrategyGroup>> childs;
   // The index of this instruction in the HLO operand (or tuple shape) list.
   std::optional<int64_t> tuple_element_idx;
 
-  std::string ToString(size_t indention = 0) const {
+  StrategyGroup() = default;
+
+  StrategyGroup(bool is_tuple, NodeIdx node_idx, size_t instruction_id)
+      : is_tuple(is_tuple),
+        node_idx(node_idx),
+        instruction_id(instruction_id) {}
+
+  StrategyGroup(bool is_tuple, NodeIdx node_idx, size_t instruction_id,
+                const std::vector<const StrategyGroup*>& in_nodes,
+                const StrategyGroup* following,
+                const std::vector<ShardingStrategy>& strategies)
+      : is_tuple(is_tuple),
+        node_idx(node_idx),
+        instruction_id(instruction_id),
+        in_nodes(in_nodes),
+        following(following) {
+    for (const ShardingStrategy& strategy : strategies) {
+      AddStrategy(strategy);
+    }
+  }
+
+  std::string ToString(size_t indentation = 0) const {
     std::string str;
-    const std::string indent(indention, ' ');
+    const std::string indent(indentation, ' ');
     absl::StrAppend(&str, indent, "node_idx: ", node_idx, "\n");
     absl::StrAppend(&str, indent, "instruction id: ", instruction_id, "\n");
     absl::StrAppend(&str, indent, "is_tuple: ", is_tuple, "\n");
@@ -213,9 +207,9 @@ struct StrategyGroup {
                       " instruction_id=", i->instruction_id, "\n");
     }
     if (is_tuple) {
-      for (size_t i = 0; i < childs.size(); ++i) {
+      for (size_t i = 0; i < children.size(); ++i) {
         absl::StrAppend(&str, indent, "Tuple element #", i, ":\n");
-        absl::StrAppend(&str, childs[i]->ToString(indention + 2));
+        absl::StrAppend(&str, children[i]->ToString(indentation + 2));
       }
     } else {
       for (const auto& strategy : strategies) {
@@ -228,11 +222,85 @@ struct StrategyGroup {
   const StrategyGroup* GetSubStrategyGroup(const ShapeIndex& index) const {
     const StrategyGroup* result = this;
     for (auto index_element : index) {
-      CHECK_LE(index_element, result->childs.size());
-      result = result->childs.at(index_element).get();
+      CHECK_LE(index_element, result->children.size());
+      result = result->children.at(index_element).get();
     }
     return result;
   }
+
+  void ForEachLeafStrategyGroup(
+      absl::FunctionRef<void(const StrategyGroup&)> fn) const {
+    if (is_tuple) {
+      for (const std::unique_ptr<StrategyGroup>& child : children) {
+        fn(*child);
+      }
+    } else {
+      fn(*this);
+    }
+  }
+
+  void ForEachLeafStrategyGroup(absl::FunctionRef<void(StrategyGroup&)> fn) {
+    if (is_tuple) {
+      for (std::unique_ptr<StrategyGroup>& child : children) {
+        fn(*child);
+      }
+    } else {
+      fn(*this);
+    }
+  }
+
+  //////// Accessor methods for strategies ////////
+
+  void AddStrategy(const ShardingStrategy& strategy,
+                   const InputShardings& input_shardings = {}) {
+    strategies.push_back(strategy);
+    strategy_input_shardings.push_back(input_shardings);
+  }
+
+  void ClearStrategies() {
+    strategies.clear();
+    strategy_input_shardings.clear();
+  }
+
+  ShardingStrategy& GetStrategy(size_t strategy_idx) {
+    return strategies[strategy_idx];
+  }
+
+  const InputShardings& GetInputShardings(size_t strategy_idx) const {
+    return strategy_input_shardings[strategy_idx];
+  }
+
+  const std::vector<ShardingStrategy>& GetStrategies() const {
+    return strategies;
+  }
+
+  const std::vector<InputShardings>& GetStrategyInputShardings() const {
+    return strategy_input_shardings;
+  }
+
+  //////// Accessor methods for children ////////
+
+  void AddChild(std::unique_ptr<StrategyGroup> child) {
+    children.push_back(std::move(child));
+  }
+
+  void ClearChildren() { children.clear(); }
+
+  StrategyGroup& GetChild(size_t child_idx) { return *children[child_idx]; }
+
+  const std::vector<std::unique_ptr<StrategyGroup>>& GetChildren() const {
+    return children;
+  }
+
+ private:
+  // Used when is_tuple == False. Leaf strategy vector.
+  // A vector of strategy choices for the non-tuple output.
+  std::vector<ShardingStrategy> strategies;
+  std::vector<InputShardings> strategy_input_shardings;
+
+  // Used when is_tuple == True. A vector of pointers, each pointer is one
+  // StrategyGroup for one value in the output Tuple
+  std::vector<std::unique_ptr<StrategyGroup>> children;
 };
 
 // Type aliases.

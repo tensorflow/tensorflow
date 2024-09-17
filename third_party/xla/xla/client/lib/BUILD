@@ -204,7 +204,10 @@ cc_library(
 cc_library(
     name = "math",
     srcs = ["math.cc"],
-    hdrs = ["math.h"],
+    hdrs = [
+        "math.h",
+        "math_impl.h",
+    ],
     deps = [
         ":arithmetic",
         ":constants",

@@ -1,0 +1,152 @@
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless optional by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+==============================================================================*/
+
+syntax = "proto2";
+
+package tflite.profiling;
+
+import "tensorflow/lite/profiling/proto/profiling_info.proto";
+
+option java_multiple_files = true;
+
+// Corresponds to a TFLite Model.
+message ModelRuntimeDetails {
+  optional string model_name = 1;
+  repeated RuntimeSubgraph subgraphs = 2;
+}
+
+message RuntimeSubgraph {
+  enum SubgraphType {
+    UNKNOWN_SUBGRAPH = 0;
+
+    // Set if the RuntimeSubgraph is from the TFLite runtime.
+    TFLITE_SUBGRAPH = 1;
+
+    // Set if the RuntimeSubgraph is from a delegate's runtime.
+    DELEGATE_SUBGRAPH = 2;
+  }
+
+  optional int32 subgraph_id = 1;
+  repeated Edge edges = 2;  // All the edges that are part of this subgraph.
+
+  repeated Node nodes = 3;  // All the nodes that are part of this subgraph.
+
+  // List of node ids in the execution plan
+  repeated int32 execution_plan = 4 [packed = true];
+
+  optional SubgraphType subgraph_type = 5;
+}
+
+message Node {
+  optional int32 id = 1;
+  optional string name = 2;
+  optional string type = 3;
+
+  // Inputs and outputs are ids of the edges specified in the corresponding
+  // subgraph.
+  repeated int32 inputs = 4 [packed = true];
+
+  repeated int32 outputs = 5 [packed = true];
+
+  // Intermediate tensors to this node expressed as indices into the
+  // subgraph's tensors.
+  repeated int32 intermediates = 6 [packed = true];
+
+  // Indices of temporary tensors used during the computations. This usually
+  // contains no tensors, but ops are allowed to change that if they need
+  // scratch space of any sort.
+  repeated int32 temporaries = 7 [packed = true];
+
+  optional OpProfileData op_profile_data = 10;
+
+  oneof node_info {
+    // If this node is a delegate node, metadata about it.
+    DelegateNodeDetails delegate_node_details = 8;
+
+    // If this node is a tflite node and delegated, the delegate node
+    // id.
+    int32 delegated_to_node_id = 9;
+  }
+}
+
+message DelegateNodeDetails {
+  // Delegate name, e.g., TfLiteXNNPackDelegate, TfLiteGpuDelegateV2, etc.
+  // This comes from the custom_name field in the TfLiteRegistration struct.
+  optional string delegate_name = 1;
+
+  // These node ids correspond to the nodes saved in the upper-level
+  // RunTimeSubgraph.
+  repeated int32 tflite_node_ids_replaced = 2 [packed = true];
+}
+
+message Edge {
+  // LINT.IfChange(EdgeDataType)
+  enum DataType {
+    // Similar to TFLiteType.
+    UNKNOWN_TYPE = 0;
+    FLOAT32 = 1;
+    INT32 = 2;
+    UINT8 = 3;
+    INT64 = 4;
+    STRING = 5;
+    BOOL = 6;
+    INT16 = 7;
+    COMPLEX64 = 8;
+    INT8 = 9;
+    FLOAT16 = 10;
+    FLOAT64 = 11;
+    COMPLEX128 = 12;
+    UINT64 = 13;
+    RESOURCE = 14;
+    VARIANT = 15;
+    UINT32 = 16;
+    UINT16 = 17;
+    INT4 = 18;
+    BFLOAT16 = 19;
+  }
+  // LINT.ThenChange(//tensorflow/lite/profiling/model_runtime_info.cc:EdgeDataTypeTransform)
+
+  enum LayoutType {
+    UNKNOWN = 0;
+    SCALAR = 1;
+    LINEAR = 2;
+    HW = 3;
+    CHW = 4;
+    HWC = 5;
+    OIHW = 6;
+    OHWI = 7;
+    IHWO = 8;
+    IOHW = 9;
+    BHWC = 10;
+    HWDC = 11;
+    BHWDC = 12;
+    HWD = 13;
+    OHWDI = 14;
+    HWIO = 15;
+  }
+
+  optional int32 id = 1;
+  optional string name = 2;
+  optional DataType data_type = 3;
+  repeated int32 shape = 4 [packed = true];
+
+  // This corresponds to the memory allocation type of the tensor in the TFLite
+  // runtime. Maps to the TfLiteAllocationType enum.
+  optional string allocation_type = 5;
+  // What layout this tensor is stored in.
+  optional LayoutType layout_type = 6;
+
+  optional int32 size = 7;
+}

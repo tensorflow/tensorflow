@@ -1,0 +1,36 @@
+Subject: [PATCH] Add Python 3.13.0rc2 support to rules_python
+---
+Index: python/versions.bzl
+<+>UTF-8
+===================================================================
+diff --git a/python/versions.bzl b/python/versions.bzl
+--- a/python/versions.bzl	(revision 084b877c98b580839ceab2b071b02fc6768f3de6)
++++ b/python/versions.bzl	(date 1726256410148)
+@@ -484,6 +484,19 @@
+         },
+         "strip_prefix": "python",
+     },
++    "3.13.0": {
++        "url": "20240909/cpython-{python_version}rc2+20240909-{platform}-{build}.tar.gz",
++        "sha256": {
++            "aarch64-apple-darwin": "5d38ca1e6b030b004714e10813903e906c6b8f2a6361770df4512a838f4a4a9f",
++            "aarch64-unknown-linux-gnu": "85e103fc81a1fcf94a93180f6df42e39a7dc15d4b711705e133dc2ec847552e7",
++            "ppc64le-unknown-linux-gnu": "3be3d8aefae579c420fc6abf01658ae89fda8120154f989575b08085d2f8d6dc",
++            "s390x-unknown-linux-gnu": "6ec5130d62473368ecc7e55338bf1cc58607dbfe8088959cab51265b9f13c38d",
++            "x86_64-apple-darwin": "c3dcd4314324159945dc19342c73b9deb8de0f2d1709171427dd52f1a05eecca",
++            "x86_64-pc-windows-msvc": "31282f912e984d399c56925dfb69a4f3ce76226dfb4806b09f37e3b4a15e5a30",
++            "x86_64-unknown-linux-gnu": "028581cce5004c66775a3ae8b3ed65681ab4b289608dfd1aec3354d169216099",
++        },
++        "strip_prefix": "python",
++    },
+ }
+
+ # buildifier: disable=unsorted-dict-items
+@@ -493,6 +506,7 @@
+     "3.10": "3.10.14",
+     "3.11": "3.11.9",
+     "3.12": "3.12.3",
++    "3.13": "3.13.0",
+ }
+
+ PLATFORMS = {

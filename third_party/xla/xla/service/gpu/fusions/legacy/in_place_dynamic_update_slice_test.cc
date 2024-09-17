@@ -86,16 +86,17 @@ TEST_F(InPlaceDynamicUpdateSliceFusionTest, ThreadIndexing) {
   EXPECT_THAT(thread_id_update_indexing->ToString(printer_),
               MatchIndexingString(R"(
     (th_x, th_y, th_z, bl_x, bl_y, bl_z)[chunk_id, unroll_id] -> (
-    th_x floordiv 6, th_x mod 6)
+    th_x floordiv 6, th_x mod 6),
     domain:
-    th_x in [0, 29]
-    th_y in [0, 0]
-    th_z in [0, 0]
-    bl_x in [0, 0]
-    bl_y in [0, 0]
-    bl_z in [0, 0]
-    chunk_id in [0, 0]
-    unroll_id in [0, 0]
+    th_x in [0, 29],
+    th_y in [0, 0],
+    th_z in [0, 0],
+    bl_x in [0, 0],
+    bl_y in [0, 0],
+    bl_z in [0, 0],
+    chunk_id in [0, 0],
+    unroll_id in [0, 0],
+    is_simplified: true
   )"));
   auto thread_id_dst_indexing = fusion->ComputeThreadIdToInputIndexing(
       /*root_index=*/0, /*hero_operand_index=*/0, &mlir_context_);

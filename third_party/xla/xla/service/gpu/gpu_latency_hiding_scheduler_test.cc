@@ -49,6 +49,11 @@ class GpuLatencyHidingSchedulerBaseTest : public HloTestBase {
     auto& test_backend = backend();
     const auto& gpu_device_info =
         test_backend.default_stream_executor()->GetDeviceDescription();
+    HloModuleConfig config(module->config());
+    DebugOptions dboptions(config.debug_options());
+    dboptions.set_xla_gpu_enable_pgle_accuracy_checker(true);
+    config.set_debug_options(dboptions);
+    module->set_config(config);
     TF_RETURN_IF_ERROR(
         ScheduleGpuModule(module, /*pointer_size=*/8, gpu_device_info)
             .status());
@@ -86,7 +91,8 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest,
       partition-id0 = u32[] partition-id()
       replica-id0 = u32[] replica-id()
       tuple0 = (f32[], f32[2,16], u32[], u32[]) tuple(parameter0, bitcast0, partition-id0, replica-id0)
-      ROOT _ = get-tuple-element(tuple0), index=0
+      opt-barrier = (f32[], f32[2,16], u32[], u32[]) opt-barrier(tuple0)
+      ROOT _ = get-tuple-element(opt-barrier), index=0
     }
   )";
 

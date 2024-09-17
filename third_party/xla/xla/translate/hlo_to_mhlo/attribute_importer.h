@@ -45,6 +45,10 @@ mlir::mhlo::GatherDimensionNumbersAttr ConvertGatherDimensionNumbers(
 mlir::mhlo::ScatterDimensionNumbersAttr ConvertScatterDimensionNumbers(
     const xla::ScatterDimensionNumbers& dnums, mlir::Builder* builder);
 
+// Converts the dot algorithm to attributes.
+mlir::mhlo::DotAlgorithmAttr ConvertDotAlgorithm(
+    PrecisionConfig::Algorithm algorithm, mlir::Builder* builder);
+
 // Converts the dot dimensions to attributes.
 mlir::mhlo::DotDimensionNumbersAttr ConvertDotDimensionNumbers(
     const DotDimensionNumbers& dnums, mlir::Builder* builder);

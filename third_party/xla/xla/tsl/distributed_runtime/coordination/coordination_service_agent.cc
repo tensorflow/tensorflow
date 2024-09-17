@@ -944,8 +944,9 @@ void CoordinationServiceAgentImpl::WaitAtBarrierAsync(
   leader_client_->BarrierAsync(
       request.get(), response.get(),
       [request, response, done = std::move(done)](const absl::Status& s) {
-        done(s);
-        VLOG(3) << "WaitAtBarrierResponse: " << s;
+        auto status = TrimCoordinationErrorMessage(s);
+        done(status);
+        VLOG(3) << "WaitAtBarrierResponse: " << status;
       });
 }
 

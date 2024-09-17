@@ -2101,6 +2101,47 @@ TEST_F(HloVerifierTest, CollectivePermuteCrossPartitionTargetOOR) {
   EXPECT_THAT(error_message, HasSubstr("must be < 3"));
 }
 
+TEST_F(HloVerifierTest, FusionMoreOperandsThanParameters) {
+  const char* const kModuleStr = R"(
+  HloModule test
+
+  fused_computation {
+    ROOT p0 = f32[10] parameter(0)
+  }
+
+  ENTRY entry {
+    p0 = f32[10] parameter(0)
+    p1 = f32[10] parameter(1)
+    ROOT out = f32[10] fusion(p0, p1), kind=kInput, calls=fused_computation
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_TRUE(status.ok());
+}
+
+TEST_F(HloVerifierTest, FusionLessOperandsThanParameters) {
+  const char* const kModuleStr = R"(
+  HloModule test
+
+  fused_computation {
+    p0 = f32[10] parameter(0)
+    p1 = f32[10] parameter(1)
+    ROOT out = f32[10] add(p0, p1)
+  }
+
+  ENTRY entry {
+    p0 = f32[10] parameter(0)
+    ROOT out = f32[10] fusion(p0), kind=kInput, calls=fused_computation
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
+              HasSubstr("greater than the number of operands"));
+}
+
 TEST_F(HloVerifierTest, FusionShapeVerifier) {
   const char* const kModuleStr = R"(
   HloModule test

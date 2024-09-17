@@ -35,17 +35,11 @@ limitations under the License.
 #include "tensorflow/core/kernels/sparse_utils.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/util/cuda_sparse.h"
 #include "tensorflow/core/util/gpu_solvers.h"
-#endif
-
-#if GOOGLE_CUDA
-#include "xla/stream_executor/cuda/cuda_activation.h"
-using ::stream_executor::cuda::ScopedActivateExecutorContext;
-#elif TENSORFLOW_USE_ROCM
-#include "xla/stream_executor/rocm/rocm_activation.h"
-using ::stream_executor::rocm::ScopedActivateExecutorContext;
+using ::stream_executor::gpu::ScopedActivateContext;
 #endif
 
 namespace tensorflow {
@@ -240,7 +234,7 @@ class SparseTensorToCSRSparseMatrixGPUOp : public AsyncOpKernel {
       // Ensure that within the callback, the proper GPU settings are
       // configured.
       {
-        ScopedActivateExecutorContext scoped_activation{stream->parent()};
+        ScopedActivateContext scoped_activation{stream->parent()};
         Tensor batch_ptr_t(cpu_allocator(), DT_INT32,
                            TensorShape({batch_size + 1}));
 
@@ -332,7 +326,7 @@ class SparseTensorToCSRSparseMatrixGPUOp : public AsyncOpKernel {
             c, c->allocate_output(0, TensorShape({}), &matrix_t, cpu_alloc),
             done);
         matrix_t->scalar<Variant>()() = std::move(matrix);
-      }  // Release ScopedActivateExecutorContext to prevent deadlock when done
+      }  // Release ScopedActivateContext to prevent deadlock when done
          // inlines another Op kernel, which may assume the original cuda
          // Context.
 

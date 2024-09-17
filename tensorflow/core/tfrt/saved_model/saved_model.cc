@@ -637,10 +637,15 @@ absl::StatusOr<std::unique_ptr<SavedModel>> SavedModelImpl::LoadSavedModel(
     if (*model_restore_context == nullptr) {
       return absl::InternalError("IfrtModelRestoreContexts must not be null.");
     }
+    auto prepare_restore_start = absl::Now();
     TF_RETURN_IF_ERROR(
         PrepareRestore(&context, &model_context, meta_graph_def,
                        *fallback_state, std::string(saved_model_dir), options,
                        (*model_restore_context)->checkpoint_loader()));
+
+    LOG(INFO) << "TFRT finished prepare restore. Took "
+              << absl::ToInt64Milliseconds(absl::Now() - prepare_restore_start)
+              << " ms.";
   }
 
   GetDefaultInputValue(meta_graph_def.signature_def(), model_context,

@@ -11,6 +11,7 @@ lit_test_suite(
     srcs = enforce_glob(
         [
             "add.mlir",
+            "attributes.mlir",
             "case.mlir",
             "composite.mlir",
             "dynamic.mlir",
@@ -18,6 +19,7 @@ lit_test_suite(
             "export.mlir",
             "export_async.mlir",
             "export_and_check_layouts.mlir",
+            "export_entry_computation_layout.mlir",
             "export_large_constants.mlir",
             "export_replicas.mlir",
             "frontend_attributes.mlir",

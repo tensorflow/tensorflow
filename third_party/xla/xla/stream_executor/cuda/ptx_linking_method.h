@@ -22,6 +22,14 @@ limitations under the License.
 
 namespace stream_executor {
 
+// NvLink is a standalone binary that links object files to produce GPU
+// executables (see: nvlink --help). Not to be confused with the interconnect
+// system of the same name. Driver and NvJitLink and libraries that can be be
+// linked to from other C++ programs. The introduction here
+// https://docs.nvidia.com/cuda/nvjitlink/index.html provides a comparison
+// between NvJitLink and other methods. For our purposes, we generally expect
+// all linking methods to produce the same result. We select a linking method
+// in NVPTXCompiler::ChooseLinkingMethod.
 enum class PtxLinkingMethod {
   kNone,
   kNvLink,

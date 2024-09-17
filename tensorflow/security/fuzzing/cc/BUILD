@@ -78,7 +78,6 @@ tf_cc_fuzz_test(
 tf_proto_library(
     name = "checkpoint_reader_fuzz_input_proto",
     srcs = ["checkpoint_reader_fuzz_input.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         "//tensorflow/core/util:saved_tensor_slice_proto",

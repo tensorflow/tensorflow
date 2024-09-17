@@ -81,7 +81,7 @@ class SparseTensor {
   SparseTensor(const SparseTensor& other)
       : SparseTensor(other.ix_, other.vals_, other.shape_, other.order_) {}
 
-  SparseTensor(SparseTensor&& other)
+  SparseTensor(SparseTensor&& other) noexcept
       : SparseTensor(std::move(other.ix_), std::move(other.vals_),
                      std::move(other.shape_), std::move(other.order_)) {}
 
@@ -94,7 +94,7 @@ class SparseTensor {
     return *this;
   }
 
-  SparseTensor& operator=(SparseTensor&& other) {
+  SparseTensor& operator=(SparseTensor&& other) noexcept {
     ix_ = std::move(other.ix_);
     vals_ = std::move(other.vals_);
     shape_ = std::move(other.shape_);

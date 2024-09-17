@@ -94,7 +94,7 @@ limitations under the License.
 #include "xla/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/translate/mhlo_to_hlo/layout_util.h"
 #include "xla/translate/mhlo_to_hlo/location_exporter.h"
-#include "xla/translate/mhlo_to_hlo/module_config_exporter.h"
+#include "xla/translate/mhlo_to_hlo/module_attributes_exporter.h"
 #include "xla/translate/mhlo_to_hlo/stack_frame_index_builder.h"
 #include "xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/xla_data.pb.h"
@@ -147,6 +147,14 @@ constexpr char kMhloSpmdParametersShardings[] =
     "mhlo.spmd_parameters_shardings";
 constexpr char kMhloUseAutoSpmdPartitioning[] =
     "mhlo.use_auto_spmd_partitioning";
+constexpr char kMhloXlaEntryComputationParameterLayouts[] =
+    "mhlo.xla_entry_computation_parameter_layouts";
+constexpr char kMhloXlaEntryComputationParameterTiles[] =
+    "mhlo.xla_entry_computation_parameter_tiles";
+constexpr char kMhloXlaEntryComputationResultLayout[] =
+    "mhlo.xla_entry_computation_result_layout";
+constexpr char kMhloXlaEntryComputationResultTiles[] =
+    "mhlo.xla_entry_computation_result_tiles";
 
 // Miscellaneous string literals.
 constexpr char kArgEmptyTuple[] = "arg_empty_tuple";
@@ -524,11 +532,6 @@ static xla::DotDimensionNumbers Convert_dot_dimension_numbers(
   return dot_dimension_numbers;
 }
 
-static xla::ConvolutionDimensionNumbers Convert_dimension_numbers(
-    mlir::mhlo::ConvDimensionNumbersAttr input) {
-  return xla::ConvertConvDimensionNumbers(input);
-}
-
 static xla::SparsityDescriptor Convert_sparsity_descriptor(
     mlir::mhlo::SparsityDescriptorAttr sparsity_attr, bool is_lhs) {
   xla::SparsityDescriptor sparsity_descriptor;
@@ -565,10 +568,6 @@ static xla::ComparisonDirection Convert_comparison_direction(
 
 static xla::GatherDimensionNumbers Convert_dimension_numbers(
     mlir::mhlo::GatherDimensionNumbersAttr input) {
-  assert(input.getOperandBatchingDims().empty() &&
-         input.getStartIndicesBatchingDims().empty() &&
-         "batching dimensions aren't supported in xla::GatherDimensionNumbers");
-
   xla::GatherDimensionNumbers output;
 
   auto offset_dims = input.getOffsetDims();
@@ -581,6 +580,17 @@ static xla::GatherDimensionNumbers Convert_dimension_numbers(
             tsl::protobuf::RepeatedFieldBackInserter(
                 output.mutable_collapsed_slice_dims()));
 
+  auto operand_batching_dims = input.getOperandBatchingDims();
+  std::copy(operand_batching_dims.begin(), operand_batching_dims.end(),
+            tsl::protobuf::RepeatedFieldBackInserter(
+                output.mutable_operand_batching_dims()));
+
+  auto start_indices_batching_dims = input.getStartIndicesBatchingDims();
+  std::copy(start_indices_batching_dims.begin(),
+            start_indices_batching_dims.end(),
+            tsl::protobuf::RepeatedFieldBackInserter(
+                output.mutable_start_indices_batching_dims()));
+
   auto start_index_map = input.getStartIndexMap();
   std::copy(start_index_map.begin(), start_index_map.end(),
             tsl::protobuf::RepeatedFieldBackInserter(
@@ -592,11 +602,6 @@ static xla::GatherDimensionNumbers Convert_dimension_numbers(
 
 static xla::ScatterDimensionNumbers Convert_scatter_dimension_numbers(
     mlir::mhlo::ScatterDimensionNumbersAttr input) {
-  assert(
-      input.getInputBatchingDims().empty() &&
-      input.getScatterIndicesBatchingDims().empty() &&
-      "batching dimensions aren't supported in xla::ScatterDimensionNumbers");
-
   xla::ScatterDimensionNumbers output;
 
   auto update_window_dims = input.getUpdateWindowDims();
@@ -608,6 +613,17 @@ static xla::ScatterDimensionNumbers Convert_scatter_dimension_numbers(
   std::copy(inserted_window_dims.begin(), inserted_window_dims.end(),
             tsl::protobuf::RepeatedFieldBackInserter(
                 output.mutable_inserted_window_dims()));
+
+  auto input_batching_dims = input.getInputBatchingDims();
+  std::copy(input_batching_dims.begin(), input_batching_dims.end(),
+            tsl::protobuf::RepeatedFieldBackInserter(
+                output.mutable_input_batching_dims()));
+
+  auto scatter_indices_batching_dims = input.getScatterIndicesBatchingDims();
+  std::copy(scatter_indices_batching_dims.begin(),
+            scatter_indices_batching_dims.end(),
+            tsl::protobuf::RepeatedFieldBackInserter(
+                output.mutable_scatter_indices_batching_dims()));
 
   auto scatter_dims_to_operand_dims = input.getScatterDimsToOperandDims();
   std::copy(scatter_dims_to_operand_dims.begin(),
@@ -1591,10 +1607,22 @@ LogicalResult ExportXlaOp(DotGeneralOp op, OpLoweringContext ctx) {
     return mlir::failure();
   xla::PrimitiveType preferred_element_type =
       xla::ConvertMlirTypeToPrimitiveType(getElementTypeOrSelf(op.getType()));
-  value_map[op] = xla::DotGeneral(
+
+  // Precision Config / Algorithm
+  auto precision_config = Convert_precision_config(op.getPrecisionConfig());
+  if (op.getAlgorithmAttr()) {
+    absl::StatusOr<xla::PrecisionConfig::Algorithm> algorithm =
+        xla::ConvertDotAlgorithm(op.getAlgorithmAttr());
+    if (!algorithm.ok()) {
+      return op.emitError(algorithm.status().ToString());
+    }
+    precision_config->set_algorithm(algorithm.value());
+  }
+  auto xlaOp = xla::DotGeneral(
       lhs, rhs, Convert_dot_dimension_numbers(op.getDotDimensionNumbers()),
-      Unwrap(Convert_precision_config(op.getPrecisionConfig())),
-      preferred_element_type);
+      Unwrap(precision_config), preferred_element_type);
+
+  value_map[op] = xlaOp;
   return mlir::success();
 }
 
@@ -3817,9 +3845,17 @@ absl::Status PrepareForExport(mlir::ModuleOp module) {
         mhlo::createSymbolicShapeOptimizationPass());
     pm.addNestedPass<mlir::func::FuncOp>(mhlo::createShapeLegalizeToHloPass());
   }
-  if (failed(pm.run(module)))
-    return tsl::errors::Internal("Unable to prepare for XLA export");
-  return absl::OkStatus();
+
+  mlir::BaseScopedDiagnosticHandler handler(module.getContext());
+
+  (void)pm.run(module);
+  absl::Status s = handler.ConsumeStatus();
+  if (!s.ok()) {
+    s = absl::Status(
+        s.code(),
+        absl::StrCat("Unable to prepare for XLA export: ", s.message()));
+  }
+  return s;
 }
 
 }  // namespace
@@ -3845,7 +3881,7 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
   xla::XlaBuilder module_builder(kMain);
   ConvertToHloModule converter(module, module_builder, options);
   if (failed(converter.Run())) return diag_handler.ConsumeStatus();
-  auto hlo_module = converter.ConsumeMainProto();
+  xla::HloModuleProto hlo_module = converter.ConsumeMainProto();
   StringRef module_name = module.getName() ? *module.getName() : kMain;
   hlo_module.set_name(module_name.str());
   if (auto cross_program_prefetches =
@@ -3886,6 +3922,34 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
       *hlo_module.add_spmd_parameters_shardings() = *xla::ConvertSharding(
           mlir::cast<mlir::StringAttr>(sharding).getValue());
     }
+  }
+  if (auto xla_entry_computation_parameter_layout =
+          module->getAttrOfType<mlir::ArrayAttr>(
+              kMhloXlaEntryComputationParameterLayouts)) {
+    auto status = mhlo::ExportModuleEntryComputationParameterLayouts(
+        xla_entry_computation_parameter_layout, hlo_module);
+    if (!status.ok()) return status;
+  }
+  if (auto xla_entry_computation_parameter_tiles =
+          module->getAttrOfType<mlir::ArrayAttr>(
+              kMhloXlaEntryComputationParameterTiles)) {
+    auto status = mhlo::ExportModuleEntryComputationParameterTiles(
+        xla_entry_computation_parameter_tiles, hlo_module);
+    if (!status.ok()) return status;
+  }
+  if (auto xla_entry_computation_result_layout =
+          module->getAttrOfType<mlir::ArrayAttr>(
+              kMhloXlaEntryComputationResultLayout)) {
+    auto status = mhlo::ExportModuleEntryComputationResultLayout(
+        xla_entry_computation_result_layout, hlo_module);
+    if (!status.ok()) return status;
+  }
+  if (auto xla_entry_computation_result_tiles =
+          module->getAttrOfType<mlir::ArrayAttr>(
+              kMhloXlaEntryComputationResultTiles)) {
+    auto status = mhlo::ExportModuleEntryComputationResultTiles(
+        xla_entry_computation_result_tiles, hlo_module);
+    if (!status.ok()) return status;
   }
 
   xla::StackFrameIndexProto stack_frame_index =

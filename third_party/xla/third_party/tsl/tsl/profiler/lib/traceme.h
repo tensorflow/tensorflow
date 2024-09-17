@@ -27,7 +27,7 @@ limitations under the License.
 #include "tsl/profiler/utils/no_init.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
-#include "tsl/profiler/backends/cpu/traceme_recorder.h"
+#include "xla/tsl/profiler/backends/cpu/traceme_recorder.h"
 #include "tsl/profiler/utils/time_utils.h"
 #endif
 

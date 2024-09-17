@@ -85,7 +85,6 @@ cc_library(
 tf_proto_library(
     name = "converter_error_data_proto",
     srcs = ["converter_error_data.proto"],
-    cc_api_version = 2,
     visibility = [
         "//visibility:public",
     ],

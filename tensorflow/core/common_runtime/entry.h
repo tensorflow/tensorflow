@@ -134,7 +134,7 @@ struct Entry {
 };
 
 // TODO(b/152925936): Re-evaluate this constant with current usage patterns.
-typedef gtl::InlinedVector<Entry, 4> EntryVector;
+typedef absl::InlinedVector<Entry, 4UL> EntryVector;
 
 }  // namespace tensorflow
 

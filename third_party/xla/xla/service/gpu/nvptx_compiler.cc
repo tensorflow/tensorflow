@@ -39,7 +39,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "third_party/gpus/cuda/include/cuda.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
@@ -95,6 +94,7 @@ limitations under the License.
 #include "xla/service/tuple_simplifier.h"
 #include "xla/stream_executor/cuda/cuda_asm_compiler.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
+#include "xla/stream_executor/cuda/cuda_driver.h"  // IWYU pragma : keep - Needed for GpuContext
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/nvjitlink.h"
 #include "xla/stream_executor/cuda/nvjitlink_support.h"
@@ -108,10 +108,12 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/util/env_var.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
@@ -182,12 +184,11 @@ class MatmulBfloat16Support : public FloatSupport {
 
 }  // namespace
 
-int32_t NVPTXCompiler::GetToolkitVersion() const { return CUDA_VERSION; }
-
 absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
     HloModule* hlo_module, se::GpuComputeCapability gpu_version,
     se::dnn::VersionInfo dnn_version,
-    se::DeviceMemoryAllocator* device_allocator) {
+    se::DeviceMemoryAllocator* device_allocator,
+    const se::SemanticVersion& toolkit_version) {
   auto cuda_compute_capability =
       std::get<se::CudaComputeCapability>(gpu_version);
   // Convert convolutions into CustomCalls to cudnn, then canonicalize them
@@ -208,7 +209,7 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddPass<GpusolverRewriter>();
   pipeline.AddPass<ConvRewriter>(cuda_compute_capability);
   pipeline.AddPass<CudnnFusedConvRewriter>(cuda_compute_capability, dnn_version,
-                                           GetToolkitVersion());
+                                           toolkit_version);
   pipeline.AddPass<ConvPaddingLegalization>();
   pipeline.AddPass<CudnnPadForConvolutions>(cuda_compute_capability);
   pipeline.AddPass<CudnnVectorizeConvolutions>(cuda_compute_capability,
@@ -378,8 +379,9 @@ absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
 absl::Status NVPTXCompiler::AddGemmFusionAutotuningPasses(
     HloPassPipeline* pipeline, HloModule* hlo_module,
     AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
-    const MultiProcessKeyValueStore& key_value_store) {
-  pipeline->AddPass<GemmFusionAutotuner>(autotune_config, GetToolkitVersion(),
+    const MultiProcessKeyValueStore& key_value_store,
+    const se::SemanticVersion& toolkit_version) {
+  pipeline->AddPass<GemmFusionAutotuner>(autotune_config, toolkit_version,
                                          thread_pool, key_value_store);
   return absl::OkStatus();
 }
@@ -580,10 +582,12 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
     VLOG(2) << "Deferring the PTX to CUBIN compilation of the relocatable "
                "module to the linking step.";
     std::vector<uint8_t> binary;
-    binary.reserve(sizeof(kPtxPrefix) + ptx.size() + 1);
-    binary.insert(binary.end(), kPtxPrefix, kPtxPrefix + sizeof(kPtxPrefix));
-    binary.insert(binary.end(), ptx.begin(), ptx.end());
-    binary.emplace_back('\0');
+    if (!ptx.empty()) {
+      binary.reserve(sizeof(kPtxPrefix) + ptx.size() + 1);
+      binary.insert(binary.end(), kPtxPrefix, kPtxPrefix + sizeof(kPtxPrefix));
+      binary.insert(binary.end(), ptx.begin(), ptx.end());
+      binary.emplace_back('\0');
+    }
     return BackendCompileResult{std::move(ptx), std::move(binary)};
   }
 
@@ -846,7 +850,7 @@ static bool IsNvlinkEnabled() {
 
 // Returns the version of the PTX compiler that will be used for the given
 // debug options and preferred CUDA directory (Either libnvptxcompiler or ptxas)
-static absl::StatusOr<stream_executor::ToolVersion> GetAsmCompilerVersion(
+static absl::StatusOr<stream_executor::SemanticVersion> GetAsmCompilerVersion(
     const DebugOptions& debug_options, const std::string& preferred_cuda_dir) {
   if (debug_options.xla_gpu_enable_libnvptxcompiler() &&
       se::IsLibNvPtxCompilerSupported()) {
@@ -877,8 +881,8 @@ absl::StatusOr<se::PtxLinkingMethod> NVPTXCompiler::ChooseLinkingMethod(
     return LinkingMethod::kNvLink;
   }
 
-  int ptxas_version = std::get<0>(asm_compiler_version) * 1000 +
-                      std::get<1>(asm_compiler_version) * 10;
+  int ptxas_version =
+      asm_compiler_version.major() * 1000 + asm_compiler_version.minor() * 10;
   TF_ASSIGN_OR_RETURN(int driver_version,
                       se::gpu::GpuDriver::GetDriverVersion());
 
@@ -891,9 +895,7 @@ absl::StatusOr<se::PtxLinkingMethod> NVPTXCompiler::ChooseLinkingMethod(
       << absl::StrFormat("%d.%d", driver_version / 1000,
                          (driver_version % 1000) / 10)
       << " which is older than the PTX compiler version "
-      << absl::StrFormat("(%d.%d.%d)", std::get<0>(asm_compiler_version),
-                         std::get<1>(asm_compiler_version),
-                         std::get<2>(asm_compiler_version))
+      << asm_compiler_version
       << ". Because the driver is older than the PTX compiler version, XLA is "
          "disabling parallel compilation, which may slow down compilation. "
          "You should update your NVIDIA driver or use the NVIDIA-provided "
@@ -960,12 +962,12 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
     }
   }
 
-  auto context = se::gpu::ExtractGpuExecutor(stream_exec)->gpu_context();
   if (linking_method == se::PtxLinkingMethod::kNvLink) {
-    return LinkUsingNvlink(cc, debug_options.xla_gpu_cuda_data_dir(), context,
+    return LinkUsingNvlink(cc, debug_options.xla_gpu_cuda_data_dir(),
                            cubin_images);
   }
-  return LinkGpuAsm(cc, context, cubin_images);
+  return LinkGpuAsm(cc, se::gpu::ExtractGpuExecutor(stream_exec)->gpu_context(),
+                    cubin_images);
 }
 
 }  // namespace gpu

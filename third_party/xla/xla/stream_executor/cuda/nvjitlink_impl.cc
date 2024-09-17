@@ -91,10 +91,13 @@ static absl::Status CreateErrorFromPTXASLog(std::string_view log,
       absl::StrContains(log, "Register allocation failed")) {
     return absl::ResourceExhaustedError("Register allocation failed");
   }
-  if (cancel_if_reg_spill && absl::StrContains(log, "warning") &&
-      absl::StrContains(log, "Registers are spilled")) {
-    return absl::CancelledError(
-        "Compilation result discarded due to register spilling");
+  if (absl::StrContains(log, "warning")) {
+    LOG(INFO) << log;
+    if (cancel_if_reg_spill &&
+        absl::StrContains(log, "Registers are spilled")) {
+      return absl::CancelledError(
+          "Compilation result discarded due to register spilling");
+    }
   }
   return absl::OkStatus();
 }
@@ -150,8 +153,9 @@ absl::StatusOr<std::vector<uint8_t>> CompileAndLinkUsingLibNvJitLink(
   }
 
   std::vector<std::string> cli_args;
-  // If the target is sm_90, hard code it to sm_90a so that all instructions
-  // can be used. We don't need the portability that sm_90 gives.
+  // On Hopper, default to sm_90a so that all instructions can be used. But
+  // only sm_90 is forward compatible, so don't use sm_90a with newer hardware:
+  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#ptx-compatibility
   std::string_view extension = (cc_major == 9 && cc_minor == 0) ? "a" : "";
   std::string architecture = absl::StrCat("sm_", cc_major, cc_minor, extension);
   cli_args.emplace_back(absl::StrCat("-arch=", architecture));

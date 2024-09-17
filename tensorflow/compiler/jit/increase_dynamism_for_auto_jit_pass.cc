@@ -280,7 +280,6 @@ Status ConvertTensorFlowSliceToStaticShapedSlice(
 
 void ReplaceTensorFlowSliceWithStaticShapedSlice(Graph* g, Node* slice,
                                                  Node* static_shaped_slice) {
-  absl::InlinedVector<const Edge*, 6> edges_to_remove;
   std::vector<const Edge*> slice_out_edges;
   absl::c_copy(slice->out_edges(), std::back_inserter(slice_out_edges));
   for (const Edge* e : slice_out_edges) {

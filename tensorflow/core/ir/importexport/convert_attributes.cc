@@ -417,9 +417,10 @@ absl::StatusOr<tf_type::FullTypeAttr> ConvertAttribute(
     default:
       return InvalidArgument("Unsupported attr kind in FullType");
   }
-
-  return FullTypeAttr::get(builder.getContext(), full_type.type_id(), args,
-                           attr);
+  IntegerAttr type_id_attr =
+      mlir::IntegerAttr::get(mlir::IntegerType::get(builder.getContext(), 32),
+                             static_cast<int32_t>(full_type.type_id()));
+  return FullTypeAttr::get(builder.getContext(), type_id_attr, args, attr);
 }
 
 absl::StatusOr<tensorflow::FullTypeDef> ConvertAttribute(
@@ -447,7 +448,8 @@ absl::StatusOr<tensorflow::FullTypeDef> ConvertAttribute(
                              mlir::debugString(full_type.getAttr()));
   }
 
-  ret.set_type_id(static_cast<tensorflow::FullTypeId>(full_type.getTypeId()));
+  ret.set_type_id(
+      static_cast<tensorflow::FullTypeId>(full_type.getTypeId().getInt()));
 
   return ret;
 }

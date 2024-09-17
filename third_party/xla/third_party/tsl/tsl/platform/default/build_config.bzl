@@ -297,7 +297,6 @@ def cc_grpc_library(
     as srcs argument and generates only grpc library classes, expecting
     protobuf messages classes library (cc_proto_library target) to be passed in
     deps argument.
-    Assumes the generated classes will be used in cc_api_version = 2.
     Args:
         name (str): Name of rule.
         srcs (list): A single .proto file which contains services definitions,
@@ -438,11 +437,9 @@ def tf_proto_library_cc(
         visibility = None,
         testonly = 0,
         cc_libs = [],
-        cc_stubby_versions = None,
         cc_grpc_version = None,
         use_grpc_namespace = False,
         j2objc_api_version = 1,
-        cc_api_version = 2,
         js_codegen = "jspb",
         create_service = False,
         create_java_proto = False,
@@ -575,8 +572,6 @@ def tf_proto_library(
         visibility = None,
         testonly = 0,
         cc_libs = [],
-        cc_stubby_versions = None,
-        cc_api_version = 2,
         cc_grpc_version = None,
         use_grpc_namespace = False,
         j2objc_api_version = 1,
@@ -599,7 +594,6 @@ def tf_proto_library(
         create_service,
         create_java_proto,
         create_kotlin_proto,
-        cc_stubby_versions,
         create_go_proto,
     )
 

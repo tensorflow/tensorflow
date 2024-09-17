@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
@@ -441,6 +442,18 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
         }
         TF_RETURN_IF_ERROR(SetBufferLayout(keys_layout, *output_buffer));
       }
+    } else if (IsCustomCallToTopK(*instruction)) {
+      // The output of the TopK custom call needs to have default layout.
+      Layout default_layout = LayoutUtil::GetDefaultLayoutForRank(
+          instruction->operand(0)->shape().rank());
+      TF_ASSIGN_OR_RETURN(
+          auto values_buffer,
+          points_to_analysis_->GetBufferDefinedAt(instruction, {0}));
+      TF_RETURN_IF_ERROR(SetBufferLayout(default_layout, *values_buffer));
+      TF_ASSIGN_OR_RETURN(
+          auto indices_buffer,
+          points_to_analysis_->GetBufferDefinedAt(instruction, {1}));
+      TF_RETURN_IF_ERROR(SetBufferLayout(default_layout, *indices_buffer));
     } else if (instruction->opcode() == HloOpcode::kTriangularSolve) {
       // TODO(phawkins): Ideally we would relax this constraint. What we
       // actually want is that:
@@ -579,13 +592,16 @@ bool GpuLayoutAssignment::InstructionCanChangeLayoutInstance(
   // The host offloading custom calls will be eventually removed
   // by the offloader, so we need to make sure that the calls do not change
   // the layout and thus cause layout mismatches after the removal.
+  // The TopK custom call cannot handle the case if the operand has a different
+  // layout.
   const HloCustomCallInstruction* custom_call =
       DynCast<HloCustomCallInstruction>(instruction);
   if (custom_call != nullptr &&
       (custom_call->custom_call_target() ==
            host_memory_offload_annotations::kMoveToHostCustomCallTarget ||
        custom_call->custom_call_target() ==
-           host_memory_offload_annotations::kMoveToDeviceCustomCallTarget)) {
+           host_memory_offload_annotations::kMoveToDeviceCustomCallTarget ||
+       custom_call->custom_call_target() == kTopKCustomCallTarget)) {
     return false;
   }
 

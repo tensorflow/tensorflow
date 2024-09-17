@@ -95,6 +95,47 @@ module attributes {ifrt.devices = #device} {
   let constructor = "CreateSpmdExpansionPass()";
 }
 
+def IfrtOutlineAtomProgramToModulePass :
+    Pass<"ifrt-outline-atom-program-to-module", "mlir::ModuleOp"> {
+  let summary = "Wraps every atom function with a ModuleOp with a @main FuncOp";
+  let description = [{
+For every unique atom program this passes produces a ModuleOp with the same name
+as the callee, clones the callee into the ModuleOp, and redirects all the
+CallOps calling it to the new callee.
+
+This pass must be run if the compiler (e.g., the XLA compiler) expects each atom
+program to be outlined in a ModuleOp with a @main FuncOp.
+
+For example, the following code
+
+```mlir
+%0, %ctrl_0 = ifrt.Call @callee(%arg0) on devices [0, 1]
+    : (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
+                   [0,1]>)
+    -> !ifrt.array<tensor<4x4xi32>, #ifrt.sharding_param<1x2 to [0] on 2>,
+                   [0,1]>
+
+func.func private @callee(%arg0: tensor<2x2xi32>) -> (tensor<4x4xi32>) {}
+```
+
+will be replaced by
+
+```mlir
+%0, %ctrl_0 = ifrt.Call @callee::@main(%arg0) on devices [0, 1]
+    : (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
+                   [0,1]>)
+    -> !ifrt.array<tensor<4x4xi32>, #ifrt.sharding_param<1x2 to [0] on 2>,
+                   [0,1]>
+
+module @callee attributes {sym_visibility = "private"} {
+  func.func @main(%arg0: tensor<2x2xi32>) -> (tensor<4x4xi32>) {}
+}
+```
+  }];
+
+  let constructor = "CreateIfrtOutlineAtomProgramToModulePass()";
+}
+
 def IfrtDuplicatedCalleeEliminationPass
     : Pass<"ifrt-duplicated-callee-elimination", "mlir::ModuleOp"> {
   let summary = "Deduplicate callees of CallOp";

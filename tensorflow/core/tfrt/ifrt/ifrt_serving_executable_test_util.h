@@ -68,7 +68,7 @@ class IfrtServingExecutableTestHelper {
   IfrtLoadedVariableRegistry ifrt_loaded_variable_registry_;
   IfrtRestoreTensorRegistry ifrt_restore_tensor_registry_;
   std::unique_ptr<tfrt::ConcurrentWorkQueue> work_queue_;
-  std::unique_ptr<tensorflow::StaticDeviceMgr> device_mgr_;
+  std::unique_ptr<tensorflow::DynamicDeviceMgr> device_mgr_;
 
   mlir::DialectRegistry registry_;
   std::unique_ptr<mlir::MLIRContext> context_;

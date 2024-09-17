@@ -77,32 +77,23 @@ int TpuPlatform::VisibleDeviceCount() const {
       ->TpuPlatform_VisibleDeviceCountFn(platform_);
 }
 
-absl::StatusOr<::stream_executor::StreamExecutor*> TpuPlatform::GetExecutor(
-    const ::stream_executor::StreamExecutorConfig& config) {
+absl::StatusOr<::stream_executor::StreamExecutor*>
+TpuPlatform::ExecutorForDevice(int ordinal) {
   return executor_cache_.GetOrCreate(
-      config, [&]() { return GetUncachedExecutor(config); });
+      ordinal, [this, ordinal]() { return GetUncachedExecutor(ordinal); });
 }
 
 absl::StatusOr<std::unique_ptr<::stream_executor::StreamExecutor>>
-TpuPlatform::GetUncachedExecutor(
-    const ::stream_executor::StreamExecutorConfig& config) {
-  SE_StreamExecutorConfig* c_config = stream_executor::tpu::ExecutorApiFn()
-                                          ->TpuStreamExecutorConfig_DefaultFn();
-
-  stream_executor::tpu::ExecutorApiFn()->TpuStreamExecutorConfig_SetOrdinalFn(
-      c_config, config.ordinal);
-
+TpuPlatform::GetUncachedExecutor(int ordinal) {
   StatusHelper status;
   SE_StreamExecutor* executor =
       stream_executor::tpu::ExecutorApiFn()->TpuPlatform_GetExecutorFn(
-          platform_, c_config, status.c_status);
-  stream_executor::tpu::ExecutorApiFn()->TpuStreamExecutorConfig_FreeFn(
-      c_config);
+          platform_, ordinal, status.c_status);
   if (!status.ok()) {
     return status.status();
   }
   return std::make_unique<stream_executor::tpu::TpuExecutor>(this, executor,
-                                                             config.ordinal);
+                                                             ordinal);
 }
 
 ::stream_executor::Platform::Id TpuPlatform::id() const {

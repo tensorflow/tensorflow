@@ -111,7 +111,7 @@ def XLAGPU_YieldOp : XLAGPU_Op<"yield", [
     ParentOneOf<["::xla::gpu::AtomicRMWOp", "::xla::gpu::LoopOp"]>,
     ReturnLike, Terminator]> {
   let summary = "Terminator for atomic_rmw ops.";
-  let arguments = (ins AnyType:$result);
+  let arguments = (ins Variadic<AnyType>:$result);
 
   let builders = [OpBuilder<(ins), [{ /* nothing to do */ }]>];
   let assemblyFormat = "$result attr-dict `:` type($result)";
@@ -129,7 +129,13 @@ def XLAGPU_PureCallOp : XLAGPU_Op<"pure_call",
       $_state.addOperands(operands);
       $_state.addAttribute("callee", mlir::SymbolRefAttr::get(callee));
       $_state.addTypes(callee.getFunctionType().getResults());
-    }]>];
+    }]>,
+    OpBuilder<(ins "mlir::FlatSymbolRefAttr":$callee, CArg<"mlir::ValueRange", "{}">:$operands, CArg<"llvm::ArrayRef<mlir::Type>", "{}">:$result_types), [{
+      $_state.addOperands(operands);
+      $_state.addAttribute("callee", callee);
+      $_state.addTypes(result_types);
+    }]>,
+    ];
   let assemblyFormat = [{
     $callee `(` $operands `)` attr-dict `:` functional-type($operands, results)
   }];
@@ -154,7 +160,7 @@ def XLAGPU_PureCallOp : XLAGPU_Op<"pure_call",
 }
 
 def XLAGPU_ShuffleReduceOp : XLAGPU_Op<"shuffle_reduce",
-    [Pure,
+    [Pure,  CallOpInterface,
      TypesMatchWith<"result type matches type of operands",
                      "operands", "results", "$_self">]> {
   let summary = "Performs a full warp shuffle and reduces the values";
@@ -191,6 +197,20 @@ def XLAGPU_ShuffleReduceOp : XLAGPU_Op<"shuffle_reduce",
 
   let assemblyFormat = [{
     $reducer `(` $operands `)` `to` $max_distance attr-dict `:` type($operands)
+  }];
+  let extraClassDeclaration = [{
+    mlir::CallInterfaceCallable getCallableForCallee() {
+      return (*this)->getAttrOfType<mlir::SymbolRefAttr>("reducer");
+    }
+    operand_range getArgOperands() {
+      return getOperands();
+    }
+    mlir::MutableOperandRange getArgOperandsMutable() {
+      return getOperandsMutable();
+    }
+    void setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
+      (*this)->setAttr("reducer", callee.get<mlir::SymbolRefAttr>());
+    }
   }];
 }
 
@@ -232,17 +252,17 @@ def XLAGPU_PredicatedExtractOp : XLAGPU_Op<"predicated_extract",
 def ApplyIndexingOp : XLAGPU_Op<"apply_indexing", [Pure]> {
   let summary = "Applies indexing map to a list of SSA values";
   let description = [{
-    The `apply_indexing` operation applies an affine map to a list
+    The `apply_indexing` operation applies an indexing_map to a list
     of SSA values, yielding a single SSA value. The number of dimension and
     symbol arguments must be equal to the respective number of dimensional and
-    symbolic inputs in the affine map. The affine mapping can be
+    symbolic inputs in the indexing_map. The index mapping can be
     multi-dimensional, and so the `apply_indexing` operation always returns one
     value. The operands and results must all have ‘index’ type.
 
     Example:
 
     ```mlir
-    #map = affine_map<(d0, d1)[s0] -> (d0 floordiv 8 + d1 floordiv 128, s0)>
+    #map = #xla_gpu.indexing_map<(d0, d1)[s0] -> (d0 floordiv 8 + d1 floordiv 128, s0)>
     %results:2 = xla_gpu_ops.apply_indexing #map (%0 in [0, 10], %1 in [0, 11])[%2 in [11, 32]]
     ```
   }];
@@ -273,6 +293,8 @@ def ApplyIndexingOp : XLAGPU_Op<"apply_indexing", [Pure]> {
 
 def LoopOp : XLAGPU_Op<"loop", [
     AttrSizedOperandSegments, Pure,
+    DeclareOpInterfaceMethods<OpAsmOpInterface,
+      ["getAsmBlockArgumentNames", "getAsmResultNames"]>,
     SingleBlockImplicitTerminator<"xla::gpu::YieldOp">
   ]> {
   let summary = "Loop nest that iterates over all feasible values of RangeVars.";
@@ -289,12 +311,13 @@ def LoopOp : XLAGPU_Op<"loop", [
       %sum_0 = arith.constant 0.0 : f32
       %dim = arith.constant 1 : index
       // iter_args binds initial values to the loop's region arguments.
-      %sum = xla_gpu.loop (%dim)[%i, %j] in #map iter_args(%sum_iter = %sum_0) -> (f32) {
+      %sum = xla_gpu.loop (%dim)[%i, %j] -> (%r0, %r1)
+          in #map iter_args(%sum_iter = %sum_0) -> (f32) {
         %t = tensor.extract %buffer[%i, %j] : tensor<1024x32xf32>
         %sum_next = arith.addf %sum_iter, %t : f32
         // Yield current iteration sum to next iteration %sum_iter or to %sum
         // if final iteration.
-        scf.yield %sum_next : f32
+        xla_gpu.yield %sum_next : f32
       }
     ```
   }];
@@ -307,23 +330,26 @@ def LoopOp : XLAGPU_Op<"loop", [
   let builders = [
     OpBuilder<(ins "IndexingMapAttr":$indexing_map_attr,
       "mlir::ValueRange":$dims, "mlir::ValueRange":$inits,
-      CArg<"llvm::function_ref<void(mlir::OpBuilder &, mlir::Location, mlir::ValueRange, mlir::ValueRange)>",
-           "nullptr">)>,
+      CArg<"llvm::function_ref<void(mlir::OpBuilder &, mlir::Location, "
+           "/*ivs=*/mlir::ValueRange, /*map_results=*/mlir::ValueRange, "
+           "/*init=*/mlir::ValueRange)>", "nullptr">)>,
     OpBuilder<(ins "const IndexingMap&":$indexing_map,
       "mlir::ValueRange":$dims, "mlir::ValueRange":$inits,
-      CArg<"llvm::function_ref<void(mlir::OpBuilder &, mlir::Location, mlir::ValueRange, mlir::ValueRange)>",
-           "nullptr">)>
+      CArg<"llvm::function_ref<void(mlir::OpBuilder &, mlir::Location, "
+           "/*ivs=*/mlir::ValueRange, /*map_results=*/mlir::ValueRange, "
+           "/*init=*/mlir::ValueRange)>", "nullptr">)>
   ];
 
   let extraClassDeclaration = [{
-    using BodyBuilderFn =
-        llvm::function_ref<void(mlir::OpBuilder&, mlir::Location,
-                                mlir::ValueRange, mlir::ValueRange)>;
+    using BodyBuilderFn = llvm::function_ref<
+        void(mlir::OpBuilder&, mlir::Location, mlir::ValueRange,
+             mlir::ValueRange, mlir::ValueRange)>;
 
     // Returns the indexing map constructed from IndexingMapAttr.
     xla::gpu::IndexingMap getIndexingMap();
     int64_t getNumInductionVars() {
-      return getBody()->getNumArguments() - getNumResults();
+      return getBody()->getNumArguments() - getIndexingMapAttr().getNumResults()
+        - getNumResults();
     }
     mlir::BlockArgument getInductionVar(int64_t index) {
       return getBody()->getArgument(index);
@@ -331,15 +357,21 @@ def LoopOp : XLAGPU_Op<"loop", [
     mlir::Block::BlockArgListType getInductionVars() {
       return getBody()->getArguments().take_front(getNumInductionVars());
     }
+    mlir::Block::BlockArgListType getIndexingMapResults() {
+      return getBody()->getArguments().drop_front(getNumInductionVars())
+        .drop_back(getNumResults());
+    }
     mlir::Block::BlockArgListType getRegionIterArgs() {
-      return getBody()->getArguments().drop_front(getNumInductionVars());
+      return getBody()->getArguments().take_back(getNumResults());
     }
   }];
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
+  let hasCanonicalizer = 1;
 }
 
-def XLAGPU_MaterializeOp : XLAGPU_Op<"materialize", [AttrSizedOperandSegments]> {
+def XLAGPU_MaterializeOp : XLAGPU_Op<"materialize",
+    [AttrSizedOperandSegments, CallOpInterface]> {
   let summary = "Reads a tensor into registers";
   let arguments = (ins Variadic<AnyType>:$input,
                        Variadic<Index>:$indices,
@@ -350,17 +382,34 @@ def XLAGPU_MaterializeOp : XLAGPU_Op<"materialize", [AttrSizedOperandSegments]> 
   let assemblyFormat = [{
     $callee `(` $input `)` `at` $map `(` $indices `)` attr-dict `:` functional-type($input, results)
   }];
+  let extraClassDeclaration = [{
+    mlir::CallInterfaceCallable getCallableForCallee() {
+      return (*this)->getAttrOfType<mlir::SymbolRefAttr>("callee");
+    }
+    operand_range getArgOperands() {
+      return getInput();
+    }
+    mlir::MutableOperandRange getArgOperandsMutable() {
+      return getInputMutable();
+    }
+    void setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
+      (*this)->setAttr("callee", callee.get<mlir::SymbolRefAttr>());
+    }
+  }];
 }
 
-def XLAGPU_InsertOp : XLAGPU_Op<"insert", []> {
+def XLAGPU_InsertOp : XLAGPU_Op<"insert", [TypesMatchWith<
+                   "expected result type to match dest type",
+                   "result", "dest", "$_self">]> {
   let summary = "Inserts an indexed vector into a tensor";
   let arguments = (ins XLAGPU_IndexedVectorType:$source,
                        Variadic<Index>:$indices,
                        AnyRankedTensor:$dest,
                        XLAGPU_IndexingMapAttr:$map);
   let results = (outs AnyRankedTensor:$result);
+  let hasVerifier = 1;
   let assemblyFormat = [{
-    $source `into` $dest `at` $map `(` $indices `)` attr-dict `:` type($source) `->` type($dest) `into` type($result)
+    $source `(` $indices `)` `into` $dest `at` $map attr-dict `:` type($source) `->` type($result)
   }];
 }
 

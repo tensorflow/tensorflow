@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string_view>
 #include <utility>
 #include <variant>
 
@@ -28,8 +29,10 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -110,6 +113,14 @@ absl::Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
       VariantVisitor{[](int32_t* branch_index) { return *branch_index; },
                      [](bool* pred) { return *pred ? 0 : 1; }},
       branch_index_or_pred);
+
+  std::string_view branch_kind =
+      std::visit(VariantVisitor{[](int32_t*) { return "index"; },
+                                [](bool*) { return "pred"; }},
+                 branch_index_or_pred);
+
+  VLOG(3) << "ConditionalThunk: branch_index=" << branch_index
+          << " (kind: " << branch_kind << ")";
 
   // Handle default scenario for branch_index not in [0, num_branches).
   if (branch_index < 0 || branch_index >= config_.branch_count) {

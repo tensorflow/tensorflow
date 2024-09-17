@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/utils/derived_timeline.h"
 
+#include <cstdint>
 #include <map>
 
 #include "absl/strings/string_view.h"
@@ -71,10 +72,39 @@ TEST(DerivedTimelineTest, HloModuleNameTest) {
   });
 }
 
+// Checks that HLO module events are expanded.
+TEST(DerivedTimelineTest, NoHloModuleNameTest) {
+  const absl::string_view kKernelDetails = "kernel_details";
+  const uint64_t kCudaGraphExecId = 1;
+  XSpace space;
+  tsl::profiler::GroupMetadataMap group_metadata_map;
+  XPlane& plane = *GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0);
+  XPlaneBuilder plane_builder(&plane);
+  auto line_builder = plane_builder.GetOrCreateLine(0);
+  CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100,
+               {{StatType::kKernelDetails, kKernelDetails}});
+  CreateXEvent(&plane_builder, &line_builder, "op2", 200, 300,
+               {{StatType::kKernelDetails, kKernelDetails}});
+  // Also add a CudaGraph Execution event.
+  CreateXEvent(&plane_builder, &line_builder, "op3", 500, 100,
+               {{StatType::kCudaGraphExecId, kCudaGraphExecId}});
+  GenerateDerivedTimeLines(group_metadata_map, &space);
+  XPlaneVisitor plane_visitor = tsl::profiler::CreateTfXPlaneVisitor(&plane);
+  // Only the hlo module line is added and other empty lines are removed at the
+  // end.
+  EXPECT_EQ(plane_visitor.NumLines(), 1);
+  plane_visitor.ForEachLine([&](const XLineVisitor& line_visitor) {
+    if (line_visitor.Id() == 0) return;
+    EXPECT_EQ(line_visitor.Id(), kThreadIdHloModule);
+    EXPECT_EQ(line_visitor.NumEvents(), 0);
+  });
+}
+
 // Checks that the TF op events are expanded.
 TEST(DerivedTimelineTest, TfOpLineTest) {
   const absl::string_view kTfOpName = "mul:Mul";
   const absl::string_view kKernelDetails = "kernel_details";
+  const uint64_t kCudaGraphExecId = 1;
   XSpace space;
   tsl::profiler::GroupMetadataMap group_metadata_map;
   XPlane* plane = GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0);
@@ -86,6 +116,10 @@ TEST(DerivedTimelineTest, TfOpLineTest) {
   CreateXEvent(&plane_builder, &line_builder, "op2", 200, 300,
                {{StatType::kTfOp, kTfOpName},
                 {StatType::kKernelDetails, kKernelDetails}});
+  // Also add a CudaGraph Execution event.
+  CreateXEvent(&plane_builder, &line_builder, "op3", 500, 100,
+               {{StatType::kTfOp, kTfOpName},
+                {StatType::kCudaGraphExecId, kCudaGraphExecId}});
   GenerateDerivedTimeLines(group_metadata_map, &space);
   XPlaneVisitor plane_visitor = tsl::profiler::CreateTfXPlaneVisitor(plane);
   // Only the tf op line is added and other empty lines are removed at the end.
@@ -97,7 +131,7 @@ TEST(DerivedTimelineTest, TfOpLineTest) {
     line_visitor.ForEachEvent([&](const XEventVisitor& event_visitor) {
       EXPECT_EQ(event_visitor.Name(), kTfOpName);
       EXPECT_EQ(event_visitor.OffsetPs(), 0);
-      EXPECT_EQ(event_visitor.DurationPs(), 500);
+      EXPECT_EQ(event_visitor.DurationPs(), 600);
     });
   });
 }

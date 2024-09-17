@@ -17,10 +17,10 @@ limitations under the License.
 #define XLA_SERVICE_GPU_MODEL_GPU_PERFORMANCE_MODEL_BASE_H_
 
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <string>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -42,6 +43,33 @@ struct EstimateRunTimeData {
   absl::Duration write_time;
   absl::Duration compute_time;
   absl::Duration exec_time;
+
+  // Returns an estimate that is guaranteed to be zero.
+  static EstimateRunTimeData Zero() {
+    return EstimateRunTimeData{/*flops=*/0,
+                               /*bytes_read=*/0,
+                               /*bytes_written=*/0,
+                               /*read_time=*/absl::ZeroDuration(),
+                               /*write_time=*/absl::ZeroDuration(),
+                               /*compute_time=*/absl::ZeroDuration(),
+                               /*exec_time=*/absl::ZeroDuration()};
+  }
+
+  // Returns an estimate that is guaranteed to be larger than any real runtime.
+  static EstimateRunTimeData Infinite() {
+    return EstimateRunTimeData{
+        /*flops=*/std::numeric_limits<int64_t>::max(),
+        /*bytes_read=*/std::numeric_limits<int64_t>::max(),
+        /*bytes_written=*/std::numeric_limits<int64_t>::max(),
+        /*read_time=*/absl::InfiniteDuration(),
+        /*write_time=*/absl::InfiniteDuration(),
+        /*compute_time=*/absl::InfiniteDuration(),
+        /*exec_time=*/absl::InfiniteDuration()};
+  }
+
+  // Returns true if the estimate is guaranteed to be larger than any real
+  // runtime.
+  bool IsInfinite() const { return exec_time == absl::InfiniteDuration(); }
 
   std::string ToString() const {
     return absl::StrFormat(
@@ -67,7 +95,11 @@ class GpuPerformanceModelCache {
   std::optional<EstimateRunTimeData> Get(const HloInstruction& instruction);
   std::optional<absl::Duration> Get(const HloInstruction& producer,
                                     const HloInstruction& consumer);
-
+  const absl::flat_hash_map<const HloInstruction*, absl::Duration>&
+  // Returns cache entries for all consumers of this producer.
+  GetAllConsumers(const HloInstruction& producer);
+  // Checks if producer-consumer pair cache entries exist for this producer.
+  bool ContainsConsumers(const HloInstruction& producer);
   // Sets cache value for the instruction or producer-consumer pair.
   void Set(const HloInstruction& instruction,
            const EstimateRunTimeData& runtime_data);

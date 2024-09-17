@@ -21,7 +21,6 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -103,7 +102,7 @@ class TiledHloInstruction {
     sink.Append(tiled_hlo.ToString());
   }
 
- private:
+ protected:
   TiledHloInstruction(const HloInstruction* hlo,
                       llvm::SmallVector<const TiledHloInstruction*> operands,
                       llvm::SmallVector<int64_t> tile_sizes,
@@ -115,6 +114,7 @@ class TiledHloInstruction {
         tile_strides_(std::move(tile_strides)),
         tile_offsets_indexing_(std::move(tile_offsets_indexing)) {}
 
+ private:
   // Pointer to the original HLO instruction.
   const HloInstruction* hlo_;
 
@@ -162,6 +162,44 @@ H AbslHashValue(H h, const TiledHloInstruction& tiled_hlo_instruction) {
       absl::Span<const TiledHloInstruction* const>(
           tiled_hlo_instruction.operands()));
 }
+
+class TiledHloComputation;
+
+// `TiledHloFusionInstruction` is to `TiledHloInstruction` what
+// `HloFusionInstruction` is to `HloInstruction`.
+//
+// The main use case for `TiledHloFusionInstruction`s is to support nested
+// fusions in block-level codegen.
+//
+// Similarly to `HloFusionInstruction`, this subclass holds a nested
+// `TiledHloComputation` accessible through the `called_computation()` method.
+class TiledHloFusionInstruction : public TiledHloInstruction {
+ public:
+  static absl::StatusOr<std::unique_ptr<TiledHloFusionInstruction>> Create(
+      const HloInstruction* hlo,
+      llvm::SmallVector<const TiledHloInstruction*> operands,
+      std::unique_ptr<TiledHloComputation> called_computation,
+      llvm::SmallVector<int64_t> tile_sizes,
+      llvm::SmallVector<int64_t> tile_strides,
+      std::optional<IndexingMap> tile_offsets_indexing);
+
+  // The `TiledHloComputation` called by this instruction.
+  const TiledHloComputation* called_computation() const {
+    return called_computation_.get();
+  }
+
+ private:
+  TiledHloFusionInstruction(
+      const HloInstruction* hlo,
+      llvm::SmallVector<const TiledHloInstruction*> operands,
+      std::unique_ptr<TiledHloComputation> called_computation,
+      llvm::SmallVector<int64_t> tile_sizes,
+      llvm::SmallVector<int64_t> tile_strides,
+      std::optional<IndexingMap> tile_offsets_indexing);
+
+  // See comment for `called_computation()`.
+  std::unique_ptr<TiledHloComputation> called_computation_;
+};
 
 }  // namespace gpu
 }  // namespace xla

@@ -13,6 +13,16 @@ package(
 
 exports_files(["error_reporter.h"])
 
+filegroup(
+    name = "tflite_internal_cc_3p_api_deps_src",
+    srcs = [
+        "error_reporter.cc",
+        "error_reporter.h",
+        "verifier.h",
+    ],
+    visibility = ["//tensorflow/lite:__pkg__"],
+)
+
 cc_library(
     name = "error_reporter",
     srcs = ["error_reporter.cc"],

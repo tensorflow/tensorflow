@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/spmd/shardy/constants.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {
@@ -37,7 +38,8 @@ absl::StatusOr<bool> ShardingRemover::Run(
   bool changed = false;
 
   const absl::flat_hash_set<absl::string_view> to_remove_sharding_ops = {
-      "Sharding", "SPMDShardToFullShape", "SPMDFullToShardShape"};
+      "Sharding", "SPMDShardToFullShape", "SPMDFullToShardShape",
+      sdy::kFuncResultShardingTargetName};
 
   for (HloComputation* computation : module->computations(execution_threads)) {
     auto instructions = computation->MakeInstructionPostOrder();
@@ -58,7 +60,9 @@ absl::StatusOr<bool> ShardingRemover::Run(
 
       // We do not DCE sharding custom-call, so replace sharding custom-call
       // with a copy instead, so that it can be DCE-ed in later passes.
-      if (instruction->custom_call_target() == "Sharding") {
+      if (instruction->custom_call_target() == "Sharding" ||
+          instruction->custom_call_target() ==
+              sdy::kFuncResultShardingTargetName) {
         auto copy = computation->AddInstruction(
             HloInstruction::CreateUnary(instruction->shape(), HloOpcode::kCopy,
                                         instruction->mutable_operand(0)));

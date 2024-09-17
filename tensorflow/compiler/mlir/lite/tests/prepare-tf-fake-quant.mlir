@@ -320,4 +320,29 @@ func.func @fakeQuant3BitForActivation(tensor<8xf32>) -> (tensor<8xf32>) {
 // LOBIT:  return %2
 }
 
+// CHECK-LABEL: fakeQuantConcat
+func.func @fakeQuantConcat(%arg0: tensor<1x6400x2xf32>, %arg1: tensor<1x1600x2xf32>) -> (tensor<1x8000x2xf32>) {
+  %cst = arith.constant dense<1> : tensor<i32>
+  %cst_1 = arith.constant dense<-1.0> : tensor<f32>
+  %cst_2 = arith.constant dense<1.0> : tensor<f32>
+  %cst_3 = arith.constant dense<-2.0> : tensor<f32>
+  %cst_4 = arith.constant dense<0.5> : tensor<f32>
+  %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %cst_1, %cst_2) {num_bits = 8, narrow_range = false} : (tensor<1x6400x2xf32>, tensor<f32>, tensor<f32>) -> tensor<1x6400x2xf32>
+  %1 = "tf.FakeQuantWithMinMaxVars"(%arg1, %cst_3, %cst_4) {num_bits = 8, narrow_range = false} : (tensor<1x1600x2xf32>, tensor<f32>, tensor<f32>) -> tensor<1x1600x2xf32>
+  %2 = "tf.ConcatV2"(%0, %1, %cst) : (tensor<1x6400x2xf32>, tensor<1x1600x2xf32>, tensor<i32>) -> tensor<1x8000x2xf32>
+  return %2 : tensor<1x8000x2xf32>
+
+// CHECK:  %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %cst_0, %cst_1)
+// CHECK:  %1 = "tfl.quantize"(%0)
+// CHECK:  %2 = "tfl.dequantize"(%1)
+// CHECK:  %3 = "tf.FakeQuantWithMinMaxVars"(%arg1, %cst_2, %cst_3)
+// CHECK:  %4 = "tfl.quantize"(%3)
+// CHECK:  %5 = "tfl.dequantize"(%4)
+// CHECK:  %6 = "tf.ConcatV2"(%2, %5, %cst)
+// CHECK:  %7 = "tf.FakeQuantWithMinMaxVars"(%6, %cst_2, %cst_1) <{narrow_range = false, num_bits = 8 : i64}> : (tensor<1x8000x2xf32>, tensor<f32>, tensor<f32>) -> tensor<1x8000x2xf32>
+// CHECK:  %8 = "tfl.quantize"(%7) <{qtype = tensor<1x8000x2x!quant.uniform<u8:f32, 0.011764705882352941:170>>}> : (tensor<1x8000x2xf32>) -> tensor<1x8000x2x!quant.uniform<u8:f32, 0.011764705882352941:170>>
+// CHECK:  %9 = "tfl.dequantize"(%8) : (tensor<1x8000x2x!quant.uniform<u8:f32, 0.011764705882352941:170>>) -> tensor<1x8000x2xf32>
+// CHECK:  return %9
+}
+
 }

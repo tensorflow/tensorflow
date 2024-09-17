@@ -1751,6 +1751,13 @@ absl::Status HloDataflowAnalysis::Verify() const {
       continue;
     }
     for (const auto& instruction : computation->instructions()) {
+      // TODO(b/361618355): Teach HloDataflowAnalysis how to handle input/output
+      // aliasing for async calls.
+      if (instruction->opcode() == HloOpcode::kAsyncStart &&
+          (instruction->async_wrapped_opcode() == HloOpcode::kCall ||
+           instruction->async_wrapped_opcode() == HloOpcode::kCustomCall)) {
+        continue;
+      }
       for (const auto& pair : GetInstructionValueSet(instruction)) {
         const ShapeIndex& index = pair.first;
         const HloValueSet& value_set = pair.second;

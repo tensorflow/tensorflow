@@ -27,10 +27,10 @@ namespace sdy {
 // Creates a pass that converts the `ManualComputationOp` into the pattern that
 // the XLA compiler recognizes. This pass also exports fully or partially manual
 // shardings, while other shardings are processed in `ExportMhloShardingsPass`.
-std::unique_ptr<mlir::Pass> createShardMapExportPass();
+std::unique_ptr<mlir::Pass> createMhloRoundTripShardMapExportPass();
 
-// Registers the xla-sdy-shard-map-export pass.
-void registerShardMapExportPass();
+// Registers the xla-mhlo-round-trip-shard-map-export pass.
+void registerMhloRoundTripShardMapExportPass();
 
 }  // namespace sdy
 }  // namespace xla

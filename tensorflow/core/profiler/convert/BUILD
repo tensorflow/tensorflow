@@ -653,8 +653,8 @@ cc_library(
         "//tensorflow/core/profiler/utils:xplane_utils",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/profiler/convert:xplane_to_trace_events",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@local_xla//xla/tsl/profiler/convert:xplane_to_trace_events",
     ],
 )
 
@@ -818,7 +818,7 @@ cc_library(
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/profiler/convert:xla_op_utils",
+        "@local_xla//xla/tsl/profiler/convert:xla_op_utils",
     ],
 )
 
@@ -828,16 +828,20 @@ cc_library(
     hdrs = ["hlo_proto_to_graph_view.h"],
     deps = [
         ":tool_options",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        # copybara:uncomment "//third_party/json",
+        # copybara:uncomment(b/360874576) "//tensorflow/compiler/mlir/lite/experimental/google/tooling/google:direct_hlo_to_json_graph_convert",
+        "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/service:hlo_graph_dumper",
+        "@local_xla//xla/service:hlo_proto_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/profiler/utils:hlo_module_utils",
         "//tensorflow/core/profiler/utils:hlo_proto_to_module",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-        "@local_xla//xla/hlo/ir:hlo",
-        "@local_xla//xla/service:hlo_graph_dumper",
-        "@local_xla//xla/service:hlo_proto_cc",
     ],
 )
 

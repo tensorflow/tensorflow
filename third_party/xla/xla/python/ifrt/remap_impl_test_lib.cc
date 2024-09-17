@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
@@ -65,7 +66,7 @@ absl::StatusOr<tsl::RCReference<Array>> CreateArray(
 
   std::vector<tsl::RCReference<Array>> shards;
   shards.reserve(base_values.size());
-  DeviceList::Devices devices;
+  BasicDeviceList::Devices devices;
   devices.reserve(device_indices.size());
 
   for (int i = 0; i < base_values.size(); ++i) {
@@ -87,7 +88,8 @@ absl::StatusOr<tsl::RCReference<Array>> CreateArray(
   }
 
   std::shared_ptr<const Sharding> assembled_sharding =
-      ConcreteEvenSharding::Create(DeviceList(std::move(devices)), MemoryKind(),
+      ConcreteEvenSharding::Create(BasicDeviceList::Create(std::move(devices)),
+                                   MemoryKind(),
                                    /*shape=*/shape,
                                    /*shard_shape=*/std::move(shard_shape));
   return client->AssembleArrayFromSingleDeviceArrays(
@@ -124,7 +126,8 @@ void AssertArrayContent(Client* client, Array* array,
     ASSERT_NE(actual_shard_sharding, nullptr);
     Device* expected_device =
         client->addressable_devices().at(device_indices[i]);
-    EXPECT_THAT(actual_shard_sharding->devices(), ElementsAre(expected_device));
+    EXPECT_THAT(actual_shard_sharding->devices()->devices(),
+                ElementsAre(expected_device));
 
     std::vector<int32_t> expected_data(6);
     std::iota(expected_data.begin(), expected_data.end(), base_values[i]);

@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "xla/python/ifrt/device.pb.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/device_test_util.h"
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/env.h"
@@ -38,13 +39,13 @@ class DeviceListTest : public test_util::DeviceTest {};
 
 TEST_P(DeviceListTest, ToFromProto) {
   auto device_list = GetDevices({0, 1});
-  DeviceListProto proto = device_list.ToProto();
+  DeviceListProto proto = device_list->ToProto();
   auto lookup_device_func = [&](DeviceId device_id) -> absl::StatusOr<Device*> {
     return client()->LookupDevice(device_id);
   };
   TF_ASSERT_OK_AND_ASSIGN(auto device_list_copy,
                           DeviceList::FromProto(lookup_device_func, proto));
-  EXPECT_EQ(device_list_copy, device_list);
+  EXPECT_EQ(*device_list_copy, *device_list);
 }
 
 TEST_P(DeviceListTest, IdenticalHashFromConcurrentCalls) {
@@ -58,34 +59,34 @@ TEST_P(DeviceListTest, IdenticalHashFromConcurrentCalls) {
   std::vector<uint64_t> hashes(num_threads);
   for (int i = 0; i < num_threads; ++i) {
     thread_pool.Schedule([&, i]() {
-      hashes[i] = device_list.hash();
+      hashes[i] = device_list->hash();
       counter.DecrementCount();
     });
   }
 
   counter.Wait();
   for (int i = 0; i < num_threads; ++i) {
-    EXPECT_EQ(hashes[i], device_list.hash());
+    EXPECT_EQ(hashes[i], device_list->hash());
   }
-  EXPECT_NE(device_list.hash(), 0);
+  EXPECT_NE(device_list->hash(), 0);
 }
 
 TEST_P(DeviceListTest, EqualityTest) {
   auto device_list1 = GetDevices({0, 1});
   auto device_list2 = GetDevices({0, 1});
-  EXPECT_EQ(device_list1, device_list2);
+  EXPECT_EQ(*device_list1, *device_list2);
 
   auto device_list3 = device_list1;
-  EXPECT_EQ(device_list1, device_list3);
+  EXPECT_EQ(*device_list1, *device_list3);
 
   auto device_list4 = std::move(device_list2);
-  EXPECT_EQ(device_list1, device_list4);
+  EXPECT_EQ(*device_list1, *device_list4);
 
   auto device_list5 = GetDevices({0});
-  EXPECT_NE(device_list1, device_list5);
+  EXPECT_NE(*device_list1, *device_list5);
 
   auto device_list6 = GetDevices({1, 0});
-  EXPECT_NE(device_list1, device_list6);
+  EXPECT_NE(*device_list1, *device_list6);
 }
 
 INSTANTIATE_TEST_SUITE_P(NumDevices, DeviceListTest,

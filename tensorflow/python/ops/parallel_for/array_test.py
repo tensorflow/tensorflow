@@ -326,6 +326,15 @@ class ArrayTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 3)
 
+  def test_top_k(self):
+    x = random_ops.random_uniform([3, 2, 3, 4])
+
+    def loop_fn(i):
+      x1 = array_ops.gather(x, i)
+      return nn.top_k(x1, k=2)
+
+    self._test_loop_fn(loop_fn, 3)
+
   def test_conjugate_transpose(self):
     x = math_ops.complex(
         random_ops.random_uniform([3, 2, 3, 4]),

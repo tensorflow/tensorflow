@@ -158,7 +158,7 @@ struct TopKFunctor<CPUDevice, T, Tidx> {
         values(r, 0) = input(r, indices(r, 0));
       }
 
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     auto SortIndices = [&](int64_t start_batch, int64_t limit_batch) {
@@ -251,7 +251,7 @@ struct TopKFunctor<CPUDevice, T, Tidx> {
     Shard(worker_threads.num_threads, worker_threads.workers, num_rows,
           final_cost, SortIndices);
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

@@ -27,6 +27,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/base/casts.h"
 #include "absl/hash/hash.h"
 #include "absl/random/random.h"
@@ -2580,6 +2581,14 @@ TEST_F(LiteralUtilTest, IsEqualAt) {
 TEST_F(LiteralUtilTest, CreateFromShapeWithUnknownLeafArrays) {
   Literal c1 = Literal::CreateFromShapeWithUnknownLeafArrays(
       ShapeUtil::MakeShape(F32, {4, 4}));
+  EXPECT_FALSE(c1.IsKnown());
+}
+
+TEST_F(LiteralUtilTest, CreateFromShapeWithUnknownLeafArraysS4Tuple) {
+  auto inner_shape = ShapeUtil::MakeShape(S4, {4, 4});
+  inner_shape.mutable_layout()->set_element_size_in_bits(4);
+  Literal c1 = Literal::CreateFromShapeWithUnknownLeafArrays(
+      ShapeUtil::MakeTupleShape({inner_shape}));
   EXPECT_FALSE(c1.IsKnown());
 }
 

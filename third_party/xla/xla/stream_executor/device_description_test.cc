@@ -14,10 +14,24 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/stream_executor/device_description.h"
 
+#include "xla/stream_executor/semantic_version.h"
 #include "tsl/platform/test.h"
 
 namespace stream_executor {
 namespace {
+
+TEST(DeviceDescription, DefaultConstruction) {
+  DeviceDescription desc;
+  EXPECT_EQ(desc.device_address_bits(), -1);
+  EXPECT_EQ(desc.device_memory_size(), -1);
+  EXPECT_EQ(desc.clock_rate_ghz(), -1);
+  EXPECT_EQ(desc.name(), "<undefined>");
+  EXPECT_EQ(desc.platform_version(), "<undefined>");
+  constexpr SemanticVersion kZeroVersion = {0, 0, 0};
+  EXPECT_EQ(desc.driver_version(), kZeroVersion);
+  EXPECT_EQ(desc.runtime_version(), kZeroVersion);
+  EXPECT_EQ(desc.pci_bus_id(), "<undefined>");
+}
 
 TEST(CudaComputeCapability, GenerationNumericTest) {
   EXPECT_TRUE(CudaComputeCapability(7, 5).IsAtLeastVolta());

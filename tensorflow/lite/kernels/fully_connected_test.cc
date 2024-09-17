@@ -1374,7 +1374,7 @@ TEST(HybridFullyConnectedOpTest, SimpleTestQuantizedUint8) {
                                      24, 25, 26,  //
                                      58, 59, 60,  //
                                  },
-                                 /*max_abs_error=*/1.3f)));
+                                 /*max_abs_err=*/1.3f)));
 }
 
 TEST(HybridFullyConnectedOpTest, SimpleTestQuantizedInt8) {
@@ -1402,7 +1402,7 @@ TEST(HybridFullyConnectedOpTest, SimpleTestQuantizedInt8) {
                                      24, 25, 26,  //
                                      58, 59, 60,  //
                                  },
-                                 /*max_abs_error=*/1.3f)));
+                                 /*max_abs_err=*/1.3f)));
 }
 
 TEST(HybridFullyConnectedOpTest, SimpleTestQuantizedInt8MultiThreaded) {
@@ -1439,7 +1439,7 @@ TEST(HybridFullyConnectedOpTest, SimpleTestQuantizedInt8MultiThreaded) {
                                        24, 25, 26,  //
                                        58, 59, 60,  //
                                    },
-                                   /*max_abs_error=*/1.3f)));
+                                   /*max_abs_err=*/1.3f)));
   }
 }
 
@@ -1470,7 +1470,7 @@ TEST(HybridAsymmetricInputFullyConnectedOpTest, SimpleTestQuantizedUint8) {
                                      24, 25, 26,  //
                                      58, 59, 60,  //
                                  },
-                                 /*max_abs_error=*/0.64f)));
+                                 /*max_abs_err=*/0.64f)));
 }
 
 TEST(HybridAsymmetricInputFullyConnectedOpTest, SimpleTestQuantizedInt8) {
@@ -1500,7 +1500,7 @@ TEST(HybridAsymmetricInputFullyConnectedOpTest, SimpleTestQuantizedInt8) {
                                      24, 25, 26,  //
                                      58, 59, 60,  //
                                  },
-                                 /*max_abs_error=*/1.3f)));
+                                 /*max_abs_err=*/1.3f)));
 }
 
 // The expected values for this test were obtained by running the test with the
@@ -1530,7 +1530,7 @@ TEST(HybridFullyConnectedOpTest, SimpleTestQuantizedInt4) {
                                      36, 37, 38,  //
                                      52, 53, 54,  //
                                  },
-                                 /*max_abs_error=*/1.3f)));
+                                 /*max_abs_err=*/1.3f)));
 }
 
 TEST(HybridAsymmetricInputPerChannelWeightsFullyConnectedOpTest,
@@ -1570,7 +1570,7 @@ TEST(HybridAsymmetricInputPerChannelWeightsFullyConnectedOpTest,
                                      24, 195, 366,  //
                                      58, 251, 441,  //
                                  },
-                                 /*max_abs_error=*/1.3f)));
+                                 /*max_abs_err=*/1.3f)));
 }
 
 TEST_P(FloatFullyConnectedOpTest, SimpleTest4DInput) {

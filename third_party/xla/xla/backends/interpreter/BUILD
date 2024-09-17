@@ -20,6 +20,7 @@ cc_library(
         "//xla/service:shaped_buffer",
         "//xla/service:transfer_manager",
         "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:stream_executor_h",
     ],
     alwayslink = True,  # Contains per-platform transfer manager registration
 )

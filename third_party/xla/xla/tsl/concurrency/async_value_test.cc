@@ -132,7 +132,7 @@ TEST(AsyncValueTest, KeepPayloadOnError) {
 
     EXPECT_TRUE(!value.IsError());
 
-    value.SetError("error");
+    value.SetError(absl::InternalError("error"));
 
     EXPECT_EQ(1, *value->value);
     EXPECT_TRUE(value.IsError());

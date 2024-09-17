@@ -157,7 +157,8 @@ TEST(EmbeddingLookupOpTest, SimpleTest) {
               })));
 }
 
-#if !defined(GOOGLE_UNSUPPORTED_OS_LOONIX) && defined(__LP64__)
+#if !defined(MEMORY_SANITIZER) && !defined(GOOGLE_UNSUPPORTED_OS_LOONIX) && \
+    defined(__LP64__)
 TEST(EmbeddingLookupOpTest, LargeTableTest) {
   EmbeddingLookupOpModel m({1}, {256000, 9216});
   // Choose a value specifically designed to overflow int32.max

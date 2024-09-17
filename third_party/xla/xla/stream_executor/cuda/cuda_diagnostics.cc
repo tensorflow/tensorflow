@@ -225,7 +225,7 @@ absl::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
 
 absl::StatusOr<DriverVersion> Diagnostician::FindKernelModuleVersion(
     const std::string &driver_version_file_contents) {
-  static const char *kDriverFilePrelude = "Kernel Module  ";
+  static const char *kDriverFilePrelude = "Kernel Module";
   size_t offset = driver_version_file_contents.find(kDriverFilePrelude);
   if (offset == std::string::npos) {
     return absl::NotFoundError(
@@ -233,9 +233,17 @@ absl::StatusOr<DriverVersion> Diagnostician::FindKernelModuleVersion(
                      "driver version file contents: \"",
                      driver_version_file_contents, "\""));
   }
+  static const char *kDriverVersionPrelude = "  ";
+  offset = driver_version_file_contents.find(kDriverVersionPrelude, offset);
+  if (offset == std::string::npos) {
+    return absl::NotFoundError(
+        absl::StrCat("driver version not preceded by two spaces in "
+                     "driver version file contents: \"",
+                     driver_version_file_contents, "\""));
+  }
 
   std::string version_and_rest = driver_version_file_contents.substr(
-      offset + strlen(kDriverFilePrelude), std::string::npos);
+      offset + strlen(kDriverVersionPrelude), std::string::npos);
   size_t space_index = version_and_rest.find(' ');
   auto kernel_version = version_and_rest.substr(0, space_index);
   // TODO(b/22689637): Eliminate the explicit namespace if possible.

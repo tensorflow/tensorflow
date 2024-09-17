@@ -68,7 +68,7 @@ IfrtServingExecutableTestHelper::IfrtServingExecutableTestHelper(
   work_queue_ = tfrt::CreateMultiThreadedWorkQueue(
       /*num_threads=*/4, /*num_blocking_threads=*/4);
 
-  auto device_mgr_or = ifrt_serving::CreateTfStaticDeviceMgr();
+  auto device_mgr_or = ifrt_serving::CreateTfDynamicDeviceMgr();
   TF_CHECK_OK(device_mgr_or.status());
   device_mgr_ = std::move(device_mgr_or.value());
 

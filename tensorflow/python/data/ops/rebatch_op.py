@@ -23,6 +23,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
+from tensorflow.python.util import numpy_compat
 
 
 def _rebatch(input_dataset, batch_size, drop_remainder=False, name=None):
@@ -137,7 +138,7 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
     if not known_input_batch_dims:
       return True
 
-    known_input_batch_dims = np.asarray(known_input_batch_dims)
+    known_input_batch_dims = numpy_compat.np_asarray(known_input_batch_dims)
     if not np.all(known_input_batch_dims == known_input_batch_dims[0]):
       raise ValueError(
           f"Invalid `input_dataset.` The batch dimension of component 0 "

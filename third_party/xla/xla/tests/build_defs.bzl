@@ -31,6 +31,8 @@ GPU_BACKENDS = NVIDIA_GPU_BACKENDS + AMD_GPU_DEFAULT_BACKENDS
 
 GPU_DEFAULT_BACKENDS = NVIDIA_GPU_DEFAULT_BACKENDS
 
+DEFAULT_DISABLED_BACKENDS = []
+
 _ALL_BACKENDS = ["cpu", "interpreter"] + NVIDIA_GPU_BACKENDS + AMD_GPU_DEFAULT_BACKENDS + list(plugins.keys())
 
 # buildifier: disable=function-docstring
@@ -95,6 +97,7 @@ def prepare_nvidia_gpu_backend_data(backends, disabled_backends, backend_tags, b
                 sm_tag += ":%d" % num_gpus
             new_backend_tags[gpu_backend] = [t for t in all_tags if t not in requires_gpu]
             new_backend_tags[gpu_backend].append(sm_tag)
+            new_backend_tags[gpu_backend].append("no_rocm")
 
     return new_backends, new_disabled_backends, new_backend_tags, new_backend_args
 
@@ -175,7 +178,7 @@ def xla_test(
         deps,
         xla_test_library_deps = [],
         backends = [],
-        disabled_backends = [],
+        disabled_backends = DEFAULT_DISABLED_BACKENDS,
         real_hardware_only = False,  # @unused, all backends are real hardware.
         args = [],
         tags = [],
@@ -281,6 +284,8 @@ def xla_test(
             ]
             if backend in NVIDIA_GPU_BACKENDS:
                 this_backend_tags += tf_gpu_tests_tags()
+            if backend in AMD_GPU_DEFAULT_BACKENDS:
+                this_backend_tags.append("gpu")
             this_backend_copts.append("-DXLA_TEST_BACKEND_GPU=1")
         elif backend == "interpreter":
             backend_deps += [

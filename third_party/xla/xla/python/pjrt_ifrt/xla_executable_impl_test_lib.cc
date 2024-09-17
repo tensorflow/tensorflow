@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
@@ -176,10 +177,10 @@ TEST(LoadedExecutableImplTest, CompileAndExecutePortable) {
                       /*on_done_with_host_buffer=*/{}));
 
   ExecuteOptions execute_options;
-  TF_ASSERT_OK_AND_ASSIGN(
-      LoadedExecutable::ExecuteResult result,
-      loaded_executable->Execute(absl::MakeSpan(&array, 1), execute_options,
-                                 /*devices=*/xla::ifrt::DeviceList({device})));
+  TF_ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                          loaded_executable->Execute(
+                              absl::MakeSpan(&array, 1), execute_options,
+                              /*devices=*/BasicDeviceList::Create({device})));
   TF_ASSERT_OK(result.status.Await());
   EXPECT_THAT(result.outputs, SizeIs(1));
 

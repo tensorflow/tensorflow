@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/protobuf/dnn.pb.h"
 
 // Helper functions for interacting with StreamExecutor.
 

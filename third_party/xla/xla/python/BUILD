@@ -427,9 +427,9 @@ cc_library(
         "@local_tsl//tsl/profiler/protobuf:profiled_instructions_proto_cc",
     ] + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
-        # TODO(b/324133505): remove this dependency after JAX OSS migrates to cuda plugin.
-        "//xla/stream_executor/cuda:cuda_driver",
     ]) + if_rocm([
+        # keep sorted
+        "@local_config_rocm//rocm:hip",
         "@local_config_rocm//rocm:rocm_headers",
     ]) + if_cuda_or_rocm([
         ":py_client_gpu",  # TODO(b/337876408): remove after migration to plugin
@@ -497,6 +497,8 @@ cc_library(
         "//xla/pjrt:exceptions",
         "//xla/pjrt:host_callback",
         "//xla/service:custom_call_status",
+        "//xla/service:custom_call_target_registry",
+        "//xla/service:platform_util",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -754,12 +756,11 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@nanobind",
         "@local_config_python//:python_headers",  # buildcleaner: keep
+        "//xla:shape_util",
         "//xla:util",
         "//xla/pjrt:exceptions",
         "//xla/pjrt:lru_cache",
-        "//xla/pjrt:pjrt_client",
-        "//xla/pjrt:pjrt_future",
-        "//xla/pjrt:status_casters",
+        "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt",
         "//xla/tsl/concurrency:ref_count",
         "@local_tsl//tsl/platform:errors",
@@ -806,7 +807,6 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/pjrt:exceptions",
-        "//xla/pjrt:pjrt_client",
         "//xla/pjrt:status_casters",
         "//xla/python/ifrt",
         "//xla/tsl/concurrency:ref_count",
@@ -888,7 +888,6 @@ py_strict_test(
 tf_proto_library(
     name = "pytree_proto",
     srcs = ["pytree.proto"],
-    cc_api_version = 2,
     visibility = ["//visibility:public"],
 )
 
@@ -948,6 +947,7 @@ cc_library(
         "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Support",
         "@nanobind",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_serialization",
@@ -958,7 +958,9 @@ cc_library(
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:status_casters",
         "//xla/service/llvm_ir:llvm_util",
+        "//xla/service/spmd/shardy/sdy_round_trip:pipelines",
         "//xla/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
+        "//xla/tsl/framework/mlir:status_scoped_diagnostic_handler",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
@@ -1038,15 +1040,15 @@ cc_library(
         "//xla/pjrt:status_casters",
         "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/pjrt/c:pjrt_c_api_profiler_extension_hdrs",
+        "//xla/tsl/profiler/rpc:profiler_server_impl",
+        "//xla/tsl/profiler/rpc/client:capture_profile",
+        "//xla/tsl/profiler/rpc/client:profiler_client_impl",
         "@local_tsl//tsl/platform:macros",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/profiler/lib:profiler_factory",
         "@local_tsl//tsl/profiler/lib:profiler_interface",
         "@local_tsl//tsl/profiler/lib:profiler_session",
         "@local_tsl//tsl/profiler/lib:traceme",
-        "@local_tsl//tsl/profiler/rpc:profiler_server_impl",
-        "@local_tsl//tsl/profiler/rpc/client:capture_profile",
-        "@local_tsl//tsl/profiler/rpc/client:profiler_client_impl",
     ],
 )
 
@@ -1181,7 +1183,6 @@ cc_library(
 tf_proto_library(
     name = "py_host_callback_proto",
     srcs = ["py_host_callback.proto"],
-    cc_api_version = 2,
 )
 
 # If this flag is enabled, it sets RPATH on the xla_extension to values that are suitable for
@@ -1220,6 +1221,7 @@ cc_library(
     deps = [
         ":nb_class_ptr",
         ":py_client",
+        ":py_client_gpu",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:status_casters",
         "//xla/pjrt/distributed:client",
@@ -1358,8 +1360,12 @@ tsl_pybind_extension(
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform/cloud:gcs_file_system",
     ] + select({
-        # gloo transport only builds on linux
-        "//xla/tsl:macos": [],
+        # gloo tcp transport only builds on linux
+        "//xla/tsl:macos": [
+            "//xla/pjrt/cpu:gloo_collectives",
+            "//xla/pjrt/cpu:gloo_kv_store",
+            "@gloo//:transport_uv",
+        ],
         "//xla/tsl:windows": [],
         "//conditions:default": [
             "//xla/pjrt/cpu:gloo_collectives",
@@ -1383,13 +1389,13 @@ cc_library(
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_proto_cc",
+        "//xla/tsl/profiler/convert:xla_op_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:types",
-        "@local_tsl//tsl/profiler/convert:xla_op_utils",
         "@local_tsl//tsl/profiler/protobuf:profiled_instructions_proto_cc",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
         "@local_tsl//tsl/profiler/utils:file_system_utils",
@@ -1407,12 +1413,12 @@ xla_cc_test(
         ":xplane_to_profile_instructions",
         "//xla/service:hlo_proto_cc",
         "//xla/tests:verified_hlo_module",
+        "//xla/tsl/profiler/convert:xla_op_utils",
+        "//xla/tsl/profiler/rpc/client:save_profile",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
-        "@local_tsl//tsl/profiler/convert:xla_op_utils",
         "@local_tsl//tsl/profiler/protobuf:profiled_instructions_proto_cc_impl",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
-        "@local_tsl//tsl/profiler/rpc/client:save_profile",
         "@local_tsl//tsl/profiler/utils:file_system_utils",
         "@local_tsl//tsl/profiler/utils:xplane_builder",
         "@local_tsl//tsl/profiler/utils:xplane_schema",

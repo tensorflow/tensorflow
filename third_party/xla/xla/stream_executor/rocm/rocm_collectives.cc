@@ -22,13 +22,13 @@ limitations under the License.
 
 namespace stream_executor::gpu {
 
-absl::StatusOr<void*> GpuCollectives::CollectiveMemoryAllocate(
-    GpuContext* context, uint64_t bytes) {
+absl::StatusOr<void*> GpuCollectives::CollectiveMemoryAllocate(Context* context,
+                                                               uint64_t bytes) {
   return absl::UnimplementedError(
       "Feature not supported on ROCm platform (CollectiveMemoryAllocate)");
 }
 
-absl::Status GpuCollectives::CollectiveMemoryDeallocate(GpuContext* context,
+absl::Status GpuCollectives::CollectiveMemoryDeallocate(Context* context,
                                                         void* location) {
   return absl::UnimplementedError(
       "Feature not supported on ROCm platform (CollectiveMemoryDeallocate)");

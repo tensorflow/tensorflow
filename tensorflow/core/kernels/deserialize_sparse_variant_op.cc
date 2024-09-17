@@ -224,7 +224,8 @@ class DeserializeSparseOp : public OpKernel {
         // to outermost/major dimension). The `cumulative_product` represents
         // the size of the inner subtensor for which `sparse_tensor_index` has
         // already been built.
-        gtl::InlinedVector<int64_t, 4> sparse_tensor_index(input_dims_to_stack);
+        absl::InlinedVector<int64_t, 4UL> sparse_tensor_index(
+            input_dims_to_stack);
         int cumulative_product = 1;
         for (size_t j = 0; j < sparse_tensor_index.size(); ++j) {
           size_t reverse_index = sparse_tensor_index.size() - j - 1;
@@ -365,6 +366,22 @@ class DeserializeSparseOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("DeserializeSparse")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<Variant>("Tserialized"),
+                        DeserializeSparseOp)
+REGISTER_KERNEL_BUILDER(Name("DeserializeSparse")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<Variant>("Tserialized")
+                            .HostMemory("serialized_sparse")
+                            .HostMemory("sparse_indices")
+                            .HostMemory("sparse_values")
+                            .HostMemory("sparse_shape"),
+                        DeserializeSparseOp)
+REGISTER_KERNEL_BUILDER(Name("DeserializeSparse")
+                            .Device(DEVICE_TPU)
+                            .TypeConstraint<Variant>("Tserialized")
+                            .HostMemory("serialized_sparse")
+                            .HostMemory("sparse_indices")
+                            .HostMemory("sparse_values")
+                            .HostMemory("sparse_shape"),
                         DeserializeSparseOp)
 
 }  // namespace

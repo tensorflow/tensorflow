@@ -34,7 +34,6 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/types/span.h"
-#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/AffineExpr.h"
@@ -530,7 +529,7 @@ HloInstructionIndexing ComputeOutputToInputReduceOpIndexing(
       output_shape.dimensions(), parallel_dims_sizes);
   IndexingMap inits_indexing_map = IndexingMap::FromTensorSizes(
       AffineMap::get(output_shape.rank(), /*symbolCount=*/0, {}, mlir_context),
-      output_shape.dimensions(), {});
+      output_shape.dimensions(), {}, /*is_simplified=*/true);
 
   HloInstructionIndexing instr_indexing;
   instr_indexing.indexing_maps.resize(reduce->operand_count());
@@ -663,7 +662,8 @@ HloInstructionIndexing ComputeOutputToInputReduceWindowOpIndexing(
   // Indexing map for the init value.
   IndexingMap inits_indexing_map = IndexingMap::FromTensorSizes(
       AffineMap::get(output_shape.rank(), /*symbolCount=*/0, {}, mlir_context),
-      output_shape.dimensions(), /*symbol_upper_bounds=*/{});
+      output_shape.dimensions(), /*symbol_upper_bounds=*/{},
+      /*is_simplified=*/true);
 
   HloInstructionIndexing instr_indexing;
   instr_indexing.indexing_maps.resize(reduce_window->operand_count());
@@ -1153,7 +1153,7 @@ IndexingMap CreateIdentityMap(const Shape& shape, MLIRContext* mlir_context) {
   auto dimensions = shape.dimensions();
   IndexingMap identity_map = IndexingMap::FromTensorSizes(
       AffineMap::getMultiDimIdentityMap(dimensions.size(), mlir_context),
-      dimensions, {});
+      dimensions, {}, /*is_simplified=*/dimensions.empty());
   return identity_map;
 }
 

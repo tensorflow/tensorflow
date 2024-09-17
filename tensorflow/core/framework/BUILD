@@ -38,6 +38,7 @@ default_visibility = [
     "//tensorflow/cc/saved_model:__subpackages__",
     #internal starburst clustering service,
     "//waymo/ml/deploy/benchmark:__subpackages__",
+    # copybara:uncomment #internal tuning service,
 ]
 
 package(
@@ -720,11 +721,13 @@ cc_library(
         "//learning/deepmind/tensorflow/queues:__pkg__",
         "//learning/deepmind/tensorflow/sstable:__pkg__",
         "//learning/deepmind/video/tensorflow:__pkg__",
+        "//learning/sibyl/tfx/transformation/kernels:__pkg__",
         "//tensorflow/compiler/mlir/tools/kernel_gen:__pkg__",
         "//tensorflow/compiler/tf2xla:__pkg__",
         "//tensorflow/examples/custom_ops_doc/simple_hash_table:__pkg__",
         "//third_party/py/grain/_src/tensorflow/ops:__pkg__",
         "//waymo/ml/compiler/frontend/kernels:__pkg__",
+        "//waymo/ml/compiler/runtime/alpine/core:__pkg__",
     ],
     deps = [
         "//tensorflow/core/lib/core:refcount",
@@ -834,7 +837,6 @@ tf_cuda_library(
     ],
     visibility = [
         "//tensorflow:__pkg__",
-        "//tensorflow/cc/saved_model:__subpackages__",
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/runtime_fallback:__subpackages__",
         "//tensorflow/core/tfrt:__subpackages__",
@@ -1535,7 +1537,6 @@ tf_pyclif_proto_library(
 tf_proto_library(
     name = "log_memory_proto",
     srcs = ["log_memory.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         ":allocation_description_proto",
@@ -1548,14 +1549,12 @@ tf_proto_library(
 tf_proto_library(
     name = "versions_proto",
     srcs = ["versions.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
 )
 
 tf_proto_library(
     name = "graph_proto",
     srcs = ["graph.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         ":attr_value_proto",
@@ -1574,7 +1573,6 @@ tf_proto_library(
 tf_proto_library(
     name = "node_def_proto",
     srcs = ["node_def.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         ":attr_value_proto",
@@ -1589,28 +1587,24 @@ tf_proto_library(
 tf_proto_library(
     name = "graph_debug_info_proto",
     srcs = ["graph_debug_info.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
 )
 
 tf_proto_library(
     name = "allocation_description_proto",
     srcs = ["allocation_description.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
 )
 
 tf_proto_library(
     name = "tensor_slice_proto",
     srcs = ["tensor_slice.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
 )
 
 tf_proto_library(
     name = "tensor_description_proto",
     srcs = ["tensor_description.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         ":allocation_description_proto",
@@ -1622,14 +1616,12 @@ tf_proto_library(
 tf_proto_library(
     name = "device_attributes_proto",
     srcs = ["device_attributes.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
 )
 
 tf_proto_library(
     name = "resource_handle_proto",
     srcs = ["resource_handle.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         ":tensor_shape_proto",
@@ -1640,7 +1632,6 @@ tf_proto_library(
 tf_proto_library(
     name = "step_stats_proto",
     srcs = ["step_stats.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         ":allocation_description_proto",
@@ -1653,14 +1644,12 @@ tf_proto_library(
 tf_proto_library(
     name = "reader_base_proto",
     srcs = ["reader_base.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
 )
 
 tf_proto_library(
     name = "kernel_def_proto",
     srcs = ["kernel_def.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         ":attr_value_proto",
@@ -1674,7 +1663,6 @@ tf_proto_library(
 tf_proto_library(
     name = "op_def_proto",
     srcs = ["op_def.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         ":attr_value_proto",
@@ -1687,14 +1675,12 @@ tf_proto_library(
     visibility = [
         "//tensorflow/core:__subpackages__",
         "//tensorflow/python:__pkg__",
-        "//tensorflow/security/fuzzing:__subpackages__",
     ],
 )
 
 tf_proto_library(
     name = "attr_value_proto",
     srcs = ["attr_value.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         ":resource_handle_proto",
@@ -1713,7 +1699,6 @@ tf_proto_library(
 tf_proto_library(
     name = "full_type_proto",
     srcs = ["full_type.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [],
 )
@@ -1721,7 +1706,6 @@ tf_proto_library(
 tf_proto_library(
     name = "tensor_proto",
     srcs = ["tensor.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         ":resource_handle_proto",
@@ -1739,7 +1723,6 @@ tf_jspb_proto_library(
 tf_proto_library(
     name = "api_def_proto",
     srcs = ["api_def.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         ":attr_value_proto",
@@ -1753,7 +1736,6 @@ tf_proto_library(
 tf_proto_library(
     name = "cpp_shape_inference_proto",
     srcs = ["cpp_shape_inference.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         ":full_type_proto",
@@ -1765,14 +1747,12 @@ tf_proto_library(
 tf_proto_library(
     name = "variable_proto",
     srcs = ["variable.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
 )
 
 tf_proto_library(
     name = "graph_transfer_info_proto",
     srcs = ["graph_transfer_info.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         ":types_proto",
@@ -1782,7 +1762,6 @@ tf_proto_library(
 tf_proto_library(
     name = "types_proto",
     srcs = ["types.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
 )
 
@@ -1795,7 +1774,6 @@ tf_jspb_proto_library(
 tf_proto_library(
     name = "cost_graph_proto",
     srcs = ["cost_graph.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         ":tensor_shape_proto",
@@ -1806,14 +1784,12 @@ tf_proto_library(
 tf_proto_library(
     name = "tensor_shape_proto",
     srcs = ["tensor_shape.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
 )
 
 tf_proto_library(
     name = "function_proto",
     srcs = ["function.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         ":attr_value_proto",
@@ -1840,7 +1816,6 @@ tf_proto_library(
 tf_proto_library(
     name = "summary_proto",
     srcs = ["summary.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         ":resource_handle_proto",
@@ -1855,14 +1830,12 @@ tf_proto_library(
 tf_proto_library(
     name = "model_proto",
     srcs = ["model.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
 )
 
 tf_proto_library(
     name = "dataset_proto",
     srcs = ["dataset.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         ":tensor_proto",
@@ -1874,14 +1847,12 @@ tf_proto_library(
 tf_proto_library(
     name = "dataset_metadata_proto",
     srcs = ["dataset_metadata.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
 )
 
 tf_proto_library(
     name = "dataset_options_proto",
     srcs = ["dataset_options.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         ":model_proto",
@@ -1891,7 +1862,6 @@ tf_proto_library(
 tf_proto_library(
     name = "optimized_function_graph_proto",
     srcs = ["optimized_function_graph.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         ":types_proto",
@@ -1901,7 +1871,6 @@ tf_proto_library(
 
 tf_proto_library(
     name = "protos_all",
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         ":allocation_description_proto",

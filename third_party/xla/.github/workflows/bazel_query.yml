@@ -17,6 +17,9 @@ permissions:
   contents: read
 on:
   pull_request:
+  push:
+    branches:
+      - main
 
 env:
   # Have `go install` place binaries in $PATH
@@ -35,4 +38,9 @@ jobs:
       - name: "Install bazelisk"
         run: go install github.com/bazelbuild/bazelisk@24651ab # v1.20.0
       - name: "Run bazel query //xla/..."
-        run: bazelisk query //xla/...
+        run: bazelisk query //xla/... > /dev/null
+      - name: "Run bazel query deps(//xla/...)"
+        run: bazelisk query "deps(//xla/...)" > /dev/null
+      - name: "Check that TSL doesn't depend on XLA"
+        run: |
+          bazelisk query "somepath(//xla/tsl/..., //xla/... -//xla/tsl/...)" |& tee /dev/fd/2 | grep -q "INFO: Empty results"

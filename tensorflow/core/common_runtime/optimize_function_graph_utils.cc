@@ -316,6 +316,9 @@ Status PinArgsAndRets(const std::vector<string>& input_devices,
     TF_RETURN_IF_ERROR(node->attrs().Find("index", &attr_value));
     int64_t index = attr_value->i();
     node->set_assigned_device_name(input_devices[index]);
+
+    VLOG(3) << "Setting device to " << input_devices[index] << " for node "
+            << node->name();
   }
 
   for (Node* node : ret_nodes) {
@@ -527,6 +530,10 @@ absl::StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
       options.input_devices, options.output_devices, dev_set, arg_nodes,
       ret_nodes, lib_def,
       options.config_proto.allow_soft_placement() ? default_device : nullptr));
+
+  DEBUG_DATA_DUMPER()->DumpGraph(function_name, kDebugGroupMain,
+                                 "before_bridge", graph.get(),
+                                 &reachable_lib_def, false);
 
   // The runtime shouldn't depend on duplication between the function library
   // owned by the graph and the one owned by the runtime. To ensure this, for

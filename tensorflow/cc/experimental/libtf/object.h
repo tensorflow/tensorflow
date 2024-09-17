@@ -301,7 +301,7 @@ tensorflow::Status Tensor::GetValue(absl::Span<T> data) const {
         "Actual: ", t->NumElements(), "\n"));
   }
   memcpy(data.data(), t->Data(), t->ByteSize());
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 /// @brief The Tuple class for holding TaggedValues of type TUPLE.
@@ -361,7 +361,7 @@ class List final : public Handle {
       return absl::InvalidArgumentError("Out of bounds index.");
     }
     value_.list()[i] = std::move(h.value_);
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   /// Appends `arg` to list.
@@ -635,10 +635,10 @@ template <class Fn, typename TReturn>
 class UneraseCallHelper<Fn, TReturn> {
  public:
   template <typename... ArgsOut>
-  static tensorflow::StatusOr<TaggedValue> Call(const char* name, Fn functor_,
-                                                int argument_index,
-                                                const TaggedValue& args_in,
-                                                ArgsOut... args) {
+  static absl::StatusOr<TaggedValue> Call(const char* name, Fn functor_,
+                                          int argument_index,
+                                          const TaggedValue& args_in,
+                                          ArgsOut... args) {
     // Call concrete type function
     TReturn ret = functor_(args...);
     return ret.value_;
@@ -651,10 +651,10 @@ template <class Fn, typename TReturn, class TSignatureArg,
 class UneraseCallHelper<Fn, TReturn, TSignatureArg, TSignatureRest...> {
  public:
   template <typename... TArgsOut>
-  static tensorflow::StatusOr<TaggedValue> Call(const char* name, Fn fn,
-                                                int argument_index,
-                                                TaggedValue& args_in,
-                                                TArgsOut... args) {
+  static absl::StatusOr<TaggedValue> Call(const char* name, Fn fn,
+                                          int argument_index,
+                                          TaggedValue& args_in,
+                                          TArgsOut... args) {
     Handle h(std::move(args_in.tuple()[argument_index]));
     tensorflow::StatusOr<TSignatureArg> x = Cast<TSignatureArg>(std::move(h));
     if (!x.ok())
@@ -681,8 +681,7 @@ class CallableWrapper {
 
   // Entry point of the Adaptor functor. Note args, and kwargs are attempted
   // to be moved.
-  tensorflow::StatusOr<TaggedValue> operator()(TaggedValue args,
-                                               TaggedValue kwargs) {
+  absl::StatusOr<TaggedValue> operator()(TaggedValue args, TaggedValue kwargs) {
     constexpr size_t argument_count = sizeof...(TFuncArgs);
     if (argument_count != args.tuple().size())
       return absl::InvalidArgumentError(

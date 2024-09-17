@@ -6,7 +6,7 @@
   ROOT add = f32[] add(p0, p1)
 }
 
-%fusion {
+fusion {
   %p0 = f32[6,6] parameter(0)
   %c0 = f32[] constant(0)
   %reduce = f32[] reduce(%p0, %c0), dimensions={0,1}, to_apply=%add

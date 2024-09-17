@@ -51,6 +51,8 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/chain.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -630,6 +632,16 @@ struct ResultEncoding<ExecutionStage::kInstantiate,
 
     absl::Status status = state.status();
     return api->internal_api->XLA_FFI_INTERNAL_Error_Forward(&status);
+  }
+};
+
+template <ExecutionStage stage>
+struct ResultEncoding<stage, tsl::AsyncValueRef<tsl::Chain>> {
+  static XLA_FFI_Future* Encode(const XLA_FFI_Api* api,
+                                XLA_FFI_ExecutionContext* ctx,
+                                tsl::AsyncValueRef<tsl::Chain> async_value) {
+    return api->internal_api->XLA_FFI_INTERNAL_Future_Forward(
+        async_value.release());
   }
 };
 

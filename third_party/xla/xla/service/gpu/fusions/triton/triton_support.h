@@ -18,11 +18,8 @@ limitations under the License.
 // This file is the home of the basic Triton support checks which are used by
 // multiple other components.
 
-#include <vector>
-
 #include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/device_description.h"
@@ -30,79 +27,8 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+
 using CodegenDecision = FusionDecision;
-
-namespace legacy_triton {
-
-// Tells if f(a+b) == f(a) + f(b).
-bool IsDistributiveOverAddition(const HloInstruction& hlo);
-
-// Allowlist of unary elementwise operations supported by the legacy Triton
-// emitters.
-//
-// Note: this is not an accurate representation of what is actually supported by
-// the Triton emitters, because operations affected by FloatNormalization may
-// be tagged as "supported" here, even though FloatNormalization is required to
-// make them work. We could fix this, but this is code we aim to delete soon, so
-// it doesn't seem worth it. We'll revisit this decision if the code doesn't go
-// away soon.
-std::vector<HloOpcode> TritonSupportedUnaryElementwiseUpToFloatNormalization(
-    PrimitiveType);
-
-// Allowlist of binary elementwise operations supported by the legacy Triton
-// emitters.
-//
-// Note: this is not an accurate representation of what is actually supported by
-// the Triton emitters, because operations affected by FloatNormalization may
-// be tagged as "supported" here, even though FloatNormalization is required to
-// make them work. We could fix this, but this is code we aim to delete soon, so
-// it doesn't seem worth it. We'll revisit this decision if the code doesn't go
-// away soon.
-std::vector<HloOpcode> TritonSupportedBinaryElementwiseUpToFloatNormalization(
-    PrimitiveType);
-
-// Allowlist of ternary elementwise operations supported by the legacy Triton
-// emitters.
-//
-// Note: this is not an accurate representation of what is actually supported by
-// the Triton emitters, because operations affected by FloatNormalization may
-// be tagged as "supported" here, even though FloatNormalization is required to
-// make them work. We could fix this, but this is code we aim to delete soon, so
-// it doesn't seem worth it. We'll revisit this decision if the code doesn't go
-// away soon.
-std::vector<HloOpcode> TritonSupportedTernaryElementwiseUpToFloatNormalization(
-    PrimitiveType);
-
-// Data types that are supported by the legacy Triton emitters.
-bool IsTritonSupportedDataType(PrimitiveType, const se::GpuComputeCapability&);
-
-// Checks elementwise operation against unary, binary, and ternary elementwise
-// operations supported by the legacy Triton emitters.
-//
-// Note: this is not an accurate representation of what is actually supported by
-// the Triton emitters, because operations affected by FloatNormalization may
-// be tagged as "supported" here, even though FloatNormalization is required to
-// make them work. We could fix this, but this is code we aim to delete soon, so
-// it doesn't seem worth it. We'll revisit this decision if the code doesn't go
-// away soon.
-bool IsTritonSupportedElementwiseUpToFloatNormalization(HloOpcode,
-                                                        PrimitiveType);
-
-CodegenDecision CanTritonHandleGEMM(
-    const HloDotInstruction& dot, const se::GpuComputeCapability& gpu_version);
-
-// Checks instruction against the requirements of the legacy Triton emitters.
-CodegenDecision IsTritonSupportedInstruction(
-    const HloInstruction& instr, const se::GpuComputeCapability& gpu_version);
-
-// Checks dynamic slice against the requirements of the legacy Triton emitters.
-//
-// This is exposed separately from IsTritonSupportedInstruction because we can
-// use it in the dimension order propagation without adding a dependency on the
-// GPU version.
-CodegenDecision IsTritonSupportedDynamicSlice(
-    const HloDynamicSliceInstruction& instr);
-}  // namespace legacy_triton
 
 // Checks that Triton officially supports the provided compute capability.
 //
@@ -127,6 +53,13 @@ CodegenDecision IsTritonSupportedInstruction(
 // `backend_config<gpu::GpuBackendConfig>()` with `kind` set to
 // `kTritonGemmFusionKind`.
 bool IsTritonFusedComputation(const HloComputation& computation);
+
+namespace internal {
+// TODO(b/363981282): Remove the function below once all ops are tested via
+// HLOs. This is exposed for testing purposes only and will be removed in the
+// near future. Do not use. This functions only returns a partial result.
+bool IsTritonUnsupportedOpcode(HloOpcode opcode);
+}  // namespace internal
 
 }  // namespace gpu
 }  // namespace xla
