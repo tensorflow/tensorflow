@@ -169,6 +169,7 @@ def XLAGPU_ShuffleReduceOp : XLAGPU_Op<"shuffle_reduce",
     function. The function is invoked with the operands from the low lanes,
     followed by the operands from the high lanes. For example:
 
+   // TODO: update the syntax to make it similar to xla_gpu.reduce.
     ```
     shuffle_reduce @argmax(%value, %idx) : (f32, index)
     ```
@@ -411,6 +412,52 @@ def XLAGPU_InsertOp : XLAGPU_Op<"insert", [TypesMatchWith<
   let assemblyFormat = [{
     $source `(` $indices `)` `into` $dest `at` $map attr-dict `:` type($source) `->` type($result)
   }];
+}
+
+def XLAGPU_ReduceOp : XLAGPU_Op<"reduce", [
+    Pure,  CallOpInterface, SameVariadicOperandSize,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>
+    ]> {
+  let summary = "Performs a reduction";
+  let description = [{
+    The `xla_gpu.reduce` op performs a variadic reduction of the provided
+    operands using the list of dimensions and a symbol for a combiner function.
+
+    ```mlir
+    func.func @add(%a_acc: f32, %b_acc: i32, %a: f32, %b: i32)
+        -> (f32, i32) {
+      %0 = arith.addf %a_acc, %a : f32
+      %1 = arith.addi %b_acc, %b : i32
+      func.return %0, %1 : f32, i32
+    }
+    %sum:2 = xla_gpu.reduce (%in0, %in1) inits(%init0, %init1) dimensions=[0, 2]
+      combiner=@add
+    ```
+  }];
+  let arguments = (ins
+    Variadic<AnyRankedTensor>:$inputs,
+    Variadic<AnyType>:$inits,
+    ConfinedAttr<DenseI64ArrayAttr,
+      [DenseArrayStrictlySorted<DenseI64ArrayAttr>]>:$dimensions,
+    FlatSymbolRefAttr:$combiner);
+  let results = (outs Variadic<AnyRankedTensor>:$results);
+
+  let extraClassDeclaration = [{
+    operand_range getArgOperands() {
+      return getInputs();
+    }
+    mlir::MutableOperandRange getArgOperandsMutable() {
+      return getInputsMutable();
+    }
+    mlir::CallInterfaceCallable getCallableForCallee() {
+      return (*this)->getAttrOfType<mlir::SymbolRefAttr>("combiner");
+    }
+    void setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
+      (*this)->setAttr("combiner", callee.get<mlir::SymbolRefAttr>());
+    }
+  }];
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
 }
 
 #endif // XLA_SERVICE_GPU_FUSIONS_MLIR_OPS

@@ -360,3 +360,31 @@ func.func @insert(%input: !xla_gpu.indexed_vector<32x64xf32, #map>,
     : !xla_gpu.indexed_vector<32x64xf32, #map> -> tensor<32x64xf32>
   func.return %0 : tensor<32x64xf32>
 }
+
+// -----
+
+func.func @reduce(%in0: tensor<16x8x4xf32>, %init0: f32,
+    %in1: tensor<16x8x4xi32>, %init1: i32) -> (tensor<8xf32>, tensor<8xi32>) {
+  // expected-error @+1 {{combiner `@add` not found}}
+  %sum:2 = xla_gpu.reduce (%in0, %in1) inits(%init0, %init1) dimensions=[0, 2]
+    combiner=@add {xla.range = [0 : index, 42 : index]}
+    : tensor<16x8x4xf32>, tensor<16x8x4xi32>
+  func.return %sum#0, %sum#1 : tensor<8xf32>, tensor<8xi32>
+}
+
+// -----
+
+func.func @add(%a_acc: f32, %b_acc: f32, %a: f32, %b: f32)
+    -> (f32, f32) {
+  %0 = arith.addf %a_acc, %a : f32
+  %1 = arith.addf %b_acc, %b : f32
+  func.return %0, %1 : f32, f32
+}
+func.func @reduce(%in0: tensor<16x8x4xf32>, %init0: f32,
+    %in1: tensor<16x8x4xi32>, %init1: i32) -> (tensor<8xf32>, tensor<8xi32>) {
+  // expected-error @+1 {{combiner `@add expected to have type '(f32, i32, f32, i32) -> (f32, i32)' but got '(f32, f32, f32, f32) -> (f32, f32)'}}
+  %sum:2 = xla_gpu.reduce (%in0, %in1) inits(%init0, %init1) dimensions=[0, 2]
+    combiner=@add {xla.range = [0 : index, 42 : index]}
+    : tensor<16x8x4xf32>, tensor<16x8x4xi32>
+  func.return %sum#0, %sum#1 : tensor<8xf32>, tensor<8xi32>
+}

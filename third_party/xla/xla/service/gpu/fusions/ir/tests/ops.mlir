@@ -185,3 +185,27 @@ func.func @materialize_and_insert(%input: tensor<32x64xf32>, %i: index,
 // CHECK-SAME: #[[$MAP]](%{{.*}}, %{{.*}})
 // CHECK: xla_gpu.insert %[[MATERIALIZED]](%{{.*}}, %{{.*}}) into
 // CHECK-SAME: at #[[$MAP2]] : <32x64xf32, #[[$MAP1]]>
+
+// -----
+
+func.func @add(%a_acc: f32, %b_acc: i32, %a: f32, %b: i32)
+    -> (f32, i32) {
+  %0 = arith.addf %a_acc, %a : f32
+  %1 = arith.addi %b_acc, %b : i32
+  func.return %0, %1 : f32, i32
+}
+func.func @reduce(%in0: tensor<16x8x4xf32>, %init0: f32,
+    %in1: tensor<16x8x4xi32>, %init1: i32) -> (tensor<8xf32>, tensor<8xi32>) {
+  %sum:2 = xla_gpu.reduce (%in0, %in1) inits(%init0, %init1) dimensions=[0, 2]
+    combiner=@add {xla.range = [0 : index, 42 : index]}
+    : tensor<16x8x4xf32>, tensor<16x8x4xi32>
+  func.return %sum#0, %sum#1 : tensor<8xf32>, tensor<8xi32>
+}
+// CHECK-LABEL: func.func @reduce(
+// CHECK-SAME:    %[[IN1:.*]]: tensor<16x8x4xf32>, %[[INIT1:.*]]: f32,
+// CHECK-SAME:    %[[IN2:.*]]: tensor<16x8x4xi32>, %[[INIT2:.*]]: i32)
+
+// CHECK:        xla_gpu.reduce(%[[IN1]], %[[IN2]])
+// CHECK-SAME:    inits(%[[INIT1]], %[[INIT2]]) dimensions=[0, 2]
+// CHECK-SAME:    combiner=@add {xla.range = [0 : index, 42 : index]}
+// CHECK-SAME:    : tensor<16x8x4xf32>, tensor<16x8x4xi32>
