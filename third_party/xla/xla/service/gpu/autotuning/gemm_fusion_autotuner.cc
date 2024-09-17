@@ -336,6 +336,7 @@ int64_t PriorityFusionShapeSize(const Shape& shape) {
 HloCostAnalysis::Options PriorityFusionOptions() {
   return {/*shape_size=*/PriorityFusionShapeSize,
           /*per_second_rates=*/{},
+          /*min_latencies_seconds=*/{},
           /*count_multiple_input_accesses=*/true};
 }
 

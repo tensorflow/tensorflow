@@ -84,6 +84,7 @@ class PriorityFusionTest : public HloTestBase {
       /*thread_pool=*/nullptr, TestGpuDeviceInfo::RTXA6000DeviceInfo(),
       GpuHloCostAnalysis::Options{ShapeSizeBytesFunction(),
                                   /*per_second_rates=*/{},
+                                  /*min_latencies_seconds=*/{},
                                   /*count_multiple_input_accesses=*/true}};
 };
 

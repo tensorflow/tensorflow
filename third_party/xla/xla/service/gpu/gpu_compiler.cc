@@ -1012,6 +1012,7 @@ absl::Status RunFusionPasses(HloModule* hlo_module,
     GpuHloCostAnalysis::Options cost_analysis_options{
         shape_size_fn,
         /*per_second_rates=*/{},
+        /*min_latencies_seconds=*/{},
         /*count_multiple_input_accesses=*/true};
 
     HloPassPipeline post_fusion_analysis("post_fusion_analysis");

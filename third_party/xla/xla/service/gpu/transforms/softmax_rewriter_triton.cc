@@ -473,6 +473,7 @@ EstimateOptimizedHloRunTimeWithoutSoftMaxRewriterTriton(
   GpuHloCostAnalysis::Options cost_analysis_options{
       shape_size,
       /*per_second_rates=*/{},
+      /*min_latencies_seconds=*/{},
       /*count_multiple_input_accesses=*/true};
   GpuHloCostAnalysis cost_analysis(cost_analysis_options, device_info);
   TF_RETURN_IF_ERROR(entry_computation->Accept(&cost_analysis));
