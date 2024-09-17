@@ -1,5 +1,5 @@
-// RUN: mlir_fusions_opt %s -split-input-file -xla-gpu-simplify-arith -cse -canonicalize  --mlir-print-ir-after-all
-//| FileCheck %s
+// RUN: mlir_fusions_opt %s -split-input-file -xla-gpu-simplify-arith -cse \
+// RUN:   -canonicalize  --mlir-print-ir-after-all | FileCheck %s
 
 module {
   func.func @unknown(%arg0: index {xla.range = [0 : index, 42 : index]}) -> i1 {
