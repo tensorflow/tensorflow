@@ -79,6 +79,11 @@ typedef struct TfLiteOperator {
   // external object, that internally delegates execution to a corresponding
   // regular TfLiteRegistration.  In such a case the 'node_index' field should
   // store the index of that corresponding node (and registration).
+  //
+  // See also `builtin_op_registration` below, which serves a similar purpose.
+  // The difference here is using a non-default `node_index` here means the
+  // `TfLiteRegistration` is stored in the interpreter, which allows its
+  // lifetime to be managed by the interpreter.
   int node_index;
 
   // Indicates if an operator's output can safely overwrite its input.
@@ -110,6 +115,11 @@ typedef struct TfLiteOperator {
                                    TfLiteOpaqueNode* node);
   struct TfLiteAsyncKernel* (*async_kernel_with_data)(
       void* user_data, TfLiteOpaqueContext* context, TfLiteOpaqueNode* node);
+
+  // Optional pointer back to the internal concrete (non-opaque) registration.
+  // If non-null, this must always point to a TfLiteRegistration value allocated
+  // by (and hence binary compatible with) the TFLite runtime.
+  const TfLiteRegistration* builtin_op_registration;
 } TfLiteOperator;
 
 // Returns true iff it's safe to dereference
