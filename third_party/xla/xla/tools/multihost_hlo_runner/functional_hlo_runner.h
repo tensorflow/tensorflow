@@ -96,7 +96,11 @@ class FunctionalHloRunner {
     kStandardCompile
   };
 
-  enum class SpmdMode { kUseSpmdPartitioning, kNotUseSpmdPartitioning };
+  enum class SpmdMode : int8_t {
+    kUseSpmdPartitioning,    // Use the GSPMD partitioner for partitioning.
+    kUseShardyPartitioning,  // Use the Shardy partitioner for partitioning.
+    kNotUseSpmdPartitioning  // Do not perform partitioning.
+  };
 
   enum class SpmdPartitionedMode {
     kIsSpmdPartitionedModule,
