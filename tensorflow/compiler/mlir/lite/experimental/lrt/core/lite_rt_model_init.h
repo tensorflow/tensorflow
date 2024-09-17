@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_MODEL_LITE_RT_MODEL_INIT_H_
-#define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_MODEL_LITE_RT_MODEL_INIT_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_CORE_LITE_RT_MODEL_INIT_H_
+#define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_CORE_LITE_RT_MODEL_INIT_H_
 
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/api/lite_rt_model_api.h"
+#include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_model.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -53,4 +53,4 @@ using UniqueLrtModel = std::unique_ptr<LrtModelT, LrtModelDeleter>;
 
 #endif  // __cplusplus
 
-#endif  // TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_MODEL_LITE_RT_MODEL_INIT_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_CORE_LITE_RT_MODEL_INIT_H_

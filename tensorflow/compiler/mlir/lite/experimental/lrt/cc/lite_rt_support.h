@@ -12,62 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_LITE_RT_SUPPORT_H_
-#define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_LITE_RT_SUPPORT_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_CC_LITE_RT_SUPPORT_H_
+#define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_CC_LITE_RT_SUPPORT_H_
 
 #include <stdio.h>
 
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/lite_rt_common.h"
+#include <memory>
+#include <variant>
 
-#ifdef __cplusplus
-extern "C" {
-#endif  // __cplusplus
+#include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_common.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_support.h"  // IWYU pragma: export
 
-// #define LRT_ABORT abort()
-// TODO: b/365295276 - Find a fatal error approach that will pass kokoro.
-#define LRT_ABORT
-
-#define LRT_FATAL(msg)              \
-  {                                 \
-    fprintf(stderr, "%s\n", (msg)); \
-    LRT_ABORT;                      \
-  }
-
-#define LRT_RETURN_STATUS_IF_NOT_OK(expr)                 \
-  {                                                       \
-    LrtStatus stat = expr;                                \
-    if (GetStatusCode(stat) != kLrtStatusOk) return stat; \
-    StatusDestroy(stat);                                  \
-  }
-
-// TODO: b/365295276 - Add optional debug only print messages support
-// to all macros.
-#define LRT_RETURN_STATUS_IF_NOT_OK_MSG(expr, d_msg) \
-  LRT_RETURN_STATUS_IF_NOT_OK(expr)
-
-#define LRT_RETURN_VAL_IF_NOT_OK(expr, ret_val) \
-  {                                             \
-    LrtStatus stat = expr;                      \
-    LrtStatusCode code_ = GetStatusCode(stat);  \
-    StatusDestroy(stat);                        \
-    if (code_ != kLrtStatusOk) return ret_val;  \
-  }
+#ifndef NDEBUG
+#include <iostream>  // IWYU pragma: keep
+#endif
 
 #define _CONCAT_NAME_IMPL(x, y) x##y
 
 #define _CONCAT_NAME(x, y) _CONCAT_NAME_IMPL(x, y)
 
 #define _RETURN_VAL(val) return val
-
-#ifdef __cplusplus
-}  // extern "C"
-
-#include <memory>
-#include <variant>
-
-#ifndef NDEBUG
-#include <iostream>  // IWYU pragma: keep
-#endif
 
 struct LrtStatusDeleter {
   void operator()(LrtStatus status) {
@@ -134,7 +98,6 @@ class LrtResult {
 };
 
 #ifdef NDEBUG
-// "Internal", not available in c api.
 #define _LRT_D_MSG(msg)
 #else
 #define _LRT_D_MSG(msg) \
@@ -216,6 +179,4 @@ class LrtResult {
 #define LRT_ASSIGN_OR_RETURN_RESULT(decl, expr, ty) \
   _ASSIGN_OR_RETURN_RESULT(decl, expr, ty, _CONCAT_NAME(_result, __COUNTER__))
 
-#endif  // __cplusplus
-
-#endif  // TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_LITE_RT_SUPPORT_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_CC_LITE_RT_SUPPORT_H_

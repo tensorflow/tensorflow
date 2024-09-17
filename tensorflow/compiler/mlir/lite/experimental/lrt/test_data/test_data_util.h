@@ -21,9 +21,9 @@
 #include <string_view>
 
 #include "absl/log/check.h"
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/api/lite_rt_model_api.h"
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/lite_rt_support.h"
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/model/lite_rt_model_init.h"
+#include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_model.h"
+#include "tensorflow/compiler/mlir/lite/experimental/lrt/cc/lite_rt_support.h"
+#include "tensorflow/compiler/mlir/lite/experimental/lrt/core/lite_rt_model_init.h"
 #include "tsl/platform/platform.h"
 
 #define _ASSERT_RESULT_OK_ASSIGN(decl, expr, result) \

@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_COMPILER_PLUGIN_ALGO_H_
-#define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_COMPILER_PLUGIN_ALGO_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_CORE_ALGO_H_
+#define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_CORE_ALGO_H_
 
 #include <memory>
 #include <optional>
@@ -21,9 +21,9 @@
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/api/lite_rt_model_api.h"
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/lite_rt_op_code.h"
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/model/lite_rt_model.h"
+#include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_model.h"
+#include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_op_code.h"
+#include "tensorflow/compiler/mlir/lite/experimental/lrt/core/model.h"
 
 // NOLINTBEGIN
 
@@ -249,6 +249,6 @@ inline void GraphSlicer::CloneInto(LrtOpT& old_op) {
 
 }  // namespace algo
 
-#endif  // TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_COMPILER_PLUGIN_ALGO_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_CORE_ALGO_H_
 
 // NOLINTEND

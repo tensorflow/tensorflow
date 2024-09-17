@@ -30,12 +30,12 @@
 #include "flatbuffers/verifier.h"  // from @flatbuffers
 #include "tensorflow/compiler/mlir/lite/allocation.h"
 #include "tensorflow/compiler/mlir/lite/core/model_builder_base.h"
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/api/lite_rt_model_api.h"
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/lite_rt_common.h"
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/lite_rt_op_code.h"
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/lite_rt_support.h"
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/model/lite_rt_model.h"
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/model/lite_rt_model_init.h"
+#include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_common.h"
+#include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_model.h"
+#include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_op_code.h"
+#include "tensorflow/compiler/mlir/lite/experimental/lrt/cc/lite_rt_support.h"
+#include "tensorflow/compiler/mlir/lite/experimental/lrt/core/lite_rt_model_init.h"
+#include "tensorflow/compiler/mlir/lite/experimental/lrt/core/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/stderr_reporter.h"
 

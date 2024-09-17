@@ -16,3 +16,18 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/compiler/mlir/lite/experimental/lrt:__subpackages__"],
 )
+
+cc_library(
+    name = "lite_rt_c_api",
+    hdrs = [
+        "lite_rt_common.h",
+        "lite_rt_compiler_plugin.h",
+        "lite_rt_model.h",
+        "lite_rt_op_code.h",
+        "lite_rt_support.h",
+    ],
+    deps = [
+        "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite/core/c:c_api_types",
+    ],
+)

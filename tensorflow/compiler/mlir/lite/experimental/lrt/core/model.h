@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_MODEL_LITE_RT_MODEL_H_
-#define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_MODEL_LITE_RT_MODEL_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_CORE_MODEL_H_
+#define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_CORE_MODEL_H_
 
 #ifndef NDEBUG
 #include <cstdio>
@@ -23,10 +23,10 @@
 #include <list>
 #include <vector>
 
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/api/lite_rt_model_api.h"
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/lite_rt_common.h"
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/lite_rt_op_code.h"
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/lite_rt_support.h"
+#include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_common.h"
+#include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_model.h"
+#include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_op_code.h"
+#include "tensorflow/compiler/mlir/lite/experimental/lrt/cc/lite_rt_support.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -221,4 +221,4 @@ inline void DumpOp(LrtOp op) {
   _LRT_D_MSG("");       \
   debug::DumpOp(op);
 
-#endif  // TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_MODEL_LITE_RT_MODEL_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_CORE_MODEL_H_

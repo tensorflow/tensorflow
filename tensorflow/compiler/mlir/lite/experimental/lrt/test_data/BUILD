@@ -46,9 +46,10 @@ cc_library(
     hdrs = ["test_data_util.h"],
     data = [":tflite_test_data"],
     deps = [
-        "//tensorflow/compiler/mlir/lite/experimental/lrt:lite_rt_support",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/api:lite_rt_model_api",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/model:lite_rt_model_init",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/c:lite_rt_c_api",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/cc:lite_rt_cc_api",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/core:lite_rt_model_init",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/core:model",
         "@com_google_absl//absl/log:check",
         "@local_tsl//tsl/platform",
     ],

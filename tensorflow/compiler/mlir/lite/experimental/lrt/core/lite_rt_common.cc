@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/lite_rt_common.h"
+#include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_common.h"
 
 struct LrtStatusT {
   LrtStatusCode code;

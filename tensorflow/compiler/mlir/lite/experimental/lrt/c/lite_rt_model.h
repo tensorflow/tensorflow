@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_API_LITE_RT_MODEL_API_H_
-#define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_API_LITE_RT_MODEL_API_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_C_LITE_RT_MODEL_H_
+#define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_C_LITE_RT_MODEL_H_
 
 #include <stddef.h>
 #include <stdint.h>
 
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/lite_rt_common.h"
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/lite_rt_op_code.h"
+#include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_common.h"
+#include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_op_code.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 
 #ifdef __cplusplus
@@ -178,4 +178,4 @@ LrtStatus PushOp(LrtOpList op_list, LrtOp op);
 }
 #endif  // __cplusplus
 
-#endif  // TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_API_LITE_RT_MODEL_API_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_C_LITE_RT_MODEL_H_

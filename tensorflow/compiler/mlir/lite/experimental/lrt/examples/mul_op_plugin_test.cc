@@ -19,11 +19,11 @@
 
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/api/graph_tools.h"
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/compiler_plugin/lite_rt_compiler_plugin.h"
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/lite_rt_op_code.h"
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/lite_rt_support.h"
-#include "tensorflow/compiler/mlir/lite/experimental/lrt/model/lite_rt_model.h"
+#include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_compiler_plugin.h"
+#include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_op_code.h"
+#include "tensorflow/compiler/mlir/lite/experimental/lrt/cc/lite_rt_support.h"
+#include "tensorflow/compiler/mlir/lite/experimental/lrt/core/graph_tools.h"
+#include "tensorflow/compiler/mlir/lite/experimental/lrt/core/model.h"
 #include "tensorflow/compiler/mlir/lite/experimental/lrt/test_data/test_data_util.h"
 
 namespace {

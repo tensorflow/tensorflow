@@ -18,27 +18,13 @@ package(
 )
 
 cc_library(
-    name = "lite_rt_model_api",
-    hdrs = ["lite_rt_model_api.h"],
-    deps = [
-        "//tensorflow/compiler/mlir/lite/experimental/lrt:lite_rt_common",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt:lite_rt_op_code",
-        "//tensorflow/lite/core/c:c_api_types",
-    ],
-)
-
-cc_library(
-    name = "graph_tools",
+    name = "lite_rt_cc_api",
     hdrs = [
-        "graph_tools.h",
+        "lite_rt_support.h",
     ],
     deps = [
-        ":lite_rt_model_api",
         "//tensorflow/compiler/mlir/lite/core:model_builder_base",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt:lite_rt_common",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt:lite_rt_op_code",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt:lite_rt_support",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/c:lite_rt_c_api",
         "//tensorflow/lite/c:c_api_types",
-        "@llvm-project//llvm:Support",
     ],
 )

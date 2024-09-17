@@ -18,36 +18,27 @@ package(
 )
 
 cc_library(
-    name = "lite_rt_compiler_plugin",
-    hdrs = ["lite_rt_compiler_plugin.h"],
-    visibility = ["//visibility:public"],
+    name = "mul_op_plugin",
+    srcs = ["mul_op_plugin.cc"],
     deps = [
-        "//tensorflow/compiler/mlir/lite/experimental/lrt:lite_rt_common",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/api:lite_rt_model_api",
-    ],
-)
-
-cc_library(
-    name = "algo",
-    hdrs = ["algo.h"],
-    deps = [
-        "//tensorflow/compiler/mlir/lite/experimental/lrt:lite_rt_op_code",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/api:lite_rt_model_api",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/model:lite_rt_model",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/c:lite_rt_c_api",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/cc:lite_rt_cc_api",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/core:graph_tools",
     ],
 )
 
 cc_test(
-    name = "algo_test",
-    srcs = ["algo_test.cc"],
+    name = "mul_op_plugin_test",
+    srcs = ["mul_op_plugin_test.cc"],
     tags = ["no_oss"],
     deps = [
-        ":algo",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt:lite_rt_op_code",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/api:graph_tools",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/api:lite_rt_model_api",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/model:lite_rt_model",
+        ":mul_op_plugin",  # buildcleaner: keep
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/c:lite_rt_c_api",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/cc:lite_rt_cc_api",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/core:graph_tools",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/core:model",
         "//tensorflow/compiler/mlir/lite/experimental/lrt/test_data:test_data_util",
+        "@com_google_absl//absl/log:check",
         "@com_google_googletest//:gtest_main",
     ],
 )
