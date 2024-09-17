@@ -22,6 +22,7 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -34,6 +35,8 @@ limitations under the License.
 #include "absl/numeric/int128.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
@@ -622,6 +625,39 @@ struct WhileMoveInfo {
   int64_t sliced_idx;
   std::vector<int64_t> output_indices;
 };
+
+std::string ToString(const WhileMoveInfo& move_info) {
+  // Combine the dynamic-update-slices and output indices into a single vector
+  // so we can print them together.
+  CHECK_EQ(move_info.dynamic_update_slices.size(),
+           move_info.output_indices.size());
+  std::vector<std::pair<decltype(move_info.dynamic_update_slices)::value_type,
+                        decltype(move_info.output_indices)::value_type>>
+      zip_result;
+  zip_result.reserve(move_info.dynamic_update_slices.size());
+  for (int64_t i = 0; i < move_info.dynamic_update_slices.size(); ++i) {
+    zip_result.push_back(std::make_pair(move_info.dynamic_update_slices[i],
+                                        move_info.output_indices[i]));
+  }
+  return absl::StrFormat(
+      "\tCollectives:\n\t\t%s\n\tDynamicUpdateSlices:\n\t\t%s\n\tFormatting "
+      "ops:\n\t\t%s\n\tSliced index: %d",
+      absl::StrJoin(move_info.collectives_to_move, ",\n\t\t",
+                    [](std::string* out, HloInstruction* instr) {
+                      absl::StrAppend(out, instr->name());
+                    }),
+      absl::StrJoin(zip_result, ",\n\t\t",
+                    [](std::string* out, const auto& item) {
+                      absl::StrAppend(
+                          out, absl::StrFormat("%s (%d)", item.first->name(),
+                                               item.second));
+                    }),
+      absl::StrJoin(move_info.formatting_ops, ",\n\t\t",
+                    [](std::string* out, HloInstruction* instr) {
+                      absl::StrAppend(out, instr->name());
+                    }),
+      move_info.sliced_idx);
+}
 
 // Set channel_id of instruction to next available to avoid collisions.
 void UpdateInstructionChannelId(HloInstruction* cloned_instr,
@@ -1588,7 +1624,8 @@ absl::Status UpdateSendRecvValidation(
 }
 
 // Function that does the work of pushing forward instructions that have been
-// determined that can be pipelined. Rough transformation: while (i < LAYERS) {
+// determined that can be pipelined. Rough transformation:
+// while (i < LAYERS) {
 //   p0 = param(0)
 //   p1 = param(1)
 //   x = computation(p0)
@@ -2944,20 +2981,7 @@ absl::StatusOr<bool> CollectivePipeliner::RunPipeliner(
     if (VLOG_IS_ON(1)) {
       int64_t id = 0;
       for (auto& to_move : loop_analysis->GetMoveInfos()) {
-        VLOG(1) << "Move info id: " << id++ << " with "
-                << to_move.collectives_to_move.size() << " collectives "
-                << to_move.dynamic_update_slices.size()
-                << " dynamic update slices" << to_move.formatting_ops.size()
-                << " formatting ops";
-        for (HloInstruction* collective : to_move.collectives_to_move) {
-          VLOG(1) << "\t" << collective->name();
-        }
-        for (int64_t i = 0; i < to_move.dynamic_update_slices.size(); ++i) {
-          HloDynamicUpdateSliceInstruction* dyn_update =
-              to_move.dynamic_update_slices[i];
-          VLOG(1) << "\t\t" << dyn_update->name();
-          VLOG(1) << "\t\t" << to_move.output_indices[i];
-        }
+        VLOG(1) << "MoveInfo #" << id++ << "\n" << ToString(to_move);
       }
     }
     if (config_.pipelining_direction == PipeliningDirection::kForward) {
