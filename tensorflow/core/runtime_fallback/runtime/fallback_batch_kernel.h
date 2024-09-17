@@ -20,7 +20,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -29,10 +28,13 @@ limitations under the License.
 #include "tensorflow/core/kernels/batch_kernels.h"
 #include "tensorflow/core/kernels/batching_util/adaptive_shared_batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/batch_resource_base.h"
+#include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
+#include "tensorflow/core/kernels/batching_util/batch_stats.h"
 #include "tensorflow/core/kernels/batching_util/warmup.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/random.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
@@ -78,9 +80,11 @@ class BatchFunctionFallbackKernelBase : public AsyncOpKernel {
   int32 low_priority_batch_timeout_micros_;
   int32 low_priority_max_enqueued_batches_;
   std::vector<int32> low_priority_allowed_batch_sizes_;
+  std::string mixed_priority_policy_;
   bool enable_large_batch_splitting_;
   bool has_attribute_enable_large_batch_splitting_;
   bool disable_padding_;
+  std::string batch_padding_policy_;
 
   // Parameters for adaptive batch scheduler only.
   // Note 'num_batch_threads_' above is shared by two implementations of batch
@@ -203,10 +207,35 @@ void BatchFunctionFallbackKernel<BatchResourceType>::ComputeAsync(
   } else {
     creator = [this, c]()
         -> absl::StatusOr<tensorflow::core::RefCountPtr<BatchResourceType>> {
+      serving::BatchResourceOptions batch_resource_options;
+      TF_ASSIGN_OR_RETURN(
+          batch_resource_options.mixed_priority_batching_policy,
+          serving::GetMixedPriorityBatchingPolicy(mixed_priority_policy_));
+      batch_resource_options.num_batch_threads = num_batch_threads_;
+      batch_resource_options.max_batch_size = max_batch_size_;
+      batch_resource_options.batch_timeout_micros = batch_timeout_micros_;
+      batch_resource_options.max_enqueued_batches = max_enqueued_batches_;
+      batch_resource_options.allowed_batch_sizes = allowed_batch_sizes_;
+      batch_resource_options.batch_padding_policy = batch_padding_policy_;
+      batch_resource_options.low_priority_max_batch_size =
+          low_priority_max_batch_size_;
+      batch_resource_options.low_priority_batch_timeout_micros =
+          low_priority_batch_timeout_micros_;
+      batch_resource_options.low_priority_max_enqueued_batches =
+          low_priority_max_enqueued_batches_;
+      batch_resource_options.low_priority_allowed_batch_sizes =
+          low_priority_allowed_batch_sizes_;
+
+      serving::ModelBatchStats& model_batch_stats =
+          serving::GlobalBatchStatsRegistry().model(
+              /* model_name= */ std::string(GetModelName(c)),
+              /* op_name= */ c->op_kernel().name());
+      model_batch_stats.SetBatchTimeoutMicros(batch_timeout_micros_);
+      model_batch_stats.SetNumBatchThreads(num_batch_threads_);
+
       std::unique_ptr<BatchResourceType> new_resource;
       auto status = BatchResourceType::Create(
-          c, num_batch_threads_, max_batch_size_, batch_timeout_micros_,
-          max_enqueued_batches_, allowed_batch_sizes_, batch_function_,
+          c, batch_resource_options, batch_function_,
           enable_large_batch_splitting_, disable_padding_, &new_resource);
       if (!status.ok()) return status;
       if (c->session_metadata() != nullptr) {

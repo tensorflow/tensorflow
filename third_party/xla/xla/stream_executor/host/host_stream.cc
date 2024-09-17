@@ -17,8 +17,11 @@ limitations under the License.
 // the HostExecutor implementation.
 #include "xla/stream_executor/host/host_stream.h"
 
+#include <string.h>
+
 #include <cfenv>  // NOLINT
-#include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <queue>
 #include <utility>
 
@@ -27,6 +30,14 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/event.h"
+#include "xla/stream_executor/host/host_event.h"
+#include "xla/stream_executor/host/host_kernel.h"
+#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_common.h"
 #include "tsl/platform/denormal.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/setround.h"
@@ -34,20 +45,10 @@ limitations under the License.
 namespace stream_executor {
 namespace host {
 
-namespace {
-
-tsl::ThreadOptions GetThreadOptions(size_t stack_size_in_bytes) {
-  tsl::ThreadOptions options;
-  options.stack_size = stack_size_in_bytes;
-  return options;
-}
-
-}  // namespace
-
-HostStream::HostStream(size_t stack_size_in_bytes)
-    : thread_(tsl::Env::Default()->StartThread(
-          GetThreadOptions(stack_size_in_bytes), "host_executor",
-          [this]() { WorkLoop(); })) {}
+HostStream::HostStream(StreamExecutor* executor)
+    : StreamCommon(executor),
+      thread_(tsl::Env::Default()->StartThread({}, "host_executor",
+                                               [this]() { WorkLoop(); })) {}
 
 HostStream::~HostStream() {
   {
@@ -56,6 +57,68 @@ HostStream::~HostStream() {
   }
   // thread_'s destructor blocks until the thread finishes running.
   thread_.reset();
+  parent()->DeallocateStream(this);
+}
+
+absl::Status HostStream::Memcpy(DeviceMemoryBase* gpu_dst,
+                                const DeviceMemoryBase& gpu_src,
+                                uint64_t size) {
+  void* dst_mem = gpu_dst->opaque();
+  void* src_mem = const_cast<void*>(gpu_src.opaque());
+  // Enqueue this [asynchronous] "device-to-device" (i.e., host-to-host, given
+  // the nature of the HostExecutor) memcpy  on the stream (HostStream)
+  // associated with the HostExecutor.
+  EnqueueTask([src_mem, dst_mem, size]() { memcpy(dst_mem, src_mem, size); });
+  return absl::OkStatus();
+}
+
+absl::Status HostStream::Memcpy(void* host_dst, const DeviceMemoryBase& gpu_src,
+                                uint64_t size) {
+  // Enqueue the [asynchronous] memcpy on the stream (HostStream) associated
+  // with the HostExecutor.
+  void* src_mem = const_cast<void*>(gpu_src.opaque());
+  EnqueueTask([host_dst, src_mem, size]() { memcpy(host_dst, src_mem, size); });
+  return absl::OkStatus();
+}
+
+absl::Status HostStream::Memcpy(DeviceMemoryBase* gpu_dst, const void* host_src,
+                                uint64_t size) {
+  void* dst_mem = gpu_dst->opaque();
+  // Enqueue the [asynchronous] memcpy on the stream (HostStream) associated
+  // with the HostExecutor.
+  EnqueueTask([dst_mem, host_src, size]() { memcpy(dst_mem, host_src, size); });
+  return absl::OkStatus();
+}
+
+absl::Status HostStream::Memset32(DeviceMemoryBase* location, uint32_t pattern,
+                                  uint64_t size) {
+  void* gpu_mem = location->opaque();
+  // Enqueue the [asynchronous] memzero on the stream (HostStream) associated
+  // with the HostExecutor.
+  EnqueueTask([gpu_mem, size, pattern]() { memset(gpu_mem, pattern, size); });
+  return absl::OkStatus();
+}
+
+absl::Status HostStream::MemZero(DeviceMemoryBase* location, uint64_t size) {
+  void* gpu_mem = location->opaque();
+  // Enqueue the [asynchronous] memzero on the stream (HostStream) associated
+  // with the HostExecutor.
+  EnqueueTask([gpu_mem, size]() { memset(gpu_mem, 0, size); });
+  return absl::OkStatus();
+}
+
+absl::Status HostStream::WaitFor(Stream* other) {
+  auto event = std::make_shared<absl::Notification>();
+  static_cast<HostStream*>(other)->EnqueueTask([event]() { event->Notify(); });
+  EnqueueTask([event]() { event->WaitForNotification(); });
+  return absl::OkStatus();
+}
+
+absl::Status HostStream::WaitFor(Event* event) {
+  std::shared_ptr<absl::Notification> notification =
+      static_cast<HostEvent*>(event)->notification();
+  EnqueueTask([notification]() { notification->WaitForNotification(); });
+  return absl::OkStatus();
 }
 
 bool HostStream::EnqueueTask(absl::AnyInvocable<void() &&> task) {
@@ -63,6 +126,24 @@ bool HostStream::EnqueueTask(absl::AnyInvocable<void() &&> task) {
     std::move(task)();
     return absl::OkStatus();
   });
+}
+
+absl::Status HostStream::RecordEvent(Event* event) {
+  std::shared_ptr<absl::Notification> notification =
+      static_cast<HostEvent*>(event)->notification();
+  EnqueueTask([notification]() {
+    CHECK(!notification->HasBeenNotified());
+    notification->Notify();
+  });
+  return absl::OkStatus();
+}
+
+absl::Status HostStream::DoHostCallbackWithStatus(
+    absl::AnyInvocable<absl::Status() &&> callback) {
+  if (EnqueueTaskWithStatus(std::move(callback))) {
+    return absl::OkStatus();
+  }
+  return absl::InternalError("Failed to host callback.");
 }
 
 bool HostStream::EnqueueTaskWithStatus(
@@ -114,6 +195,21 @@ absl::Status HostStream::BlockUntilDone() {
   return status;
 }
 
-}  // namespace host
+absl::Status HostStream::Launch(const ThreadDim& thread_dims,
+                                const BlockDim& block_dims,
+                                const Kernel& kernel, const KernelArgs& args) {
+  const HostKernel* host_kernel = AsHostKernel(&kernel);
 
+  const KernelArgsDeviceMemoryArray* device_mem =
+      DynCast<KernelArgsDeviceMemoryArray>(&args);
+
+  if (device_mem != nullptr) {
+    return host_kernel->Launch(thread_dims, device_mem->device_memory_args());
+  }
+  return absl::UnimplementedError(
+      "Host kernel implements Launch method only for DeviceMemoryArray "
+      "arguments.");
+}
+
+}  // namespace host
 }  // namespace stream_executor

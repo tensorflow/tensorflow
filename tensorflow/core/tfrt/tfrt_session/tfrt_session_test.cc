@@ -29,6 +29,8 @@ limitations under the License.
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/saved_model/reader.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -44,7 +46,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
 #include "tensorflow/core/tfrt/utils/thread_pool.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/protobuf.h"
 
 namespace tensorflow {
@@ -325,6 +326,38 @@ TEST_F(TfrtSessionTest, RunInCallerThreadRunOptions) {
                     test::AsTensor<int32_t>({6}, TensorShape{1, 1}));
 }
 
+TEST_F(TfrtSessionTest, DeviceManager) {
+  // Create a TfrtSession.
+  SessionOptions options;
+  options.config.mutable_experimental()->set_use_tfrt(true);
+  options.config.set_inter_op_parallelism_threads(-1);
+  session_.reset(NewSession(options));
+  ASSERT_TRUE(session_ != nullptr);
+
+  const DeviceMgr* device_manager;
+  TF_ASSERT_OK(session_->LocalDeviceManager(&device_manager));
+
+  // Initialize the session with a GraphDef.
+  std::string saved_model_dir = GetDataDependencyFilepath(
+      "tensorflow/core/tfrt/saved_model/tests/toy_v1/1");
+
+  MetaGraphDef meta_graph_def;
+  TF_ASSERT_OK(ReadMetaGraphDefFromSavedModel(saved_model_dir, {"serve"},
+                                              &meta_graph_def));
+
+  TF_ASSERT_OK(session_->Create(meta_graph_def.graph_def()));
+
+  // Run the init op. This also tests the case of no output tensors.
+  RunMetadata run_metadata;
+  TF_ASSERT_OK(session_->Run(
+      /*run_options=*/{}, /*inputs=*/{}, /*output_tensor_names=*/{},
+      /*target_tensor_names=*/{"init"}, nullptr, &run_metadata));
+
+  const DeviceMgr* device_manager_final;
+  TF_ASSERT_OK(session_->LocalDeviceManager(&device_manager_final));
+  ASSERT_EQ(device_manager, device_manager_final);
+}
+
 TEST_F(TfrtSessionTest, IntraOpThreadPoolOptionWarning) {
   // Create a TfrtSession.
   SessionOptions options;
@@ -365,6 +398,8 @@ TEST_F(TfrtSessionTest, Callable) {
                     test::AsTensor<int32_t>({6}, TensorShape{1, 1}));
   TF_ASSERT_OK(session_->ReleaseCallable(callable_handle));
 }
+
+TEST_F(TfrtSessionTest, Finalize) { TF_ASSERT_OK(session_->Finalize()); }
 
 TEST_F(TfrtSessionTest, WithTargetNodes) {
   std::vector<Tensor> outputs;

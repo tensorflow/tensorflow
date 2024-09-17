@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/attributes.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "llvm/ADT/STLExtras.h"
@@ -43,7 +44,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 #include "tensorflow/core/framework/node_def.pb.h"
-#include "tensorflow/core/platform/statusor.h"
 
 namespace mlir {
 namespace TF {
@@ -268,7 +268,7 @@ Value SetNoFallbackAttr(PatternRewriter &rewriter, Value val) {
 
 // Returns true if the attr is a float attribute and be equal to value.
 static bool FloatValueEquals(const Attribute &attr, double value) {
-  auto fp_attr = attr.dyn_cast_or_null<DenseFPElementsAttr>();
+  auto fp_attr = mlir::dyn_cast_or_null<DenseFPElementsAttr>(attr);
   if (fp_attr == nullptr) return false;
 
   if (fp_attr.isSplat()) {
@@ -281,7 +281,7 @@ static bool FloatValueEquals(const Attribute &attr, double value) {
 
 // Returns true if the rank of the value equals to the given rank.
 bool RankEquals(Value value, int rank) {
-  auto rank_type = value.getType().template dyn_cast<RankedTensorType>();
+  auto rank_type = mlir::dyn_cast<RankedTensorType>(value.getType());
   return (rank_type && rank_type.getRank() == rank);
 }
 

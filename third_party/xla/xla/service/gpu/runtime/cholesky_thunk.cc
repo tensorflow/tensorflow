@@ -47,8 +47,8 @@ absl::Status DoPotrfBatched(const se::GpuAsmOpts& asm_opts,
   se::DeviceMemory<int> infos(params->info_buffer);
 #if TENSORFLOW_USE_ROCSOLVER
   // hipsolver is not supported so allocate a GPU buffer
-  se::ScopedDeviceMemory<T*> ptrs =
-      stream->parent()->AllocateOwnedArray<T*>(batch_size_);
+  se::ScopedDeviceMemory<T*> ptrs(
+      stream->parent(), stream->parent()->AllocateArray<T*>(batch_size_));
   auto as = *ptrs;
 #else
   se::DeviceMemory<T*> as(params->workspace_buffer);

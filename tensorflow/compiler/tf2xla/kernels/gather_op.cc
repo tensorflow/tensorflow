@@ -91,9 +91,14 @@ Status XlaGather(const xla::XlaOp& input, const TensorShape& input_shape,
 
   for (int64_t i = 0; i < num_index_dims; ++i) {
     if (input_shape.dim_size(axis + i) == 0) {
-      return errors::InvalidArgument("Gather dimension ", axis + i,
-                                     " is of size zero in tensor with shape ",
-                                     input_shape.DebugString());
+      // Gather dimension of size zero in tensor results in constant 0.
+      // This is done to match the legacy behavior of the MLIR legalization and
+      // avoid breaking existing models.
+      auto slice_sizes = input_shape.dim_sizes();
+      slice_sizes.erase(slice_sizes.begin() + axis);
+      *gather_output =
+          xla::Broadcast(XlaHelpers::Zero(builder, dtype), slice_sizes);
+      return absl::OkStatus();
     }
   }
 

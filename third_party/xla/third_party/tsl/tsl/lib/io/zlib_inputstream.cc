@@ -84,7 +84,7 @@ ZlibInputStream::~ZlibInputStream() {
   }
 }
 
-Status ZlibInputStream::Reset() {
+absl::Status ZlibInputStream::Reset() {
   if (init_error_) {
     return errors::DataLoss("unable to reset stream, cannot decompress.");
   }
@@ -92,7 +92,7 @@ Status ZlibInputStream::Reset() {
   inflateEnd(z_stream_def_->stream.get());
   InitZlibBuffer();
   bytes_read_ = 0;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void ZlibInputStream::InitZlibBuffer() {
@@ -120,7 +120,7 @@ void ZlibInputStream::InitZlibBuffer() {
   z_stream_def_->stream->avail_out = output_buffer_capacity_;
 }
 
-Status ZlibInputStream::ReadFromStream() {
+absl::Status ZlibInputStream::ReadFromStream() {
   int bytes_to_read = input_buffer_capacity_;
   char* read_location = reinterpret_cast<char*>(z_stream_def_->input.get());
 
@@ -143,7 +143,7 @@ Status ZlibInputStream::ReadFromStream() {
   // Try to read enough data to fill up z_stream_def_->input.
   // TODO(rohanj): Add a char* version of ReadNBytes to InputStreamInterface
   // and use that instead to make this more efficient.
-  Status s = input_stream_->ReadNBytes(bytes_to_read, &data);
+  absl::Status s = input_stream_->ReadNBytes(bytes_to_read, &data);
   memcpy(read_location, data.data(), data.size());
 
   // Since we moved unread data to the head of the input stream we can point
@@ -166,7 +166,7 @@ Status ZlibInputStream::ReadFromStream() {
     return errors::OutOfRange("EOF reached");
   }
   if (errors::IsOutOfRange(s)) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   return s;
@@ -193,7 +193,8 @@ size_t ZlibInputStream::NumUnreadBytes() const {
          read_bytes;
 }
 
-Status ZlibInputStream::ReadNBytes(int64_t bytes_to_read, tstring* result) {
+absl::Status ZlibInputStream::ReadNBytes(int64_t bytes_to_read,
+                                         tstring* result) {
   if (init_error_) {
     return errors::DataLoss("Unable to decompress Zlib file.");
   }
@@ -225,23 +226,24 @@ Status ZlibInputStream::ReadNBytes(int64_t bytes_to_read, tstring* result) {
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 #if defined(TF_CORD_SUPPORT)
-Status ZlibInputStream::ReadNBytes(int64_t bytes_to_read, absl::Cord* result) {
+absl::Status ZlibInputStream::ReadNBytes(int64_t bytes_to_read,
+                                         absl::Cord* result) {
   // TODO(frankchn): Optimize this instead of bouncing through the buffer.
   tstring buf;
   TF_RETURN_IF_ERROR(ReadNBytes(bytes_to_read, &buf));
   result->Clear();
   result->Append(buf.data());
-  return OkStatus();
+  return absl::OkStatus();
 }
 #endif
 
 int64_t ZlibInputStream::Tell() const { return bytes_read_; }
 
-Status ZlibInputStream::Inflate() {
+absl::Status ZlibInputStream::Inflate() {
   int error = inflate(z_stream_def_->stream.get(), zlib_options_.flush_mode);
   // Source: http://zlib.net/manual.html
   // Z_BUF_ERROR: `inflate` returns Z_BUF_ERROR if no progress was made. This is
@@ -258,7 +260,7 @@ Status ZlibInputStream::Inflate() {
   if (error == Z_STREAM_END && zlib_options_.window_bits == MAX_WBITS + 16) {
     inflateReset(z_stream_def_->stream.get());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace io

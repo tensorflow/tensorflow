@@ -112,7 +112,7 @@ class GraphConstructor {
         : allow_internal_ops(false),
           expect_device_spec(false),
           propagate_device_spec(in.propagate_device_spec),
-          prefix(in.prefix.empty() || str_util::EndsWith(in.prefix, "/")
+          prefix(in.prefix.empty() || absl::EndsWith(in.prefix, "/")
                      ? in.prefix
                      : in.prefix + "/"),
           uniquify_names(in.uniquify_names),
@@ -164,7 +164,7 @@ class GraphConstructor {
     string default_device;
   };
 
-  typedef gtl::ArraySlice<const NodeDef*> NodeDefSlice;
+  typedef absl::Span<const NodeDef* const> NodeDefSlice;
 
   // versions, library, and debug_info may be nullptr
   static Status Construct(
@@ -370,7 +370,7 @@ class GraphConstructor {
 
   // Mapping between index within node_defs_ and the index within node_defs_ of
   // all nodes it outputs to.
-  std::vector<gtl::InlinedVector<int, 4>> outputs_;
+  std::vector<absl::InlinedVector<int, 4UL>> outputs_;
 
   // Used in the conversion from node_defs_ to g_ to represent the ith input
   // of a node.
@@ -1534,7 +1534,7 @@ Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
 }
 
 Status ConvertNodeDefsToGraph(const GraphConstructorOptions& opts,
-                              gtl::ArraySlice<NodeDef> nodes, Graph* g,
+                              absl::Span<const NodeDef> nodes, Graph* g,
                               const GraphDebugInfo* debug_info) {
   ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, g->op_registry());
   // TODO(irving): Copy will go away once NodeInfo exists

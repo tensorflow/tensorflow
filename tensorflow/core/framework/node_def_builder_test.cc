@@ -43,7 +43,7 @@ class NodeDefBuilderTest : public ::testing::Test {
   // to Op() above.
   NodeDefBuilder& Builder() {
     EXPECT_FALSE(op_def_.name().empty()) << "Must call Op() before Builder()";
-    builder_.reset(new NodeDefBuilder("n", &op_def_));
+    builder_ = std::make_unique<NodeDefBuilder>("n", &op_def_);
     return *builder_;
   }
 

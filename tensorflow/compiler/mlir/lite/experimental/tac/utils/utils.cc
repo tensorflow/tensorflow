@@ -23,7 +23,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
@@ -31,14 +33,14 @@ limitations under the License.
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_import.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
 namespace mlir {
 namespace TFL {
@@ -95,13 +97,13 @@ absl::Status ExportFlatbufferOrMlir(const std::string& output_filename,
     os.flush();
   } else {
     tflite::FlatbufferExportOptions options;
-    options.toco_flags.set_force_select_tf_ops(false);
-    options.toco_flags.set_allow_custom_ops(true);
+    options.converter_flags.set_force_select_tf_ops(false);
+    options.converter_flags.set_allow_custom_ops(true);
     if (enable_select_tf_ops) {
-      options.toco_flags.set_enable_select_tf_ops(true);
-      options.toco_flags.set_allow_all_select_tf_ops(true);
+      options.converter_flags.set_enable_select_tf_ops(true);
+      options.converter_flags.set_allow_all_select_tf_ops(true);
     } else {
-      options.toco_flags.set_enable_select_tf_ops(false);
+      options.converter_flags.set_enable_select_tf_ops(false);
     }
     if (!tflite::MlirToFlatBufferTranslateFunction(module, options, &result)) {
       return absl::UnknownError("Failed to export tflite file.");

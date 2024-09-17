@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/statusor.h"
 #include "llvm/Support/ExtensibleRTTI.h"
-#include "xla/statusor.h"
-#include "tsl/concurrency/ref_count.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {

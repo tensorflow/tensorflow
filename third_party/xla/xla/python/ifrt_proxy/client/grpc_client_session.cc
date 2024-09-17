@@ -124,12 +124,13 @@ GrpcClientSession::GrpcClientSession(
       absl::bind_front(&GrpcClientSession::ReadLoop, this));
 }
 
-Future<ClientSession::Response> GrpcClientSession::Enqueue(
+Future<std::shared_ptr<IfrtResponse>> GrpcClientSession::Enqueue(
     std::unique_ptr<IfrtRequest> request) {
-  auto promise = Future<ClientSession::Response>::CreatePromise();
+  auto promise = Future<std::shared_ptr<IfrtResponse>>::CreatePromise();
   absl::Status status = Enqueue(
-      std::move(request), [promise, queue = user_futures_work_queue_.get()](
-                              Response response) mutable {
+      std::move(request),
+      [promise, queue = user_futures_work_queue_.get()](
+          absl::StatusOr<std::shared_ptr<IfrtResponse>> response) mutable {
         queue->Schedule([promise = std::move(promise),
                          response = std::move(response)]() mutable -> void {
           promise.Set(std::move(response));
@@ -140,7 +141,7 @@ Future<ClientSession::Response> GrpcClientSession::Enqueue(
       promise.Set(std::move(status));
     });
   }
-  return Future<ClientSession::Response>(std::move(promise));
+  return Future<std::shared_ptr<IfrtResponse>>(std::move(promise));
 }
 
 absl::Status GrpcClientSession::Enqueue(std::unique_ptr<IfrtRequest> req,

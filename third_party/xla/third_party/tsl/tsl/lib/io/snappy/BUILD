@@ -1,4 +1,4 @@
-load("//tsl:tsl.bzl", "internal_visibility")
+load("@local_xla//xla/tsl:tsl.bzl", "internal_visibility")
 load(
     "//tsl/platform:build_config.bzl",
     "tsl_cc_test",
@@ -90,12 +90,12 @@ tsl_cc_test(
         ":snappy_inputbuffer",
         ":snappy_inputstream",
         ":snappy_outputbuffer",
-        "//tsl/lib/core:status_test_util",
         "//tsl/lib/io:inputbuffer",
         "//tsl/lib/io:random_inputstream",
         "//tsl/platform:env",
         "//tsl/platform:env_impl",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )

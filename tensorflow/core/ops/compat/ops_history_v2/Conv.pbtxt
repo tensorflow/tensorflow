@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "Conv"
   input_arg {
     name: "input"

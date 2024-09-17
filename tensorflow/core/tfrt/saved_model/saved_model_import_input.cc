@@ -25,7 +25,8 @@ limitations under the License.
 namespace tensorflow {
 namespace tfrt_stub {
 
-StatusOr<TfrtSavedModelMLIRImportInput> TfrtSavedModelMLIRImportInput::Create(
+absl::StatusOr<TfrtSavedModelMLIRImportInput>
+TfrtSavedModelMLIRImportInput::Create(
     const FallbackState& fallback_state, const MetaGraphDef* meta_graph_def,
     const GraphDebugInfo& debug_info,
     bool run_placer_grappler_on_nested_functions) {
@@ -49,7 +50,8 @@ TfrtSavedModelMLIRImportInput::TfrtSavedModelMLIRImportInput(
     : SavedModelMLIRImportInput(meta_graph_def, debug_info),
       graph_execution_state_(std::move(graph_execution_state)) {}
 
-StatusOr<const tensorflow::Graph*> TfrtSavedModelMLIRImportInput::GetSubGraph(
+absl::StatusOr<const tensorflow::Graph*>
+TfrtSavedModelMLIRImportInput::GetSubGraph(
     absl::string_view name, GraphImportConfig& graph_import_config) {
   LOG(INFO) << "TFRT importing savedmodel signature: " << name;
 

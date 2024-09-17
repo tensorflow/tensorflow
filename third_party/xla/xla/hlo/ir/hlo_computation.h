@@ -17,18 +17,21 @@ limitations under the License.
 #define XLA_HLO_IR_HLO_COMPUTATION_H_
 
 #include <cstdint>
-#include <list>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -41,10 +44,14 @@ limitations under the License.
 #include "xla/printer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/name_uniquer.h"
+#include "xla/shape.h"
 #include "xla/shape_tree.h"
-#include "xla/statusor.h"
+#include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/lib/gtl/iterator_range.h"
+#include "tsl/platform/errors.h"
 
 namespace xla {
 
@@ -102,7 +109,7 @@ class HloComputation {
       return AddInstruction(std::move(instruction));
     }
 
-    StatusOr<HloInstruction*> AddParameter(
+    absl::StatusOr<HloInstruction*> AddParameter(
         std::unique_ptr<HloInstruction> parameter) {
       if (!parameter_numbers_.insert(parameter->parameter_number()).second) {
         return Internal("Duplicate parameter number %d",
@@ -111,12 +118,12 @@ class HloComputation {
       return AddInstruction(std::move(parameter));
     }
 
-    Status ForEachInstruction(
-        absl::FunctionRef<Status(const HloInstruction*)> func) const {
+    absl::Status ForEachInstruction(
+        absl::FunctionRef<absl::Status(const HloInstruction*)> func) const {
       for (const auto& instruction : instructions_) {
         TF_RETURN_IF_ERROR(func(instruction.get()));
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     HloInstruction* last_added_instruction() const {
@@ -203,6 +210,10 @@ class HloComputation {
   HloInstruction* AddInstruction(std::unique_ptr<HloInstruction> instruction,
                                  const OpMetadata* metadata);
 
+  HloInstruction* AddInstruction(std::unique_ptr<HloInstruction> instruction,
+                                 const OpMetadata* metadata,
+                                 const FrontendAttributes* frontend_attributes);
+
   // Replace the old parameter at index param_no with
   // `instruction`. Updates uses and root instruction. Removes old
   // instruction from computation. No check is done on the shape.
@@ -212,17 +223,17 @@ class HloComputation {
   // Remove the param_no'th parameter from the computation.
   // Note this is only applicatable to the computation for the fusion
   // instruction.
-  Status RemoveParameter(int64_t param_no);
+  absl::Status RemoveParameter(int64_t param_no);
 
   // Remove unused parameters from the computation.
   // Note this is only applicatable to the computation for the fusion
   // instruction.
-  Status RemoveUnusedParametersFromFusedComputation();
+  absl::Status RemoveUnusedParametersFromFusedComputation();
 
   // Remove unused parameters from the computation. Unlike
   // RemoveUnusedParametersFromFusedComputation, this function can be used
   // to remove parameters from non-fusion computations.
-  Status RemoveUnusedParametersFromAnyComputation();
+  absl::Status RemoveUnusedParametersFromAnyComputation();
 
   // Adds a new parameter instruction to a fusion computation.
   //
@@ -240,18 +251,18 @@ class HloComputation {
 
   // Replaces an old parameter with a new parameter. Adds the new parameter
   // instruction to the entry computation.  Updates users instruction.
-  Status ReplaceEntryComputationParameter(
+  absl::Status ReplaceEntryComputationParameter(
       int64_t param_no, HloInstruction* old_instruction,
       std::unique_ptr<HloInstruction> instruction);
 
   // Remove an instruction from the computation. The instruction must have no
   // users. Instruction is deallocated with this call.
-  Status RemoveInstruction(HloInstruction* instruction);
+  absl::Status RemoveInstruction(HloInstruction* instruction);
 
   // Removes an instruction from the computation. The instruction must have no
   // users. Instruction is deallocated with this call. The instruction will be
   // removed even if it is marked as not removable.
-  Status ForceRemoveInstruction(HloInstruction* instruction);
+  absl::Status ForceRemoveInstruction(HloInstruction* instruction);
 
   // Remove an instruction (including side effecting ones) from the computation
   // and also transitively any operand that has no side effect and no users post
@@ -263,7 +274,7 @@ class HloComputation {
   // the predecessors to the succesors of the removed instructions, so that the
   // logical exeuction order of the remaining unremoved instructions are
   // preserved.
-  Status RemoveInstructionAndUnusedOperands(
+  absl::Status RemoveInstructionAndUnusedOperands(
       HloInstruction* instruction,
       std::optional<absl::FunctionRef<void(HloInstruction*)>> cleanup =
           std::nullopt,
@@ -313,6 +324,10 @@ class HloComputation {
   // SetAndSanitizeName().
   void UniquifyName(NameUniquer* name_uniquer);
 
+  // Use the given `module` to select a unique name for this computation based
+  // on computation's existing name.
+  void UniquifyName(HloModule* module);
+
   // Prints a string representation of the computation.
   //
   // (We express the default options using an overload rather than a default
@@ -340,8 +355,6 @@ class HloComputation {
   //
   // (We express the default options using an overload rather than a default
   // param because gdb ignores default params, but does resolve overloads.)
-  absl::Cord ToCord() const { return ToCord(HloPrintOptions::Default()); }
-  absl::Cord ToCord(const HloPrintOptions& options) const;
 
   // Overload which accepts an order to emit the instructions in.
   absl::Cord ToCord(
@@ -357,7 +370,7 @@ class HloComputation {
   //   computation_map: a map from computation id to HloComputation*. This map
   //     must contain all computations which the newly constructed computation
   //     calls.
-  static StatusOr<std::unique_ptr<HloComputation>> CreateFromProto(
+  static absl::StatusOr<std::unique_ptr<HloComputation>> CreateFromProto(
       const HloComputationProto& proto,
       const absl::flat_hash_map<int64_t, HloComputation*>& computation_map,
       bool prohibit_empty_literal = true);
@@ -439,7 +452,7 @@ class HloComputation {
   void ForEachInstructionPostOrder(
       absl::FunctionRef<void(HloInstruction*)> func) const;
 
-  int64_t instruction_count() const { return instruction_indices_.size(); }
+  int64_t instruction_count() const { return instruction_count_; }
 
   // Creates and returns a list of the embedded computations called by this
   // computation. This includes all embedded computations called directly or
@@ -459,13 +472,23 @@ class HloComputation {
       absl::Span<HloInstruction* const> instructions_to_fuse,
       HloInstruction::FusionKind fusion_kind);
 
-  // Creates a call instruction containing the given instructions.  Instructions
+  // Creates a call instruction containing the given instructions. Instructions
   // must be in reverse topological order (root of the called computation
   // first). Replaces all uses of the original root instruction with the call
   // instruction. The original instructions are removed if they have no uses
   // after creating the call (this is necessarily true for at least the root).
   HloInstruction* CreateCallInstruction(
       absl::Span<HloInstruction* const> instructions_to_call);
+
+  // Creates a composite call instruction containing the given instructions.
+  // Instructions must be in reverse topological order (root of the called
+  // computation first). Replaces all uses of the original root instruction with
+  // the composite call instruction. The original instructions are removed if
+  // they have no uses after creating the composite call (this is necessarily
+  // true for at least the root).
+  HloInstruction* CreateCompositeCallInstruction(
+      absl::Span<HloInstruction* const> instructions_to_call,
+      const std::string& name, const std::string& attributes, int64_t version);
 
   // Creates an async start/done instruction pair where instruction is wrapped
   // inside an asynchronous computation. The context shapes are appended to the
@@ -477,7 +500,7 @@ class HloComputation {
   // If `replace` is true, replace instruction with the async done instruction.
   // If `override_names` is true, the clone on `instruction` and the async op
   // created will get non-default names.
-  StatusOr<HloInstruction*> CreateAsyncInstructions(
+  absl::StatusOr<HloInstruction*> CreateAsyncInstructions(
       HloInstruction* instruction, absl::Span<const Shape> context_shapes,
       absl::string_view async_execution_thread =
           HloInstruction::kMainExecutionThread,
@@ -493,14 +516,14 @@ class HloComputation {
   // transparently. If copies_added is non-null, then the added kCopy
   // instructions will be inserted in the respective index in the given
   // ShapeTree.
-  StatusOr<HloInstruction*> DeepCopyInstruction(
+  absl::StatusOr<HloInstruction*> DeepCopyInstruction(
       HloInstruction* instruction,
       const ShapeTree<bool>* indices_to_copy = nullptr,
       ShapeTree<HloInstruction*>* copies_added = nullptr);
 
   // As above, but uses a custom function to copy the leaf nodes, which could
   // create alternative HLOs other than kCopy, or even pass-throughs.
-  StatusOr<HloInstruction*> DeepCopyInstructionWithCustomCopier(
+  absl::StatusOr<HloInstruction*> DeepCopyInstructionWithCustomCopier(
       HloInstruction* instruction,
       absl::FunctionRef<HloInstruction*(HloInstruction* leaf,
                                         const ShapeIndex& leaf_index,
@@ -556,14 +579,14 @@ class HloComputation {
 
   // Replaces old instruction with newly created instruction. Removes old
   // instruction from computation. Updates uses and root instruction.
-  Status ReplaceWithNewInstruction(
+  absl::Status ReplaceWithNewInstruction(
       HloInstruction* old_instruction,
       std::unique_ptr<HloInstruction> new_instruction);
 
   // Replaces an old instruction with a newly created instruction, and adds the
   // new instruction as an entry computation's parameter. Removes old
   // instruction from computation. Updates uses and root instruction.
-  Status ReplaceWithNewEntryComputationParameter(
+  absl::Status ReplaceWithNewEntryComputationParameter(
       HloInstruction* old_instruction,
       std::unique_ptr<HloInstruction> new_instruction);
 
@@ -577,24 +600,25 @@ class HloComputation {
   // return false. Otherwise, when the replacement happens, if |new_instruction|
   // doesn't have any sharding information it will receive the sharding
   // information of |old_instruction|, and function will return true.
-  StatusOr<bool> ReplaceInstruction(HloInstruction* old_instruction,
-                                    HloInstruction* new_instruction,
-                                    bool preserve_sharding,
-                                    bool relay_control_dependency = false);
+  absl::StatusOr<bool> ReplaceInstruction(HloInstruction* old_instruction,
+                                          HloInstruction* new_instruction,
+                                          bool preserve_sharding,
+                                          bool relay_control_dependency = false,
+                                          bool remove_unused_operands = true);
 
   // Same as above, with preserve_sharding=false. Since this replacement always
-  // happens, it returns just a Status as opposed to StatusOr<bool>
-  Status ReplaceInstruction(HloInstruction* old_instruction,
-                            HloInstruction* new_instruction);
+  // happens, it returns just a absl::Status as opposed to absl::StatusOr<bool>
+  absl::Status ReplaceInstruction(HloInstruction* old_instruction,
+                                  HloInstruction* new_instruction);
 
   // Same as ReplaceInstruction, but the new instruction can have a different
   // shape.
-  StatusOr<bool> ReplaceInstructionWithDifferentShape(
+  absl::StatusOr<bool> ReplaceInstructionWithDifferentShape(
       HloInstruction* old_instruction, HloInstruction* new_instruction,
       bool preserve_sharding, bool relay_control_dependency = false,
       bool remove_unused_operands = true);
-  Status ReplaceInstructionWithDifferentShape(HloInstruction* old_instruction,
-                                              HloInstruction* new_instruction);
+  absl::Status ReplaceInstructionWithDifferentShape(
+      HloInstruction* old_instruction, HloInstruction* new_instruction);
 
   // Set/get the module containing this computation.
   void set_parent(HloModule* module) { parent_ = module; }
@@ -608,20 +632,20 @@ class HloComputation {
   // the visitor's FinishVisit method is called once upon completion (with the
   // root instruction as the argument).
   template <typename HloInstructionPtr>
-  Status Accept(DfsHloVisitorBase<HloInstructionPtr>* visitor) const;
+  absl::Status Accept(DfsHloVisitorBase<HloInstructionPtr>* visitor) const;
 
   // Same as Accept() above, but the order of operand and control predecessor
   // visitation is determined by the given operand order; if compare(A, B) ==
   // true, A is visited before B.
-  Status AcceptWithOperandOrder(
+  absl::Status AcceptWithOperandOrder(
       DfsHloVisitor* visitor,
       const HloInstruction::CompareFunction& operand_order) const;
 
   // Visit every node in the computation in the given order. 'order' must
   // be a topological sort of all instructions in the computation.
   template <typename HloInstructionPtr>
-  Status AcceptOrdered(DfsHloVisitorBase<HloInstructionPtr>* visitor,
-                       absl::Span<HloInstruction* const> order) const;
+  absl::Status AcceptOrdered(DfsHloVisitorBase<HloInstructionPtr>* visitor,
+                             absl::Span<HloInstruction* const> order) const;
 
   // Returns a deep copy of this computation including all instructions.
   // If the clone context is specified, it will be populated with the cloned
@@ -842,16 +866,14 @@ class HloComputation {
     return execution_thread_ == HloInstruction::kMainExecutionThread;
   }
 
-  // Deallocate instructions that are marked by "RemoveInstruction". The two
-  // stage clean up process is designed such that HloPass can have stable
-  // internal pointers to HloInstructions while we create and remove
+  // Deallocates instructions that are marked by "RemoveInstruction" and
+  // compacts the instructions_ vector by removing the deleted instructions'
+  // entries (a.k.a. tombstones).
+  // This two-stage clean up process is designed such that HloPass can have
+  // stable internal pointers to HloInstructions while we create and remove
   // HloInstructions in a pass.
-  void Cleanup() {
-    for (HloInstruction* it : to_be_deleted_) {
-      delete it;
-    }
-    to_be_deleted_.clear();
-  }
+  // Note: the removal operation is stable because some users depend on it.
+  void Cleanup();
 
   // Returns true if a given instruction is marked dead in this computation.
   bool IsMarkedAsDead(const HloInstruction* inst);
@@ -884,7 +906,7 @@ class HloComputation {
 
   // Internal helper for recursive copying of an instruction. Creates and
   // returns a deep copy of the given instruction.
-  StatusOr<HloInstruction*> DeepCopyHelper(
+  absl::StatusOr<HloInstruction*> DeepCopyHelper(
       HloInstruction* instruction, ShapeIndex* index,
       absl::FunctionRef<HloInstruction*(HloInstruction* leaf,
                                         const ShapeIndex& leaf_index,
@@ -905,10 +927,10 @@ class HloComputation {
       const ChannelDependencies& channel_dependencies, VisitMap& visited,
       std::vector<HloInstruction*>* dfs_stack_scratch) const;
 
-  Status RemoveUnusedParametersImpl(bool allow_non_fusion);
+  absl::Status RemoveUnusedParametersImpl(bool allow_non_fusion);
 
-  Status RemoveInstructionImpl(HloInstruction* instruction,
-                               bool ignore_safety_check);
+  absl::Status RemoveInstructionImpl(HloInstruction* instruction,
+                                     bool ignore_safety_check);
 
   enum class InstructionType : uint8_t {
     kUnset,
@@ -920,7 +942,7 @@ class HloComputation {
     kFusion,
     // This computation is a custom-call computation.
     kCustomCall,
-    // This computation is a while body computation.
+    // This computation is a collective computation.
     kCollective,
     // This computation is a while body computation.
     kWhile,
@@ -962,17 +984,22 @@ class HloComputation {
   HloInstruction::InstructionVector param_instructions_;
 
   // Store instructions in std::vector as they can be added and removed
-  // arbitrarily and we want a stable iteration order. Keep a map from
-  // instruction pointer to index in the vector for fast lookup.
+  // arbitrarily and we want a stable iteration order.
+  // For the reverse mapping we use HloInstruction::index_in_parent_.
+  //
+  // Note: removals from this vector must be stable because some users depend on
+  // it. See the Cleanup() method for details on the two-stage removal process.
   HloInstructionList instructions_;
-  absl::flat_hash_map<const HloInstruction*, int> instruction_indices_;
 
-  // Execution thread of this computation. By default, it's main thread.
-  std::string execution_thread_ = HloInstruction::kMainExecutionThread;
+  // Number of not-marked-for-deletion entries in instructions_.
+  int64_t instruction_count_;
 
   // Removed instructions are moved into to_be_deleted_ first and then
   // deallocated when Cleanup is called.
   PtrVec<HloInstruction*> to_be_deleted_;
+
+  // Execution thread of this computation. By default, it's main thread.
+  std::string execution_thread_ = HloInstruction::kMainExecutionThread;
 
   std::string name_;
 
@@ -981,7 +1008,7 @@ class HloComputation {
 };
 
 template <typename HloInstructionPtr>
-Status HloComputation::Accept(
+absl::Status HloComputation::Accept(
     DfsHloVisitorBase<HloInstructionPtr>* visitor) const {
   // Visit unreachable roots. Beware that the visitor might delete the currently
   // visited root, which would invalidate iterators if the unreachable roots
@@ -996,11 +1023,11 @@ Status HloComputation::Accept(
 }
 
 // Explicit instantiations.
-template Status HloComputation::Accept(DfsHloVisitor* visitor) const;
-template Status HloComputation::Accept(ConstDfsHloVisitor* visitor) const;
+template absl::Status HloComputation::Accept(DfsHloVisitor* visitor) const;
+template absl::Status HloComputation::Accept(ConstDfsHloVisitor* visitor) const;
 
 template <typename HloInstructionPtr>
-Status HloComputation::AcceptOrdered(
+absl::Status HloComputation::AcceptOrdered(
     DfsHloVisitorBase<HloInstructionPtr>* visitor,
     absl::Span<HloInstruction* const> order) const {
   VLOG(3) << "Accepting visitor with order.";
@@ -1011,9 +1038,6 @@ Status HloComputation::AcceptOrdered(
   absl::flat_hash_set<const HloInstruction*> visited;
   for (const HloInstruction* instruction : order) {
     VLOG(3) << "Visiting ordered: " << instruction->ToString();
-    TF_RET_CHECK(instruction_indices_.contains(instruction))
-        << "Instruction " << instruction->name() << " is not in computation "
-        << name();
     TF_RET_CHECK(!visited.contains(instruction))
         << "Instruction " << instruction->name()
         << " appears more than once in order";
@@ -1029,9 +1053,9 @@ Status HloComputation::AcceptOrdered(
 }
 
 // Explicit instantiations.
-template Status HloComputation::AcceptOrdered(
+template absl::Status HloComputation::AcceptOrdered(
     DfsHloVisitor*, absl::Span<HloInstruction* const>) const;
-template Status HloComputation::AcceptOrdered(
+template absl::Status HloComputation::AcceptOrdered(
     ConstDfsHloVisitor*, absl::Span<HloInstruction* const>) const;
 
 }  // namespace xla

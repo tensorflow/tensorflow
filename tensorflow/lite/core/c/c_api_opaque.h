@@ -21,10 +21,12 @@ limitations under the License.
 #define TENSORFLOW_LITE_CORE_C_C_API_OPAQUE_H_
 
 #include <stddef.h>
+#include <stdint.h>
 
 #include "tensorflow/lite/core/c/c_api.h"
 #include "tensorflow/lite/core/c/c_api_types.h"  // IWYU pragma: export
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/c/operator.h"  // IWYU pragma: export
 
 #ifdef __cplusplus
 extern "C" {
@@ -287,7 +289,7 @@ TFL_CAPI_EXPORT int TfLiteOpaqueNodeNumberOfOutputs(
 
 /// Returns opaque data provided by the node implementer. The value returned
 /// from this function is the value that was returned from the `init` callback
-/// that was passed to `TfLiteRegistrationExternalSetInit`.
+/// that was passed to `TfLiteOperatorSetInit`.
 TFL_CAPI_EXPORT extern void* TfLiteOpaqueNodeGetUserData(
     const TfLiteOpaqueNode* opaque_node);
 
@@ -415,7 +417,7 @@ TFL_CAPI_EXPORT extern TfLiteStatus TfLiteOpaqueContextGetExecutionPlan(
 ///
 /// This function is expected to be called from within a delegate callback, like
 /// 'Prepare', or a delegate kernel callback (i.e., a callback registered with
-/// a 'TfLiteRegistrationExternal' object).
+/// a 'TfLiteOperator' object).
 ///
 /// The loaded '*node' and '*registration_external' pointers will generally
 /// remain valid for the lifetime of the associated 'opaque_context', but can be
@@ -427,8 +429,7 @@ TFL_CAPI_EXPORT extern TfLiteStatus TfLiteOpaqueContextGetExecutionPlan(
 // are returned to the users and which actions invalidate them.
 TFL_CAPI_EXPORT TfLiteStatus TfLiteOpaqueContextGetNodeAndRegistration(
     struct TfLiteOpaqueContext* opaque_context, int node_index,
-    TfLiteOpaqueNode** node,
-    TfLiteRegistrationExternal** registration_external);
+    TfLiteOpaqueNode** node, TfLiteOperator** registration_external);
 
 /// Entry point for C API ReplaceNodeSubsetsWithDelegateKernels
 ///
@@ -445,7 +446,7 @@ TFL_CAPI_EXPORT TfLiteStatus TfLiteOpaqueContextGetNodeAndRegistration(
 TFL_CAPI_EXPORT TfLiteStatus
 TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
     struct TfLiteOpaqueContext* opaque_context,
-    TfLiteRegistrationExternal* registration_external,
+    TfLiteOperator* registration_external,
     const TfLiteIntArray* nodes_to_replace,
     TfLiteOpaqueDelegate* opaque_delegate);
 

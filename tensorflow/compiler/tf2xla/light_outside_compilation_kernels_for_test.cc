@@ -16,10 +16,28 @@ limitations under the License.
 #include <algorithm>
 #include <string>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/kernels/light_outside_compilation.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/stream.h"
+#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 // Sample kernels for the light outside compilation test.
 
@@ -32,7 +50,7 @@ REGISTER_OP("TestStaticTf")
     .Output("output: float")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->input(0));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 class TestStaticTfOp : public OpKernel {
@@ -69,7 +87,7 @@ REGISTER_OP("TestStaticMultipleOutputTf")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->input(0));
       c->set_output(1, c->input(0));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 class TestStaticMultipleOutputTfOp : public OpKernel {
@@ -117,7 +135,7 @@ REGISTER_OP("TestDynamicTf")
     .Output("output: float")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->UnknownShapeOfRank(c->Rank(c->input(0))));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 // Same as TestStaticTfOp, but only copies up to `max_size` attribute.
@@ -183,7 +201,7 @@ REGISTER_OP("DynamicMultidim")
     .Output("output: float")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->UnknownShapeOfRank(5));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 // Just fill in the data with ones for a given shape.
@@ -245,7 +263,7 @@ REGISTER_OP("DynamicUnranked")
     .Output("output: float")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->UnknownShape());
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 REGISTER_XLA_OP(Name("DynamicUnranked").Device(DEVICE_GPU_XLA_JIT),
@@ -258,7 +276,7 @@ REGISTER_OP("TestTfMustBeConstant")
     .Output("output: float")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->input(0));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 class TestTfMustBeConstantOp : public OpKernel {
@@ -318,7 +336,7 @@ REGISTER_OP("TestDynamicTfWithBound")
     .Output("output: float")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->input(0));
-      return OkStatus();
+      return absl::OkStatus();
     });
 
 class TestDynamicTfWithBoundOp : public OpKernel {

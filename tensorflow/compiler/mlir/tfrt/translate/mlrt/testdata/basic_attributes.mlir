@@ -13,6 +13,7 @@ func.func @simple_attributes() {
   "test_custom.attribute"() {value = array<i32: 0, 1, 2>} : () -> ()
   "test_custom.attribute"() {value = array<i64: 0, 1, 2>} : () -> ()
   "test_custom.attribute"() {value = array<i32>} : () -> ()
+  "test_custom.attribute"() {value = array<i1: true, false>} : () -> ()
   func.return
 }
 

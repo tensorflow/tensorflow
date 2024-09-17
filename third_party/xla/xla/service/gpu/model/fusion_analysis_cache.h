@@ -28,9 +28,9 @@ limitations under the License.
 
 namespace xla::gpu {
 
-// Caches HloFusionAnalyses. Thread-compatible, if no threads concurrently `Get`
-// and `Invalidate` the same key. Analyses are cached based on unique_ids, no
-// checking or tracking of changes is done.
+// Caches HloFusionAnalyses. `Get` can be called concurrently, but `Invalidate`
+// and `Clear` shouldn't. Analyses are cached based on unique_ids, no checking
+// or tracking of changes is done.
 class HloFusionAnalysisCache {
  public:
   explicit HloFusionAnalysisCache(

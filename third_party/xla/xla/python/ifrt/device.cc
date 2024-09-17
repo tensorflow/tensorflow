@@ -15,51 +15,10 @@ limitations under the License.
 
 #include "xla/python/ifrt/device.h"
 
-#include <memory>
-#include <utility>
-#include <vector>
-
-#include "xla/python/ifrt/types.pb.h"
-
 namespace xla {
 namespace ifrt {
 
-DeviceList::DeviceList(Devices devices) {
-  if (devices.size() <= kInlineDeviceSize) {
-    state_ = State{std::move(devices)};
-  } else {
-    state_ = std::make_shared<State>(State{std::move(devices)});
-  }
-}
-
-absl::StatusOr<DeviceList> DeviceList::FromProto(LookupDeviceFunc lookup_device,
-                                                 const DeviceListProto& proto) {
-  DeviceList::Devices devices;
-  devices.reserve(proto.device_ids_size());
-  for (int device_id : proto.device_ids()) {
-    TF_ASSIGN_OR_RETURN(Device * device, lookup_device(device_id));
-    devices.push_back(device);
-  }
-  return DeviceList(std::move(devices));
-}
-
-DeviceListProto DeviceList::ToProto() const {
-  DeviceListProto proto;
-  proto.mutable_device_ids()->Reserve(devices().size());
-  for (Device* device : devices()) {
-    proto.mutable_device_ids()->AddAlreadyReserved(device->id());
-  }
-  return proto;
-}
-
-std::vector<int> GetDeviceIds(DeviceList device_list) {
-  std::vector<int> ids;
-  ids.reserve(device_list.devices().size());
-  for (const Device* device : device_list.devices()) {
-    ids.push_back(device->id());
-  }
-  return ids;
-}
+char Device::ID = 0;
 
 }  // namespace ifrt
 }  // namespace xla

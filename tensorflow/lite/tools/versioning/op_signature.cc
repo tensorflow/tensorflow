@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/stderr_reporter.h"
 
@@ -265,6 +266,18 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
     case BuiltinOperator_ADD: {
       if (subgraph->tensors()->Get(op->inputs()->Get(0))->quantization()) {
         op_sig.ext_options.add.input_quantized = true;
+      }
+    } break;
+
+    case BuiltinOperator_EMBEDDING_LOOKUP: {
+      const Tensor* table_tensor =
+          subgraph->tensors()->Get(op->inputs()->Get(1));
+      const QuantizationParameters* table_quant = table_tensor->quantization();
+      if (table_quant && table_quant->scale() && table_quant->scale()->size() &&
+          table_tensor->shape() && table_tensor->shape()->size()) {
+        op_sig.ext_options.embedding_lookup.is_per_channel_quantized =
+            table_quant->scale()->size() > 1 &&
+            table_quant->scale()->size() == table_tensor->shape()->Get(0);
       }
     } break;
 

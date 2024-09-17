@@ -15,11 +15,17 @@ limitations under the License.
 
 #include "xla/service/bfloat16_conversion_folding.h"
 
+#include <cstdint>
+#include <optional>
+
+#include "absl/status/statusor.h"
+#include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/float_support.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
@@ -239,7 +245,7 @@ TEST_F(BFloat16ConversionFoldingTest, FoldAllReduceTupleOutput) {
 
   HloInstruction* crs = builder.AddInstruction(HloInstruction::CreateAllReduce(
       ShapeUtil::MakeTupleShape({f32_shape, f32_shape}), {convert_a, b}, sum,
-      /*replica_groups=*/{},
+      /*device_list=*/CollectiveDeviceList(),
       /*constrain_layout=*/false,
       /*channel_id=*/std::nullopt, /*use_global_device_ids=*/false));
   HloInstruction* gte_a = builder.AddInstruction(

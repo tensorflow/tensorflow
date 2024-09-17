@@ -44,6 +44,8 @@ limitations under the License.
 #include "llvm/Analysis/AssumeBundleQueries.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/LogicalResult.h"
+#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -67,14 +69,23 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "stablehlo/dialect/VhloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/lite/core/absl_error_model_builder.h"
+#include "tensorflow/compiler/mlir/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/offset_buffer.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/const_tensor_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/control_edges.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/lite/utils/size_utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_traits.h"
@@ -88,15 +99,11 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/lite/experimental/remat/metadata_util.h"
-#include "tensorflow/lite/graph_info.h"
-#include "tensorflow/lite/model_builder.h"
-#include "tensorflow/lite/schema/mutable/schema_generated.h"
-#include "tensorflow/lite/schema/schema_utils.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
+using absl::Status;
+using absl::StatusOr;
 using llvm::ArrayRef;
 using mlir::Builder;
 using mlir::DenseElementsAttr;
@@ -111,8 +118,6 @@ using mlir::Value;
 using mlir::func::FuncOp;
 using tflite::OperatorT;
 using tflite::TensorT;
-using xla::Status;
-using xla::StatusOr;
 
 namespace errors = tensorflow::errors;
 namespace tfl = mlir::TFL;
@@ -427,7 +432,14 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
   }
 
   if (use_stablehlo_constant) {
-    auto op = builder.create<mlir::stablehlo::ConstantOp>(loc, value);
+    mlir::StablehloVhloTypeConverter vhlo_type_converter;
+    llvm::ArrayRef<char> val_ref(reinterpret_cast<const char*>(buffer.data()),
+                                 buffer.size());
+    auto vhlo_val = mlir::vhlo::TensorV1Attr::get(
+        builder.getContext(), vhlo_type_converter.convertType(shaped_type),
+        val_ref);
+    auto op =
+        builder.create<mlir::vhlo::ConstantOpV1>(loc, shaped_type, vhlo_val);
     return op.getOperation();
   }
   auto op = builder.create<tfl::ConstOp>(loc, value);
@@ -508,7 +520,7 @@ Status ConvertSubgraphIdxToStablehloRegion(
 
     op_state.addAttribute("body", body_attr);
 
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   if (auto* opts = op.builtin_options_2.AsStablehloReduceWindowOptions()) {
     int32_t body_idx = opts->body_subgraph_index;
@@ -521,7 +533,7 @@ Status ConvertSubgraphIdxToStablehloRegion(
 
     op_state.addAttribute("body", body_attr);
 
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   if (auto* opts = op.builtin_options_2.AsStablehloSortOptions()) {
     int32_t comparator_idx = opts->comparator_subgraph_index;
@@ -534,7 +546,7 @@ Status ConvertSubgraphIdxToStablehloRegion(
 
     op_state.addAttribute("comparator", comparator_attr);
 
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   if (auto* opts = op.builtin_options_2.AsStablehloWhileOptions()) {
     int32_t body_idx = opts->body_subgraph_index;
@@ -555,7 +567,7 @@ Status ConvertSubgraphIdxToStablehloRegion(
     op_state.addAttribute("body", body_attr);
     op_state.addAttribute("cond", cond_attr);
 
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   if (auto* opts = op.builtin_options_2.AsStablehloScatterOptions()) {
     uint32_t subgraph_idx = opts->update_computation_subgraph_index;
@@ -569,10 +581,10 @@ Status ConvertSubgraphIdxToStablehloRegion(
 
     op_state.addAttribute(kScatterRegionFuncName, subgraph_attr);
 
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   // skip if not supported
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 Status AddOpIntermediatesForLstm(
@@ -601,7 +613,7 @@ Status AddOpIntermediatesForLstm(
       op_state.addAttribute(named_attr.getName(), named_attr.getValue());
     }
   }
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 // TODO(krzysd) Handle function calls
@@ -613,7 +625,7 @@ StatusOr<Operation*> ConvertOp(
     const std::vector<std::string>& func_names,
     const std::vector<std::unique_ptr<tflite::TensorT>>& tensors, Location loc,
     OpBuilder builder,
-    const std::unique_ptr<tflite::FlatBufferModel>& model_ptr) {
+    const std::unique_ptr<tfl::FlatBufferModelAbslError>& model_ptr) {
   llvm::SmallVector<Value, 4> operands;
   llvm::SmallVector<mlir::Type, 2> outputTypes;
 
@@ -724,11 +736,11 @@ StatusOr<Operation*> ConvertOp(
       }
     }
   }
-  if (op_name == "stablehlo.reduce" || op_name == "stablehlo.reduce_window" ||
-      op_name == "stablehlo.sort" || op_name == "stablehlo.scatter") {
+  if (op_name == "vhlo.reduce_v1" || op_name == "vhlo.reduce_window_v1" ||
+      op_name == "vhlo.sort_v1" || op_name == "vhlo.scatter_v1") {
     op_state.addRegion();
   }
-  if (op_name == "stablehlo.while") {
+  if (op_name == "vhlo.while_v1") {
     op_state.addRegion();
     op_state.addRegion();
   }
@@ -736,7 +748,7 @@ StatusOr<Operation*> ConvertOp(
   llvm::SmallVector<mlir::NamedAttribute, 2> attrs;
   auto builtin_code = tflite::GetBuiltinCode(&op_code);
   if (builtin_code == tflite::BuiltinOperator_CUSTOM) {
-    auto status = ::tensorflow::OkStatus();
+    auto status = absl::OkStatus();
 
     std::vector<uint8_t> custom_options;
 
@@ -759,6 +771,20 @@ StatusOr<Operation*> ConvertOp(
     mlir::BuiltinOptionsToAttributes(op.builtin_options, builder, attrs);
     mlir::BuiltinOptions2ToAttributes(op.builtin_options_2, builder, attrs);
   }
+
+  if (builtin_code == tflite::BuiltinOperator_STABLEHLO_COMPOSITE) {
+    auto composite_options = op.builtin_options_2.AsStableHLOCompositeOptions();
+    std::string decomposition = "";
+    if (composite_options->decomposition_subgraph_index > -1) {
+      decomposition =
+          func_names.at(composite_options->decomposition_subgraph_index);
+    }
+
+    attrs.emplace_back(builder.getNamedAttr(
+        "decomposition",
+        mlir::vhlo::StringV1Attr::get(builder.getContext(), decomposition)));
+  }
+
   op_state.addAttributes(attrs);
 
   // Handle the conversion from subgraph index to functions for If and While. We
@@ -1090,7 +1116,7 @@ StatusOr<FuncOp> ConvertSubgraph(
     bool experimental_prune_unreachable_nodes_unconditionally,
     const tflite::SignatureDefT* signature,
     const tflite::ControlEdges& control_edges,
-    const std::unique_ptr<tflite::FlatBufferModel>& model_ptr,
+    const std::unique_ptr<tfl::FlatBufferModelAbslError>& model_ptr,
     bool use_stablehlo_constant) {
   // Populate from metadata.
   ControlNodes control_nodes;
@@ -1387,6 +1413,17 @@ void InlineStablehloOpRegion(mlir::Region& region, mlir::func::FuncOp func) {
   return_op.erase();
 }
 
+void InlineVhloOpRegion(mlir::Region& region, mlir::func::FuncOp func) {
+  OpBuilder op_builder{region};
+  mlir::IRMapping mapper;
+  func.getBody().cloneInto(&region, mapper);
+  mlir::Operation& return_op = region.back().back();
+  mlir::Location loc = return_op.getLoc();
+  op_builder.setInsertionPointToEnd(&region.back());
+  op_builder.create<mlir::vhlo::ReturnOpV1>(loc, return_op.getOperands());
+  return_op.erase();
+}
+
 // TFL::WhileOp has regions, so we add CallOp to call the FuncOp in the regions
 // if we have while ops.
 void AddRegionsForTflWhileOp(mlir::ModuleOp module) {
@@ -1406,52 +1443,51 @@ void AddRegionsForTflWhileOp(mlir::ModuleOp module) {
 void AddRegionsForStableHLOOp(mlir::ModuleOp module) {
   mlir::SymbolTable symbol_table(module);
   std::vector<mlir::func::FuncOp> to_delete_funcs;
-  module.walk([&](mlir::stablehlo::ReduceOp reduce_op) {
+  module.walk([&](mlir::vhlo::ReduceOpV1 reduce_op) {
     auto body = symbol_table.lookup<mlir::func::FuncOp>(
         reduce_op->getAttr("body").cast<mlir::FlatSymbolRefAttr>().getValue());
-    InlineStablehloOpRegion(reduce_op.getBody(), body);
+    InlineVhloOpRegion(reduce_op.getBody(), body);
     reduce_op->removeAttr("body");
     to_delete_funcs.push_back(body);
   });
-  module.walk([&](mlir::stablehlo::ReduceWindowOp reduce_window_op) {
+  module.walk([&](mlir::vhlo::ReduceWindowOpV1 reduce_window_op) {
     auto body = symbol_table.lookup<mlir::func::FuncOp>(
         reduce_window_op->getAttr("body")
             .cast<mlir::FlatSymbolRefAttr>()
             .getValue());
-    InlineStablehloOpRegion(reduce_window_op.getBody(), body);
+    InlineVhloOpRegion(reduce_window_op.getBody(), body);
     reduce_window_op->removeAttr("body");
     to_delete_funcs.push_back(body);
   });
-  module.walk([&](mlir::stablehlo::SortOp sort_op) {
-    auto comparator = symbol_table.lookup<mlir::func::FuncOp>(
-        sort_op->getAttr("comparator")
-            .cast<mlir::FlatSymbolRefAttr>()
-            .getValue());
-    InlineStablehloOpRegion(sort_op.getComparator(), comparator);
-    sort_op->removeAttr("comparator");
-    to_delete_funcs.push_back(comparator);
-  });
-  module.walk([&](mlir::stablehlo::WhileOp while_op) {
-    auto cond = symbol_table.lookup<mlir::func::FuncOp>(
-        while_op->getAttr("cond").cast<mlir::FlatSymbolRefAttr>().getValue());
-    InlineStablehloOpRegion(while_op.getCond(), cond);
-    while_op->removeAttr("cond");
-    auto body = symbol_table.lookup<mlir::func::FuncOp>(
-        while_op->getAttr("body").cast<mlir::FlatSymbolRefAttr>().getValue());
-    InlineStablehloOpRegion(while_op.getBody(), body);
-    while_op->removeAttr("body");
-    to_delete_funcs.push_back(body);
-    to_delete_funcs.push_back(cond);
-  });
-  module.walk([&](mlir::stablehlo::ScatterOp scatter_op) {
+  module.walk([&](mlir::vhlo::ScatterOpV1 scatter_op) {
     auto update_computation = symbol_table.lookup<mlir::func::FuncOp>(
         scatter_op->getAttr(kScatterRegionFuncName)
             .cast<mlir::FlatSymbolRefAttr>()
             .getValue());
-    InlineStablehloOpRegion(scatter_op.getUpdateComputation(),
-                            update_computation);
+    InlineVhloOpRegion(scatter_op.getUpdateComputation(), update_computation);
     scatter_op->removeAttr(kScatterRegionFuncName);
     to_delete_funcs.push_back(update_computation);
+  });
+  module.walk([&](mlir::vhlo::SortOpV1 sort_op) {
+    auto comparator = symbol_table.lookup<mlir::func::FuncOp>(
+        sort_op->getAttr("comparator")
+            .cast<mlir::FlatSymbolRefAttr>()
+            .getValue());
+    InlineVhloOpRegion(sort_op.getComparator(), comparator);
+    sort_op->removeAttr("comparator");
+    to_delete_funcs.push_back(comparator);
+  });
+  module.walk([&](mlir::vhlo::WhileOpV1 while_op) {
+    auto cond = symbol_table.lookup<mlir::func::FuncOp>(
+        while_op->getAttr("cond").cast<mlir::FlatSymbolRefAttr>().getValue());
+    InlineVhloOpRegion(while_op.getCond(), cond);
+    while_op->removeAttr("cond");
+    auto body = symbol_table.lookup<mlir::func::FuncOp>(
+        while_op->getAttr("body").cast<mlir::FlatSymbolRefAttr>().getValue());
+    InlineVhloOpRegion(while_op.getBody(), body);
+    while_op->removeAttr("body");
+    to_delete_funcs.push_back(body);
+    to_delete_funcs.push_back(cond);
   });
   for (auto& func : to_delete_funcs) {
     func.erase();
@@ -1464,25 +1500,26 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
     bool use_external_constant,
     const std::vector<std::string>& ordered_input_arrays,
     const std::vector<std::string>& ordered_output_arrays,
-    bool experimental_prune_unreachable_nodes_unconditionally) {
+    bool experimental_prune_unreachable_nodes_unconditionally,
+    const bool disable_vhlo_to_stablehlo) {
   mlir::DialectRegistry registry;
   registry.insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
                   mlir::quant::QuantizationDialect,
                   mlir::quantfork::QuantizationForkDialect,
                   mlir::TFL::TensorFlowLiteDialect, mlir::TF::TensorFlowDialect,
-                  mlir::stablehlo::StablehloDialect>();
+                  mlir::stablehlo::StablehloDialect, mlir::vhlo::VhloDialect>();
   mlir::func::registerAllExtensions(registry);
   context->appendDialectRegistry(registry);
 
-  context->loadDialect<mlir::arith::ArithDialect, mlir::func::FuncDialect,
-                       mlir::quant::QuantizationDialect,
-                       mlir::quantfork::QuantizationForkDialect,
-                       mlir::TFL::TensorFlowLiteDialect,
-                       mlir::TF::TensorFlowDialect,
-                       mlir::stablehlo::StablehloDialect>();
+  context->loadDialect<
+      mlir::arith::ArithDialect, mlir::func::FuncDialect,
+      mlir::quant::QuantizationDialect,
+      mlir::quantfork::QuantizationForkDialect,
+      mlir::TFL::TensorFlowLiteDialect, mlir::TF::TensorFlowDialect,
+      mlir::stablehlo::StablehloDialect, mlir::vhlo::VhloDialect>();
 
-  auto model_ptr =
-      FlatBufferModel::VerifyAndBuildFromBuffer(buffer.data(), buffer.length());
+  auto model_ptr = tfl::FlatBufferModelAbslError::VerifyAndBuildFromBuffer(
+      buffer.data(), buffer.length());
   if (nullptr == model_ptr) {
     return emitError(base_loc, "couldn't parse flatbuffer"), nullptr;
   }
@@ -1591,5 +1628,14 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
   }
   AddRegionsForTflWhileOp(module);
   AddRegionsForStableHLOOp(module);
+  if (!disable_vhlo_to_stablehlo) {
+    mlir::PassManager pass_manager(module.getContext());
+    pass_manager.addPass(mlir::odml::createLegalizeVhloToStablehloPass());
+    pass_manager.addPass(mlir::createReconcileUnrealizedCastsPass());
+    auto result = pass_manager.run(module);
+    if (failed(result)) {
+      return nullptr;
+    }
+  }
   return OwningOpRef<mlir::ModuleOp>(module);
 }

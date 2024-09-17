@@ -103,27 +103,6 @@ add_mlir_library(MhloPasses
   StablehloBroadcastUtils
 )
 
-add_mlir_library(MhloQuantToIntConversion
-  mhlo_quant_legalize_to_int/mhlo_quant_legalize_to_int.cc
-
-  DEPENDS
-  MLIRhlo_opsIncGen
-  MLIRMhloPassIncGen
-
-  LINK_COMPONENTS
-  Core
-
-  LINK_LIBS PUBLIC
-  LmhloDialect
-  MhloDialect
-  MhloTypeConversion
-  MLIRIR
-  MLIRPass
-  MLIRMathDialect
-  MLIRTransforms
-  MLIRTransformUtils
-)
-
 add_mlir_library(MhloToMemrefConversion
   hlo_legalize_to_memref/hlo_legalize_to_memref.cc
 
@@ -135,7 +114,6 @@ add_mlir_library(MhloToMemrefConversion
   Core
 
   LINK_LIBS PUBLIC
-  LmhloDialect
   MhloDialect
   MhloTypeConversion
   MLIRIR
@@ -173,7 +151,6 @@ add_mlir_library(MhloToStandard
 
   DEPENDS
   MLIRhlo_opsIncGen
-  MLIRlhlo_opsIncGen
   MLIRMhloLegalizeToStandardIncGen
   MLIRMhloPassIncGen
   MhloTypeConversion
@@ -192,14 +169,13 @@ add_mlir_library(MhloToStandard
 )
 
 add_mlir_library(ChloPasses
-  chlo_legalize_to_hlo/chlo_legalize_to_hlo.cc
   chlo_legalize_to_hlo/chlo_legalize_to_hlo_pass.cc
 
   DEPENDS
   MLIRhlo_opsIncGen
   MLIRChloLegalizeToHloIncGen
   MLIRMhloPassIncGen
-  MLIRLmhloPassIncGen
+  PassesIncGen
 
   LINK_COMPONENTS
   Core
@@ -226,7 +202,6 @@ add_mlir_library(MhloToLinalg
 
   LINK_LIBS PUBLIC
   HloToLinalgUtils
-  LmhloDialect
   MhloDialect
   MhloRngUtils
   MhloToArithmeticConversion
@@ -236,27 +211,6 @@ add_mlir_library(MhloToLinalg
   MLIRIR
   MLIRLinalgTransforms
   MLIRLinalgUtils
-  MLIRPass
-  MLIRRewrite
-  MLIRTransformUtils
-)
-
-add_mlir_library(MhloShapeOpsToStandard
-  hlo_legalize_shape_ops_to_standard/hlo_legalize_shape_ops_to_standard.cc
-
-  DEPENDS
-  MLIRhlo_opsIncGen
-  MLIRMhloPassIncGen
-
-  LINK_COMPONENTS
-  Core
-
-  LINK_LIBS PUBLIC
-  LmhloDialect
-  MhloDialect
-  MhloTypeConversion
-  MLIRComplexDialect
-  MLIRIR
   MLIRPass
   MLIRRewrite
   MLIRTransformUtils
@@ -307,13 +261,11 @@ add_library(AllMhloPasses INTERFACE)
 target_link_libraries(AllMhloPasses INTERFACE
   ChloPasses
   MhloPasses
-  MhloQuantToIntConversion
   MhloToArithmeticConversion
   MhloToMemrefConversion
   MhloToStandard
   HloToLinalgUtils
   MhloToLinalg
-  MhloShapeOpsToStandard
   MhloToStablehlo
   StablehloToMhlo
 )

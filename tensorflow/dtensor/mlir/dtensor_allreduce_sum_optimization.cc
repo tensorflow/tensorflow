@@ -16,19 +16,24 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/spmd_expander_common.h"
@@ -56,7 +61,7 @@ bool IsZeroConstant(mlir::Value val) {
       GetIdentitySkippedInputs(val).getDefiningOp());
   if (!const_input) return false;
   mlir::DenseFPElementsAttr attr =
-      const_input.getValue().dyn_cast<mlir::DenseFPElementsAttr>();
+      mlir::dyn_cast<mlir::DenseFPElementsAttr>(const_input.getValue());
   // This uses the fact that constant Attrs becomes splats, so we only need to
   // check one value.
   if (!attr || !attr.isSplat()) return false;
@@ -255,9 +260,9 @@ void OptimizeIdentityLikeOps(mlir::Operation* op, bool* changed) {
   mlir::Value op_output = op->getResult(0);
   dtensor_all_reduce.setOperand(0, op_output);
   dtensor_all_reduce.getInput().setType(
-      op_output.getType().cast<mlir::TensorType>());
+      mlir::cast<mlir::TensorType>(op_output.getType()));
   dtensor_all_reduce.getOutput().setType(
-      op_output.getType().cast<mlir::TensorType>());
+      mlir::cast<mlir::TensorType>(op_output.getType()));
 
   llvm::SmallPtrSet<mlir::Operation*, 4> exceptions{dtensor_all_reduce};
   op_output.replaceAllUsesExcept(dtensor_all_reduce.getOutput(), exceptions);
@@ -296,12 +301,12 @@ bool CheckWhileLoopOptimizationCriteria(
       llvm::dyn_cast_or_null<mlir::TF::DTensorAllReduceOp>(
           first_operand.get().getDefiningOp());
   if (all_reduce) {
-    block_arg = second_operand.get().dyn_cast<mlir::BlockArgument>();
+    block_arg = mlir::dyn_cast<mlir::BlockArgument>(second_operand.get());
     *add_input = &second_operand;
   } else {
     all_reduce = llvm::dyn_cast_or_null<mlir::TF::DTensorAllReduceOp>(
         second_operand.get().getDefiningOp());
-    block_arg = first_operand.get().dyn_cast<mlir::BlockArgument>();
+    block_arg = mlir::dyn_cast<mlir::BlockArgument>(first_operand.get());
     *add_input = &first_operand;
   }
   if (!block_arg || !all_reduce) return false;

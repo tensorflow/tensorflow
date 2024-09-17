@@ -65,7 +65,7 @@ LogicalResult HasNoNestedEntryFunctions(
       // "tf_saved_model.initializer_type" attribute from the callee of the
       // inner calls if the problem ever arises.
       entry_func->emitError()
-          << "TF2XLA MLIR CPU/GPU phase 1 bridge expects no nested calls"
+          << "TF2XLA MLIR Non-replicated Phase 1 Bridge expects no nested calls"
              " of entry functions as they prevent graph traversal in some "
              "passes from "
              "working correctly";
@@ -75,15 +75,13 @@ LogicalResult HasNoNestedEntryFunctions(
   return success();
 }
 
-// MLIR CPU/GPU phase 1 pipeline assumes an entry function has single region and
-// single block when handling top-level compilation markers.
-LogicalResult HasSingleBlockEntryFunctions(
-    llvm::SmallVector<func::FuncOp> &entry_funcs, SymbolTable &symtab) {
+LogicalResult HasTopLevelCompilationMarker(
+    llvm::SmallVector<func::FuncOp> &entry_funcs) {
   for (auto &entry_func : entry_funcs) {
-    if (!HasSingleBlock(entry_func)) {
-      entry_func->emitError() << "TF2XLA MLIR CPU/GPU MLIR phase 1 bridge "
-                                 "expects single region and single "
-                                 "block in an entry function.";
+    if (entry_func->hasAttr(mlir::TF::kCompileDeviceTypeAttr)) {
+      entry_func->emitError() << "TF2XLA MLIR Non-replicated Phase 1 Bridge "
+                                 "does not support top-level compilation "
+                                 "marker.";
       return failure();
     }
   }
@@ -102,7 +100,7 @@ void XlaValidateInputsPass::runOnOperation() {
     return signalPassFailure();
   }
 
-  if (HasSingleBlockEntryFunctions(entry_funcs, symtab).failed()) {
+  if (HasTopLevelCompilationMarker(entry_funcs).failed()) {
     return signalPassFailure();
   }
 }

@@ -17,17 +17,19 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/Interfaces/DataLayoutInterfaces.h"  // from @llvm-project
+#include "absl/status/status.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/gpu/fusions/loop.h"
+#include "xla/service/gpu/fusions/mlir/computation_partitioner.h"
 #include "xla/service/gpu/fusions/mlir/mlir_fusion_emitter.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/indexing_map.h"
-#include "xla/status.h"
 
 namespace xla {
 namespace gpu {
@@ -35,8 +37,8 @@ namespace gpu {
 // Generic loop fusion. Lowers to LLVM via MLIR.
 class MlirScatterFusion : public MlirFusionEmitterBase {
  public:
-  explicit MlirScatterFusion(const HloFusionAnalysis& analysis)
-      : analysis_(analysis), config_(ComputeLoopFusionConfig(analysis)) {}
+  explicit MlirScatterFusion(const HloFusionAnalysis& analysis);
+
   LaunchDimensions launch_dimensions() const override;
 
   static bool IsSupported(const HloFusionAnalysis& analysis);
@@ -55,8 +57,9 @@ class MlirScatterFusion : public MlirFusionEmitterBase {
       mlir::func::FuncOp entry_function,
       const HloFusionInstruction& fusion) const override;
 
-  absl::flat_hash_set<const HloInstruction*> GetInstructionsWithCustomCodegen(
-      const HloFusionInstruction& fusion) const override;
+  std::vector<mlir_converter::EpilogueSpecification> GetEpilogues(
+      const HloFusionInstruction& fusion,
+      mlir::MLIRContext* mlir_context) const override;
 
  private:
   const HloFusionAnalysis& analysis_;

@@ -1,11 +1,11 @@
 load(
+    "@local_xla//xla/tsl/mkl:build_defs.bzl",
+    "mkl_deps",
+)
+load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test_mkl",
     "tf_mkl_kernel_library",
-)
-load(
-    "//third_party/mkl:build_defs.bzl",
-    "mkl_deps",
 )
 
 package(
@@ -36,7 +36,7 @@ MKL_DEPS = MKL_SHORT_DEPS + [
     "//tensorflow/core:protos_all_cc",
     "//tensorflow/core/kernels:concat_lib",
     "//tensorflow/core/kernels:conv_2d",
-    "@local_tsl//tsl/framework/contraction:eigen_contraction_kernel",
+    "@local_xla//xla/tsl/framework/contraction:eigen_contraction_kernel",
     "//tensorflow/core/kernels:fill_functor",
     "//tensorflow/core/kernels:gather_functor",
     "//tensorflow/core/kernels:transpose_functor",
@@ -95,9 +95,11 @@ tf_mkl_kernel_library(
     hdrs = [
         "mkl_kernel_util.h",
         "mkl_matmul_ops_common.h",
+        "mkl_quantized_conv_ops.h",
     ],
     deps = [
         "//tensorflow/core:graph",
+        "@com_google_absl//absl/container:inlined_vector",
     ] + MKL_DEPS,
 )
 
@@ -171,6 +173,7 @@ tf_cc_test_mkl(
     srcs = ["mkl_qmatmul_op_test.cc"],
     linkstatic = 1,  # Fixes dyld error on MacOS.
     deps = [
+        ":mkl_matmul_op",
         ":mkl_qmatmul_op",
         "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:math_ops_op_lib",
@@ -402,15 +405,6 @@ tf_mkl_kernel_library(
 )
 
 tf_mkl_kernel_library(
-    name = "mkl_deprecated_ops",
-    prefix = "mkl_deprecated_ops",
-    deps = [
-        "//tensorflow/core/graph:mkl_graph_util",
-        "//tensorflow/core/kernels:cwise_op",
-    ] + MKL_DEPS,
-)
-
-tf_mkl_kernel_library(
     name = "mkl_fused_batch_norm_op",
     srcs = ["mkl_fused_batch_norm_op.cc"],
     deps = [
@@ -561,5 +555,23 @@ tf_cc_test_mkl(
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/core/kernels:softmax_op",
         "//tensorflow/core/kernels/mkl:mkl_softmax_op",
+    ] + MKL_TEST_DEPS,
+)
+
+tf_cc_test_mkl(
+    name = "onednn_fused_matmul_ops_test",
+    size = "medium",
+    srcs = ["onednn_fused_matmul_ops_test.cc"],
+    linkstatic = 1,  # Fixes dyld error on MacOS.
+    deps = [
+        ":mkl_kernel_util",
+        ":mkl_matmul_op",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/core:direct_session",
+        "//tensorflow/core/kernels:bias_op",
+        "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/kernels:quantization_utils",
+        "//tensorflow/core/kernels:relu_op",
+        "@com_google_absl//absl/strings",
     ] + MKL_TEST_DEPS,
 )

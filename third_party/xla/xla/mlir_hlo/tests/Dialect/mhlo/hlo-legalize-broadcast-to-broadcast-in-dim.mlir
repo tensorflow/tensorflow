@@ -2,7 +2,7 @@
 
 // CHECK-LABEL: @broadcast_to_broadcast_in_dim
 func.func @broadcast_to_broadcast_in_dim(%arg0: tensor<4xi64>) -> tensor<1x2x3x4xi64> {
-  // CHECK: [[RES:%.+]] = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<3> : tensor<1xi64>} : (tensor<4xi64>) -> tensor<1x2x3x4xi64>
+  // CHECK: [[RES:%.+]] = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<3> : tensor<1xi64>}> : (tensor<4xi64>) -> tensor<1x2x3x4xi64>
   %0 = "mhlo.broadcast"(%arg0) {
     broadcast_sizes = dense<[1, 2, 3]> : tensor<3xi64>
   } : (tensor<4xi64>) -> tensor<1x2x3x4xi64>
@@ -14,7 +14,7 @@ func.func @broadcast_to_broadcast_in_dim(%arg0: tensor<4xi64>) -> tensor<1x2x3x4
 
 // CHECK-LABEL: @broadcast_to_broadcast_in_dim_dynamic_operand
 func.func @broadcast_to_broadcast_in_dim_dynamic_operand(%arg0: tensor<?x4xi64>) -> tensor<1x2x3x4xi64> {
-  // CHECK: [[RES:%.+]] = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[2, 3]> : tensor<2xi64>} : (tensor<?x4xi64>) -> tensor<1x2x3x4xi64>
+  // CHECK: [[RES:%.+]] = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<[2, 3]> : tensor<2xi64>}> : (tensor<?x4xi64>) -> tensor<1x2x3x4xi64>
   %0 = "mhlo.broadcast"(%arg0) {
     broadcast_sizes = dense<[1, 2]> : tensor<2xi64>
   } : (tensor<?x4xi64>) -> tensor<1x2x3x4xi64>

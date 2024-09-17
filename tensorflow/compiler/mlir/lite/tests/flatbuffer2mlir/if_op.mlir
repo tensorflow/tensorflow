@@ -16,3 +16,50 @@ func.func @cond_false(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf3
   %0 = tfl.mul %arg0, %arg1 {fused_activation_function = "NONE"} : tensor<*xf32>
   func.return %0 : tensor<*xf32>
 }
+
+// -----
+
+func.func @tfl_if(%arg0: tensor<i1>) -> tensor<i32> {
+// CHECK:   %{{.*}} = "tf.If"(%{{.*}}, %{{.*}}) <{else_branch = @tfl.if_else, is_stateless = false, then_branch = @tfl.if_then}> : (tensor<i1>, tensor<i32>) -> tensor<i32>
+  %cst = arith.constant dense<0> : tensor<i32>
+  %0 = tfl.add %cst, %cst {fused_activation_function = "NONE"} : tensor<i32>
+  %1 = "tfl.if"(%arg0) ({
+    %2 = func.call @tfl.if_then(%0) : (tensor<i32>) -> tensor<i32>
+    "tfl.yield"(%2) : (tensor<i32>) -> ()
+  }, {
+    %2 = func.call @tfl.if_else(%0) : (tensor<i32>) -> tensor<i32>
+    "tfl.yield"(%2) : (tensor<i32>) -> ()
+  }) : (tensor<i1>) -> tensor<i32>
+  return %1 : tensor<i32>
+}
+func.func private @tfl.if_then(%arg0: tensor<i32>) -> tensor<i32> {
+  return %arg0 : tensor<i32>
+}
+func.func private @tfl.if_else(%arg0: tensor<i32>) -> tensor<i32> {
+  %0 = tfl.mul %arg0, %arg0 {fused_activation_function = "NONE"} : tensor<i32>
+  return %0 : tensor<i32>
+}
+
+// -----
+
+func.func @tfl_if_multi_args(%arg0: tensor<i1>) -> tensor<i32> {
+// CHECK:   %{{.*}} = "tf.If"(%{{.*}}, %{{.*}}, %{{.*}}) <{else_branch = @tfl.if_else_1, is_stateless = false, then_branch = @tfl.if_then_1}> : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
+  %cst = arith.constant dense<0> : tensor<i32>
+  %0 = tfl.add %cst, %cst {fused_activation_function = "NONE"} : tensor<i32>
+  %1 = tfl.mul %cst, %cst {fused_activation_function = "NONE"} : tensor<i32>
+  %2 = "tfl.if"(%arg0) ({
+    %2 = func.call @tfl.if_then_1(%0, %1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    "tfl.yield"(%2) : (tensor<i32>) -> ()
+  }, {
+    %2 = func.call @tfl.if_else_1(%0, %1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    "tfl.yield"(%2) : (tensor<i32>) -> ()
+  }) : (tensor<i1>) -> tensor<i32>
+  return %1 : tensor<i32>
+}
+func.func private @tfl.if_then_1(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<i32> {
+  return %arg0 : tensor<i32>
+}
+func.func private @tfl.if_else_1(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<i32> {
+  %0 = tfl.mul %arg0, %arg1 {fused_activation_function = "NONE"} : tensor<i32>
+  return %0 : tensor<i32>
+}

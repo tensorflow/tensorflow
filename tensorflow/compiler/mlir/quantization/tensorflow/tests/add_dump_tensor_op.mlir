@@ -29,7 +29,7 @@ module {
 // WholeModel-DAG: %[[b:.*]] = "tf.Const"() <{value = dense<[-2.000000e+00, 3.000000e+00
 // WholeModel-DAG: %[[output0:.*]] = "tf.PartitionedCall"(%arg0, %[[w]], %[[b]]) <{config = "", config_proto = "", executor_type = "", f = @composite_conv2d_with_bias_and_relu6_fn_2}>
 // WholeModel-DAG: %[[output1:.*]] = "tf.PartitionedCall"(%arg0, %[[w]], %[[b]]) <{config = "", config_proto = "", executor_type = "", f = @composite_conv2d_with_bias_and_relu6_fn_1}> {_tfl_quant_trait = "fully_quantizable"}
-// WholeModel-DAG: "tf.DumpTensor"(%[[output1]]) <{enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "conv", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_1", node_name = "Conv2D_1"}> : (tensor<*xf32>) -> ()
+// WholeModel-DAG: "tf.DumpTensor"(%[[output1]]) <{enabled = true, file_name = "unquantized_tensor_data.pb", func_name = "conv", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_1", node_name = "Conv2D_1"}> : (tensor<*xf32>) -> ()
 // WholeModel-DAG: return %[[output0]], %[[output1]]
 
 // IntPerLayer-LABEL: func @conv
@@ -38,8 +38,8 @@ module {
 // IntPerLayer-DAG: %[[output0:.*]] = "tf.PartitionedCall"(%arg0, %[[w]], %[[b]]) <{config = "", config_proto = "", executor_type = "", f = @composite_conv2d_with_bias_and_relu6_fn_2}
 // IntPerLayer-DAG: %[[output1_quantized:.*]] = "tf.PartitionedCall"(%arg0, %[[w]], %[[b]]) <{config = "", config_proto = "", executor_type = "", f = @composite_conv2d_with_bias_and_relu6_fn_1}> {_tfl_quant_trait = "fully_quantizable"}
 // IntPerLayer-DAG: %[[output1_unquantized:.*]] = "tf.PartitionedCall"(%arg0, %cst, %cst_0) <{config = "", config_proto = "", executor_type = "", f = @composite_conv2d_with_bias_and_relu6_fn_1_0}
-// IntPerLayer-DAG: "tf.DumpTensor"(%[[output1_quantized]]) <{enabled = false, file_name = "quantized_tensor_data.pb", func_name = "conv", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_1", node_name = "Conv2D_1"}> : (tensor<*xf32>) -> ()
-// IntPerLayer-DAG: "tf.DumpTensor"(%[[output1_unquantized]]) <{enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "conv", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_1", node_name = "Conv2D_1"}> : (tensor<*xf32>) -> ()
+// IntPerLayer-DAG: "tf.DumpTensor"(%[[output1_quantized]]) <{enabled = true, file_name = "quantized_tensor_data.pb", func_name = "conv", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_1", node_name = "Conv2D_1"}> : (tensor<*xf32>) -> ()
+// IntPerLayer-DAG: "tf.DumpTensor"(%[[output1_unquantized]]) <{enabled = true, file_name = "unquantized_tensor_data.pb", func_name = "conv", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_1", node_name = "Conv2D_1"}> : (tensor<*xf32>) -> ()
 // IntPerLayer-DAG: return %[[output0]], %[[output1_quantized]]
 
 // FloatPerLayer-LABEL: func @conv
@@ -48,8 +48,8 @@ module {
 // FloatPerLayer-DAG: %[[output0:.*]] = "tf.PartitionedCall"(%arg0, %[[w]], %[[b]]) <{config = "", config_proto = "", executor_type = "", f = @composite_conv2d_with_bias_and_relu6_fn_2}
 // FloatPerLayer-DAG: %[[output1_quantized:.*]] = "tf.PartitionedCall"(%arg0, %[[w]], %[[b]]) <{config = "", config_proto = "", executor_type = "", f = @composite_conv2d_with_bias_and_relu6_fn_1}> {_tfl_quant_trait = "fully_quantizable"}
 // FloatPerLayer-DAG: %[[output1_unquantized:.*]] = "tf.PartitionedCall"(%arg0, %[[w]], %[[b]]) <{config = "", config_proto = "", executor_type = "", f = @composite_conv2d_with_bias_and_relu6_fn_1_0}
-// FloatPerLayer-DAG: "tf.DumpTensor"(%[[output1_quantized]]) <{enabled = false, file_name = "quantized_tensor_data.pb", func_name = "conv", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_1", node_name = "Conv2D_1"}> : (tensor<*xf32>) -> ()
-// FloatPerLayer-DAG: "tf.DumpTensor"(%[[output1_unquantized]]) <{enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "conv", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_1", node_name = "Conv2D_1"}> : (tensor<*xf32>) -> ()
+// FloatPerLayer-DAG: "tf.DumpTensor"(%[[output1_quantized]]) <{enabled = true, file_name = "quantized_tensor_data.pb", func_name = "conv", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_1", node_name = "Conv2D_1"}> : (tensor<*xf32>) -> ()
+// FloatPerLayer-DAG: "tf.DumpTensor"(%[[output1_unquantized]]) <{enabled = true, file_name = "unquantized_tensor_data.pb", func_name = "conv", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_1", node_name = "Conv2D_1"}> : (tensor<*xf32>) -> ()
 // FloatPerLayer-DAG: return %[[output0]], %[[output1_unquantized]]
 }
 
@@ -86,9 +86,9 @@ module {
 // WholeModel-DAG: %[[w0:.*]] = "tf.Const"() <{value = dense<{{\[\[\[\[}}0.193340182, 0.285152316
 // WholeModel-DAG: %[[w1:.*]] = "tf.Const"() <{value = dense<{{\[\[\[\[}}-0.174680978, -0.367524445
 // WholeModel-DAG: %[[output0:.*]] = "tf.PartitionedCall"(%arg0, %[[w0]], %[[b0]]) <{config = "", config_proto = "", executor_type = "", f = @composite_conv2d_with_bias_and_relu6_fn_2}> {_tfl_quant_trait = "fully_quantizable"}
-// WholeModel-DAG: "tf.DumpTensor"(%[[output0]]) <{enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "multiple_conv2d", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_2", node_name = "Conv2D"}>
+// WholeModel-DAG: "tf.DumpTensor"(%[[output0]]) <{enabled = true, file_name = "unquantized_tensor_data.pb", func_name = "multiple_conv2d", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_2", node_name = "Conv2D"}>
 // WholeModel-DAG: %[[output1:.*]] = "tf.PartitionedCall"(%[[output0]], %[[w1]], %[[b1]]) <{config = "", config_proto = "", executor_type = "", f = @composite_conv2d_with_bias_and_relu6_fn_1}> {_tfl_quant_trait = "fully_quantizable"}
-// WholeModel-DAG: "tf.DumpTensor"(%[[output1]]) <{enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "multiple_conv2d", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_1", node_name = "Conv2D_1"}>
+// WholeModel-DAG: "tf.DumpTensor"(%[[output1]]) <{enabled = true, file_name = "unquantized_tensor_data.pb", func_name = "multiple_conv2d", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_1", node_name = "Conv2D_1"}>
 // WholeModel-DAG: return %[[output1]]
 
 // IntPerLayer-LABEL: func @multiple_conv2d
@@ -98,12 +98,12 @@ module {
 // IntPerLayer-DAG: %[[w1:.*]] = "tf.Const"() <{value = dense<{{\[\[\[\[}}-0.174680978, -0.367524445
 // IntPerLayer-DAG: %[[output0_quantized:.*]] = "tf.PartitionedCall"(%arg0, %[[w0]], %[[b0]]) <{config = "", config_proto = "", executor_type = "", f = @composite_conv2d_with_bias_and_relu6_fn_2}> {_tfl_quant_trait = "fully_quantizable"}
 // IntPerLayer-DAG: %[[output0_unquantized:.*]] = "tf.PartitionedCall"(%arg0, %[[w0]], %[[b0]]) <{config = "", config_proto = "", executor_type = "", f = @composite_conv2d_with_bias_and_relu6_fn_2_0}>
-// IntPerLayer-DAG: "tf.DumpTensor"(%[[output0_quantized]]) <{enabled = false, file_name = "quantized_tensor_data.pb", func_name = "multiple_conv2d", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_2", node_name = "Conv2D"}>
-// IntPerLayer-DAG: "tf.DumpTensor"(%[[output0_unquantized]]) <{enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "multiple_conv2d", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_2", node_name = "Conv2D"}>
+// IntPerLayer-DAG: "tf.DumpTensor"(%[[output0_quantized]]) <{enabled = true, file_name = "quantized_tensor_data.pb", func_name = "multiple_conv2d", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_2", node_name = "Conv2D"}>
+// IntPerLayer-DAG: "tf.DumpTensor"(%[[output0_unquantized]]) <{enabled = true, file_name = "unquantized_tensor_data.pb", func_name = "multiple_conv2d", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_2", node_name = "Conv2D"}>
 // IntPerLayer-DAG: %[[output1_quantized:.*]] = "tf.PartitionedCall"(%[[output0_quantized]], %[[w1]], %[[b1]]) <{config = "", config_proto = "", executor_type = "", f = @composite_conv2d_with_bias_and_relu6_fn_1}> {_tfl_quant_trait = "fully_quantizable"}
 // IntPerLayer-DAG: %[[output1_unquantized:.*]] = "tf.PartitionedCall"(%[[output0_quantized]], %[[w1]], %[[b1]]) <{config = "", config_proto = "", executor_type = "", f = @composite_conv2d_with_bias_and_relu6_fn_1_0}>
-// IntPerLayer-DAG: "tf.DumpTensor"(%[[output1_quantized]]) <{enabled = false, file_name = "quantized_tensor_data.pb", func_name = "multiple_conv2d", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_1", node_name = "Conv2D_1"}>
-// IntPerLayer-DAG: "tf.DumpTensor"(%[[output1_unquantized]]) <{enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "multiple_conv2d", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_1", node_name = "Conv2D_1"}>
+// IntPerLayer-DAG: "tf.DumpTensor"(%[[output1_quantized]]) <{enabled = true, file_name = "quantized_tensor_data.pb", func_name = "multiple_conv2d", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_1", node_name = "Conv2D_1"}>
+// IntPerLayer-DAG: "tf.DumpTensor"(%[[output1_unquantized]]) <{enabled = true, file_name = "unquantized_tensor_data.pb", func_name = "multiple_conv2d", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_1", node_name = "Conv2D_1"}>
 // IntPerLayer-DAG: return %[[output1_quantized]]
 
 // FloatPerLayer-LABEL: func @multiple_conv2d
@@ -113,12 +113,12 @@ module {
 // FloatPerLayer-DAG: %[[w1:.*]] = "tf.Const"() <{value = dense<{{\[\[\[\[}}-0.174680978, -0.367524445
 // FloatPerLayer-DAG: %[[output0_quantized:.*]] = "tf.PartitionedCall"(%arg0, %[[w0]], %[[b0]]) <{config = "", config_proto = "", executor_type = "", f = @composite_conv2d_with_bias_and_relu6_fn_2}> {_tfl_quant_trait = "fully_quantizable"}
 // FloatPerLayer-DAG: %[[output0_unquantized:.*]] = "tf.PartitionedCall"(%arg0, %[[w0]], %[[b0]]) <{config = "", config_proto = "", executor_type = "", f = @composite_conv2d_with_bias_and_relu6_fn_2_0}
-// FloatPerLayer-DAG: "tf.DumpTensor"(%[[output0_quantized]]) <{enabled = false, file_name = "quantized_tensor_data.pb", func_name = "multiple_conv2d", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_2", node_name = "Conv2D"}
-// FloatPerLayer-DAG: "tf.DumpTensor"(%[[output0_unquantized]]) <{enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "multiple_conv2d", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_2", node_name = "Conv2D"}
+// FloatPerLayer-DAG: "tf.DumpTensor"(%[[output0_quantized]]) <{enabled = true, file_name = "quantized_tensor_data.pb", func_name = "multiple_conv2d", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_2", node_name = "Conv2D"}
+// FloatPerLayer-DAG: "tf.DumpTensor"(%[[output0_unquantized]]) <{enabled = true, file_name = "unquantized_tensor_data.pb", func_name = "multiple_conv2d", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_2", node_name = "Conv2D"}
 // FloatPerLayer-DAG: %[[output1_quantized:.*]] = "tf.PartitionedCall"(%[[output0_unquantized]], %[[w1]], %[[b1]]) <{config = "", config_proto = "", executor_type = "", f = @composite_conv2d_with_bias_and_relu6_fn_1}> {_tfl_quant_trait = "fully_quantizable"}
 // FloatPerLayer-DAG: %[[output1_unquantized:.*]] = "tf.PartitionedCall"(%[[output0_unquantized]], %[[w1]], %[[b1]]) <{config = "", config_proto = "", executor_type = "", f = @composite_conv2d_with_bias_and_relu6_fn_1_0}
-// FloatPerLayer-DAG: "tf.DumpTensor"(%[[output1_quantized]]) <{enabled = false, file_name = "quantized_tensor_data.pb", func_name = "multiple_conv2d", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_1", node_name = "Conv2D_1"}
-// FloatPerLayer-DAG: "tf.DumpTensor"(%[[output1_unquantized]]) <{enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "multiple_conv2d", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_1", node_name = "Conv2D_1"}
+// FloatPerLayer-DAG: "tf.DumpTensor"(%[[output1_quantized]]) <{enabled = true, file_name = "quantized_tensor_data.pb", func_name = "multiple_conv2d", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_1", node_name = "Conv2D_1"}
+// FloatPerLayer-DAG: "tf.DumpTensor"(%[[output1_unquantized]]) <{enabled = true, file_name = "unquantized_tensor_data.pb", func_name = "multiple_conv2d", log_dir_path = "/tmp/dumps/composite_conv2d_with_bias_and_relu6_fn_1", node_name = "Conv2D_1"}
 // FloatPerLayer-DAG: return %[[output1_unquantized]]
 }
 
@@ -146,8 +146,8 @@ module {
 // WholeModel-DAG: %[[w1:.*]] = "tf.Const"() <{value = dense<{{\[\[}}-0.211145893
 // WholeModel-DAG: %[[m0:.*]] = "tf.PartitionedCall"(%arg0, %[[w0]]) <{config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_2}> {_tfl_quant_trait = "fully_quantizable"}
 // WholeModel-DAG: %[[m1:.*]] = "tf.PartitionedCall"(%[[m0]], %[[w1]]) <{config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_1}> {_tfl_quant_trait = "fully_quantizable"}
-// WholeModel-DAG: "tf.DumpTensor"(%[[m0]]) <{enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "matmul2", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"}
-// WholeModel-DAG: "tf.DumpTensor"(%[[m1]]) <{enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "matmul2", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"}
+// WholeModel-DAG: "tf.DumpTensor"(%[[m0]]) <{enabled = true, file_name = "unquantized_tensor_data.pb", func_name = "matmul2", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"}
+// WholeModel-DAG: "tf.DumpTensor"(%[[m1]]) <{enabled = true, file_name = "unquantized_tensor_data.pb", func_name = "matmul2", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"}
 // WholeModel-DAG: return %[[m1]]
 
 // IntPerLayer-LABEL: func @matmul2
@@ -155,12 +155,12 @@ module {
 // IntPerLayer-DAG: %[[w1:.*]] = "tf.Const"() <{value = dense<{{\[\[}}-0.211145893
 // IntPerLayer-DAG: %[[m0:.*]] = "tf.PartitionedCall"(%arg0, %[[w0]]) <{config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_2}> {_tfl_quant_trait = "fully_quantizable"} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
 // IntPerLayer-DAG: %[[m0_1:.*]] = "tf.PartitionedCall"(%arg0, %[[w0]]) <{config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_2_0}> : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
-// IntPerLayer-DAG: "tf.DumpTensor"(%[[m0]]) <{enabled = false, file_name = "quantized_tensor_data.pb", func_name = "matmul2", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"}> : (tensor<2x2xf32>) -> ()
-// IntPerLayer-DAG: "tf.DumpTensor"(%[[m0_1]]) <{enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "matmul2", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"}> : (tensor<2x2xf32>) -> ()
+// IntPerLayer-DAG: "tf.DumpTensor"(%[[m0]]) <{enabled = true, file_name = "quantized_tensor_data.pb", func_name = "matmul2", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"}> : (tensor<2x2xf32>) -> ()
+// IntPerLayer-DAG: "tf.DumpTensor"(%[[m0_1]]) <{enabled = true, file_name = "unquantized_tensor_data.pb", func_name = "matmul2", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"}> : (tensor<2x2xf32>) -> ()
 // IntPerLayer-DAG: %[[m1:.*]] = "tf.PartitionedCall"(%[[m0]], %[[w1]]) <{config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_1}> {_tfl_quant_trait = "fully_quantizable"} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
 // IntPerLayer-DAG: %[[m1_0:.*]] = "tf.PartitionedCall"(%[[m0]], %[[w1]]) <{config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_1_0}> : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
-// IntPerLayer-DAG: "tf.DumpTensor"(%[[m1]]) <{enabled = false, file_name = "quantized_tensor_data.pb", func_name = "matmul2", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"}> : (tensor<2x2xf32>) -> ()
-// IntPerLayer-DAG: "tf.DumpTensor"(%[[m1_0]]) <{enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "matmul2", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"}> : (tensor<2x2xf32>) -> ()
+// IntPerLayer-DAG: "tf.DumpTensor"(%[[m1]]) <{enabled = true, file_name = "quantized_tensor_data.pb", func_name = "matmul2", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"}> : (tensor<2x2xf32>) -> ()
+// IntPerLayer-DAG: "tf.DumpTensor"(%[[m1_0]]) <{enabled = true, file_name = "unquantized_tensor_data.pb", func_name = "matmul2", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"}> : (tensor<2x2xf32>) -> ()
 // IntPerLayer-DAG: return %[[m1]] : tensor<2x2xf32>
 
 // FloatPerLayer-LABEL: func @matmul2
@@ -168,12 +168,12 @@ module {
 // FloatPerLayer-DAG: %[[w1:.*]] = "tf.Const"() <{value = dense<{{\[\[}}-0.211145893
 // FloatPerLayer-DAG: %[[m0:.*]] = "tf.PartitionedCall"(%arg0, %[[w0]]) <{config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_2}> {_tfl_quant_trait = "fully_quantizable"} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
 // FloatPerLayer-DAG: %[[m0_1:.*]] = "tf.PartitionedCall"(%arg0, %[[w0]]) <{config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_2_0}> : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
-// FloatPerLayer-DAG: "tf.DumpTensor"(%[[m0]]) <{enabled = false, file_name = "quantized_tensor_data.pb", func_name = "matmul2", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"}> : (tensor<2x2xf32>) -> ()
-// FloatPerLayer-DAG: "tf.DumpTensor"(%[[m0_1]]) <{enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "matmul2", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"}> : (tensor<2x2xf32>) -> ()
+// FloatPerLayer-DAG: "tf.DumpTensor"(%[[m0]]) <{enabled = true, file_name = "quantized_tensor_data.pb", func_name = "matmul2", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"}> : (tensor<2x2xf32>) -> ()
+// FloatPerLayer-DAG: "tf.DumpTensor"(%[[m0_1]]) <{enabled = true, file_name = "unquantized_tensor_data.pb", func_name = "matmul2", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"}> : (tensor<2x2xf32>) -> ()
 // FloatPerLayer-DAG: %[[m1:.*]] = "tf.PartitionedCall"(%[[m0_1]], %[[w1]]) <{config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_1}> {_tfl_quant_trait = "fully_quantizable"} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
 // FloatPerLayer-DAG: %[[m1_0:.*]] = "tf.PartitionedCall"(%[[m0_1]], %[[w1]]) <{config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_1_0}> : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
-// FloatPerLayer-DAG: "tf.DumpTensor"(%[[m1]]) <{enabled = false, file_name = "quantized_tensor_data.pb", func_name = "matmul2", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"}> : (tensor<2x2xf32>) -> ()
-// FloatPerLayer-DAG: "tf.DumpTensor"(%[[m1_0]]) <{enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "matmul2", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"}> : (tensor<2x2xf32>) -> ()
+// FloatPerLayer-DAG: "tf.DumpTensor"(%[[m1]]) <{enabled = true, file_name = "quantized_tensor_data.pb", func_name = "matmul2", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"}> : (tensor<2x2xf32>) -> ()
+// FloatPerLayer-DAG: "tf.DumpTensor"(%[[m1_0]]) <{enabled = true, file_name = "unquantized_tensor_data.pb", func_name = "matmul2", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"}> : (tensor<2x2xf32>) -> ()
 // FloatPerLayer-DAG: return %[[m1_0]] : tensor<2x2xf32>
 }
 
@@ -203,8 +203,8 @@ module {
 // WholeModel-DAG: %[[pc_0:.*]] = "tf.PartitionedCall"(%arg0, %[[cst_0]]) <{config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_2}> {_tfl_quant_trait = "fully_quantizable"}
 // WholeModel-DAG: %[[sm_0:.*]] = "tf.Softmax"(%[[pc_0]]) {T = "tfdtype$DT_FLOAT"}
 // WholeModel-DAG: %[[pc_1:.*]] = "tf.PartitionedCall"(%[[sm_0]], %[[cst_1]]) <{config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_1}> {_tfl_quant_trait = "fully_quantizable"}
-// WholeModel-DAG: "tf.DumpTensor"(%[[pc_0]]) <{enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "matmul2_softmax", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"}
-// WholeModel-DAG: "tf.DumpTensor"(%[[pc_1]]) <{enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "matmul2_softmax", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"}
+// WholeModel-DAG: "tf.DumpTensor"(%[[pc_0]]) <{enabled = true, file_name = "unquantized_tensor_data.pb", func_name = "matmul2_softmax", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"}
+// WholeModel-DAG: "tf.DumpTensor"(%[[pc_1]]) <{enabled = true, file_name = "unquantized_tensor_data.pb", func_name = "matmul2_softmax", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"}
 // WholeModel-DAG: return %[[pc_1]]
 
 // IntPerLayer-LABEL: func @matmul2_softmax
@@ -212,13 +212,13 @@ module {
 // IntPerLayer-DAG: %[[cst_1:.*]] = "tf.Const"() <{value = dense<{{\[\[}}-0.211145893, -0.708605706
 // IntPerLayer-DAG: %[[pc_0:.*]] = "tf.PartitionedCall"(%arg0, %[[cst_0]]) <{config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_2}> {_tfl_quant_trait = "fully_quantizable"}
 // IntPerLayer-DAG: %[[pc_1:.*]] = "tf.PartitionedCall"(%arg0, %[[cst_0]]) <{config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_2_0}
-// IntPerLayer-DAG: "tf.DumpTensor"(%[[pc_0]]) <{enabled = false, file_name = "quantized_tensor_data.pb", func_name = "matmul2_softmax", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"}
-// IntPerLayer-DAG: "tf.DumpTensor"(%[[pc_1]]) <{enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "matmul2_softmax", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"}
+// IntPerLayer-DAG: "tf.DumpTensor"(%[[pc_0]]) <{enabled = true, file_name = "quantized_tensor_data.pb", func_name = "matmul2_softmax", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"}
+// IntPerLayer-DAG: "tf.DumpTensor"(%[[pc_1]]) <{enabled = true, file_name = "unquantized_tensor_data.pb", func_name = "matmul2_softmax", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"}
 // IntPerLayer-DAG: %[[sm_0:.*]] = "tf.Softmax"(%[[pc_0]]) {T = "tfdtype$DT_FLOAT"}
 // IntPerLayer-DAG: %[[pc_2:.*]] = "tf.PartitionedCall"(%[[sm_0]], %[[cst_1]]) <{config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_1}> {_tfl_quant_trait = "fully_quantizable"}
 // IntPerLayer-DAG: %[[pc_3:.*]] = "tf.PartitionedCall"(%[[sm_0]], %[[cst_1]]) <{config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_1_0}
-// IntPerLayer-DAG: "tf.DumpTensor"(%[[pc_2]]) <{enabled = false, file_name = "quantized_tensor_data.pb", func_name = "matmul2_softmax", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"}
-// IntPerLayer-DAG: "tf.DumpTensor"(%[[pc_3]]) <{enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "matmul2_softmax", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"}
+// IntPerLayer-DAG: "tf.DumpTensor"(%[[pc_2]]) <{enabled = true, file_name = "quantized_tensor_data.pb", func_name = "matmul2_softmax", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"}
+// IntPerLayer-DAG: "tf.DumpTensor"(%[[pc_3]]) <{enabled = true, file_name = "unquantized_tensor_data.pb", func_name = "matmul2_softmax", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"}
 // IntPerLayer-DAG: return %[[pc_2]]
 
 // FloatPerLayer-LABEL: func @matmul2_softmax
@@ -226,13 +226,13 @@ module {
 // FloatPerLayer-DAG: %[[cst_1:.*]] = "tf.Const"() <{value = dense<{{\[\[}}-0.211145893, -0.708605706
 // FloatPerLayer-DAG: %[[pc_0:.*]] = "tf.PartitionedCall"(%arg0, %[[cst_0]]) <{config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_2}> {_tfl_quant_trait = "fully_quantizable"}
 // FloatPerLayer-DAG: %[[pc_1:.*]] = "tf.PartitionedCall"(%arg0, %[[cst_0]]) <{config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_2_0}
-// FloatPerLayer-DAG: "tf.DumpTensor"(%[[pc_0]]) <{enabled = false, file_name = "quantized_tensor_data.pb", func_name = "matmul2_softmax", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"}
-// FloatPerLayer-DAG: "tf.DumpTensor"(%[[pc_1]]) <{enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "matmul2_softmax", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"}
+// FloatPerLayer-DAG: "tf.DumpTensor"(%[[pc_0]]) <{enabled = true, file_name = "quantized_tensor_data.pb", func_name = "matmul2_softmax", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"}
+// FloatPerLayer-DAG: "tf.DumpTensor"(%[[pc_1]]) <{enabled = true, file_name = "unquantized_tensor_data.pb", func_name = "matmul2_softmax", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"}
 // FloatPerLayer-DAG: %[[sm_0:.*]] = "tf.Softmax"(%[[pc_1]]) {T = "tfdtype$DT_FLOAT"}
 // FloatPerLayer-DAG: %[[pc_2:.*]] = "tf.PartitionedCall"(%[[sm_0]], %[[cst_1]]) <{config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_1}> {_tfl_quant_trait = "fully_quantizable"}
 // FloatPerLayer-DAG: %[[pc_3:.*]] = "tf.PartitionedCall"(%[[sm_0]], %[[cst_1]]) <{config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_1_0}
-// FloatPerLayer-DAG: "tf.DumpTensor"(%[[pc_2]]) <{enabled = false, file_name = "quantized_tensor_data.pb", func_name = "matmul2_softmax", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"}
-// FloatPerLayer-DAG: "tf.DumpTensor"(%[[pc_3]]) <{enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "matmul2_softmax", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"}
+// FloatPerLayer-DAG: "tf.DumpTensor"(%[[pc_2]]) <{enabled = true, file_name = "quantized_tensor_data.pb", func_name = "matmul2_softmax", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"}
+// FloatPerLayer-DAG: "tf.DumpTensor"(%[[pc_3]]) <{enabled = true, file_name = "unquantized_tensor_data.pb", func_name = "matmul2_softmax", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"}
 // FloatPerLayer-DAG: return %[[pc_3]]
 }
 
@@ -263,8 +263,8 @@ module {
 // WholeModel-DAG: %[[axis:.*]] = "tf.Const"() <{value = dense<-1> : tensor<i32>}
 // WholeModel-DAG: %[[m0:.*]] = "tf.PartitionedCall"(%arg0, %[[w0]]) <{config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_2}> {_tfl_quant_trait = "fully_quantizable"}
 // WholeModel-DAG: %[[m1:.*]] = "tf.PartitionedCall"(%[[m0]], %[[w1]]) <{config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_1}> {_tfl_quant_trait = "fully_quantizable"}
-// WholeModel-DAG: "tf.DumpTensor"(%[[m0]]) <{enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "matmul2_concat", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"}
-// WholeModel-DAG: "tf.DumpTensor"(%[[m1]]) <{enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "matmul2_concat", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"}
+// WholeModel-DAG: "tf.DumpTensor"(%[[m0]]) <{enabled = true, file_name = "unquantized_tensor_data.pb", func_name = "matmul2_concat", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"}
+// WholeModel-DAG: "tf.DumpTensor"(%[[m1]]) <{enabled = true, file_name = "unquantized_tensor_data.pb", func_name = "matmul2_concat", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"}
 // WholeModel-DAG: %[[c:.*]] = "tf.ConcatV2"(%[[m0]], %[[m1]], %[[axis]])
 // WholeModel-DAG: return %[[c]]
 
@@ -274,12 +274,12 @@ module {
 // IntPerLayer-DAG: %[[axis:.*]] = "tf.Const"() <{value = dense<-1> : tensor<i32>}> : () -> tensor<i32>
 // IntPerLayer-DAG: %[[m0:.*]] = "tf.PartitionedCall"(%arg0, %[[w0]]) <{config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_2}> {_tfl_quant_trait = "fully_quantizable"} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
 // IntPerLayer-DAG: %[[m0_1:.*]] = "tf.PartitionedCall"(%arg0, %[[w0]]) <{config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_2_0}> : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
-// IntPerLayer-DAG: "tf.DumpTensor"(%[[m0]]) <{enabled = false, file_name = "quantized_tensor_data.pb", func_name = "matmul2_concat", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"}> : (tensor<2x2xf32>) -> ()
-// IntPerLayer-DAG: "tf.DumpTensor"(%[[m0_1]]) <{enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "matmul2_concat", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"}> : (tensor<2x2xf32>) -> ()
+// IntPerLayer-DAG: "tf.DumpTensor"(%[[m0]]) <{enabled = true, file_name = "quantized_tensor_data.pb", func_name = "matmul2_concat", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"}> : (tensor<2x2xf32>) -> ()
+// IntPerLayer-DAG: "tf.DumpTensor"(%[[m0_1]]) <{enabled = true, file_name = "unquantized_tensor_data.pb", func_name = "matmul2_concat", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"}> : (tensor<2x2xf32>) -> ()
 // IntPerLayer-DAG: %[[m1:.*]] = "tf.PartitionedCall"(%[[m0]], %[[w1]]) <{config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_1}> {_tfl_quant_trait = "fully_quantizable"} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
 // IntPerLayer-DAG: %[[m1_0:.*]] = "tf.PartitionedCall"(%[[m0]], %[[w1]]) <{config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_1_0}> : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
-// IntPerLayer-DAG: "tf.DumpTensor"(%[[m1]]) <{enabled = false, file_name = "quantized_tensor_data.pb", func_name = "matmul2_concat", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"}> : (tensor<2x2xf32>) -> ()
-// IntPerLayer-DAG: "tf.DumpTensor"(%[[m1_0]]) <{enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "matmul2_concat", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"}> : (tensor<2x2xf32>) -> ()
+// IntPerLayer-DAG: "tf.DumpTensor"(%[[m1]]) <{enabled = true, file_name = "quantized_tensor_data.pb", func_name = "matmul2_concat", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"}> : (tensor<2x2xf32>) -> ()
+// IntPerLayer-DAG: "tf.DumpTensor"(%[[m1_0]]) <{enabled = true, file_name = "unquantized_tensor_data.pb", func_name = "matmul2_concat", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"}> : (tensor<2x2xf32>) -> ()
 // IntPerLayer-DAG: %4 = "tf.ConcatV2"(%[[m0]], %[[m1]], %[[axis]]) : (tensor<2x2xf32>, tensor<2x2xf32>, tensor<i32>) -> tensor<2x4xf32>
 // IntPerLayer-DAG: return %4 : tensor<2x4xf32>
 
@@ -289,12 +289,12 @@ module {
 // FloatPerLayer-DAG: %[[axis:.*]] = "tf.Const"() <{value = dense<-1> : tensor<i32>}> : () -> tensor<i32>
 // FloatPerLayer-DAG: %[[m0:.*]] = "tf.PartitionedCall"(%arg0, %[[w0]]) <{config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_2}> {_tfl_quant_trait = "fully_quantizable"} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
 // FloatPerLayer-DAG: %[[m0_1:.*]] = "tf.PartitionedCall"(%arg0, %[[w0]]) <{config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_2_0}> : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
-// FloatPerLayer-DAG: "tf.DumpTensor"(%[[m0]]) <{enabled = false, file_name = "quantized_tensor_data.pb", func_name = "matmul2_concat", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"}> : (tensor<2x2xf32>) -> ()
-// FloatPerLayer-DAG: "tf.DumpTensor"(%[[m0_1]]) <{enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "matmul2_concat", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"}> : (tensor<2x2xf32>) -> ()
+// FloatPerLayer-DAG: "tf.DumpTensor"(%[[m0]]) <{enabled = true, file_name = "quantized_tensor_data.pb", func_name = "matmul2_concat", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"}> : (tensor<2x2xf32>) -> ()
+// FloatPerLayer-DAG: "tf.DumpTensor"(%[[m0_1]]) <{enabled = true, file_name = "unquantized_tensor_data.pb", func_name = "matmul2_concat", log_dir_path = "/tmp/dumps/composite_matmul_fn_2", node_name = "MatMul"}> : (tensor<2x2xf32>) -> ()
 // FloatPerLayer-DAG: %[[m1:.*]] = "tf.PartitionedCall"(%[[m0_1]], %[[w1]]) <{config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_1}> {_tfl_quant_trait = "fully_quantizable"} : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
 // FloatPerLayer-DAG: %[[m1_0:.*]] = "tf.PartitionedCall"(%[[m0_1]], %[[w1]]) <{config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn_1_0}> : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
-// FloatPerLayer-DAG: "tf.DumpTensor"(%[[m1]]) <{enabled = false, file_name = "quantized_tensor_data.pb", func_name = "matmul2_concat", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"}> : (tensor<2x2xf32>) -> ()
-// FloatPerLayer-DAG: "tf.DumpTensor"(%[[m1_0]]) <{enabled = false, file_name = "unquantized_tensor_data.pb", func_name = "matmul2_concat", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"}> : (tensor<2x2xf32>) -> ()
+// FloatPerLayer-DAG: "tf.DumpTensor"(%[[m1]]) <{enabled = true, file_name = "quantized_tensor_data.pb", func_name = "matmul2_concat", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"}> : (tensor<2x2xf32>) -> ()
+// FloatPerLayer-DAG: "tf.DumpTensor"(%[[m1_0]]) <{enabled = true, file_name = "unquantized_tensor_data.pb", func_name = "matmul2_concat", log_dir_path = "/tmp/dumps/composite_matmul_fn_1", node_name = "MatMul_1"}> : (tensor<2x2xf32>) -> ()
 // FloatPerLayer-DAG: %4 = "tf.ConcatV2"(%1, %[[m1_0]], %[[axis]]) : (tensor<2x2xf32>, tensor<2x2xf32>, tensor<i32>) -> tensor<2x4xf32>
 // FloatPerLayer-DAG: return %4 : tensor<2x4xf32>
 }

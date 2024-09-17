@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -38,7 +39,7 @@ namespace TF {
 static inline LogicalResult VerifyRefTypeMatch(mlir::Type type,
                                                mlir::Type maybe_ref_type) {
   if (auto ref_type =
-          maybe_ref_type.dyn_cast<mlir::tf_type::TensorFlowRefType>())
+          mlir::dyn_cast<mlir::tf_type::TensorFlowRefType>(maybe_ref_type))
     return success(ref_type.RemoveRef().getTypeID() == type.getTypeID());
   return failure();
 }

@@ -31,8 +31,8 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/numa.h"
 #include "tensorflow/core/platform/setround.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tsl/platform/tracing.h"
 
 namespace tensorflow {
 namespace {
@@ -67,9 +67,10 @@ RunHandlerEnvironment::EnvThread* RunHandlerEnvironment::CreateThread(
 RunHandlerEnvironment::Task RunHandlerEnvironment::CreateTask(
     std::function<void()> f) {
   uint64 id = 0;
-  if (tracing::EventCollector::IsEnabled()) {
-    id = tracing::GetUniqueArg();
-    tracing::RecordEvent(tracing::EventCategory::kScheduleClosure, id);
+  if (tsl::tracing::EventCollector::IsEnabled()) {
+    id = tsl::tracing::GetUniqueArg();
+    tsl::tracing::RecordEvent(tsl::tracing::EventCategory::kScheduleClosure,
+                              id);
   }
   return Task{
       std::unique_ptr<TaskImpl>(new TaskImpl{
@@ -82,8 +83,8 @@ RunHandlerEnvironment::Task RunHandlerEnvironment::CreateTask(
 
 void RunHandlerEnvironment::ExecuteTask(const Task& t) {
   WithContext wc(t.f->context);
-  tracing::ScopedRegion region(tracing::EventCategory::kRunClosure,
-                               t.f->trace_id);
+  tsl::tracing::ScopedRegion region(tsl::tracing::EventCategory::kRunClosure,
+                                    t.f->trace_id);
   t.f->f();
 }
 
@@ -622,24 +623,24 @@ void RunHandlerThreadPool::WorkerLoop(int thread_id,
       }
     }
     if (t.f) {
-      profiler::TraceMe activity(
+      tsl::profiler::TraceMe activity(
           [=] {
             return strings::StrCat(task_from_blocking_queue ? "inter" : "intra",
                                    " #id = ", tws->GetTracemeId(), " ",
                                    thread_id, "#");
           },
-          profiler::TraceMeLevel::kInfo);
+          tsl::profiler::TraceMeLevel::kInfo);
       VLOG(2) << "Running " << (task_from_blocking_queue ? "inter" : "intra")
               << " work from " << tws->GetTracemeId();
       tws->IncrementInflightTaskCount(task_from_blocking_queue);
       env_.ExecuteTask(t);
       tws->DecrementInflightTaskCount(task_from_blocking_queue);
     } else {
-      profiler::TraceMe activity(
+      tsl::profiler::TraceMe activity(
           [=] {
             return strings::StrCat("Sleeping#thread_id=", thread_id, "#");
           },
-          profiler::TraceMeLevel::kInfo);
+          tsl::profiler::TraceMeLevel::kInfo);
       if (VLOG_IS_ON(4)) {
         for (int i = 0; i < thread_work_sources->size(); ++i) {
           VLOG(4) << "source id " << i << " "
@@ -847,12 +848,12 @@ class RunHandlerPool::Impl {
     {
       mutex_lock l(mu_);
       if (!has_free_handler()) {
-        profiler::TraceMe activity(
+        tsl::profiler::TraceMe activity(
             [&] {
               return strings::StrCat("WaitingForHandler#step_id=", step_id,
                                      "#");
             },
-            profiler::TraceMeLevel::kInfo);
+            tsl::profiler::TraceMeLevel::kInfo);
         TRACESTRING(
             strings::StrCat("RunHandlerPool::Impl::Get waiting for a handler "
                             "with timeout in millisecond",

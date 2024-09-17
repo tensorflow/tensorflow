@@ -179,7 +179,7 @@ Status SetUpKernelFallbackCompatRequestContext(
   fallback_request_state.set_cancellation_manager(cancellation_manager);
   fallback_request_state.set_runtime_config(runtime_config);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace tfd

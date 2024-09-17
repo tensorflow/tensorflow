@@ -1,8 +1,8 @@
 # python/lib/io package
 
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test", "tf_python_pybind_extension")
 load("//tensorflow:tensorflow.bzl", "if_oss")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test", "tf_python_pybind_extension")
 
 # copybara:uncomment_begin(google-only)
 # load("//third_party/zlib:BUILD_defs.bzl", "brittle_test_relying_on_stable_zlib_output")
@@ -62,8 +62,6 @@ py_strict_library(
         "//tensorflow:__subpackages__",
         "//tensorflow:internal",
         "//third_party/cloud_tpu/convergence_tools:__subpackages__",
-        "//third_party/proto_splitter:__subpackages__",  # TODO(b/277279227): remove this dep from proto_splitter
-        "//third_party/py/tf_agents:__subpackages__",
         "//third_party/py/tf_slim:__subpackages__",
     ],
     deps = [
@@ -82,9 +80,7 @@ py_strict_library(
     visibility = [
         "//tensorflow:__subpackages__",
         "//tensorflow:internal",
-        "//third_party/cloud_tpu/convergence_tools:__subpackages__",
         "//third_party/py/tf_agents:__subpackages__",
-        "//third_party/py/tf_slim:__subpackages__",
     ],
     deps = [
         ":_pywrap_record_io",
@@ -100,9 +96,6 @@ py_strict_library(
     visibility = [
         "//tensorflow:__subpackages__",
         "//tensorflow:internal",
-        "//third_party/cloud_tpu/convergence_tools:__subpackages__",
-        "//third_party/py/tf_agents:__subpackages__",
-        "//third_party/py/tf_slim:__subpackages__",
     ],
     deps = [":tf_record"],
 )

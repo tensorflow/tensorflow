@@ -20,8 +20,8 @@
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/hlo_alias_analysis.h"
-#include "xla/service/hlo_pass_interface.h"
 
 namespace xla {
 
@@ -48,6 +48,13 @@ class HostOffloadLegalize : public HloModulePass {
  private:
   const int64_t kHostMemorySpaceColor;
   const bool after_layout_;
+
+  // For any memory offloaded to the host, return the instruction which is the
+  // start of such and offload. These will either be "MoveToHost" annotations or
+  // entry computation parameters.
+  std::vector<HloInstruction*> FindStartingInstructionsOfHostMemoryOffload(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) const;
 };
 
 }  // namespace xla

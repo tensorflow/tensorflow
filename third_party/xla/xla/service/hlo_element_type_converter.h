@@ -17,7 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_HLO_ELEMENT_TYPE_CONVERTER_H_
 
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
 
@@ -36,7 +36,7 @@ class HloElementTypeConverter : public HloModulePass {
 
   // Returns the pass on the module and returns whether the module was modified.
   using HloPassInterface::Run;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

@@ -16,7 +16,6 @@ limitations under the License.
 
 #include "xla/service/hlo_computation_deduplicator.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -27,16 +26,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/layout_util.h"
-#include "xla/literal.h"
-#include "xla/service/hlo_pass_fix.h"
+#include "xla/literal_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -100,6 +95,7 @@ TEST_F(HloComputationDeduplicatorTest, RemoveRegionBandC) {
   }
   EXPECT_EQ(computation_names.size(), 2);
 }
+
 TEST_F(HloComputationDeduplicatorTest, RemoveRegionBExactCopy) {
   const std::string_view text = R"(
   HloModule DeDupTest, entry_computation_layout={(s32[10]{0},s32[15]{0})->s32[]}
@@ -181,7 +177,7 @@ TEST_F(HloComputationDeduplicatorTest, RemoveRegionsWithSameSubcomp) {
     rd1 = s32[] call(Arg_0, Arg_1), to_apply=main.15
     rd2 = s32[] call(Arg_0, Arg_1), to_apply=main.16
     ROOT ret = add(rd1, rd2)
-  } 
+  }
   )";
 
   auto computation_names = RunDeduplicatePass(text, /*expect_true=*/true);
@@ -195,6 +191,7 @@ TEST_F(HloComputationDeduplicatorTest, RemoveRegionsWithSameSubcomp) {
   }
   EXPECT_EQ(computation_names.size(), 3);
 }
+
 TEST_F(HloComputationDeduplicatorTest, DontRemoveRegionsWithDifferentSubcomp) {
   const std::string_view text = R"(
   HloModule DeDupTest, entry_computation_layout={(s32[10]{0},s32[15]{0})->s32[]}
@@ -334,13 +331,61 @@ TEST_F(HloComputationDeduplicatorTest, DontRemoveRegionBCommutative) {
   )";
 
   auto computation_names = RunDeduplicatePass(text, /*expect_true=*/false);
-  // Will also take into account commutativety.
+  // Will also take into account commutativity.
   int region_b_count = 0;
   for (auto name : computation_names) {
     region_b_count += (name == "region_B");
   }
   EXPECT_EQ(region_b_count, 1);
   EXPECT_EQ(computation_names.size(), 3);
+}
+
+TEST_F(HloComputationDeduplicatorTest,
+       DontRemoveRegionBDifferentExecutionThread) {
+  const std::string_view text = R"(
+  HloModule DeDupTest, entry_computation_layout={(s32[10]{0},s32[15]{0})->s32[]}
+
+  region_A {
+    Arg_0 = s32[] parameter(0)
+    Arg_1 = s32[] parameter(1)
+    ROOT add = s32[] add(Arg_0, Arg_1)
+  }
+
+  region_B {
+    Arg_0 = s32[] parameter(0)
+    Arg_1 = s32[] parameter(1)
+    ROOT add = s32[] add(Arg_0, Arg_1)
+  }
+
+  called_computation {
+    Arg_0 = s32[15]{0} parameter(0)
+    Cst = s32[] constant(0)
+    ROOT rd2 = s32[] reduce(Arg_0, Cst), dimensions={0}, to_apply=region_B
+  }, execution_thread="parallel_thread"
+
+  ENTRY main.15 {
+    Arg_0 = s32[10]{0} parameter(0)
+    constant.3 = s32[] constant(0)
+    rd1 = s32[] reduce(Arg_0, constant.3), dimensions={0}, to_apply=region_A
+
+    Arg_1 = s32[15]{0} parameter(1)
+    call-start = ((s32[15]{0}), s32[], s32[]) call-start(Arg_1),
+       async_execution_thread="parallel_thread",
+       to_apply=%called_computation
+    call-done = s32[] call-done(call-start)
+
+    ROOT multiply.14 = s32[] multiply(rd1, call-done)
+  }
+  )";
+
+  auto computation_names = RunDeduplicatePass(text, /*expect_true=*/false);
+  // Will also take into account commutativity.
+  int region_b_count = 0;
+  for (auto name : computation_names) {
+    region_b_count += (name == "region_B");
+  }
+  EXPECT_EQ(region_b_count, 1);
+  EXPECT_EQ(computation_names.size(), 5);
 }
 
 TEST_F(HloComputationDeduplicatorTest, DontRemoveRegionLargeConstant) {
@@ -618,5 +663,6 @@ TEST_F(HloComputationDeduplicatorTest, DontDeduplicateReduceAllReduce) {
   auto computation_names = RunDeduplicatePass(text, /*expect_true=*/false);
   EXPECT_EQ(computation_names.size(), 3);
 }
+
 }  //  namespace
 }  //  namespace xla

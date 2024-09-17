@@ -37,34 +37,26 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/printer.h"
-#include "xla/status.h"
 #include "tsl/platform/errors.h"
 #include "tsl/profiler/lib/nvtx_utils.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 
+#if GOOGLE_CUDA
+#include "nvtx3/nvToolsExt.h"
+#include "nvtx3/nvToolsExtPayload.h"
+#endif
+
 namespace xla::gpu {
 
 using ::tsl::profiler::ScopedAnnotation;
+using ::tsl::profiler::StringHandle;
 namespace {
 
-nvtxStringHandle_t RegisterString(const std::string& str) {
-#if GOOGLE_CUDA
-  auto domain = tsl::profiler::GetNVTXDomain();
-  if (!domain) {
-    return {};  // NVTX not enabled, so don't registering strings.
+StringHandle RegisterString(const std::string& str) {
+  if (auto domain = tsl::profiler::DefaultProfilerDomain(); domain) {
+    return tsl::profiler::RegisterString(domain, str);
   }
-  constexpr auto max_length = 65330;
-  if (str.size() <= max_length) {
-    return nvtxDomainRegisterStringA(*domain, str.c_str());
-  }
-  // nvbugs 4340868
-  std::string_view suffix{"\n[truncated]\n"};
-  std::string buffer(str.data(), max_length - suffix.size());
-  buffer.append(suffix);
-  return nvtxDomainRegisterStringA(*domain, buffer.c_str());
-#else
   return {};
-#endif
 }
 
 // Nsight Systems supports some basic HTML markup in annotation strings. This
@@ -161,7 +153,7 @@ class SourceLocationVisitor : public ConstDfsHloVisitorWithDefault {
     return std::move(oss).str();
   }
 
-  Status DefaultAction(HloInstruction const* inst) final {
+  absl::Status DefaultAction(HloInstruction const* inst) final {
     OpMetadata const& meta = inst->metadata();
     // The full op_name is split across three places: the module-level
     // annotation shows the prefix that is common to the whole module, the
@@ -199,10 +191,10 @@ class SourceLocationVisitor : public ConstDfsHloVisitorWithDefault {
                                           op_name,
                                           meta.source_line()});
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  std::pair<nvtxStringHandle_t, int32_t> LongestSourceLocationPrefix() const {
+  std::pair<StringHandle, int32_t> LongestSourceLocationPrefix() const {
     // Find the longest common prefix along the members of location_set_ and
     // return a formatted version of that prefix, along with its length. As
     // location_set_ is sorted, that just means looking for the longest common
@@ -371,7 +363,7 @@ std::string CalledInstructionsAsString(HloInstruction const& inst) {
 
 // Get a string representing the longest common prefix of source locations in
 // this module, and the number of frames that that represents.
-std::pair<nvtxStringHandle_t, int32_t> GetLongestSourceLocationPrefix(
+std::pair<StringHandle, int32_t> GetLongestSourceLocationPrefix(
     const HloModule& mod) {
   // In the presence of (at least) debug callbacks, calling Accept on the root
   // instruction of the module may not reach all instructions in the module.
@@ -417,8 +409,8 @@ auto schema_entry(uint64_t type, const char* name, uint64_t offset) {
 uint64_t ModuleAnnotation::NvtxSchemaId() {
   static std::uint64_t schema_id = []() -> std::uint64_t {
 #if GOOGLE_CUDA
-    auto domain_opt = tsl::profiler::GetNVTXDomain();
-    if (!domain_opt.has_value()) {
+    auto domain = tsl::profiler::DefaultProfilerDomain();
+    if (!domain) {
       return 0;
     }
     const nvtxPayloadSchemaEntry_t schema[] = {
@@ -440,7 +432,7 @@ uint64_t ModuleAnnotation::NvtxSchemaId() {
         /* .entries = */ schema,
         /* .numEntries = */ sizeof(schema) / sizeof(schema[0]),
         /* .payloadStaticSize = */ sizeof(ModuleAnnotation)};
-    return nvtxPayloadSchemaRegister(*domain_opt, &schemaAttr);
+    return RegisterSchema(domain, &schemaAttr);
 #else
     return 0;
 #endif
@@ -491,8 +483,8 @@ ModuleAnnotations::ModuleAnnotations(std::string_view module_name)
 uint64_t KernelAnnotation::NvtxSchemaId() {
   static std::uint64_t schema_id = []() -> std::uint64_t {
 #if GOOGLE_CUDA
-    auto domain_opt = tsl::profiler::GetNVTXDomain();
-    if (!domain_opt.has_value()) {
+    auto domain = tsl::profiler::DefaultProfilerDomain();
+    if (!domain) {
       return 0;
     }
     const nvtxPayloadSchemaEntry_t schema[] = {
@@ -515,7 +507,7 @@ uint64_t KernelAnnotation::NvtxSchemaId() {
         /* .entries = */ schema,
         /* .numEntries = */ sizeof(schema) / sizeof(schema[0]),
         /* .payloadStaticSize = */ sizeof(KernelAnnotation)};
-    return nvtxPayloadSchemaRegister(*domain_opt, &schemaAttr);
+    return RegisterSchema(domain, &schemaAttr);
 #else
     return 0;
 #endif
@@ -535,7 +527,7 @@ ModuleAnnotations::ModuleAnnotations(const HloModule& mod) : top_level{mod} {
       // range based on the content of `inst`, including `called` etc.
       // FIXME: using try_emplace here was sensitive to
       // https://github.com/abseil/abseil-cpp/issues/388.
-      kernels.insert({inst->name(), {top_level, *inst}});
+      kernels.insert({inst->name(), KernelAnnotation{top_level, *inst}});
     }
   }
 }
@@ -556,19 +548,15 @@ ScopedModuleAnnotations::~ScopedModuleAnnotations() {
   std::exchange(current_annotations, restore_);
 }
 
-const ModuleAnnotations* GetCurrentModuleAnnotations() {
-  return current_annotations;
-}
-
 std::optional<ScopedAnnotation> GetKernelAnnotation(
-    const ModuleAnnotations* annotations, std::string_view profile_annotation) {
+    std::string_view profile_annotation) {
   if (profile_annotation.empty()) {
     return {};
   }
-  if (annotations) {
+  if (current_annotations) {
     // Have a set of pre-prepared thunk/kernel annotations to use
-    const auto iter = annotations->kernels.find(profile_annotation);
-    if (iter != annotations->kernels.end()) {
+    const auto iter = current_annotations->kernels.find(profile_annotation);
+    if (iter != current_annotations->kernels.end()) {
       // Have a pre-prepared annotation, use it
       return std::optional<ScopedAnnotation>{[&] { return iter->second; }};
     }

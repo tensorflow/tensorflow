@@ -26,12 +26,24 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/async_collective_creator.h"
+#include "xla/service/hlo_cost_analysis.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/util.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -130,7 +142,8 @@ class TestLatencyEstimator : public LatencyEstimator {
 absl::StatusOr<bool> RunScheduler(
     HloModule* module, SchedulerConfig sched_config = GetDefaultSchedConfig(),
     std::unique_ptr<LatencyEstimator> latency_estimator =
-        std::make_unique<ApproximateLatencyEstimator>()) {
+        std::make_unique<ApproximateLatencyEstimator>(),
+    std::unique_ptr<AsyncTracker> async_tracker = nullptr) {
   AsyncCollectiveCreator::CollectiveCreatorConfig config{
       /*convert_all_reduce=*/HloPredicateTrue,
       /*convert_all_gather=*/HloPredicateTrue,
@@ -149,7 +162,9 @@ absl::StatusOr<bool> RunScheduler(
     }
     return ShapeUtil::ByteSizeOfElements(shape);
   };
-  auto async_tracker = std::make_unique<AsyncTracker>(sched_config);
+  if (!async_tracker) {
+    async_tracker = std::make_unique<AsyncTracker>(sched_config);
+  }
   auto scheduler_core = std::make_unique<DefaultSchedulerCore>(
       shape_size_bytes, async_tracker.get(), latency_estimator.get(),
       sched_config);
@@ -2896,12 +2911,12 @@ TEST_F(LatencyHidingSchedulerTest, RerunWithSmallerMemoryLimit) {
   std::vector<HloInstruction*> original_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
   auto sched_config = GetDefaultSchedConfig();
-  sched_config.memory_limit = 140;
+  sched_config.memory_limit = 110;
   sched_config.rerun = 1;
   EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config).ok());
   // LatencyHidingScheduler runs an additional "rerun" iteration because the
-  // peak memory usage after the first run was 152 bytes (> 140 bytes), so it
-  // sets the new limit to 126 and obtains a peak memory usage of 104 bytes at
+  // peak memory usage after the first run was 136 bytes (> 110 bytes), so it
+  // sets the new limit to 99 and obtains a peak memory usage of 88 bytes at
   // the end of the rerun. In the first run, collective-permute overlaps the
   // slice op, whereas in the rerun, it does not overlap anything.
   std::vector<HloInstruction*> new_instruction_sequence =
@@ -3048,6 +3063,180 @@ ENTRY AddR2 {
   EXPECT_LT(PositionInVector(new_instruction_sequence, cps),
             PositionInVector(new_instruction_sequence, cpd2));
   XLA_VLOG_LINES(1, hlo_module->ToString());
+}
+
+TEST_F(LatencyHidingSchedulerTest, ScheduleLoopPeeledSendDoneBeforeWhile) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+while_cond {
+  param = (bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, pred[]) parameter(0)
+  ROOT gte = pred[] get-tuple-element(param), index=2
+}
+
+while_body {
+  param = (bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, pred[]) parameter(0)
+  gte0 = bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)} get-tuple-element(param), index=0
+  gte1 = bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)} get-tuple-element(param), index=1
+  %add.0 = bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)} add(gte0, gte1)
+  gte2 = pred[] get-tuple-element(param), index=2
+  ROOT tuple = (bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, pred[]) tuple(%add.0, gte1, gte2)
+}
+
+ENTRY %entry {
+  %p0 = bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)} parameter(0)
+  %p1 = bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)} parameter(1)
+  %after-all = token[] after-all()
+  %send = (bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, u32[], token[]) send(bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)} %p0, token[] %after-all), channel_id=1246, is_host_transfer=true, frontend_attributes={_xla_host_transfer_handler_name="xla_megascale_runtime",_xla_host_transfer_rendezvous="collective-permute.145_0",_xla_megascale_target="{{200000->100000},{200001->100001},{200002->100002},{200003->100003},{200004->100004},{200005->100005},{200006->100006},{200007->100007},{200008->100008},{200009->100009},{200010->100010},{200011->100011},{200012->100012},{200013->100013},{200014->100014},{200015->100015},{200016->100016},{200017->100017},{200018->100018},{200019->100019},{200020->100020},{200021->100021},{200022->100022},{200023->100023},{200024->100024},{200025->100025},{200026->100026},{200027->100027},{200028->100028},{200029->100029},{200030->100030},{200031->100031},{200032->100032},{200033->100033},{200034->100034},{200035->100035},{200036->100036},{200037->100037},{200038->100038},{200039->100039},{200040->100040},{200041->100041},{200042->100042},{200043->100043},{200044->100044},{200045->100045},{200046->100046},{200047->100047},{200048->100048},{200049->100049},{200050->100050},{200051->100051},{200052->100052},{200053->100053},{200054->100054},{200055->100055},{200056->100056},{200057->100057},{200058->100058},{200059->100059},{200060->100060},{200061->100061},{200062->100062},{200063->100063},{200064->100064},{200065->100065},{200066->100066},{200067->100067},{200068->100068},{200069->100069},{200070->100070},{200071->100071},{200072->100072},{200073->100073},{200074->100074},{200075->100075},{200076->100076},{200077->100077},{200078->100078},{200079->100079},{200080->100080},{200081->100081},{200082->100082},{200083->100083},{200084->100084},{200085->100085},{200086->100086},{200087->100087},{200088->100088},{200089->100089},{200090->100090},{200091->100091},{200092->100092},{200093->100093},{200094->100094},{200095->100095},{200096->100096},{200097->100097},{200098->100098},{200099->100099},{200100->100100},{200101->100101},{200102->100102},{200103->100103},{200104->100104},{200105->100105},{200106->100106},{200107->100107},{200108->100108},{200109->100109},{200110->100110},{200111->100111},{200112->100112},{200113->100113},{200114->100114},{200115->100115},{200116->100116},{200117->100117},{200118->100118},{200119->100119},{200120->100120},{200121->100121},{200122->100122},{200123->100123},{200124->100124},{200125->100125},{200126->100126},{200127->100127}}",_xla_megascale_transfer_type="ONE_TO_ONE"}, backend_config={"flag_configs":[],"scoped_memory_configs":[],"compute_type":"COMPUTE_TYPE_DEFAULT","device_type":"DEVICE_TYPE_INVALID","used_scoped_memory_configs":[],"customized_send_recv_config":{"dcn_collective_permute_send":{"non_source_slice_ids":[0]}}}
+  %recv = (bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, u32[], token[]) recv(token[] %after-all), channel_id=1247, is_host_transfer=true, frontend_attributes={_xla_host_transfer_handler_name="xla_megascale_runtime",_xla_host_transfer_rendezvous="collective-permute.145_0",_xla_megascale_target="{{200000->100000},{200001->100001},{200002->100002},{200003->100003},{200004->100004},{200005->100005},{200006->100006},{200007->100007},{200008->100008},{200009->100009},{200010->100010},{200011->100011},{200012->100012},{200013->100013},{200014->100014},{200015->100015},{200016->100016},{200017->100017},{200018->100018},{200019->100019},{200020->100020},{200021->100021},{200022->100022},{200023->100023},{200024->100024},{200025->100025},{200026->100026},{200027->100027},{200028->100028},{200029->100029},{200030->100030},{200031->100031},{200032->100032},{200033->100033},{200034->100034},{200035->100035},{200036->100036},{200037->100037},{200038->100038},{200039->100039},{200040->100040},{200041->100041},{200042->100042},{200043->100043},{200044->100044},{200045->100045},{200046->100046},{200047->100047},{200048->100048},{200049->100049},{200050->100050},{200051->100051},{200052->100052},{200053->100053},{200054->100054},{200055->100055},{200056->100056},{200057->100057},{200058->100058},{200059->100059},{200060->100060},{200061->100061},{200062->100062},{200063->100063},{200064->100064},{200065->100065},{200066->100066},{200067->100067},{200068->100068},{200069->100069},{200070->100070},{200071->100071},{200072->100072},{200073->100073},{200074->100074},{200075->100075},{200076->100076},{200077->100077},{200078->100078},{200079->100079},{200080->100080},{200081->100081},{200082->100082},{200083->100083},{200084->100084},{200085->100085},{200086->100086},{200087->100087},{200088->100088},{200089->100089},{200090->100090},{200091->100091},{200092->100092},{200093->100093},{200094->100094},{200095->100095},{200096->100096},{200097->100097},{200098->100098},{200099->100099},{200100->100100},{200101->100101},{200102->100102},{200103->100103},{200104->100104},{200105->100105},{200106->100106},{200107->100107},{200108->100108},{200109->100109},{200110->100110},{200111->100111},{200112->100112},{200113->100113},{200114->100114},{200115->100115},{200116->100116},{200117->100117},{200118->100118},{200119->100119},{200120->100120},{200121->100121},{200122->100122},{200123->100123},{200124->100124},{200125->100125},{200126->100126},{200127->100127}}",_xla_megascale_transfer_type="ONE_TO_ONE"}, control-predecessors={%send}, backend_config={"flag_configs":[],"scoped_memory_configs":[],"compute_type":"COMPUTE_TYPE_DEFAULT","device_type":"DEVICE_TYPE_INVALID","used_scoped_memory_configs":[],"customized_send_recv_config":{"dcn_collective_permute_recv":{"non_target_slice_ids":[1]}}}
+  %recv-done = (bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, token[]) recv-done((bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, u32[], token[]) %recv), channel_id=1247, is_host_transfer=true, backend_config={"flag_configs":[],"scoped_memory_configs":[],"compute_type":"COMPUTE_TYPE_DEFAULT","device_type":"DEVICE_TYPE_INVALID","used_scoped_memory_configs":[],"customized_send_recv_config":{"dcn_collective_permute_recv":{"non_target_slice_ids":[1]}}}
+  %get-tuple-element = bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)} get-tuple-element((bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, token[]) %recv-done), index=0
+  %send-done = token[] send-done((bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, u32[], token[]) %send), channel_id=1246, is_host_transfer=true, control-predecessors={%recv-done}, backend_config={"flag_configs":[],"scoped_memory_configs":[],"compute_type":"COMPUTE_TYPE_DEFAULT","device_type":"DEVICE_TYPE_INVALID","used_scoped_memory_configs":[],"customized_send_recv_config":{"dcn_collective_permute_send":{"non_source_slice_ids":[0]}}}
+  %p2 = pred[] parameter(2)
+  tuple = (bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, pred[]) tuple(%get-tuple-element, %p1, %p2)
+  while = (bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)}, pred[]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte0 = bf16[1,1,4096,1344]{2,3,1,0:T(8,128)(2,1)} get-tuple-element(while), index=0
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.collective_permute_overlap_limit = 2;
+  sched_config.all_gather_overlap_limit = 2;
+  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config).ok());
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(hlo_module->entry_computation()).instructions();
+  // Check that 'send-done' is scheduled before 'while'.
+  EXPECT_LT(GetIndex(new_instruction_sequence, "send-done"),
+            GetIndex(new_instruction_sequence, "while"));
+}
+
+// This test simulates a sample target where all-gathers contain non-extendable
+// and selective resources.
+TEST_F(LatencyHidingSchedulerTest, AllGatherWithSelectiveOverlap) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY %module {
+  %constant.19 = u32[] constant(0)
+  %replica_id = u32[]{:T(128)} replica-id()
+  %convert = f32[]{:T(128)} convert(u32[]{:T(128)} %replica_id)
+  %color_operand.1 = f32[8,256,256]{2,1,0:T(8,128)} broadcast(
+    f32[]{:T(128)} %convert), dimensions={}
+  %ag-start = (f32[8,256,256], f32[16,256,256]) all-gather-start(
+    f32[8,256,256] %color_operand.1), replica_groups={{0,1}}, dimensions={0},
+    metadata={op_type="AllGather" op_name="ag0"}
+  %ag-done = f32[16,256,256] all-gather-done(
+    (f32[8,256,256], f32[16,256,256]) %ag-start),
+    metadata={op_type="AllGather" op_name="ag0"}
+  p0 = f32[16,64,256]{2,1,0} parameter(0)
+  p1 = f32[16,64,256]{2,1,0} parameter(1)
+  p2 = f32[16,256,256]{2,1,0} parameter(2)
+  p3 = f32[16,256,256]{2,1,0} parameter(3)
+  c0 = f32[16,256,256]{2,1,0} convolution(p0, p1),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb
+  c1 = f32[16,256,256]{2,1,0} convolution(p0, p1),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb
+  c2 = f32[16,256,256]{2,1,0} convolution(p0, p1),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb
+  ROOT a2 = f32[16,256,256]{2,1,0} add(%ag-done, c0)
+}
+)";
+
+  // Extend AsyncTracker for a fake target where all-gather contains
+  // non-extendable and selective resources.
+  class SelectiveOverlapAsyncTracker : public AsyncTracker {
+   public:
+    explicit SelectiveOverlapAsyncTracker(const SchedulerConfig& sched_config)
+        : AsyncTracker(sched_config) {}
+
+    ResourceHazardType GetResourceHazardType(
+        int64_t resource_type) const override {
+      if (resource_type == ResourceTypeToIndex(ResourceType::kAllGather)) {
+        return ResourceHazardType::kSelective;
+      }
+      // The first target defined resource is defined as non-extendable.
+      if (resource_type == AsyncTracker::GetFirstTargetDefinedResource()) {
+        return ResourceHazardType::kNonextendable;
+      }
+      return AsyncTracker::GetResourceHazardType(resource_type);
+    }
+
+    ResourcesVector GetResourcesFromInstruction(
+        const HloInstruction& hlo) const override {
+      ResourcesVector result = AsyncTracker::GetResourcesFromInstruction(hlo);
+      // There is only one target defined resource (which is non-extendable).
+      if (hlo.opcode() == HloOpcode::kAllGatherStart) {
+        result.push_back({AsyncTracker::GetFirstTargetDefinedResource(),
+                          ResourceUsageType::kResourceRelease});
+      }
+      return result;
+    }
+
+    absl::InlinedVector<int64_t, 1> GetReleasedNonextendableResourcesFromVector(
+        const ResourcesVector& resources) const override {
+      absl::InlinedVector<int64_t, 1> non_extendable_resources;
+      for (const ResourcePair& resource : resources) {
+        if (GetResourceHazardType(resource.first) ==
+            ResourceHazardType::kNonextendable) {
+          non_extendable_resources.push_back({resource.first});
+        }
+      }
+      return non_extendable_resources;
+    }
+
+    void PostProcessScheduleGraph(
+        HloScheduleGraph* schedule_graph,
+        const LatencyEstimator* latency_estimator) const override {
+      // Mark c2 as not valuable for selective overlap.
+      for (const HloInstruction* instr :
+           schedule_graph->GetOriginalInstrList()) {
+        if (instr->name() == "c2") {
+          schedule_graph->GetNode(instr).SetValuableForSelectiveOverlap(false);
+        }
+      }
+    }
+  };
+  SchedulerConfig sched_config = GetDefaultSchedConfig();
+  sched_config.enable_selective_resources = true;
+  std::unique_ptr<AsyncTracker> async_tracker =
+      std::make_unique<SelectiveOverlapAsyncTracker>(sched_config);
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  HloComputation* entry_computation = hlo_module->entry_computation();
+  std::vector<HloInstruction*> original_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+
+  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config,
+                           std::make_unique<ApproximateLatencyEstimator>(),
+                           std::move(async_tracker))
+                  .ok());
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+
+  // Without selective async tracker, we would expect all-gather to only overlap
+  // with c2 as c2 has a cost of 5000 which fully covers the latency of
+  // all-gather. However, as c2 is not valuable for selective overlap, we expect
+  // all-gather overlap with c1 and c2 (c2 is effectively ignored from a latency
+  // hiding perspective).
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+  int c0_index = GetIndex(new_instruction_sequence, "c0");
+  int c1_index = GetIndex(new_instruction_sequence, "c1");
+  int c2_index = GetIndex(new_instruction_sequence, "c2");
+  int ag_start_index = GetIndex(new_instruction_sequence, "ag-start");
+  int ag_done_index = GetIndex(new_instruction_sequence, "ag-done");
+  EXPECT_LT(c0_index, ag_start_index);
+  EXPECT_LT(ag_start_index, c1_index);
+  EXPECT_LT(c1_index, c2_index);
+  EXPECT_LT(c2_index, ag_done_index);
 }
 
 }  // namespace xla

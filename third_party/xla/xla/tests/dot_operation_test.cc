@@ -13,14 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <limits>
+#include <cstdint>
 #include <memory>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
-#if TENSORFLOW_USE_ROCM
-#include "rocm/rocm_config.h"
-#endif
 #include "xla/array2d.h"
 #include "xla/array3d.h"
 #include "xla/client/lib/arithmetic.h"
@@ -31,12 +28,17 @@ limitations under the License.
 #include "xla/reference_util.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
 #include "xla/tests/test_utils.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
+
+#if TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#endif
 
 namespace xla {
 namespace {
@@ -70,7 +72,12 @@ using TypesF16F32F64CF64 = ::testing::Types<
 #endif
     float>;
 
+#if GOOGLE_CUDA
 using TypesF8 = ::testing::Types<tsl::float8_e4m3fn>;
+#endif
+#if TF_HIPBLASLT && TF_ROCM_VERSION >= 60000
+using TypesF8 = ::testing::Types<tsl::float8_e4m3fnuz>;
+#endif
 
 // Check that we can safely pass an input tuple's elements to a dot operation.
 XLA_TEST_F(DotOperationTest, DotOfInputTupleElem) {
@@ -314,7 +321,6 @@ class ParametricDotTest : public DotOperationTest,
         propagate_grad_xy_ = param.dot_lhs_row_major ? 1 : 2;
       }
     }
-    ManifestCheckingTest::SetUp();
   }
 
   template <typename NativeT>
@@ -347,6 +353,13 @@ void ParametricDotTest::ComputeAndCompareR2WithError<Eigen::half>(
 template <>
 void ParametricDotTest::ComputeAndCompareR2WithError<int32_t>(
     XlaBuilder* builder, const Array2D<int32_t>& expected,
+    absl::Span<GlobalData* const> arguments) {
+  ComputeAndCompareR2(builder, expected, arguments);
+}
+
+template <>
+void ParametricDotTest::ComputeAndCompareR2WithError<uint8_t>(
+    XlaBuilder* builder, const Array2D<uint8_t>& expected,
     absl::Span<GlobalData* const> arguments) {
   ComputeAndCompareR2(builder, expected, arguments);
 }
@@ -467,12 +480,14 @@ std::vector<DotTestParam> CreateDotTestParameters() {
 XLA_TEST_P(ParametricDotTest, TestF16) { TestImpl<Eigen::half>(); }
 #endif
 XLA_TEST_P(ParametricDotTest, TestF32) { TestImpl<float>(); }
-XLA_TEST_P(ParametricDotTest, TestF64) { TestImpl<double>(); }
+XLA_TEST_P(ParametricDotTest, OVERSIZE_ON_GRM(TestF64)) { TestImpl<double>(); }
 XLA_TEST_P(ParametricDotTest, TestC64) { TestImpl<std::complex<float>>(); }
 #ifndef XLA_BACKEND_DOES_NOT_SUPPORT_COMPLEX128
 XLA_TEST_P(ParametricDotTest, TestC128) { TestImpl<std::complex<double>>(); }
 #endif
 XLA_TEST_P(ParametricDotTest, TestS32) { TestImpl<int32_t>(); }
+
+XLA_TEST_P(ParametricDotTest, TestU8) { TestImpl<uint8_t>(); }
 
 INSTANTIATE_TEST_CASE_P(DotTests, ParametricDotTest,
                         ::testing::ValuesIn(CreateDotTestParameters()),
@@ -638,7 +653,7 @@ TYPED_TEST_CASE(DotOperationTestForBatchMatMul, TypesF16F32F64);
 // Regression test for b/32055648. The root of the graph is a kFusion of 4
 // bitcasts. Although bitcasts don't map to thunks, the root should still be
 // sync-dependent on bitcasts' operands.
-XLA_TYPED_TEST(DotOperationTestForBatchMatMul, Types) {
+XLA_TYPED_TEST(DotOperationTestForBatchMatMul, DISABLED_ON_TPU(Types)) {
   using T = TypeParam;
   XlaBuilder builder(this->TestName());
   auto x = Parameter(&builder, 0, ShapeUtil::MakeShapeWithType<T>({2, 2, 2, 2}),
@@ -731,7 +746,7 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMul) {
       {x_data.get(), y_data.get()}, this->error_spec_);
 }
 
-#if GOOGLE_CUDA || TF_HIPBLASLT
+#if GOOGLE_CUDA || (TF_HIPBLASLT && TF_ROCM_VERSION >= 60000)
 template <typename T>
 class DotOperationTestWithCublasLt_F16F32F64CF64 : public DotOperationTest {
  public:
@@ -787,7 +802,7 @@ XLA_TYPED_TEST(DotOperationTestWithCublasLt_F16F32F64CF64,
 }
 #endif  // GOOGLE_CUDA || TF_HIPBLASLT
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TF_HIPBLASLT
 template <typename T>
 class DotOperationTestWithCublasLt_F8 : public DotOperationTest {
  public:
@@ -1109,7 +1124,7 @@ XLA_TYPED_TEST(DotOperationTestWithCublasLt_F8, ScaledABScaledDWithDAmaxF8) {
                                 b_scale_data.get(), d_scale_data.get()},
                                this->error_spec_);
 }
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TF_HIPBLASLT
 
 XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulR3LhsR2Rhs) {
   using T = TypeParam;
@@ -2286,6 +2301,22 @@ ENTRY MatrixVectorComplex {
   p0 = s8[5,5]{1,0} parameter(0)
   p1 = s16[5,1]{0,1} parameter(1)
   ROOT dot = s32[5,1]{1,0} dot(p0, p1), lhs_contracting_dims={1},
+                                        rhs_contracting_dims={0}
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
+}
+
+XLA_TEST_F(DotOperationTextTest, MixedPrecisionDotLowPrecisionOutput) {
+  absl::string_view hlo_string =
+      R"(
+HloModule MixedPrecisionDotLowPrecisionOutput
+
+ENTRY main {
+  p0 = f16[5,5]{1,0} parameter(0)
+  p1 = f32[5,1]{0,1} parameter(1)
+  ROOT dot = f16[5,1]{1,0} dot(p0, p1), lhs_contracting_dims={1},
                                         rhs_contracting_dims={0}
 }
 )";

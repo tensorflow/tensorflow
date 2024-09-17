@@ -158,7 +158,7 @@ class ConfigureAndInitializeGlobalTPUOpKernel : public OpKernel {
     while (!tpu_platform->Initialized() &&
            (absl::Now() - start < retry_timeout)) {
       VLOG(1) << "Initializaing global TPU system.";
-      init_status = tpu_platform->Initialize({});
+      init_status = tpu_platform->Initialize();
     }
     if (!tpu_platform->Initialized()) {
       return errors::Unavailable("Unable to initialize TPU system.");

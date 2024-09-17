@@ -193,9 +193,9 @@ class ShardGlobalShuffleTest(
           test_base.default_test_combinations(),
           combinations.combine(
               dataset_range=[100],
-              num_shards=[1, 5, 13],
-              shard_index=[0, 1, 4],
-              seed=[None, 19],
+              num_shards=[1, 3, 5],
+              shard_index=[0, 1, 2, 4],
+              seed=[None, 42],
               reshuffle_each_iteration=[True, False])))
   def testShard(
       self,
@@ -228,17 +228,26 @@ class ShardGlobalShuffleCheckpointTest(
           test_base.default_test_combinations(),
           checkpoint_test_base.default_test_combinations(),
           combinations.combine(
+              dataset_range=[10],
+              num_shards=[1, 3],
+              shard_index=[0, 1, 2],
               reshuffle_each_iteration=[True, False],
               symbolic_checkpoint=[True, False])))
   def testShard(
       self,
       verify_fn: Callable[..., None],
+      dataset_range: int,
+      num_shards: int,
+      shard_index: int,
       reshuffle_each_iteration: bool,
       symbolic_checkpoint: bool):
 
+    if shard_index >= num_shards:
+      return
+
     def _build_dataset() -> dataset_ops.Dataset:
-      dataset = dataset_ops.Dataset.range(10)
-      dataset = dataset.shard(3, 0)
+      dataset = dataset_ops.Dataset.range(dataset_range)
+      dataset = dataset.shard(num_shards, shard_index)
       dataset = dataset.prefetch(buffer_size=dataset_ops.AUTOTUNE)
       dataset = global_shuffle_op._global_shuffle(
           dataset, seed=42, reshuffle_each_iteration=reshuffle_each_iteration)
@@ -249,7 +258,7 @@ class ShardGlobalShuffleCheckpointTest(
     verify_fn(
         self,
         _build_dataset,
-        num_outputs=4,
+        num_outputs=len(range(shard_index, dataset_range, num_shards)),
         assert_items_equal=reshuffle_each_iteration)
 
 

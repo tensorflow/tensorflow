@@ -57,6 +57,8 @@ proto::Delegate ConvertDelegate(Delegate delegate) {
       return proto::Delegate::CORE_ML;
     case Delegate_ARMNN:
       return proto::Delegate::ARMNN;
+    case Delegate_MTK_NEURON:
+      return proto::Delegate::MTK_NEURON;
   }
   TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Unexpected value for Delegate: %d",
                   delegate);
@@ -423,6 +425,53 @@ proto::CompilationCachingSettings ConvertCompilationCachingSettings(
   return proto_settings;
 }
 
+proto::MtkNeuronSettings ConvertMtkNeuronSettings(
+    const MtkNeuronSettings& settings) {
+  proto::MtkNeuronSettings proto_settings;
+  proto_settings.set_execution_preference(
+      static_cast<proto::MtkNeuronSettings_ExecutionPreference>(
+          settings.execution_preference()));
+  proto_settings.set_execution_priority(
+      static_cast<proto::MtkNeuronSettings_ExecutionPriority>(
+          settings.execution_priority()));
+
+  auto optimization_hints = settings.optimization_hints();
+  if (optimization_hints != nullptr) {
+    for (auto hint : *optimization_hints) {
+      proto_settings.add_optimization_hints(
+          static_cast<proto::MtkNeuronSettings_OptimizationHint>(hint));
+    }
+  }
+
+  proto_settings.set_operation_check_mode(
+      static_cast<proto::MtkNeuronSettings_OperationCheckMode>(
+          settings.operation_check_mode()));
+  proto_settings.set_allow_fp16_precision_for_fp32(
+      settings.allow_fp16_precision_for_fp32());
+  proto_settings.set_use_ahwb(settings.use_ahwb());
+  proto_settings.set_use_cacheable_buffer(settings.use_cacheable_buffer());
+
+  auto compile_options = settings.compile_options();
+  if (compile_options != nullptr) {
+    for (auto option : *compile_options) {
+      proto_settings.add_compile_options(option->str());
+    }
+  }
+
+  auto accelerator_names = settings.accelerator_names();
+  if (accelerator_names != nullptr) {
+    for (auto name : *accelerator_names) {
+      proto_settings.add_accelerator_names(name->str());
+    }
+  }
+
+  if (settings.neuron_config_path()) {
+    proto_settings.set_neuron_config_path(settings.neuron_config_path()->str());
+  }
+
+  return proto_settings;
+}
+
 proto::TFLiteSettings ConvertTfliteSettings(const TFLiteSettings& settings) {
   proto::TFLiteSettings proto_settings;
   proto_settings.set_delegate(ConvertDelegate(settings.delegate()));
@@ -488,6 +537,11 @@ proto::TFLiteSettings ConvertTfliteSettings(const TFLiteSettings& settings) {
     *proto_settings.mutable_compilation_caching_settings() =
         ConvertCompilationCachingSettings(
             *settings.compilation_caching_settings());
+  }
+
+  if (settings.mtk_neuron_settings() != nullptr) {
+    *proto_settings.mutable_mtk_neuron_settings() =
+        ConvertMtkNeuronSettings(*settings.mtk_neuron_settings());
   }
 
   return proto_settings;

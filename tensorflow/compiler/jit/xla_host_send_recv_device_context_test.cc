@@ -26,8 +26,8 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
-#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace {
@@ -79,9 +79,10 @@ TEST_F(XlaHostSendRecvDeviceContextTest, CopyDeviceTensorToCPU) {
       stream->Memcpy(&gpu_dst, origin_cpu_tensor.data(), gpu_dst.size()));
   TF_ASSERT_OK(stream->BlockHostUntilDone());
 
-  tsl::AsyncValueRef<se::Event> done_event =
-      tsl::MakeConstructedAsyncValueRef<se::Event>(executor);
-  done_event->Init();
+  TF_ASSERT_OK_AND_ASSIGN(auto se_event, executor->CreateEvent());
+  tsl::AsyncValueRef<std::unique_ptr<se::Event>> done_event =
+      tsl::MakeConstructedAsyncValueRef<std::unique_ptr<se::Event>>(
+          std::move(se_event));
   XlaHostRecvDeviceContext* device_context =
       new XlaHostRecvDeviceContext(stream.get(), gpu_dst, shape, done_event);
   TF_ASSERT_OK(device_context->CopyDeviceTensorToCPUSync(
@@ -108,9 +109,10 @@ TEST_F(XlaHostSendRecvDeviceContextTest, CopyCPUTensorToDevice) {
   xla::Shape shape;
   TF_ASSERT_OK(TensorShapeToXLAShape(DT_FLOAT, TensorShape({2, 2}), &shape));
 
-  tsl::AsyncValueRef<se::Event> done_event =
-      tsl::MakeConstructedAsyncValueRef<se::Event>(executor);
-  done_event->Init();
+  TF_ASSERT_OK_AND_ASSIGN(auto se_event, executor->CreateEvent());
+  tsl::AsyncValueRef<std::unique_ptr<se::Event>> done_event =
+      tsl::MakeConstructedAsyncValueRef<std::unique_ptr<se::Event>>(
+          std::move(se_event));
   XlaHostSendDeviceContext* device_context =
       new XlaHostSendDeviceContext(stream.get(), &gpu_dst, shape, done_event);
   TF_ASSERT_OK(device_context->CopyCPUTensorToDeviceSync(
@@ -141,17 +143,19 @@ TEST_F(XlaHostSendRecvDeviceContextTest, RoundTrip) {
   xla::Shape shape;
   TF_ASSERT_OK(TensorShapeToXLAShape(DT_FLOAT, TensorShape({2, 2}), &shape));
 
-  tsl::AsyncValueRef<se::Event> send_done_event =
-      tsl::MakeConstructedAsyncValueRef<se::Event>(executor);
-  send_done_event->Init();
+  TF_ASSERT_OK_AND_ASSIGN(auto se_event, executor->CreateEvent());
+  tsl::AsyncValueRef<std::unique_ptr<se::Event>> send_done_event =
+      tsl::MakeConstructedAsyncValueRef<std::unique_ptr<se::Event>>(
+          std::move(se_event));
   XlaHostSendDeviceContext* send_device_context = new XlaHostSendDeviceContext(
       stream.get(), &gpu_dst, shape, send_done_event);
   TF_ASSERT_OK(send_device_context->CopyCPUTensorToDeviceSync(
       &origin_cpu_tensor, device_.get(), &device_tensor));
 
-  tsl::AsyncValueRef<se::Event> recv_done_event =
-      tsl::MakeConstructedAsyncValueRef<se::Event>(executor);
-  recv_done_event->Init();
+  TF_ASSERT_OK_AND_ASSIGN(auto recv_se_event, executor->CreateEvent());
+  tsl::AsyncValueRef<std::unique_ptr<se::Event>> recv_done_event =
+      tsl::MakeConstructedAsyncValueRef<std::unique_ptr<se::Event>>(
+          std::move(recv_se_event));
   XlaHostRecvDeviceContext* recv_device_context = new XlaHostRecvDeviceContext(
       stream.get(), gpu_dst, shape, recv_done_event);
   TF_ASSERT_OK(recv_device_context->CopyDeviceTensorToCPUSync(

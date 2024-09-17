@@ -16,7 +16,11 @@ limitations under the License.
 #ifndef XLA_HLO_UTILS_HLO_QUERY_H_
 #define XLA_HLO_UTILS_HLO_QUERY_H_
 
+#include <cstdint>
+#include <utility>
+
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -78,6 +82,26 @@ bool IsBroadcastOfParameter(const HloInstruction& instr);
 HloInstruction* GetFirstInstructionWithOpcode(const HloComputation& computation,
                                               HloOpcode opcode);
 
+// Applies `fn` to a collection of instruction for a given `computation`.
+template <typename Fn>
+void ForEachInstructionWithOpcode(HloComputation& computation, HloOpcode opcode,
+                                  Fn&& fn) {
+  for (HloInstruction* instr : computation.instructions()) {
+    if (instr->opcode() == opcode) {
+      fn(instr);
+    }
+  }
+}
+
+// Applies `fn` to a collection of instruction for a given `module`.
+template <typename Fn>
+void ForEachInstructionWithOpcode(HloModule& module, HloOpcode opcode,
+                                  Fn&& fn) {
+  for (HloComputation* computation : module.computations()) {
+    ForEachInstructionWithOpcode(*computation, opcode, fn);
+  }
+}
+
 // Determines whether the given computation contains an instruction with one of
 // the given opcodes.  Checks both comp's instructions and the instructions of
 // any computations nested within it.
@@ -125,6 +149,30 @@ int64_t NextChannelId(const HloModule& module);
 // rewritten into tuple shaped transfers.
 bool HasX64TransformedHostTransfer(const HloModule& module);
 
+// Returns the unique GTE instruction with the given operand and index. Returns
+// nullptr if no such instruction exists or is not unique.
+HloInstruction* GetUniqueGteInstruction(const HloInstruction* operand,
+                                        int64_t index);
+
+// Gets the computation from the given module with the given name.
+HloComputation* FindComputation(HloModule* module, absl::string_view name);
+// Gets the first instruction and its index from the given computation with the
+// given instruction name. The function returns {nullptr, -1} if the instruction
+// cannot be found.
+std::pair<HloInstruction*, int> FindFirstInstruction(
+    const HloComputation* computation, absl::string_view name);
+// Gets the first instruction and its index from the given computation with the
+// given instruction opcode. The function returns {nullptr, -1} if the
+// instruction cannot be found.
+std::pair<HloInstruction*, int> FindFirstInstruction(
+    const HloComputation* computation, HloOpcode opcode);
+
+// Check that one instruction comes before another one for a given computation.
+// The function returns true if the first instruction comes before the second
+// one, and false otherwise. This is useful for partial checks on the
+// transformed IR without going through a full file check.
+bool IsBeforeInComputation(const HloComputation* computation,
+                           absl::string_view inst1, absl::string_view inst2);
 }  // namespace hlo_query
 }  // namespace xla
 

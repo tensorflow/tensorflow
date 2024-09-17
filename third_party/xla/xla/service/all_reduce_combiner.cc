@@ -45,9 +45,9 @@ namespace {
 // Combines the elements of to_combine into a single AllReduce op. All
 // entries in to_combine must be AllReduce ops with exactly one operand
 // and the same reduction operation.
-Status CombineAllReduces(absl::Span<HloInstruction* const> to_combine) {
+absl::Status CombineAllReduces(absl::Span<HloInstruction* const> to_combine) {
   if (to_combine.size() < 2) {
-    return OkStatus();
+    return absl::OkStatus();
   }
   VLOG(1) << "Combined " << to_combine.size() << " CRS ops";
 
@@ -80,7 +80,7 @@ Status CombineAllReduces(absl::Span<HloInstruction* const> to_combine) {
   TF_RET_CHECK(operands.size() >= 2);
   combined = computation.AddInstruction(HloInstruction::CreateAllReduce(
       ShapeUtil::MakeTupleShapeWithPtrs(operand_shapes), operands, reduction,
-      to_combine.front()->replica_groups(),
+      to_combine.front()->device_list(),
       /*constrain_layout=*/false, to_combine.front()->channel_id(),
       Cast<HloAllReduceInstruction>(to_combine.front())
           ->use_global_device_ids()));
@@ -99,7 +99,7 @@ Status CombineAllReduces(absl::Span<HloInstruction* const> to_combine) {
     TF_RETURN_IF_ERROR(computation.ReplaceWithNewInstruction(
         to_combine[i], std::move(replace_with)));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 

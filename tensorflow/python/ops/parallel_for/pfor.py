@@ -22,8 +22,6 @@ import sys
 import traceback
 from typing import List
 
-import numpy as np
-
 from tensorflow.compiler.tf2xla.python import xla
 from tensorflow.core.framework import full_type_pb2
 from tensorflow.python.eager import context
@@ -72,6 +70,7 @@ from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
+from tensorflow.python.util import numpy_compat
 from tensorflow.python.util import object_identity
 
 
@@ -1112,7 +1111,7 @@ def wrap(tensor, is_stacked=True, is_sparse_stacked=False):
   """Helper to create a WrappedTensor object."""
   assert isinstance(is_stacked, bool)
   assert isinstance(is_sparse_stacked, bool)
-  assert isinstance(tensor, tensor_lib.Tensor)
+  assert isinstance(tensor, tensor_lib.Tensor), type(tensor)
   assert not is_sparse_stacked or is_stacked, ("If the wrapped tensor is "
                                                "stacked via a sparse "
                                                "conversion, it must also be "
@@ -2256,6 +2255,17 @@ def _convert_reshape(pfor_input: _PforInput):
   n = math_ops.cast(pfor_input.pfor.loop_len_vector, shape.dtype)
   new_shape = array_ops.concat([n, shape], axis=0)
   return wrap(array_ops.reshape(t, new_shape), True)
+
+
+@RegisterPFor("TopK")
+@RegisterPFor("TopKV2")
+def _convert_top_k(pfor_input: _PforInput):
+  outputs = _create_op(
+      op_type=pfor_input.op_type,
+      inputs=[x.t for x in pfor_input.inputs],
+      op_dtypes=[x.dtype for x in pfor_input.outputs],
+      attrs=pfor_input.op.node_def.attr).outputs
+  return [wrap(x, True) for x in outputs]
 
 
 @RegisterPFor("Fill")
@@ -3939,7 +3949,7 @@ def _stack_tensor_list_shape(shape, first_dim):
   # Note that negative values in the shape are used to signify unknown shapes
   # and are handled in a special way.
   if shape_value is not None:
-    shape_value = np.asarray(shape_value)
+    shape_value = numpy_compat.np_asarray(shape_value)
     if -1 in shape_value:
       return constant_op.constant(-1)
     elif not shape_value.size:

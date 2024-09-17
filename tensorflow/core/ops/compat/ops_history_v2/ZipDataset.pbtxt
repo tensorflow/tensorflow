@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "ZipDataset"
   input_arg {
     name: "input_datasets"

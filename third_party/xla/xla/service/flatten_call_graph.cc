@@ -16,16 +16,23 @@ limitations under the License.
 #include "xla/service/flatten_call_graph.h"
 
 #include <memory>
+#include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/call_graph.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 
 namespace xla {
-
 namespace {
 
 // Helper to replace the called computation at a while, call, conditional or
@@ -62,13 +69,21 @@ void ReplaceCalledComputation(HloInstruction* instruction,
       }
       break;
     }
+    case HloOpcode::kAsyncStart: {
+      CHECK(computation->IsAsyncComputation());
+      computation->RemoveAsyncStart();
+      instruction->ReplaceCalledComputations(
+          [&](HloComputation*) { return new_computation; });
+      new_computation->AddAsyncStart(instruction);
+      break;
+    }
     default:
       LOG(FATAL) << "unexpected opcode: " << instruction->opcode();
   }
 }
 
 // Flatten a single call graph node. Expects to visit nodes in postorder.
-Status FlattenNode(const CallGraphNode& node) {
+absl::Status FlattenNode(const CallGraphNode& node) {
   HloComputation* computation = node.computation();
   HloModule* module = computation->parent();
   // Clone callee for all call-sites except the first one.
@@ -86,9 +101,6 @@ Status FlattenNode(const CallGraphNode& node) {
       continue;
     }
 
-    if (computation->IsAsyncComputation()) {
-      continue;
-    }
     // Clone computation for the remaining sequential context call sites.
     HloComputation* clone =
         module->AddEmbeddedComputation(computation->Clone());
@@ -113,7 +125,39 @@ Status FlattenNode(const CallGraphNode& node) {
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
+}
+
+// Annotates flatten computations with callee instruction types.
+absl::Status AnnotateNode(const CallGraphNode& node) {
+  for (auto& callsite : node.callsites()) {
+    HloInstruction* instruction = callsite.instruction();
+
+    if (instruction->opcode() == HloOpcode::kFusion) {
+      for (HloComputation* computation : instruction->called_computations()) {
+        computation->SetFusionInstruction(instruction);
+      }
+
+    } else if (instruction->opcode() == HloOpcode::kCustomCall) {
+      for (HloComputation* computation : instruction->called_computations()) {
+        computation->SetCustomCallInstruction(instruction);
+      }
+
+    } else if (hlo_query::IsCollectiveCommunicationOp(instruction->opcode())) {
+      for (HloComputation* computation : instruction->called_computations()) {
+        computation->SetCollectiveCallInstruction(instruction);
+      }
+
+    } else if (instruction->opcode() == HloOpcode::kWhile) {
+      instruction->while_body()->SetWhileCallInstruction(instruction);
+
+    } else if (instruction->opcode() == HloOpcode::kConditional) {
+      for (HloComputation* branch : instruction->branch_computations()) {
+        branch->SetConditionalCallInstruction(instruction);
+      }
+    }
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -123,9 +167,17 @@ absl::StatusOr<bool> FlattenCallGraph::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(3, "Before flatten call graph:\n" + module->ToString());
 
-  std::unique_ptr<CallGraph> call_graph =
-      CallGraph::Build(module, execution_threads);
-  TF_RETURN_IF_ERROR(call_graph->VisitNodes(FlattenNode));
+  {  // Flatten original call graph.
+    std::unique_ptr<CallGraph> call_graph =
+        CallGraph::Build(module, execution_threads);
+    TF_RETURN_IF_ERROR(call_graph->VisitNodes(FlattenNode));
+  }
+
+  {  // Annotate flattened computations with callee types.
+    std::unique_ptr<CallGraph> call_graph =
+        CallGraph::Build(module, execution_threads);
+    TF_RETURN_IF_ERROR(call_graph->VisitNodes(AnnotateNode));
+  }
 
   XLA_VLOG_LINES(3, "After flatten call graph:\n" + module->ToString());
   return true;

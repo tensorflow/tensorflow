@@ -27,8 +27,8 @@ limitations under the License.
 #include "xla/service/sharding_propagation.h"
 #include "xla/service/spmd/stateful_rng_spmd_partitioner.h"
 #include "xla/service/triangular_solve_expander.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/util/command_line_flags.h"
 
 namespace xla {
 

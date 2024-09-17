@@ -88,7 +88,7 @@ class FusedConv2DInt8Op : public XlaOpKernel {
         ctx, ctx->num_inputs() == 6,
         errors::InvalidArgument("_FusedConv2D must have 6 inputs but has ",
                                 ctx->num_inputs()));
-    StatusOr<ConvOpAttrs> conv_attrs =
+    absl::StatusOr<ConvOpAttrs> conv_attrs =
         ConvOpAttrs::Create(/*num_spatial_dims=*/2, /*depthwise=*/false, ctx);
     OP_REQUIRES_OK(ctx, conv_attrs.status());
     conv_attrs_ = conv_attrs.value();

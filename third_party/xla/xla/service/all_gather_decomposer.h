@@ -16,9 +16,21 @@ limitations under the License.
 #ifndef XLA_SERVICE_ALL_GATHER_DECOMPOSER_H_
 #define XLA_SERVICE_ALL_GATHER_DECOMPOSER_H_
 
+#include <cstdint>
+#include <functional>
+#include <utility>
+
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/service/collective_ops_utils.h"
+#include "xla/shape.h"
 
 namespace xla {
 
@@ -40,6 +52,19 @@ class AllGatherDecomposer : public HloModulePass {
   absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ protected:
+  virtual HloInstruction* TranslateAllGatherToAllReducePerOperand(
+      CollectiveOpGroupMode group_mode, const HloAllGatherInstruction& ag,
+      const Shape& output_shape, HloInstruction* operand, HloComputation* comp,
+      int64_t ag_dim);
+
+  virtual bool ShouldDecompose(const HloAllGatherInstruction& ag) const {
+    return should_decompose_(ag);
+  }
+
+  absl::Status DecomposeAllGather(HloAllGatherInstruction* ag,
+                                  HloComputation* comp);
 
  private:
   std::function<bool(const HloAllGatherInstruction&)> should_decompose_;

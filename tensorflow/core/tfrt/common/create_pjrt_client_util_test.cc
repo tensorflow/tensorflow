@@ -14,7 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/common/create_pjrt_client_util.h"
 
-#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"  // IWYU pragma: keep
 #include "tensorflow/core/framework/types.h"
 #include "tsl/platform/status_matchers.h"
 

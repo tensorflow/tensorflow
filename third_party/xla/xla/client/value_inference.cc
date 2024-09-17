@@ -21,10 +21,17 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/hash/hash.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "xla/client/xla_builder.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -32,9 +39,10 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -148,7 +156,7 @@ struct HloProtoEvaluator {
     return *this;
   }
 
-  StatusOr<Literal> Evaluate() {
+  absl::StatusOr<Literal> Evaluate() {
     // Evaluate the instruction by swapping it's operands with constant
     // instructions with given literals.
     HloComputation::Builder builder("EmptyComputation");
@@ -286,11 +294,11 @@ struct PostorderDFSDep {
 
 // This function represents the logic to visit a node once its dependencies
 // (operands) are all resolved.
-using Visit = std::function<StatusOr<Literal>(absl::Span<Literal>)>;
+using Visit = std::function<absl::StatusOr<Literal>(absl::Span<Literal>)>;
 // Convenient specializations of Visit function for different operands.
-using Visit0D = std::function<StatusOr<Literal>()>;
-using Visit1D = std::function<StatusOr<Literal>(Literal)>;
-using Visit2D = std::function<StatusOr<Literal>(Literal, Literal)>;
+using Visit0D = std::function<absl::StatusOr<Literal>()>;
+using Visit1D = std::function<absl::StatusOr<Literal>(Literal)>;
+using Visit2D = std::function<absl::StatusOr<Literal>(Literal, Literal)>;
 
 // A postorder dfs node can be visited once its dependency requests are all
 // fulfilled.
@@ -332,7 +340,7 @@ struct [[nodiscard]] PostorderDFSNode {
 
 // Convert an interger handle to HloInstructionProto.
 using HandleToInstruction =
-    std::function<StatusOr<const HloInstructionProto*>(int64_t)>;
+    std::function<absl::StatusOr<const HloInstructionProto*>(int64_t)>;
 using HandleToComputation = std::function<const HloComputationProto*(int64_t)>;
 
 struct PostorderDFSVisitor {
@@ -343,20 +351,20 @@ struct PostorderDFSVisitor {
         handle_to_instruction(handle_to_instruction),
         handle_to_computation(handle_to_computation) {}
 
-  StatusOr<PostorderDFSNode> AnalyzeUpperBound(int64_t handle,
-                                               InferenceContext context);
-  StatusOr<PostorderDFSNode> AnalyzeLowerBound(int64_t handle,
-                                               InferenceContext context);
-  StatusOr<PostorderDFSNode> AnalyzeIsDynamic(int64_t handle,
-                                              PostorderDFSNodeType type,
-                                              InferenceContext context);
-  StatusOr<PostorderDFSNode> AnalyzeConstant(int64_t handle,
-                                             InferenceContext context);
-  StatusOr<PostorderDFSNode> AnalyzeConstantValueFallback(
+  absl::StatusOr<PostorderDFSNode> AnalyzeUpperBound(int64_t handle,
+                                                     InferenceContext context);
+  absl::StatusOr<PostorderDFSNode> AnalyzeLowerBound(int64_t handle,
+                                                     InferenceContext context);
+  absl::StatusOr<PostorderDFSNode> AnalyzeIsDynamic(int64_t handle,
+                                                    PostorderDFSNodeType type,
+                                                    InferenceContext context);
+  absl::StatusOr<PostorderDFSNode> AnalyzeConstant(int64_t handle,
+                                                   InferenceContext context);
+  absl::StatusOr<PostorderDFSNode> AnalyzeConstantValueFallback(
       int64_t handle, PostorderDFSNodeType type, InferenceContext context);
 
-  StatusOr<Literal> PostOrderDFSVisit(int64_t handle,
-                                      PostorderDFSNodeType type);
+  absl::StatusOr<Literal> PostOrderDFSVisit(int64_t handle,
+                                            PostorderDFSNodeType type);
 
   // Returns true if a value represented by `handle` is an integeral type or
   // a floating pointer type that just got converted from an integral type.
@@ -469,8 +477,10 @@ PostorderDFSNode CreateAllDynamicResult(const Shape& shape,
 }  // namespace
 
 // Analyze a tensor's constant value, upper-bound value or lower-bound value.
-StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstantValueFallback(
-    int64_t handle, PostorderDFSNodeType type, InferenceContext context) {
+absl::StatusOr<PostorderDFSNode>
+PostorderDFSVisitor::AnalyzeConstantValueFallback(int64_t handle,
+                                                  PostorderDFSNodeType type,
+                                                  InferenceContext context) {
   TF_ASSIGN_OR_RETURN(const HloInstructionProto* root,
                       handle_to_instruction(handle));
   TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(root->opcode()));
@@ -534,7 +544,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstantValueFallback(
       call_context.caller_operand_handles.push_back(call_proto->operand_ids(0));
       node.AddDependency(called_root, PostorderDFSNodeType::kConstantValue,
                          call_context, "callee's root instruction");
-      return node.AddVisit([](Literal operand) -> StatusOr<Literal> {
+      return node.AddVisit([](Literal operand) -> absl::StatusOr<Literal> {
         // Forward result of callee's root to caller.
         return std::move(operand);
       });
@@ -565,7 +575,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstantValueFallback(
                            branch_context);
       }
       return node.AddVisit(
-          [](absl::Span<Literal> operands) -> StatusOr<Literal> {
+          [](absl::Span<Literal> operands) -> absl::StatusOr<Literal> {
             int64_t pred_is_dynamic = operands[1].Get<bool>({});
             if (pred_is_dynamic) {
               // If predicate is dynamic, return the value of the first branch
@@ -606,7 +616,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstantValueFallback(
           handle_to_computation(root->called_computation_ids(0));
       return result.AddVisit(
           [root, computation_proto, context,
-           this](absl::Span<Literal> operands) -> StatusOr<Literal> {
+           this](absl::Span<Literal> operands) -> absl::StatusOr<Literal> {
             TF_ASSIGN_OR_RETURN(
                 auto computation,
                 HloComputation::CreateFromProto(*computation_proto, {}));
@@ -638,7 +648,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstantValueFallback(
   }
 }
 
-StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeUpperBound(
+absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeUpperBound(
     int64_t handle, InferenceContext context) {
   TF_ASSIGN_OR_RETURN(const HloInstructionProto* root,
                       handle_to_instruction(handle));
@@ -657,7 +667,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeUpperBound(
       const HloInstructionProto* operand_proto =
           handle_to_instruction(operand_handle).value();
       return PostorderDFSNode().AddVisit(
-          [operand_proto, dimension]() -> StatusOr<Literal> {
+          [operand_proto, dimension]() -> absl::StatusOr<Literal> {
             return LiteralUtil::CreateR0<int32_t>(
                 operand_proto->shape().dimensions(dimension));
           });
@@ -671,7 +681,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeUpperBound(
           .AddDependency(root->operand_ids(0),
                          PostorderDFSNodeType::kConstantUpperBound, context)
           .AddVisit([this](Literal lower_bound,
-                           Literal upper_bound) -> StatusOr<Literal> {
+                           Literal upper_bound) -> absl::StatusOr<Literal> {
             TF_ASSIGN_OR_RETURN(auto lower_bound_abs,
                                 evaluator.EvaluateElementwiseUnaryOp(
                                     HloOpcode::kAbs, lower_bound));
@@ -701,7 +711,8 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeUpperBound(
       }
 
       return dfs.AddVisit(
-          [root, context](absl::Span<Literal> operands) -> StatusOr<Literal> {
+          [root,
+           context](absl::Span<Literal> operands) -> absl::StatusOr<Literal> {
             std::vector<Literal> results;
             results.reserve(operands.size());
             // Conservatively set each element of the tensor to the max value.
@@ -724,7 +735,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeUpperBound(
       return PostorderDFSNode()
           .AddDependency(root->operand_ids(0),
                          PostorderDFSNodeType::kConstantLowerBound, context)
-          .AddVisit([this](Literal lower_bound) -> StatusOr<Literal> {
+          .AddVisit([this](Literal lower_bound) -> absl::StatusOr<Literal> {
             return evaluator.EvaluateElementwiseUnaryOp(HloOpcode::kNegate,
                                                         lower_bound);
           });
@@ -739,7 +750,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeUpperBound(
                          PostorderDFSNodeType::kConstantLowerBound, context)
           .AddVisit([root, opcode, this](
                         Literal upper_bound,
-                        Literal lower_bound) -> StatusOr<Literal> {
+                        Literal lower_bound) -> absl::StatusOr<Literal> {
             if (opcode == HloOpcode::kDivide &&
                 this->IsValueEffectiveInteger(root->operand_ids(1))) {
               // Because in many cases the lower bound of a value is
@@ -771,7 +782,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeUpperBound(
     }
     case HloOpcode::kCustomCall: {
       if (root->custom_call_target() == "SetBound") {
-        return PostorderDFSNode().AddVisit([root]() -> StatusOr<Literal> {
+        return PostorderDFSNode().AddVisit([root]() -> absl::StatusOr<Literal> {
           if (root->literal().shape().element_type() == TUPLE) {
             // First literal of SetBound contains bounds, second literal
             // contains dynamism indicators.
@@ -808,7 +819,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeUpperBound(
   }
 }
 
-StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeLowerBound(
+absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeLowerBound(
     int64_t handle, InferenceContext context) {
   TF_ASSIGN_OR_RETURN(const HloInstructionProto* root,
                       handle_to_instruction(handle));
@@ -826,7 +837,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeLowerBound(
       TF_ASSIGN_OR_RETURN(const HloInstructionProto* operand_proto,
                           handle_to_instruction(operand_handle));
       return PostorderDFSNode().AddVisit(
-          [dimension, operand_proto]() -> StatusOr<Literal> {
+          [dimension, operand_proto]() -> absl::StatusOr<Literal> {
             if (operand_proto->shape().is_dynamic_dimension(dimension)) {
               return LiteralUtil::CreateR0<int32_t>(0);
             } else {
@@ -844,7 +855,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeLowerBound(
           .AddDependency(root->operand_ids(0),
                          PostorderDFSNodeType::kConstantUpperBound, context)
           .AddVisit([this](Literal lower_bound,
-                           Literal upper_bound) -> StatusOr<Literal> {
+                           Literal upper_bound) -> absl::StatusOr<Literal> {
             TF_ASSIGN_OR_RETURN(auto lower_bound_abs,
                                 evaluator.EvaluateElementwiseUnaryOp(
                                     HloOpcode::kAbs, lower_bound));
@@ -860,7 +871,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeLowerBound(
       return PostorderDFSNode()
           .AddDependency(root->operand_ids(0),
                          PostorderDFSNodeType::kConstantUpperBound, context)
-          .AddVisit([this](Literal upper_bound) -> StatusOr<Literal> {
+          .AddVisit([this](Literal upper_bound) -> absl::StatusOr<Literal> {
             return evaluator.EvaluateElementwiseUnaryOp(HloOpcode::kNegate,
                                                         upper_bound);
           });
@@ -874,7 +885,8 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeLowerBound(
           .AddDependency(root->operand_ids(1),
                          PostorderDFSNodeType::kConstantUpperBound, context)
           .AddVisit(
-              [root, this](absl::Span<Literal> operands) -> StatusOr<Literal> {
+              [root,
+               this](absl::Span<Literal> operands) -> absl::StatusOr<Literal> {
                 return std::make_unique<HloProtoEvaluator>(evaluator, *root)
                     ->WithOperands(operands)
                     .Evaluate();
@@ -898,7 +910,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeLowerBound(
   }
 }
 
-StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstant(
+absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstant(
     int64_t handle, InferenceContext context) {
   TF_ASSIGN_OR_RETURN(const HloInstructionProto* root,
                       handle_to_instruction(handle));
@@ -916,7 +928,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstant(
       TF_ASSIGN_OR_RETURN(const HloInstructionProto* operand_proto,
                           handle_to_instruction(operand_handle));
       return PostorderDFSNode().AddVisit(
-          [operand_proto, dimension, root]() -> StatusOr<Literal> {
+          [operand_proto, dimension, root]() -> absl::StatusOr<Literal> {
             if (operand_proto->shape().is_dynamic_dimension(dimension)) {
               // The value is dynamic, we return garbage data here and mask them
               // out later.
@@ -939,7 +951,8 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstant(
                              context);
       }
       return result.AddVisit(
-          [root, this](absl::Span<Literal> operands) -> StatusOr<Literal> {
+          [root,
+           this](absl::Span<Literal> operands) -> absl::StatusOr<Literal> {
             return std::make_unique<HloProtoEvaluator>(evaluator, *root)
                 ->WithOperands(operands)
                 .Evaluate();
@@ -947,13 +960,15 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstant(
     }
     case HloOpcode::kCustomCall: {
       if (root->custom_call_target() == "SetBound") {
-        // `SetBound` doesn't change the static value of a tensor, so forward
-        // the operand when analyzing static value.
-        return PostorderDFSNode()
-            .AddDependency(root->operand_ids(0),
-                           PostorderDFSNodeType::kConstantValue, context)
-            .AddVisit(
-                [](Literal operand) -> StatusOr<Literal> { return operand; });
+        return PostorderDFSNode().AddVisit([root]() -> absl::StatusOr<Literal> {
+          if (root->literal().shape().element_type() == TUPLE) {
+            // First literal of SetBound contains bounds, second literal
+            // contains dynamism indicators.
+            return Literal::CreateFromProto(root->literal().tuple_literals(0));
+          } else {
+            return Literal::CreateFromProto(root->literal());
+          }
+        });
       } else if (root->custom_call_target() == "Sharding") {
         return PostorderDFSNode()
             .AddDependency(root->operand_ids(0),
@@ -981,7 +996,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstant(
           handle_to_computation(root->called_computation_ids(0));
       return result.AddVisit(
           [root, context, computation_proto,
-           this](absl::Span<Literal> operands) -> StatusOr<Literal> {
+           this](absl::Span<Literal> operands) -> absl::StatusOr<Literal> {
             TF_ASSIGN_OR_RETURN(
                 auto computation,
                 HloComputation::CreateFromProto(*computation_proto, {}));
@@ -998,7 +1013,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstant(
   }
 }
 
-StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
+absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
     int64_t handle, PostorderDFSNodeType type, InferenceContext context) {
   TF_RETURN_IF_ERROR(handle_to_instruction(handle).status());
   // Invariant check.
@@ -1028,7 +1043,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
       TF_ASSIGN_OR_RETURN(const HloInstructionProto* operand_proto,
                           handle_to_instruction(operand_handle));
       return PostorderDFSNode().AddVisit(
-          [operand_proto, dimension, type]() -> StatusOr<Literal> {
+          [operand_proto, dimension, type]() -> absl::StatusOr<Literal> {
             if (type == PostorderDFSNodeType::kBoundIsDynamic) {
               // The bound of dynamic dimension is not dynamic.
               return LiteralUtil::CreateR0<bool>(false);
@@ -1048,7 +1063,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
       }
 
       return dfs.AddVisit([root, context, type](absl::Span<Literal> operands)
-                              -> StatusOr<Literal> {
+                              -> absl::StatusOr<Literal> {
         bool all_operands_values_static = true;
         for (int64_t i = 0; i < operands.size(); ++i) {
           all_operands_values_static &= operands[i].IsAll(0);
@@ -1205,10 +1220,11 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
           call_proto->operand_ids(0));
       node.AddDependency(call_root, PostorderDFSNodeType::kValueIsDynamic,
                          branch_context, "callee's root instruction");
-      return node.AddVisit([context](Literal operand) -> StatusOr<Literal> {
-        // Forward result of callee's root to caller.
-        return operand;
-      });
+      return node.AddVisit(
+          [context](Literal operand) -> absl::StatusOr<Literal> {
+            // Forward result of callee's root to caller.
+            return operand;
+          });
     }
     case HloOpcode::kConditional: {
       auto node = PostorderDFSNode();
@@ -1246,7 +1262,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
       // 2*i + 1: Branch value is dynamic.
       return node.AddVisit([root, branch_size,
                             context](absl::Span<Literal> operands)
-                               -> StatusOr<Literal> {
+                               -> absl::StatusOr<Literal> {
         int64_t pred_is_dynamic = operands[1].Get<bool>({});
         auto result = CreatePredLiteral(
             true,
@@ -1386,7 +1402,8 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
           .AddDependency(root->operand_ids(1), type, context)
           // rhs dependency.
           .AddDependency(root->operand_ids(2), type, context)
-          .AddVisit([root](absl::Span<Literal> operands) -> StatusOr<Literal> {
+          .AddVisit([root](absl::Span<Literal> operands)
+                        -> absl::StatusOr<Literal> {
             OptionalLiteral optional_selector_literal(std::move(operands[0]),
                                                       std::move(operands[1]));
             Literal lhs = std::move(operands[2]);
@@ -1423,7 +1440,8 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
           .AddDependency(root->operand_ids(1),
                          PostorderDFSNodeType::kValueIsDynamic, context)
           .AddVisit(
-              [root, this](absl::Span<Literal> operands) -> StatusOr<Literal> {
+              [root,
+               this](absl::Span<Literal> operands) -> absl::StatusOr<Literal> {
                 OptionalLiteral optional_selector_literal(
                     std::move(operands[1]), std::move(operands[2]));
 
@@ -1444,7 +1462,8 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
     }
     case HloOpcode::kCustomCall: {
       if (root->custom_call_target() == "SetBound") {
-        return PostorderDFSNode().AddVisit([type, root]() -> StatusOr<Literal> {
+        return PostorderDFSNode().AddVisit([type,
+                                            root]() -> absl::StatusOr<Literal> {
           if (type == PostorderDFSNodeType::kBoundIsDynamic) {
             return CreatePredLiteral(false, Shape(root->shape()));
           } else {
@@ -1476,8 +1495,8 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
     case HloOpcode::kWhile: {
-      return PostorderDFSNode().AddVisit([root,
-                                          context]() -> StatusOr<Literal> {
+      return PostorderDFSNode().AddVisit([root, context]()
+                                             -> absl::StatusOr<Literal> {
         return CreatePredLiteral(
             true,
             ShapeUtil::GetSubshape(Shape(root->shape()), context.shape_index));
@@ -1485,8 +1504,8 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
       break;
     }
     default:
-      return PostorderDFSNode().AddVisit([root,
-                                          context]() -> StatusOr<Literal> {
+      return PostorderDFSNode().AddVisit([root, context]()
+                                             -> absl::StatusOr<Literal> {
         return CreatePredLiteral(
             true,
             ShapeUtil::GetSubshape(Shape(root->shape()), context.shape_index));
@@ -1494,7 +1513,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
   }
 }
 
-StatusOr<Literal> PostorderDFSVisitor::PostOrderDFSVisit(
+absl::StatusOr<Literal> PostorderDFSVisitor::PostOrderDFSVisit(
     int64_t handle, PostorderDFSNodeType type) {
   enum VisitState {
     kUnvisited = 0,
@@ -1609,7 +1628,7 @@ StatusOr<Literal> PostorderDFSVisitor::PostOrderDFSVisit(
   return evaluated[root.GetCacheKey()].Clone();
 }
 
-StatusOr<Literal> ValueInference::AnalyzeIsDynamic(XlaOp op) {
+absl::StatusOr<Literal> ValueInference::AnalyzeIsDynamic(XlaOp op) {
   PostorderDFSVisitor visitor(
       evaluator_,
       [&](int64_t handle) {
@@ -1622,7 +1641,8 @@ StatusOr<Literal> ValueInference::AnalyzeIsDynamic(XlaOp op) {
   return result;
 }
 
-StatusOr<std::optional<int64_t>> ValueInference::CseOpHandle(int64_t handle) {
+absl::StatusOr<std::optional<int64_t>> ValueInference::CseOpHandle(
+    int64_t handle) {
   TF_ASSIGN_OR_RETURN(auto inst, builder_->LookUpInstructionByHandle(handle));
   TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(inst->opcode()));
   // For now, only handle kGetDimensionSize as that's the most duplicated one.
@@ -1653,7 +1673,7 @@ StatusOr<std::optional<int64_t>> ValueInference::CseOpHandle(int64_t handle) {
   return {std::nullopt};
 }
 
-StatusOr<Literal> ValueInference::SimplifyOp(int64_t handle) {
+absl::StatusOr<Literal> ValueInference::SimplifyOp(int64_t handle) {
   TF_ASSIGN_OR_RETURN(auto cse_handle, CseOpHandle(handle));
   if (cse_handle) {
     // Use the CSE'd handle instead.
@@ -1769,7 +1789,7 @@ StatusOr<Literal> ValueInference::SimplifyOp(int64_t handle) {
   }
 }
 
-StatusOr<OptionalLiteral> ValueInference::AnalyzeConstant(
+absl::StatusOr<OptionalLiteral> ValueInference::AnalyzeConstant(
     XlaOp op, ValueInferenceMode mode) {
   TF_RETURN_IF_ERROR(builder_->LookUpInstructionByHandle(op.handle()).status());
   PostorderDFSVisitor visitor(

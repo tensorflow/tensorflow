@@ -33,15 +33,16 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/register_common_dialects.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "xla/tsl/framework/device_type.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
-#include "tsl/framework/device_type.h"
-#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace tfrt_compiler {
@@ -61,7 +62,7 @@ std::string TestDataPath() {
 }
 
 static constexpr char kCompilationStreamz[] =
-    "/tensorflow/core/tf_mlir_bridge_first_phase_count";
+    "/tensorflow/core/tf_mlir_bridge_first_phase_v2_count";
 
 class LowerClusterToRuntimeOpsTest : public ::testing::Test {
  public:
@@ -167,9 +168,11 @@ TEST_F(LowerClusterToRuntimeOpsTest, ErrorsWithBadCluster) {
                    *mlir_module_, DeviceType(DEVICE_TPU_XLA_JIT))
                    .ok());
 
-  EXPECT_EQ(compilation_status.Delta("XLA_TPU_JIT", "v2", "fallback_disabled",
-                                     "failure"),
-            1);
+  EXPECT_EQ(
+      compilation_status.Delta(mlir::TF::kMlirPh1BridgeCounterReplicated,
+                               mlir::TF::kMlirPh1BridgeCounterV2, "XLA_TPU_JIT",
+                               "fallback_disabled", "failure"),
+      1);
 }
 
 TEST_F(LowerClusterToRuntimeOpsTest, DumpsPipelinePasses) {

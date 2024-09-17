@@ -17,8 +17,14 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <string>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -26,11 +32,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal.h"
+#include "xla/primitive_util.h"
 #include "xla/service/all_reduce_key.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/service/hlo_domain_map.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/statusor.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {

@@ -55,6 +55,10 @@ class CuptiWrapper : public xla::profiler::CuptiInterface {
       CUpti_BuffersCallbackRequestFunc func_buffer_requested,
       CUpti_BuffersCallbackCompleteFunc func_buffer_completed) override;
 
+  CUptiResult ActivityUsePerThreadBuffer() override;
+
+  CUptiResult SetActivityFlushPeriod(uint32_t period_ms) override;
+
   CUptiResult GetDeviceId(CUcontext context, uint32_t* deviceId) override;
 
   CUptiResult GetTimestamp(uint64_t* timestamp) override;
@@ -84,6 +88,11 @@ class CuptiWrapper : public xla::profiler::CuptiInterface {
   CUptiResult GetStreamIdEx(CUcontext context, CUstream stream,
                             uint8_t per_thread_stream,
                             uint32_t* stream_id) override;
+
+  CUptiResult GetGraphId(CUgraph graph, uint32_t* graph_id) override;
+
+  CUptiResult GetGraphExecId(CUgraphExec graph_exec,
+                             uint32_t* graph_id) override;
 
   void CleanUp() override {}
   bool Disabled() const override { return false; }
@@ -125,6 +134,10 @@ class CuptiWrapperStub : public xla::profiler::CuptiInterface {
       CUpti_BuffersCallbackRequestFunc func_buffer_requested,
       CUpti_BuffersCallbackCompleteFunc func_buffer_completed) override;
 
+  CUptiResult ActivityUsePerThreadBuffer() override;
+
+  CUptiResult SetActivityFlushPeriod(uint32_t period_ms) override;
+
   CUptiResult GetDeviceId(CUcontext context, uint32_t* deviceId) override;
 
   CUptiResult GetTimestamp(uint64_t* timestamp) override;
@@ -154,6 +167,11 @@ class CuptiWrapperStub : public xla::profiler::CuptiInterface {
   CUptiResult GetStreamIdEx(CUcontext context, CUstream stream,
                             uint8_t per_thread_stream,
                             uint32_t* stream_id) override;
+
+  CUptiResult GetGraphId(CUgraph graph, uint32_t* graph_id) override;
+
+  CUptiResult GetGraphExecId(CUgraphExec graph_exec,
+                             uint32_t* graph_id) override;
 
   void CleanUp() override {}
   bool Disabled() const override { return false; }

@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/statusor.h"
 #include "xla/literal.h"
-#include "xla/statusor.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/env.h"

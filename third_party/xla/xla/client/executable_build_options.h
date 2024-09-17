@@ -24,7 +24,12 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/pjrt/compile_options.pb.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/compilation_environments.h"
 #include "xla/service/computation_placer.h"
 #include "xla/shape.h"
@@ -230,11 +235,34 @@ class ExecutableBuildOptions {
     return *this;
   }
 
+  bool use_shardy_partitioner() const { return use_shardy_partitioner_; }
+  ExecutableBuildOptions& set_use_shardy_partitioner(
+      bool use_shardy_partitioner) {
+    use_shardy_partitioner_ = use_shardy_partitioner;
+    return *this;
+  }
+
   // Returns a string representation of the build options, suitable for
   // debugging.
   std::string ToString() const;
 
   absl::StatusOr<ExecutableBuildOptionsProto> ToProto() const;
+
+  int process_index() const { return process_index_; }
+  void set_process_index(const int process_index) {
+    process_index_ = process_index;
+  }
+  int process_count() const { return process_count_; }
+  void set_process_count(const int process_count) {
+    process_count_ = process_count;
+  }
+
+  std::shared_ptr<KeyValueStoreInterface> key_value_store() const {
+    return key_value_store_;
+  }
+  void set_key_value_store(std::shared_ptr<KeyValueStoreInterface> kv_store) {
+    key_value_store_ = kv_store;
+  }
 
  private:
   int device_ordinal_ = -1;
@@ -262,6 +290,10 @@ class ExecutableBuildOptions {
   LayoutCanonicalizationCallback layout_canonicalization_callback_;
   std::string fdo_profile_;
   int64_t device_memory_size_ = 0;
+  bool use_shardy_partitioner_ = false;
+  int process_index_ = 0;
+  int process_count_ = 1;
+  std::shared_ptr<KeyValueStoreInterface> key_value_store_;
 };
 
 absl::StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(

@@ -33,7 +33,7 @@ cc_library(
             "intel/filter_sse2_intrinsics.c",
             "intel/intel_init.c",
         ],
-        "@local_tsl//tsl:linux_ppc64le": [
+        "@local_xla//xla/tsl:linux_ppc64le": [
             "powerpc/filter_vsx_intrinsics.c",
             "powerpc/powerpc_init.c",
         ],
@@ -61,7 +61,7 @@ genrule(
     name = "snappy_stubs_public_h",
     srcs = ["scripts/pnglibconf.h.prebuilt"],
     outs = ["pnglibconf.h"],
-    cmd = "sed -e 's/PNG_ZLIB_VERNUM 0/PNG_ZLIB_VERNUM 0x12d0/' $< >$@",
+    cmd = "sed -e 's/PNG_ZLIB_VERNUM 0/PNG_ZLIB_VERNUM 0x1310/' $< >$@",
 )
 
 config_setting(

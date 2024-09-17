@@ -86,7 +86,8 @@ class TensorSliceWriter {
 
   const string filename_;
   const CreateBuilderFunction create_builder_;
-  const string tmpname_;
+  string data_filename_;
+  bool use_temp_file_;
 
   // A mapping from the tensor names to their index in meta_.saved_slice_meta()
   std::unordered_map<string, int> name_to_index_;

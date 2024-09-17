@@ -72,7 +72,7 @@ static constexpr char kBadMlirModuleStr[] = R"(
     }
   })";
 
-tsl::StatusOr<XlaCompiler::CompilationResult> CompileMlirModule(
+absl::StatusOr<XlaCompiler::CompilationResult> CompileMlirModule(
     const char* module_str) {
   MlirToHloArgs mlir_to_hlo_args;
   mlir_to_hlo_args.rollout_state =

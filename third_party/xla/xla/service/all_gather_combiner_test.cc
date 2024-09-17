@@ -86,6 +86,35 @@ ENTRY entry {
                         op::GetTupleElement(combined_all_gather, 1)));
 }
 
+// Tests that AllGather instructions with different data types are not combined
+// when combine_different_dtypes is false.
+TEST_F(AllGatherCombinerTest, CombineDifferentDtypes) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+ENTRY entry {
+  param0 = f32[32] parameter(0)
+  param1 = s32[32] parameter(1)
+  allgather0 = f32[128] all-gather(param0), replica_groups={}, dimensions={0}
+  allgather1 = s32[128] all-gather(param1), replica_groups={}, dimensions={0}
+  ROOT tuple = (f32[128], s32[128]) tuple(allgather0, allgather1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AllGatherCombiner combine(1024 * 1024, kMaxCombineCount,
+                            /*combine_by_dim=*/true,
+                            /*combine_different_dtypes=*/false);
+  ASSERT_EQ(AllGatherCount(*module), 2);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  EXPECT_FALSE(changed);
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Tuple(op::AllGather(op::Parameter(0)),
+                        op::AllGather(op::Parameter(1))));
+}
+
 // Tests combination of several cross replica gather instructions with
 // different gather dimensions.
 TEST_F(AllGatherCombinerTest, CombineAllGathersByAllGatherDimension) {

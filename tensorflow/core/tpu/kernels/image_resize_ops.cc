@@ -43,7 +43,7 @@ class TpuCustomResizeOp : public XlaOpKernel {
                    ctx->GetAttr("half_pixel_centers", &half_pixel_centers_));
   }
 
-  StatusOr<xla::Shape> GetOutputShape(XlaOpKernelContext* ctx) const {
+  absl::StatusOr<xla::Shape> GetOutputShape(XlaOpKernelContext* ctx) const {
     std::vector<int64_t> out_size;
     auto status = ctx->ConstantInputAsIntVector(1, &out_size);
     CHECK_EQ(out_size.size(), 2) << status;

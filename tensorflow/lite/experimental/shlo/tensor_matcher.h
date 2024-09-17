@@ -53,6 +53,11 @@ MATCHER_P(TensorEq, tensor, "") {
           ::testing::Pointwise(::testing::Eq(),
                                tensor.template Flat<DataType::kSI32>()),
           arg.template Flat<DataType::kSI32>(), result_listener);
+    case DataType::kSI64:
+      return ::testing::ExplainMatchResult(
+          ::testing::Pointwise(::testing::Eq(),
+                               tensor.template Flat<DataType::kSI64>()),
+          arg.template Flat<DataType::kSI32>(), result_listener);
     case DataType::kBF16:
       return ::testing::ExplainMatchResult(
           ::testing::Pointwise(::testing::Eq(),

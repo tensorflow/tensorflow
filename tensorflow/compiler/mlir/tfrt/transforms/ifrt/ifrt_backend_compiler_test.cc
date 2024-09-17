@@ -18,9 +18,6 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-// Enable definition of Eigen::ThreadPoolDevice instead of just declaration.
-#define EIGEN_USE_THREADS
-
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -33,13 +30,15 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/test_util.h"
+#include "xla/tsl/framework/test_util/mock_serving_device_selector.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_model_context.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
@@ -48,13 +47,13 @@ limitations under the License.
 namespace tensorflow {
 namespace ifrt_serving {
 namespace {
-Eigen::ThreadPoolDevice GetThreadPoolDevice() {
+
+tsl::thread::ThreadPool& GetThreadPool() {
   constexpr int kMaxParallelism = 16;
   static tsl::thread::ThreadPool* thread_pool =
       new tsl::thread::ThreadPool(tsl::Env::Default(), tsl::ThreadOptions(),
                                   "IfrtSharding", kMaxParallelism);
-  return Eigen::ThreadPoolDevice(thread_pool->AsEigenThreadPool(),
-                                 kMaxParallelism);
+  return *thread_pool;
 }
 
 TEST(IfrtBackendCompilerTest, Basic) {
@@ -79,7 +78,6 @@ TEST(IfrtBackendCompilerTest, Basic) {
   // Create contexts required for the compiler execution.
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
-  Eigen::ThreadPoolDevice thread_pool_device = GetThreadPoolDevice();
 
   std::unique_ptr<tensorflow::tfrt_stub::Runtime> runtime =
       tensorflow::tfrt_stub::DefaultTfrtRuntime(/*num_threads=*/1);
@@ -89,8 +87,13 @@ TEST(IfrtBackendCompilerTest, Basic) {
   tensorflow::tfrt_stub::ModelRuntimeContext runtime_context(
       &graph_execution_options, /*export_dir=*/"", &resource_context);
 
+  tsl::test_util::MockServingDeviceSelector mock_serving_device_selector;
+  IfrtServingCoreSelector core_selector(&mock_serving_device_selector,
+                                        client->addressable_device_count());
+
   runtime_context.resource_context().CreateResource<IfrtModelContext>(
-      "IfrtModelContext", client, &thread_pool_device);
+      "IfrtModelContext", client, &core_selector, &GetThreadPool(),
+      /*compilation_environment_proto=*/nullptr);
 
   IfrtBackendCompiler compiler;
   TF_ASSERT_OK(compiler.CompileTensorflow(runtime_context, mlir_module.get()));

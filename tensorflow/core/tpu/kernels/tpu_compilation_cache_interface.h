@@ -162,7 +162,7 @@ class TpuCompilationCacheInterface : public ResourceBase {
 
   // Convenience method called by ~RefHolder without mu_ held. Calls
   // DiscardEntryRef on every element of entries.
-  void DiscardEntryRefs(gtl::ArraySlice<CompiledSubgraph*> entries);
+  void DiscardEntryRefs(absl::Span<CompiledSubgraph* const> entries);
 
   std::string DebugString() const override { return "TpuCompilationCacheBase"; }
 

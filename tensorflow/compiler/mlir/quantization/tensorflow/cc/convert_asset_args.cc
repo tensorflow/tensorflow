@@ -93,8 +93,7 @@ SmallVector<StringRef> GetEntryFunctionInputs(func::FuncOp func_op) {
       func_op->getAttrOfType<DictionaryAttr>("tf.entry_function");
 
   SmallVector<StringRef> inputs;
-  entry_function_attr.get("inputs")
-      .dyn_cast_or_null<StringAttr>()
+  mlir::dyn_cast_or_null<StringAttr>(entry_function_attr.get("inputs"))
       .strref()
       .split(inputs, /*Separator=*/",");
 

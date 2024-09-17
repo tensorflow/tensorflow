@@ -15,6 +15,9 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
@@ -24,12 +27,14 @@ limitations under the License.
 #include "xla/client/xla_builder.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace {
@@ -309,7 +314,7 @@ class XlaConcatNDBaseOp : public XlaOpKernel {
   }
 
  protected:
-  StatusOr<xla::XlaOp> CompileInternal(XlaOpKernelContext* ctx) {
+  absl::StatusOr<xla::XlaOp> CompileInternal(XlaOpKernelContext* ctx) {
     xla::PrimitiveType type;
     TF_RETURN_IF_ERROR(DataTypeToPrimitiveType(dtype_, &type));
 

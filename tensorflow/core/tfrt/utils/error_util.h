@@ -76,8 +76,6 @@ inline llvm::Error MakeStatusError(tensorflow::Status status) {
   return MakeStringError(MakeStatusString(status));
 }
 
-absl::Status AbslStatusFromTfStatus(tensorflow::Status status);
-
 }  // namespace tfrt
 
 #endif  // TENSORFLOW_CORE_TFRT_UTILS_ERROR_UTIL_H_

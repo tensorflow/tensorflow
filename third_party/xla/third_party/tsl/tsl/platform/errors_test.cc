@@ -21,7 +21,7 @@ limitations under the License.
 namespace tsl {
 
 TEST(AppendToMessageTest, PayloadsAreCopied) {
-  Status status = errors::Aborted("Aborted Error Message");
+  absl::Status status = errors::Aborted("Aborted Error Message");
   status.SetPayload("payload_key", absl::Cord("payload_value"));
   errors::AppendToMessage(&status, "Appended Message");
 
@@ -30,22 +30,22 @@ TEST(AppendToMessageTest, PayloadsAreCopied) {
 }
 
 TEST(Status, GetAllPayloads) {
-  Status s_error(absl::StatusCode::kInternal, "Error message");
+  absl::Status s_error(absl::StatusCode::kInternal, "Error message");
   s_error.SetPayload("Error key", absl::Cord("foo"));
   auto payloads_error_status = errors::GetPayloads(s_error);
   ASSERT_EQ(payloads_error_status.size(), 1);
   ASSERT_EQ(payloads_error_status["Error key"], "foo");
 
-  Status s_ok = Status();
+  absl::Status s_ok = absl::Status();
   auto payloads_ok_status = errors::GetPayloads(s_ok);
   ASSERT_TRUE(payloads_ok_status.empty());
 }
 
 TEST(Status, OKStatusInsertPayloadsFromErrorStatus) {
   // An OK status will should not change after InsertPayloads() calls.
-  Status s_error(absl::StatusCode::kInternal, "Error message");
+  absl::Status s_error(absl::StatusCode::kInternal, "Error message");
   s_error.SetPayload("Error key", absl::Cord("foo"));
-  Status s_ok = Status();
+  absl::Status s_ok = absl::Status();
 
   errors::InsertPayloads(s_ok, errors::GetPayloads(s_error));
   auto payloads_ok_status = errors::GetPayloads(s_ok);
@@ -54,19 +54,19 @@ TEST(Status, OKStatusInsertPayloadsFromErrorStatus) {
 
 TEST(Status, ErrorStatusInsertPayloadsFromOKStatus) {
   // An InsertPayloads() call should not take effect from empty inputs.
-  Status s_error(absl::StatusCode::kInternal, "Error message");
+  absl::Status s_error(absl::StatusCode::kInternal, "Error message");
   s_error.SetPayload("Error key", absl::Cord("foo"));
-  Status s_ok = Status();
+  absl::Status s_ok = absl::Status();
 
   errors::InsertPayloads(s_error, errors::GetPayloads(s_ok));
   ASSERT_EQ(s_error.GetPayload("Error key"), "foo");
 }
 
 TEST(Status, ErrorStatusInsertPayloadsFromErrorStatus) {
-  Status s_error1(absl::StatusCode::kInternal, "Error message");
+  absl::Status s_error1(absl::StatusCode::kInternal, "Error message");
   s_error1.SetPayload("Error key 1", absl::Cord("foo"));
   s_error1.SetPayload("Error key 2", absl::Cord("bar"));
-  Status s_error2(absl::StatusCode::kInternal, "Error message");
+  absl::Status s_error2(absl::StatusCode::kInternal, "Error message");
   s_error2.SetPayload("Error key", absl::Cord("bar"));
   ASSERT_EQ(s_error2.GetPayload("Error key"), "bar");
 
@@ -79,22 +79,22 @@ TEST(Status, ErrorStatusInsertPayloadsFromErrorStatus) {
 
 #if defined(PLATFORM_GOOGLE)
 
-Status GetError() {
+absl::Status GetError() {
   return absl::InvalidArgumentError("An invalid argument error");
 }
 
-Status PropagateError() {
+absl::Status PropagateError() {
   TF_RETURN_IF_ERROR(GetError());
   return absl::OkStatus();
 }
 
-Status PropagateError2() {
+absl::Status PropagateError2() {
   TF_RETURN_IF_ERROR(PropagateError());
   return absl::OkStatus();
 }
 
 TEST(Status, StackTracePropagation) {
-  Status s = PropagateError2();
+  absl::Status s = PropagateError2();
   auto sources = s.GetSourceLocations();
   ASSERT_EQ(sources.size(), 3);
 
@@ -105,16 +105,16 @@ TEST(Status, StackTracePropagation) {
 }
 
 TEST(Status, SourceLocationsPreservedByAppend) {
-  Status s = PropagateError2();
+  absl::Status s = PropagateError2();
   ASSERT_EQ(s.GetSourceLocations().size(), 3);
   errors::AppendToMessage(&s, "A new message.");
   ASSERT_EQ(s.GetSourceLocations().size(), 3);
 }
 
 TEST(Status, SourceLocationsPreservedByUpdate) {
-  Status s = PropagateError2();
+  absl::Status s = PropagateError2();
   ASSERT_EQ(s.GetSourceLocations().size(), 3);
-  Status s2 = errors::CreateWithUpdatedMessage(s, "New message.");
+  absl::Status s2 = errors::CreateWithUpdatedMessage(s, "New message.");
   ASSERT_EQ(s2.GetSourceLocations().size(), 3);
 }
 

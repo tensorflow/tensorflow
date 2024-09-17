@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_ERROR_UTIL_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_ERROR_UTIL_H_
 
-#include "tsl/distributed_runtime/coordination/coordination_service_error_util.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service_error_util.h"
 
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)

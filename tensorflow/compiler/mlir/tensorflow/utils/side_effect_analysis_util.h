@@ -29,12 +29,12 @@ namespace TF {
 std::string GetDeviceAttrAsResourceInstanceStr(Operation* op);
 
 void MarkResourceAsReadAndWrite(
-    Value value,
+    OpOperand& op_operand,
     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>&
         effect);
 
 void MarkResourceAsReadOnly(
-    Value value,
+    OpOperand& op_operand,
     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>&
         effect);
 

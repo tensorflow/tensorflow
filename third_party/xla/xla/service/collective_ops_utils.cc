@@ -18,11 +18,15 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -513,8 +517,12 @@ absl::StatusOr<std::vector<int64_t>> GetPariticipantCountsForReplicaGroups(
 
   switch (group_mode) {
     case CollectiveOpGroupMode::kCrossReplica: {
-      participant_counts.resize(participating_replica_groups.size(),
-                                num_partitions);
+      for (const auto& replica_group : participating_replica_groups) {
+        for (int partition_id = 0; partition_id < num_partitions;
+             ++partition_id) {
+          participant_counts.push_back(replica_group.replica_ids().size());
+        }
+      }
       return participant_counts;
     }
     case CollectiveOpGroupMode::kCrossPartition: {
@@ -575,7 +583,7 @@ bool ReplicaGroupsEqual(absl::Span<const ReplicaGroup> first,
   return true;
 }
 
-bool IsCollective(const HloInstruction* instruction) {
+bool IsNonFusionCollective(const HloInstruction* instruction) {
   switch (instruction->opcode()) {
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllReduceStart:
@@ -588,45 +596,48 @@ bool IsCollective(const HloInstruction* instruction) {
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kCollectivePermuteDone:
+    case HloOpcode::kReduceScatter:
       return true;
-    case HloOpcode::kFusion:
-      if (instruction->IsCustomFusion()) {
-        for (const auto* inner_inst : instruction->fused_instructions()) {
-          if (IsCollective(inner_inst)) {
-            return true;
-          }
-        }
-      }
-      return false;
     case HloOpcode::kAsyncStart:
     case HloOpcode::kAsyncUpdate:
     case HloOpcode::kAsyncDone:
-      return IsCollective(instruction->async_wrapped_instruction());
+      return IsNonFusionCollective(instruction->async_wrapped_instruction());
     default:
       return false;
   }
 }
 
-bool IsCollectiveWithChannelId(const HloInstruction* instruction) {
-  switch (instruction->opcode()) {
-    case HloOpcode::kAllReduce:
-    case HloOpcode::kAllReduceStart:
-    case HloOpcode::kAllGather:
-    case HloOpcode::kAllGatherStart:
-    case HloOpcode::kAllToAll:
-    case HloOpcode::kCollectivePermute:
-    case HloOpcode::kCollectivePermuteStart:
-      return instruction->channel_id().has_value();
-    case HloOpcode::kFusion:
-      for (const auto* inner_inst : instruction->fused_instructions()) {
-        if (IsCollectiveWithChannelId(inner_inst)) {
-          return true;
-        }
-      }
-      return false;
-    default:
-      return false;
+bool IsCollective(const HloInstruction* instruction) {
+  if (IsNonFusionCollective(instruction)) {
+    return true;
   }
+  if (instruction->opcode() == HloOpcode::kFusion &&
+      instruction->IsCustomFusion()) {
+    for (const auto* inner_inst : instruction->fused_instructions()) {
+      if (IsCollective(inner_inst)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+HloInstruction* IsOrHasCollectiveWithChannelId(HloInstruction* instruction) {
+  if (instruction->opcode() == HloOpcode::kFusion) {
+    for (auto* inner_inst : instruction->fused_instructions()) {
+      if (IsOrHasCollectiveWithChannelId(inner_inst) != nullptr) {
+        return inner_inst;
+      }
+    }
+    return nullptr;
+  }
+  if (DynCast<HloChannelInstruction>(instruction) == nullptr) {
+    return nullptr;
+  }
+  if (IsCollective(instruction) && instruction->channel_id().has_value()) {
+    return instruction;
+  }
+  return nullptr;
 }
 
 bool IsSyncCollective(const HloInstruction* instr) {
@@ -637,4 +648,72 @@ bool IsSyncCollective(const HloInstruction* instr) {
   return backend_config->collective_backend_config().is_sync();
 }
 
+using SourceTargetPair = std::pair<int64_t, int64_t>;
+using SourceTargetPairs = std::vector<SourceTargetPair>;
+
+bool IsForwardCycle(const SourceTargetPairs& pairs) {
+  int64_t size = pairs.size();
+  if (size <= 1) return false;  // self reference is not a cycle.
+  const SourceTargetPair& last_pair = pairs[size - 1];
+  if (last_pair.first != size - 1 || last_pair.second != 0) {
+    return false;
+  }
+  for (int64_t i = 0; i < size - 1; ++i) {
+    const SourceTargetPair& pair = pairs[i];
+    if (pair.first != i || pair.second != i + 1) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool IsBackwardCycle(const SourceTargetPairs& pairs) {
+  int64_t size = pairs.size();
+  if (size <= 1) return false;  // self reference is not a cycle.
+  const SourceTargetPair& first_pair = pairs[0];
+  if (first_pair.first != 0 || first_pair.second != size - 1) {
+    return false;
+  }
+  for (int64_t i = 1; i < size; ++i) {
+    const SourceTargetPair& pair = pairs[i];
+    if (pair.first != i || pair.second != i - 1) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool IsExclusivelyCrossModule(absl::Span<const ReplicaGroup> replica_groups,
+                              bool use_global_ids, bool has_channel_id,
+                              const DeviceAssignment& device_assignment) {
+  if (!has_channel_id) {
+    return false;
+  }
+  if (!use_global_ids) {
+    // Each id is a replica group is a replica id. If any group
+    // has more than one id then this is not exclusively cross module.
+    for (const ReplicaGroup& replica_group : replica_groups) {
+      if (replica_group.replica_ids_size() != 1) {
+        return false;
+      }
+    }
+    return true;
+  }
+  // Each id in a replica group is a global id. Check if all replica groups are
+  // exclusively cross module (all participants in a group have the same replica
+  // id).
+  int64_t partition_count = device_assignment.computation_count();
+  for (const ReplicaGroup& replica_group : replica_groups) {
+    std::optional<int64_t> first_replica_id;
+    for (int64_t global_id : replica_group.replica_ids()) {
+      int64_t replica_id = global_id / partition_count;
+      if (!first_replica_id.has_value()) {
+        first_replica_id = replica_id;
+      } else if (replica_id != first_replica_id) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
 }  // end namespace xla

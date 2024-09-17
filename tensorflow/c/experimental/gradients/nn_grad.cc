@@ -26,7 +26,6 @@ limitations under the License.
 
 using std::vector;
 using tensorflow::ops::BiasAddGrad;
-using tensorflow::ops::Mul;
 using tensorflow::ops::ReluGrad;
 
 namespace tensorflow {

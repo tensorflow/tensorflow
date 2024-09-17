@@ -24,16 +24,23 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
+#include "xla/array3d.h"
 #include "xla/client/lib/constants.h"
 #include "xla/client/xla_builder.h"
+#include "xla/error_spec.h"
+#include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
+#include "xla/service/service.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/test_macros.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -196,7 +203,8 @@ XLA_TYPED_TEST(MathTypedTest, LogEdgeCases) { this->TestLogEdgeCases(); }
 XLA_TYPED_TEST(MathTypedTest, Log1pEdgeCases) { this->TestLog1pEdgeCases(); }
 XLA_TYPED_TEST(MathTypedTest, IsInfOrNan) { this->TestIsInfOrNan(); }
 XLA_TYPED_TEST(MathTypedTest, IsNegZero) { this->TestIsNegZero(); }
-XLA_TYPED_TEST(MathTypedTest, SqrtPowInequivalence) {
+// Disabling on TPU since pow(-inf, 0.5) returns nan instead of +inf.
+XLA_TYPED_TEST(MathTypedTest, DISABLED_ON_TPU(SqrtPowInequivalence)) {
   this->TestSqrtPowInequivalence();
 }
 XLA_TYPED_TEST(MathTypedTest, ErfInvEdgeCases) { this->TestErfInvEdgeCases(); }
@@ -647,7 +655,7 @@ XLA_TEST_F(MathTest, BesselI0eFloat) {
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(MathTest, BesselI0eDouble) {
+XLA_TEST_F(MathTest, DISABLED_ON_TPU(BesselI0eDouble)) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<double>(
       &builder,
@@ -713,7 +721,7 @@ XLA_TEST_F(MathTest, BesselI1eFloat) {
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(MathTest, BesselI1eDouble) {
+XLA_TEST_F(MathTest, DISABLED_ON_TPU(BesselI1eDouble)) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<double>(
       &builder,

@@ -30,9 +30,9 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -45,9 +45,11 @@ limitations under the License.
 #include "xla/service/buffer_value.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/cublas_cudnn.h"
-#include "xla/service/gpu/gpu_schedule_postprocessing.h"
+#include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
 #include "xla/service/gpu/model/analytical_latency_estimator.h"
+#include "xla/service/gpu/transforms/pgle_accuracy_checker.h"
+#include "xla/service/gpu/transforms/schedule_postprocessing.h"
+#include "xla/service/gpu/transforms/scheduling_instruction_annotator.h"
 #include "xla/service/hlo_memory_scheduler.h"
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/latency_hiding_scheduler.h"
@@ -55,32 +57,28 @@ limitations under the License.
 #include "xla/service/profile_guided_latency_estimator.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/protobuf.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
 namespace gpu {
 
 namespace {
 
-bool IsNopInstruction(const HloInstruction& hlo) {
-  HloOpcode op = hlo.opcode();
-  return op == HloOpcode::kGetTupleElement || op == HloOpcode::kBitcast ||
-         op == HloOpcode::kConstant || op == HloOpcode::kParameter ||
-         hlo.IsEffectiveBitcast();
-}
-
 bool ShouldScheduleAsEarlyAsPossible(const HloInstruction& instr) {
   switch (instr.opcode()) {
     case HloOpcode::kAllReduceStart:
     case HloOpcode::kCollectivePermuteStart:
       return !IsSyncCollective(&instr);
+    case HloOpcode::kAsyncStart:
+      // Start async ops as early as possible to allow more concurrency.
+      return true;
     case HloOpcode::kCustomCall:
       return static_cast<const HloCustomCallInstruction&>(instr)
                  .custom_call_schedule() ==
@@ -102,6 +100,10 @@ bool ShouldScheduleAsLateAsPossible(const HloInstruction& instr) {
     case HloOpcode::kAllReduceDone:
     case HloOpcode::kCollectivePermuteDone:
       return ShouldScheduleAsEarlyAsPossible(*instr.operand(0));
+    case HloOpcode::kAsyncDone:
+      // Schedule as many other ops as possible before blocking on the
+      // completion of async ops.
+      return true;
     case HloOpcode::kCustomCall:
       return static_cast<const HloCustomCallInstruction&>(instr)
                  .custom_call_schedule() == CustomCallSchedule::SCHEDULE_LATEST;
@@ -258,21 +260,6 @@ absl::StatusOr<HloSchedule> ScheduleGpuModuleWithMemoryScheduler(
 
 // Latency hiding scheduler support.
 
-CanonicalAsyncOp GpuGetCanonicalAsyncOp(const HloInstruction& hlo) {
-  switch (hlo.opcode()) {
-    case HloOpcode::kSend:
-      return {HloOpcode::kAsyncStart, HloOpcode::kSend};
-    case HloOpcode::kSendDone:
-      return {HloOpcode::kAsyncDone, HloOpcode::kSend};
-    case HloOpcode::kRecv:
-      return {HloOpcode::kAsyncStart, HloOpcode::kRecv};
-    case HloOpcode::kRecvDone:
-      return {HloOpcode::kAsyncDone, HloOpcode::kRecv};
-    default:
-      return DefaultGetCanonicalAsyncOp(hlo);
-  }
-}
-
 SchedulerConfig GetSchedulerConfig(int64_t memory_limit) {
   SchedulerConfig config;
   config.all_reduce_overlap_limit = 1;
@@ -284,203 +271,6 @@ SchedulerConfig GetSchedulerConfig(int64_t memory_limit) {
   config.memory_limit = memory_limit;
   return config;
 }
-
-// GPU specific resources for latency hiding scheduler.
-//
-// We use two different set of resources to model the scheduling of asynchronous
-// collective operations and P2P Send and Recv operations. This corresponds to
-// the fact that the runtime use a stream to run asynchronous collective
-// operations and another stream to run P2P Send and Recv operations.
-enum class GpuResourceType {
-  kGpuAsyncStreamSend = 0,         // The resource for P2P Send operation.
-  kGpuAsyncStreamRecv = 1,         // The resource for P2P Recv operation.
-  kGpuAsyncStreamCollectives = 2,  // The resource for collective operations.
-  kGpuAsyncStreamComputes = 3,     // The resource for async compute operations.
-  kNumTargetResources = 4,
-};
-
-// Base GPU async tracker that enables async tracking only for async collectives
-// that are marked for async execution.
-class GpuAsyncTrackerBase : public AsyncTracker {
- public:
-  using AsyncTracker::AsyncTracker;
-
-  explicit GpuAsyncTrackerBase(
-      const SchedulerConfig& config,
-      GetCanonicalAsyncOpFunc func = GpuGetCanonicalAsyncOp)
-      : AsyncTracker(config, func) {}
-
-  bool IsAsyncComputeOp(const HloInstruction& hlo) const {
-    return (hlo.opcode() == HloOpcode::kAsyncStart ||
-            hlo.opcode() == HloOpcode::kAsyncDone) &&
-           !hlo_query::IsCollectiveCommunicationOp(
-               hlo.async_wrapped_opcode()) &&
-           hlo.async_execution_thread() != hlo.parent()->execution_thread();
-  }
-
-  bool IsSupportedAsyncDone(const HloInstruction& hlo) const override {
-    return (hlo_query::IsAsyncCollectiveDoneOp(&hlo,
-                                               /*include_send_recv=*/true) &&
-            !IsSyncCollective(hlo.operand(0))) ||
-           IsAsyncComputeOp(hlo);
-  }
-
-  // Returns if this is an Async op start that the scheduler supports.
-  bool IsSupportedAsyncStart(const HloInstruction& hlo) const override {
-    return (hlo_query::IsAsyncCollectiveStartOp(&hlo,
-                                                /*include_send_recv=*/true) &&
-            !IsSyncCollective(&hlo)) ||
-           IsAsyncComputeOp(hlo);
-  }
-};
-
-// GPU async tracker maps all collectives onto an async stream resource.
-class GpuAsyncTracker : public GpuAsyncTrackerBase {
- public:
-  explicit GpuAsyncTracker(const SchedulerConfig& config)
-      : GpuAsyncTrackerBase(config) {}
-
-  ResourcesVector GetResourcesFromInstruction(
-      const HloInstruction& instr) const override {
-    CanonicalAsyncOp op = GetCanonicalAsyncOp(instr);
-    if (op.outer == HloOpcode::kAsyncStart ||
-        op.outer == HloOpcode::kAsyncDone) {
-      ResourceUsageType usage = op.outer == HloOpcode::kAsyncStart
-                                    ? ResourceUsageType::kResourceRelease
-                                    : ResourceUsageType::kResourceOccupy;
-      ResourcesVector resources;
-      auto add_resource = [&](GpuResourceType resource_type) {
-        const int64_t gpu_stream_resource = GetFirstTargetDefinedResource() +
-                                            static_cast<int64_t>(resource_type);
-        resources.push_back(std::make_pair(gpu_stream_resource, usage));
-      };
-
-      if (op.inner == HloOpcode::kSend) {
-        add_resource(GpuResourceType::kGpuAsyncStreamSend);
-      } else if (op.inner == HloOpcode::kRecv) {
-        add_resource(GpuResourceType::kGpuAsyncStreamRecv);
-      } else if (hlo_query::IsCollectiveCommunicationOp(op.inner)) {
-        add_resource(GpuResourceType::kGpuAsyncStreamCollectives);
-      } else {
-        add_resource(GpuResourceType::kGpuAsyncStreamComputes);
-      }
-      return resources;
-    }
-    return GpuAsyncTrackerBase::GetResourcesFromInstruction(instr);
-  }
-
-  int64_t GetNumTargetDefinedResources() const override {
-    return static_cast<int64_t>(GpuResourceType::kNumTargetResources);
-  };
-
-  // Returns how many instructions using the given resource_type we can overlap
-  int64_t GetNumAvailableResources(int64_t resource_type) const override {
-    const int64_t first_target_resource = GetFirstTargetDefinedResource();
-    if (resource_type < first_target_resource) {
-      return GpuAsyncTrackerBase::GetNumAvailableResources(resource_type);
-    }
-    CHECK_LT(resource_type,
-             first_target_resource +
-                 static_cast<int64_t>(GpuResourceType::kNumTargetResources));
-
-    // We will allow upto 1 outstanding collective on the async stream. This
-    // controls the number of collectives in flight in the schedule (a
-    // collective is in flight if the start is issued but not done). As an
-    // example, with 1, LHS will generate the schedule: s0,e0,s1,e1, i.e., s1
-    // is not scheduled until e0 is scheduled. With 2, the scheduler can
-    // schedule s0,s1,e0,e1, because it assumes that the 2 instances of the
-    // resources do not interfere with each other. If we do want to support > 1
-    // async stream, we can increase this number and then do a post-pass on the
-    // scheduled code to assign async stream-id to collectives (and actually
-    // support > 1 async stream in the runtime).
-    // The only case we'd allow 2 for now is when the current resource is
-    // for an async computation operation which will be allocated with
-    // a dedicated compute stream. It can run concurrently with
-    // another collective.
-    if ((resource_type - first_target_resource) ==
-        static_cast<int64_t>(GpuResourceType::kGpuAsyncStreamComputes)) {
-      return 2;
-    }
-
-    return 1;
-  }
-
-  absl::string_view GetResourceName(int64_t resource_type) const override {
-    const int64_t first_target_resource = GetFirstTargetDefinedResource();
-    if (resource_type < first_target_resource) {
-      return GpuAsyncTrackerBase::GetResourceName(resource_type);
-    }
-    CHECK_LE(resource_type,
-             first_target_resource + GetNumTargetDefinedResources());
-    switch (
-        static_cast<GpuResourceType>(resource_type - first_target_resource)) {
-      case GpuResourceType::kGpuAsyncStreamSend:
-        return "kGpuAsyncStreamSend";
-      case GpuResourceType::kGpuAsyncStreamRecv:
-        return "kGpuAsyncStreamRecv";
-      case GpuResourceType::kGpuAsyncStreamCollectives:
-        return "kGpuAsyncStreamCollectives";
-      case GpuResourceType::kGpuAsyncStreamComputes:
-        return "kGpuAsyncStreamComputes";
-      default:
-        return "kUnsupportedResource";
-    }
-  }
-
-  ResourceHazardType GetResourceHazardType(
-      int64_t resource_type) const override {
-    const int64_t first_target_resource = GetFirstTargetDefinedResource();
-    if (resource_type < first_target_resource) {
-      return GpuAsyncTrackerBase::GetResourceHazardType(resource_type);
-    }
-    CHECK_LE(resource_type,
-             first_target_resource + GetNumTargetDefinedResources());
-    return ResourceHazardType::kUnshareable;
-  }
-};
-
-class GpuLatencyEstimator : public ApproximateLatencyEstimator {
- public:
-  explicit GpuLatencyEstimator(
-      GetCanonicalAsyncOpFunc func = GpuGetCanonicalAsyncOp)
-      : ApproximateLatencyEstimator(func) {}
-  TimeCost NodeCost(const HloInstruction* instr) const override {
-    if (IsNopInstruction(*instr)) {
-      return 0.0;
-    }
-    // Consider cublas/cuddn/softmax custom calls as medium cost. Since the
-    // latency between async-start and async-done is 5000 and cost of each
-    // custom call is 1000, the LHS will try to schedule approximately 5 of
-    // these in between each start/end pair.
-    if (instr->opcode() == HloOpcode::kCustomCall) {
-      if (IsCublasGemm(*instr) || IsCustomCallToDnnConvolution(*instr)) {
-        return ApproximateLatencyEstimator::kMediumCost;
-      }
-      // consider other custom calls as medium cost for now. Keeping the case
-      // explicitly separate for further tuning.
-      return ApproximateLatencyEstimator::kMediumCost;
-    }
-    return ApproximateLatencyEstimator::NodeCost(instr);
-  }
-
-  LatencyEstimator::TimeCost GetLatencyBetween(
-      const HloGraphNode& from, const HloGraphNode& target) const override {
-    if (IsAsyncPair(from, target)) {
-      if (from.GetInstr().opcode() == HloOpcode::kRecv) {
-        // Recv -> RecvDone has a low latency.
-        return ApproximateLatencyEstimator::kLowLatency;
-      } else if (from.GetInstr().opcode() == HloOpcode::kSend) {
-        // Send -> SendDone has a very high latency.
-        return ApproximateLatencyEstimator::kHighLatency * 10;
-      }
-
-      return ApproximateLatencyEstimator::kHighLatency;
-    }
-    // Every other instruction we consider synchronous, which means the
-    // latency between each of them is always one unit.
-    return ApproximateLatencyEstimator::kLowLatency;
-  }
-};
 
 tensorflow::profiler::ProfiledInstructionsProto GetProfileForFingerprint(
     tensorflow::profiler::ProfiledInstructionsProto& profile,
@@ -633,50 +423,7 @@ std::optional<tensorflow::profiler::ProfiledInstructionsProto> ReadPGLEProfile(
                                        pgle_profile_file_or_dir_path);
   }
 }
-
-// Return true if the profile is applicable to the module. That is true if every
-// instruction in the profile is present in the module.
-absl::Status IsProfileApplicable(
-    const HloModule* module,
-    const tensorflow::profiler::ProfiledInstructionsProto& profile) {
-  absl::flat_hash_set<absl::string_view> instruction_names;
-  for (HloComputation* comp : module->MakeNonfusionComputations()) {
-    for (HloInstruction* instr : comp->instructions()) {
-      instruction_names.insert(instr->name());
-    }
-  }
-
-  for (const auto& cost : profile.costs()) {
-    if (!instruction_names.contains(cost.name())) {
-      return absl::InvalidArgumentError(absl::StrFormat(
-          "cost name %s not in module %s", cost.name(), module->name()));
-    }
-  }
-  for (const auto& latency : profile.latencies()) {
-    if (!instruction_names.contains(latency.source())) {
-      return absl::InvalidArgumentError(absl::StrFormat(
-          "cost name %s not in module %s", latency.source(), module->name()));
-    }
-
-    if (!instruction_names.contains(latency.target())) {
-      return absl::InvalidArgumentError(absl::StrFormat(
-          "cost name %s not in module %s", latency.target(), module->name()));
-    }
-  }
-  return absl::OkStatus();
-}
-
 }  // end namespace
-
-int64_t GetSizeOfShape(const Shape& shape, int pointer_size) {
-  int64_t size = ShapeUtil::ByteSizeOf(shape, pointer_size);
-  if (shape.is_static() || shape.IsTuple()) {
-    return size;
-  }
-  // Each dynamic dimension size is represented as a S32.
-  int64_t metadata_size = sizeof(int32_t) * shape.dimensions_size();
-  return size + metadata_size;
-}
 
 static int64_t GetSchedulerMemoryLimit(
     const HloModule* module, const se::DeviceDescription& gpu_device_info,
@@ -685,6 +432,7 @@ static int64_t GetSchedulerMemoryLimit(
 absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
     HloModule* module, int64_t pointer_size,
     const se::DeviceDescription& gpu_device_info) {
+  tsl::profiler::TraceMe traceme("GpuCompiler::CompileToBackendResult");
   int64_t memory_limit =
       GetSchedulerMemoryLimit(module, gpu_device_info, pointer_size);
   if (module->has_schedule()) {
@@ -720,7 +468,8 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
   }
 
   SchedulerConfig config = GetSchedulerConfig(memory_limit);
-  auto gpu_latency_estimator = std::make_unique<GpuLatencyEstimator>();
+  auto gpu_latency_estimator =
+      std::make_unique<GpuLatencyEstimator>(pointer_size);
 
   std::unique_ptr<LatencyEstimator> latency_estimator;
   std::optional<tensorflow::profiler::ProfiledInstructionsProto> profile =
@@ -730,16 +479,20 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
       module->config()
           .debug_options()
           .xla_gpu_enable_analytical_latency_estimator();
+  HloPassPipeline pipeline("latency-hiding-scheduler");
   if (profile.has_value()) {
-    latency_estimator = std::make_unique<ProfileGuidedLatencyEstimator>(
-        config, std::move(gpu_latency_estimator), profile.value());
+    auto aggregator = std::make_unique<GPUProfileStatisticsAggregator>();
+    auto pg_latency_estimator = std::make_unique<ProfileGuidedLatencyEstimator>(
+        config, std::move(gpu_latency_estimator), profile.value(),
+        std::move(aggregator));
     LOG(INFO) << "Found profile, using profile guided latency estimator";
-    absl::Status s = IsProfileApplicable(module, profile.value());
-    if (!s.ok()) {
-      LOG(INFO) << "PGLE profile may not applicable to the module, but will "
-                   "still be used : "
-                << s.message();
+    VLOG(1) << "Profile:\n" << profile->DebugString();
+    if (module->config()
+            .debug_options()
+            .xla_gpu_enable_pgle_accuracy_checker()) {
+      pipeline.AddPass<PGLEAccuracyChecker>(*pg_latency_estimator);
     }
+    latency_estimator = std::move(pg_latency_estimator);
   } else if (enable_analytical_latency_estimator) {
     latency_estimator = std::make_unique<AnalyticalLatencyEstimator>(
         config, std::move(gpu_latency_estimator), gpu_device_info,
@@ -763,18 +516,18 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
   auto shape_size_in_bytes = [pointer_size](const Shape& shape) {
     return GetSizeOfShape(shape, pointer_size);
   };
-  HloPassPipeline pipeline("latency-hiding-scheduler");
   auto scheduler_core = std::make_unique<DefaultSchedulerCore>(
       shape_size_in_bytes, async_tracker.get(), latency_estimator.get(),
       config);
+  pipeline.AddPass<SchedulingInstructionAnnotator>();
   pipeline.AddPass<LatencyHidingScheduler>(
       std::move(latency_estimator), std::move(async_tracker),
       std::move(scheduler_core), shape_size_in_bytes);
 
   TF_RETURN_IF_ERROR(pipeline.Run(module).status());
 
-  HloPassPipeline postprocessing_pipeline("gpu-schedule-postprocessing");
-  postprocessing_pipeline.AddPass<GpuSchedulePostprocessing>();
+  HloPassPipeline postprocessing_pipeline("schedule-postprocessing");
+  postprocessing_pipeline.AddPass<SchedulePostprocessing>();
   TF_RETURN_IF_ERROR(postprocessing_pipeline.Run(module).status());
 
   return ScheduleMetadata{memory_limit};

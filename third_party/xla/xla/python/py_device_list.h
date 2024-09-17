@@ -17,24 +17,24 @@ limitations under the License.
 #define XLA_PYTHON_PY_DEVICE_LIST_H_
 
 #include <cstdint>
-#include <memory>
 #include <optional>
 #include <string>
 #include <variant>
 
 #include "absl/status/statusor.h"
-#include "third_party/nanobind/include/nanobind/nanobind.h"
-#include "xla/python/ifrt/device.h"
+#include "nanobind/nanobind.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/nb_class_ptr.h"
 #include "xla/python/py_client.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace jax {
 
 // Device list with various caching and direct access to IFRT DeviceList.
 class PyDeviceList {
  public:
-  PyDeviceList(std::shared_ptr<xla::PyClient> py_client,
-               xla::ifrt::DeviceList device_list);
+  PyDeviceList(xla::nb_class_ptr<xla::PyClient> py_client,
+               tsl::RCReference<xla::ifrt::DeviceList> device_list);
   explicit PyDeviceList(nanobind::tuple py_device_assignment);
   ~PyDeviceList();
 
@@ -44,8 +44,9 @@ class PyDeviceList {
   PyDeviceList& operator=(PyDeviceList&&) = delete;
 
   // These two methods are safe to call from C++ without GIL.
-  std::shared_ptr<xla::PyClient> py_client() const { return py_client_; }
-  absl::StatusOr<xla::ifrt::DeviceList> ifrt_device_list() const;
+  xla::nb_class_ptr<xla::PyClient> py_client() const { return py_client_; }
+  absl::StatusOr<tsl::RCReference<xla::ifrt::DeviceList>> ifrt_device_list()
+      const;
 
   // Methods below require GIL.
   int64_t Hash();
@@ -78,13 +79,14 @@ class PyDeviceList {
 
   // Valid only if `device_list_` contains `xla::ifrt::DeviceList` and
   // non-empty.
-  std::shared_ptr<xla::PyClient> py_client_;
+  xla::nb_class_ptr<xla::PyClient> py_client_;
 
   // Either C++ `ifrt::DeviceList` or Python duck-type devices.
   // TODO(hyeontaek): Remove support for Python duck-type devices once all
   // JAX backends and tests are migrated to use an `xla::ifrt::Device` type
   // for JAX devices.
-  std::variant<xla::ifrt::DeviceList, nanobind::tuple> device_list_;
+  std::variant<tsl::RCReference<xla::ifrt::DeviceList>, nanobind::tuple>
+      device_list_;
 
   std::optional<ssize_t> hash_;  // Populated on demand.
   // TODO(hyeontaek): Make the following property cached within

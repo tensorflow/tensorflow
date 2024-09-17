@@ -65,7 +65,7 @@ int64_t StandaloneTaskIterator::Cardinality() const {
   return dataset_->Get()->Cardinality();
 }
 
-StatusOr<std::vector<Tensor>> StandaloneTaskIterator::Save() {
+absl::StatusOr<std::vector<Tensor>> StandaloneTaskIterator::Save() {
   return iterator_->Save();
 }
 
@@ -118,6 +118,10 @@ FirstComeFirstServedTaskRunner::~FirstComeFirstServedTaskRunner() { Cancel(); }
 
 Status FirstComeFirstServedTaskRunner::GetNext(const GetElementRequest& req,
                                                GetElementResult& result) {
+  if (req.allow_skip() && buffer_.Empty()) {
+    result.skip = true;
+    return absl::OkStatus();
+  }
   return GetNext(result);
 }
 
@@ -145,7 +149,7 @@ void FirstComeFirstServedTaskRunner::RunPrefetchThread() {
       prefetch_fn));
 }
 
-StatusOr<GetElementResult>
+absl::StatusOr<GetElementResult>
 FirstComeFirstServedTaskRunner::GetNextFromInputIterator()
     TF_LOCKS_EXCLUDED(mu_) {
   GetElementResult result;
@@ -196,7 +200,7 @@ CachingTaskRunner::GetElementResultSequence::GetElementResultSequence(
     FirstComeFirstServedTaskRunner& fcfs_task_runner)
     : fcfs_task_runner_(fcfs_task_runner) {}
 
-StatusOr<GetElementResult>
+absl::StatusOr<GetElementResult>
 CachingTaskRunner::GetElementResultSequence::GetNext() {
   GetElementResult result;
   TF_RETURN_IF_ERROR(fcfs_task_runner_.GetNext(result));

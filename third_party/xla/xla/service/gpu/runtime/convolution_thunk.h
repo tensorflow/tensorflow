@@ -28,7 +28,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
-#include "xla/service/gpu/thunk.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -58,7 +58,8 @@ class ConvolutionThunk : public Thunk {
   std::vector<BufferAllocation::Slice> operand_buffers_;
   std::vector<BufferAllocation::Slice> result_buffers_;
   BufferAllocation::Slice scratch_buffer_;
-  GenericConvRunner& GetOrCreateRunner(const stream_executor::Stream* stream);
+  GenericConvRunner& GetOrCreateRunner(const stream_executor::Stream* stream,
+                                       bool* runner_created);
 
   // Convolution config
   const GpuConvConfig config_;

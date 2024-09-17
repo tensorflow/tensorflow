@@ -17,11 +17,11 @@
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/host_memory_offload_annotations.h"
 #include "xla/side_effect_util.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -56,10 +56,6 @@ absl::StatusOr<bool> ConvertMemoryPlacementToInternalAnnotations::Run(
         }
         if (is_to_host_case) {
           VLOG(1) << "Process forward case: " << instruction->ToString();
-          if (instruction->users().size() != 1) {
-            VLOG(1) << "Skip because of too many users on instruction";
-            continue;
-          }
           if (instruction->operand_count() != 1) {
             return Internal(
                 "Custom calls with target %s must have exactly one operand. %s "
@@ -68,21 +64,22 @@ absl::StatusOr<bool> ConvertMemoryPlacementToInternalAnnotations::Run(
                 instruction->name(), instruction->operand_count());
           }
           HloInstruction* input = instruction->mutable_operand(0);
-          TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(
+          HloInstruction* move_to_host_custom_call =
               c->AddInstruction(HloInstruction::CreateCustomCall(
                   input->shape(), {input},
                   host_memory_offload_annotations::
-                      kMoveToHostCustomCallTarget))));
+                      kMoveToHostCustomCallTarget));
+          if (instruction->has_sharding()) {
+            move_to_host_custom_call->set_sharding(instruction->sharding());
+          }
+          TF_RETURN_IF_ERROR(
+              instruction->ReplaceAllUsesWith(move_to_host_custom_call));
           TF_RETURN_IF_ERROR(
               c->RemoveInstructionAndUnusedOperands(instruction));
           changed = true;
         } else if (is_to_device_case) {
           VLOG(1) << "Process backward case: " << instruction->ToString();
           HloInstruction* custom_call_operand = instruction->mutable_operand(0);
-          if (custom_call_operand->users().size() != 1) {
-            VLOG(1) << "Skip because operand is used by more than one user";
-            continue;
-          }
           HloInstruction* new_result =
               c->AddInstruction(HloInstruction::CreateCustomCall(
                   custom_call_operand->shape(), {custom_call_operand},

@@ -19,31 +19,31 @@ limitations under the License.
 #define XLA_HLO_IR_HLO_INSTRUCTIONS_H_
 
 #include <cstdint>
-#include <list>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_domain_metadata.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/iterator_util.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/printer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/gtl/iterator_range.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
@@ -67,7 +67,6 @@ class HloDimensionsInstruction : public HloInstruction {
       case HloOpcode::kReduce:
       case HloOpcode::kReverse:
       case HloOpcode::kSort:
-      case HloOpcode::kTopK:
       case HloOpcode::kTranspose:
         return true;
       default:
@@ -300,6 +299,7 @@ class HloAsyncStartInstruction : public HloAsyncInstruction {
       absl::string_view async_execution_thread = kMainExecutionThread);
 
   ~HloAsyncStartInstruction() override;
+  void ClearCalledComputations() override;
   // When an async instruction is being destructed, remove it from the vector of
   // pointers of its called computation, to avoid referencing freed memory.
   void ClearAsyncComputationInstruction();
@@ -310,6 +310,15 @@ class HloAsyncStartInstruction : public HloAsyncInstruction {
   void set_async_execution_thread(
       absl::string_view async_execution_thread) override;
   HloInstructionProto ToProto() const override;
+
+  static bool ClassOf(const HloInstruction* hlo) {
+    switch (hlo->opcode()) {
+      case HloOpcode::kAsyncStart:
+        return true;
+      default:
+        return false;
+    }
+  }
 
  private:
   void PrintExtraAttributesImpl(AttributePrinter& printer,
@@ -349,11 +358,11 @@ class HloCopyStartInstruction : public HloInstruction {
 
   // Each cross program prefetched buffer has a unique index. The indices are
   // assigned contiguously starting from zero in
-  // AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer. This value
-  // is used during codegen to determine which buffer is being speculated at
-  // runtime. One possible implementation is to initialize an array with boolean
-  // values indicating whether the cross program prefetch succeeds or fails for
-  // each buffer.
+  // MsaAlgorithm::AllocateCrossProgramPrefetchBuffer. This value is used during
+  // codegen to determine which buffer is being speculated at runtime. One
+  // possible implementation is to initialize an array with boolean values
+  // indicating whether the cross program prefetch succeeds or fails for each
+  // buffer.
   std::optional<int> cross_program_prefetch_index_;
 };
 
@@ -628,9 +637,13 @@ class HloRecvDoneInstruction : public HloSendRecvInstruction {
 
 class HloCollectiveInstruction : public HloChannelInstruction {
  public:
+  // TODO(b/316622399): Remove usages of this method and replace with
+  // device_list()->replica_groups().
   const std::vector<ReplicaGroup>& replica_groups() const {
-    return replica_groups_;
+    return device_list_.replica_groups();
   }
+
+  const CollectiveDeviceList& device_list() const { return device_list_; }
 
   // Returns true if the layout of the AllReduce is enforced by XLA client (as
   // the layout set in the shape). The only reason for the client to set the
@@ -653,6 +666,13 @@ class HloCollectiveInstruction : public HloChannelInstruction {
   explicit HloCollectiveInstruction(
       HloOpcode opcode, const Shape& shape,
       absl::Span<HloInstruction* const> operands,
+      const CollectiveDeviceList& collective_device_list, bool constrain_layout,
+      const std::optional<int64_t>& channel_id);
+
+  ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
+  explicit HloCollectiveInstruction(
+      HloOpcode opcode, const Shape& shape,
+      absl::Span<HloInstruction* const> operands,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
       const std::optional<int64_t>& channel_id);
 
@@ -665,17 +685,27 @@ class HloCollectiveInstruction : public HloChannelInstruction {
       absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
           eq_computations) const override;
 
-  std::vector<ReplicaGroup> replica_groups_;
+  CollectiveDeviceList device_list_;
   bool constrain_layout_;
 };
 
 class HloAllGatherInstruction : public HloCollectiveInstruction {
  public:
+  explicit HloAllGatherInstruction(HloOpcode opcode, const Shape& shape,
+                                   absl::Span<HloInstruction* const> operands,
+                                   int64_t all_gather_dimension,
+                                   const CollectiveDeviceList& device_list,
+                                   bool constrain_layout,
+                                   const std::optional<int64_t>& channel_id,
+                                   bool use_global_device_ids);
+
+  ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
   explicit HloAllGatherInstruction(
       HloOpcode opcode, const Shape& shape,
       absl::Span<HloInstruction* const> operands, int64_t all_gather_dimension,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
       const std::optional<int64_t>& channel_id, bool use_global_device_ids);
+
   // Same as HloAllReduceInstruction::use_global_device_ids.
   bool use_global_device_ids() const { return use_global_device_ids_; }
 
@@ -715,6 +745,14 @@ class HloAllGatherInstruction : public HloCollectiveInstruction {
 // Base class for all-reduce and all-reduce scatter instructions.
 class HloAllReduceInstructionBase : public HloCollectiveInstruction {
  public:
+  explicit HloAllReduceInstructionBase(
+      HloOpcode opcode, const Shape& shape,
+      absl::Span<HloInstruction* const> operands,
+      HloComputation* reduce_computation,
+      const CollectiveDeviceList& device_list, bool constrain_layout,
+      const std::optional<int64_t>& channel_id, bool use_global_device_ids);
+
+  ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
   explicit HloAllReduceInstructionBase(
       HloOpcode opcode, const Shape& shape,
       absl::Span<HloInstruction* const> operands,
@@ -776,6 +814,14 @@ class HloReduceScatterInstruction : public HloAllReduceInstructionBase {
   explicit HloReduceScatterInstruction(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
+      const CollectiveDeviceList& device_list, bool constrain_layout,
+      const std::optional<int64_t>& channel_id, bool use_global_device_ids,
+      int64_t scatter_dimension);
+
+  ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
+  explicit HloReduceScatterInstruction(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      HloComputation* reduce_computation,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
       const std::optional<int64_t>& channel_id, bool use_global_device_ids,
       int64_t scatter_dimension);
@@ -811,6 +857,13 @@ class HloReduceScatterInstruction : public HloAllReduceInstructionBase {
 
 class HloAllToAllInstruction : public HloCollectiveInstruction {
  public:
+  explicit HloAllToAllInstruction(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      const CollectiveDeviceList& device_list, bool constrain_layout,
+      const std::optional<int64_t>& channel_id,
+      const std::optional<int64_t>& split_dimension);
+
+  ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
   explicit HloAllToAllInstruction(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
@@ -852,6 +905,13 @@ class HloAllToAllInstruction : public HloCollectiveInstruction {
 
 class HloCollectiveBroadcastInstruction : public HloCollectiveInstruction {
  public:
+  explicit HloCollectiveBroadcastInstruction(
+      HloOpcode opcode, const Shape& shape,
+      absl::Span<HloInstruction* const> operands,
+      const CollectiveDeviceList& device_list, bool constrain_layout,
+      const std::optional<int64_t>& channel_id);
+
+  ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
   explicit HloCollectiveBroadcastInstruction(
       HloOpcode opcode, const Shape& shape,
       absl::Span<HloInstruction* const> operands,
@@ -1282,6 +1342,15 @@ class HloCallableInstruction : public HloInstruction {
                          absl::Span<HloInstruction* const> operands,
                          absl::Span<HloComputation* const> called_computations);
 
+  HloCallableInstruction(HloOpcode opcode, const Shape& shape,
+                         const std::string& name, const std::string& attributes,
+                         int64_t version);
+
+  HloCallableInstruction(HloOpcode opcode, const Shape& shape,
+                         absl::Span<HloInstruction* const> operands,
+                         HloComputation* decomposition, const std::string& name,
+                         const std::string& attributes, int64_t version);
+
   ~HloCallableInstruction() override;
 
   // Adds a new operand to the callable instruction.
@@ -1341,6 +1410,21 @@ class HloCallableInstruction : public HloInstruction {
     output_to_operand_aliasing_ = std::move(aliasing);
   }
 
+  FrontendAttributes BuildFrontendAttributesForComposite(
+      const std::string& name,
+      std::optional<absl::string_view> attributes = std::nullopt,
+      std::optional<int64_t> version = std::nullopt) {
+    FrontendAttributes frontend_attributes;
+    frontend_attributes.mutable_map()->insert({"composite.name", name});
+    frontend_attributes.mutable_map()->insert(
+        {"composite.attributes",
+         attributes.has_value() ? std::string(*attributes) : "{}"});
+    frontend_attributes.mutable_map()->insert(
+        {"composite.version",
+         version.has_value() ? std::to_string(*version) : "0"});
+    return frontend_attributes;
+  }
+
  protected:
   // Returns the default called computation name.
   virtual std::string default_called_computation_name() const = 0;
@@ -1389,7 +1473,7 @@ class HloFusionInstruction : public HloCallableInstruction {
   void MergeFusionInstruction(HloFusionInstruction* instruction_to_merge);
 
   // Merges the fused instructions from instruction_to_merge into the fused
-  // instruction set of 'this' and generates multioutput fusion instructions.
+  // instruction set of 'this' and generates multi-output fusion instructions.
   // All the users of instruction_to_merge will be redirected to 'this'
   // instruction. instruction_to_merge will be removed from its parent
   // computation.
@@ -1455,7 +1539,7 @@ class HloFusionInstruction : public HloCallableInstruction {
   void set_fusion_kind(FusionKind kind) { fusion_kind_ = kind; }
 
   // If multiple operands are the same instruction, keeps only one of them.
-  Status DeduplicateFusionOperands();
+  absl::Status DeduplicateFusionOperands();
 
   static bool ClassOf(const HloInstruction* hlo) {
     return hlo->opcode() == HloOpcode::kFusion;
@@ -1493,6 +1577,15 @@ class HloCallInstruction : public HloCallableInstruction {
   HloCallInstruction(const Shape& shape,
                      absl::Span<HloInstruction* const> operands,
                      HloComputation* called_computation);
+
+  HloCallInstruction(const Shape& shape, HloInstruction* decomposition_root,
+                     const std::string& name, const std::string& attributes,
+                     int64_t version);
+
+  HloCallInstruction(const Shape& shape,
+                     absl::Span<HloInstruction* const> operands,
+                     HloComputation* decomposition, const std::string& name,
+                     const std::string& attributes, int64_t version);
 
   static bool ClassOf(const HloInstruction* hlo) {
     return hlo->opcode() == HloOpcode::kCall;
@@ -2033,6 +2126,11 @@ class HloCustomCallInstruction : public HloCallableInstruction {
     CHECK(layout_constrained());
     return operand_shapes_with_layout_;
   }
+  void set_operand_shapes_with_layout(
+      std::vector<Shape> operand_shapes_with_layout) {
+    CHECK(layout_constrained());
+    operand_shapes_with_layout_ = std::move(operand_shapes_with_layout);
+  }
   void set_custom_call_schedule(CustomCallSchedule custom_call_schedule) {
     custom_call_schedule_ = custom_call_schedule;
   }
@@ -2215,6 +2313,8 @@ class HloDynamicUpdateSliceInstruction : public HloDynamicIndexInstruction {
 
   int64_t first_index_operand_number() const override { return 2; }
 
+  const HloInstruction* update() const { return operand(1); }
+
   static bool ClassOf(const HloInstruction* hlo) {
     return hlo->opcode() == HloOpcode::kDynamicUpdateSlice;
   }
@@ -2245,7 +2345,9 @@ class HloGatherInstruction : public HloInstruction {
   static GatherDimensionNumbers MakeGatherDimNumbers(
       absl::Span<const int64_t> offset_dims,
       absl::Span<const int64_t> collapsed_slice_dims,
-      absl::Span<const int64_t> start_index_map, int64_t index_vector_dim);
+      absl::Span<const int64_t> start_index_map, int64_t index_vector_dim,
+      absl::Span<const int64_t> operand_batching_dims = {},
+      absl::Span<const int64_t> start_indices_batching_dims = {});
   // Returns the dump string of the given gather dimension numbers.
   static std::string GatherDimensionNumbersToString(
       const GatherDimensionNumbers& dim_numbers);
@@ -2310,7 +2412,9 @@ class HloScatterInstruction : public HloInstruction {
       absl::Span<const int64_t> update_window_dims,
       absl::Span<const int64_t> inserted_window_dims,
       absl::Span<const int64_t> scatter_dims_to_operand_dims,
-      int64_t index_vector_dim);
+      int64_t index_vector_dim,
+      absl::Span<const int64_t> input_batching_dims = {},
+      absl::Span<const int64_t> scatter_indices_batching_dims = {});
   // Returns the dump string of the given scatter dimension numbers.
   static std::string ScatterDimensionNumbersToString(
       const ScatterDimensionNumbers& dim_numbers);

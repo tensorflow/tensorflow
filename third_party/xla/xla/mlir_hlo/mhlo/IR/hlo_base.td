@@ -69,6 +69,8 @@ defvar MHLO_QuantizedIntTensor = HLO_QuantizedIntOrPerAxisQuantizedIntTensor;
 
 defvar MHLO_PredTensor = HLO_PredTensor;
 
+// TODO: b/327490705 - Change this alias back to HLO_Tensor once MHLO_Tensor no
+// longer needs per axis quantization.
 defvar MHLO_Tensor = HLO_TensorOrPerAxisQuantizedTensor;
 
 defvar MHLO_AnyTensor = HLO_AnyTensor;
@@ -103,6 +105,9 @@ defvar MHLO_PredOrIntTensor = HLO_PredOrIntTensor;
 // Any floating-point or complex tensor types
 defvar MHLO_FpOrComplexTensor = HLO_FpOrComplexTensor;
 
+// Any floating-point or quantized tensor types
+defvar MHLO_FpOrQuantizedIntTensor = HLO_FpOrQuantizedIntTensor;
+
 // Any floating-point, complex or quantized tensor types
 defvar MHLO_FpComplexOrQuantizedIntTensor = HLO_FpComplexOrQuantizedIntTensor;
 
@@ -128,5 +133,7 @@ defvar MHLO_StaticShapeTensorOrToken = HLO_StaticShapeTensorOrPerAxisQuantizedTe
 defvar MHLO_StaticShapeIntOrFpTensor = HLO_StaticShapeIntOrFpTensor;
 
 defvar MHLO_StaticShapeIntFpOrComplexTensor = HLO_StaticShapeIntFpOrComplexTensor;
+
+defvar MHLO_Static1DIntTensor = HLO_Static1DIntTensor;
 
 #endif // MLIR_HLO_DIALECT_MHLO_IR_HLO_BASE

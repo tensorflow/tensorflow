@@ -19,6 +19,7 @@ limitations under the License.
 #include <random>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/delegates/xnnpack/conv_2d_tester.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 
@@ -786,41 +787,6 @@ TEST(Conv2D, TransientIndirectionBuffer) {
   xnnpack_options.num_threads = 2;
   xnnpack_options.flags |=
       TFLITE_XNNPACK_DELEGATE_FLAG_TRANSIENT_INDIRECTION_BUFFER;
-  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
-      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&xnnpack_options),
-                       TfLiteXNNPackDelegateDelete);
-
-  std::random_device random_device;
-  auto rng = std::mt19937(random_device());
-  auto batch_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(2, 4), std::ref(rng));
-  auto input_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(5, 25), std::ref(rng));
-  auto kernel_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(3, 5), std::ref(rng));
-  auto stride_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(2, 3), std::ref(rng));
-  auto channel_rng =
-      std::bind(std::uniform_int_distribution<int32_t>(2, 16), std::ref(rng));
-
-  Conv2DTester()
-      .BatchSize(batch_rng())
-      .InputHeight(input_rng())
-      .InputWidth(input_rng())
-      .InputChannels(channel_rng())
-      .OutputChannels(channel_rng())
-      .KernelHeight(kernel_rng())
-      .KernelWidth(kernel_rng())
-      .StrideHeight(stride_rng())
-      .StrideWidth(stride_rng())
-      .Test(xnnpack_delegate.get());
-}
-
-TEST(Conv2D, AdaptiveAvxOptimization) {
-  TfLiteXNNPackDelegateOptions xnnpack_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  xnnpack_options.num_threads = 2;
-  xnnpack_options.experimental_adaptive_avx_optimization = true;
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(&xnnpack_options),
                        TfLiteXNNPackDelegateDelete);

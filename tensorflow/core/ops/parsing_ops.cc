@@ -498,7 +498,7 @@ REGISTER_OP("DecodeCSV")
 REGISTER_OP("StringToNumber")
     .Input("string_tensor: string")
     .Output("output: out_type")
-    .Attr("out_type: {float, double, int32, int64} = DT_FLOAT")
+    .Attr("out_type: {float, double, int32, int64, uint32, uint64} = DT_FLOAT")
     .SetShapeFn(shape_inference::UnchangedShape);
 
 }  // namespace tensorflow

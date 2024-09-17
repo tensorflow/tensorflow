@@ -91,33 +91,10 @@ limitations under the License.
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace stream_executor {
 
 class Kernel;
-class StreamExecutor;
-
-//===----------------------------------------------------------------------===//
-// Kernel cache config
-//===----------------------------------------------------------------------===//
-
-// This enum represents potential configurations of L1/shared memory when
-// running a particular kernel. These values represent user preference, and
-// the runtime is not required to respect these choices.
-enum class KernelCacheConfig {
-  // Indicates no preference for device L1/shared memory configuration.
-  kNoPreference,
-
-  // Indicates a preference for more shared memory than L1 cache.
-  kPreferShared,
-
-  // Indicates a preference for more L1 cache than shared memory.
-  kPreferL1,
-
-  // Indicates a preference for equal amounts of L1 cache and shared memory.
-  kPreferEqual,
-};
 
 //===----------------------------------------------------------------------===//
 // Kernel metadata
@@ -228,13 +205,6 @@ class Kernel {
       std::function<absl::StatusOr<std::unique_ptr<KernelArgsPackedArrayBase>>(
           const Kernel &kernel, const KernelArgs &args)>;
 
-  // TODO(b/323534971): Kernel constructor should be moved to StreamExecutor or
-  // a dedicated KernelFactory accessible via StreamExecutor.
-
-  // Creates kernel on a given executor from a given kernel specification.
-  static absl::StatusOr<std::unique_ptr<Kernel>> Create(
-      StreamExecutor *executor, const MultiKernelLoaderSpec &spec);
-
   Kernel() = default;
   virtual ~Kernel() = default;
 
@@ -250,11 +220,6 @@ class Kernel {
   virtual absl::StatusOr<int32_t> GetMaxOccupiedBlocksPerCore(
       ThreadDim threads, size_t dynamic_shared_memory_bytes) const = 0;
 
-  KernelCacheConfig cache_config() const { return cache_config_; }
-  void set_cache_config(KernelCacheConfig cache_config) {
-    cache_config_ = std::move(cache_config);
-  }
-
   const KernelMetadata &metadata() const { return metadata_; }
   void set_metadata(KernelMetadata metadata) {
     metadata_ = std::move(metadata);
@@ -268,13 +233,9 @@ class Kernel {
   std::string_view name() const { return name_; }
   void set_name(absl::string_view name);
 
-  std::string_view demangled_name() const { return demangled_name_; }
-
  private:
   std::string name_;
-  std::string demangled_name_;
 
-  KernelCacheConfig cache_config_ = KernelCacheConfig::kNoPreference;
   KernelMetadata metadata_;
   KernelArgsPacking args_packing_;
 };
@@ -282,35 +243,14 @@ class Kernel {
 //===----------------------------------------------------------------------===//
 // Typed kernel
 //===----------------------------------------------------------------------===//
+template <typename... Params>
+class TypedKernelFactory;
 
 // Typed kernel is a typed smart-pointer-like wrapper around untyped Kernel.
 template <typename... Params>
 class TypedKernel {
  public:
   static constexpr size_t kNumberOfParameters = sizeof...(Params);
-
-  // Creates a typed kernel on a given executor from a kernel specification.
-  static absl::StatusOr<TypedKernel> Create(StreamExecutor *executor,
-                                            const MultiKernelLoaderSpec &spec) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<Kernel> kernel,
-                        Kernel::Create(executor, spec));
-    return TypedKernel(std::move(kernel));
-  }
-
-  // Creates a kernel which can be launched with `stream.ThenLaunch(...)` from a
-  // PTX (and optional CUBIN), such that the types of the arguments provided for
-  // launch would have to match types of the arguments provided at creation
-  // time. The canonical storage for both ptx and cubin_data should outlive the
-  // lifetime of the kernel.
-  static absl::StatusOr<TypedKernel> Create(
-      StreamExecutor *executor, absl::string_view kernel_name,
-      absl::string_view ptx, absl::Span<const uint8_t> cubin_data);
-
-  // Creates a kernel which can be launched with `stream.ThenLaunch(...)` from
-  // an in-process symbol pointer.
-  static absl::StatusOr<TypedKernel> Create(StreamExecutor *executor,
-                                            absl::string_view kernel_name,
-                                            void *symbol);
 
   TypedKernel() = default;
 
@@ -322,7 +262,11 @@ class TypedKernel {
 
   operator bool() const { return static_cast<bool>(kernel_); }  // NOLINT
 
+  // Type of factory used to create a TypedKernel.
+  using FactoryType = TypedKernelFactory<Params...>;
+
  private:
+  friend class TypedKernelFactory<Params...>;
   explicit TypedKernel(std::unique_ptr<Kernel> kernel)
       : kernel_(std::move(kernel)) {}
 
@@ -732,29 +676,6 @@ std::unique_ptr<KernelArgsPackedArrayBase> PackKernelArgs(
 
   int64_t shmem_bytes = kernel->metadata().shared_memory_bytes().value_or(0);
   return std::make_unique<PackedArgs>(std::forward<Args>(args)..., shmem_bytes);
-}
-
-template <typename... Args>
-inline absl::StatusOr<TypedKernel<Args...>> TypedKernel<Args...>::Create(
-    StreamExecutor *executor, absl::string_view kernel_name,
-    absl::string_view ptx, absl::Span<const uint8_t> cubin_data) {
-  MultiKernelLoaderSpec loader_spec(TypedKernel<Args...>::kNumberOfParameters);
-  loader_spec.AddCudaPtxInMemory(ptx, kernel_name);
-
-  if (!cubin_data.empty()) {
-    loader_spec.AddCudaCubinInMemory(cubin_data, kernel_name);
-  }
-
-  return TypedKernel<Args...>::Create(executor, loader_spec);
-}
-
-template <typename... Args>
-inline absl::StatusOr<TypedKernel<Args...>> TypedKernel<Args...>::Create(
-    StreamExecutor *executor, absl::string_view kernel_name, void *symbol) {
-  MultiKernelLoaderSpec loader_spec(TypedKernel<Args...>::kNumberOfParameters);
-  loader_spec.AddInProcessSymbol(symbol, kernel_name);
-
-  return TypedKernel<Args...>::Create(executor, loader_spec);
 }
 
 }  // namespace stream_executor

@@ -113,5 +113,25 @@ TEST(ExecuteOptionsTest, ApplyOptionsCanParseStrings) {
       debug_options.xla_gpu_auto_spmd_partitioning_memory_budget_ratio(), 0.9);
   EXPECT_EQ(debug_options.xla_gpu_pgle_profile_file_or_directory_path(), "abc");
 }
+
+TEST(CompiledMemoryStatsTest, Serialization) {
+  CompiledMemoryStats stats;
+  stats.generated_code_size_in_bytes = 2;
+  stats.argument_size_in_bytes = 3;
+  stats.output_size_in_bytes = 5;
+  stats.alias_size_in_bytes = 7;
+  stats.temp_size_in_bytes = 11;
+  stats.host_generated_code_size_in_bytes = 13;
+  stats.host_argument_size_in_bytes = 17;
+  stats.host_output_size_in_bytes = 19;
+  stats.host_alias_size_in_bytes = 23;
+  stats.host_temp_size_in_bytes = 29;
+
+  CompiledMemoryStatsProto serialized = stats.ToProto();
+  CompiledMemoryStats deserialized = CompiledMemoryStats::FromProto(serialized);
+  EXPECT_EQ(serialized.SerializeAsString(),
+            deserialized.ToProto().SerializeAsString());
+}
+
 }  // namespace
 }  // namespace xla

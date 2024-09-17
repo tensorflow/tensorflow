@@ -1,14 +1,14 @@
 # Description:
 # Cloud file system implementation.
 
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load(
-    "//tsl:tsl.bzl",
+    "@local_xla//xla/tsl:tsl.bzl",
     "if_windows",
     "internal_visibility",
     "tsl_copts",
 )
 load("//tsl/platform:build_config.bzl", "tsl_cc_test")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -217,8 +217,8 @@ cc_library(
         "//tsl/platform:str_util",
         "//tsl/platform:stringpiece",
         "//tsl/platform:types",
-        "//tsl/util:env_var",
         "@curl",
+        "@local_xla//xla/tsl/util:env_var",
     ],
 )
 
@@ -231,7 +231,6 @@ cc_library(
     copts = tsl_copts(),
     deps = [
         ":curl_http_request",
-        "//tsl/lib/core:status_test_util",
         "//tsl/platform:errors",
         "//tsl/platform:macros",
         "//tsl/platform:protobuf",
@@ -240,6 +239,7 @@ cc_library(
         "//tsl/platform:test",
         "//tsl/platform:types",
         "@curl",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -359,10 +359,10 @@ tsl_cc_test(
     deps = [
         ":expiring_lru_cache",
         ":now_seconds_env",
-        "//tsl/lib/core:status_test_util",
         "//tsl/platform:env_impl",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -373,13 +373,13 @@ tsl_cc_test(
     deps = [
         ":now_seconds_env",
         ":ram_file_block_cache",
-        "//tsl/lib/core:status_test_util",
         "//tsl/platform:blocking_counter",
         "//tsl/platform:env",
         "//tsl/platform:env_impl",
         "//tsl/platform:notification",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -390,15 +390,15 @@ tsl_cc_test(
     deps = [
         ":gcs_file_system",
         ":http_request_fake",
-        "//tsl/lib/core:status_test_util",
         "//tsl/platform:env_impl",
         "//tsl/platform:errors",
         "//tsl/platform:str_util",
         "//tsl/platform:strcat",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
-        "//tsl/profiler/backends/cpu:traceme_recorder_impl",
         "//tsl/profiler/utils:time_utils_impl",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
+        "@local_xla//xla/tsl/profiler/backends/cpu:traceme_recorder_impl",
     ],
 )
 
@@ -423,11 +423,11 @@ tsl_cc_test(
     linkopts = if_windows(["-DEFAULTLIB:ws2_32.lib"]),
     deps = [
         ":gcs_throttle",
-        "//tsl/lib/core:status_test_util",
         "//tsl/platform:env_impl",
         "//tsl/platform:str_util",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -437,13 +437,13 @@ tsl_cc_test(
     srcs = ["curl_http_request_test.cc"],
     deps = [
         ":curl_http_request",
-        "//tsl/lib/core:status_test_util",
         "//tsl/platform:env_impl",
         "//tsl/platform:path",
         "//tsl/platform:platform_port",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
         "@com_google_absl//absl/status",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -455,10 +455,10 @@ tsl_cc_test(
         "//tsl/platform/cloud/testdata:service_account_credentials",
         "//tsl/platform/cloud/testdata:service_account_public_key",
     ],
+    tags = ["no_oss"],  # TODO(b/327036247): revisit after this moves to XLA
     deps = [
         ":http_request_fake",
         ":oauth_client",
-        "//tsl/lib/core:status_test_util",
         "//tsl/platform:base64",
         "//tsl/platform:env",
         "//tsl/platform:env_impl",
@@ -467,6 +467,7 @@ tsl_cc_test(
         "//tsl/platform:test",
         "//tsl/platform:test_main",
         "@boringssl//:crypto",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -478,15 +479,16 @@ tsl_cc_test(
         "//tsl/platform/cloud/testdata:application_default_credentials",
         "//tsl/platform/cloud/testdata:service_account_credentials",
     ],
+    tags = ["no_oss"],  # TODO(b/327036247): revisit after this moves to XLA
     deps = [
         ":google_auth_provider",
         ":http_request_fake",
         ":oauth_client",
-        "//tsl/lib/core:status_test_util",
         "//tsl/platform:env_impl",
         "//tsl/platform:path",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -523,8 +525,8 @@ tsl_cc_test(
     srcs = ["time_util_test.cc"],
     deps = [
         ":time_util",
-        "//tsl/lib/core:status_test_util",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
     ],
 )

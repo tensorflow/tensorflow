@@ -21,12 +21,12 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/tools/proto_splitter/cc/test_util.h"
 #include "tensorflow/tools/proto_splitter/chunk.pb.h"
 #include "tensorflow/tools/proto_splitter/testdata/test_message.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/status_matchers.h"
@@ -45,7 +45,7 @@ using tsl::testing::StatusIs;
 // Required in OSS to prevent string to bool conversion in FieldType variant.
 using namespace std::string_literals;  // NOLINT
 
-tsl::StatusOr<ManyFields> MakeManyFields() {
+absl::StatusOr<ManyFields> MakeManyFields() {
   return ParseTextProto<ManyFields>(
       R"pb(field_one {
              repeated_field {}
@@ -66,7 +66,7 @@ tsl::StatusOr<ManyFields> MakeManyFields() {
            })pb");
 }
 
-tsl::StatusOr<
+absl::StatusOr<
     tsl::protobuf::RepeatedPtrField<::tensorflow::proto_splitter::FieldIndex>>
 MakeFieldTags() {
   TF_ASSIGN_OR_RETURN(auto ret, ParseTextProto<ChunkedField>(R"pb(
@@ -78,7 +78,7 @@ MakeFieldTags() {
   return ret.field_tag();
 }
 
-tsl::StatusOr<
+absl::StatusOr<
     tsl::protobuf::RepeatedPtrField<::tensorflow::proto_splitter::FieldIndex>>
 MakeFieldTagsTooManyIndices() {
   TF_ASSIGN_OR_RETURN(auto ret, ParseTextProto<ChunkedField>(R"pb(
@@ -91,7 +91,7 @@ MakeFieldTagsTooManyIndices() {
   return ret.field_tag();
 }
 
-tsl::StatusOr<
+absl::StatusOr<
     tsl::protobuf::RepeatedPtrField<::tensorflow::proto_splitter::FieldIndex>>
 MakeFieldTagsTooManyMapKeys() {
   TF_ASSIGN_OR_RETURN(auto ret, ParseTextProto<ChunkedField>(R"pb(
@@ -104,7 +104,7 @@ MakeFieldTagsTooManyMapKeys() {
   return ret.field_tag();
 }
 
-tsl::StatusOr<
+absl::StatusOr<
     tsl::protobuf::RepeatedPtrField<::tensorflow::proto_splitter::FieldIndex>>
 MakeFieldTagsMisplacedIndex() {
   TF_ASSIGN_OR_RETURN(auto ret, ParseTextProto<ChunkedField>(R"pb(
@@ -117,7 +117,7 @@ MakeFieldTagsMisplacedIndex() {
   return ret.field_tag();
 }
 
-tsl::StatusOr<
+absl::StatusOr<
     tsl::protobuf::RepeatedPtrField<::tensorflow::proto_splitter::FieldIndex>>
 MakeFieldTagsMisplacedMapKey() {
   TF_ASSIGN_OR_RETURN(auto ret, ParseTextProto<ChunkedField>(R"pb(

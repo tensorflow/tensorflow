@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/strings/string_view.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "tsl/platform/test.h"
 
@@ -98,16 +99,28 @@ TEST_F(GpuInt4Test, TestOddElements) {
 
   // A conditional branch should check if the index is in bounds within the
   // unrolled loop
-  auto expected_ir = R"(
-; CHECK: {{.*}}.in_bounds-true:
-; CHECK-NEXT: %[[in_bounds:.*]] = icmp ult i32 %linear_index0, 5
-; CHECK-NEXT: br i1 %{{.*}}, label %[[in_bounds_true:.*unrolled_in_bounds-true]], label %[[in_bounds_after:.*unrolled_in_bounds-after]]
-;
-; CHECK: [[in_bounds_true]]:
-; CHECK: %{{.*}} = load i8, ptr %{{.*}}, align 1
-; CHECK: store i8 %{{.*}}, ptr %{{.*}}, align 1
-; CHECK: br label %[[in_bounds_after]]
-)";
+  absl::string_view expected_ir;
+  if (GetDebugOptionsForTest().xla_gpu_mlir_emitter_level() == 0) {
+    expected_ir = R"(
+      ; CHECK: {{.*}}.in_bounds-true:
+      ; CHECK-NEXT: %[[in_bounds:.*]] = icmp ult i32 %linear_index0, 5
+      ; CHECK-NEXT: br i1 %{{.*}}, label %[[in_bounds_true:.*unrolled_in_bounds-true]], label %[[in_bounds_after:.*unrolled_in_bounds-after]]
+      ;
+      ; CHECK: [[in_bounds_true]]:
+      ; CHECK: %{{.*}} = load i8, ptr %{{.*}}, align 1
+      ; CHECK: store i8 %{{.*}}, ptr %{{.*}}, align 1
+      ; CHECK: br label %[[in_bounds_after]])";
+  } else {
+    expected_ir = R"(
+      ; CHECK: %[[in_bounds:.*]] = icmp sle i32 %{{.*}}, 1
+      ; CHECK-NEXT: br i1 %[[in_bounds]], label %[[in_bounds_true:.*]], label %[[in_bounds_after:.*]]
+      ; CHECK: [[in_bounds_true]]:
+      ; CHECK: %{{.*}} = load i8, ptr %{{.*}}, align 1
+      ; CHECK: store i8 %{{.*}}, ptr %{{.*}}, align 1
+      ; CHECK: br label %[[in_bounds_after]]
+      ; CHECK: [[in_bounds_after]]:
+      ; CHECK-NEXT: ret void)";
+  }
   CompileAndVerifyIr(std::move(hlo_module),
                      MakePlatformSpecificLlvm(expected_ir),
                      /*match_optimized_ir=*/false);

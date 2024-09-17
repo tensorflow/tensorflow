@@ -256,18 +256,25 @@ struct TopK {
   // Given a K-array of previously reverse-sorted KVTs, add kv to it and
   // remove the smallest element of the resulting array. Preserves the sorted
   // order of `tmp`.
-  static __device__ FORCEINLINE bool Push(KVT tmp[K], const KVT& kv) {
-    if (Trait::cmp(tmp[K - 1], kv)) return false;
-    tmp[K - 1] = kv;  // (K-1)th is the smallest element out of K
+  // We are careful to write this code in a way that nvcc/ptxas will use
+  // predication rather than branching. If we don't get this right, then we
+  // can greatly expands the code size of the generated PTX and SASS by
+  // tens of thousands of instructions. This increased the size of the
+  // compressed JAX wheel by 25MiB, so be very careful to check the generated
+  // code size when changing this function.
+  static __device__ FORCEINLINE void Push(KVT tmp[K], const KVT& kv) {
+    bool p = Trait::cmp(tmp[K - 1], kv);
+    tmp[K - 1] = p ? tmp[K - 1] : kv;
 #pragma unroll
-    for (int i = (int)K - 2; i >= 0; --i) {
-      if (Trait::cmp(tmp[i], kv)) break;
-      // Swap
+    for (int i = static_cast<int>(K) - 2; i >= 0; --i) {
+      // Note: even though we could exit early as soon as the first time we
+      // see a value greater than kv, we don't do this because it makes nvcc
+      // generate terrible code.
+      bool p = Trait::cmp(tmp[i], kv);
       auto t = tmp[i];
-      tmp[i] = tmp[i + 1];
-      tmp[i + 1] = t;
+      tmp[i] = p ? tmp[i] : tmp[i + 1];
+      tmp[i + 1] = p ? tmp[i + 1] : t;
     }
-    return true;
   }
 
   KVT* buffer_;

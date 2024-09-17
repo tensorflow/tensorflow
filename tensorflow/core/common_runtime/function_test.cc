@@ -385,6 +385,7 @@ TEST_F(FunctionLibraryRuntimeTest, XTimesTwo) {
 TEST_F(FunctionLibraryRuntimeTest, InstantiationStackTraceCopying) {
   class DummyStackTrace : public AbstractStackTrace {
     absl::Span<StackFrame const> ToFrames() const override { return {}; }
+    std::vector<StackFrame> ToUncachedFrames() const override { return {}; }
 
     std::string ToString(const TracePrintingOptions& opts) const override {
       return "DummyStackTrace";
@@ -635,7 +636,7 @@ TEST_F(FunctionLibraryRuntimeTest, StateHandle) {
       // Attrs
       {},
       // Nodes
-      {FDH::Const<int32>("shape", gtl::ArraySlice<int32>({1})),
+      {FDH::Const<int32>("shape", absl::Span<const int32>({1})),
        FDH::Const<int32>("minval", 0),
        FDH::Const<int32>("maxval", 10),
        // A stateful node.

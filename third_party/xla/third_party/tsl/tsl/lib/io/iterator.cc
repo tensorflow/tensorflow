@@ -53,29 +53,29 @@ void Iterator::RegisterCleanup(CleanupFunction func, void* arg1, void* arg2) {
 namespace {
 class EmptyIterator : public Iterator {
  public:
-  explicit EmptyIterator(const Status& s) : status_(s) {}
+  explicit EmptyIterator(const absl::Status& s) : status_(s) {}
   bool Valid() const override { return false; }
-  void Seek(const StringPiece& target) override {}
+  void Seek(const absl::string_view& target) override {}
   void SeekToFirst() override {}
   void Next() override { assert(false); }
-  StringPiece key() const override {
+  absl::string_view key() const override {
     assert(false);
-    return StringPiece();
+    return absl::string_view();
   }
-  StringPiece value() const override {
+  absl::string_view value() const override {
     assert(false);
-    return StringPiece();
+    return absl::string_view();
   }
-  Status status() const override { return status_; }
+  absl::Status status() const override { return status_; }
 
  private:
-  Status status_;
+  absl::Status status_;
 };
 }  // namespace
 
-Iterator* NewEmptyIterator() { return new EmptyIterator(OkStatus()); }
+Iterator* NewEmptyIterator() { return new EmptyIterator(absl::OkStatus()); }
 
-Iterator* NewErrorIterator(const Status& status) {
+Iterator* NewErrorIterator(const absl::Status& status) {
   return new EmptyIterator(status);
 }
 

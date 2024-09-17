@@ -41,7 +41,7 @@ class DenseBincountOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     int64_t output_size;
     xla::XlaOp output_size_param = ctx->Input("size");
-    StatusOr<xla::Shape> output_shape_or =
+    absl::StatusOr<xla::Shape> output_shape_or =
         ctx->builder()->GetShape(output_size_param);
     OP_REQUIRES_OK(ctx, output_shape_or.status());
     auto output_shape_param = output_shape_or.value();
@@ -59,7 +59,7 @@ class DenseBincountOp : public XlaOpKernel {
     xla::PrimitiveType dtype = ctx->InputXlaType("weights");
     auto zero = xla::Zero(ctx->builder(), dtype);
     auto one = xla::One(ctx->builder(), dtype);
-    StatusOr<xla::Shape> input_shape_or = ctx->builder()->GetShape(input);
+    absl::StatusOr<xla::Shape> input_shape_or = ctx->builder()->GetShape(input);
     OP_REQUIRES_OK(ctx, input_shape_or.status());
     auto input_shape = input_shape_or.value();
 
@@ -69,7 +69,8 @@ class DenseBincountOp : public XlaOpKernel {
                 errors::InvalidArgument(
                     "Shape must be at most rank 2 but is rank ", rank));
     xla::XlaOp weights = ctx->Input(2);
-    StatusOr<xla::Shape> weights_shape_or = ctx->builder()->GetShape(weights);
+    absl::StatusOr<xla::Shape> weights_shape_or =
+        ctx->builder()->GetShape(weights);
 
     OP_REQUIRES_OK(ctx, weights_shape_or.status());
 

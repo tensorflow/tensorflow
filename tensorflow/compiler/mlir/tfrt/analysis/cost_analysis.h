@@ -19,8 +19,12 @@ limitations under the License.
 #include <functional>
 
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 #include "tensorflow/core/tfrt/fallback/op_cost_map.pb.h"
@@ -49,6 +53,8 @@ class CostAnalysis {
 
   int64_t GetCost(mlir::Operation* op) const;
 
+  bool IsOpUsingThresholdAsCost(mlir::Operation* op) const;
+
  private:
   void AnalyzeArguments(mlir::func::FuncOp func_op);
   void AnalyzeBlock(mlir::Block* block);
@@ -56,6 +62,7 @@ class CostAnalysis {
 
   int64_t max_arg_size_ = 1;
   llvm::DenseMap<mlir::Operation*, int64_t> cost_map_;
+  llvm::DenseSet<mlir::Operation*> ops_use_threshold_as_cost_;
   const tfrt_stub::CostRecorder* cost_recorder_;
 };
 

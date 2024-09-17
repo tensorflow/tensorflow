@@ -198,8 +198,8 @@ class TensorSlice {
 
   // TODO(yangke): switch to Eigen once it supports variable size arrays.
   // A value of
-  gtl::InlinedVector<int64_t, 4> starts_;
-  gtl::InlinedVector<int64_t, 4> lengths_;
+  absl::InlinedVector<int64_t, 4UL> starts_;
+  absl::InlinedVector<int64_t, 4UL> lengths_;
 };
 
 template <int NDIMS>

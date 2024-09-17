@@ -62,7 +62,7 @@ For example, the following:
 
 ```mlir
 #device = #ifrt<devices[0,1]>
-#sharding = #ifrt.sharding<2x1 to [0] on 2>
+#sharding = #ifrt.sharding_param<2x1 to [0] on 2>
 module attributes {ifrt.devices = #device} {
   func.func @main(
       %arg0: tensor<2x2xi32> {ifrt.sharding = #sharding,
@@ -79,7 +79,7 @@ will be transformed into:
 ```mlir
 // The function's input and output shapes are now local.
 #device = #ifrt<devices[0,1]>
-#sharding = #ifrt.sharding<2x1 to [0] on 2>
+#sharding = #ifrt.sharding_param<2x1 to [0] on 2>
 module attributes {ifrt.devices = #device} {
   func.func @main(
       %arg0: tensor<1x2xi32> {ifrt.sharding = #sharding,
@@ -95,6 +95,47 @@ module attributes {ifrt.devices = #device} {
   let constructor = "CreateSpmdExpansionPass()";
 }
 
+def IfrtOutlineAtomProgramToModulePass :
+    Pass<"ifrt-outline-atom-program-to-module", "mlir::ModuleOp"> {
+  let summary = "Wraps every atom function with a ModuleOp with a @main FuncOp";
+  let description = [{
+For every unique atom program this passes produces a ModuleOp with the same name
+as the callee, clones the callee into the ModuleOp, and redirects all the
+CallOps calling it to the new callee.
+
+This pass must be run if the compiler (e.g., the XLA compiler) expects each atom
+program to be outlined in a ModuleOp with a @main FuncOp.
+
+For example, the following code
+
+```mlir
+%0, %ctrl_0 = ifrt.Call @callee(%arg0) on devices [0, 1]
+    : (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
+                   [0,1]>)
+    -> !ifrt.array<tensor<4x4xi32>, #ifrt.sharding_param<1x2 to [0] on 2>,
+                   [0,1]>
+
+func.func private @callee(%arg0: tensor<2x2xi32>) -> (tensor<4x4xi32>) {}
+```
+
+will be replaced by
+
+```mlir
+%0, %ctrl_0 = ifrt.Call @callee::@main(%arg0) on devices [0, 1]
+    : (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
+                   [0,1]>)
+    -> !ifrt.array<tensor<4x4xi32>, #ifrt.sharding_param<1x2 to [0] on 2>,
+                   [0,1]>
+
+module @callee attributes {sym_visibility = "private"} {
+  func.func @main(%arg0: tensor<2x2xi32>) -> (tensor<4x4xi32>) {}
+}
+```
+  }];
+
+  let constructor = "CreateIfrtOutlineAtomProgramToModulePass()";
+}
+
 def IfrtDuplicatedCalleeEliminationPass
     : Pass<"ifrt-duplicated-callee-elimination", "mlir::ModuleOp"> {
   let summary = "Deduplicate callees of CallOp";
@@ -106,5 +147,61 @@ them. The duplicated callee `FuncOp` will not be removed.
 
   let constructor = "CreateIfrtDuplicatedCalleeEliminationPass()";
 }
+
+def IfrtMergeReshardsPass :
+    Pass<"ifrt-merge-reshards", "mlir::func::FuncOp"> {
+  let summary = "Merge reshards for each (src, dst) pair into a single reshard.";
+  let description = [{
+Merges reshards from a source op which flow into the same destination op,
+ignoring control dependencies.
+
+E.g.
+
+```mlir
+%c:4, %ctrl_0  = ifrt.Call ...
+%r0, %ctrl_1 = ifrt.Reshard %c#0 ...
+%r1, %ctrl_2 = ifrt.Reshard %c#1 ...
+%d:4, %ctrl_3  = ifrt.Call (%r0, %r1)
+```
+
+will be replaced by:
+
+```mlir
+%c:4, %ctrl_0 = ifrt.Call ...
+%r:2, %ctrl_1 = ifrt.Reshard (%c#0, %c#1)
+%d:4, %ctrl_2 = ifrt.Call (%r#0, %r#1)
+```
+
+Currently this handles the case where the source is the Func BlockArgs or
+the outputs of a ifrt.Call, ifrt.CallLoadedExecutable, ifrt.Reshard,
+ifrt.CopyArrays, and ifrt.RemapArrays.
+  }];
+
+  let constructor = "CreateIfrtMergeReshardsPass()";
+}
+
+def IfrtVerifyDonationPass :
+    Pass<"ifrt-verify-donation", "mlir::func::FuncOp"> {
+  let summary = "Verify that `!ifrt.array` are not donated more than once.";
+  let description = [{
+Verifiy that no `!ifrt.array` is donated more than once, and that all
+`ifrt.array`s that are donated and arguments of the main func have
+`ifrt.donated` attribute.
+  }];
+
+  let constructor = "CreateIfrtVerifyDonationPass()";
+}
+
+def IfrtVerifyShardingSpecifiedPass :
+    Pass<"ifrt-verify-sharding-specified", "mlir::ModuleOp"> {
+  let summary = "Verify that all `!ifrt.array` have sharding specified.";
+  let description = [{
+Verify that each `!ifrt.array` has sharding attribute that is not of type
+`!ifrt.sharding_unspecified`.
+  }];
+
+  let constructor = "CreateIfrtVerifyShardingSpecifiedPass()";
+}
+
 
 #endif  // XLA_PYTHON_IFRT_IR_TRANSFORMS_PASSES_TD_

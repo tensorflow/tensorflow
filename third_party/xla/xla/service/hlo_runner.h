@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -31,7 +32,7 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"
 #include "xla/util.h"
@@ -201,7 +202,7 @@ class HloRunner : public HloRunnerInterface {
   // should pass the device_assignment parameter.
   ServiceExecutableRunOptions GetServiceRunOptionsForDevice(
       int64_t device, se::Stream* stream, DeviceAssignment* device_assignment,
-      RunId run_id);
+      RunId run_id, int local_device_count);
 
   // Common implementation code for ExecuteReplicated() above.
   absl::StatusOr<std::vector<Literal>> ExecuteReplicatedImpl(
@@ -214,7 +215,12 @@ class HloRunner : public HloRunnerInterface {
       const ReplicatedExecuteOptions& options,
       DeviceAssignment* device_assignment);
 
+  // Gets or creates the DeviceMemoryAllocator.
+  se::DeviceMemoryAllocator* GetAllocator();
+
   std::unique_ptr<Backend> backend_;
+
+  std::unique_ptr<se::DeviceMemoryAllocator> allocator_;
 
   DeviceShapeRepresentationFn device_shape_representation_fn_;
 

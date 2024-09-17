@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -27,20 +28,23 @@ limitations under the License.
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Value.h"
-#include "xla/primitive_util.h"
+#include "llvm/Support/Casting.h"
+#include "xla/layout_util.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/parallel_loop_emitter.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/kernel_support_library.h"
-#include "xla/service/llvm_ir/llvm_loop.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/llvm_ir/loop_emitter.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
-#include "tsl/platform/status.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -48,7 +52,7 @@ namespace llvm_ir {
 namespace {
 
 // Adds the inner comparison loop body where we compare elements.
-Status EmitCompareLoopBody(
+absl::Status EmitCompareLoopBody(
     int64_t iteration_bound, int64_t num_values,
     llvm::Value* element_pair_index, int64_t xor_mask, llvm::Type* index_type,
     std::function<llvm::Value*(int64_t operand, llvm::Value* index)>
@@ -149,11 +153,11 @@ Status EmitCompareLoopBody(
         write_element(i, compare_keys_index, value2);
       }
     });
-    return OkStatus();
+    return absl::OkStatus();
   });
 }
 
-Status EmitTiledCompareLoop(
+absl::Status EmitTiledCompareLoop(
     const IrArray::Index& tiled_keys_index, int64_t dimension_to_sort,
     int64_t dimension_to_sort_bound, absl::Span<const int64_t> xor_masks,
     const std::vector<IrArray>& params,
@@ -315,11 +319,11 @@ Status EmitTiledCompareLoop(
   // same location in shared memory because we have exactly tile_size / 2 many
   // threads, and the linear index calculated by ParallelLoopEmitter uses
   // linear_index = blockIdx.x * blockDim.x + threadIdx.x;
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
-Status EmitSortInPlace(
+absl::Status EmitSortInPlace(
     int64_t dimension_to_sort, const std::vector<IrArray>& values_arrays,
     absl::string_view name, absl::Span<const int64_t> xor_masks,
     llvm::IRBuilder<>* b, const gpu::LaunchDimensions& launch_dimensions,
@@ -369,7 +373,7 @@ Status EmitSortInPlace(
   }
 
   auto compare_loop_body_emitter =
-      [&](const IrArray::Index& tiles_index) -> Status {
+      [&](const IrArray::Index& tiles_index) -> absl::Status {
     // Naive C++ code for the inner compare loop:
     //
     // for (int64_t i = 0; i < dimension_to_sort_bound; ++i) {
@@ -420,7 +424,7 @@ Status EmitSortInPlace(
           element_address_pointee_type, write_element, emit_compare_callback,
           b));
     }
-    return OkStatus();
+    return absl::OkStatus();
   };
   return gpu::ParallelLoopEmitter(compare_loop_body_emitter, iteration_shape,
                                   launch_dimensions, b)

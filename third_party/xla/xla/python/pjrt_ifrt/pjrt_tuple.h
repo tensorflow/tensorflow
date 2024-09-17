@@ -29,14 +29,14 @@ limitations under the License.
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
-#include "tsl/concurrency/ref_count.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
 
 class PjRtTuple final : public llvm::RTTIExtends<PjRtTuple, Tuple> {
  public:
-  static StatusOr<tsl::RCReference<PjRtTuple>> Create(
+  static absl::StatusOr<tsl::RCReference<PjRtTuple>> Create(
       PjRtCompatibleClient* client, absl::Span<tsl::RCReference<Value>> values);
 
   ~PjRtTuple() override = default;
@@ -46,9 +46,9 @@ class PjRtTuple final : public llvm::RTTIExtends<PjRtTuple, Tuple> {
     return client_;
   }
 
-  Future<Status> GetReadyFuture() const override;
+  Future<> GetReadyFuture() const override;
 
-  Future<Status> Delete() override;
+  Future<> Delete() override;
 
   bool IsDeleted() const override;
 
@@ -56,7 +56,7 @@ class PjRtTuple final : public llvm::RTTIExtends<PjRtTuple, Tuple> {
 
   int Arity() override;
 
-  Status Unpack(absl::Span<tsl::RCReference<Value>> values) override;
+  absl::Status Unpack(absl::Span<tsl::RCReference<Value>> values) override;
 
   static char ID;  // NOLINT
 

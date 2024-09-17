@@ -23,9 +23,13 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -38,8 +42,11 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/tf2xla/kernels/xla_call_module_loader.h"
@@ -49,8 +56,12 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/client/xla_builder.h"
 #include "xla/client/xla_computation.h"
+#include "xla/debug_options_flags.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "xla/translate/mhlo_to_hlo/type_to_shape.h"
@@ -58,6 +69,8 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -403,7 +416,7 @@ class XlaCallModuleOp : public XlaOpKernel {
         mlir::TypeRange input_types(custom_call->getOperandTypes());
         if (custom_call_has_token_input_output) {
           if (input_types.empty() ||
-              !input_types.front().isa<mlir::mhlo::TokenType>()) {
+              !mlir::isa<mlir::mhlo::TokenType>(input_types.front())) {
             return absl::InvalidArgumentError(absl::StrCat(
                 "stablehlo.custom_call with has_token_input_output = true is "
                 "expected to take !stablehlo.token as the first argument, but "
@@ -422,7 +435,7 @@ class XlaCallModuleOp : public XlaOpKernel {
         mlir::TypeRange result_types(custom_call->getResultTypes());
         if (custom_call_has_token_input_output) {
           if (result_types.empty() ||
-              !result_types.front().isa<mlir::mhlo::TokenType>()) {
+              !mlir::isa<mlir::mhlo::TokenType>(result_types.front())) {
             return absl::InvalidArgumentError(absl::StrCat(
                 "stablehlo.custom_call with has_token_input_output = true is "
                 "expected to return !stablehlo.token as the first result, but "

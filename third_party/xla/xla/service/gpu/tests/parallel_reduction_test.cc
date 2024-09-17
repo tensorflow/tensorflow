@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -36,6 +37,7 @@ namespace gpu {
 namespace {
 
 class ParallelReductionTest : public GpuCodegenTest {
+ protected:
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     // The test contains a MOF fusion and the XLA optimizer passes
@@ -74,13 +76,20 @@ ENTRY %cluster {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  CompileAndVerifyIr(std::move(hlo_module),
-                     R"(
-CHECK: reduce-group-0
-CHECK: reduce-group-1
-CHECK-NOT: reduce-group-2
-)",
-                     /*match_optimized_ir=*/false);
+
+  if (GetDebugOptionsForTest().xla_gpu_mlir_emitter_level() >= 4) {
+    CompileAndVerifyIr(std::move(hlo_module),
+                       R"(CHECK:      switch {{.*}} label {{.*}} [
+                          CHECK-NEXT:   label
+                          CHECK-NEXT: ])",
+                       /*match_optimized_ir=*/false);
+  } else {
+    CompileAndVerifyIr(std::move(hlo_module),
+                       R"(CHECK: reduce-group-0
+                          CHECK: reduce-group-1
+                          CHECK-NOT: reduce-group-2)",
+                       /*match_optimized_ir=*/false);
+  }
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
@@ -115,18 +124,28 @@ ENTRY %cluster {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  CompileAndVerifyIr(std::move(hlo_module),
-                     R"(
-CHECK: reduce-group-0
-CHECK: reduce-group-1
-CHECK-NOT: reduce-group-2
-)",
-                     /*match_optimized_ir=*/false);
+  if (GetDebugOptionsForTest().xla_gpu_mlir_emitter_level() >= 4) {
+    CompileAndVerifyIr(std::move(hlo_module),
+                       R"(CHECK:      switch {{.*}} label {{.*}} [
+                          CHECK-NEXT:   label
+                          CHECK-NEXT: ])",
+                       /*match_optimized_ir=*/false);
+  } else {
+    CompileAndVerifyIr(std::move(hlo_module),
+                       R"(CHECK: reduce-group-0
+                          CHECK: reduce-group-1
+                          CHECK-NOT: reduce-group-2)",
+                       /*match_optimized_ir=*/false);
+  }
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
 TEST_F(ParallelReductionTest,
        UnnestedReductionWithLoopReductionDifferentShape) {
+  if (GetDebugOptionsForTest().xla_gpu_mlir_emitter_level() >= 4) {
+    GTEST_SKIP()
+        << "reduction does not occur in real pipelines and is not supported";
+  }
   const char* hlo = R"(
 
 HloModule module
@@ -346,13 +365,20 @@ ENTRY %cluster {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  CompileAndVerifyIr(std::move(hlo_module),
-                     R"(
-CHECK: reduce-group-0
-CHECK: reduce-group-1
-CHECK-NOT: reduce-group-2
-)",
-                     /*match_optimized_ir=*/false);
+
+  if (GetDebugOptionsForTest().xla_gpu_mlir_emitter_level() >= 4) {
+    CompileAndVerifyIr(std::move(hlo_module),
+                       R"(CHECK:      switch {{.*}} label {{.*}} [
+                          CHECK-NEXT:   label
+                          CHECK-NEXT: ])",
+                       /*match_optimized_ir=*/false);
+  } else {
+    CompileAndVerifyIr(std::move(hlo_module),
+                       R"(CHECK: reduce-group-0
+                          CHECK: reduce-group-1
+                          CHECK-NOT: reduce-group-2)",
+                       /*match_optimized_ir=*/false);
+  }
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 

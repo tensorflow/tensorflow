@@ -16,20 +16,26 @@ limitations under the License.
 
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/pattern_matcher.h"
+#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/tests/hlo_test_base.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
+namespace m = ::xla::match;
+
 using ::testing::ElementsAre;
+using ::testing::IsEmpty;
 
 MATCHER_P(InstructionAdaptorName, name, "") { return arg.name() == name; }
 
@@ -74,12 +80,15 @@ const char kTestModule[] = R"(
 TEST_F(HloTraversalTest, AdaptorOperands) {
   auto module = ParseAndReturnVerifiedModule(kTestModule).value();
 
-  HloInstructionAdaptor instr{
-      *module->entry_computation()->GetInstructionWithName("select")};
+  auto fusion_adaptor = HloFusionAdaptor::ForProducerConsumer(
+      module->entry_computation()->GetInstructionWithName("fusion2"),
+      module->entry_computation()->GetInstructionWithName("select"));
+
+  HloInstructionAdaptor instr = fusion_adaptor->GetRoots()[0];
 
   EXPECT_THAT(instr.GetOperands(),
               ElementsAre(InstructionAdaptorName("is_positive"),
-                          InstructionAdaptorName("reduce.1"),
+                          InstructionAdaptorName("fusion"),
                           InstructionAdaptorName("p0")));
 }
 
@@ -106,62 +115,66 @@ TEST_F(HloTraversalTest, AdaptorUsers) {
       gte = f32[] get-tuple-element(fusion), index=0
       add.1 = f32[] add(p0, gte)
       fusion2 = f32[] fusion(gte), kind=kLoop, calls=fused_computation_1
-      ROOT res = (f32[], (f32[], f32[]), f32[]) tuple(add.1, fusion, fusion2)
+      exp.1 = f32[] exponential(fusion2)
+      ROOT res = (f32[], (f32[], f32[]), f32[], f32[]) tuple(add.1, fusion, fusion2, exp.1)
     }
   )")
                     .value();
 
+  auto fusion_adaptor1 = HloFusionAdaptor::ForProducerConsumer(
+      module->entry_computation()->GetInstructionWithName("fusion"),
+      module->entry_computation()->GetInstructionWithName("fusion2"));
+
   HloInstructionAdaptor add{*module->GetComputationWithName("fused_computation")
-                                 ->GetInstructionWithName("add")};
-  EXPECT_THAT(add.GetUsers(), ElementsAre(InstructionAdaptorName("add.1"),
-                                          InstructionAdaptorName("mul"),
+                                 ->GetInstructionWithName("add"),
+                            fusion_adaptor1.get()};
+  EXPECT_THAT(add.GetUsers(), ElementsAre(InstructionAdaptorName("mul"),
                                           InstructionAdaptorName("res")));
+
+  auto fusion_adaptor2 = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->GetInstructionWithName("fusion2"));
+
   HloInstructionAdaptor mul{
       *module->GetComputationWithName("fused_computation_1")
-           ->GetInstructionWithName("mul")};
+           ->GetInstructionWithName("mul"),
+      fusion_adaptor2.get()};
   EXPECT_THAT(mul.GetUsers(), ElementsAre(InstructionAdaptorName("neg.1")));
+
+  HloInstructionAdaptor neg{
+      *module->GetComputationWithName("fused_computation_1")
+           ->GetInstructionWithName("neg.1"),
+      fusion_adaptor2.get()};
+  EXPECT_TRUE(neg.GetUsers().empty());
 }
 
 TEST_F(HloTraversalTest, TraverseFusionConsumerFirst) {
   auto module = ParseAndReturnVerifiedModule(kTestModule).value();
   std::vector<std::string> visited_nodes;
-  std::vector<std::string> visited_args;
   auto fusion = HloFusionAdaptor::ForInstruction(
       module->entry_computation()->GetInstructionWithName("fusion"));
-  HloBfsConsumersFirstTraversal(
-      fusion->GetRoots(), *fusion,
-      [&](HloInstructionAdaptor node) {
-        visited_nodes.emplace_back(node.name());
-        return TraversalResult::kAdvance;
-      },
-      [&](HloInstructionAdaptor arg) {
-        visited_args.emplace_back(arg.name());
-      });
+  HloBfsConsumersFirstTraversal(fusion->GetRoots(), *fusion,
+                                [&](HloInstructionAdaptor node) {
+                                  visited_nodes.emplace_back(node.name());
+                                  return TraversalResult::kAdvance;
+                                });
 
   EXPECT_THAT(visited_nodes, ElementsAre("reduce.1", "mul"));
-  EXPECT_THAT(visited_args, ElementsAre("p0", "negate"));
 }
 
 TEST_F(HloTraversalTest,
        TraverseFusionConsumerFirstFromFusionRootAndInnerNode) {
   auto module = ParseAndReturnVerifiedModule(kTestModule).value();
   std::vector<std::string> visited_nodes;
-  std::vector<std::string> visited_args;
   auto fusion = HloFusionAdaptor::ForInstruction(
       module->entry_computation()->GetInstructionWithName("fusion"));
   auto root = fusion->GetRoots()[0];
-  HloBfsConsumersFirstTraversal(
-      {root, root.GetOperand(0)}, *fusion,
-      [&](HloInstructionAdaptor node) {
-        visited_nodes.emplace_back(node.name());
-        return TraversalResult::kAdvance;
-      },
-      [&](HloInstructionAdaptor arg) {
-        visited_args.emplace_back(arg.name());
-      });
+  HloBfsConsumersFirstTraversal({root, root.GetOperand(0)}, *fusion,
+                                [&](HloInstructionAdaptor node) {
+                                  visited_nodes.emplace_back(node.name());
+                                  return TraversalResult::kAdvance;
+                                });
 
   EXPECT_THAT(visited_nodes, ElementsAre("reduce.1", "mul"));
-  EXPECT_THAT(visited_args, ElementsAre("p0", "negate"));
 }
 
 TEST_F(HloTraversalTest, TraverseFusionProducerFirst) {
@@ -200,49 +213,110 @@ TEST_F(HloTraversalTest, FindArguments) {
   auto fusion = HloFusionAdaptor::ForInstruction(
       module->entry_computation()->GetInstructionWithName("fusion"));
   std::vector<std::string> producers;
-  FindFusionArguments(*fusion, [&](HloInstructionAdaptor producer) {
-    producers.emplace_back(producer.name());
-  });
+  absl::c_for_each(fusion->GetParameters(),
+                   [&](const HloInstruction* producer) {
+                     producers.emplace_back(producer->name());
+                   });
+
   EXPECT_THAT(producers, ElementsAre("p0", "negate"));
 }
 
 TEST_F(HloTraversalTest, FindArgumentsAfterFusion) {
   // Verifies that we correctly find the arguments after fusing the negation.
   auto module = ParseAndReturnVerifiedModule(kTestModule).value();
-  auto producer = HloFusionAdaptor::ForInstruction(
-      module->entry_computation()->GetInstructionWithName("negate"));
-  auto consumer = HloFusionAdaptor::ForInstruction(
+  auto fusion = HloFusionAdaptor::ForProducerConsumer(
+      module->entry_computation()->GetInstructionWithName("negate"),
       module->entry_computation()->GetInstructionWithName("fusion"));
   std::vector<std::string> producers;
-  FindFusionArguments(
-      ProducerConsumerFusion(std::move(producer), std::move(consumer)),
-      [&](HloInstructionAdaptor producer) {
-        producers.emplace_back(producer.name());
-      });
+  absl::c_for_each(fusion->GetParameters(),
+                   [&](const HloInstruction* producer) {
+                     producers.emplace_back(producer->name());
+                   });
   EXPECT_THAT(producers, ElementsAre("p0", "log"));
 }
 
-TEST_F(HloTraversalTest, FindIf) {
+TEST_F(HloTraversalTest, HloBfsFindIf_Found) {
   auto module = ParseAndReturnVerifiedModule(kTestModule).value();
   auto fusion = HloFusionAdaptor::ForInstruction(
       module->entry_computation()->GetInstructionWithName("fusion"));
-  std::vector<std::string> visited_nodes;
-  auto result =
-      HloFindIf(fusion->GetRoots(), *fusion, [&](HloInstructionAdaptor node) {
-        return node.opcode() == HloOpcode::kMultiply;
-      });
+  auto result = HloBfsFindIf(fusion->GetRoots(), *fusion,
+                             [&](HloInstructionAdaptor node) {
+                               return node.opcode() == HloOpcode::kMultiply;
+                             });
   ASSERT_NE(result, std::nullopt);
   ASSERT_EQ(result->name(), "mul");
 }
 
-TEST_F(HloTraversalTest, NotFound) {
+TEST_F(HloTraversalTest, HloBfsFindIf_NotFound) {
   auto module = ParseAndReturnVerifiedModule(kTestModule).value();
   auto fusion = HloFusionAdaptor::ForInstruction(
       module->entry_computation()->GetInstructionWithName("fusion"));
-  std::vector<std::string> visited_nodes;
-  auto result = HloFindIf(fusion->GetRoots(), *fusion,
-                          [&](HloInstructionAdaptor node) { return false; });
+  auto result = HloBfsFindIf(fusion->GetRoots(), *fusion,
+                             [&](HloInstructionAdaptor node) { return false; });
   ASSERT_EQ(result, std::nullopt);
+}
+
+TEST_F(HloTraversalTest, HloAnyOf_Found) {
+  auto module = ParseAndReturnVerifiedModule(kTestModule).value();
+  auto fusion = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->GetInstructionWithName("fusion"));
+  EXPECT_TRUE(HloAnyOf(*fusion, [&](HloInstructionAdaptor node) {
+    return node.opcode() == HloOpcode::kMultiply;
+  }));
+}
+
+TEST_F(HloTraversalTest, HloAnyOf_NotFound) {
+  auto module = ParseAndReturnVerifiedModule(kTestModule).value();
+  auto fusion = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->GetInstructionWithName("fusion"));
+  EXPECT_FALSE(
+      HloAnyOf(*fusion, [&](HloInstructionAdaptor node) { return false; }));
+}
+
+TEST_F(HloTraversalTest, FindAllMultiple) {
+  const char kConverts[] = R"(
+    HloModule test
+
+    ENTRY entry {
+      p0 = s8[128] parameter(0)
+      p1 = pred[128] parameter(1)
+      p1c = s8[128] convert(p1)
+      p1c1 = f16[128] convert(p1c)
+      p0c = f16[128] convert(p0)
+      ROOT diff = f16[128] subtract(p0c, p1c1)
+    })";
+
+  auto module = ParseAndReturnVerifiedModule(kConverts).value();
+  auto root = module->entry_computation()->GetInstructionWithName("diff");
+  std::vector<const HloInstruction*> converts =
+      HloBfsFindAll({root}, [&](const HloInstruction* node) {
+        return node->opcode() == HloOpcode::kConvert;
+      });
+
+  auto get = [&](absl::string_view name) {
+    return module->entry_computation()->GetInstructionWithName(name);
+  };
+
+  EXPECT_THAT(converts, ElementsAre(get("p0c"), get("p1c1"), get("p1c")));
+}
+
+TEST_F(HloTraversalTest, FindAllNotFound) {
+  const char kConverts[] = R"(
+    HloModule test
+
+    ENTRY entry {
+      p0 = s8[128] parameter(0)
+      p1 = f16[128] parameter(1)
+      p0c = f16[128] convert(p0)
+      ROOT diff = f16[128] subtract(p0c, p1)
+    })";
+  auto module = ParseAndReturnVerifiedModule(kConverts).value();
+  auto root = module->entry_computation()->GetInstructionWithName("diff");
+  std::vector<const HloInstruction*> converts =
+      HloBfsFindAll({root}, [&](const HloInstruction* node) {
+        return node->opcode() == HloOpcode::kAdd;
+      });
+  EXPECT_THAT(converts, IsEmpty());
 }
 
 const char kTwoFusions[] = R"(
@@ -280,66 +354,73 @@ const char kTwoFusions[] = R"(
 TEST_F(HloTraversalTest, FuseFusionConsumer) {
   auto module = ParseAndReturnVerifiedModule(kTwoFusions).value();
 
-  auto producer = HloFusionAdaptor::ForInstruction(
-      module->entry_computation()->GetInstructionWithName("negate"));
-  auto consumer = HloFusionAdaptor::ForInstruction(
-      module->entry_computation()->GetInstructionWithName("fusion.1"));
-  ProducerConsumerFusion fusion(std::move(producer), std::move(consumer));
+  auto producer = module->entry_computation()->GetInstructionWithName("negate");
+  auto consumer =
+      module->entry_computation()->GetInstructionWithName("fusion.1");
+  auto fusion = HloFusionAdaptor::ForProducerConsumer(producer, consumer);
+
+  HloInstructionAdaptor reduce_1(
+      *module->GetComputationWithName("fused_computation_1")
+           ->GetInstructionWithName("reduce.1"),
+      fusion.get());
+
+  EXPECT_TRUE(reduce_1.GetUsers().empty());
 
   std::vector<std::string> nodes;
-  std::vector<std::string> params;
-  HloBfsConsumersFirstTraversal(
-      fusion.GetRoots(), fusion,
-      [&](HloInstructionAdaptor node) {
-        nodes.emplace_back(node.name());
-        return TraversalResult::kAdvance;
-      },
-      [&](HloInstructionAdaptor param) { params.emplace_back(param.name()); });
+  HloBfsConsumersFirstTraversal(fusion->GetRoots(), *fusion,
+                                [&](HloInstructionAdaptor node) {
+                                  nodes.emplace_back(node.name());
+                                  return TraversalResult::kAdvance;
+                                });
 
   EXPECT_THAT(nodes, ElementsAre("reduce.1", "mul", "negate"));
-  EXPECT_THAT(params, ElementsAre("p0", "sum"));
 }
 
 TEST_F(HloTraversalTest, FuseFusionProducer) {
   auto module = ParseAndReturnVerifiedModule(kTwoFusions).value();
 
-  auto producer = HloFusionAdaptor::ForInstruction(
-      module->entry_computation()->GetInstructionWithName("fusion.2"));
-  auto consumer = HloFusionAdaptor::ForInstruction(
-      module->entry_computation()->GetInstructionWithName("difference"));
-  ProducerConsumerFusion fusion(std::move(producer), std::move(consumer));
+  auto producer =
+      module->entry_computation()->GetInstructionWithName("fusion.2");
+  auto consumer =
+      module->entry_computation()->GetInstructionWithName("difference");
+  auto fusion = HloFusionAdaptor::ForProducerConsumer(producer, consumer);
+
+  HloInstructionAdaptor reduce_2(
+      *module->GetComputationWithName("fused_computation_2")
+           ->GetInstructionWithName("reduce.2"),
+      fusion.get());
+
+  EXPECT_THAT(reduce_2.GetOperands(),
+              ElementsAre(InstructionAdaptorName("negate"),
+                          InstructionAdaptorName("fusion.1")));
 
   std::vector<std::string> nodes;
-  std::vector<std::string> params;
-  HloBfsConsumersFirstTraversal(
-      fusion.GetRoots(), fusion,
-      [&](HloInstructionAdaptor node) {
-        nodes.emplace_back(node.name());
-        return TraversalResult::kAdvance;
-      },
-      [&](HloInstructionAdaptor arg) { params.emplace_back(arg.name()); });
+  HloBfsConsumersFirstTraversal(fusion->GetRoots(), *fusion,
+                                [&](HloInstructionAdaptor node) {
+                                  nodes.emplace_back(node.name());
+                                  return TraversalResult::kAdvance;
+                                });
 
   EXPECT_THAT(nodes, ElementsAre("difference", "reduce.2"));
-  EXPECT_THAT(params, ElementsAre("p0", "negate", "reduce.1"));
 }
 
 TEST_F(HloTraversalTest, FuseFusionConsumerAndProducer) {
   auto module = ParseAndReturnVerifiedModule(kTwoFusions).value();
-  auto producer = HloFusionAdaptor::ForInstruction(
-      module->entry_computation()->GetInstructionWithName("fusion.1"));
-  auto consumer = HloFusionAdaptor::ForInstruction(
-      module->entry_computation()->GetInstructionWithName("fusion.2"));
-  ProducerConsumerFusion fusion(std::move(producer), std::move(consumer));
+  auto producer =
+      module->entry_computation()->GetInstructionWithName("fusion.1");
+  auto consumer =
+      module->entry_computation()->GetInstructionWithName("fusion.2");
+  auto fusion = HloFusionAdaptor::ForProducerConsumer(producer, consumer);
 
   std::vector<std::string> nodes;
-  HloBfsConsumersFirstTraversal(fusion.GetRoots(), fusion,
+  HloBfsConsumersFirstTraversal(fusion->GetRoots(), *fusion,
                                 [&](HloInstructionAdaptor node) {
                                   nodes.emplace_back(node.name());
                                   return TraversalResult::kAdvance;
                                 });
   std::vector<std::string> params;
-  FindFusionArguments(fusion, [&](const HloInstructionAdaptor& param) {
-    params.emplace_back(param.name());
+  absl::c_for_each(fusion->GetParameters(), [&](const HloInstruction* param) {
+    params.emplace_back(param->name());
   });
 
   EXPECT_THAT(nodes, ElementsAre("reduce.2", "reduce.1", "mul"));
@@ -349,14 +430,12 @@ TEST_F(HloTraversalTest, FuseFusionConsumerAndProducer) {
 TEST_F(HloTraversalTest, FuseNonFusionConsumerAndProducer) {
   auto module = ParseAndReturnVerifiedModule(kTestModule).value();
 
-  auto producer = HloFusionAdaptor::ForInstruction(
-      module->entry_computation()->GetInstructionWithName("log"));
-  auto consumer = HloFusionAdaptor::ForInstruction(
-      module->entry_computation()->GetInstructionWithName("negate"));
-  ProducerConsumerFusion fusion(std::move(producer), std::move(consumer));
+  auto producer = module->entry_computation()->GetInstructionWithName("log");
+  auto consumer = module->entry_computation()->GetInstructionWithName("negate");
+  auto fusion = HloFusionAdaptor::ForProducerConsumer(producer, consumer);
 
   std::vector<std::string> nodes;
-  HloBfsConsumersFirstTraversal(fusion.GetRoots(), fusion,
+  HloBfsConsumersFirstTraversal(fusion->GetRoots(), *fusion,
                                 [&](HloInstructionAdaptor node) {
                                   nodes.emplace_back(node.name());
                                   return TraversalResult::kAdvance;
@@ -395,6 +474,29 @@ TEST_F(HloTraversalTest, SingleInstructionFusionOfInstruction) {
   EXPECT_THAT(nodes, ElementsAre("negate"));
 }
 
+TEST_F(HloTraversalTest, MultiOutputFusionDuplicateRoot) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule test
+
+    fused_computation {
+      p0.1 = f32[128] parameter(0)
+      p1.1 = f32[128] parameter(1)
+      mul = f32[128] multiply(p0.1, p1.1)
+      ROOT res = (f32[128], f32[128]) tuple(mul, mul)
+    }
+
+    ENTRY entry {
+      p0 = f32[128] parameter(0)
+      p1 = f32[128] parameter(1)
+      ROOT fusion = (f32[128], f32[128]) fusion(p0, p1), kind=kLoop, calls=fused_computation
+    })")
+                    .value();
+  auto fusion = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->GetInstructionWithName("fusion"));
+  EXPECT_THAT(fusion->GetRoots(), ElementsAre(InstructionAdaptorName("mul"),
+                                              InstructionAdaptorName("mul")));
+}
+
 TEST_F(HloTraversalTest, MakeInstructionsPostOrder_SingleInstruction) {
   auto module = ParseAndReturnVerifiedModule(kTwoFusions).value();
   auto fusion = HloFusionAdaptor::ForInstruction(
@@ -406,11 +508,11 @@ TEST_F(HloTraversalTest, MakeInstructionsPostOrder_SingleInstruction) {
 
 TEST_F(HloTraversalTest, MakeInstructionsPostOrder_TwoFusions) {
   auto module = ParseAndReturnVerifiedModule(kTwoFusions).value();
-  auto fusion = ProducerConsumerFusion(
+  auto fusion = HloFusionAdaptor::ForProducerConsumer(
       module->entry_computation()->GetInstructionWithName("fusion.1"),
       module->entry_computation()->GetInstructionWithName("fusion.2"));
 
-  auto nodes = fusion.MakeInstructionPostOrder();
+  auto nodes = fusion->MakeInstructionPostOrder();
   EXPECT_THAT(nodes, ElementsAre(InstructionAdaptorName("mul"),
                                  InstructionAdaptorName("reduce.1"),
                                  InstructionAdaptorName("reduce.2")));
@@ -457,15 +559,151 @@ TEST_F(HloTraversalTest, MakeInstructionsPostOrder_TwoMultiOutputFusions) {
       ROOT res = (f32[], f32[128]) tuple(difference, gte4)
     })")
                     .value();
-  auto fusion = ProducerConsumerFusion(
+  auto fusion = HloFusionAdaptor::ForProducerConsumer(
       module->entry_computation()->GetInstructionWithName("fusion.1"),
       module->entry_computation()->GetInstructionWithName("fusion.2"));
 
-  auto nodes = fusion.MakeInstructionPostOrder();
+  auto nodes = fusion->MakeInstructionPostOrder();
   EXPECT_THAT(nodes, ElementsAre(InstructionAdaptorName("mul"),
                                  InstructionAdaptorName("reduce.1"),
                                  InstructionAdaptorName("neg"),
                                  InstructionAdaptorName("reduce.2")));
+}
+
+const char kTwoMultiOutputFusions[] = R"(
+    HloModule mof
+    mof_producer {
+      param0 = f32[10]{0} parameter(0)
+      param1 = f32[10]{0} parameter(1)
+      param2 = f32[10]{0} parameter(2)
+      add = f32[10]{0} add(param0, param1)
+      sub = f32[10]{0} subtract(param0, param1)
+      ROOT res = (f32[10]{0}, f32[10]{0}, f32[10]{0}, f32[10]{0}, f32[10]{0}) tuple(param1, add, sub, param0, param2)
+    }
+
+    mof_consumer {
+      param0.0 = f32[10]{0} parameter(0)
+      param1.0 = f32[10]{0} parameter(1)
+      param2.0 = f32[10]{0} parameter(2)
+      mul = f32[10]{0} multiply(param0.0, param1.0)
+      div = f32[10]{0} divide(param0.0, param1.0)
+      ROOT res = (f32[10]{0}, f32[10]{0}, f32[10]{0}) tuple(mul, div, param2.0)
+    }
+
+    ENTRY main {
+      p0 = f32[10]{0} parameter(0)
+      p1 = f32[10]{0} parameter(1)
+      p2 = f32[10]{0} parameter(2)
+      producer = (f32[10]{0}, f32[10]{0}, f32[10]{0}, f32[10]{0}, f32[10]{0}) fusion(p0, p1, p2), kind=kLoop, calls=mof_producer
+      gte0 = f32[10]{0} get-tuple-element(producer), index=0
+      gte1 = f32[10]{0} get-tuple-element(producer), index=1
+      gte2 = f32[10]{0} get-tuple-element(producer), index=2
+      gte3 = f32[10]{0} get-tuple-element(producer), index=3
+      gte4 = f32[10]{0} get-tuple-element(producer), index=4
+      consumer = (f32[10]{0}, f32[10]{0}, f32[10]{0}) fusion(gte1, gte2, gte3), kind=kLoop, calls=mof_consumer
+      gte5 = f32[10]{0} get-tuple-element(consumer), index=0
+      gte6 = f32[10]{0} get-tuple-element(consumer), index=1
+      gte7 = f32[10]{0} get-tuple-element(consumer), index=2
+      ROOT res = tuple(gte0, gte1, gte3, gte4, gte5, gte6, gte7)
+    })";
+
+TEST_F(HloTraversalTest, GetParametersMultiOutputFusion) {
+  auto module = ParseAndReturnVerifiedModule(kTwoMultiOutputFusions).value();
+  auto producer =
+      module->entry_computation()->GetInstructionWithName("producer");
+  auto consumer =
+      module->entry_computation()->GetInstructionWithName("consumer");
+  auto fusion_adaptor =
+      HloFusionAdaptor::ForProducerConsumer(producer, consumer);
+  auto p0 = module->entry_computation()->GetInstructionWithName("p0");
+  auto p1 = module->entry_computation()->GetInstructionWithName("p1");
+  EXPECT_THAT(fusion_adaptor->GetParameters(), ElementsAre(p0, p1));
+  // Double-check that after performing the actual fusion, we get the same
+  // parameters.
+  consumer->MergeFusionInstructionIntoMultiOutput(producer);
+  EXPECT_THAT(consumer->operands(), ElementsAre(p0, p1));
+}
+
+TEST_F(HloTraversalTest, GetRootsMultiOutputFusion) {
+  auto module = ParseAndReturnVerifiedModule(kTwoMultiOutputFusions).value();
+  auto consumer_fusion_instr =
+      module->entry_computation()->GetInstructionWithName("consumer");
+  auto producer_fusion_instr =
+      module->entry_computation()->GetInstructionWithName("producer");
+  auto fusion_adaptor = HloFusionAdaptor::ForProducerConsumer(
+      producer_fusion_instr, consumer_fusion_instr);
+  auto producer_computation = module->GetComputationWithName("mof_producer");
+  auto producer = HloFusionAdaptor::ForComputation(producer_computation);
+  auto consumer_computation = module->GetComputationWithName("mof_consumer");
+  auto consumer = HloFusionAdaptor::ForComputation(consumer_computation);
+  EXPECT_THAT(fusion_adaptor->GetRoots(),
+              ElementsAre(
+                  HloInstructionAdaptor{
+                      *consumer_computation->GetInstructionWithName("mul"),
+                      consumer.get()},
+                  HloInstructionAdaptor{
+                      *consumer_computation->GetInstructionWithName("div"),
+                      consumer.get()},
+                  HloInstructionAdaptor{
+                      *producer_computation->GetInstructionWithName("param0"),
+                      producer.get()},
+                  HloInstructionAdaptor{
+                      *producer_computation->GetInstructionWithName("add"),
+                      producer.get()}));
+  // Double-check that after performing the actual fusion, we get the same
+  // roots.
+  consumer_fusion_instr->MergeFusionInstructionIntoMultiOutput(
+      producer_fusion_instr);
+  EXPECT_THAT(consumer_fusion_instr->fused_expression_root(),
+              GmockMatch(m::Tuple(
+                  m::Multiply(m::Add(m::Parameter(0), m::Parameter(1)),
+                              m::Subtract(m::Parameter(0), m::Parameter(1))),
+                  m::Divide(m::Add(m::Parameter(0), m::Parameter(1)),
+                            m::Subtract(m::Parameter(0), m::Parameter(1))),
+                  m::Parameter(0), m::Add(m::Parameter(0), m::Parameter(1)))));
+}
+
+TEST_F(HloTraversalTest, HloFindUseChain) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    fusion {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      negate = f32[] negate(p0)
+      log = f32[] log(p0)
+      sum = f32[] add(p0, log)
+      exp = f32[] exponential(p1)
+      ROOT call = f32[] custom-call(negate, exp, sum), custom_call_target="it"
+    }
+
+    ENTRY main {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT fusion = f32[] fusion(p0, p1), kind=kLoop, calls=fusion
+    }
+    )")
+                    .value();
+
+  auto* fusion_computation = module->GetComputationWithName("fusion");
+  auto fusion = HloFusionAdaptor::ForComputation(fusion_computation);
+  auto get = [&](absl::string_view name) {
+    return HloInstructionAdaptor{
+        *fusion_computation->GetInstructionWithName(name), fusion.get()};
+  };
+  auto p0 = get("p0");
+  auto p1 = get("p1");
+  auto log = get("log");
+  auto sum = get("sum");
+  auto negate = get("negate");
+  auto exp = get("exp");
+  auto call = get("call");
+
+  EXPECT_THAT(HloFindUseChain(p0, p0), ElementsAre(p0));
+  EXPECT_THAT(HloFindUseChain(p0, p1), IsEmpty());
+  EXPECT_THAT(HloFindUseChain(p0, call), ElementsAre(p0, negate, call));
+  EXPECT_THAT(HloFindUseChain(p0, sum), ElementsAre(p0, log, sum));
+  EXPECT_THAT(HloFindUseChain(p1, exp), ElementsAre(p1, exp));
+  EXPECT_THAT(HloFindUseChain(negate, exp), IsEmpty());
+  EXPECT_THAT(HloFindUseChain(call, p0), IsEmpty());
 }
 
 }  // namespace

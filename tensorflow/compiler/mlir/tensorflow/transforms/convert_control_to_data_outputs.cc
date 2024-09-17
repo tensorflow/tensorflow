@@ -114,7 +114,7 @@ SmallVector<TF::WhileOp> GetWhileCallers(func::FuncOp func,
 }
 
 bool IsResourceType(Type type) {
-  return getElementTypeOrSelf(type).isa<TF::ResourceType>();
+  return mlir::isa<TF::ResourceType>(getElementTypeOrSelf(type));
 }
 
 bool OnlyOperatesOnCompositeDevices(
@@ -124,11 +124,11 @@ bool OnlyOperatesOnCompositeDevices(
   auto& alias_analysis = side_effect_analysis.GetAliasAnalysis();
   llvm::SmallSet<int, 8> read_array;
   for (const Attribute& attr : op.getDeviceVarReadsIndices()) {
-    read_array.insert(attr.cast<IntegerAttr>().getInt());
+    read_array.insert(mlir::cast<IntegerAttr>(attr).getInt());
   }
   llvm::SmallSet<int, 8> update_array;
   for (const Attribute& attr : op.getDeviceVarUpdatesIndices()) {
-    update_array.insert(attr.cast<IntegerAttr>().getInt());
+    update_array.insert(mlir::cast<IntegerAttr>(attr).getInt());
   }
 
   for (auto& arg : op->getOpOperands()) {
@@ -145,7 +145,7 @@ bool OnlyOperatesOnCompositeDevices(
       continue;
     }
     auto lattice =
-        solver.lookupState<TF::ResourceDataflowState>(arg.get())->getValue();
+        solver.lookupState<TF::IsCompositeDataflowState>(arg.get())->getValue();
     bool is_read = read_array.contains(arg.getOperandNumber());
     bool is_update = update_array.contains(arg.getOperandNumber());
     // We want the resource operands that are on composite devices to be the
@@ -214,7 +214,7 @@ void CollectChainResources(
       // device-specific (see below).
       bool resource_is_on_composite_device = false;
       for (Value value : alias_analysis.GetValuesForResourceId(resource_id)) {
-        auto lattice = solver.lookupState<TF::ResourceDataflowState>(value);
+        auto lattice = solver.lookupState<TF::IsCompositeDataflowState>(value);
         if (lattice) {
           resource_is_on_composite_device |=
               lattice->getValue().is_on_composite_device;
@@ -270,7 +270,7 @@ void CollectChainResources(
 //
 // Checks if the value `control` is a NoOp control barrier.
 bool IsNoOpControlBarrier(Value control) {
-  if (!control.getType().isa<ControlType>()) return false;
+  if (!mlir::isa<ControlType>(control.getType())) return false;
 
   auto control_island = dyn_cast_or_null<IslandOp>(control.getDefiningOp());
   if (!control_island) return false;
@@ -604,7 +604,7 @@ void ConvertControlToDataOutputsPass::runOnOperation() {
   DataFlowSolver solver;
   solver.load<dataflow::DeadCodeAnalysis>();
   solver.load<dataflow::SparseConstantPropagation>();
-  TF::LoadResourceDataflowAnalysis(solver);
+  TF::LoadIsCompositeDataflowAnalysis(solver);
   if (failed(solver.initializeAndRun(module))) return signalPassFailure();
 
   // This pass assumes that all functions are suitable for export i.e., each

@@ -23,8 +23,8 @@ limitations under the License.
 #include "tsl/platform/types.h"
 
 namespace tensorflow {
-tsl::Status FindOpRegistationFromFile(absl::string_view filename,
-                                      OpRegOffsets& op_reg_offsets);
+absl::Status FindOpRegistationFromFile(absl::string_view filename,
+                                       OpRegOffsets& op_reg_offsets);
 }
 
 #endif  // TENSORFLOW_PYTHON_FRAMEWORK_OFFSET_COUNTER_HELPER_H_

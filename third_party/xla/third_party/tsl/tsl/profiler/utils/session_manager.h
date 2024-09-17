@@ -27,7 +27,7 @@ namespace tsl {
 namespace profiler {
 
 // Validate RemoteProfilerSessionManagerOptions.
-tsl::Status ValidateRemoteProfilerSessionManagerOptions(
+absl::Status ValidateRemoteProfilerSessionManagerOptions(
     const tensorflow::RemoteProfilerSessionManagerOptions& options);
 
 // Get RemoteSessionManagerOptions from logdir and opts.
@@ -48,7 +48,7 @@ GetRemoteSessionManagerOptionsLocked(
     bool* is_cloud_tpu_session);
 
 // Validate Host Port pair.
-tsl::Status ValidateHostPortPair(absl::string_view host_port);
+absl::Status ValidateHostPortPair(absl::string_view host_port);
 }  // namespace profiler
 }  // namespace tsl
 

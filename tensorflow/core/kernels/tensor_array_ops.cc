@@ -376,7 +376,7 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
           dims.push_back(dim.size);
         }
         TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(
-            gtl::ArraySlice<int64_t>(dims), &element_shape));
+            absl::Span<const int64_t>(dims), &element_shape));
       }
     } else {
       element_shape = tensor_array->ElemShape();

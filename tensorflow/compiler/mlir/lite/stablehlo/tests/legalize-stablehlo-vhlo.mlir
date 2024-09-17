@@ -1,5 +1,5 @@
-// RUN: odml-to-stablehlo-opt %s --stablehlo-legalize-vhlo -split-input-file | FileCheck %s
-// RUN: odml-to-stablehlo-opt --stablehlo-legalize-vhlo %s | odml-to-stablehlo-opt --vhlo-legalize-stablehlo > %t.0
+// RUN: odml-to-stablehlo-opt %s --stablehlo-legalize-vhlo -reconcile-unrealized-casts -split-input-file | FileCheck %s
+// RUN: odml-to-stablehlo-opt --stablehlo-legalize-vhlo -reconcile-unrealized-casts %s | odml-to-stablehlo-opt --vhlo-legalize-stablehlo -reconcile-unrealized-casts > %t.0
 // RUN: odml-to-stablehlo-opt %s > %t.1
 // RUN: diff %t.0 %t.1
 

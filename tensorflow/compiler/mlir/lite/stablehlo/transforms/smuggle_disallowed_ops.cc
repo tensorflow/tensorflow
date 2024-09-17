@@ -21,6 +21,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
@@ -70,6 +71,9 @@ class SmuggleDisallowedOpsPass
   StringRef getDescription() const final {
     return "Smuggle disallowed ops via stablehlo.custom_calls";
   }
+  void getDependentDialects(DialectRegistry& registry) const final {
+    registry.insert<mlir::stablehlo::StablehloDialect>();
+  }
 
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
@@ -77,7 +81,7 @@ class SmuggleDisallowedOpsPass
     patterns.add<SmuggleOpPattern<TF::ResizeNearestNeighborOp>>(&getContext());
 
     ConversionTarget target(getContext());
-    target.addIllegalDialect<TF::TensorFlowDialect>();
+    target.addIllegalOp<TF::ResizeBilinearOp, TF::ResizeNearestNeighborOp>();
     target.addLegalDialect<mlir::stablehlo::StablehloDialect>();
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns)))) {

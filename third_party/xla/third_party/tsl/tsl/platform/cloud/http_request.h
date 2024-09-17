@@ -85,7 +85,8 @@ class HttpRequest {
 
     /// RecordResponse is called after the response has been received.
     virtual void RecordResponse(const HttpRequest* request, const string& uri,
-                                RequestMethod method, const Status& result) = 0;
+                                RequestMethod method,
+                                const absl::Status& result) = 0;
   };
 
   HttpRequest() {}
@@ -124,7 +125,8 @@ class HttpRequest {
   ///
   /// The request body will be taken from the specified file starting from
   /// the given offset.
-  virtual Status SetPutFromFile(const string& body_filepath, size_t offset) = 0;
+  virtual absl::Status SetPutFromFile(const string& body_filepath,
+                                      size_t offset) = 0;
 
   /// Makes the request a PUT request with an empty body.
   virtual void SetPutEmptyBody() = 0;
@@ -169,7 +171,7 @@ class HttpRequest {
   ///
   /// If the result buffer was defined, the response will be written there.
   /// The object is not designed to be re-used after Send() is executed.
-  virtual Status Send() = 0;
+  virtual absl::Status Send() = 0;
 
   // Url encodes str and returns a new string.
   virtual string EscapeString(const string& str) = 0;

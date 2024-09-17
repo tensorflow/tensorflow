@@ -45,13 +45,13 @@ namespace {
 class ConvolutionVisitor : public DfsHloVisitorWithDefault {
  public:
   // Default visitor action is to do nothing and return OK.
-  Status DefaultAction(HloInstruction* /*hlo_instruction*/) override {
-    return OkStatus();
+  absl::Status DefaultAction(HloInstruction* /*hlo_instruction*/) override {
+    return absl::OkStatus();
   }
 
-  Status HandleConvolution(HloInstruction* convolution) override;
+  absl::Status HandleConvolution(HloInstruction* convolution) override;
 
-  Status HandleBatchGroupCount(HloInstruction* convolution);
+  absl::Status HandleBatchGroupCount(HloInstruction* convolution);
 
   // Runs the visitor on a computation.
   static bool Run(HloComputation* computation,
@@ -201,7 +201,8 @@ HloInstruction* GetExpandedFilterMask(
 
 // This function handles batch_group_counts which are relevant only for
 // depthwise backprop filter convolutions.
-Status ConvolutionVisitor::HandleBatchGroupCount(HloInstruction* convolution) {
+absl::Status ConvolutionVisitor::HandleBatchGroupCount(
+    HloInstruction* convolution) {
   auto dim_numbers = convolution->convolution_dimension_numbers();
   auto activation = convolution->mutable_operand(0);
   auto filter = convolution->mutable_operand(1);
@@ -209,7 +210,7 @@ Status ConvolutionVisitor::HandleBatchGroupCount(HloInstruction* convolution) {
 
   if (batch_group_count == 1 ||
       (should_expand_ && !should_expand_(convolution))) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   VLOG(2) << "Dealing with batch_group_count " << batch_group_count
@@ -315,7 +316,7 @@ Status ConvolutionVisitor::HandleBatchGroupCount(HloInstruction* convolution) {
         convolution,
         MakeReshapeHlo(convolution->shape(), new_convolution).value()));
     changed_ = true;
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   VLOG(2) << "is_cost_viable_ " << is_cost_viable_(convolution);
@@ -415,10 +416,11 @@ Status ConvolutionVisitor::HandleBatchGroupCount(HloInstruction* convolution) {
     changed_ = true;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
+absl::Status ConvolutionVisitor::HandleConvolution(
+    HloInstruction* convolution) {
   if (convert_batch_groups_only_) {
     return HandleBatchGroupCount(convolution);
   }
@@ -429,7 +431,7 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
 
   int64_t group_count = convolution->feature_group_count();
   if (group_count == 1 || (should_expand_ && !should_expand_(convolution))) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   changed_ = true;
@@ -455,7 +457,7 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
     // inherently, then no filter expansion is needed.
     if (!filter_expansion_ && depthwise_separable) {
       changed_ = false;
-      return OkStatus();
+      return absl::OkStatus();
     }
     VLOG(2) << "is_cost_viable_ " << is_cost_viable_(convolution);
     // We want to repeat 'filter' in the 'input_feature_dim' dimension

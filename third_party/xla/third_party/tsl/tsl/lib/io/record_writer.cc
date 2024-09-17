@@ -69,7 +69,7 @@ RecordWriter::RecordWriter(WritableFile* dest,
     ZlibOutputBuffer* zlib_output_buffer = new ZlibOutputBuffer(
         dest, options.zlib_options.input_buffer_size,
         options.zlib_options.output_buffer_size, options.zlib_options);
-    Status s = zlib_output_buffer->Init();
+    absl::Status s = zlib_output_buffer->Init();
     if (!s.ok()) {
       LOG(FATAL) << "Failed to initialize Zlib inputbuffer. Error: "
                  << s.ToString();
@@ -89,17 +89,17 @@ RecordWriter::RecordWriter(WritableFile* dest,
 
 RecordWriter::~RecordWriter() {
   if (dest_ != nullptr) {
-    Status s = Close();
+    absl::Status s = Close();
     if (!s.ok()) {
       LOG(ERROR) << "Could not finish writing file: " << s;
     }
   }
 }
 
-Status RecordWriter::WriteRecord(StringPiece data) {
+absl::Status RecordWriter::WriteRecord(absl::string_view data) {
   if (dest_ == nullptr) {
-    return Status(absl::StatusCode::kFailedPrecondition,
-                  "Writer not initialized or previously closed");
+    return absl::Status(absl::StatusCode::kFailedPrecondition,
+                        "Writer not initialized or previously closed");
   }
   // Format of a single record:
   //  uint64    length
@@ -110,16 +110,16 @@ Status RecordWriter::WriteRecord(StringPiece data) {
   char footer[kFooterSize];
   PopulateHeader(header, data.data(), data.size());
   PopulateFooter(footer, data.data(), data.size());
-  TF_RETURN_IF_ERROR(dest_->Append(StringPiece(header, sizeof(header))));
+  TF_RETURN_IF_ERROR(dest_->Append(absl::string_view(header, sizeof(header))));
   TF_RETURN_IF_ERROR(dest_->Append(data));
-  return dest_->Append(StringPiece(footer, sizeof(footer)));
+  return dest_->Append(absl::string_view(footer, sizeof(footer)));
 }
 
 #if defined(TF_CORD_SUPPORT)
-Status RecordWriter::WriteRecord(const absl::Cord& data) {
+absl::Status RecordWriter::WriteRecord(const absl::Cord& data) {
   if (dest_ == nullptr) {
-    return Status(absl::StatusCode::kFailedPrecondition,
-                  "Writer not initialized or previously closed");
+    return absl::Status(absl::StatusCode::kFailedPrecondition,
+                        "Writer not initialized or previously closed");
   }
   // Format of a single record:
   //  uint64    length
@@ -130,27 +130,27 @@ Status RecordWriter::WriteRecord(const absl::Cord& data) {
   char footer[kFooterSize];
   PopulateHeader(header, data);
   PopulateFooter(footer, data);
-  TF_RETURN_IF_ERROR(dest_->Append(StringPiece(header, sizeof(header))));
+  TF_RETURN_IF_ERROR(dest_->Append(absl::string_view(header, sizeof(header))));
   TF_RETURN_IF_ERROR(dest_->Append(data));
-  return dest_->Append(StringPiece(footer, sizeof(footer)));
+  return dest_->Append(absl::string_view(footer, sizeof(footer)));
 }
 #endif
 
-Status RecordWriter::Close() {
-  if (dest_ == nullptr) return OkStatus();
+absl::Status RecordWriter::Close() {
+  if (dest_ == nullptr) return absl::OkStatus();
   if (IsZlibCompressed(options_) || IsSnappyCompressed(options_)) {
-    Status s = dest_->Close();
+    absl::Status s = dest_->Close();
     delete dest_;
     dest_ = nullptr;
     return s;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status RecordWriter::Flush() {
+absl::Status RecordWriter::Flush() {
   if (dest_ == nullptr) {
-    return Status(absl::StatusCode::kFailedPrecondition,
-                  "Writer not initialized or previously closed");
+    return absl::Status(absl::StatusCode::kFailedPrecondition,
+                        "Writer not initialized or previously closed");
   }
   return dest_->Flush();
 }

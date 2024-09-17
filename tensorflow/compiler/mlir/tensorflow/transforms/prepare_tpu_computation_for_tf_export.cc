@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
@@ -79,8 +80,8 @@ class RewriteXlaHostComputeMlir
     llvm::SmallVector<Attribute> shape_attrs;
     shape_attrs.reserve(op.getNumResults());
     for (Type ty : op.getResultTypes()) {
-      shape_attrs.push_back(
-          TF::ShapeAttr::get(rewriter.getContext(), ty.cast<ShapedType>()));
+      shape_attrs.push_back(TF::ShapeAttr::get(rewriter.getContext(),
+                                               mlir::cast<ShapedType>(ty)));
     }
 
     // Clone the `host_func` in the `host_mlir_module` attribute if it exists

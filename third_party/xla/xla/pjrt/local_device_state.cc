@@ -19,10 +19,12 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
@@ -59,30 +61,43 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
   int num_device_to_device_streams =
       stream_options.has_value() ? stream_options->num_device_to_device_streams
                                  : kNumDeviceToDeviceStreams;
-  auto create_stream = [executor, &stream_options]() {
+  auto create_stream = [executor, &stream_options](std::string const& name) {
+    std::unique_ptr<stream_executor::Stream> stream;
     if (stream_options.has_value()) {
-      return executor->CreateStream(stream_options->priority).value();
+      stream = executor->CreateStream(stream_options->priority).value();
     } else {
-      return executor->CreateStream().value();
+      stream = executor->CreateStream().value();
     }
+    if (stream) {
+      stream->set_name(name);
+    }
+    return stream;
   };
-  compute_stream_ = create_stream();
-  host_to_device_stream_ = create_stream();
+  compute_stream_ = create_stream("Compute");
+  host_to_device_stream_ = create_stream("Host-to-device");
   if (use_callback_stream) {
     callback_stream_map_ =
         absl::flat_hash_map<se::Stream*, std::unique_ptr<se::Stream>>();
   }
   device_to_host_streams_.reserve(num_device_to_host_streams);
   for (int i = 0; i < num_device_to_host_streams; ++i) {
-    device_to_host_streams_.emplace_back(create_stream());
+    device_to_host_streams_.emplace_back(
+        create_stream(absl::StrFormat("Device-to-host #%d", i)));
   }
   device_to_device_streams_.reserve(num_device_to_device_streams);
   for (int i = 0; i < num_device_to_device_streams; ++i) {
-    device_to_device_streams_.emplace_back(create_stream());
+    device_to_device_streams_.emplace_back(
+        create_stream(absl::StrFormat("Device-to-device #%d", i)));
+  }
+  fixed_size_pool_usage_streams_.reserve(kNumFixedSizePoolUsageStreams);
+  for (int i = 0; i < kNumFixedSizePoolUsageStreams; ++i) {
+    fixed_size_pool_usage_streams_.emplace_back(
+        create_stream(absl::StrFormat("Fixed size pool #%d", i)));
   }
   external_ready_event_streams_.reserve(kNumExternalReadyEventStreams);
   for (int i = 0; i < kNumExternalReadyEventStreams; ++i) {
-    external_ready_event_streams_.emplace_back(create_stream());
+    external_ready_event_streams_.emplace_back(
+        create_stream(absl::StrFormat("External ready event #%d", i)));
   }
   execute_thread_ =
       std::make_unique<WorkerThread>(tsl::Env::Default(), "py_xla_execute");
@@ -91,14 +106,14 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
 }
 
 LocalDeviceState::~LocalDeviceState() {
-  Status status = SynchronizeAllActivity();
+  absl::Status status = SynchronizeAllActivity();
   if (!status.ok()) {
     LOG(ERROR) << "Error when closing device: " << status;
   }
 }
 
-Status LocalDeviceState::SynchronizeAllActivity() {
-  Status status;
+absl::Status LocalDeviceState::SynchronizeAllActivity() {
+  absl::Status status;
   // TODO(phawkins): in theory the call to SynchronizeAllActivity below should
   // suffice. However on the Host platform SynchronizeAllActivity is a dummy
   // implementation that doesn't actually block. To make sure activity has
@@ -121,7 +136,7 @@ Status LocalDeviceState::SynchronizeAllActivity() {
   return status;
 }
 
-Status LocalDeviceState::ThenMemcpyDeviceToDevice(
+absl::Status LocalDeviceState::ThenMemcpyDeviceToDevice(
     se::Stream* transfer_stream, se::Stream* dst_stream,
     se::DeviceMemoryBase src_buffer, se::DeviceMemoryBase dst_buffer) {
   // The default implementation simply calls MemcpyD2D, and assumes that
@@ -139,6 +154,7 @@ absl::Status LocalDeviceState::ThenExecuteCallback(
     auto callback_stream = callback_stream_map_->find(stream);
     if (callback_stream == callback_stream_map_->end()) {
       TF_ASSIGN_OR_RETURN(auto new_stream, executor_->CreateStream());
+      new_stream->set_name(absl::StrFormat("Callback for %s", stream->name()));
       callback_stream =
           callback_stream_map_->insert({stream, std::move(new_stream)}).first;
     }
@@ -167,6 +183,15 @@ se::Stream* LocalDeviceState::GetDeviceToDeviceStream() {
   return device_to_device_streams_.at(i).get();
 }
 
+se::Stream* LocalDeviceState::GetFixedSizePoolUsageStream() {
+  absl::MutexLock lock(&mu_);
+  int i = next_fixed_size_pool_usage_stream_;
+  next_fixed_size_pool_usage_stream_ =
+      (next_fixed_size_pool_usage_stream_ + 1) %
+      fixed_size_pool_usage_streams_.size();
+  return fixed_size_pool_usage_streams_.at(i).get();
+}
+
 se::Stream* LocalDeviceState::GetExternalReadyEventStream() {
   absl::MutexLock lock(&mu_);
   int i = next_external_ready_event_stream_;
@@ -175,7 +200,7 @@ se::Stream* LocalDeviceState::GetExternalReadyEventStream() {
   return external_ready_event_streams_.at(i).get();
 }
 
-StatusOr<se::Stream*> LocalDeviceState::GetStreamFromExternalStream(
+absl::StatusOr<se::Stream*> LocalDeviceState::GetStreamFromExternalStream(
     std::intptr_t stream) {
   // TODO(skyewm): replace with map lookup if performance is an issue (currently
   // it just iterates over 4 streams).
@@ -218,6 +243,7 @@ std::unique_ptr<se::Stream> LocalDeviceState::BorrowStreamFromPool() {
 
   // The stream pool is empty, create a new stream.
   auto stream = compute_stream_->parent()->CreateStream().value();
+  stream->set_name("Pool stream");
   return stream;
 }
 

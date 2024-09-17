@@ -21,13 +21,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "xla/tsl/profiler/rpc/client/remote_profiler_session_manager.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/rpc/client/profiler_client.h"
-#include "tsl/profiler/rpc/client/remote_profiler_session_manager.h"
 
 namespace tensorflow {
 namespace profiler {

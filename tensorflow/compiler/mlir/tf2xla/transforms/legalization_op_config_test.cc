@@ -34,7 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/test_utils.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
@@ -54,12 +54,12 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
 class LegalizationOpConfigTest : public ::testing::Test {
  public:
-  tsl::Status CreateMlirModule(std::string module_string = kMlirModuleStr) {
+  absl::Status CreateMlirModule(std::string module_string = kMlirModuleStr) {
     TF_ASSIGN_OR_RETURN(
         module_, test::GetMlirModuleFromString(module_string, &context_));
 
     context_.loadAllAvailableDialects();
-    return tsl::OkStatus();
+    return absl::OkStatus();
   }
 
   absl::StatusOr<FuncOp> GetMain() {
@@ -135,8 +135,8 @@ TEST_F(LegalizationOpConfigTest, CountLoweringsSet) {
   // from MLIR to TF2XLA), these numbers should change. Or if TF Dialect adds
   // a new op, we should expect these to change too.
   EXPECT_EQ(mlir_lowering_count, 67);
-  EXPECT_EQ(tf2xla_fallback_count, 316);
-  EXPECT_EQ(non_categorized_count, 423);
+  EXPECT_EQ(tf2xla_fallback_count, 323);
+  EXPECT_EQ(non_categorized_count, 430);
 }
 
 // Just a counter test to see which ops have duplicate lowerings. This isn't a
@@ -187,7 +187,7 @@ TEST_F(LegalizationOpConfigTest, CountAllMlirLoweringPatterns) {
     }
   }
 
-  EXPECT_EQ(mlir_only_patterns, 64);
+  EXPECT_EQ(mlir_only_patterns, 63);
 }
 
 // Counts which ops have lowerings without XlaOpKernels. This isn't a

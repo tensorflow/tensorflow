@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include <gmock/gmock.h>
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -28,16 +29,20 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/layout_util.h"
 #include "xla/literal_util.h"
+#include "xla/service/pattern_matcher.h"
+#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_utils.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
+
+namespace m = ::xla::match;
 
 class HloDceTest : public HloTestBase {
  protected:
@@ -188,8 +193,7 @@ TEST_F(HloDceTest, ShardingCustomCallInstruction) {
       HloInstruction::CreateCustomCall(p0->shape(),
                                        /*operands=*/{add},
                                        /*custom_call_target=*/"Sharding"));
-  dangling_sharding->set_sharding(
-      HloSharding::Tile(TileAssignment((absl::Span<const int64_t>){2, 1})));
+  dangling_sharding->set_sharding(HloSharding::Tile(TileAssignment({2, 1})));
   builder.AddInstruction(HloInstruction::CreateBinary(
       p0->shape(), HloOpcode::kMultiply, add, add));
   auto module = CreateNewVerifiedModule();
@@ -214,8 +218,7 @@ TEST_F(HloDceTest, ShardingCustomCallInstructionWithDeadOperand) {
       HloInstruction::CreateCustomCall(p0->shape(),
                                        /*operands=*/{add},
                                        /*custom_call_target=*/"Sharding"));
-  dangling_sharding->set_sharding(
-      HloSharding::Tile(TileAssignment((absl::Span<const int64_t>){2, 1})));
+  dangling_sharding->set_sharding(HloSharding::Tile(TileAssignment({2, 1})));
   builder.AddInstruction(
       HloInstruction::CreateBinary(p0->shape(), HloOpcode::kMultiply, p0, p0));
   auto module = CreateNewVerifiedModule();
@@ -611,5 +614,114 @@ TEST_F(HloDceTest, RemovedNestedDeadComputations) {
   EXPECT_EQ(module->MakeComputationPostOrder().size(), 1);
 }
 
+TEST_F(HloDceTest, MultiOutputFusionRemoveUnusedTupleElementsRemoveTuple) {
+  constexpr char kHloString[] = R"(
+  HloModule test_module
+  fused_add {
+    p0 = f32[32,32]{1,0} parameter(0)
+    p1 = f32[32,32]{1,0} parameter(1)
+    p2 = f32[32,32]{1,0} parameter(2) // becomes dead
+    add = f32[32,32]{1,0} add(p0, p1)
+    ROOT res = (f32[32,32]{1,0}, f32[32,32]{1,0}) tuple(p2, add)
+  }
+
+  ENTRY reduce {
+    param0 = f32[32,32]{1,0} parameter(0)
+    param1 = f32[32,32]{1,0} parameter(1)
+    param2 = f32[32,32]{1,0} parameter(2)
+    fusion = (f32[32,32]{1,0}, f32[32,32]{1,0}) fusion(param0, param1, param2), kind=kLoop, calls=fused_add
+    gte.0 = f32[32,32]{1,0} get-tuple-element(fusion), index=0  // dead
+    ROOT gte.1 = f32[32,32]{1,0} get-tuple-element(fusion), index=1
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  HloDCE dce;
+  auto changed = dce.Run(module.get());
+  ASSERT_TRUE(changed.ok());
+  EXPECT_TRUE(*changed);
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  // We expect that the dead parameter and the dead tuple entry are removed.
+  EXPECT_THAT(root, GmockMatch(m::Fusion(m::Parameter(0), m::Parameter(1))
+                                   .WithShape(F32, {32, 32})));
+  EXPECT_THAT(
+      root->fused_expression_root(),
+      GmockMatch(
+          m::Add(m::Parameter(0), m::Parameter(1)).WithShape(F32, {32, 32})));
+  EXPECT_EQ(module->MakeComputationPostOrder().size(), 2);
+}
+
+TEST_F(HloDceTest, MultiOutputFusionRemoveUnusedTupleElementAdjustTuple) {
+  constexpr char kHloString[] = R"(
+  HloModule test_module
+  fused_add {
+    p0 = f32[32,32]{1,0} parameter(0)
+    p1 = f32[32,32]{1,0} parameter(1)
+    add = f32[32,32]{1,0} add(p0, p1)
+    neg = f32[32,32]{1,0} negate(add)
+    ROOT res = (f32[32,32]{1,0}, f32[32,32]{1,0}, f32[32,32]{1,0}) tuple(neg, p0, add)
+  }
+
+  ENTRY reduce {
+    param0 = f32[32,32]{1,0} parameter(0)
+    param1 = f32[32,32]{1,0} parameter(1)
+    fusion = (f32[32,32]{1,0}, f32[32,32]{1,0}, f32[32,32]{1,0}) fusion(param0, param1), kind=kLoop, calls=fused_add
+    gte.0 = f32[32,32]{1,0} get-tuple-element(fusion), index=0
+    gte.1 = f32[32,32]{1,0} get-tuple-element(fusion), index=1
+    gte.2 = f32[32,32]{1,0} get-tuple-element(fusion), index=2
+    ROOT add = f32[32,32]{1,0} add(gte.0, gte.2)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  HloDCE dce;
+  auto changed = dce.Run(module.get());
+  ASSERT_TRUE(changed.ok());
+  EXPECT_TRUE(*changed);
+  Shape shape = ShapeUtil::MakeShape(F32, {32, 32});
+  Shape expected_shape = ShapeUtil::MakeTupleShape({shape, shape});
+  HloInstruction* fusion;
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Add(
+                  m::GetTupleElement(
+                      m::Fusion(&fusion).WithShapeEqualTo(&expected_shape), 0),
+                  m::GetTupleElement(m::Fusion(), 1))));
+  EXPECT_THAT(
+      fusion->fused_expression_root(),
+      GmockMatch(
+          m::Tuple(m::Negate(), m::Add()).WithShapeEqualTo(&expected_shape)));
+  EXPECT_EQ(module->MakeComputationPostOrder().size(), 2);
+}
+TEST_F(HloDceTest,
+       MultiOutputFusionRemoveUnusedTupleElementWithControlAdjustTupleAndDep) {
+  constexpr char kHloString[] = R"(
+  HloModule test_module
+  fused_add {
+    p0 = f32[32,32]{1,0} parameter(0)
+    p1 = f32[32,32]{1,0} parameter(1)
+    add = f32[32,32]{1,0} add(p0, p1)
+    ROOT res = (f32[32,32]{1,0}, f32[32,32]{1,0}) tuple(p0, add)
+  }
+
+  ENTRY reduce {
+    param0 = f32[32,32]{1,0} parameter(0)
+    param1 = f32[32,32]{1,0} parameter(1)
+    fusion = (f32[32,32]{1,0}, f32[32,32]{1,0}) fusion(param0, param1), kind=kLoop, calls=fused_add
+    gte.1 = f32[32,32]{1,0} get-tuple-element(fusion), index=1
+    add.2 = f32[32,32]{1,0} add(param0, param1), control-predecessors={gte.1}
+    ROOT add = f32[32,32]{1,0} add(add.2, gte.1)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  HloDCE dce;
+  auto changed = dce.Run(module.get());
+  ASSERT_TRUE(changed.ok());
+  EXPECT_TRUE(*changed);
+  HloInstruction* fusion;
+  HloInstruction* add2;
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Add(m::Add(&add2, m::Parameter(), m::Parameter()),
+                                m::Fusion(&fusion))));
+  EXPECT_EQ(add2->control_predecessors().size(), 1);
+  EXPECT_EQ(add2->control_predecessors()[0], fusion);
+}
 }  // namespace
 }  // namespace xla

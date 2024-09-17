@@ -18,12 +18,16 @@ limitations under the License.
 
 #include <functional>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_loop.h"
-#include "xla/statusor.h"
+#include "xla/shape.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -35,7 +39,7 @@ namespace llvm_ir {
 // llvm::Value*.
 using ElementGenerator =
     std::function<absl::StatusOr<llvm::Value*>(const IrArray::Index& index)>;
-using BodyEmitter = std::function<Status(const IrArray::Index& index)>;
+using BodyEmitter = std::function<absl::Status(const IrArray::Index& index)>;
 
 // Creates the body emitter from target arrays.
 BodyEmitter MakeBodyEmitter(const ElementGenerator& target_element_generator,
@@ -79,8 +83,8 @@ class LoopEmitter {
       llvm::Value* base_index);
 
   // Emits a complete loop nest for every element in the given shape.
-  Status EmitLoop(absl::string_view loop_name = "",
-                  llvm::Type* index_type = nullptr);
+  absl::Status EmitLoop(absl::string_view loop_name = "",
+                        llvm::Type* index_type = nullptr);
 
  protected:
   // An IR emitter that generates the loop body.

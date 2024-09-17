@@ -23,6 +23,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
+#include "tensorflow/core/platform/stack_frame.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -37,6 +38,8 @@ class TestStackTrace : public AbstractStackTrace {
       : frames_(std::move(frames)) {}
 
   absl::Span<StackFrame const> ToFrames() const override { return frames_; }
+
+  std::vector<StackFrame> ToUncachedFrames() const override { return frames_; }
 
   std::vector<StackFrame> GetUserFrames(int limit) const override {
     return frames_;
@@ -217,6 +220,19 @@ TEST(StackTracesMapToGraphDebugInfoTest, RoundTripStackTraces) {
     EXPECT_NE(orig_trace, nullptr);
     EXPECT_EQ(orig_trace->ToFrames(), trace->ToFrames());
   }
+}
+
+TEST(StackTracesTest, ToFrames) {
+  StackTracesMap map;
+  std::vector<StackFrame> frames = {
+      StackFrame({"dummy_file_name", 10, "dummy_function_name"}),
+      StackFrame({"other_file_name", 20, "other_function_name"})};
+  auto stack_trace = TestStackTrace(frames);
+  EXPECT_EQ(stack_trace.ToFrames().size(), 2);
+  auto uncached_frames = stack_trace.ToUncachedFrames();
+  EXPECT_EQ(uncached_frames.size(), 2);
+  EXPECT_EQ(frames[0], uncached_frames[0]);
+  EXPECT_EQ(frames[1], uncached_frames[1]);
 }
 
 }  // namespace

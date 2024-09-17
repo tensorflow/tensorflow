@@ -20,23 +20,23 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {
 
-Status DynamicParameterBinding::Bind(
+absl::Status DynamicParameterBinding::Bind(
     const DynamicSizeParameter& dynamic_parameter,
     const DynamicDimension& dynamic_dimension) {
   auto result = bindings_.emplace(dynamic_dimension, dynamic_parameter);
   TF_RET_CHECK(result.second);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::optional<DynamicParameterBinding::DynamicSizeParameter>
@@ -67,18 +67,18 @@ std::string DynamicParameterBinding::ToString() const {
   return absl::StrJoin(pieces, "\n");
 }
 
-Status DynamicParameterBinding::ForEachBinding(BindingFn fn) const {
+absl::Status DynamicParameterBinding::ForEachBinding(BindingFn fn) const {
   for (const auto& binding : bindings_) {
     TF_RETURN_IF_ERROR(fn(binding.second, binding.first));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status DynamicParameterBinding::Verify(
+absl::Status DynamicParameterBinding::Verify(
     const HloComputation& computation) const {
   return ForEachBinding([&](const DynamicSizeParameter& dynamic_parameter,
                             const DynamicDimension& dynamic_dimension)
-                            -> Status {
+                            -> absl::Status {
     TF_RET_CHECK(dynamic_parameter.parameter_num >= 0 &&
                  dynamic_parameter.parameter_num <
                      computation.num_parameters());
@@ -99,7 +99,7 @@ Status DynamicParameterBinding::Verify(
                 ->shape(),
             dynamic_dimension.parameter_index)
             .rank());
-    return OkStatus();
+    return absl::OkStatus();
   });
 }
 

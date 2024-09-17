@@ -25,10 +25,10 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/tf_dialect_to_executor.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_executor_to_graph.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -37,7 +37,8 @@ namespace tensorflow {
 
 absl::Status ExportFunctionDefs(
     mlir::ModuleOp module,
-    absl::AnyInvocable<absl::Status(tensorflow::FunctionDef)> callback) {
+    absl::AnyInvocable<absl::Status(tensorflow::FunctionDef)> callback,
+    bool export_tf_original_func_name) {
   tsl::profiler::TraceMe traceme([&]() {
     return tsl::profiler::TraceMeEncode(
         "ExportFunctionDefs",
@@ -58,12 +59,13 @@ absl::Status ExportFunctionDefs(
     }
   }
   tensorflow::GraphExportConfig configs;
-  configs.export_original_tf_func_name = true;
+  configs.export_original_tf_func_name = export_tf_original_func_name;
 
   for (auto func : module.getOps<mlir::func::FuncOp>()) {
     tensorflow::FunctionDef function_def;
-    TF_RETURN_IF_ERROR(tensorflow::ConvertMlirFunctionToFunctionLibraryDef(
-        func, configs, &function_def));
+    TF_RETURN_IF_ERROR(
+        tensorflow::tf2xla::v2::ConvertMlirFunctionToFunctionLibraryDef(
+            func, configs, &function_def));
     TF_RETURN_IF_ERROR(callback(std::move(function_def)));
   }
 

@@ -29,11 +29,20 @@ class PyTreeRegistry:
       tree: Any,
       leaf_predicate: Optional[Callable[[Any], bool]] = ...,
   ) -> Tuple[List[Any], PyTreeDef]: ...
+  def flatten_one_level(
+      self, tree: Any
+  ) -> Optional[Tuple[Iterable[Any], Any]]: ...
   def register_node(
       self,
       __type: Type[_T],
       to_iterable: Callable[[_T], Tuple[_Children, _AuxData]],
       from_iterable: Callable[[_AuxData, _Children], _T]) -> Any: ...
+  def register_dataclass_node(
+      self,
+      __type: Type[_T],
+      meta_fields: List[str],
+      data_fields: List[str]) -> Any: ...
+
 
 def default_registry() -> PyTreeRegistry: ...
 
@@ -73,7 +82,6 @@ class PyTreeDef:
       registry: PyTreeRegistry, data: bytes
   ) -> PyTreeDef:
     ...
-
 
 _Children = TypeVar("_Children", bound=Iterable[Any])
 _AuxData = TypeVar("_AuxData", bound=Hashable)

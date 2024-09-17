@@ -1,5 +1,5 @@
 load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
-load("//xla:xla.bzl", "xla_cc_test")
+load("//xla:xla.bzl", "xla_cc_binary", "xla_cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -11,6 +11,10 @@ lit_test_suite(
     srcs = enforce_glob(
         [
             "ifrt_duplicated_callee_elimination.mlir",
+            "ifrt_merge_reshards.mlir",
+            "ifrt_outline_atom_program_to_module.mlir",
+            "ifrt_verify_donation.mlir",
+            "ifrt_verify_sharding_specified.mlir",
             "spmd_expansion.mlir",
             "spmd_interface_verification.mlir",
             "verify_array.mlir",
@@ -18,8 +22,10 @@ lit_test_suite(
             "verify_attrs.mlir",
             "verify_call.mlir",
             "verify_call_loaded_executable.mlir",
+            "verify_copy_arrays.mlir",
             "verify_disassemble.mlir",
             "verify_loaded_executable.mlir",
+            "verify_remap_arrays.mlir",
             "verify_reshard.mlir",
         ],
         include = [
@@ -33,10 +39,11 @@ lit_test_suite(
     ],
 )
 
-cc_binary(
+xla_cc_binary(
     name = "ifrt-opt",
     srcs = ["ifrt-opt.cc"],
     deps = [
+        "//xla/mlir_hlo:hlo_dialect_registration",
         "//xla/python/ifrt/ir",
         "//xla/python/ifrt/ir/transforms:built_in_spmd_expansions",
         "//xla/python/ifrt/ir/transforms:passes",
@@ -54,18 +61,22 @@ cc_library(
     visibility = ["//xla/python/ifrt:friends"],
     deps = [
         "//xla:status_macros",
+        "//xla/mlir/utils:error_util",
         "//xla/mlir_hlo:hlo_dialect_registration",
         "//xla/python/ifrt",
         "//xla/python/ifrt:test_util",
         "//xla/python/ifrt/ir",
+        "//xla/python/ifrt/ir:sharding_param",
         "//xla/python/ifrt/ir/transforms:built_in_spmd_expansions",
+        "//xla/tsl/concurrency:ref_count",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
-        "@local_tsl//tsl/concurrency:ref_count",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
     ],
@@ -81,13 +92,16 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/python/ifrt",
         "//xla/python/ifrt:test_util",
-        "//xla/python/ifrt/ir",
+        "//xla/python/ifrt/hlo:hlo_program",
         "//xla/python/ifrt/ir:compiler",
+        "//xla/python/ifrt/ir:sharding_param",
         "//xla/python/pjrt_ifrt:xla_ifrt",
+        "//xla/service:computation_placer_hdr",
+        "//xla/tsl/concurrency:ref_count",
+        "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/concurrency:ref_count",
-        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",

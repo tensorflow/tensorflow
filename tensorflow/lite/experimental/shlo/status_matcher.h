@@ -16,8 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_SHLO_TEST_MACROS_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_SHLO_TEST_MACROS_H_
 
+// IWYU pragma: always_keep
+
 #include <gmock/gmock.h>
-#include "absl/status/status.h"
+#include "absl/status/status.h"  // IWYU pragma: keep - used in the
+                                             // provided macros in OSS builds.
 
 namespace shlo_ref {
 namespace testing {

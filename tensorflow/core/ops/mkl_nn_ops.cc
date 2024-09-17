@@ -1937,6 +1937,46 @@ operation.
 expected to invoke these operators.
 )doc");
 
+REGISTER_OP("_QuantizedMatMul")
+    // Variable number of inputs depending on fusion. The inputs contain
+    // quantized or real tensors. Some of the inputs carry min-max values for
+    // quantized tensors.
+    .Input("device_inputs: Tdevice_inputs")
+    .Input("host_inputs: Thost_inputs")
+    // Variable number of outputs depending on the main output type. For
+    // example, quantized output will need additional tensors to carry min-max
+    // values. If the output type is real tensor (e.g. Dequantize fusion), the
+    // op should produce only single output tensor.
+    .Output("device_outputs: Tdevice_outputs")
+    .Output("host_outputs: Thost_outputs")
+    .Attr("Tdevice_inputs: list(type) >= 0 = []")
+    .Attr("Thost_inputs: list(type) >= 0 = []")
+    .Attr("Tdevice_outputs: list(type) >= 0 = []")
+    .Attr("Thost_outputs: list(type) >= 0 = []")
+    // The following attributes T1, T2, U, and Tout are members of Tinputs
+    // and Toutputs, used here for type constraints in the templatized OpKernel
+    // registrations.
+    .Attr("T1: quantizedtype")  // 0-th input    
+    .Attr("T2: quantizedtype")  // 1st input
+    .Attr("Tbias: {bfloat16, float, quantizedtype} = DT_FLOAT")
+    // Additional inputs' type. Currently, restricting all to be of same type.
+    .Attr("U: {bfloat16, float, quantizedtype} = DT_FLOAT")
+    .Attr("Tout: {bfloat16, float, quantizedtype} = DT_FLOAT")  // 0-th output  
+    .Attr("transpose_a: bool = false")
+    .Attr("transpose_b: bool = false")
+    .Attr("is_weight_const: bool = true")
+    .Attr("is_bias_const: bool = true")
+    .Attr("fused_ops: list(string) = []")
+    // Attribute for quantization mode of all quantized input tensors.
+    // Currently restricting all operands using same quantization mode.
+    .Attr("input_quant_mode: {'MIN_FIRST', 'SCALED'} = 'SCALED'")
+    // Attribute for activation (0-th output) requnatization mode
+    .Attr("output_quant_mode: {'MIN_FIRST', 'SCALED'} = 'SCALED'")
+    // Attributes for the LeakyRelu ----------------------------------------- //
+    .Attr("leakyrelu_alpha: float = 0.2")
+    // ---------------------------------------------------------------------- //
+    .SetShapeFn(shape_inference::MatMulShape);
+
 }  // namespace tensorflow
 
 #endif  // INTEL_MKL

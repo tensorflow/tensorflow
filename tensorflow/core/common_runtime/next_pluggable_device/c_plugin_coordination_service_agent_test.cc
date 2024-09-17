@@ -24,11 +24,11 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/time/time.h"
+#include "xla/tsl/distributed_runtime/call_options.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/status.h"
-#include "tsl/distributed_runtime/call_options.h"
-#include "tsl/distributed_runtime/coordination/coordination_client.h"
-#include "tsl/distributed_runtime/coordination/coordination_service_agent.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/test.h"
 #include "tsl/protobuf/coordination_config.pb.h"
@@ -166,6 +166,12 @@ class TestCoordinationClient : public CoordinationClient {
                               ReportErrorToTaskResponse* response,
                               StatusCallback done) override {
     done(absl::UnimplementedError("ReportErrorToTaskAsync"));
+  }
+  void PollForErrorAsync(CallOptions* call_opts,
+                         const PollForErrorRequest* request,
+                         PollForErrorResponse* response,
+                         StatusCallback done) override {
+    done(absl::UnimplementedError("PollForErrorAsync"));
   }
 };
 

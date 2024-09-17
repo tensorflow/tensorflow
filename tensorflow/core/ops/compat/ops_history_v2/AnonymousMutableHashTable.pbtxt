@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "AnonymousMutableHashTable"
   output_arg {
     name: "table_handle"

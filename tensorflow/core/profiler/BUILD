@@ -29,7 +29,6 @@ package_group(
 tf_proto_library(
     name = "profiler_service_monitor_result_proto",
     srcs = ["profiler_service_monitor_result.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         "@local_tsl//tsl/profiler/protobuf:profiler_service_monitor_result_proto",
@@ -43,7 +42,6 @@ tf_proto_library(
 tf_proto_library(
     name = "profiler_options_proto",
     srcs = ["profiler_options.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = ["@local_tsl//tsl/profiler/protobuf:profiler_options_proto"],
     visibility = ["//visibility:public"],
@@ -59,7 +57,6 @@ exports_files(
 tf_proto_library(
     name = "profiler_service_proto",
     srcs = ["profiler_service.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         "@local_tsl//tsl/profiler/protobuf:profiler_service_proto",
@@ -72,7 +69,6 @@ tf_proto_library(
 tf_proto_library(
     name = "profiler_analysis_proto",
     srcs = ["profiler_analysis.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         "@local_tsl//tsl/profiler/protobuf:profiler_analysis_proto",
@@ -90,7 +86,6 @@ tf_proto_library(
         "tfprof_options.proto",
         "tfprof_output.proto",
     ],
-    cc_api_version = 2,
     protodeps = [
         "@local_tsl//tsl/profiler/protobuf:profile_proto",
     ] + tf_additional_all_protos(),
@@ -110,9 +105,10 @@ cc_library(
     deps = [
         "//tensorflow/core/profiler/lib:profiler_factory_impl",
         "//tensorflow/core/profiler/lib:profiler_session_impl",
-        "@local_tsl//tsl/profiler/backends/cpu:annotation_stack_impl",
-        "@local_tsl//tsl/profiler/backends/cpu:traceme_recorder_impl",
         "@local_tsl//tsl/profiler/utils:time_utils_impl",
+        "@local_xla//xla/tsl/profiler/backends/cpu:annotation_stack_impl",
+        "@local_xla//xla/tsl/profiler/backends/cpu:threadpool_listener",
+        "@local_xla//xla/tsl/profiler/backends/cpu:traceme_recorder_impl",
     ],
     alwayslink = True,
 )
@@ -124,16 +120,19 @@ tf_cc_binary(
     visibility = ["//visibility:public"],
     deps = [
         ":protos_all_cc",
+        "//tensorflow/c:checkpoint_reader",
         "//tensorflow/c:tf_status",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
-        "//tensorflow/core/lib/core:errors",
+        "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/profiler:tfprof_options",
         "//tensorflow/core/profiler/internal:tfprof_stats",
         "//tensorflow/core/profiler/internal:tfprof_utils",
         "//tensorflow/core/profiler/internal/advisor:tfprof_advisor",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@linenoise",

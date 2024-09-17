@@ -25,7 +25,7 @@ namespace ifrt {
 namespace {
 
 const bool kUnused = (test_util::RegisterClientFactory(
-                          []() -> StatusOr<std::shared_ptr<Client>> {
+                          []() -> absl::StatusOr<std::shared_ptr<Client>> {
                             CpuClientOptions options;
                             options.cpu_device_count = 4;
                             TF_ASSIGN_OR_RETURN(auto pjrt_client,

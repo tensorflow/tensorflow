@@ -7,7 +7,7 @@ import "xla/xla.proto";
 import "xla/xla_data.proto";
 
 // A serialization of xla::ExecutableBuildOptions.
-// Next id: 19.
+// Next id: 20.
 message ExecutableBuildOptionsProto {
   // If set, this is the device to build the computation for. Valid
   // device_ordinal values are: 0 to # of devices - 1. These values are
@@ -102,6 +102,11 @@ message ExecutableBuildOptionsProto {
 
   // Mesh ids in auto sharding options.
   repeated int64 auto_spmd_partitioning_mesh_ids = 17;
+
+  // Use Shardy, a new partitioner, to replace the existing
+  // ShardingPropagation and SpmdPartitioner. See go/xla-sdy-pipeline for
+  // details.
+  bool use_shardy_partitioner = 19;
 }
 
 message OptionOverrideProto {

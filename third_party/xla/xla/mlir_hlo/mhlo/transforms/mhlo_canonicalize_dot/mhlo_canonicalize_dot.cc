@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
@@ -42,7 +43,7 @@ LogicalResult canonicalizeDot(DotOp dotOp, PatternRewriter& rewriter) {
   SmallVector<ReassociationIndices> reassociationMap = {{0, 1}};
   auto collapseUnitParallelDim = [&](Value orig,
                                      unsigned parallelDimIdx) -> Value {
-    auto type = orig.getType().dyn_cast<RankedTensorType>();
+    auto type = mlir::dyn_cast<RankedTensorType>(orig.getType());
     if (!type || type.getRank() == 1 || type.getDimSize(parallelDimIdx) != 1)
       return orig;
 
@@ -62,12 +63,12 @@ LogicalResult canonicalizeDot(DotOp dotOp, PatternRewriter& rewriter) {
   SmallVector<int64_t> newShape;
   if (!matvec != !vecmat) {
     newShape.push_back(
-        vecmat ? rhs.getType().cast<ShapedType>().getShape().back()
-               : lhs.getType().cast<ShapedType>().getShape().front());
+        vecmat ? mlir::cast<ShapedType>(rhs.getType()).getShape().back()
+               : mlir::cast<ShapedType>(lhs.getType()).getShape().front());
   }
 
   auto newTy = RankedTensorType::get(
-      newShape, dotOp.getType().cast<ShapedType>().getElementType());
+      newShape, mlir::cast<ShapedType>(dotOp.getType()).getElementType());
 
   auto newOp = rewriter.create<DotOp>(
       loc, newTy, newLhs, newRhs, dotOp.getPrecisionConfig().value_or(nullptr));

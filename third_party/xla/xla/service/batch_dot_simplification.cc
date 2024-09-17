@@ -111,10 +111,6 @@ BatchDotSimplification::ElideDegenerateBatchDimensionFromBatchDot(
   return true;
 }
 
-absl::string_view BatchDotSimplification::name() const {
-  return "batch-dot-simplification";
-}
-
 absl::StatusOr<bool> BatchDotSimplification::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {

@@ -22,6 +22,8 @@ limitations under the License.
 #include <string_view>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "llvm/Target/TargetMachine.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -36,8 +38,6 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_profile_printer_data.pb.h"
 #include "xla/service/llvm_compiler.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 
@@ -151,7 +151,6 @@ class CpuAotCompilationResult : public AotCompilationResult {
 class CpuCompiler : public LLVMCompiler {
  public:
   CpuCompiler();
-  explicit CpuCompiler(bool allow_sparse_shapes);
   ~CpuCompiler() override = default;
 
   absl::StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
@@ -162,9 +161,6 @@ class CpuCompiler : public LLVMCompiler {
   absl::StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       const CompileOptions& options) override;
-
-  absl::StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
-      HloModule* module, const se::StreamExecutor* stream_exec) override;
 
   absl::StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
@@ -199,19 +195,19 @@ class CpuCompiler : public LLVMCompiler {
 
   // Runs the HLO passes which are necessary for both optimizations and
   // correctness.
-  Status RunHloPasses(HloModule* module, bool is_aot_compile,
-                      llvm::TargetMachine* target_machine,
-                      const CompileOptions& compile_options,
-                      bool is_mlir_compile = false);
+  absl::Status RunHloPasses(HloModule* module, bool is_aot_compile,
+                            llvm::TargetMachine* target_machine,
+                            const CompileOptions& compile_options,
+                            bool is_mlir_compile = false);
 
   // Runs HLO passes up to and including layout assignment.
-  Status RunHloPassesThroughLayoutAssn(
+  absl::Status RunHloPassesThroughLayoutAssn(
       HloModule* module, bool /*is_aot_compile*/,
       LLVMTargetMachineFeatures* target_machine_features,
       bool is_mlir_compile = false);
 
   // Runs HLO passes after layout assignment.
-  Status RunHloPassesAfterLayoutAssn(
+  absl::Status RunHloPassesAfterLayoutAssn(
       HloModule* module, bool is_aot_compile,
       LLVMTargetMachineFeatures* target_machine_features,
       const CompileOptions& compile_options, bool is_mlir_compile);
@@ -221,10 +217,6 @@ class CpuCompiler : public LLVMCompiler {
 
   CpuCompiler(const CpuCompiler&) = delete;
   CpuCompiler& operator=(const CpuCompiler&) = delete;
-
-  // Flag that can be used to override bail-out on sparse shapes.
-  // When set, buffer assignment assigns zero sizes to these shapes.
-  const bool allow_sparse_shapes_ = false;
 };
 
 }  // namespace cpu

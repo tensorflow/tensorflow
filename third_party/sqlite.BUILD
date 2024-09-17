@@ -11,10 +11,10 @@ SQLITE_COPTS = [
     "-D_FILE_OFFSET_BITS=64",
     "-D_REENTRANT=1",
 ] + select({
-    "@local_tsl//tsl:windows": [
+    "@local_xla//xla/tsl:windows": [
         "-DSQLITE_MAX_TRIGGER_DEPTH=100",
     ],
-    "@local_tsl//tsl:macos": [
+    "@local_xla//xla/tsl:macos": [
         "-Os",
         "-DHAVE_GMTIME_R=1",
         "-DHAVE_LOCALTIME_R=1",
@@ -46,7 +46,7 @@ cc_library(
         "SQLITE_OMIT_DEPRECATED",
     ],
     linkopts = select({
-        "@local_tsl//tsl:windows": [],
+        "@local_xla//xla/tsl:windows": [],
         "//conditions:default": [
             "-ldl",
             "-lpthread",

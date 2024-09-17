@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_PYTHON_NB_CLASS_PTR_H_
 #define XLA_PYTHON_NB_CLASS_PTR_H_
 
-#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "nanobind/nanobind.h"
 
 namespace xla {
 
@@ -39,7 +39,7 @@ class nb_class_ptr : public nanobind::object {
 
   T* operator->() const { return nanobind::inst_ptr<T>(ptr()); }
   T& operator*() const { return *nanobind::inst_ptr<T>(ptr()); }
-  T* get() const { return nanobind::inst_ptr<T>(ptr()); }
+  T* get() const { return ptr() ? nanobind::inst_ptr<T>(ptr()) : nullptr; }
 };
 
 // This function is analogous to std::make_unique<T>(...), but instead it

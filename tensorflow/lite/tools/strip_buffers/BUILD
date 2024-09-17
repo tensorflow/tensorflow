@@ -19,12 +19,13 @@ cc_library(
     deps = [
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:string",
         "//tensorflow/lite/core:framework",
-        "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
+        "@flatbuffers//:runtime_cc",
     ],
 )
 
@@ -39,8 +40,8 @@ cc_binary(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools:command_line_flags",
+        "@flatbuffers//:runtime_cc",
     ],
 )
 
@@ -55,7 +56,7 @@ cc_binary(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools:command_line_flags",
+        "@flatbuffers//:runtime_cc",
     ],
 )

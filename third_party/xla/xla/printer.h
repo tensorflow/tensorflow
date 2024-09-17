@@ -19,7 +19,9 @@ limitations under the License.
 #include <iterator>
 #include <string>
 
+#include "absl/base/optimization.h"
 #include "absl/strings/cord.h"
+#include "absl/strings/cord_buffer.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 

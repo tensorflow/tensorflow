@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <optional>
 #include <string>
 
@@ -49,11 +50,12 @@ class DeviceTfOpMetricsDbBuilder : public OpMetricsDbBuilder {
   explicit DeviceTfOpMetricsDbBuilder(OpMetricsDb* db)
       : OpMetricsDbBuilder(db) {}
 
-  void UpdateTfOpMetricsWithDeviceOpMetrics(
-      absl::string_view tf_op_name, absl::string_view tf_op_type,
-      const OpMetrics& device_op_metrics) {
+  void UpdateTfOpMetricsWithDeviceOpMetrics(absl::string_view tf_op_name,
+                                            absl::string_view tf_op_type,
+                                            const OpMetrics& device_op_metrics,
+                                            uint64_t fingerprint) {
     OpMetrics* tf_op_metrics = OpMetricsDbBuilder::LookupOrInsertNewOpMetrics(
-        /*hlo_module_id=*/0, tf_op_name);
+        /*hlo_module_id=*/0, tf_op_name, fingerprint);
     if (tf_op_metrics->category().empty()) {
       tf_op_metrics->set_category(tf_op_type == tsl::profiler::kUnknownOp
                                       ? "Unknown"
@@ -209,11 +211,13 @@ OpMetricsDbBuilder::OpMetricsDbBuilder(OpMetricsDb* db) : db_(db) {
 }
 
 OpMetrics* OpMetricsDbBuilder::LookupOrInsertNewOpMetrics(
-    uint64 hlo_module_id, absl::string_view name) {
+    uint64 hlo_module_id, absl::string_view name, uint64_t fingerprint) {
+  // The fingerprint is not needed to find the correct op_metrics.
   OpMetrics*& op_metrics = op_metrics_map_[hlo_module_id][name];
   if (op_metrics == nullptr) {
     op_metrics = db_->add_metrics_db();
     op_metrics->set_hlo_module_id(hlo_module_id);
+    op_metrics->set_fingerprint(fingerprint);
     op_metrics->set_name(name.data(), name.size());
   }
   return op_metrics;
@@ -253,7 +257,8 @@ OpMetricsDb XEventsOpMetricsDbBuilder::Finalize() {
 }
 
 double IdleTimeRatio(const OpMetricsDb& db) {
-  return 1.0 - SafeDivide(db.total_op_time_ps(), db.total_time_ps());
+  return 1.0 -
+         tsl::profiler::SafeDivide(db.total_op_time_ps(), db.total_time_ps());
 }
 
 uint64 IdleTimePs(const OpMetricsDb& db) {
@@ -274,14 +279,15 @@ void AddIdleOp(OpMetricsDb& db) {
   SetIdleOp(idle_time_ps, *db.add_metrics_db());
 }
 
-absl::optional<double> HostInfeedEnqueueRatio(const OpMetricsDb& db) {
+std::optional<double> HostInfeedEnqueueRatio(const OpMetricsDb& db) {
   if (db.total_host_infeed_enq_start_timestamp_ps_diff() > 0) {
     // We use total_host_infeed_enq_start_timestamp_ps_diff to approximate the
     // total host time.
-    return SafeDivide(db.total_host_infeed_enq_duration_ps(),
-                      db.total_host_infeed_enq_start_timestamp_ps_diff());
+    return tsl::profiler::SafeDivide(
+        db.total_host_infeed_enq_duration_ps(),
+        db.total_host_infeed_enq_start_timestamp_ps_diff());
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
 OpMetricsDb CreateTfMetricsDbFromDeviceOpMetricsDb(
@@ -291,18 +297,19 @@ OpMetricsDb CreateTfMetricsDbFromDeviceOpMetricsDb(
   for (const auto& device_op_metrics : device_op_metrics_db.metrics_db()) {
     if (IsIdleOp(device_op_metrics)) {
       if (with_idle) {
-        builder.UpdateTfOpMetricsWithDeviceOpMetrics(kIdle, kIdle,
-                                                     device_op_metrics);
+        builder.UpdateTfOpMetricsWithDeviceOpMetrics(
+            kIdle, kIdle, device_op_metrics, device_op_metrics.fingerprint());
       }
     } else if (device_op_metrics.provenance().empty()) {
-      builder.UpdateTfOpMetricsWithDeviceOpMetrics(device_op_metrics.name(),
-                                                   tsl::profiler::kUnknownOp,
-                                                   device_op_metrics);
+      builder.UpdateTfOpMetricsWithDeviceOpMetrics(
+          device_op_metrics.name(), tsl::profiler::kUnknownOp,
+          device_op_metrics, device_op_metrics.fingerprint());
     } else {
       tsl::profiler::TfOp tf_op =
           tsl::profiler::ParseTfOpFullname(device_op_metrics.provenance());
-      builder.UpdateTfOpMetricsWithDeviceOpMetrics(tf_op.name, tf_op.type,
-                                                   device_op_metrics);
+      builder.UpdateTfOpMetricsWithDeviceOpMetrics(
+          tf_op.name, tf_op.type, device_op_metrics,
+          device_op_metrics.fingerprint());
     }
   }
   tf_op_metrics_db.set_total_op_time_ps(

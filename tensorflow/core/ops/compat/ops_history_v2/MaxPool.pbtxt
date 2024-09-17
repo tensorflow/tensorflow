@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "MaxPool"
   input_arg {
     name: "input"

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "IFFTND"
   input_arg {
     name: "input"

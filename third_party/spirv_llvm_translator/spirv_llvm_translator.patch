@@ -1,0 +1,25 @@
+diff --git a/lib/SPIRV/SPIRVInternal.h b/lib/SPIRV/SPIRVInternal.h
+index a828add8..924e13b4 100644
+
+Spir backend uses different addrspace representations link with nvptx backend link.
+We reorder the enum value here so that we can make XLA LLVM codegen simple(avoiding
+changing addrspace based on device backend everywhere)
+
+--- a/lib/SPIRV/SPIRVInternal.h
++++ b/lib/SPIRV/SPIRVInternal.h
+@@ -179,11 +179,12 @@ typedef SPIRVMap<Op, Op, IntBoolOpMapId> IntBoolOpMap;
+   "-v512:512:512-v1024:1024:1024"
+
+ enum SPIRAddressSpace {
+-  SPIRAS_Private,
++  SPIRAS_Generic,
+   SPIRAS_Global,
+-  SPIRAS_Constant,
++  SPIRAS_Internal,
+   SPIRAS_Local,
+-  SPIRAS_Generic,
++  SPIRAS_Constant,
++  SPIRAS_Private,
+   SPIRAS_GlobalDevice,
+   SPIRAS_GlobalHost,
+   SPIRAS_Input,

@@ -13,22 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// GPU (ROCm / CUDA) specific type handle resolution
+// GPU (SYCL / ROCm / CUDA) specific type handle resolution
 
 #ifndef XLA_STREAM_EXECUTOR_GPU_GPU_TYPES_H_
 #define XLA_STREAM_EXECUTOR_GPU_GPU_TYPES_H_
 
-#if TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_SYCL
+
+#include "sycl/sycl.hpp"
+
+#elif TENSORFLOW_USE_ROCM
 
 #define __HIP_DISABLE_CPP_FUNCTIONS__
 
-#include "rocm/include/hip/hip_complex.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "rocm/include/hiprand/hiprand.h"
 
 #else  // CUDA
 
-#include "third_party/gpus/cuda/include/cuComplex.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 
 #endif
@@ -37,12 +39,29 @@ namespace stream_executor {
 namespace gpu {
 
 // An empty struct to be used as a handle for all unsupported features in
-// current CUDA/HIP version.
+// current CUDA/HIP/SYCL version.
 struct UnsupportedGpuFeature {};
 
-#if TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_SYCL
 
-using GpuContextHandle = hipCtx_t;
+using GpuStreamHandle = ::sycl::queue*;
+using GpuEventHandle = ::sycl::event*;
+using GpuFunctionHandle = ::sycl::kernel*;
+using GpuFunctionAttribute = UnsupportedGpuFeature;
+using GpuDeviceHandle = ::sycl::device*;
+using GpuDevicePtr = void*;
+using GpuDeviceAttribute = UnsupportedGpuFeature;
+using GpuDeviceProperty = UnsupportedGpuFeature;
+using GpuModuleHandle = ze_module_handle_t;
+using GpuFuncCachePreference = UnsupportedGpuFeature;
+using GpuRngHandle = UnsupportedGpuFeature;
+using GpuGraphHandle = UnsupportedGpuFeature;
+using GpuGraphExecHandle = UnsupportedGpuFeature;
+using GpuGraphNodeHandle = UnsupportedGpuFeature;
+using GpuGraphConditionalHandle = UnsupportedGpuFeature;
+
+#elif TENSORFLOW_USE_ROCM
+
 using GpuStreamHandle = hipStream_t;
 using GpuEventHandle = hipEvent_t;
 using GpuFunctionHandle = hipFunction_t;
@@ -52,11 +71,7 @@ using GpuDevicePtr = hipDeviceptr_t;
 using GpuDeviceAttribute = hipDeviceAttribute_t;
 using GpuDeviceProperty = hipDeviceProp_t;
 using GpuModuleHandle = hipModule_t;
-using GpuStatus = hipError_t;
 using GpuFuncCachePreference = hipFuncCache_t;
-using GpuSharedMemConfig = hipSharedMemConfig;
-using GpuComplexType = hipComplex;
-using GpuDoubleComplexType = hipDoubleComplex;
 using GpuRngHandle = hiprandGenerator_t;
 using GpuGraphHandle = hipGraph_t;
 using GpuGraphExecHandle = hipGraphExec_t;
@@ -64,7 +79,6 @@ using GpuGraphNodeHandle = hipGraphNode_t;
 using GpuGraphConditionalHandle = UnsupportedGpuFeature;
 #else  // CUDA
 
-using GpuContextHandle = CUcontext;
 using GpuStreamHandle = CUstream;
 using GpuEventHandle = CUevent;
 using GpuFunctionHandle = CUfunction;
@@ -74,11 +88,7 @@ using GpuDevicePtr = CUdeviceptr;
 using GpuDeviceAttribute = CUdevice_attribute;
 using GpuDeviceProperty = CUdevprop;
 using GpuModuleHandle = CUmodule;
-using GpuStatus = CUresult;
 using GpuFuncCachePreference = CUfunc_cache;
-using GpuSharedMemConfig = CUsharedconfig;
-using GpuComplexType = cuComplex;
-using GpuDoubleComplexType = cuDoubleComplex;
 using GpuGraphHandle = CUgraph;
 using GpuGraphExecHandle = CUgraphExec;
 using GpuGraphNodeHandle = CUgraphNode;

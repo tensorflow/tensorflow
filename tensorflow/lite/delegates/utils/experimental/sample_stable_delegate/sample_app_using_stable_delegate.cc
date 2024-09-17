@@ -19,8 +19,10 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/lite/acceleration/configuration/c/stable_delegate.h"
 #include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/c/c_api.h"  // For TfLiteTensorByteSize.
+#include "tensorflow/lite/c/c_api_types.h"  // For kTfLiteOk
 #include "tensorflow/lite/delegates/utils/experimental/stable_delegate/delegate_loader.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/interpreter_builder.h"

@@ -80,17 +80,19 @@ absl::Status PluginRegistry::RegisterFactoryInternal(
 bool PluginRegistry::HasFactory(Platform::Id platform_id,
                                 PluginKind plugin_kind) const {
   auto iter = factories_.find(platform_id);
-  if (iter != factories_.end()) {
-    switch (plugin_kind) {
-      case PluginKind::kBlas:
-        return iter->second.blas.has_value();
-      case PluginKind::kDnn:
-        return iter->second.dnn.has_value();
-      case PluginKind::kFft:
-        return iter->second.fft.has_value();
-      default:
-        break;
-    }
+  if (iter == factories_.end()) {
+    return false;
+  }
+
+  switch (plugin_kind) {
+    case PluginKind::kBlas:
+      return iter->second.blas.has_value();
+    case PluginKind::kDnn:
+      return iter->second.dnn.has_value();
+    case PluginKind::kFft:
+      return iter->second.fft.has_value();
+    default:
+      break;
   }
 
   LOG(ERROR) << "Invalid plugin kind specified: "

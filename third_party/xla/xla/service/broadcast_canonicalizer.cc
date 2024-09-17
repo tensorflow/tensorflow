@@ -15,7 +15,20 @@ limitations under the License.
 
 #include "xla/service/broadcast_canonicalizer.h"
 
+#include <cstdint>
+#include <iterator>
+#include <vector>
+
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/hlo_creation_utils.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -59,9 +72,9 @@ absl::StatusOr<bool> BroadcastCanonicalizer::Run(
         transpose_dims[new_dims[i]] = new_dims[std::distance(
             original_dims.begin(), absl::c_find(original_dims, new_dims[i]))];
       }
-      TF_ASSIGN_OR_RETURN(new_broadcast,
-                          MakeTransposeHlo(new_broadcast, transpose_dims));
-      TF_RETURN_IF_ERROR(computation->ReplaceInstruction(hlo, new_broadcast));
+      TF_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
+          hlo, HloInstruction::CreateTranspose(hlo->shape(), new_broadcast,
+                                               transpose_dims)));
       changed = true;
     }
   }

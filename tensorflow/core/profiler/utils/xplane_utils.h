@@ -27,6 +27,7 @@ namespace profiler {
 
 using tsl::profiler::AddFlowsToXplane;               // NOLINT
 using tsl::profiler::AggregateXPlane;                // NOLINT
+using tsl::profiler::FindLinesWithId;                // NOLINT
 using tsl::profiler::FindLineWithId;                 // NOLINT
 using tsl::profiler::FindLineWithName;               // NOLINT
 using tsl::profiler::FindMutablePlanes;              // NOLINT

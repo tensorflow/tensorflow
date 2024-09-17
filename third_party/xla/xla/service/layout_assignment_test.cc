@@ -20,28 +20,36 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/service/algebraic_simplifier.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/hlo_parser.h"
+#include "xla/service/logical_buffer.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
+#include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_utils.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -481,7 +489,7 @@ class OperandsMustBeTheSameLayoutAssignment : public LayoutAssignment {
       : LayoutAssignment(entry_computation_layout) {}
 
  protected:
-  Status PropagateBufferConstraint(
+  absl::Status PropagateBufferConstraint(
       const BufferLayoutConstraint& buffer_constraint,
       LayoutConstraints* constraints) override {
     const LogicalBuffer& buffer = buffer_constraint.buffer();
@@ -645,12 +653,13 @@ TEST_F(LayoutAssignmentTest, TransposeWithinFusionDoesNotCrash) {
                          /*device_allocator=*/nullptr)
           .value();
 
-  EXPECT_EQ(OkStatus(), backend()
-                            .compiler()
-                            ->RunBackend(std::move(compiled_module),
-                                         backend().default_stream_executor(),
-                                         /*device_allocator=*/nullptr)
-                            .status());
+  EXPECT_EQ(absl::OkStatus(),
+            backend()
+                .compiler()
+                ->RunBackend(std::move(compiled_module),
+                             backend().default_stream_executor(),
+                             /*device_allocator=*/nullptr)
+                .status());
 }
 
 // A GTE inside of a fusion node inherits the layout of its operand (which
@@ -803,7 +812,7 @@ TEST_F(LayoutAssignmentTest, LayoutAssignmentToTupleSiblingOperand) {
   ComputationLayout computation_layout(
       m->entry_computation()->ComputeProgramShape());
   LayoutAssignment layout_assignment(&computation_layout);
-  Status error_status = layout_assignment.Run(m.get()).status();
+  absl::Status error_status = layout_assignment.Run(m.get()).status();
   EXPECT_TRUE(error_status.ok());
 }
 
@@ -820,7 +829,7 @@ TEST_F(LayoutAssignmentTest, InternalErrorOnBitcast) {
   ComputationLayout computation_layout(
       m->entry_computation()->ComputeProgramShape());
   LayoutAssignment layout_assignment(&computation_layout);
-  Status error_status = layout_assignment.Run(m.get()).status();
+  absl::Status error_status = layout_assignment.Run(m.get()).status();
   EXPECT_FALSE(error_status.ok());
   EXPECT_THAT(
       error_status.message(),
@@ -862,6 +871,35 @@ TEST_F(LayoutAssignmentTest, ChannelLayoutMismatch) {
 
   EXPECT_TRUE(ShapeUtil::Equal(FindInstruction(m.get(), "send")->shape(),
                                FindInstruction(m.get(), "recv")->shape()));
+}
+
+TEST_F(LayoutAssignmentTest, AllReduceSpmd) {
+  // Pin non matching layouts to parameter and root.
+  const char* module_str = R"(
+    HloModule test_module, num_partitions=2
+
+    add {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT add = f32[] add(lhs, rhs)
+    }
+
+    ENTRY entry_computation {
+      param = f32[2,2] parameter(0)
+      ar.0 = f32[2,2] all-reduce(param),
+        channel_id=1, replica_groups={{0}}, to_apply=add
+      p1 = f32[2] parameter(1)
+      ar.1 = f32[2] all-reduce(p1),
+        channel_id=1, replica_groups={{0}}, to_apply=add
+      ROOT t = tuple(ar.0, ar.1)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(module_str));
+  // Check that assign layouts does not crash with repeated channel_id and
+  // different shapes.
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape());
+  AssignLayouts(m.get(), &computation_layout);
 }
 
 TEST_F(LayoutAssignmentTest, AllReduceLayoutMissmatch) {
@@ -1328,7 +1366,7 @@ ENTRY %CustomCallLayoutConstrainedTupleResult (p0: f32[4,4]) -> (f32[4,4]{1,0}, 
   ExpectTupleLayoutIs(custom_call->shape(), {{1, 0}, {0, 1}});
 }
 
-Status AssignLayoutsToComputation(
+absl::Status AssignLayoutsToComputation(
     HloModule* m, ChannelLayoutConstraints* channel_constraints = nullptr) {
   if (!m->entry_computation_layout().result_layout().LayoutIsSet()) {
     m->mutable_entry_computation_layout()
@@ -1612,7 +1650,7 @@ ENTRY main {
 TEST_F(LayoutAssignmentTest, PropagateOperandLayout2) {
   const char* module_str = R"(
  HloModule TensorFlowGather, entry_computation_layout={(f32[32,650]{1,0},s32[16,1,18]{0,1,2})->f32[16,1,18,32]{3,1,2,0}}
- 
+
  ENTRY %main (operand: f32[32,650], indices: s32[16,1,18]) -> f32[16,1,18,32] {
    %operand = f32[32,650]{1,0} parameter(0)
    %transpose = f32[650,32]{0,1} transpose(f32[32,650]{1,0} %operand), dimensions={1,0}
@@ -1638,7 +1676,7 @@ TEST_F(LayoutAssignmentTest, PropagateOperandLayout2) {
 TEST_F(LayoutAssignmentTest, PreserveInstructionLayout) {
   const char* module_str = R"(
  HloModule TensorFlowGather, entry_computation_layout={(f32[32,650]{1,0},s32[16,1,18]{0,1,2})->(f32[16,1,18,32]{3,1,2,0})}
- 
+
  ENTRY %main  {
    %operand = f32[32,650]{1,0} parameter(0)
    %transpose = f32[650,32]{0,1} transpose(f32[32,650]{1,0} %operand), dimensions={1,0}
@@ -1697,7 +1735,7 @@ ENTRY main {
 TEST_F(LayoutAssignmentTest, PartialEntryParameterLayout) {
   const char* module_str = R"(
  HloModule EntryLayout, entry_computation_layout={(f32[32,650]{1,0},s32[16,1,18]{0,1,2})->(f32[650,32]{1,0},s32[18,16,1]{0,1,2})}
- 
+
  ENTRY %main {
    operand = f32[32,650] parameter(0)
    transpose = transpose(operand), dimensions={1,0}
@@ -1722,11 +1760,79 @@ TEST_F(LayoutAssignmentTest, PartialEntryParameterLayout) {
                  {0, 1, 2});
 }
 
+// Test the ability to enforce tuple constraint with no result constraint.
+TEST_F(LayoutAssignmentTest, TupleEntryParameterLayoutNoResultConstraint) {
+  const char* module_str = R"(
+ HloModule EntryLayout, entry_computation_layout={((f32[32,650]{0,1},s32[16,1,18]{0,1,2}))->(f32[208,100]{1,0},s32[2,144]{1,0})}
+
+ ENTRY %main {
+   p = (f32[32,650],s32[16,1,18]) parameter(0)
+   operand = f32[32,650] get-tuple-element(p), index=0 
+   reshape = f32[208,100] reshape(operand)
+   indices = s32[16,1,18] get-tuple-element(p), index=1
+   reshape_indices = s32[2,144] reshape(indices)
+   ROOT t = tuple(reshape, reshape_indices)
+ } )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(module_str));
+  // Allow propagation only to parameter 0
+  m->mutable_entry_computation_layout()->mutable_result_layout()->Clear();
+
+  LayoutAssignment layout_assignment(m->mutable_entry_computation_layout(),
+                                     nullptr);
+  EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
+  // Assign bitcasting layout to parameter 0
+  ExpectLayoutIs(
+      m->entry_computation_layout().parameter_layout(0).shape().tuple_shapes(0),
+      {0, 1});
+  // Parameter layout that is set is unmodified.
+  ExpectLayoutIs(
+      m->entry_computation_layout().parameter_layout(0).shape().tuple_shapes(1),
+      {0, 1, 2});
+}
+
+// Test the ability to enforce tuple constraint with no result constraint and
+// one tuple element not specified.
+TEST_F(LayoutAssignmentTest,
+       PartialTupleEntryParameterLayoutNoResultConstraint) {
+  const char* module_str = R"(
+ HloModule EntryLayout, entry_computation_layout={((f32[32,650]{0,1},s32[16,1,18]{0,1,2}))->(f32[208,100]{1,0},s32[2,144]{1,0})}
+
+ ENTRY %main {
+   p = (f32[32,650],s32[16,1,18]) parameter(0)
+   operand = f32[32,650] get-tuple-element(p), index=0 
+   reshape = f32[208,100] reshape(operand)
+   indices = s32[16,1,18] get-tuple-element(p), index=1
+   reshape_indices = s32[2,144] reshape(indices)
+   ROOT t = tuple(reshape, reshape_indices)
+ } )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(module_str));
+  // Allow propagation only to parameter 0
+  m->mutable_entry_computation_layout()->mutable_result_layout()->Clear();
+  m->mutable_entry_computation_layout()->mutable_parameter_layout(0)->Clear(
+      {1});
+
+  LayoutAssignment layout_assignment(m->mutable_entry_computation_layout(),
+                                     nullptr);
+  EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
+  // Assign bitcasting layout to parameter 0
+  ExpectLayoutIs(
+      m->entry_computation_layout().parameter_layout(0).shape().tuple_shapes(0),
+      {0, 1});
+  // Parameter layout that is set is unmodified.
+  ExpectLayoutIs(
+      m->entry_computation_layout().parameter_layout(0).shape().tuple_shapes(1),
+      {2, 1, 0});
+}
+
 // Test the ability to enforce aliasing .
 TEST_F(LayoutAssignmentTest, AliasParameterAndOutput) {
   const char* module_str = R"(
  HloModule EntryAlias, input_output_alias={ {}: (0, {}, may-alias) }
- 
+
  ENTRY %main {
    p0 = f32[65,65] parameter(0)
    p1 = f32[4225] parameter(1)
@@ -1752,7 +1858,7 @@ TEST_F(LayoutAssignmentTest, AliasParameterAndOutput) {
 TEST_F(LayoutAssignmentTest, AliasUnconstrainedParamterWithConstrainedOutput) {
   const char* module_str = R"(
  HloModule EntryAlias, input_output_alias={ {}: (0, {}, may-alias) }
- 
+
  ENTRY %main {
    p0 = f32[65,65] parameter(0)
    p1 = f32[4225] parameter(1)
@@ -1776,7 +1882,7 @@ TEST_F(LayoutAssignmentTest, AliasUnconstrainedParamterWithConstrainedOutput) {
 TEST_F(LayoutAssignmentTest, AliasConstrainedParamterWithUnconstrainedOutput) {
   const char* module_str = R"(
  HloModule EntryAlias, input_output_alias={ {}: (0, {}, may-alias) }
- 
+
  ENTRY %main {
    p0 = f32[65,65] parameter(0)
    p1 = f32[4225] parameter(1)
@@ -1795,6 +1901,58 @@ TEST_F(LayoutAssignmentTest, AliasConstrainedParamterWithUnconstrainedOutput) {
   EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
   EXPECT_EQ(m->entry_computation_layout().result_layout().shape(),
             m->entry_computation_layout().parameter_layout(0).shape());
+}
+
+TEST_F(LayoutAssignmentTest, NestedTupleInLoop) {
+  const char* module_str = R"(
+HloModule Module
+
+condition  {
+    p = (f32[100,100], (f32[100,100], u32[], token[])) parameter(0)
+    ROOT lt = pred[] constant(1)
+}
+
+body {
+    p = (f32[100,100], (f32[100,100], u32[], token[])) parameter(0)
+
+    t1 = f32[100,100] get-tuple-element(p), index=0
+    t = (f32[100,100], u32[], token[]) get-tuple-element(p), index=1
+    sdone = token[] send-done(t), channel_id=1,
+      frontend_attributes={
+       _xla_send_recv_pipeline="0"
+      }
+    tk = token[] after-all()
+    snd = (f32[100,100], u32[], token[]) send(t1, tk), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
+    a = add(t1, t1)
+    ROOT tup =  tuple(a, snd)
+}
+
+ENTRY %main {
+    p0 = f32[100,100] parameter(0)
+    tk = token[] after-all()
+    snd = (f32[100,100], u32[], token[]) send(p0, tk), channel_id=1,
+      frontend_attributes={
+        _xla_send_recv_pipeline="0"
+      }
+    t = tuple(p0, snd)
+    loop = while(t), condition=condition, body=body
+    ssend = (f32[100,100], u32[], token[]) get-tuple-element(loop), index=1
+    sdone = token[] send-done(ssend), channel_id=1,
+      frontend_attributes={
+       _xla_send_recv_pipeline="0"
+      }
+    ROOT result = f32[100,100] get-tuple-element(loop), index=0
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(module_str));
+
+  LayoutAssignment layout_assignment(m->mutable_entry_computation_layout(),
+                                     nullptr);
+  EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
 }
 
 }  // namespace

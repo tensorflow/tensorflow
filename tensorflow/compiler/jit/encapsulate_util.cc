@@ -340,7 +340,8 @@ Status PerformStaticShapeInferenceBeforeEncapsulation(Graph* g) {
   return absl::OkStatus();
 }
 
-StatusOr<std::unique_ptr<absl::flat_hash_map<string, std::vector<string>>>>
+absl::StatusOr<
+    std::unique_ptr<absl::flat_hash_map<string, std::vector<string>>>>
 OutsideCompilationClusterDependencies(
     const Graph* g, const string& outside_compilation_attr_name) {
   auto cluster_deps = std::make_unique<

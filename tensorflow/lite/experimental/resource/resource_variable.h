@@ -50,7 +50,7 @@ class ResourceVariable : public ResourceBase {
     return is_initialized_ ? tensor_.bytes : 0;
   }
 
- private:
+ protected:
   // The tensor (and its buffer stored in `tensor_.data` is fully owned by
   // the `ResourceVariable` object.
   TfLiteTensor tensor_;

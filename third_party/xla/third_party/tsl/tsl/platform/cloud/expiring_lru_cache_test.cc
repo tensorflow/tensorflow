@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/cloud/now_seconds_env.h"
 #include "tsl/platform/test.h"
 
@@ -97,7 +97,7 @@ TEST(ExpiringLRUCacheTest, LookupOrCompute) {
       [&num_compute_calls](const string& key, int* value) {
         *value = num_compute_calls;
         num_compute_calls++;
-        return OkStatus();
+        return absl::OkStatus();
       };
   ExpiringLRUCache<int> cache1(0, 4);
 

@@ -80,7 +80,7 @@ class ReaderInterface : public ResourceBase {
   string DebugString() const override { return "a reader"; }
 
  protected:
-  virtual ~ReaderInterface() {}
+  ~ReaderInterface() override {}
 };
 
 }  // namespace tensorflow

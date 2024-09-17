@@ -18,11 +18,11 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/while_util.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 
 namespace xla {

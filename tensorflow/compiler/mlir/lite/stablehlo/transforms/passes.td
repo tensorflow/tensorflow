@@ -95,8 +95,76 @@ def LegalizeVhloToStablehloPass : Pass<"vhlo-legalize-stablehlo", "ModuleOp"> {
   let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
 }
 
+def LegalizeCompositeToCustomOpPass : Pass<"stablehlo-composite-legalize-tfl-custom", "func::FuncOp"> {
+  let summary = "Legalize supported StableHLO CompositeOps to TFL CustomOp";
+  let dependentDialects = ["TFL::TensorFlowLiteDialect"];
+}
+def LegalizeStablehloCustomCallToCompositePass : Pass<"stablehlo-custom-call-legalize-composite", "ModuleOp"> {
+  let summary = "Legalize StableHLO custom call ops where the call target is 'stablehlo.composite' to composite ops.";
+  let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
+}
 
 def UnfoldSplatConstantPass : Pass<"unfold-splat-constant-pass", "ModuleOp"> {
   let summary = "Replaces a splat constant tensor with a BroadcastInDim op.";
   let constructor = "mlir::odml::CreateUnfoldSplatConstantPass()";
+}
+
+def CompositeLoweringPass : Pass<"composite-lowering", "ModuleOp"> {
+  let summary = "Lowers mhlo composites directly to tflite ops (when possible).";
+  let dependentDialects = ["mlir::mhlo::MhloDialect", "TFL::TensorFlowLiteDialect"];
+  let constructor = "mlir::odml::CreateCompositeLoweringPass()";
+}
+
+def TransposeCommuteOpsPass : Pass<"transpose-commute-ops", "ModuleOp"> {
+  let summary = "Move transpose through specific ops";
+  let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
+  let constructor = "mlir::odml::CreateTransposeCommuteOpsPass()";
+}
+
+def LegalizeChloToTflPass
+    : Pass<"tfl-legalize-chlo", "mlir::func::FuncOp"> {
+  let summary = "Lower chlo directly to tfl.";
+  let constructor = "mlir::odml::CreateLegalizeChloToTflPass()";
+  let description = [{
+    Decompose chlo ops directly to tflite. Additionally, apply any chlo/shlo->tflite
+    patterns that must be applied before chlo->shlo decomposition.
+  }];
+  let dependentDialects = [
+    "stablehlo::StablehloDialect",
+    "mlir::TFL::TensorFlowLiteDialect",
+    "chlo::ChloDialect",
+    "func::FuncDialect"
+  ];
+}
+
+def PrepareHloPass
+    : Pass<"prepare-hlo", "mlir::func::FuncOp"> {
+  let summary = "Prepare mhlo for mhlo->tfl legalization.";
+  let constructor = "mlir::odml::CreatePrepareHloPass()";
+  let description = [{
+    Apply generic mhlo->mhlo rewrites to make the graph more amenable for
+    legalizing to tfl.
+  }];
+  let dependentDialects = [
+    "mlir::mhlo::MhloDialect",
+    "func::FuncDialect",
+    "TFL::TensorFlowLiteDialect"
+  ];
+}
+
+def LiftCallSiteLocCallerPass : Pass<"lift-callsite-loc-caller", "ModuleOp"> {
+  let summary = "Lifts CallSites in pytorch generated stablehlo.";
+  let description = [{
+    Lifts CallSites in pytorch generated stablehlo to make the Loc's consitent
+    after inlining.
+  }];
+  let dependentDialects = ["func::FuncDialect"];
+}
+
+def BuildStableHLOCompositePass : Pass<"build-stablehlo-composite", "ModuleOp"> {
+  let summary = "Build stablehlo.composite from inlined stablehlo.custom_call mark_tensor ops.";
+  let description = [{
+    Build stablehlo.composite from inlined stablehlo.custom_call mark_tensor ops.
+  }];
+  let dependentDialects = ["func::FuncDialect", "stablehlo::StablehloDialect"];
 }

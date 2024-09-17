@@ -101,7 +101,9 @@ absl::StatusOr<Serialized> Serialize(Serializable& serializable) {
   return proto;
 }
 
-absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
+namespace serdes_internal {
+
+absl::StatusOr<std::unique_ptr<Serializable>> DeserializeUnchecked(
     const Serialized& serialized, std::unique_ptr<DeserializeOptions> options) {
   SerDes* serdes;
   {
@@ -117,6 +119,8 @@ absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
   }
   return serdes->Deserialize(serialized.data(), std::move(options));
 }
+
+}  // namespace serdes_internal
 
 }  // namespace ifrt
 }  // namespace xla

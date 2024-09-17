@@ -16,16 +16,16 @@ limitations under the License.
 #ifndef XLA_PJRT_STATUS_CASTERS_H_
 #define XLA_PJRT_STATUS_CASTERS_H_
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/pjrt/exceptions.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
 #include "tsl/platform/macros.h"
 
 namespace xla {
 
 // C++ -> Python caster helpers.
 //
-// Failing statuses become Python exceptions; OK Status() becomes None.
+// Failing statuses become Python exceptions; OK absl::Status() becomes None.
 //
 // Given there can be only a single global pybind11 type_caster for the
 // `absl::Status` type, and given XLA wants a custom exception being raised,
@@ -50,7 +50,7 @@ namespace xla {
 // pointer-to-member-function:
 // xla::ThrowIfErrorWrapper(&MyClass::MyMethod)
 
-inline void ThrowIfError(xla::Status src) {
+inline void ThrowIfError(absl::Status src) {
   if (!src.ok()) {
     throw xla::XlaRuntimeError(src);
   }
@@ -79,37 +79,37 @@ ThrowIfErrorWrapper(F) -> ThrowIfErrorWrapper<decltype(&F::operator()), F>;
 
 // For callable types (with operator()).
 template <typename... Args>
-ThrowIfErrorWrapper(xla::Status (&)(Args...))
-    -> ThrowIfErrorWrapper<xla::Status(Args...), xla::Status (&)(Args...)>;
+ThrowIfErrorWrapper(absl::Status (&)(Args...))
+    -> ThrowIfErrorWrapper<absl::Status(Args...), absl::Status (&)(Args...)>;
 
 // For unbound nonstatic member functions.
 template <typename C, typename... Args>
-ThrowIfErrorWrapper(xla::Status (C::*)(Args...))
-    -> ThrowIfErrorWrapper<xla::Status(Args...), C>;
+ThrowIfErrorWrapper(absl::Status (C::*)(Args...))
+    -> ThrowIfErrorWrapper<absl::Status(Args...), C>;
 
 // Template specializations.
 
 // For free functions.
 template <typename... Args>
-struct ThrowIfErrorWrapper<xla::Status(Args...), xla::Status (&)(Args...)> {
-  explicit ThrowIfErrorWrapper(xla::Status (&f)(Args...)) : func(f) {}
+struct ThrowIfErrorWrapper<absl::Status(Args...), absl::Status (&)(Args...)> {
+  explicit ThrowIfErrorWrapper(absl::Status (&f)(Args...)) : func(f) {}
   void operator()(Args... args) const {
     xla::ThrowIfError(func(std::forward<Args>(args)...));
   }
-  xla::Status (&func)(Args...);
+  absl::Status (&func)(Args...);
 };
 
 // For callable types (with operator()), non-const and const versions.
 template <typename C, typename... Args, typename F>
-struct ThrowIfErrorWrapper<xla::Status (C::*)(Args...), F> {
+struct ThrowIfErrorWrapper<absl::Status (C::*)(Args...), F> {
   explicit ThrowIfErrorWrapper(F&& f) : func(std::move(f)) {}
-  void operator()(Args... args) {
+  void operator()(Args... args) const {
     xla::ThrowIfError(func(std::forward<Args>(args)...));
   }
   F func;
 };
 template <typename C, typename... Args, typename F>
-struct ThrowIfErrorWrapper<xla::Status (C::*)(Args...) const, F> {
+struct ThrowIfErrorWrapper<absl::Status (C::*)(Args...) const, F> {
   explicit ThrowIfErrorWrapper(F&& f) : func(std::move(f)) {}
   void operator()(Args... args) const {
     xla::ThrowIfError(func(std::forward<Args>(args)...));
@@ -120,26 +120,26 @@ struct ThrowIfErrorWrapper<xla::Status (C::*)(Args...) const, F> {
 // For unbound nonstatic member functions, non-const and const versions.
 // `ptmf` stands for "pointer to member function".
 template <typename C, typename... Args>
-struct ThrowIfErrorWrapper<xla::Status(Args...), C> {
-  explicit ThrowIfErrorWrapper(xla::Status (C::*ptmf)(Args...)) : ptmf(ptmf) {}
+struct ThrowIfErrorWrapper<absl::Status(Args...), C> {
+  explicit ThrowIfErrorWrapper(absl::Status (C::*ptmf)(Args...)) : ptmf(ptmf) {}
   void operator()(C& instance, Args... args) const {
     xla::ThrowIfError((instance.*ptmf)(std::forward<Args>(args)...));
   }
-  xla::Status (C::*ptmf)(Args...);
+  absl::Status (C::*ptmf)(Args...);
 };
 template <typename C, typename... Args>
-struct ThrowIfErrorWrapper<xla::Status(Args...) const, C> {
-  explicit ThrowIfErrorWrapper(xla::Status (C::*ptmf)(Args...) const)
+struct ThrowIfErrorWrapper<absl::Status(Args...) const, C> {
+  explicit ThrowIfErrorWrapper(absl::Status (C::*ptmf)(Args...) const)
       : ptmf(ptmf) {}
   void operator()(const C& instance, Args... args) const {
     xla::ThrowIfError((instance.*ptmf)(std::forward<Args>(args)...));
   }
-  xla::Status (C::*ptmf)(Args...) const;
+  absl::Status (C::*ptmf)(Args...) const;
 };
 
 // Utilities for `StatusOr`.
 template <typename T>
-T ValueOrThrow(StatusOr<T> v) {
+T ValueOrThrow(absl::StatusOr<T> v) {
   if (!v.ok()) {
     throw xla::XlaRuntimeError(v.status());
   }
@@ -153,30 +153,30 @@ template <typename F>
 ValueOrThrowWrapper(F) -> ValueOrThrowWrapper<decltype(&F::operator()), F>;
 
 template <typename R, typename... Args>
-ValueOrThrowWrapper(xla::StatusOr<R> (&)(Args...))
-    -> ValueOrThrowWrapper<xla::StatusOr<R>(Args...),
-                           xla::StatusOr<R> (&)(Args...)>;
+ValueOrThrowWrapper(absl::StatusOr<R> (&)(Args...))
+    -> ValueOrThrowWrapper<absl::StatusOr<R>(Args...),
+                           absl::StatusOr<R> (&)(Args...)>;
 
 template <typename C, typename R, typename... Args>
-ValueOrThrowWrapper(xla::StatusOr<R> (C::*)(Args...))
-    -> ValueOrThrowWrapper<xla::StatusOr<R>(Args...), C>;
+ValueOrThrowWrapper(absl::StatusOr<R> (C::*)(Args...))
+    -> ValueOrThrowWrapper<absl::StatusOr<R>(Args...), C>;
 
 // Deduction guide for const methods.
 template <typename C, typename R, typename... Args>
-ValueOrThrowWrapper(xla::StatusOr<R> (C::*)(Args...) const)
-    -> ValueOrThrowWrapper<xla::StatusOr<R>(Args...) const, C>;
+ValueOrThrowWrapper(absl::StatusOr<R> (C::*)(Args...) const)
+    -> ValueOrThrowWrapper<absl::StatusOr<R>(Args...) const, C>;
 
 template <typename R, typename... Args>
-struct ValueOrThrowWrapper<xla::StatusOr<R>(Args...),
-                           xla::StatusOr<R> (&)(Args...)> {
-  explicit ValueOrThrowWrapper(xla::StatusOr<R> (&f)(Args...)) : func(f) {}
+struct ValueOrThrowWrapper<absl::StatusOr<R>(Args...),
+                           absl::StatusOr<R> (&)(Args...)> {
+  explicit ValueOrThrowWrapper(absl::StatusOr<R> (&f)(Args...)) : func(f) {}
   R operator()(Args... args) const {
     return xla::ValueOrThrow(func(std::forward<Args>(args)...));
   }
-  xla::StatusOr<R> (&func)(Args...);
+  absl::StatusOr<R> (&func)(Args...);
 };
 template <typename R, typename C, typename... Args, typename F>
-struct ValueOrThrowWrapper<xla::StatusOr<R> (C::*)(Args...), F> {
+struct ValueOrThrowWrapper<absl::StatusOr<R> (C::*)(Args...), F> {
   explicit ValueOrThrowWrapper(F&& f) : func(std::move(f)) {}
   R operator()(Args... args) const {
     return xla::ValueOrThrow(func(std::forward<Args>(args)...));
@@ -184,7 +184,7 @@ struct ValueOrThrowWrapper<xla::StatusOr<R> (C::*)(Args...), F> {
   F func;
 };
 template <typename R, typename C, typename... Args, typename F>
-struct ValueOrThrowWrapper<xla::StatusOr<R> (C::*)(Args...) const, F> {
+struct ValueOrThrowWrapper<absl::StatusOr<R> (C::*)(Args...) const, F> {
   explicit ValueOrThrowWrapper(F&& f) : func(std::move(f)) {}
   R operator()(Args... args) const {
     return xla::ValueOrThrow(func(std::forward<Args>(args)...));
@@ -195,22 +195,22 @@ struct ValueOrThrowWrapper<xla::StatusOr<R> (C::*)(Args...) const, F> {
 // For unbound nonstatic member functions, non-const and const versions.
 // `ptmf` stands for "pointer to member function".
 template <typename R, typename C, typename... Args>
-struct ValueOrThrowWrapper<xla::StatusOr<R>(Args...), C> {
-  explicit ValueOrThrowWrapper(xla::StatusOr<R> (C::*ptmf)(Args...))
+struct ValueOrThrowWrapper<absl::StatusOr<R>(Args...), C> {
+  explicit ValueOrThrowWrapper(absl::StatusOr<R> (C::*ptmf)(Args...))
       : ptmf(ptmf) {}
   R operator()(C& instance, Args... args) const {
     return xla::ValueOrThrow((instance.*ptmf)(std::forward<Args>(args)...));
   }
-  xla::StatusOr<R> (C::*ptmf)(Args...);
+  absl::StatusOr<R> (C::*ptmf)(Args...);
 };
 template <typename R, typename C, typename... Args>
-struct ValueOrThrowWrapper<xla::StatusOr<R>(Args...) const, C> {
-  explicit ValueOrThrowWrapper(xla::StatusOr<R> (C::*ptmf)(Args...) const)
+struct ValueOrThrowWrapper<absl::StatusOr<R>(Args...) const, C> {
+  explicit ValueOrThrowWrapper(absl::StatusOr<R> (C::*ptmf)(Args...) const)
       : ptmf(ptmf) {}
   R operator()(const C& instance, Args... args) const {
     return xla::ValueOrThrow((instance.*ptmf)(std::forward<Args>(args)...));
   }
-  xla::StatusOr<R> (C::*ptmf)(Args...) const;
+  absl::StatusOr<R> (C::*ptmf)(Args...) const;
 };
 
 }  // namespace xla

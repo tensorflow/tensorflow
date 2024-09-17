@@ -17,10 +17,12 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "xla/client/xla_builder.h"
 #include "xla/test.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/test_macros.h"
+#include "tsl/platform/ml_dtypes.h"
 
 namespace xla {
 namespace {

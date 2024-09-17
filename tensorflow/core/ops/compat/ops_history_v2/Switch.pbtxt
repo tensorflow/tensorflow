@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "Switch"
   input_arg {
     name: "data"

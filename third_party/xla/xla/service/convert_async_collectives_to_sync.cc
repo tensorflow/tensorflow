@@ -20,13 +20,23 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/status_macros.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -42,7 +52,7 @@ absl::StatusOr<HloInstruction*> CreateSyncVariant(HloInstruction* async_start,
       sync_instruction =
           computation->AddInstruction(HloInstruction::CreateAllReduce(
               async_done->shape(), async_ar->operands(), async_ar->to_apply(),
-              async_ar->replica_groups(), async_ar->constrain_layout(),
+              async_ar->device_list(), async_ar->constrain_layout(),
               async_ar->channel_id(), async_ar->use_global_device_ids()));
       break;
     }
@@ -51,7 +61,7 @@ absl::StatusOr<HloInstruction*> CreateSyncVariant(HloInstruction* async_start,
       sync_instruction =
           computation->AddInstruction(HloInstruction::CreateAllGather(
               async_done->shape(), async_ag->operands(),
-              async_ag->all_gather_dimension(), async_ag->replica_groups(),
+              async_ag->all_gather_dimension(), async_ag->device_list(),
               async_ag->constrain_layout(), async_ag->channel_id(),
               async_ag->use_global_device_ids()));
       break;
@@ -106,7 +116,7 @@ absl::StatusOr<HloInstruction*> CreateSyncVariant(HloInstruction* async_start,
   return sync_instruction;
 }
 
-/*static*/ Status
+/*static*/ absl::Status
 ConvertAsyncCollectivesToSync::ReplaceAsyncInstructionsWithSync(
     HloComputation* computation,
     absl::Span<const std::pair<HloInstruction*, HloInstruction*>> async_pairs) {
@@ -141,7 +151,7 @@ ConvertAsyncCollectivesToSync::ReplaceAsyncInstructionsWithSync(
     }
   }
   module->schedule().set_sequence(computation, new_sequence);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<bool> ConvertAsyncCollectivesToSync::RunOnComputation(

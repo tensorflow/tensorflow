@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
@@ -372,7 +373,7 @@ void promoteToStack(memref::DeallocOp dealloc) {
   auto alloc = dealloc.getMemref().getDefiningOp<memref::AllocOp>();
   OpBuilder b(alloc);
   auto alloca = b.create<memref::AllocaOp>(
-      alloc->getLoc(), alloc->getResultTypes()[0].cast<MemRefType>(),
+      alloc->getLoc(), mlir::cast<MemRefType>(alloc->getResultTypes()[0]),
       alloc.getAlignmentAttr());
   alloc->replaceAllUsesWith(ValueRange{alloca.getResult()});
   alloc->erase();

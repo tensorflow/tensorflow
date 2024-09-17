@@ -240,7 +240,7 @@ Status DataServiceWorkerImpl::ValidateWorkerConfig() const {
   return absl::OkStatus();
 }
 
-StatusOr<std::unique_ptr<DataServiceDispatcherClient>>
+absl::StatusOr<std::unique_ptr<DataServiceDispatcherClient>>
 DataServiceWorkerImpl::CreateDispatcherClient() const TF_LOCKS_EXCLUDED(mu_) {
   auto dispatcher = std::make_unique<DataServiceDispatcherClient>(
       config_.dispatcher_address(), config_.protocol());
@@ -360,7 +360,7 @@ Status DataServiceWorkerImpl::EnsureTaskInitialized(
   return absl::OkStatus();
 }
 
-StatusOr<DatasetDef> DataServiceWorkerImpl::GetDatasetDef(
+absl::StatusOr<DatasetDef> DataServiceWorkerImpl::GetDatasetDef(
     const TaskDef& task_def) const {
   switch (task_def.dataset_case()) {
     case TaskDef::kDatasetDef:
@@ -382,7 +382,7 @@ StatusOr<DatasetDef> DataServiceWorkerImpl::GetDatasetDef(
   }
 }
 
-StatusOr<bool> DataServiceWorkerImpl::DisableCompressionAtRuntime(
+absl::StatusOr<bool> DataServiceWorkerImpl::DisableCompressionAtRuntime(
     const std::string& dataset_id) const {
   DisableCompressionAtRuntimeResponse response;
 
@@ -408,7 +408,7 @@ StatusOr<bool> DataServiceWorkerImpl::DisableCompressionAtRuntime(
   return response.compression_disabled_at_runtime();
 }
 
-StatusOr<std::unique_ptr<standalone::Dataset>>
+absl::StatusOr<std::unique_ptr<standalone::Dataset>>
 DataServiceWorkerImpl::MakeDataset(const DatasetDef& dataset_def,
                                    const TaskDef& task_def) const {
   TF_ASSIGN_OR_RETURN(bool compression_disabled_at_runtime,
@@ -435,7 +435,7 @@ DataServiceWorkerImpl::MakeDataset(const DatasetDef& dataset_def,
   return dataset;
 }
 
-StatusOr<std::unique_ptr<standalone::Iterator>>
+absl::StatusOr<std::unique_ptr<standalone::Iterator>>
 DataServiceWorkerImpl::MakeDatasetIterator(standalone::Dataset& dataset,
                                            const TaskDef& task_def) const {
   std::unique_ptr<standalone::Iterator> iterator;
@@ -678,7 +678,7 @@ DataServiceWorkerImpl::GetSnapshotTaskProgress() const {
     progress.mutable_snapshot_task()->set_base_path(snapshot_task.base_path);
     progress.mutable_snapshot_task()->set_stream_index(
         snapshot_task.stream_index);
-    StatusOr<bool> completed = stream_writer->Completed();
+    absl::StatusOr<bool> completed = stream_writer->Completed();
     if (completed.ok()) {
       progress.set_completed(*completed);
     } else {
@@ -768,7 +768,7 @@ Status DataServiceWorkerImpl::UpdateSnapshotWriters(
   return absl::OkStatus();
 }
 
-StatusOr<std::unique_ptr<StandaloneTaskIterator>>
+absl::StatusOr<std::unique_ptr<StandaloneTaskIterator>>
 DataServiceWorkerImpl::MakeSnapshotTaskIterator(
     const SnapshotTaskDef& snapshot_task, const DatasetDef& dataset_def) const {
   std::unique_ptr<standalone::Dataset> dataset;

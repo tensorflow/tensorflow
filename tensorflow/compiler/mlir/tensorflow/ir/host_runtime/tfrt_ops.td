@@ -63,33 +63,61 @@ def TF__TfrtGetResourceOp : TF_Op<"_TfrtGetResource",
   let hasVerifier = 1;
 }
 
+def TF_IfrtRestoreVariableOp : TF_Op<"IfrtRestoreVariableOp", []> {
+  let summary = "Restore variable tensors";
+  let description = [{
+    This Op is similar to a combination of RestoreV2 and AssignVariable Op, but
+    this Op's execution is asynchronous.
+
+    This Op is specific to TFRT + IFRT runtime and is not a stable interface for
+    serialization.
+
+    This Op will restore the tensors asynchronously. There are N restored tensors
+    corresponding to N $var_handle. Each restored tensor is given a unique name,
+    typically a concatenation of `container_name` and `shared_name` from a `var_handle`.
+    The runtime shall handle the possibility that the tensors are not ready when requested
+    because the tensors are loaded asynchronously.
+  }];
+
+  let arguments = (ins
+    Arg<TF_StrTensor, [{Must have a single element.  The prefix of a V2 checkpoint.}]>:$prefix,
+    Arg<TF_StrTensor, [{shape {N}.  The names of the tensors to be restored. This is tensor name in the model.}]>:$tensor_names,
+    Arg<TF_StrTensor, [{shape {N}.  The slice specs of the tensors to be restored.
+Empty strings indicate that they are non-partitioned tensors.}]>:$shape_and_slices,
+    // VarHandles for restored tensors.
+    Variadic<TF_Tensor>:$var_handles,
+    // Data types for restored tensor.
+    TypeArrayAttr: $restored_dtypes,
+    // whether trucate is used when casting from the restored_dytpe to the type specified in VarHandle
+    DenseBoolArrayAttr: $truncate_in_cast
+  );
+
+}
+
+
 def TF_IfrtLoadVariableOp : TF_Op<"IfrtLoadVariable", [Pure]> {
-  let summary = "Loads a variable tensor as an IFRT array";
+  let summary = "Loads a restored variable tensor as a tensor future";
 
   let description = [{
-    This op loads a variable tensor as an IFRT array and binds it with the specified name.
+    This op loads a restored variable tensor as a tensor future. It is a
+    replacement of `tf.ReadVariableOp`.
 
-    This op is an replacement of `tf.ReadVariableOp` in the case that a constant
-    variable tensor is an input to the tpu program invoked by `tf.IfrtCall`.
+    This op returns a scalar string tensor containing the restored variable name, which 
+    is composed from `container_name` and `shared_name` from a `var_handle` and can be
+    used as a key within the runtime, as well as a future for the tensor.
 
-    After a `tf.ReadVariableOp` is lowered into `tf.IfrtLoadVariableOp`, the `tf.IfrtCall` kernel
-    will bind the loaded IFRT array by name with the tpu program's input.
-
-    `tf.IfrtLoadVariableOp` converts the tensor into an IFRT array based on device and sharding
-    configuration specified in `VariableDeviceShardingConfigProto`.
-
-    This op returns a scalar string tensor containing the loaded variable name, which can be
-    used as a key to look for the loaded IFRT array in runtime.
+    The `tf.IfrtCall` kernel uses the output $array_key.
+    Other ops executed by TFRT may make use of $tensor_future.
   }];
 
   let arguments = (ins
     Arg<TF_Tensor, [{The variable tensor to be loaded}], []>:$variable,
-    DefaultValuedStrAttr<StrAttr, "">:$device_sharding_config_proto_text,
-    DefaultValuedAttr<StrAttr, "">:$name
+    DefaultValuedAttr<BoolAttr, "false">:$used_by_host
   );
 
   let results = (outs
-    TF_StrTensor:$array_key
+    TF_StrTensor:$array_key,
+    TF_Tensor: $tensor_future
   );
 
   TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<0>;

@@ -120,7 +120,7 @@ TEST(StrCat, Basics) {
 
   string strs[] = {"Hello", "Cruel", "World"};
 
-  StringPiece pieces[] = {"Hello", "Cruel", "World"};
+  absl::string_view pieces[] = {"Hello", "Cruel", "World"};
 
   const char *c_strs[] = {"Hello", "Cruel", "World"};
 
@@ -244,7 +244,7 @@ TEST(StrAppend, Basics) {
 
   string strs[] = {"Hello", "Cruel", "World"};
 
-  StringPiece pieces[] = {"Hello", "Cruel", "World"};
+  absl::string_view pieces[] = {"Hello", "Cruel", "World"};
 
   const char *c_strs[] = {"Hello", "Cruel", "World"};
 

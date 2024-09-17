@@ -19,6 +19,10 @@ limitations under the License.
 
 namespace stream_executor::gpu::internal {
 
+// We want to be able to load those kernels by symbol name, so let's make them
+// C functions.
+extern "C" {
+
 __global__ void AddI32(int32_t* a, int32_t* b, int32_t* c) {
   int index = threadIdx.x + blockIdx.x * blockDim.x;
   c[index] = a[index] + b[index];
@@ -38,6 +42,7 @@ __global__ void IncAndCmp(int32_t* counter, bool* pred, int32_t value) {
 __global__ void AddI32Ptrs3(Ptrs3<int32_t> ptrs) {
   int index = threadIdx.x + blockIdx.x * blockDim.x;
   ptrs.c[index] = ptrs.a[index] + ptrs.b[index];
+}
 }
 
 void* GetAddI32Kernel() { return reinterpret_cast<void*>(&AddI32); }

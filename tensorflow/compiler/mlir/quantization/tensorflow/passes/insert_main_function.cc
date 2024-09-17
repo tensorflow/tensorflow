@@ -154,7 +154,7 @@ void GetUniqueInputOutputNodeNames(ModuleOp module_op,
 
       if (auto inputs_attr = tf_attrs.get("inputs")) {
         const std::string inputs_attr_str =
-            inputs_attr.cast<StringAttr>().getValue().str();
+            mlir::cast<StringAttr>(inputs_attr).getValue().str();
         std::vector<std::string> fn_input_names =
             absl::StrSplit(inputs_attr_str, ',', absl::SkipEmpty());
 
@@ -174,7 +174,7 @@ void GetUniqueInputOutputNodeNames(ModuleOp module_op,
 
       if (auto outputs_attr = tf_attrs.get("outputs")) {
         const std::string outputs_attr_str =
-            outputs_attr.cast<StringAttr>().getValue().str();
+            mlir::cast<StringAttr>(outputs_attr).getValue().str();
         std::vector<std::string> fn_output_names =
             absl::StrSplit(outputs_attr_str, ',', absl::SkipEmpty());
 

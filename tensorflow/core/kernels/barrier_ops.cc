@@ -290,7 +290,7 @@ class Barrier : public ResourceBase {
   const DataTypeVector component_types() const {
     return value_component_types_;
   }
-  const gtl::ArraySlice<TensorShape> component_shapes() const {
+  const absl::Span<const TensorShape> component_shapes() const {
     return value_component_shapes_;
   }
 

@@ -27,10 +27,6 @@ bool_ = np.bool_
 tf_export.tf_export('experimental.numpy.bool_', v1=[]).export_constant(
     __name__, 'bool_'
 )
-complex_ = np.complex_
-tf_export.tf_export('experimental.numpy.complex_', v1=[]).export_constant(
-    __name__, 'complex_'
-)
 complex128 = np.complex128
 tf_export.tf_export('experimental.numpy.complex128', v1=[]).export_constant(
     __name__, 'complex128'
@@ -38,10 +34,6 @@ tf_export.tf_export('experimental.numpy.complex128', v1=[]).export_constant(
 complex64 = np.complex64
 tf_export.tf_export('experimental.numpy.complex64', v1=[]).export_constant(
     __name__, 'complex64'
-)
-float_ = np.float_
-tf_export.tf_export('experimental.numpy.float_', v1=[]).export_constant(
-    __name__, 'float_'
 )
 float16 = np.float16
 tf_export.tf_export('experimental.numpy.float16', v1=[]).export_constant(
@@ -83,7 +75,8 @@ object_ = np.object_
 tf_export.tf_export('experimental.numpy.object_', v1=[]).export_constant(
     __name__, 'object_'
 )
-string_ = np.string_
+# np.string_ is aliased to np.bytes_ and depercated in numpy 2.0.
+string_ = np.bytes_
 tf_export.tf_export('experimental.numpy.string_', v1=[]).export_constant(
     __name__, 'string_'
 )
@@ -103,9 +96,24 @@ uint8 = np.uint8
 tf_export.tf_export('experimental.numpy.uint8', v1=[]).export_constant(
     __name__, 'uint8'
 )
-unicode_ = np.unicode_
+# np.unicode_ is aliased to np.str_ and depercated in numpy 2.0.
+unicode_ = np.str_
 tf_export.tf_export('experimental.numpy.unicode_', v1=[]).export_constant(
     __name__, 'unicode_'
+)
+if int(np.__version__.split('.')[0]) < 2:
+  complex_ = np.complex_
+  float_ = np.float_
+else:
+  # Aliases np.complex_ and np.float_ have been removed in Numpy 2.0. Use
+  # np.complex128 and np.float64 instead.
+  complex_ = np.complex128
+  float_ = np.float64
+tf_export.tf_export('experimental.numpy.complex_', v1=[]).export_constant(
+    __name__, 'complex_'
+)
+tf_export.tf_export('experimental.numpy.float_', v1=[]).export_constant(
+    __name__, 'float_'
 )
 
 

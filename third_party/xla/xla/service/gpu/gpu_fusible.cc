@@ -16,21 +16,34 @@ limitations under the License.
 #include "xla/service/gpu/gpu_fusible.h"
 
 #include <algorithm>
-#include <iterator>
+#include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <stack>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/synchronization/mutex.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/permutation_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/reduction_utils.h"
+#include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -41,9 +54,28 @@ bool HasAnyTiledTransposeRoot(const HloComputation& computation) {
   return absl::c_any_of(GetFusionRoots(computation),
                         [&](const HloInstruction* instr) {
                           return GetDescriptionForTiledTransposeEmitter(
-                                     *instr, FindNonTrivialHero(*instr))
+                                     FindNonTrivialHero(*instr))
                               .has_value();
                         });
+}
+
+const Shape& GetElementShape(const HloFusionAnalysis& analysis) {
+  const Shape* shape = &analysis.fusion_root(0).shape();
+  while (shape->IsTuple()) {
+    shape = &shape->tuple_shapes(0);
+  }
+  return *shape;
+}
+
+// Computes the maximum valid unroll factor for a given instruction.
+int ComputeMaxUnrollFactor(int64_t num_elements) {
+  constexpr int kMaxUnrollFactor = 4;
+  for (int i = kMaxUnrollFactor; i > 1; i /= 2) {
+    if (num_elements % i == 0) {
+      return i;
+    }
+  }
+  return 1;
 }
 
 }  // namespace
@@ -107,22 +139,53 @@ bool IsPhysicallyTransposing(const HloInstruction& instr) {
                                          instr.shape(), instr.dimensions()));
 }
 
+namespace {
+std::pair<int64_t, int64_t> MostMinorNonTrivialDimension(const Shape& shape) {
+  int64_t position_of_first_non_trivial_dim = 0;
+  for (int64_t dim : shape.layout().minor_to_major()) {
+    if (shape.dimensions()[dim] > 1) {
+      return {dim, position_of_first_non_trivial_dim};
+    }
+    ++position_of_first_non_trivial_dim;
+  }
+  return {-1, position_of_first_non_trivial_dim};
+}
+}  // namespace
+
 bool TransposesMinorDimension(const HloInstruction* instr) {
   switch (instr->opcode()) {
     case HloOpcode::kFusion:
       return absl::c_any_of(instr->fused_instructions(),
                             TransposesMinorDimension);
-    case HloOpcode::kCopy:
-      return instr->shape().layout().minor_to_major(0) !=
-             instr->operand(0)->shape().layout().minor_to_major(0);
+    // TODO(akuegel): This can be simplified by just calling
+    // GetDescriptionForTiledTransposeEmitter() once it returns a value for all
+    // transposes that affect the most minor non-trivial dimension. Right now,
+    // there are also cases with transposes that affect the most minor
+    // non-trivial dimension which are not supported by the transpose emitter,
+    // so GetDescriptionForTiledTransposeEmitter would return std::nullopt.
+    case HloOpcode::kCopy: {
+      int64_t first_non_trivial_operand_dim =
+          MostMinorNonTrivialDimension(instr->operand(0)->shape()).first;
+      int64_t first_non_trivial_output_dim =
+          MostMinorNonTrivialDimension(instr->shape()).first;
+      return first_non_trivial_operand_dim != first_non_trivial_output_dim;
+    }
     case HloOpcode::kTranspose: {
-      // We have an input ([a,b,c]{x,y,z}) that's being transposed. We need to
-      // check if the minor-most dimension (x) is still the minor-most dimension
-      // after the transpose.
-      int64_t minor_input =
-          instr->operand(0)->shape().layout().minor_to_major(0);
-      int64_t minor_output = instr->shape().layout().minor_to_major(0);
-      return minor_input != instr->dimensions().at(minor_output);
+      auto position_in_minor_to_major = InversePermutation(
+          instr->operand(0)->shape().layout().minor_to_major());
+      int64_t position_of_first_non_trivial_dim =
+          MostMinorNonTrivialDimension(instr->operand(0)->shape()).second;
+      for (int64_t output_dim : instr->shape().layout().minor_to_major()) {
+        if (instr->shape().dimensions()[output_dim] == 1) {
+          continue;
+        }
+        int64_t operand_dim = instr->dimensions().at(output_dim);
+        // Check if there is any operand dimension with size > 1 that is more
+        // minor than 'operand_dim'
+        return position_in_minor_to_major[operand_dim] >
+               position_of_first_non_trivial_dim;
+      }
+      return false;
     }
     default:
       return false;
@@ -159,7 +222,7 @@ bool IsInputFusibleTranspose(const HloInstruction& instr) {
   if (instr.opcode() == HloOpcode::kFusion) {
     return HasAnyTiledTransposeRoot(*instr.fused_instructions_computation());
   }
-  return GetDescriptionForTiledTransposeEmitter(instr, instr).has_value();
+  return GetDescriptionForTiledTransposeEmitter(instr).has_value();
 }
 
 const HloInstruction* GetRealHeroForMultiOutputFusion(
@@ -171,8 +234,7 @@ const HloInstruction* GetRealHeroForMultiOutputFusion(
   if (!instr.IsMultiOutputFusion()) {
     const auto& hero = FindNonTrivialHero(*fused_expression_root);
     if (IsRealReductionHero(*fused_expression_root, hero) ||
-        GetDescriptionForTiledTransposeEmitter(*fused_expression_root, hero)
-            .has_value()) {
+        GetDescriptionForTiledTransposeEmitter(hero).has_value()) {
       return &hero;
     }
     return fused_expression_root;
@@ -184,7 +246,7 @@ const HloInstruction* GetRealHeroForMultiOutputFusion(
   for (auto* inst : fused_expression_root->mutable_operands()) {
     const auto& hero = FindNonTrivialHero(*inst);
     if (IsRealReductionHero(*inst, hero) ||
-        GetDescriptionForTiledTransposeEmitter(*inst, hero).has_value()) {
+        GetDescriptionForTiledTransposeEmitter(hero).has_value()) {
       return &hero;
     }
   }
@@ -195,13 +257,11 @@ FusionDecision FusionHeroesAreCompatible(const HloInstruction* hero1,
                                          const HloInstruction* hero2) {
   auto hero1_is_unnested_reduce =
       IsReductionFromOrToContiguousDimensions(*hero1);
-  auto tiled_transpose_hero1 =
-      GetDescriptionForTiledTransposeEmitter(*hero1, *hero1);
+  auto tiled_transpose_hero1 = GetDescriptionForTiledTransposeEmitter(*hero1);
   bool hero1_is_unnested_transpose = tiled_transpose_hero1.has_value();
   bool hero2_is_unnested_reduce =
       IsReductionFromOrToContiguousDimensions(*hero2);
-  auto tiled_transpose_hero2 =
-      GetDescriptionForTiledTransposeEmitter(*hero2, *hero2);
+  auto tiled_transpose_hero2 = GetDescriptionForTiledTransposeEmitter(*hero2);
   bool hero2_is_unnested_transpose = tiled_transpose_hero2.has_value();
 
   if (hero1_is_unnested_reduce && hero2_is_unnested_reduce &&
@@ -265,10 +325,11 @@ FusionDecision ShapesCompatibleForMultiOutputFusion(
     // Special-case reduction-to-vector ops: The loop dimensions are determined
     // by the shape of the first operand.
     // TODO(jreiffers): Compute the non-trivial hero only once here.
-    const auto& hero = FindNonTrivialHero(*element_instr);
+    const auto& hero = element_instr->parent()->IsFusionComputation()
+                           ? FindNonTrivialHero(*element_instr)
+                           : *element_instr;
     if (IsReductionFromOrToContiguousDimensions(*element_instr) ||
-        GetDescriptionForTiledTransposeEmitter(*element_instr, hero)
-            .has_value()) {
+        GetDescriptionForTiledTransposeEmitter(hero).has_value()) {
       return hero.operand(0)->shape();
     }
     return element_instr->shape();
@@ -329,7 +390,7 @@ bool IsUniversallyLoopFusible(const HloInstruction& instr) {
 
   switch (instr.opcode()) {
     case HloOpcode::kCopy:
-      return !GetDescriptionForTiledTransposeEmitter(instr, instr).has_value();
+      return !GetDescriptionForTiledTransposeEmitter(instr).has_value();
 
     case HloOpcode::kFusion:
       return instr.fusion_kind() == HloInstruction::FusionKind::kLoop;
@@ -564,37 +625,50 @@ static int64_t SharedMemoryUsageNoCache(const HloInstruction& instr) {
       // __shared__[32] is used for row reduction.
       return 32 * primitive_size * num_variadic;
     } else {
-      // __shared__[2][32][33] cache is used for column reduction ("2" comes
+      // __shared__[4][32][33] cache is used for column reduction ("4" comes
       // from potential x-tiling).
-      return 2 * 32 * 33 * primitive_size * num_variadic;
+      return 4 * 32 * 33 * primitive_size * num_variadic;
     }
-  } else if (GetDescriptionForTiledTransposeEmitter(instr, instr).has_value()) {
+  } else if (auto tr = GetDescriptionForTiledTransposeEmitter(instr)) {
     // Tile size for transposition.
     int64_t primitive_size =
         ShapeUtil::ByteSizeOfPrimitiveType(instr.shape().element_type());
-    return 32 * 33 * primitive_size;
+    int64_t bytes_required = 32 * 33 * primitive_size;
+    // If the last dimension is not changed, it becomes part of the tile.
+    if (tr->permutation.back() == tr->permutation.size() - 1) {
+      bytes_required *= tr->dimensions.back();
+    }
+    return bytes_required;
   }
   // Other fused expressions for now don't need the shared memory budget.
   return 0;
 }
 
-int64_t SharedMemoryUsage(const HloInstruction& instr, FusionInfoCache* cache) {
-  if (!cache) {
-    return SharedMemoryUsageNoCache(instr);
+int64_t FusionInfoCache::GetSharedMemoryUsage(const HloInstruction& instr) {
+  {
+    absl::MutexLock lock(&mutex_);
+    auto it = shared_memory_usage_.find(&instr);
+    if (it != shared_memory_usage_.end()) {
+      return it->second;
+    }
   }
 
   // nb: Users are only expected to call cache.Invalidate() on top-level
   // instructions, not instructions inside fusion nodes.  Therefore we can only
   // cache top-level instructions; it would not be valid to pass the cache to
   // SharedMemoryUsageNoCache and use the cache *within* the fusion.
-  auto it_and_inserted = cache->shared_memory_usage.emplace(&instr, -1);
-  auto it = it_and_inserted.first;
-  auto inserted = it_and_inserted.second;
+  int64_t shared_memory_usage = SharedMemoryUsageNoCache(instr);
 
-  if (inserted) {
-    it->second = SharedMemoryUsageNoCache(instr);
+  absl::MutexLock lock(&mutex_);
+  shared_memory_usage_.emplace(&instr, shared_memory_usage);
+  return shared_memory_usage;
+}
+
+int64_t SharedMemoryUsage(const HloInstruction& instr, FusionInfoCache* cache) {
+  if (!cache) {
+    return SharedMemoryUsageNoCache(instr);
   }
-  return it->second;
+  return cache->GetSharedMemoryUsage(instr);
 }
 
 // Codegen'ing unnested reductions requires a lot of registers, so a MOF
@@ -618,24 +692,33 @@ static int64_t NumUnnestedReductionsNoCache(const HloInstruction& instr) {
   return 0;
 }
 
-static int64_t NumUnnestedReductions(const HloInstruction& instr,
-                                     FusionInfoCache* cache) {
-  if (!cache) {
-    return NumUnnestedReductionsNoCache(instr);
+int64_t FusionInfoCache::GetNumUnnestedReductions(const HloInstruction& instr) {
+  {
+    absl::MutexLock lock(&mutex_);
+    auto it = num_unnested_reductions_.find(&instr);
+    if (it != num_unnested_reductions_.end()) {
+      return it->second;
+    }
   }
 
   // nb: Users are only expected to call cache.Invalidate() on top-level
   // instructions, not instructions inside fusion nodes.  Therefore we can only
   // cache top-level instructions; it would not be valid to pass the cache to
   // NumUnnestedReductionsNoCache and use the cache *within* the fusion.
-  auto it_and_inserted = cache->num_unnested_reductions.emplace(&instr, -1);
-  auto it = it_and_inserted.first;
-  auto inserted = it_and_inserted.second;
+  int64_t num_unnested_reductions = NumUnnestedReductionsNoCache(instr);
 
-  if (inserted) {
-    it->second = NumUnnestedReductionsNoCache(instr);
+  absl::MutexLock lock(&mutex_);
+  num_unnested_reductions_.emplace(&instr, num_unnested_reductions);
+  return num_unnested_reductions;
+}
+
+static int64_t NumUnnestedReductions(const HloInstruction& instr,
+                                     FusionInfoCache* cache) {
+  if (!cache) {
+    return NumUnnestedReductionsNoCache(instr);
   }
-  return it->second;
+
+  return cache->GetNumUnnestedReductions(instr);
 }
 
 // This function limits the maximum number of operands to a fusion, and the
@@ -710,10 +793,9 @@ FusionDecision FusionFitsInBudget(const HloInstruction& instr1,
       MaxOperandsAndOutputsPerFusion()) {
     return {};
   } else {
-    VLOG(5) << "Operand count of "
-            << "(" << instr1.ToString() << " ) = " << instr1.operand_count()
-            << " and ( " << instr2.ToString()
-            << " ) = " << instr2.operand_count()
+    VLOG(5) << "Operand count of " << "(" << instr1.ToString()
+            << " ) = " << instr1.operand_count() << " and ( "
+            << instr2.ToString() << " ) = " << instr2.operand_count()
             << " and num_output_buffers = " << num_output_buffers
             << " is bigger than the bound of "
             << MaxOperandsAndOutputsPerFusion();
@@ -871,19 +953,17 @@ size_t GetOutputSizeOfFusible(const HloInstruction& instr) {
 // Recursive helper for GetFusionRoots below.
 static void GetFusionRootsRec(const HloInstruction* root,
                               std::vector<const HloInstruction*>& out) {
-  if (root->opcode() == HloOpcode::kGetTupleElement) {
-    return GetFusionRootsRec(root->operand(0), out);
+  if (root->opcode() == HloOpcode::kGetTupleElement &&
+      root->operand(0)->opcode() == HloOpcode::kTuple) {
+    return GetFusionRootsRec(root->operand(0)->operand(root->tuple_index()),
+                             out);
+  } else if (root->opcode() == HloOpcode::kGetTupleElement) {
+    out.push_back(root->operand(0));
   } else if (root->opcode() == HloOpcode::kTuple) {
     for (int i = 0; i < root->operand_count(); i++) {
       GetFusionRootsRec(root->operand(i), out);
     }
   } else {
-    if (!out.empty() && out.back() == root) {
-      return;
-    }
-    CHECK(!absl::c_linear_search(out, root))
-        << "Fusion root contains instruction " << root->ToString()
-        << " multiple times";
     out.push_back(root);
   }
 }
@@ -895,20 +975,21 @@ std::vector<const HloInstruction*> GetFusionRoots(
   return out;
 }
 
-bool IsTritonSoftmaxFusion(const HloInstruction& instr) {
+bool IsGenericTritonFusion(const HloInstruction& instr) {
+  // TODO(b/332649307): Eventually turn this into a generic fusion.
   return instr.opcode() == HloOpcode::kFusion &&
          instr.fusion_kind() == HloInstruction::FusionKind::kCustom &&
          instr.backend_config<GpuBackendConfig>().ok() &&
          instr.backend_config<GpuBackendConfig>()
                  ->fusion_backend_config()
-                 .kind() == kTritonSoftmaxFusionKind;
+                 .kind() == kTritonFusionKind;
 }
 
 bool MayPreventVectorization(const HloFusionAdaptor& fusion) {
   // An empirically chosen constant: unrolling concat with a large amount of
   // arguments causes excessive register spilling.
   static constexpr int kMaxConcatArgumentsForUnrolling = 10;
-  return HloAnyOf(fusion.GetRoots(), fusion, [&](auto node) {
+  return HloAnyOf(fusion, [&](auto node) {
     switch (node.opcode()) {
       case HloOpcode::kReduceWindow:
       case HloOpcode::kSort:
@@ -928,6 +1009,77 @@ bool MayPreventVectorization(const HloFusionAdaptor& fusion) {
         return false;
     }
   });
+}
+
+std::vector<HloComputation*> GetFusibleComputations(
+    const HloModule& module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  auto result = module.MakeComputationPostOrder(execution_threads);
+  absl::flat_hash_set<const HloComputation*> computations_not_to_fuse;
+  for (const auto* computation : result) {
+    for (const auto* instr : computation->instructions()) {
+      // Don't fuse within called computations, unless they are for control
+      // flow. See also fusion_wrapper.cc, which does the same.
+      if (HloInstruction::MightHaveCalledComputations(instr->opcode()) &&
+          instr->opcode() != HloOpcode::kWhile &&
+          instr->opcode() != HloOpcode::kConditional &&
+          // No need to add fusion computations, just check the flag.
+          instr->opcode() != HloOpcode::kFusion) {
+        for (auto* called : instr->called_computations()) {
+          computations_not_to_fuse.insert(called);
+        }
+      }
+    }
+  }
+  result.erase(
+      std::remove_if(result.begin(), result.end(),
+                     [&](HloComputation* computation) {
+                       return computation->IsFusionComputation() ||
+                              computations_not_to_fuse.contains(computation);
+                     }),
+      result.end());
+  return result;
+}
+
+LaunchDimensionsConfig ComputeLoopFusionConfig(
+    const HloFusionAnalysis& analysis) {
+  return ComputeLoopFusionConfig(analysis, GetElementShape(analysis));
+}
+
+LaunchDimensionsConfig ComputeLoopFusionConfig(
+    const HloFusionAnalysis& analysis, const Shape& element_shape) {
+  int unroll_factor = 1;
+  // Unrolling is good to read large inputs with small elements
+  // due to vector loads, but increases the register pressure when one
+  // thread has to produce multiple output elements.
+  // Therefore for fusions with small outputs prefer to use one thread
+  // per output element = no unroll.
+  // Call 'small' fusions that use less threads than the GPU has.
+  int64_t num_elements = ShapeUtil::ElementsIn(element_shape);
+  int64_t n_threads_max = analysis.device_info().threads_per_core_limit() *
+                          analysis.device_info().core_count();
+  if (num_elements >= n_threads_max &&
+      !MayPreventVectorization(analysis.fusion())) {
+    unroll_factor = ComputeMaxUnrollFactor(num_elements);
+  }
+  // CHECK that unroll_factor is a power-of-2, as needed by the logic below.
+  CHECK(absl::has_single_bit(static_cast<uint64_t>(unroll_factor)));
+  // Ensure a single thread writes to a byte containing multiple values by
+  // setting unroll_factor to an appropriate number. Setting unroll_factor is
+  // safe even if the new unroll_factor doesn't divide the number of elements,
+  // as the parallel loop emitter will insert a bounds check in this case to
+  // ensure the out-of-bounds element is not computed and written. Setting
+  // unroll_factor is safe even if MayPreventVectorization returns false, as
+  // the MayPreventVectorization check is an optimization, not a correctness
+  // requirement.
+  unroll_factor = std::max(
+      unroll_factor,
+      CeilOfRatio(8, analysis.input_output_info().smallest_output_dtype_bits));
+  CHECK(absl::has_single_bit(static_cast<uint64_t>(unroll_factor)));
+  VLOG(2) << "Unroll factor: " << unroll_factor;
+
+  LaunchDimensionsConfig launch_config{unroll_factor};
+  return launch_config;
 }
 
 }  // namespace gpu

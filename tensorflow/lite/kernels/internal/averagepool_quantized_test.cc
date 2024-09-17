@@ -34,11 +34,11 @@ namespace {
 // are the same.
 void RunOneAveragePoolTest(const PoolParams& params,
                            const RuntimeShape& input_shape,
-                           const int8* input_data,
+                           const int8_t* input_data,
                            const RuntimeShape& output_shape) {
   const int buffer_size = output_shape.FlatSize();
-  std::vector<int8> optimized_averagePool_output(buffer_size);
-  std::vector<int8> reference_averagePool_output(buffer_size);
+  std::vector<int8_t> optimized_averagePool_output(buffer_size);
+  std::vector<int8_t> reference_averagePool_output(buffer_size);
 
   bool reference_success = reference_integer_ops::AveragePool(
       params, input_shape, input_data, output_shape,
@@ -86,7 +86,7 @@ void CreateDataAndRunAveragePool(bool padding_same) {
   auto output_shape =
       RuntimeShape({batch, output_height, output_width, output_depth});
   const int buffer_size = input_shape.FlatSize();
-  std::vector<int8> input_data(buffer_size);
+  std::vector<int8_t> input_data(buffer_size);
   FillRandom(&input_data);
 
   PoolParams params;
@@ -172,17 +172,17 @@ void CreateExtremalDataAndRunAveragePool(bool padding_same) {
                                                  filter_height, output_height);
 
   const int buffer_size = input_shape.FlatSize();
-  std::vector<int8> input_data(buffer_size);
+  std::vector<int8_t> input_data(buffer_size);
 
   // Test small values
-  int8 min = std::numeric_limits<int8>::min();
-  int8 max = std::numeric_limits<int8>::min() + 10;
+  int8_t min = std::numeric_limits<int8_t>::min();
+  int8_t max = std::numeric_limits<int8_t>::min() + 10;
   FillRandom(&input_data, min, max);
   RunOneAveragePoolTest(params, input_shape, input_data.data(), output_shape);
 
   // Test large values
-  min = std::numeric_limits<int8>::max() - 10;
-  max = std::numeric_limits<int8>::max();
+  min = std::numeric_limits<int8_t>::max() - 10;
+  max = std::numeric_limits<int8_t>::max();
   FillRandom(&input_data, min, max);
   RunOneAveragePoolTest(params, input_shape, input_data.data(), output_shape);
 }

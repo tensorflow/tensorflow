@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/bundle_v2.h"
 #include "tensorflow/cc/saved_model/reader.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
@@ -46,7 +47,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-static StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphdefToMlirImport(
+static absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphdefToMlirImport(
     llvm::StringRef input, const std::vector<std::string>& input_arrays,
     const std::vector<std::string>& input_dtypes,
     const std::vector<std::optional<std::vector<int>>>& input_shapes,
@@ -109,7 +110,8 @@ static StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphdefToMlirImport(
       context);
 }
 
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphdefToMlirTranslateFunction(
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+GraphdefToMlirTranslateFunction(
     llvm::StringRef input, const std::vector<std::string>& input_arrays,
     const std::vector<std::string>& input_dtypes,
     const std::vector<std::optional<std::vector<int>>>& input_shapes,
@@ -125,7 +127,8 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphdefToMlirTranslateFunction(
   return module_or;
 }
 
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphdefToMlirTranslateFunction(
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+GraphdefToMlirTranslateFunction(
     llvm::StringRef input, absl::string_view input_arrays,
     absl::string_view input_dtypes, absl::string_view input_shapes,
     absl::string_view output_arrays, absl::string_view control_output_arrays,
@@ -147,11 +150,12 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphdefToMlirTranslateFunction(
       context);
 }
 
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> SavedModelObjectGraphToMlirImport(
-    absl::string_view saved_model_dir,
-    const std::unordered_set<std::string>& tags,
-    absl::Span<std::string> exported_names, mlir::MLIRContext* context,
-    bool unconditionally_use_set_output_shapes) {
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+SavedModelObjectGraphToMlirImport(absl::string_view saved_model_dir,
+                                  const std::unordered_set<std::string>& tags,
+                                  absl::Span<std::string> exported_names,
+                                  mlir::MLIRContext* context,
+                                  bool unconditionally_use_set_output_shapes) {
   tensorflow::SavedModelV2Bundle bundle;
   auto load_status = tensorflow::SavedModelV2Bundle::Load(
       std::string(saved_model_dir.data(), saved_model_dir.length()), &bundle);
@@ -174,7 +178,8 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> SavedModelObjectGraphToMlirImport(
   return module_or;
 }
 
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> SavedModelSignatureDefsToMlirImport(
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+SavedModelSignatureDefsToMlirImport(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags,
     absl::Span<std::string> exported_names, mlir::MLIRContext* context,
@@ -210,15 +215,15 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> SavedModelSignatureDefsToMlirImport(
   return module_or;
 }
 
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 SavedModelSignatureDefsToMlirImportLite(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags,
     absl::Span<std::string> exported_names, mlir::MLIRContext* context,
     MLIRImportOptions options) {
   MetaGraphDef meta_graph_def;
-  auto status = ReadMetaGraphDefFromSavedModel(std::string(saved_model_dir),
-                                               tags, &meta_graph_def);
+  auto status =
+      ReadMetaGraphDefFromSavedModel(saved_model_dir, tags, &meta_graph_def);
   if (!status.ok()) {
     LOG(ERROR) << "Failed to load saved model v1 '" << saved_model_dir
                << "': " << status;
@@ -239,7 +244,7 @@ SavedModelSignatureDefsToMlirImportLite(
   return module_or;
 }
 
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 GraphdefToSplattedMlirTranslateFunction(
     llvm::StringRef input, const std::vector<std::string>& input_arrays,
     const std::vector<std::string>& input_dtypes,
@@ -263,7 +268,7 @@ GraphdefToSplattedMlirTranslateFunction(
         if (auto attr = inst.getAttrOfType<mlir::ElementsAttr>(attr_id)) {
           mlir::Attribute rand_val;
           mlir::Type element_type = attr.getShapedType().getElementType();
-          if (element_type.isa<mlir::IntegerType>()) {
+          if (mlir::isa<mlir::IntegerType>(element_type)) {
             rand_val = mlir::IntegerAttr::get(element_type, std::rand());
           } else if (element_type.isF16() || element_type.isF32() ||
                      element_type.isF64()) {
@@ -286,7 +291,7 @@ GraphdefToSplattedMlirTranslateFunction(
   return module_or;
 }
 
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
 GraphdefToSplattedMlirTranslateFunction(
     llvm::StringRef input, absl::string_view input_arrays,
     absl::string_view input_dtypes, absl::string_view input_shapes,

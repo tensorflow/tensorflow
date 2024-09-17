@@ -23,9 +23,9 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/float_support.h"
 #include "xla/service/hlo_dataflow_analysis.h"
-#include "xla/service/hlo_pass_interface.h"
 
 namespace xla {
 
@@ -159,19 +159,19 @@ class BFloat16Propagation : public HloModulePass {
 
   // Resolves inconsistencies introduced by this pass for fusions with
   // tuple-type output.
-  Status ResolveInconsistentFusions(
+  absl::Status ResolveInconsistentFusions(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   // Converts the literals in kConstant HLOs which have their types changed to
   // BF16 by this pass.
-  Status ResolveConvertedConstants(
+  absl::Status ResolveConvertedConstants(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   // Skips no-op conversions (same source and target shapes) that can be
   // produced this pass, i.e., replaces them in their uses with their operands.
-  Status SkipNoopConversions(
+  absl::Status SkipNoopConversions(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 

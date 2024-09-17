@@ -82,7 +82,9 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import moving_averages
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
+from tensorflow.python.util import numpy_compat
 from tensorflow.tools.docs import doc_controls
+
 
 py_all = all
 py_sum = sum
@@ -214,7 +216,7 @@ def cast_to_floatx(x):
                     variables_module.Variable,
                     sparse_tensor.SparseTensor)):
     return math_ops.cast(x, dtype=floatx())
-  return np.asarray(x, dtype=floatx())
+  return numpy_compat.np_asarray(x, dtype=floatx())
 
 
 def get_uid(prefix=''):
@@ -3661,7 +3663,7 @@ def set_value(x, value):
       value: Value to set the tensor to, as a Numpy array
           (of the same shape).
   """
-  value = np.asarray(value, dtype=dtype_numpy(x))
+  value = numpy_compat.np_asarray(value, dtype=dtype_numpy(x))
   if ops.executing_eagerly_outside_functions():
     x.assign(value)
   else:
@@ -3695,14 +3697,14 @@ def batch_set_value(tuples):
   """
   if context.executing_eagerly() or ops.inside_function():
     for x, value in tuples:
-      x.assign(np.asarray(value, dtype=dtype_numpy(x)))
+      x.assign(numpy_compat.np_asarray(value, dtype=dtype_numpy(x)))
   else:
     with get_graph().as_default():
       if tuples:
         assign_ops = []
         feed_dict = {}
         for x, value in tuples:
-          value = np.asarray(value, dtype=dtype_numpy(x))
+          value = numpy_compat.np_asarray(value, dtype=dtype_numpy(x))
           tf_dtype = dtypes_module.as_dtype(x.dtype.name.split('_')[0])
           if hasattr(x, '_assign_placeholder'):
             assign_placeholder = x._assign_placeholder
@@ -3934,13 +3936,14 @@ class GraphExecutionFunction:
         # We need to do array conversion and type casting at this level, since
         # `callable_fn` only supports exact matches.
         tensor_type = dtypes_module.as_dtype(tensor.dtype)
-        array_vals.append(np.asarray(value,
-                                     dtype=tensor_type.as_numpy_dtype))
+        array_vals.append(numpy_compat.np_asarray(
+            value, dtype=tensor_type.as_numpy_dtype))
 
     if self.feed_dict:
       for key in sorted(self.feed_dict.keys()):
         array_vals.append(
-            np.asarray(self.feed_dict[key], dtype=key.dtype.as_numpy_dtype))
+            numpy_compat.np_asarray(
+                self.feed_dict[key], dtype=key.dtype.as_numpy_dtype))
 
     # Refresh callable if anything has changed.
     if (self._callable_fn is None or feed_arrays != self._feed_arrays or

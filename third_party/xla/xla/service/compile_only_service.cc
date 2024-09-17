@@ -85,8 +85,8 @@ CompileOnlyService::CompileAheadOfTime(
     }
   }
   if (options.has_static_device_assignment()) {
-    TF_RETURN_IF_ERROR(options.static_device_assignment().Serialize(
-        execution_options.mutable_device_assignment()));
+    options.static_device_assignment().Serialize(
+        execution_options.mutable_device_assignment());
   }
   execution_options.set_use_spmd_partitioning(options.use_spmd_partitioning());
   execution_options.set_use_auto_spmd_partitioning(

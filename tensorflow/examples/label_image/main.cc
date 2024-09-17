@@ -41,25 +41,37 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "tensorflow/cc/framework/ops.h"
+#include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/image_ops.h"
-#include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/cc/ops/math_ops.h"
+#include "tensorflow/cc/ops/nn_ops.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/graph/default_device.h"
-#include "tensorflow/core/graph/graph_def_builder.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
+#include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/types.h"
 
 // These are all common classes it's handy to reference with no namespace.
 using tensorflow::Flag;
@@ -142,15 +154,15 @@ Status ReadTensorFromImageFile(const string& file_name, const int input_height,
   // Now try to figure out what kind of file it is and decode it.
   const int wanted_channels = 3;
   tensorflow::Output image_reader;
-  if (tensorflow::str_util::EndsWith(file_name, ".png")) {
+  if (absl::EndsWith(file_name, ".png")) {
     image_reader = DecodePng(root.WithOpName("png_reader"), file_reader,
                              DecodePng::Channels(wanted_channels));
-  } else if (tensorflow::str_util::EndsWith(file_name, ".gif")) {
+  } else if (absl::EndsWith(file_name, ".gif")) {
     // gif decoder returns 4-D tensor, remove the first dim
     image_reader =
         Squeeze(root.WithOpName("squeeze_first_dim"),
                 DecodeGif(root.WithOpName("gif_reader"), file_reader));
-  } else if (tensorflow::str_util::EndsWith(file_name, ".bmp")) {
+  } else if (absl::EndsWith(file_name, ".bmp")) {
     image_reader = DecodeBmp(root.WithOpName("bmp_reader"), file_reader);
   } else {
     // Assume if it's neither a PNG nor a GIF then it must be a JPEG.

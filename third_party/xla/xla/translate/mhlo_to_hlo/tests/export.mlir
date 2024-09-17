@@ -1,6 +1,16 @@
 // RUN: xla-translate --print-sugar=false -split-input-file -mlir-hlo-to-hlo-text -verify-diagnostics %s | FileCheck %s
 // RUN: xla-translate --print-sugar=false -split-input-file -mlir-hlo-to-hlo-text -verify-diagnostics --via-builder=true %s | FileCheck %s
 
+// CHECK: HloModule foo
+// CHECK: ENTRY %main
+module @foo {
+  func.func @main(%arg: tensor<i1>) -> tensor<i1> {
+    func.return %arg : tensor<i1>
+  }
+}
+
+// -----
+
 // CHECK:  HloModule
 func.func @main(%arg0: tensor<2xi1>) -> tensor<2xi1> {
   %0 = "mhlo.add"(%arg0, %arg0) : (tensor<2xi1>, tensor<2xi1>) -> tensor<2xi1>
@@ -23,6 +33,17 @@ func.func @main(%arg0: !mhlo.token, %arg1: !mhlo.token) -> !mhlo.token {
 // CHECK:  %[[ARG0:.*]] = token[] parameter(0)
 // CHECK:  %[[ARG1:.*]] = token[] parameter(1)
 // CHECK:  ROOT %[[RESULT:.*]] = token[] after-all(token[] %[[ARG0]], token[] %[[ARG1]])
+
+// -----
+
+
+// CHECK:  HloModule
+func.func @main() -> !mhlo.token {
+  %0 = "mhlo.after_all"() : () -> !mhlo.token
+  func.return %0 : !mhlo.token
+}
+
+// CHECK:  ROOT [[TOKEN:%.*]] = token[] after-all()
 
 // -----
 
@@ -95,114 +116,6 @@ func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x128xf32> {
 // CHECK-SAME{LITERAL}: replica_groups={{0,2,4,6},{1,3,5,7}}
 // CHECK-SAME: dimensions={1}
 // CHECK-SAME: use_global_device_ids=true
-
-// -----
-
-// CHECK:  HloModule
-func.func @all_gather_0(%arg1: tensor<128x32xf32>) -> tensor<128x128xf32> attributes {execution_thread = "main"} {
-  %0 = "mhlo.all_gather"(%arg1) {
-    all_gather_dim = 1 : i64,
-    channel_handle = #mhlo.channel_handle<handle = 1, type = 0>,
-    shard_count = 4,
-    replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>,
-    use_global_device_ids
-  } : (tensor<128x32xf32>) -> tensor<128x128xf32>
-  return %0 : tensor<128x128xf32>
-}
-
-func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x128xf32> {
-  %0 = "mhlo.async_start"(%arg0) {called_computation = @all_gather_0, execution_thread = "main"} : (tensor<128x32xf32>) -> !mhlo.async_bundle<tensor<128x32xf32>, tensor<128x128xf32>>
-  %1 = "mhlo.async_done"(%0) {called_computation = @all_gather_0, execution_thread = "main"} : (!mhlo.async_bundle<tensor<128x32xf32>, tensor<128x128xf32>>) -> tensor<128x128xf32>
-  return %1 : tensor<128x128xf32>
-}
-
-// CHECK: ENTRY
-// CHECK: %[[INPUT:.*]] = f32[128,32] parameter(0)
-// CHECK: %[[OUTPUT:.*]] = f32[128,128] all-gather-start(f32[128,32] %[[INPUT]])
-// CHECK-SAME: channel_id=1
-// CHECK-SAME{LITERAL}: replica_groups={{0,2,4,6},{1,3,5,7}}
-// CHECK-SAME: dimensions={1}
-// CHECK-SAME: use_global_device_ids=true
-// CHECK: ROOT {{.*}} f32[128,128] all-gather-done(f32[128,128] %[[OUTPUT]]
-
-// -----
-
-// CHECK:  HloModule
-func.func @all_reduce_0(%arg0: tensor<10xf32>) -> tensor<10xf32> attributes {execution_thread = "main"} {
-  %0 = "mhlo.all_reduce"(%arg0) ({
-  ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
-    %max = mhlo.maximum %lhs, %rhs : tensor<f32>
-    "mhlo.return"(%max) : (tensor<f32>) -> ()
-  })
-  {
-    replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>,
-    channel_handle = #mhlo.channel_handle<
-      handle = 5,
-      type = 2
-    >,
-    use_global_device_ids
-  } : (tensor<10xf32>) -> tensor<10xf32>
-  func.return %0 : tensor<10xf32>
-}
-
-func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
-  %0 = "mhlo.async_start"(%arg0) {called_computation = @all_reduce_0, execution_thread = "main"} : (tensor<10xf32>) -> !mhlo.async_bundle<tensor<10xf32>, tensor<10xf32>>
-  %1 = "mhlo.async_done"(%0) {called_computation = @all_reduce_0, execution_thread = "main"} : (!mhlo.async_bundle<tensor<10xf32>, tensor<10xf32>>) -> tensor<10xf32>
-  return %1 : tensor<10xf32>
-}
-
-// CHECK: ENTRY
-// CHECK: %[[INPUT:.*]] = f32[10] parameter(0)
-// CHECK: %[[OUTPUT:.*]] = f32[10] all-reduce-start(f32[10] %[[INPUT]])
-// CHECK-SAME:  channel_id=5
-// CHECK-SAME{LITERAL}:  replica_groups={{0,2,4,6},{1,3,5,7}}
-// CHECK-SAME: use_global_device_ids=true
-// CHECK: ROOT {{.*}} f32[10] all-reduce-done(f32[10] %[[OUTPUT]]
-
-// -----
-
-// expected-error@-3 {{'mhlo.async_start' op can't be translated to XLA HLO}}
-func.func @all_reduce_0(%arg0: tensor<10xf32>, %arg1: tensor<1xf32>) -> (tensor<10xf32>, tensor<1xf32>) attributes {execution_thread = "main"} {
-  %0:2 = "mhlo.all_reduce"(%arg0, %arg1) ({
-  ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
-    %max = mhlo.maximum %lhs, %rhs : tensor<f32>
-    "mhlo.return"(%max) : (tensor<f32>) -> ()
-  })
-  {
-    replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>,
-    channel_handle = #mhlo.channel_handle<
-      handle = 5,
-      type = 2
-    >,
-    use_global_device_ids
-  } : (tensor<10xf32>, tensor<1xf32>) -> (tensor<10xf32>, tensor<1xf32>)
-  func.return %0#0, %0#1 : tensor<10xf32>, tensor<1xf32>
-}
-
-func.func @main(%arg0: tensor<10xf32>, %arg1: tensor<1xf32>) -> (tensor<10xf32>, tensor<1xf32>) {
-  %0 = "mhlo.async_start"(%arg0, %arg1) {called_computation = @all_reduce_0, execution_thread = "main"} : (tensor<10xf32>, tensor<1xf32>) -> !mhlo.async_bundle<tuple<tensor<10xf32>,tensor<1xf32>>, tuple<tensor<10xf32>,tensor<1xf32>>>
-  %1:2 = "mhlo.async_done"(%0) {called_computation = @all_reduce_0, execution_thread = "main"} : (!mhlo.async_bundle<tuple<tensor<10xf32>,tensor<1xf32>>, tuple<tensor<10xf32>,tensor<1xf32>>>) -> (tensor<10xf32>, tensor<1xf32>)
-  return %1#0, %1#1 : tensor<10xf32>, tensor<1xf32>
-}
-
-// -----
-
-// expected-error@-3 {{'mhlo.async_start' op can't be translated to XLA HLO}}
-func.func @all_gather_0(%arg0: tensor<8x2xf32>, %arg1: tensor<8x4xf32>) -> (tensor<8x2xf32>, tensor<8x4xf32>) attributes {execution_thread = "main"} {
-  %0:2 = "mhlo.all_gather"(%arg0, %arg1) {
-    all_gather_dim = 1 : i64,
-    channel_handle = #mhlo.channel_handle<handle = 1, type = 0>,
-    replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>,
-    use_global_device_ids
-  } : (tensor<8x2xf32>, tensor<8x4xf32>) -> (tensor<8x2xf32>, tensor<8x4xf32>)
-  func.return %0#0, %0#1 : tensor<8x2xf32>, tensor<8x4xf32>
-}
-
-func.func @main(%arg0: tensor<8x2xf32>, %arg1: tensor<8x4xf32>) -> (tensor<8x2xf32>, tensor<8x4xf32>) {
-  %0 = "mhlo.async_start"(%arg0, %arg1) {called_computation = @all_gather_0, execution_thread = "main"} : (tensor<8x2xf32>, tensor<8x4xf32>) -> !mhlo.async_bundle<tuple<tensor<8x2xf32>,tensor<8x4xf32>>, tuple<tensor<8x2xf32>,tensor<8x4xf32>>>
-  %1:2 = "mhlo.async_done"(%0) {called_computation = @all_gather_0, execution_thread = "main"} : (!mhlo.async_bundle<tuple<tensor<8x2xf32>,tensor<8x4xf32>>, tuple<tensor<8x2xf32>,tensor<8x4xf32>>>) -> (tensor<8x2xf32>, tensor<8x4xf32>)
-  return %1#0, %1#1 : tensor<8x2xf32>, tensor<8x4xf32>
-}
 
 // -----
 
@@ -476,7 +389,7 @@ func.func @main(%arg0: tensor<2xi32>) -> tensor<2xf32> {
 func.func @main(%arg0: tensor<4xi32>) -> tensor<1x2x3x4xi32> {
   // CHECK:  [[ARG:%.*]] = s32[4] parameter(0)
   // CHECK-NEXT:  ROOT %broadcast.2 = s32[1,2,3,4] broadcast(s32[4] [[ARG]]), dimensions={3}
-  %0 = "mhlo.broadcast"(%arg0) {broadcast_sizes = dense<[1,2,3]> : tensor<3xi64>} : (tensor<4xi32>) -> tensor<1x2x3x4xi32>
+  %0 = "mhlo.broadcast"(%arg0) <{broadcast_sizes = dense<[1,2,3]> : tensor<3xi64>}> : (tensor<4xi32>) -> tensor<1x2x3x4xi32>
   func.return %0 : tensor<1x2x3x4xi32>
 }
 
@@ -610,30 +523,6 @@ func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
 // CHECK:  ENTRY
 // CHECK:  [[ARG:%.*]] = f32[128,32] parameter(0)
 // CHECK:  ROOT [[RESULT:%.*]] = f32[128,32] collective-permute(f32[128,32] [[ARG]]), channel_id=1, source_target_pairs={{\{\{}}0,1},{1,2},{2,3}}
-
-// -----
-
-// CHECK:  HloModule
-func.func @collective_permute_0(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> attributes {execution_thread = "main"} {
-  %0 = "mhlo.collective_permute"(%arg0) {
-    source_target_pairs = dense<[[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>,
-    channel_handle = #mhlo.channel_handle<handle = 1, type = 0>
-  } : (tensor<128x32xf32>) -> tensor<128x32xf32>
-  func.return %0 : tensor<128x32xf32>
-}
-
-func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
-  %0 = "mhlo.async_start"(%arg0) {called_computation = @collective_permute_0, execution_thread = "main"} : (tensor<128x32xf32>) -> !mhlo.async_bundle<tensor<128x32xf32>, tensor<128x32xf32>>
-  %1 = "mhlo.async_done"(%0) {called_computation = @collective_permute_0, execution_thread = "main"} : (!mhlo.async_bundle<tensor<128x32xf32>, tensor<128x32xf32>>) -> tensor<128x32xf32>
-  return %1 : tensor<128x32xf32>
-}
-
-// CHECK: ENTRY
-// CHECK: %[[INPUT:.*]] = f32[128,32] parameter(0)
-// CHECK: %[[OUTPUT:.*]] = f32[128,32] collective-permute-start(f32[128,32] %[[INPUT]])
-// CHECK-SAME:  channel_id=1
-// CHECK-SAME{LITERAL}:  source_target_pairs={{0,1},{1,2},{2,3}}
-// CHECK: ROOT {{.*}} f32[128,32] collective-permute-done(f32[128,32] %[[OUTPUT]]
 
 // -----
 
@@ -878,27 +767,6 @@ func.func @main(%arg0: tensor<2xi32>) -> tensor<2xi32> {
 // CHECK:  ENTRY
 // CHECK:  [[ARG:%.*]] = s32[2] parameter(0)
 // CHECK:  ROOT %[[RESULT:.*]] = s32[2] copy(s32[2] [[ARG]])
-
-// -----
-
-// CHECK:  HloModule
-func.func @copy_0(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> attributes {execution_thread = "main"} {
-  %0 = "mhlo.copy"(%arg0) {cross_program_prefetch_index = 0 : i32} : (tensor<128x32xf32>) -> tensor<128x32xf32>
-  func.return %0 : tensor<128x32xf32>
-}
-
-func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
-  %0 = "mhlo.async_start"(%arg0) {called_computation = @copy_0, execution_thread = "main"} : (tensor<128x32xf32>) -> !mhlo.async_bundle<tensor<128x32xf32>, tensor<128x32xf32>>
-  %1 = "mhlo.async_done"(%0) {called_computation = @copy_0, execution_thread = "main"} : (!mhlo.async_bundle<tensor<128x32xf32>, tensor<128x32xf32>>) -> tensor<128x32xf32>
-  return %1 : tensor<128x32xf32>
-}
-
-// CHECK: ENTRY
-// CHECK: %[[INPUT:.*]] = f32[128,32] parameter(0)
-// CHECK: %[[OUTPUT:.*]] = (f32[128,32], f32[128,32], u32[]) copy-start(f32[128,32] %[[INPUT]])
-// CHECK-SAME:  cross_program_prefetch_index=0
-// CHECK: ROOT {{.*}} f32[128,32] copy-done((f32[128,32], f32[128,32], u32[]) %[[OUTPUT]]
-
 
 // -----
 
@@ -1751,10 +1619,25 @@ func.func @main(%arg0: tensor<2x2x2xi8>, %arg1: tensor<2x2x3xi8>) -> tensor<2x2x
 // -----
 
 // CHECK:  HloModule
+func.func @main(%arg0: tensor<10x16xbf16>, %arg1: tensor<32x20xbf16>, %meta: tensor<10x2xui16>) -> tensor<10x20xf32> {
+  // CHECK:  dot(bf16[10,16] %{{.*}}, bf16[32,20] %{{.*}}, u16[10,2] %{{.*}}), lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4
+  %0 = "mhlo.sparse_dot"(%arg0, %arg1, %meta) {
+    lhs_sparsity = #mhlo.sparsity<dimension=1, n=2, m=4>,
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_contracting_dimensions = [1],
+      rhs_contracting_dimensions = [0]
+    >,
+    precision_config = []} : (tensor<10x16xbf16>, tensor<32x20xbf16>, tensor<10x2xui16>) -> tensor<10x20xf32>
+  func.return %0 : tensor<10x20xf32>
+}
+
+// -----
+
+// CHECK:  HloModule
 func.func @main(%arg0: tensor<3x4xi32>, %arg1: tensor<4x5xi32>) -> tensor<3x5xi32> {
   // Simple einsum is lowered to HLO dot op.
   // CHECK:  dot(s32[3,4] %{{.*}}, s32[4,5] %{{.*}}), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  %0 = "mhlo.einsum"(%arg0, %arg1) {einsum_config = "ab,bc->ac"} : (tensor<3x4xi32>, tensor<4x5xi32>) -> tensor<3x5xi32>
+  %0 = "mhlo.einsum"(%arg0, %arg1) <{einsum_config = "ab,bc->ac"}> : (tensor<3x4xi32>, tensor<4x5xi32>) -> tensor<3x5xi32>
   func.return %0 : tensor<3x5xi32>
 }
 
@@ -1762,7 +1645,7 @@ func.func @main(%arg0: tensor<3x4xi32>, %arg1: tensor<4x5xi32>) -> tensor<3x5xi3
 
 // CHECK:  HloModule
 func.func @main(%arg0: tensor<3x9xf32>) -> tensor<3x5xcomplex<f32>> {
-  %0 = "mhlo.fft"(%arg0) {fft_length = dense<9> : tensor<1xi64>, fft_type = #mhlo<fft_type RFFT>} : (tensor<3x9xf32>) -> tensor<3x5xcomplex<f32>>
+  %0 = "mhlo.fft"(%arg0) <{fft_length = dense<9> : tensor<1xi64>, fft_type = #mhlo<fft_type RFFT>}> : (tensor<3x9xf32>) -> tensor<3x5xcomplex<f32>>
   func.return %0 : tensor<3x5xcomplex<f32>>
 }
 
@@ -1783,7 +1666,7 @@ func.func @main(%arg0: tensor<200x100x300xf32>, %arg1: tensor<10x2xi32>) -> tens
   // CHECK-SAME:  index_vector_dim=1
   // CHECK-SAME:  slice_sizes={1,1,300}
   // CHECK-SAME:  indices_are_sorted=true
-  %0 = "mhlo.gather"(%arg0, %arg1) {
+  %0 = "mhlo.gather"(%arg0, %arg1) <{
     dimension_numbers = #mhlo.gather<
       collapsed_slice_dims = [0, 1],
       index_vector_dim = 1,
@@ -1792,16 +1675,45 @@ func.func @main(%arg0: tensor<200x100x300xf32>, %arg1: tensor<10x2xi32>) -> tens
     >,
     indices_are_sorted = true,
     slice_sizes = dense<[1, 1, 300]> : tensor<3xi64>
-  } : (tensor<200x100x300xf32>, tensor<10x2xi32>) -> tensor<10x300xf32>
+  }> : (tensor<200x100x300xf32>, tensor<10x2xi32>) -> tensor<10x300xf32>
   func.return %0 : tensor<10x300xf32>
 }
 
 // -----
 
 // CHECK:  HloModule
+func.func @main(%arg0: tensor<200x100x300xf32>, %arg1: tensor<100x200x1xi32>) -> tensor<100x200x300xf32> {
+  // CHECK:  [[ARG0:%.*]] = f32[200,100,300] parameter(0)
+  // CHECK:  [[ARG1:%.*]] = s32[100,200,1] parameter(1)
+  // CHECK:  f32[100,200,300] gather(f32[200,100,300] [[ARG0]], s32[100,200,1] [[ARG1]])
+  // CHECK-SAME:  offset_dims={2}
+  // CHECK-SAME:  collapsed_slice_dims={}
+  // CHECK-SAME:  start_index_map={2}
+  // CHECK-SAME:  operand_batching_dims={0,1}
+  // CHECK-SAME:  start_indices_batching_dims={1,0}
+  // CHECK-SAME:  index_vector_dim=2
+  // CHECK-SAME:  slice_sizes={1,1,300}
+  // CHECK-SAME:  indices_are_sorted=true
+  %0 = "mhlo.gather"(%arg0, %arg1) <{
+    dimension_numbers = #mhlo.gather<
+      operand_batching_dims = [0, 1],
+      start_indices_batching_dims = [1, 0],
+      index_vector_dim = 2,
+      offset_dims = [2],
+      start_index_map = [2],
+    >,
+    indices_are_sorted = true,
+    slice_sizes = dense<[1, 1, 300]> : tensor<3xi64>
+  }> : (tensor<200x100x300xf32>, tensor<100x200x1xi32>) -> tensor<100x200x300xf32>
+  func.return %0 : tensor<100x200x300xf32>
+}
+
+// -----
+
+// CHECK:  HloModule
 func.func @main(%arg: tensor<4x2xf32>, %size: tensor<i32>) -> tensor<i32> {
-  %0 = "mhlo.set_dimension_size"(%arg, %size) {dimension = 1 : i64} : (tensor<4x2xf32>, tensor<i32>) -> tensor<4x2xf32>
-  %1 = "mhlo.get_dimension_size"(%0) {dimension = 1 : i64} : (tensor<4x2xf32>) -> tensor<i32>
+  %0 = "mhlo.set_dimension_size"(%arg, %size) <{dimension = 1 : i64}> : (tensor<4x2xf32>, tensor<i32>) -> tensor<4x2xf32>
+  %1 = "mhlo.get_dimension_size"(%0) <{dimension = 1 : i64}> : (tensor<4x2xf32>) -> tensor<i32>
   func.return %1 : tensor<i32>
 }
 
@@ -1817,7 +1729,7 @@ func.func @main(%arg: tensor<4x2xf32>, %size: tensor<i32>) -> tensor<i32> {
 // CHECK:  HloModule
 func.func @main(%arg: tensor<?x4xf32, #mhlo.type_extensions<bounds = [8, ?]>>) -> tensor<8x4xf32> {
   %size = mhlo.constant dense<8> : tensor<i32>
-  %1 = "mhlo.set_dimension_size"(%arg, %size) {dimension = 0 : i64} : (tensor<?x4xf32, #mhlo.type_extensions<bounds = [8, ?]>>, tensor<i32>) -> tensor<8x4xf32>
+  %1 = "mhlo.set_dimension_size"(%arg, %size) <{dimension = 0 : i64}> : (tensor<?x4xf32, #mhlo.type_extensions<bounds = [8, ?]>>, tensor<i32>) -> tensor<8x4xf32>
   func.return %1 : tensor<8x4xf32>
 }
 
@@ -1830,7 +1742,7 @@ func.func @main(%arg: tensor<?x4xf32, #mhlo.type_extensions<bounds = [8, ?]>>) -
 
 // CHECK:  HloModule
 func.func @main(%arg0: tuple<tensor<f32>, tensor<i32>>) -> tensor<f32> {
-  %0 = "mhlo.get_tuple_element"(%arg0) {index = 0 : i32} : (tuple<tensor<f32>, tensor<i32>>) -> tensor<f32>
+  %0 = "mhlo.get_tuple_element"(%arg0) <{index = 0 : i32}> : (tuple<tensor<f32>, tensor<i32>>) -> tensor<f32>
   func.return %0 : tensor<f32>
 }
 
@@ -1842,7 +1754,7 @@ func.func @main(%arg0: tuple<tensor<f32>, tensor<i32>>) -> tensor<f32> {
 
 // CHECK:  HloModule
 func.func @main(%arg0: !mhlo.token) -> tuple<tuple<tensor<3x3xi32>, tensor<i1>>, !mhlo.token> {
-  %0:3 = "mhlo.infeed"(%arg0) {infeed_config = "foobar", layout=[[0, 1], [0]]} : (!mhlo.token) -> (tensor<3x3xi32>, tensor<i1>, !mhlo.token)
+  %0:3 = "mhlo.infeed"(%arg0) <{infeed_config = "foobar", layout=[[0, 1], [0]]}> : (!mhlo.token) -> (tensor<3x3xi32>, tensor<i1>, !mhlo.token)
   %1 = "mhlo.tuple"(%0#0, %0#1) : (tensor<3x3xi32>, tensor<i1>) -> tuple<tensor<3x3xi32>, tensor<i1>>
   %2 = "mhlo.tuple"(%1, %0#2) : (tuple<tensor<3x3xi32>, tensor<i1>>, !mhlo.token) -> tuple<tuple<tensor<3x3xi32>, tensor<i1>>, !mhlo.token>
 
@@ -1861,7 +1773,7 @@ func.func @main(%arg0: !mhlo.token) -> tuple<tuple<tensor<3x3xi32>, tensor<i1>>,
 
 // CHECK:  HloModule
 func.func @main(%arg0: !mhlo.token) -> tensor<3x3xi32> {
-  %0:2 = "mhlo.infeed"(%arg0) {infeed_config = "foobar", layout=[[0,1]]} : (!mhlo.token) -> (tensor<3x3xi32>, !mhlo.token)
+  %0:2 = "mhlo.infeed"(%arg0) <{infeed_config = "foobar", layout=[[0,1]]}> : (!mhlo.token) -> (tensor<3x3xi32>, !mhlo.token)
   func.return %0#0 : tensor<3x3xi32>
 }
 
@@ -1877,7 +1789,7 @@ func.func @main(%arg0: !mhlo.token) -> tensor<3x3xi32> {
 // CHECK:  HloModule
 
 func.func @main(%arg0: !mhlo.token) -> !mhlo.token {
-  %0 = "mhlo.infeed"(%arg0) {infeed_config = "foobar", layout = [], xla_shape = "((), token[])"} : (!mhlo.token) -> !mhlo.token
+  %0 = "mhlo.infeed"(%arg0) <{infeed_config = "foobar", layout = [], xla_shape = "((), token[])"}> : (!mhlo.token) -> !mhlo.token
   func.return %0 : !mhlo.token
 }
 
@@ -2030,7 +1942,7 @@ func.func @main(%token: !mhlo.token) -> !mhlo.token {
 
 // CHECK:  HloModule
 func.func @main(%arg: tensor<4x6xf32>, %pad: tensor<f32>) -> tensor<13x19xf32> {
-  %0 = "mhlo.pad"(%arg, %pad) {edge_padding_high = dense<[4,5]> : tensor<2xi64>, edge_padding_low = dense<[2,3]> : tensor<2xi64>, interior_padding = dense<1> : tensor<2xi64>} : (tensor<4x6xf32>, tensor<f32>) -> tensor<13x19xf32>
+  %0 = "mhlo.pad"(%arg, %pad) <{edge_padding_high = dense<[4,5]> : tensor<2xi64>, edge_padding_low = dense<[2,3]> : tensor<2xi64>, interior_padding = dense<1> : tensor<2xi64>}> : (tensor<4x6xf32>, tensor<f32>) -> tensor<13x19xf32>
   func.return %0 : tensor<13x19xf32>
 }
 
@@ -2103,69 +2015,6 @@ func.func @main(%token: !mhlo.token) -> !mhlo.token {
 // CHECK-NEXT:  ROOT [[TOKEN:%.*]] =   token[] get-tuple-element(((), token[]) [[RECV_DONE]]), index=1
 
 // -----
-
-// CHECK:  HloModule
-
-func.func @recv_0(%token: !mhlo.token) -> (!mhlo.token) attributes {execution_thread = "main"} {
-  %0 = "mhlo.recv"(%token) {
-    channel_handle = #mhlo.channel_handle<
-      handle = 5,
-      type = 1  // Device to device channel
-    >,
-    is_host_transfer = false
-  } : (!mhlo.token) -> (!mhlo.token)
-  func.return %0 : !mhlo.token
-}
-
-func.func @main(%token: !mhlo.token) -> (!mhlo.token) {
-  %0 = "mhlo.async_start"(%token) {called_computation = @recv_0, execution_thread = "main"} : (!mhlo.token) -> !mhlo.async_bundle<!mhlo.token, !mhlo.token, tensor<i32>>
-  %2 = "mhlo.async_done"(%0) {called_computation = @recv_0, execution_thread = "main"} : (!mhlo.async_bundle<!mhlo.token, !mhlo.token, tensor<i32>>) -> (!mhlo.token)
-  return %2 : !mhlo.token
-}
-
-// CHECK:  ENTRY
-// CHECK:  [[TOKEN:%.*]] = token[] parameter(0)
-// CHECK:  [[RECV:%.*]] = ((), u32[], token[]) recv(token[] [[TOKEN]]), channel_id=5
-// CHECK:  ((), token[]) recv-done(((), u32[], token[]) [[RECV]]), channel_id=5
-
-// -----
-
-// CHECK:  HloModule
-func.func @recv_0(%token: !mhlo.token) -> (tensor<3x4xi32>, !mhlo.token) attributes {execution_thread = "main"} {
-  %0:2 = "mhlo.recv"(%token) {
-    channel_handle = #mhlo.channel_handle<
-      handle = 5,
-      type = 3  // Host to device channel
-    >,
-    is_host_transfer = true
-  } : (!mhlo.token) -> (tensor<3x4xi32>, !mhlo.token)
-  func.return %0#0, %0#1 : tensor<3x4xi32>, !mhlo.token
-}
-
-func.func @main(%token: !mhlo.token) -> (tensor<3x4xi32>, !mhlo.token) {
-  %0 = "mhlo.async_start"(%token) {called_computation = @recv_0, execution_thread = "main", mhlo.sharding = "{{maximal device=0}, {maximal device=0}, {maximal device=0}}"} : (!mhlo.token) -> !mhlo.async_bundle<!mhlo.token, tuple<tensor<3x4xi32>, !mhlo.token>, tensor<i32>>
-  %1, %2 = "mhlo.async_done"(%0) {called_computation = @recv_0, execution_thread = "main", mhlo.sharding = "{{maximal device=0}, {maximal device=0}}"} : (!mhlo.async_bundle<!mhlo.token, tuple<tensor<3x4xi32>, !mhlo.token>, tensor<i32>>) -> (tensor<3x4xi32>, !mhlo.token)
-  return %1, %2 : tensor<3x4xi32>, !mhlo.token
-}
-
-// CHECK:  ENTRY
-// CHECK:  [[TOKEN:%.*]] = token[] parameter(0)
-// CHECK:  [[RECV:%.*]] = (s32[3,4], u32[], token[]) recv(token[] [[TOKEN]]), channel_id=5, is_host_transfer
-// CHECK-SAME:  sharding={
-// CHECK-SAME:    {maximal device=0}, {maximal device=0}, {maximal device=0}
-// CHECK-SAME:  }
-// CHECK:  [[RECV_DONE:%.*]] = (s32[3,4], token[]) recv-done((s32[3,4], u32[], token[]) [[RECV]]), channel_id=5, is_host_transfer
-// CHECK-SAME:  sharding={
-// CHECK-SAME:    {maximal device=0}, {maximal device=0}
-// CHECK-SAME:  }
-// CHECK:  [[TUPLE0:%.*]] = s32[3,4] get-tuple-element((s32[3,4], token[]) [[RECV_DONE]]), index=0
-// CHECK-NOT: sharding=
-// CHECK:  [[TUPLE1:%.*]] = token[] get-tuple-element((s32[3,4], token[]) [[RECV_DONE]]), index=1
-// CHECK-NOT: sharding=
-// CHECK:  ROOT {{%.*}} = (s32[3,4], token[]) tuple(s32[3,4] [[TUPLE0]], token[] [[TUPLE1]])
-
-// -----
-
 
 // CHECK:  HloModule
 func.func @main(%arg0 : tensor<1x10xf32>, %arg1 : tensor<1x10xi32>, %arg2 : tensor<f32>, %arg3 : tensor<i32>) -> (tensor<1xf32>, tensor<1xi32>) {
@@ -2251,7 +2100,7 @@ func.func @main(%arg0 : tensor<10x11x12x13xf32>) -> tensor<10x11x12x13xf32> {
 // CHECK:  HloModule
 func.func @main(%mu: tensor<f32>, %sigma: tensor<f32>) -> tensor<2x3x5xf32> {
   %shape = mhlo.constant dense<[2, 3, 5]> : tensor<3xi64>
-  %0 = "mhlo.rng"(%mu, %sigma, %shape) {rng_distribution = #mhlo.rng_distribution<NORMAL>} : (tensor<f32>, tensor<f32>, tensor<3xi64>) -> tensor<2x3x5xf32>
+  %0 = "mhlo.rng"(%mu, %sigma, %shape) <{rng_distribution = #mhlo.rng_distribution<NORMAL>}> : (tensor<f32>, tensor<f32>, tensor<3xi64>) -> tensor<2x3x5xf32>
   func.return %0 : tensor<2x3x5xf32>
 }
 
@@ -2267,7 +2116,7 @@ func.func @main() -> tensor<2x3x5xf32> {
   %0 = mhlo.constant dense<0.000000e+00> : tensor<f32>
   %1 = mhlo.constant dense<1.000000e+00> : tensor<f32>
   %2 = mhlo.constant dense<[2, 3, 5]> : tensor<3xi64>
-  %3 = "mhlo.rng"(%0, %1, %2) {rng_distribution = #mhlo.rng_distribution<UNIFORM>} : (tensor<f32>, tensor<f32>, tensor<3xi64>) -> tensor<2x3x5xf32>
+  %3 = "mhlo.rng"(%0, %1, %2) <{rng_distribution = #mhlo.rng_distribution<UNIFORM>}> : (tensor<f32>, tensor<f32>, tensor<3xi64>) -> tensor<2x3x5xf32>
   func.return %3 : tensor<2x3x5xf32>
 }
 
@@ -2304,6 +2153,36 @@ func.func @main(%input_tensor: tensor<200x100x300xf32>, %scatter_indices: tensor
 // CHECK:  [[VAL_3:%.*]] = f32[10,300] parameter(2)
 // CHECK:  ROOT
 // CHECK-SAME:  f32[200,100,300] scatter(f32[200,100,300] [[VAL_1]], s32[10,2] [[VAL_2]], f32[10,300] [[VAL_3]]), update_window_dims={1}, inserted_window_dims={0,1}, scatter_dims_to_operand_dims={0,1}, index_vector_dim=1, indices_are_sorted=true, unique_indices=true, to_apply=[[COMPUTATION]]
+
+// -----
+
+// CHECK:  HloModule
+func.func @main(%input_tensor: tensor<200x100x300xf32>, %scatter_indices: tensor<100x200x1xi32>, %updates: tensor<100x200x300xf32>) -> tensor<200x100x300xf32> {
+  %0 = "mhlo.scatter" (%input_tensor, %scatter_indices, %updates) ({
+  ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
+    %add = mhlo.add %lhs, %rhs : tensor<f32>
+    "mhlo.return"(%add) : (tensor<f32>) -> ()
+  }) {
+    scatter_dimension_numbers = #mhlo.scatter<
+      update_window_dims = [2],
+      input_batching_dims = [0, 1],
+      scatter_indices_batching_dims = [1, 0],
+      scatter_dims_to_operand_dims = [2],
+      index_vector_dim = 2
+    >,
+    indices_are_sorted = true,
+    unique_indices = true
+  } : (tensor<200x100x300xf32>, tensor<100x200x1xi32>, tensor<100x200x300xf32>) -> tensor<200x100x300xf32>
+  func.return %0 : tensor<200x100x300xf32>
+}
+
+// CHECK:  [[COMPUTATION:%.*]] ({{.*}}: f32[], {{.*}}: f32[]) -> f32[]
+// CHECK:  ENTRY
+// CHECK:  [[VAL_1:%.*]] = f32[200,100,300] parameter(0)
+// CHECK:  [[VAL_2:%.*]] = s32[100,200,1] parameter(1)
+// CHECK:  [[VAL_3:%.*]] = f32[100,200,300] parameter(2)
+// CHECK:  ROOT
+// CHECK-SAME:  f32[200,100,300] scatter(f32[200,100,300] [[VAL_1]], s32[100,200,1] [[VAL_2]], f32[100,200,300] [[VAL_3]]), update_window_dims={2}, inserted_window_dims={}, scatter_dims_to_operand_dims={2}, input_batching_dims={0,1}, scatter_indices_batching_dims={1,0}, index_vector_dim=2, indices_are_sorted=true, unique_indices=true, to_apply=[[COMPUTATION]]
 
 // -----
 
@@ -2442,58 +2321,6 @@ func.func @main(%token: !mhlo.token) -> !mhlo.token {
 // -----
 
 // CHECK:  HloModule
-func.func @send_0(%arg: tensor<3x4xi32>, %token: !mhlo.token) -> !mhlo.token attributes {execution_thread = "main"} {
-  %0 = "mhlo.send"(%arg, %token) {
-    channel_handle = #mhlo.channel_handle<
-      handle = 5,
-      type = 2  // Device to host channel
-    >,
-    is_host_transfer = true
-  } : (tensor<3x4xi32>, !mhlo.token) -> !mhlo.token
-  func.return %0 : !mhlo.token
-}
-
-func.func @main(%arg: tensor<3x4xi32>, %token: !mhlo.token) -> !mhlo.token {
-  %0 = "mhlo.async_start"(%arg, %token) {called_computation = @send_0, execution_thread = "main"} : (tensor<3x4xi32>, !mhlo.token) -> !mhlo.async_bundle<tuple<tensor<3x4xi32>, !mhlo.token>, !mhlo.token, tensor<i32>>
-  %1 = "mhlo.async_done"(%0) {called_computation = @send_0, execution_thread = "main"} : (!mhlo.async_bundle<tuple<tensor<3x4xi32>, !mhlo.token>, !mhlo.token, tensor<i32>>) -> !mhlo.token
-  return %1 : !mhlo.token
-}
-
-// CHECK:  ENTRY
-// CHECK:  [[ARG:%.*]] = s32[3,4] parameter(0)
-// CHECK:  [[TOKEN:%.*]] = token[] parameter(1)
-// CHECK:  [[SEND:%.*]] = (s32[3,4], u32[], token[]) send(s32[3,4] [[ARG]], token[] [[TOKEN]]), channel_id=5, is_host_transfer
-// CHECK:  ROOT
-// CHECK-SAME:  token[] send-done((s32[3,4], u32[], token[]) [[SEND]]), channel_id=5
-
-// -----
-
-// CHECK:  HloModule
-func.func @send_0(%token: !mhlo.token) -> !mhlo.token attributes {execution_thread = "main"} {
-  %0 = "mhlo.send"(%token) {
-    channel_handle = #mhlo.channel_handle<
-      handle = 5,
-      type = 1  // Device to device channel
-    >
-  } : (!mhlo.token) -> !mhlo.token
-  func.return %0 : !mhlo.token
-}
-
-func.func @main(%token: !mhlo.token) -> !mhlo.token {
-  %0 = "mhlo.async_start"(%token) {called_computation = @send_0, execution_thread = "main"} : (!mhlo.token) -> !mhlo.async_bundle<!mhlo.token, !mhlo.token, tensor<i32>>
-  %1 = "mhlo.async_done"(%0) {called_computation = @send_0, execution_thread = "main"} : (!mhlo.async_bundle<!mhlo.token, !mhlo.token, tensor<i32>>) -> !mhlo.token
-  return %1 : !mhlo.token
-}
-
-// CHECK:  ENTRY
-// CHECK:  [[TOKEN:%.*]] = token[] parameter(0)
-// CHECK:  [[SEND:%.*]] = ((), u32[], token[]) send(() [[UNIT:%.*]], token[] [[TOKEN]]), channel_id=5
-// CHECK:  ROOT
-// CHECK-SAME:  token[] send-done(((), u32[], token[]) [[SEND]]), channel_id=5
-
-// -----
-
-// CHECK:  HloModule
 func.func @main(%arg: tensor<4x4xf32>, %size: tensor<i32>) -> tensor<4x4xf32> {
   %0 = "mhlo.set_dimension_size"(%arg, %size) {dimension = 1 : i64} : (tensor<4x4xf32>, tensor<i32>) -> tensor<4x4xf32>
   func.return %0 : tensor<4x4xf32>
@@ -2509,7 +2336,7 @@ func.func @main(%arg: tensor<4x4xf32>, %size: tensor<i32>) -> tensor<4x4xf32> {
 
 // CHECK:  HloModule
 func.func @main(%arg: tensor<3x4xi32>) -> tensor<1x2xi32> {
-  %0 = "mhlo.slice"(%arg) {start_indices = dense<[1, 0]> : tensor<2xi64>, limit_indices = dense<[2, 4]> : tensor<2xi64>, strides = dense<[1, 2]> : tensor<2xi64>} : (tensor<3x4xi32>) -> tensor<1x2xi32>
+  %0 = "mhlo.slice"(%arg) <{start_indices = dense<[1, 0]> : tensor<2xi64>, limit_indices = dense<[2, 4]> : tensor<2xi64>, strides = dense<[1, 2]> : tensor<2xi64>}> : (tensor<3x4xi32>) -> tensor<1x2xi32>
   func.return %0 : tensor<1x2xi32>
 }
 
@@ -2522,7 +2349,7 @@ func.func @main(%arg: tensor<3x4xi32>) -> tensor<1x2xi32> {
 
 // CHECK:  HloModule
 func.func @main(%arg: tensor<3x4xi32>, %start1: tensor<i64>, %start2: tensor<i64>) -> tensor<1x4xi32> {
-  %0 = "mhlo.dynamic_slice"(%arg, %start1, %start2) {slice_sizes = dense<[1, 4]> : tensor<2xi64>} : (tensor<3x4xi32>, tensor<i64>, tensor<i64>) -> tensor<1x4xi32>
+  %0 = "mhlo.dynamic_slice"(%arg, %start1, %start2) <{slice_sizes = dense<[1, 4]> : tensor<2xi64>}> : (tensor<3x4xi32>, tensor<i64>, tensor<i64>) -> tensor<1x4xi32>
   func.return %0 : tensor<1x4xi32>
 }
 
@@ -2540,7 +2367,7 @@ func.func @main(%arg0: tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32> {
   // CHECK:  [[ARG:%.*]] = s32[1,2,3,4] parameter(0)
 
   // CHECK-NEXT:  ROOT %transpose.2 = s32[2,1,4,3] transpose(s32[1,2,3,4] [[ARG]]), dimensions={1,0,3,2}
-  %0 = "mhlo.transpose"(%arg0) {permutation = dense<[1, 0, 3, 2]> : tensor<4xi64>} : (tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32>
+  %0 = "mhlo.transpose"(%arg0) <{permutation = dense<[1, 0, 3, 2]> : tensor<4xi64>}> : (tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32>
   func.return %0 : tensor<2x1x4x3xi32>
 }
 
@@ -2799,7 +2626,7 @@ func.func @main(%arg: tensor<3xui64>) -> tuple<tensor<3xui64>, tensor<2x2xui32>>
 // CHECK:  [[GTE1:%.*]] = u32[2,2] get-tuple-element((u64[3], u32[2,2]) [[RNG]]), index=1
 // CHECK:  ROOT
 // CHECK-SAME: [[RES:%.*]] = (u64[3], u32[2,2]) tuple(u64[3] [[GTE0]], u32[2,2] [[GTE1]])
-  %0:2 = "mhlo.rng_bit_generator"(%arg) {rng_algorithm = #mhlo.rng_algorithm<PHILOX>} : (tensor<3xui64>) -> (tensor<3xui64>, tensor<2x2xui32>)
+  %0:2 = "mhlo.rng_bit_generator"(%arg) <{rng_algorithm = #mhlo.rng_algorithm<PHILOX>}> : (tensor<3xui64>) -> (tensor<3xui64>, tensor<2x2xui32>)
   %1 = "mhlo.tuple"(%0#0, %0#1) : (tensor<3xui64>, tensor<2x2xui32>) -> tuple<tensor<3xui64>, tensor<2x2xui32>>
   func.return %1 : tuple<tensor<3xui64>, tensor<2x2xui32>>
 }
@@ -2840,9 +2667,12 @@ func.func @main(%arg: tensor<3x4xf32>) -> tensor<3x4x1xf32> {
 func.func @main(%arg0: tensor<4x4xf32>, %arg1: tensor<3x4xf32>) -> (tensor<4x4xf32>, tensor<3x4xf32>) {
 // CHECK: %[[ARG0:.*]] = f32[4,4] parameter(0)
 // CHECK: %[[ARG1:.*]] = f32[3,4] parameter(1)
-// CHECK: %[[ARGS:.*]] = (f32[4,4], f32[3,4]) tuple(f32[4,4] %[[ARG0]], f32[3,4] %[[ARG1]])
-// CHECK: %[[RESULT:.*]] = (f32[4,4], f32[3,4]) opt-barrier((f32[4,4], f32[3,4]) %[[ARGS]])
-  %0, %1 = "mhlo.optimization_barrier"(%arg0, %arg1) : (tensor<4x4xf32>, tensor<3x4xf32>) -> (tensor<4x4xf32>, tensor<3x4xf32>)
+// CHECK: %[[ARGS:.*]] = (f32[4,4], f32[3,4]) tuple(f32[4,4] %[[ARG0]], f32[3,4] %[[ARG1]]), sharding={{\{}}{replicated}, {devices=[1,2]<=[2]}}
+// CHECK: %[[OPT:.*]] = (f32[4,4], f32[3,4]) opt-barrier((f32[4,4], f32[3,4]) %[[ARGS]]), sharding={{\{}}{replicated}, {devices=[1,2]<=[2]}}
+// CHECK: %[[GTE0:.*]] = f32[4,4] get-tuple-element((f32[4,4], f32[3,4]) %[[OPT]]), index=0, sharding={replicated}
+// CHECK: %[[GTE1:.*]] = f32[3,4] get-tuple-element((f32[4,4], f32[3,4]) %[[OPT]]), index=1, sharding={devices=[1,2]<=[2]}
+// CHECK: ROOT %[[ROOT:.*]] = (f32[4,4], f32[3,4]) tuple(f32[4,4] %[[GTE0]], f32[3,4] %[[GTE1]])
+  %0, %1 = "mhlo.optimization_barrier"(%arg0, %arg1) {mhlo.sharding = "{{replicated}, {devices=[1,2]<=[2]}}"} : (tensor<4x4xf32>, tensor<3x4xf32>) -> (tensor<4x4xf32>, tensor<3x4xf32>)
   func.return %0, %1 : tensor<4x4xf32>, tensor<3x4xf32>
 }
 
@@ -2908,55 +2738,6 @@ func.func @main(%arg0: tensor<4x2xf32>, %arg1: tensor<4x2xi32>, %init0: tensor<f
            window_strides = dense<[3, 1]> : tensor<2xi64> } : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) -> (tensor<2x2xf32>, tensor<2x2xi32>)
   func.return %0#0, %0#1 : tensor<2x2xf32>, tensor<2x2xi32>
 }
-// -----
-
-// CHECK: HloModule
-// CHECK: [[CALLED_COMPUTATION:%AsyncOp.*]] ([[ARG:.*]]: f32[10]) -> f32[20] {
-func.func @AsyncOp(%arg0: tensor<10xf32>) -> tensor<20xf32>
-  attributes {execution_thread = "thread"} {
-  %0 = "mhlo.custom_call"(%arg0) {call_target_name = "foo"} : (tensor<10xf32>) -> tensor<20xf32>
-  return %0 : tensor<20xf32>
-}
-
-// CHECK: ENTRY
-func.func @main(%arg0: tensor<10xf32>) -> tensor<20xf32> {
-  // CHECK: %[[ARG0:.*]] = f32[10] parameter(0)
-  // CHECK: %[[START:.*]] = ((f32[10]), f32[20], s32[]) async-start(f32[10] %[[ARG0]])
-  // CHECK-SAME: calls=[[CALLED_COMPUTATION]]
-  %0 = "mhlo.async_start"(%arg0) {called_computation = @AsyncOp, execution_thread = "thread"} : (tensor<10xf32>) -> !mhlo.async_bundle<tuple<tensor<10xf32>>, tensor<20xf32>, tensor<i32>>
-  // CHECK: %[[UPDATE:.*]] = ((f32[10]), f32[20], s32[]) async-update(((f32[10]), f32[20], s32[]) %[[START]])
-  %1 = "mhlo.async_update"(%0) {called_computation = @AsyncOp, execution_thread = "thread"} : (!mhlo.async_bundle<tuple<tensor<10xf32>>, tensor<20xf32>, tensor<i32>>) -> !mhlo.async_bundle<tuple<tensor<10xf32>>, tensor<20xf32>, tensor<i32>>
-  // CHECK: ROOT %{{.*}} = (f32[20]) async-done(((f32[10]), f32[20], s32[]) %[[UPDATE]])
-  %2 = "mhlo.async_done"(%1) {called_computation = @AsyncOp, execution_thread = "thread"} : (!mhlo.async_bundle<tuple<tensor<10xf32>>, tensor<20xf32>, tensor<i32>>) -> tensor<20xf32>
-  return %2 : tensor<20xf32>
-}
-
-// -----
-
-// CHECK: HloModule
-// CHECK: [[CALLED_COMPUTATION:%AsyncOp.*]] ([[ARG:.*]]: f32[10]) -> f32[20] {
-func.func @AsyncOp(%arg0: tensor<10xf32>) -> tensor<20xf32>
-  attributes {execution_thread = "thread"} {
-  %1 = "mhlo.custom_call"(%arg0) {call_target_name = "bar"} : (tensor<10xf32>) -> tensor<20xf32>
-  // CHECK: custom-call
-  // CHECK-SAME: custom_call_target="bar"
-  return %1 : tensor<20xf32>
-}
-
-// CHECK: ENTRY
-func.func @main(%arg0: tensor<10xf32>) -> tensor<20xf32> {
-  // CHECK: %[[ARG0:.*]] = f32[10] parameter(0)
-  // CHECK: %[[START:.*]] = ((f32[10]), f32[20], s32[]) async-start(f32[10] %[[ARG0]]), async_execution_thread="thread", calls=[[CALLED_COMPUTATION]],
-  // CHECK: %[[UPDATE:.*]] = ((f32[10]), f32[20], s32[]) async-update(((f32[10]), f32[20], s32[]) %[[START]])
-  // CHECK: ROOT
-  // CHECK-SAME: (f32[20]) async-done(((f32[10]), f32[20], s32[]) %[[UPDATE]])
-
-  %0 = "mhlo.async_start"(%arg0) {called_computation = @AsyncOp, execution_thread="thread"} : (tensor<10xf32>) -> !mhlo.async_bundle<tuple<tensor<10xf32>>, tensor<20xf32>, tensor<i32>>
-  %1 = "mhlo.async_update"(%0) {called_computation = @AsyncOp, execution_thread="thread"} : (!mhlo.async_bundle<tuple<tensor<10xf32>>, tensor<20xf32>, tensor<i32>>) -> !mhlo.async_bundle<tuple<tensor<10xf32>>, tensor<20xf32>, tensor<i32>>
-  %2 = "mhlo.async_done"(%1) {called_computation = @AsyncOp, execution_thread="thread"} : (!mhlo.async_bundle<tuple<tensor<10xf32>>, tensor<20xf32>, tensor<i32>>) -> tensor<20xf32>
-  return %2 : tensor<20xf32>
-}
-
 
 // -----
 
@@ -3027,7 +2808,7 @@ func.func @main(%arg: tensor<3x4xf32>) -> tensor<3x4xf32> {
 // CHECK: %[[ARG0:.*]] = f32[3,4] parameter(0)
 // CHECK: %[[TOK:.*]] = token[] after-all()
 // CHECK: ROOT %[[RESULT:.*]] = f32[3,4] add-dependency(f32[3,4] %[[ARG0]], token[] %[[TOK]])
-  %token = "mhlo.create_token"() : () -> !mhlo.token
+  %token = "mhlo.after_all"() : () -> !mhlo.token
   %0 = "mhlo.add_dependency"(%arg, %token) : (tensor<3x4xf32>, !mhlo.token) -> tensor<3x4xf32>
   func.return %0 : tensor<3x4xf32>
 }
@@ -3036,7 +2817,7 @@ func.func @main(%arg: tensor<3x4xf32>) -> tensor<3x4xf32> {
 
 // CHECK:  HloModule
 func.func @main(%arg: tensor<3x4xf32>) -> tensor<3x4xf32> attributes {execution_thread = "test_thread"} {
-  %token = "mhlo.create_token"() : () -> !mhlo.token
+  %token = "mhlo.after_all"() : () -> !mhlo.token
   %0 = "mhlo.add_dependency"(%arg, %token) : (tensor<3x4xf32>, !mhlo.token) -> tensor<3x4xf32>
   func.return %0 : tensor<3x4xf32>
 }

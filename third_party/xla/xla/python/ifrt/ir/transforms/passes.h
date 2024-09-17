@@ -18,11 +18,9 @@ limitations under the License.
 
 #include <memory>
 
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/Pass/Pass.h"
 
 namespace xla {
 namespace ifrt {
@@ -38,6 +36,18 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateSpmdExpansionPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateIfrtDuplicatedCalleeEliminationPass();
+
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+CreateIfrtMergeReshardsPass();
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateIfrtOutlineAtomProgramToModulePass();
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateIfrtVerifyDonationPass();
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateIfrtVerifyShardingSpecifiedPass();
 
 // Generated definitions. This should be placed after all Pass creations.
 #define GEN_PASS_REGISTRATION

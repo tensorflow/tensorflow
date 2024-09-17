@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -35,11 +36,10 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
+#include "xla/tsl/lib/core/bitmap.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/bitmap.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/status.h"
@@ -301,7 +301,7 @@ void SetScalarAtIndexImpl(MutableLiteralBase& literal,
 
 /* static */ absl::StatusOr<Literal> LiteralUtil::NanValue(
     PrimitiveType primitive_type) {
-  return primitive_util::PrimitiveTypeSwitch<StatusOr<Literal>>(
+  return primitive_util::PrimitiveTypeSwitch<absl::StatusOr<Literal>>(
       [&](auto primitive_type_constant) -> absl::StatusOr<Literal> {
         if constexpr (primitive_util::IsFloatingPointType(
                           primitive_type_constant)) {

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/collective_rma_distributed.h"
 
+#include <memory>
+
 #include "google/protobuf/any.pb.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
@@ -253,9 +255,9 @@ class CollRMADistTest
       DefineWorker(name, device_type, num_devices);
     }
     // All tests simulate requests from worker 0 to worker 1.
-    rma_.reset(new CollectiveRemoteAccessDistributed(
+    rma_ = std::make_unique<CollectiveRemoteAccessDistributed>(
         device_mgrs_[0], dev_resolvers_[dev0_worker_name], work_queue_, &wc_,
-        kStepId, "/job:worker/replica:0/task:0"));
+        kStepId, "/job:worker/replica:0/task:0");
 
     const int kNumElts = 8;
     expected_value_ = Tensor(DT_FLOAT, {kNumElts});

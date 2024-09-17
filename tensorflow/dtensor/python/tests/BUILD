@@ -65,6 +65,7 @@ pytype_strict_library(
         "//tensorflow/python/ops:stateless_random_ops_gen",
         "//tensorflow/python/ops:stateless_random_ops_v2_gen",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/util:numpy_compat",
         "//third_party/py/numpy",
         "@absl_py//absl/flags",
         "@absl_py//absl/testing:parameterized",

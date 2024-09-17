@@ -16,18 +16,18 @@ limitations under the License.
 #ifndef XLA_SERVICE_SOURCE_MAP_UTIL_H_
 #define XLA_SERVICE_SOURCE_MAP_UTIL_H_
 
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "xla/service/executable.h"
-#include "xla/status.h"
 
 namespace xla {
 namespace source_map_util {
 
 // Creates an INVALID_ARGUMENT status with the given format string.
 template <typename... Args>
-Status InvalidParameterArgument(const OpMetadata& op_metadata,
-                                const absl::FormatSpec<Args...>& format,
-                                const Args&... args) {
+absl::Status InvalidParameterArgument(const OpMetadata& op_metadata,
+                                      const absl::FormatSpec<Args...>& format,
+                                      const Args&... args) {
   std::string message = absl::StrFormat(format, args...);
   if (!op_metadata.source_file().empty()) {
     absl::StrAppendFormat(&message, " (%s:%d)", op_metadata.source_file(),
@@ -44,9 +44,10 @@ Status InvalidParameterArgument(const OpMetadata& op_metadata,
 // executable may be nullptr, but parameter_number should not be out of bounds
 // or a CHECK-failure may occur.
 template <typename... Args>
-Status InvalidParameterArgument(Executable* executable, int parameter_number,
-                                const absl::FormatSpec<Args...>& format,
-                                const Args&... args) {
+absl::Status InvalidParameterArgument(Executable* executable,
+                                      int parameter_number,
+                                      const absl::FormatSpec<Args...>& format,
+                                      const Args&... args) {
   if (executable != nullptr && executable->has_module()) {
     const HloModule& module = executable->module();
     const HloComputation& computation = *module.entry_computation();

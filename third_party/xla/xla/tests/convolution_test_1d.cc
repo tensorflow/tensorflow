@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/array2d.h"
 #include "xla/array4d.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/reference_util.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"

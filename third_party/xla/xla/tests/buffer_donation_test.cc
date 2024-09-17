@@ -26,10 +26,11 @@ limitations under the License.
 #include "xla/service/backend.h"
 #include "xla/service/executable.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/verified_hlo_module.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -80,8 +81,8 @@ class BufferDonationTest : public HloTestBase {
 
     TF_ASSERT_OK_AND_ASSIGN(auto stream, executor_->CreateStream());
 
-    se::StreamExecutorMemoryAllocator memory_allocator(
-        platform_, backend_->stream_executors());
+    auto& executors = backend_->stream_executors();
+    se::StreamExecutorMemoryAllocator memory_allocator(platform_, executors);
     ExecutableRunOptions run_options;
     run_options.set_stream(stream.get());
     run_options.set_allocator(&memory_allocator);

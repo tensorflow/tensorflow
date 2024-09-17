@@ -132,9 +132,8 @@ void TfLiteInterpreterOptionsSetErrorReporter(
   options->error_reporter_callback.user_data = user_data;
 }
 
-void TfLiteInterpreterOptionsAddRegistrationExternal(
-    TfLiteInterpreterOptions* options,
-    TfLiteRegistrationExternal* registration) {
+void TfLiteInterpreterOptionsAddOperator(TfLiteInterpreterOptions* options,
+                                         TfLiteOperator* registration) {
   options->op_registrations.push_back(registration);
 }
 
@@ -144,9 +143,8 @@ TfLiteStatus TfLiteInterpreterOptionsEnableCancellation(
   return kTfLiteOk;
 }
 
-static void InitTfLiteRegistration(
-    TfLiteRegistration* registration,
-    TfLiteRegistrationExternal* registration_external) {
+static void InitTfLiteRegistration(TfLiteRegistration* registration,
+                                   TfLiteOperator* registration_external) {
   registration->builtin_code = registration_external->builtin_code;
   registration->custom_name = registration_external->custom_name;
   registration->version = registration_external->version;
@@ -282,13 +280,13 @@ TfLiteStatus TfLiteTensorCopyToBuffer(const TfLiteTensor* tensor,
 namespace tflite {
 namespace internal {
 
-static TfLiteRegistration* RegistrationExternalToRegistration(
-    const TfLiteRegistrationExternal* registration_external) {
-  // All TfLiteRegistrationExternal objects are dynamically allocated via
-  // TfLiteRegistrationExternalCreate(), so they are guaranteed
+static TfLiteRegistration* OperatorToRegistration(
+    const TfLiteOperator* registration_external) {
+  // All TfLiteOperator objects are dynamically allocated via
+  // TfLiteOperatorCreate(), so they are guaranteed
   // to be mutable, hence the const_cast below should be safe.
   auto registration_external_non_const =
-      const_cast<TfLiteRegistrationExternal*>(registration_external);
+      const_cast<TfLiteOperator*>(registration_external);
   TfLiteRegistration* new_registration = new TfLiteRegistration{};
   InitTfLiteRegistration(new_registration, registration_external_non_const);
   return new_registration;
@@ -311,10 +309,10 @@ const TfLiteRegistration* CallbackOpResolver::FindOp(tflite::BuiltinOperator op,
     }
   }
 
-  // Try using newer RegistrationExternal API.
+  // Try using newer Operator API.
   if (op_resolver_callbacks_.find_builtin_op_external) {
-    // Get a RegistrationExternal object and create a Registration (V4) object.
-    const TfLiteRegistrationExternal* registration_external =
+    // Get a Operator object and create a Registration (V4) object.
+    const TfLiteOperator* registration_external =
         op_resolver_callbacks_.find_builtin_op_external(
             op_resolver_callbacks_.user_data,
             static_cast<TfLiteBuiltinOperator>(op), version);
@@ -325,7 +323,7 @@ const TfLiteRegistration* CallbackOpResolver::FindOp(tflite::BuiltinOperator op,
          registration_external->prepare != nullptr ||
          registration_external->async_kernel != nullptr)) {
       TfLiteRegistration* new_registration =
-          RegistrationExternalToRegistration(registration_external);
+          OperatorToRegistration(registration_external);
       temporary_builtin_registrations_.push_back(
           std::unique_ptr<TfLiteRegistration>(new_registration));
       return new_registration;
@@ -375,8 +373,8 @@ const TfLiteRegistration* CallbackOpResolver::FindOp(const char* op,
   }
 
   if (op_resolver_callbacks_.find_custom_op_external) {
-    // Get a RegistrationExternal object and create a Registration (V3) object.
-    const TfLiteRegistrationExternal* registration_external =
+    // Get a Operator object and create a Registration (V3) object.
+    const TfLiteOperator* registration_external =
         op_resolver_callbacks_.find_custom_op_external(
             op_resolver_callbacks_.user_data, op, version);
     if (registration_external && (registration_external->init != nullptr ||
@@ -384,7 +382,7 @@ const TfLiteRegistration* CallbackOpResolver::FindOp(const char* op,
                                   registration_external->invoke != nullptr ||
                                   registration_external->prepare != nullptr)) {
       TfLiteRegistration* new_registration =
-          RegistrationExternalToRegistration(registration_external);
+          OperatorToRegistration(registration_external);
       temporary_builtin_registrations_.push_back(
           std::unique_ptr<TfLiteRegistration>(new_registration));
       return new_registration;

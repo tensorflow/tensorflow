@@ -16,11 +16,12 @@ limitations under the License.
 #ifndef XLA_SERVICE_TUPLE_SIMPLIFIER_H_
 #define XLA_SERVICE_TUPLE_SIMPLIFIER_H_
 
-#include <utility>
-
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
 
@@ -33,11 +34,11 @@ class TupleSimplifier : public HloModulePass {
   ~TupleSimplifier() override {}
   absl::string_view name() const override { return "tuple-simplifier"; }
 
-  // Run tuple simplification on the given computation. Returns whether the
-  // computation was changed.
+  // Runs tuple simplification on the given module. Returns whether the module
+  // was changed.
   using HloPassInterface::Run;
   using HloPassInterface::RunOnModuleGroup;
-  StatusOr<bool> Run(
+  absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
@@ -47,7 +48,8 @@ class TupleSimplifier : public HloModulePass {
   // backend.
   bool exclude_entry_computation_;
 
-  // Collapse the following structure into just 'Tuple-shaped Op':
+  // Collapse the following structure into just 'Tuple-shaped Op', iff the
+  // sequence of GTE ops is order-preserving:
   //
   //   Tuple-shaped Op
   //         |
@@ -59,7 +61,7 @@ class TupleSimplifier : public HloModulePass {
   //         |
   //       Tuple
   //
-  StatusOr<bool> RemoveWholeTuple(HloInstruction* tuple);
+  absl::StatusOr<bool> RemoveWholeTuple(HloInstruction* tuple);
 };
 
 }  // namespace xla

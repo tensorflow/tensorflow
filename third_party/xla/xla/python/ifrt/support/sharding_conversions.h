@@ -17,14 +17,25 @@ limitations under the License.
 #define XLA_PYTHON_IFRT_SUPPORT_SHARDING_CONVERSIONS_H_
 
 #include "absl/status/statusor.h"
-#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
+#include "xla/python/ifrt/sharding.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace ifrt {
 namespace support {
+
+// Converts a Sharding to an OpSharding.
+//
+// The function currently supports only `ShardingParamSharding`. It assumes that
+// `sharding_param` is valid.
+//
+// Returns error if the given sharding is of a type for which conversion is
+// not supported.
+absl::StatusOr<OpSharding> ToOpSharding(const Sharding& sharding);
 
 // Converts ShardingParam and a device_mapping to OpSharding.
 //
@@ -34,8 +45,9 @@ namespace support {
 //
 // Returns error when `device_mapping` can't map the logical devices in
 // `sharding_param`.
-absl::StatusOr<OpSharding> ToOpSharding(const ShardingParam& sharding_param,
-                                        absl::Span<const int> device_mapping);
+absl::StatusOr<OpSharding> ToOpSharding(
+    const ShardingParam& sharding_param,
+    const tsl::RCReference<xla::ifrt::DeviceList>& device_mapping);
 
 // Converts ShardingParam to HloSharding.
 //

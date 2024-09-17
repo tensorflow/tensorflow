@@ -97,7 +97,7 @@ for your model:
 1. [Optimization flags](../../performance/model_optimization) allow you to
    specify the type of optimization to apply
    during conversion. The most commonly used optimization technique is
-   [post-training quanitization]().
+   [post-training quantization]().
 1. [Metadata flags](metadata) allow you to add metadata to the converted model
    which makes it easier to create platform specific wrapper code when deploying
    models on devices.
@@ -142,7 +142,7 @@ format model and a custom runtime environment for that model.
   converting your model.
 * See the [optimization overview](../../performance/model_optimization) for
   guidance on how to optimize your converted model using techniques like
-  [post-training quanitization](../../performance/post_training_quantization).
+  [post-training quantization](../../performance/post_training_quantization).
 * See the [Adding metadata overview](metadata) to learn how to add metadata to
   your models. Metadata provides other uses a description of your model as well
   as information that can be leveraged by code generators.

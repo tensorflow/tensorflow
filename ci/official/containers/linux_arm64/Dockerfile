@@ -1,5 +1,5 @@
 ################################################################################
-FROM ubuntu:20.04 as builder
+FROM ubuntu:20.04@sha256:fa17826afb526a9fc7250e0fbcbfd18d03fe7a54849472f86879d8bf562c629e as builder
 ################################################################################
 
 # Install devtoolset build dependencies
@@ -23,7 +23,7 @@ COPY apt.conf /etc/apt/
 RUN /build_patchelf.sh
 
 ################################################################################
-FROM nvidia/cuda:12.3.1-devel-ubuntu20.04 as devel
+FROM nvidia/cuda:12.3.2-devel-ubuntu20.04@sha256:cf1404fc25ae571d26e2185d37bfa3258124ab24eb96b6ac930ac71908970d0b as devel
 ################################################################################
 COPY --from=builder /dt10 /dt10
 COPY --from=builder /patchelf/patchelf_0.14.3-1_arm64.deb /patchelf/patchelf_0.14.3-1_arm64.deb
@@ -61,6 +61,9 @@ RUN echo $CACHEBUSTER
 COPY devel.usertools /usertools
 COPY devel.bashrc /root/.bashrc
 COPY ld.so.conf /dt10/etc/
+
+# Make sure clang is on the path
+RUN ln -s /usr/lib/llvm-18/bin/clang /usr/bin/clang
 
 # Setup JAX Python environment.
 FROM devel as jax

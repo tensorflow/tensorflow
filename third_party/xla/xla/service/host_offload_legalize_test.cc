@@ -23,6 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -31,13 +32,10 @@ limitations under the License.
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/util.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
-
-namespace m = ::xla::match;
 
 namespace xla {
 namespace {
@@ -78,7 +76,7 @@ class HostOffloadLegalizeTest : public HloTestBase {
 
 TEST_F(HostOffloadLegalizeTest, NoCopyWithOptBarrierMoreElaborate) {
   const std::string& hlo_string = R"(
-HloModule jit_f, entry_computation_layout={(f32[16,256]{0,1})->f32[16,256]{0,1}}
+HloModule jit_f, entry_computation_layout={(f32[16,256]{0,1})->f32[16,256]{1,0}}
 
 ENTRY main.24 {
   Arg_0.1 = f32[16,256]{0,1} parameter(0)
@@ -112,14 +110,163 @@ ENTRY main.24 {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
-
   EXPECT_TRUE(changed);
   XLA_VLOG_LINES(1, module->ToString());
+
   HloInstruction* custom_call = FindInstruction(module.get(), "custom-call.18");
+  ASSERT_NE(custom_call, nullptr);
   EXPECT_EQ(custom_call->users()[0]->opcode(), HloOpcode::kCopy);
   EXPECT_EQ(custom_call->shape().layout(), LayoutUtil::MakeLayout({0, 1}));
+  EXPECT_EQ(custom_call->users()[0]->shape().layout(),
+            LayoutUtil::MakeLayout({1, 0}));
+}
+
+TEST_F(HostOffloadLegalizeTest, XposeCopyOnParameterStreaming) {
+  const std::string& hlo_string = R"(
+HloModule jit_f, entry_computation_layout={(f32[16,256]{0,1},f32[16,256]{0,1:T(8,128)S(5)})->f32[16,256]{1,0}}
+
+ENTRY main.24 {
+  Arg_0.1 = f32[16,256]{0,1} parameter(0)
+  Arg_0.2 = f32[16,256]{0,1:T(8,128)} parameter(1)
+  cp0 = f32[16,256]{1,0} copy(Arg_0.2)
+  cosine.4 = f32[16,256]{0,1} cosine(Arg_0.1)
+  custom-call.5 = f32[16,256]{0,1} custom-call(cosine.4), custom_call_target="MoveToHost"
+  sine.3 = f32[16,256]{0,1} sine(Arg_0.1)
+  cosine.7 = f32[16,256]{0,1} cosine(sine.3)
+  custom-call.8 = f32[16,256]{0,1} custom-call(cosine.7), custom_call_target="MoveToHost"
+  constant.2 = f32[] constant(1)
+  cp1 = f32[16,256]{1,0} copy(custom-call.8)
+  tuple.11 = (f32[16,256]{0,1}, f32[16,256]{1,0}, f32[16,256]{1,0}, f32[]) tuple(custom-call.5, cp1, cp0, constant.2)
+  opt-barrier.12 = (f32[16,256]{0,1}, f32[16,256]{1,0}, f32[16,256]{1,0}, f32[]) opt-barrier(tuple.11)
+  get-tuple-element.16 = f32[] get-tuple-element(opt-barrier.12), index=3
+  broadcast.20 = f32[16,256]{0,1} broadcast(get-tuple-element.16), dimensions={}
+  get-tuple-element.15 = f32[16,256]{1,0} get-tuple-element(opt-barrier.12), index=2
+  custom-call.19 = f32[16,256]{1,0} custom-call(get-tuple-element.15), custom_call_target="MoveToDevice"
+  multiply.21 = f32[16,256]{0,1} multiply(broadcast.20, custom-call.19)
+  cp2 = f32[16,256]{1,0} copy(multiply.21)
+  get-tuple-element.14 = f32[16,256]{1,0} get-tuple-element(opt-barrier.12), index=1
+  custom-call.18 = f32[16,256]{1,0} custom-call(get-tuple-element.14), custom_call_target="MoveToDevice"
+  multiply.22 = f32[16,256]{1,0} multiply(cp2, custom-call.18)
+  get-tuple-element.13 = f32[16,256]{0,1} get-tuple-element(opt-barrier.12), index=0
+  custom-call.17 = f32[16,256]{0,1} custom-call(get-tuple-element.13), custom_call_target="MoveToDevice"
+  cp3 = f32[16,256]{1,0} copy(custom-call.17)
+  ROOT multiply.23 = f32[16,256]{1,0} multiply(multiply.22, cp3)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+  EXPECT_TRUE(changed);
+  XLA_VLOG_LINES(1, module->ToString());
+
+  HloInstruction* custom_call = FindInstruction(module.get(), "custom-call.18");
+  ASSERT_NE(custom_call, nullptr);
+  EXPECT_EQ(custom_call->users()[0]->opcode(), HloOpcode::kCopy);
+  EXPECT_EQ(custom_call->shape().layout(), LayoutUtil::MakeLayout({0, 1}));
+  EXPECT_EQ(custom_call->users()[0]->shape().layout(),
+            LayoutUtil::MakeLayout({1, 0}));
+
+  custom_call = FindInstruction(module.get(), "custom-call.19");
+  ASSERT_NE(custom_call, nullptr);
+  EXPECT_EQ(custom_call->users()[0]->opcode(), HloOpcode::kCopy);
+  EXPECT_EQ(custom_call->shape().layout(),
+            LayoutUtil::MakeLayout({0, 1}, {}, {}, {}, {Tile{{8, 128}}}));
+  EXPECT_EQ(custom_call->users()[0]->shape().layout(),
+            LayoutUtil::MakeLayout({1, 0}));
+}
+
+TEST_F(HostOffloadLegalizeTest, DUSSameLayoutForOperandAndUpdate_1) {
+  const std::string& hlo_string = R"(
+HloModule jit_f, entry_computation_layout={(bf16[16,512,532]{1,2,0})->bf16[1,16,512,532]{2,3,1,0}}
+
+ENTRY main.24 {
+  constant_0 = s32[] constant(0)
+  cs0 = bf16[] constant(0)
+  broadcast = bf16[20,16,512,532]{3,2,1,0}  broadcast(cs0), dimensions={}
+  cp = bf16[20,16,512,532]{3,2,1,0} copy(broadcast)
+  custom-call.8 = bf16[20,16,512,532]{3,2,1,0} custom-call(cp), custom_call_target="MoveToHost"
+  copy = bf16[20,16,512,532]{2,3,1,0} copy(custom-call.8)
+  arg1 = bf16[16,512,532]{1,2,0} parameter(0)
+  copy.17302 = bf16[16,512,532]{2,1,0} copy(arg1)
+  bitcast.6100 = bf16[1,16,512,532]{3,2,1,0} bitcast(copy.17302)
+  copy.20241 = bf16[1,16,512,532]{2,3,1,0} copy(bitcast.6100)
+  custom-call.6720 = bf16[1,16,512,532]{2,3,1,0} custom-call(copy.20241), custom_call_target="MoveToHost"
+  dynamic-update-slice.6830 = bf16[20,16,512,532]{2,3,1,0} dynamic-update-slice(copy, custom-call.6720, constant_0, constant_0, constant_0, constant_0)
+  dynamic_slice_0 = bf16[1,16,512,532]{2,3,1,0} dynamic-slice(dynamic-update-slice.6830, constant_0, constant_0, constant_0, constant_0), dynamic_slice_sizes={1,16,512,532}
+  ROOT custom_call_0.1 = bf16[1,16,512,532]{2,3,1,0} custom-call(dynamic_slice_0), custom_call_target="MoveToDevice"
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+  EXPECT_TRUE(changed);
+  XLA_VLOG_LINES(1, module->ToString());
+
+  HloInstruction* dus =
+      FindInstruction(module.get(), "dynamic-update-slice.6830");
+  ASSERT_NE(dus, nullptr);
+  EXPECT_EQ(dus->operand(0)->shape().layout(),
+            dus->operand(1)->shape().layout());
+  EXPECT_EQ(dus->shape().layout(), dus->operand(1)->shape().layout());
+
+  const HloInstruction* custom_call =
+      module->entry_computation()->root_instruction()->operand(0);
+  EXPECT_TRUE(custom_call->IsCustomCall(
+      host_memory_offload_annotations::kMoveToDeviceCustomCallTarget));
+  EXPECT_EQ(custom_call->users()[0]->opcode(), HloOpcode::kCopy);
+  EXPECT_EQ(custom_call->shape().layout(),
+            LayoutUtil::MakeLayout({3, 2, 1, 0}));
+  EXPECT_EQ(custom_call->users()[0]->shape().layout(),
+            LayoutUtil::MakeLayout({2, 3, 1, 0}));
+}
+
+TEST_F(HostOffloadLegalizeTest, DUSSameLayoutForOperandAndUpdate_2) {
+  const std::string& hlo_string = R"(
+HloModule jit_f, entry_computation_layout={(bf16[16,512,532]{1,2,0})->bf16[1,16,512,532]{2,3,1,0}}
+
+ENTRY main.24 {
+  constant_0 = s32[] constant(0)
+  cs0 = bf16[] constant(0)
+  broadcast = bf16[20,16,512,532]{3,2,1,0}  broadcast(cs0), dimensions={}
+  cp = bf16[20,16,512,532]{3,2,1,0} copy(broadcast)
+  custom-call.8 = bf16[20,16,512,532]{3,2,1,0} custom-call(cp), custom_call_target="MoveToHost"
+  copy = bf16[20,16,512,532]{2,3,1,0} copy(custom-call.8)
+  arg1 = bf16[16,512,532]{1,2,0} parameter(0)
+  copy.17302 = bf16[16,512,532]{2,1,0} copy(arg1)
+  custom-call.6720 = bf16[16,512,532]{2,1,0} custom-call(copy.17302), custom_call_target="MoveToHost"
+  bitcast.6100 = bf16[1,16,512,532]{3,2,1,0} bitcast(custom-call.6720)
+  copy.20241 = bf16[1,16,512,532]{2,3,1,0} copy(bitcast.6100)
+  dynamic-update-slice.6830 = bf16[20,16,512,532]{2,3,1,0} dynamic-update-slice(copy, copy.20241, constant_0, constant_0, constant_0, constant_0)
+  dynamic_slice_0 = bf16[1,16,512,532]{2,3,1,0} dynamic-slice(dynamic-update-slice.6830, constant_0, constant_0, constant_0, constant_0), dynamic_slice_sizes={1,16,512,532}
+  ROOT custom_call_0.1 = bf16[1,16,512,532]{2,3,1,0} custom-call(dynamic_slice_0), custom_call_target="MoveToDevice"
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+  EXPECT_TRUE(changed);
+  XLA_VLOG_LINES(1, module->ToString());
+
+  HloInstruction* dus =
+      FindInstruction(module.get(), "dynamic-update-slice.6830");
+  ASSERT_NE(dus, nullptr);
+  EXPECT_EQ(dus->operand(0)->shape().layout(),
+            dus->operand(1)->shape().layout());
+  EXPECT_EQ(dus->shape().layout(), dus->operand(1)->shape().layout());
+
+  const HloInstruction* custom_call =
+      module->entry_computation()->root_instruction()->operand(0);
+  EXPECT_TRUE(custom_call->IsCustomCall(
+      host_memory_offload_annotations::kMoveToDeviceCustomCallTarget));
+  EXPECT_EQ(custom_call->users()[0]->opcode(), HloOpcode::kCopy);
+  EXPECT_EQ(custom_call->shape().layout(),
+            LayoutUtil::MakeLayout({3, 2, 1, 0}));
+  EXPECT_EQ(custom_call->users()[0]->shape().layout(),
+            LayoutUtil::MakeLayout({2, 3, 1, 0}));
 }
 
 TEST_F(HostOffloadLegalizeTest, LlmActivationHostMemoryMultipleConsumers) {
@@ -225,6 +372,8 @@ ENTRY main {
   HloInstruction* copy = FindInstruction(module.get(), HloOpcode::kCopy);
   HloInstruction* consuming_while =
       FindInstruction(module.get(), "consuming_while");
+  ASSERT_NE(copy, nullptr);
+  ASSERT_NE(consuming_while, nullptr);
   EXPECT_NE(copy, nullptr);
   EXPECT_NE(consuming_while, nullptr);
   EXPECT_EQ(copy->parent(), consuming_while->while_body());
@@ -336,12 +485,45 @@ ENTRY main {
   HloInstruction* copy_1 = FindInstruction(module.get(), "cp1.2");
   HloInstruction* consuming_while =
       FindInstruction(module.get(), "consuming_while");
+  ASSERT_NE(copy_0, nullptr);
+  ASSERT_NE(copy_1, nullptr);
+  ASSERT_NE(consuming_while, nullptr);
   EXPECT_NE(copy_0, nullptr);
   EXPECT_NE(copy_1, nullptr);
   EXPECT_NE(consuming_while, nullptr);
   EXPECT_EQ(copy_0->parent(), module->entry_computation());
   EXPECT_EQ(copy_1->operand(0), copy_0);
   XLA_VLOG_LINES(1, module->ToString());
+}
+
+TEST_F(HostOffloadLegalizeTest, MoveCopyOverBitcast) {
+  const std::string& hlo_string = R"(
+HloModule jit_f, entry_computation_layout={(bf16[1,1,16384,4,256]{4,3,2,1,0:T(4,128)(2,1)S(5)})->bf16[1,16384,4,256]{3,1,2,0:T(8,128)(2,1)}}
+
+ENTRY main {
+  param = bf16[1,1,16384,4,256]{4,3,2,1,0:T(4,128)(2,1)} parameter(0)
+  copy = bf16[1,1,16384,4,256]{4,2,3,1,0:T(8,128)(2,1)} copy(param)
+  bitcast = bf16[1,16384,4,256]{3,1,2,0:T(8,128)(2,1)} bitcast(copy)
+  custom-call = bf16[1,16384,4,256]{3,1,2,0:T(8,128)(2,1)} custom-call(bitcast), custom_call_target="MoveToDevice"
+  ROOT add = bf16[1,16384,4,256]{3,1,2,0:T(8,128)(2,1)} add(custom-call, custom-call)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloadLegalize(module.get()));
+
+  EXPECT_TRUE(changed);
+  XLA_VLOG_LINES(1, module->ToString());
+  HloInstruction* custom_call = FindInstruction(module.get(), "custom-call");
+  EXPECT_EQ(custom_call->shape().layout(),
+            LayoutUtil::MakeLayout({3, 2, 1, 0}, {}, {}, {},
+                                   {Tile{{4, 128}}, Tile{{2, 1}}}));
+  EXPECT_EQ(custom_call->users()[0]->opcode(), HloOpcode::kCopy);
+  EXPECT_EQ(custom_call->users()[0]->shape().layout(),
+            LayoutUtil::MakeLayout({3, 1, 2, 0}, {}, {}, {},
+                                   {Tile{{8, 128}}, Tile{{2, 1}}}));
 }
 
 }  // namespace

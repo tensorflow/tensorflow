@@ -1,6 +1,6 @@
 # Placeholder: load py_proto_library
 load(
-    "//tsl:tsl.bzl",
+    "@local_xla//xla/tsl:tsl.bzl",
     "if_google",
     "internal_visibility",
 )
@@ -13,7 +13,7 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = internal_visibility([
         "//tensorflow/core:__subpackages__",
-        "//tsl:internal",
+        "@local_xla//xla/tsl:internal",
         "//tensorflow_models:__subpackages__",
     ]),
     features = if_google(["-parse_headers"]),
@@ -21,16 +21,10 @@ package(
 )
 
 tf_proto_library(
-    name = "bfc_memory_map_proto",
-    srcs = ["bfc_memory_map.proto"],
-    make_default_target_header_only = True,
-    visibility = ["//visibility:public"],
-)
-
-tf_proto_library(
     name = "dnn_proto",
     srcs = ["dnn.proto"],
     make_default_target_header_only = True,
+    protodeps = if_google(["//google/protobuf:wrappers"]),
     visibility = ["//visibility:public"],
 )
 
@@ -38,6 +32,7 @@ tf_proto_library(
     name = "error_codes_proto_impl",
     srcs = ["error_codes.proto"],
     make_default_target_header_only = True,
+    protodeps = if_google(["//google/protobuf:any"]),
     visibility = ["//visibility:public"],
 )
 
@@ -59,7 +54,6 @@ tf_proto_library(
 tf_proto_library(
     name = "coordination_config_proto",
     srcs = ["coordination_config.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     visibility = ["//visibility:public"],
 )
@@ -68,11 +62,10 @@ tf_proto_library(
     name = "coordination_service_proto",
     srcs = ["coordination_service.proto"],
     has_services = 1,
-    cc_api_version = 2,
-    cc_stubby_versions = ["2"],
     create_grpc_library = True,
     create_java_proto = False,
     create_service = True,
+    protodeps = if_google(["//google/protobuf:any"]),
     visibility = ["//visibility:public"],
 )
 
@@ -100,30 +93,20 @@ tf_proto_library(
 )
 
 tf_proto_library(
-    name = "test_log_proto",
-    srcs = ["test_log.proto"],
-    make_default_target_header_only = True,
-    visibility = internal_visibility([
-        "//tensorflow/core:__subpackages__",
-        "//tsl/util:__pkg__",
-    ]),
-)
-
-tf_proto_library(
     name = "protos_all",
     create_go_proto = False,
     make_default_target_header_only = True,
     protodeps = [
         # TODO(tlongeri): Conceptually, these fit into protos_all but adding them currently causes
         # breakages (and they are not actually used).
-        ":bfc_memory_map_proto",
+        "@local_xla//xla/tsl/protobuf:bfc_memory_map_proto",
         ":coordination_config_proto",
         ":distributed_runtime_payloads_proto",
         ":error_codes_proto_impl",
         ":histogram_proto",
         ":rpc_options_proto",
         ":status_proto",
-        ":test_log_proto",
-    ],
+        "@local_xla//xla/tsl/protobuf:test_log_proto",
+    ] + if_google(["//google/protobuf:any"]),
     visibility = ["//visibility:public"],
 )

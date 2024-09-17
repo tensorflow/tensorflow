@@ -20,7 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
 
@@ -42,6 +42,7 @@ class AsyncCollectiveCreator : public HloModulePass {
     ContextShapeQuery get_context_shapes = [](const HloInstruction *) {
       return std::vector<Shape>{};
     };
+    int64_t all_reduce_min_threshold_in_bytes = 0;
   };
   explicit AsyncCollectiveCreator(CollectiveCreatorConfig creator_config)
       : config_(std::move(creator_config)) {}

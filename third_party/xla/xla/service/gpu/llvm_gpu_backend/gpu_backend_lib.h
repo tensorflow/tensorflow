@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -28,13 +29,19 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/Target/TargetMachine.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/types.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
 
 namespace nvptx {
+
+// Gets the GPU name as it's known to LLVM for a given compute
+// capability.  If we see an unrecognized compute capability, we
+// return the highest one that is known and below the selected device.
+std::string GetSmName(
+    stream_executor::CudaComputeCapability compute_capability);
 
 std::string CantFindCudaMessage(absl::string_view msg,
                                 absl::string_view xla_gpu_cuda_data_dir);
@@ -54,20 +61,36 @@ absl::Status LinkLibdeviceIfNecessary(llvm::Module* module,
 // thread safety, but note that LLVM's multithreaded support is very
 // preliminary; multithreaded use is not recommended at this time.
 absl::StatusOr<std::string> CompileToPtx(
-    llvm::Module* module, se::GpuComputeCapability gpu_version,
+    llvm::Module* module, stream_executor::GpuComputeCapability gpu_version,
     const DebugOptions& debug_options,
     std::function<void(llvm::TargetMachine*)> configure_target = nullptr);
+
+// Determine PTX version from CUDA version.
+stream_executor::SemanticVersion
+DetermineHighestSupportedPtxVersionFromCudaVersion(
+    stream_executor::SemanticVersion cuda_version);
+
 }  // namespace nvptx
 
 namespace amdgpu {
+// Get path to libdevice file.
+std::string LibDevicePath(std::string gcn_arch_name,
+                          const std::string& rocdl_dir_path);
 // Compiles the argument module and returns it with LLVM AMDGPU backend.
 // rocdl_dir_path is the parent directory of ROCm-Device-Libs bitcode libraries.
 // The contents of the module may be changed.
 absl::StatusOr<std::vector<uint8_t>> CompileToHsaco(
-    llvm::Module* module, se::GpuComputeCapability gpu_version,
+    llvm::Module* module, stream_executor::GpuComputeCapability gpu_version,
     const DebugOptions& debug_options,
     const std::string& module_config_cache_key);
 }  // namespace amdgpu
+
+namespace spir {
+// Compiles the argument module and returns it.
+absl::StatusOr<std::vector<uint8_t>> CompileToSpir(
+    llvm::Module* module, stream_executor::GpuComputeCapability gpu_version,
+    const DebugOptions& debug_options);
+}  // namespace spir
 
 }  // namespace gpu
 }  // namespace xla

@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <string>
 
-#include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Location.h"
+#include "mlir/IR/Operation.h"
 #include "xla/translate/mhlo_to_hlo/stack_frame_index_builder.h"
 #include "xla/xla_data.pb.h"
 

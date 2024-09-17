@@ -668,7 +668,6 @@ class {{CLASS}} final : public tensorflow::XlaCompiledCpuFunction {
       set_static_data_program_shape(data, StaticProgramShape());
       set_static_data_hlo_profile_printer_data(
           data, StaticHloProfilePrinterData());
-      set_static_data_use_xla_runtime(data, {{USE_XLA_RUNTIME}});
 {{ASSIGN_PROFILE_COUNTERS_SIZE}}
       return data;
     }();
@@ -822,7 +821,6 @@ class {{CLASS}} final : public tensorflow::XlaCompiledCpuFunction {
       {"{{DECLS_FROM_OBJ_FILE}}",
        absl::StrJoin(metadata_result.header_variable_decls, "\n")},
       {"{{ENTRY}}", compile_result.entry_point},
-      {"{{USE_XLA_RUNTIME}}", opts.use_xla_runtime ? "true" : "false"},
       {"{{HLO_PROFILE_PRINTER_DATA_SHIM_EXPRESSION}}",
        metadata_result.hlo_profile_printer_data_access_shim},
       {"{{INCLUDE_XLA_DATA_PROTO}}", include_xla_data_proto},

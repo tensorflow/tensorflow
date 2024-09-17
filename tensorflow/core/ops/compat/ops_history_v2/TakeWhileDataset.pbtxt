@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "TakeWhileDataset"
   input_arg {
     name: "input_dataset"

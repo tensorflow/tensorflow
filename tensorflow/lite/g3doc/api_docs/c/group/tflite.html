@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html devsite>
+<head>
+  <title>lite/abi/tflite.h</title>
+  <meta name="page_type" value="reference" />
+</head>
+<body>
+  <div id="top"><!-- do not remove this div --></div>
+  <h1>lite/abi/tflite.h</h1>
+  <p>Native functions for initializing and shutting down the TensorFlow Lite (TFLite) in Google Play Services Native API. </p>
+  <h2>Summary</h2>
+  <p>One of the following functions <b>must</b> be called (and must return successfully) before any of the TFLite C API functions are called:<ul>
+      <li>the <code><a href="/lite/api_docs/c/group/tflite.html#group__tflite_1ga40651c6fffc109794e7eb0bccc5c5d43">GmsTfLiteInitialize()</a></code> or <code><a href="/lite/api_docs/c/group/tflite.html#group__tflite_1ga80ddd6ab10621facef60ae21f1154ba8">GmsTfLiteInitializeOrThrow()</a></code> native functions defined in this header file.</li>
+      <li>the <code>com.google.android.gms.tflite.java.TfLiteNative.initialize(Context context)</code> or <code>com.google.android.gms.tflite.java.TfLiteNative.initialize(Context context, TfLiteInitializationOptions options)</code> methods defined in the Java API. </li>
+    </ul></p>
+  <table class="methods responsive">
+    <tr>
+      <th colspan="2">
+        <h3>Functions</h3>
+      </th>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__tflite_1ga5f35f35f093e2c29ede5a2b692659fa1">GmsTfLiteCheckInitializedOrThrow</a>(JNIEnv *env)</code>
+      </td>
+      <td>
+        <div>
+          <code>bool</code>
+        </div>
+        <div>Checks whether the TFLite API has been initialized, throwing a Java exception otherwise. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__tflite_1ga61ba1accae8e30eaf9d9aa418890a0c1">GmsTfLiteErrorCodeVersionTooNew</a>(int error_code)</code>
+      </td>
+      <td>
+        <div>
+          <code>bool</code>
+        </div>
+        <div>Returns true if the error code indicates the TFLite ABI version is too new. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__tflite_1gaea70a5ef6f7d157d779e6c96b248b05e">GmsTfLiteErrorCodeVersionTooOld</a>(int error_code)</code>
+      </td>
+      <td>
+        <div>
+          <code>bool</code>
+        </div>
+        <div>Returns true if the error code indicates that the TFLite ABI version is too old. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__tflite_1ga40651c6fffc109794e7eb0bccc5c5d43">GmsTfLiteInitialize</a>(JNIEnv *env, jobjecthandle)</code>
+      </td>
+      <td>
+        <div>
+          <code>int</code>
+        </div>
+        <div>Initialize TFLite with a handle acquired from Google Play Services API. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__tflite_1ga80ddd6ab10621facef60ae21f1154ba8">GmsTfLiteInitializeOrThrow</a>(JNIEnv *env, jobjecthandle)</code>
+      </td>
+      <td>
+        <div>
+          <code>bool</code>
+        </div>
+        <div>Initialize TFLite with a handle acquired from Google Play Services API, throwing a Java exception on failure. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__tflite_1gaf0e9a103a2a1cff5292d839d93cba9ab">GmsTfLiteShutdown</a>(void)</code>
+      </td>
+      <td>
+        <div>
+          <code>void</code>
+        </div>
+        <div>Resets the TFLite API. </div>
+      </td>
+    </tr>
+  </table>
+  <h2>Functions</h2>
+  <div id="group__tflite_1ga5f35f35f093e2c29ede5a2b692659fa1">
+    <h3>GmsTfLiteCheckInitializedOrThrow</h3>
+    <pre class="prettyprint">bool GmsTfLiteCheckInitializedOrThrow(
+  JNIEnv *env
+)</pre>
+    <div>
+      <p>Checks whether the TFLite API has been initialized, throwing a Java exception otherwise. </p>
+      <p />
+      <table class="details responsive">
+        <thead>
+          <th colspan="2">Details</th>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Parameters</td>
+            <td>
+              <table class="function param responsive">
+                <tbody>
+                  <tr>
+                    <td>
+                      <code>env</code>
+                    </td>
+                    <td>
+                      <div>The JNIEnv for the current thread (which has to be attached to the JVM). </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <b>Returns</b>
+            </td>
+            <td>
+              <div>Whether or not the TFLite API has been initialized. If this method returns false, no other JNI method should be called until the pending exception has been handled (typically by returning to Java). </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div id="group__tflite_1ga61ba1accae8e30eaf9d9aa418890a0c1">
+    <h3>GmsTfLiteErrorCodeVersionTooNew</h3>
+    <pre class="prettyprint">bool GmsTfLiteErrorCodeVersionTooNew(
+  int error_code
+)</pre>
+    <div>
+      <p>Returns true if the error code indicates the TFLite ABI version is too new. </p>
+      <p>In this case, the client should be updated to a newer version.</p>
+      <p>To avoid this error, make sure that your app is built against the latest version of the TFLite in Google Play Services client library code.</p>
+      <p>If TFLite is important for the functionality of the app, then we recommend that the calling code notify the user in this case. Suggested actions for the user could include:<ul>
+          <li>Try updating the app to the latest version</li>
+        </ul></p>
+      <p>If the in-app update API (<a href="https://developer.android.com/guide/playcore/in-app-updates">https://developer.android.com/guide/playcore/in-app-updates</a>) is available, we also recommend using the in-app update API to allow the user to automatically update the app if a new version is available.</p>
+      <p />
+      <table class="details responsive">
+        <thead>
+          <th colspan="2">Details</th>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Parameters</td>
+            <td>
+              <table class="function param responsive">
+                <tbody>
+                  <tr>
+                    <td>
+                      <code>error_code</code>
+                    </td>
+                    <td>
+                      <div>An error code returned by GmsTfLiteInitialize. </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div id="group__tflite_1gaea70a5ef6f7d157d779e6c96b248b05e">
+    <h3>GmsTfLiteErrorCodeVersionTooOld</h3>
+    <pre class="prettyprint">bool GmsTfLiteErrorCodeVersionTooOld(
+  int error_code
+)</pre>
+    <div>
+      <p>Returns true if the error code indicates that the TFLite ABI version is too old. </p>
+      <p>In this case, the TFLite in Google Play Services module should be updated to a newer version.</p>
+      <p>If TFLite is important for the functionality of the app, then we recommend that the calling code notify the user in this case. Suggested actions for the user could include:<ul>
+          <li>Make sure your device is connected to the internet, and</li>
+          <li>Try updating Google Play services <a href="https://support.google.com/googleplay/answer/9037938">https://support.google.com/googleplay/answer/9037938</a>.</li>
+        </ul></p>
+      <p />
+      <table class="details responsive">
+        <thead>
+          <th colspan="2">Details</th>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Parameters</td>
+            <td>
+              <table class="function param responsive">
+                <tbody>
+                  <tr>
+                    <td>
+                      <code>error_code</code>
+                    </td>
+                    <td>
+                      <div>An error code returned by GmsTfLiteInitialize. </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div id="group__tflite_1ga40651c6fffc109794e7eb0bccc5c5d43">
+    <h3>GmsTfLiteInitialize</h3>
+    <pre class="prettyprint">int GmsTfLiteInitialize(
+  JNIEnv *env,
+  jobjecthandle
+)</pre>
+    <div>
+      <p>Initialize TFLite with a handle acquired from Google Play Services API. </p>
+      <p>
+This method (along with <code><a href="/lite/api_docs/c/group/tflite.html#group__tflite_1ga80ddd6ab10621facef60ae21f1154ba8">GmsTfLiteInitializeOrThrow()</a></code>) can be called multiple times with the same handle; attempting to initialize with a different handle (without a call to <code><a href="/lite/api_docs/c/group/tflite.html#group__tflite_1gaf0e9a103a2a1cff5292d839d93cba9ab">GmsTfLiteShutdown()</a></code> in between) will fail. </p>
+      <table class="details responsive">
+        <thead>
+          <th colspan="2">Details</th>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Parameters</td>
+            <td>
+              <table class="function param responsive">
+                <tbody>
+                  <tr>
+                    <td>
+                      <code>env</code>
+                    </td>
+                    <td>
+                      <div>The JNIEnv for the current thread (which has to be attached to the JVM). </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <code>handle</code>
+                    </td>
+                    <td>
+                      <div>An InternalNativeInitializationHandle object acquired through the Google Play Services API.</div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <b>Returns</b>
+            </td>
+            <td>
+              <div>0 on success, or a non-zero error code on failure. The error codes are implementation-specific, but error conditions that clients may need to deal with can be tested using the <code><a href="/lite/api_docs/c/group/tflite.html#group__tflite_1gaea70a5ef6f7d157d779e6c96b248b05e">GmsTfLiteErrorCodeVersionTooOld()</a></code> and <code><a href="/lite/api_docs/c/group/tflite.html#group__tflite_1ga61ba1accae8e30eaf9d9aa418890a0c1">GmsTfLiteErrorCodeVersionTooNew()</a></code> functions. Clients may also wish to log the specific error code for ease of debugging.</div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div id="group__tflite_1ga80ddd6ab10621facef60ae21f1154ba8">
+    <h3>GmsTfLiteInitializeOrThrow</h3>
+    <pre class="prettyprint">bool GmsTfLiteInitializeOrThrow(
+  JNIEnv *env,
+  jobjecthandle
+)</pre>
+    <div>
+      <p>Initialize TFLite with a handle acquired from Google Play Services API, throwing a Java exception on failure. </p>
+      <p>
+This method (along with <code><a href="/lite/api_docs/c/group/tflite.html#group__tflite_1ga40651c6fffc109794e7eb0bccc5c5d43">GmsTfLiteInitialize()</a></code>) can be called multiple times with the same handle; attempting to initialize with a different handle (without a call to <code><a href="/lite/api_docs/c/group/tflite.html#group__tflite_1gaf0e9a103a2a1cff5292d839d93cba9ab">GmsTfLiteShutdown()</a></code> in between) will fail. </p>
+      <table class="details responsive">
+        <thead>
+          <th colspan="2">Details</th>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Parameters</td>
+            <td>
+              <table class="function param responsive">
+                <tbody>
+                  <tr>
+                    <td>
+                      <code>env</code>
+                    </td>
+                    <td>
+                      <div>The JNIEnv for the current thread (which has to be attached to the JVM). </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <code>handle</code>
+                    </td>
+                    <td>
+                      <div>An InternalNativeInitializationHandle object acquired through the Google Play Services API.</div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <b>Returns</b>
+            </td>
+            <td>
+              <div>Whether or not initialization was successful. If this method returns false, no other JNI method should be called until the pending exception has been handled (typically by returning to Java).</div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div id="group__tflite_1gaf0e9a103a2a1cff5292d839d93cba9ab">
+    <h3>GmsTfLiteShutdown</h3>
+    <pre class="prettyprint">void GmsTfLiteShutdown(
+  void
+)</pre>
+    <div>
+      <p>Resets the TFLite API. </p>
+      <p>After this method is called, the TFLite API will be unusable until a subsequent call to <code><a href="/lite/api_docs/c/group/tflite.html#group__tflite_1ga40651c6fffc109794e7eb0bccc5c5d43">GmsTfLiteInitialize()</a></code> or <code><a href="/lite/api_docs/c/group/tflite.html#group__tflite_1ga80ddd6ab10621facef60ae21f1154ba8">GmsTfLiteInitializeOrThrow()</a></code>. This can be used to switch to a different version of the TFLite library. </p>
+    </div>
+  </div>
+</body>
+</html>

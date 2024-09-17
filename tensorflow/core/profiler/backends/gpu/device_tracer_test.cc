@@ -74,7 +74,9 @@ std::unique_ptr<ProfilerInterface> CreateGpuTracer() {
 
 #else
 // We don't have device tracer for non-cuda case.
-std::unique_ptr<ProfilerInterface> CreateGpuTracer() { return nullptr; }
+std::unique_ptr<tsl::profiler::ProfilerInterface> CreateGpuTracer() {
+  return nullptr;
+}
 #endif
 
 namespace {

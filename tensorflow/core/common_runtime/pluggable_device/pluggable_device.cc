@@ -184,8 +184,9 @@ PluggableDevice::PluggableDevice(
       tf_device_id_(tf_device_id),
       platform_name_(platform_name),
       sync_every_op_(sync_every_op) {
-  if (options.config.has_gpu_options()) {
-    force_gpu_compatible_ = options.config.gpu_options().force_gpu_compatible();
+  if (options.config.has_pluggable_device_options()) {
+    force_gpu_compatible_ =
+        options.config.pluggable_device_options().force_gpu_compatible();
   }
   PluggableDeviceProcessState::singleton(device_type, platform_name)
       ->EnablePluggableDevice();
@@ -206,11 +207,12 @@ Status PluggableDevice::Init(const SessionOptions& options) {
   }
   executor_ = executor_status.value();
 
-  em_ = EventMgrFactory::Singleton()->GetEventMgr(executor_,
-                                                  options.config.gpu_options());
+  em_ = EventMgrFactory::Singleton()->GetEventMgr(
+      executor_, options.config.pluggable_device_options());
 
   stream_ = StreamGroupFactory::Global().GetOrCreate(
-      device_type(), tf_device_id_, 0, executor_, options.config.gpu_options());
+      device_type(), tf_device_id_, 0, executor_,
+      options.config.pluggable_device_options());
   device_context_ = new PluggableDeviceContext(
       0, stream_->compute, stream_->host_to_device, stream_->device_to_host,
       stream_->device_to_device);

@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "RiscConcat"
   input_arg {
     name: "values"

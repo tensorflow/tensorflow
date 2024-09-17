@@ -18,6 +18,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
@@ -50,7 +52,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
@@ -66,8 +67,8 @@ namespace {
 static const char* const kSendFromHostOp = "_XlaSendFromHost";
 static const char* const kRecvAtHostOp = "_XlaRecvAtHost";
 
-Status MakeXlaShapes(gtl::ArraySlice<TensorShape> shapes,
-                     gtl::ArraySlice<DataType> dtypes,
+Status MakeXlaShapes(absl::Span<const TensorShape> shapes,
+                     absl::Span<const DataType> dtypes,
                      std::vector<xla::Shape>* xla_shapes,
                      xla::Shape* xla_shape) {
   for (int i = 0; i < shapes.size(); i++) {
@@ -520,8 +521,9 @@ class RecvFromHostOp : public XlaOpKernel {
     xla::XlaOp result = xla::RecvFromHost(token, xla_shape, channel);
     // xla::RecvFromHost returns a tuple of (received data, token).
     ctx->SetOutput(0, xla::GetTupleElement(result, 0));
-    OP_REQUIRES_OK(
-        ctx, compiler->SetNodeToken(name(), xla::GetTupleElement(result, 1)));
+    OP_REQUIRES_OK(ctx,
+                   compiler->SetNodeToken(original_node_name_,
+                                          xla::GetTupleElement(result, 1)));
   }
 
  private:

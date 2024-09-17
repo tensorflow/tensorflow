@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tf-cluster-tpu-bridge-v2 -tfrt-lower-cluster-to-runtime-ops-tpu 2>&1 | FileCheck %s
+// RUN: tf-opt %s -tf-replicated-clustering-bridge-v2 -tfrt-lower-cluster-to-runtime-ops-tpu 2>&1 | FileCheck %s
 
 // This test verifies that the tail extraction is not terminated prematurely
 // in handling tf.If op which would end up with excessive host-device

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/Tools/mlir-translate/Translation.h"
 #include "xla/translate/hlo_to_mhlo/translate.h"
 
 namespace {
@@ -22,18 +22,35 @@ namespace {
 llvm::cl::opt<bool> import_all_computations(
     "hlo-import-all-computations",
     llvm::cl::desc("Enable importing unreachable computations."));
+
+// NOLINTNEXTLINE
+llvm::cl::opt<bool> flatten_computation_args_result(
+    "hlo-flatten-computation-args-result",
+    llvm::cl::desc("Enable flattening computation arguments and results."));
 }  // namespace
 
 static mlir::OwningOpRef<mlir::ModuleOp> HloToMlirHloTranslate(
     llvm::StringRef input, mlir::MLIRContext* context) {
-  return xla::HloToMlirHloTranslateFunction(input, context,
-                                            import_all_computations);
+  return xla::HloToMlirHloTranslateFunction(
+      input, context, import_all_computations, flatten_computation_args_result);
 }
 
 static mlir::OwningOpRef<mlir::ModuleOp> HloTextToMlirHloTranslate(
     llvm::StringRef input, mlir::MLIRContext* context) {
-  return xla::HloTextToMlirHloTranslateFunction(input, context,
-                                                import_all_computations);
+  return xla::HloTextToMlirHloTranslateFunction(
+      input, context, import_all_computations, flatten_computation_args_result);
+}
+
+static mlir::OwningOpRef<mlir::ModuleOp> HloToStablehloTranslate(
+    llvm::StringRef input, mlir::MLIRContext* context) {
+  return xla::HloToStablehloTranslateFunction(
+      input, context, import_all_computations, flatten_computation_args_result);
+}
+
+static mlir::OwningOpRef<mlir::ModuleOp> HloTextToStablehloTranslate(
+    llvm::StringRef input, mlir::MLIRContext* context) {
+  return xla::HloTextToStablehloTranslateFunction(
+      input, context, import_all_computations, flatten_computation_args_result);
 }
 
 static mlir::TranslateToMLIRRegistration HloToMlirHloTranslateRegistration(
@@ -41,3 +58,11 @@ static mlir::TranslateToMLIRRegistration HloToMlirHloTranslateRegistration(
 
 static mlir::TranslateToMLIRRegistration HloTextToMlirHloTranslateRegistration(
     "hlo-text-to-mlir-hlo", "hlo-text-to-mlir-hlo", HloTextToMlirHloTranslate);
+
+static mlir::TranslateToMLIRRegistration HloToStablehloTranslateRegistration(
+    "hlo-to-stablehlo", "hlo-to-stablehlo", HloToStablehloTranslate);
+
+static mlir::TranslateToMLIRRegistration
+    HloTextToStablehloTranslateRegistration("hlo-text-to-stablehlo",
+                                            "hlo-text-to-stablehlo",
+                                            HloTextToStablehloTranslate);

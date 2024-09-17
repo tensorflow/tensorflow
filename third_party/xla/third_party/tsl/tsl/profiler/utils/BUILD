@@ -1,13 +1,14 @@
-load("//tsl:tsl.bzl", "internal_visibility")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
+load("@local_xla//xla/tsl:tsl.bzl", "internal_visibility")
+load("@local_xla//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
+load("@local_xla//xla/tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
 load("//tsl/platform:build_config.bzl", "tsl_cc_test")
 load("//tsl/platform:build_config_root.bzl", "if_static")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load("//tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = internal_visibility([
-        "//tsl/profiler:internal",
+        "@local_xla//xla/tsl/profiler:internal",
     ]),
     licenses = ["notice"],
 )
@@ -15,7 +16,7 @@ package(
 package_group(
     name = "friends",
     includes = [
-        "//tsl/profiler:friends",
+        "@local_xla//xla/tsl/profiler:friends",
     ],
 )
 
@@ -54,7 +55,7 @@ cc_library(
     visibility = internal_visibility([
         "@local_xla//xla:__subpackages__",
         "//tsl/platform/cloud:__pkg__",
-        "//tsl/profiler:internal",
+        "@local_xla//xla/tsl/profiler:internal",
     ]),
     deps = [
         ":math_utils",
@@ -67,6 +68,7 @@ cc_library(
     name = "timespan",
     hdrs = ["timespan.h"],
     copts = tf_profiler_copts(),
+    visibility = internal_visibility([":friends"]),
     deps = [
         ":math_utils",
         "//tsl/platform:logging",
@@ -160,7 +162,6 @@ cc_library(
         "//tsl/platform:types",
         "//tsl/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/meta:type_traits",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
@@ -187,7 +188,7 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = internal_visibility([
         "@local_xla//xla/backends/profiler/gpu:__pkg__",
-        "//tsl/profiler:internal",
+        "@local_xla//xla/tsl/profiler:internal",
     ]),
     deps = [
         "//tsl/platform:types",
@@ -213,12 +214,12 @@ cc_library(
         "//tsl/platform:types",
         "//tsl/profiler/lib:context_types",
         "//tsl/profiler/protobuf:xplane_proto_cc",
-        "//tsl/util:stats_calculator_portable",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla/tsl/util:stats_calculator_portable",
     ],
 )
 
@@ -363,6 +364,7 @@ tsl_cc_test(
         ":tpu_xplane_utils",
         ":xplane_schema",
         ":xplane_utils",
+        ":xplane_visitor",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
         "//tsl/profiler/protobuf:xplane_proto_cc",
@@ -376,7 +378,7 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = internal_visibility([
         "@local_xla//xla/python:__pkg__",
-        "//tsl/profiler:internal",
+        "@local_xla//xla/tsl/profiler:internal",
     ]),
     deps = [
         "//tsl/platform",
@@ -391,7 +393,7 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = internal_visibility([
         "@local_xla//xla/backends/profiler/gpu:__pkg__",
-        "//tsl/profiler:internal",
+        "@local_xla//xla/tsl/profiler:internal",
     ]),
     deps = [
         "//tsl/platform:logging",
@@ -421,11 +423,13 @@ cc_library(
         ":tpu_xplane_utils",
         ":trace_utils",
         ":xplane_builder",
+        ":xplane_mutators",
         ":xplane_schema",
         "//tsl/profiler/lib:context_types",
         "//tsl/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
@@ -445,6 +449,7 @@ tsl_cc_test(
         "//tsl/platform:test",
         "//tsl/platform:test_main",
         "//tsl/profiler/lib:connected_traceme",
+        "//tsl/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/hash",
     ],
@@ -486,5 +491,80 @@ tsl_cc_test(
         ":xplane_visitor",
         "//tsl/platform:test",
         "//tsl/platform:test_main",
+    ],
+)
+
+filegroup(
+    name = "mobile_srcs_no_runtime",
+    srcs = [
+        "no_init.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "no_init",
+    hdrs = ["no_init.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+    ],
+)
+
+cc_library(
+    name = "lock_free_queue",
+    hdrs = ["lock_free_queue.h"],
+    deps = [
+        ":no_init",
+        "//tsl/platform:logging",
+        "//tsl/platform:macros",
+    ],
+)
+
+tsl_cc_test(
+    name = "lock_free_queue_test",
+    size = "small",
+    timeout = "short",
+    srcs = ["lock_free_queue_test.cc"],
+    deps = [
+        ":lock_free_queue",
+        "//tsl/platform:env",
+        "//tsl/platform:env_impl",
+        "//tsl/platform:test",
+        "//tsl/platform:test_main",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
+    name = "per_thread",
+    hdrs = ["per_thread.h"],
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
+    name = "xplane_mutators",
+    hdrs = ["xplane_mutators.h"],
+    deps = [":xplane_builder"],
+)
+
+tsl_cc_test(
+    name = "per_thread_test",
+    size = "small",
+    timeout = "short",
+    srcs = ["per_thread_test.cc"],
+    deps = [
+        ":per_thread",
+        "//tsl/platform:env",
+        "//tsl/platform:env_impl",
+        "//tsl/platform:test",
+        "//tsl/platform:test_main",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
     ],
 )

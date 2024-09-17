@@ -36,9 +36,9 @@ void BlockHandle::EncodeTo(string* dst) const {
   core::PutVarint64(dst, size_);
 }
 
-Status BlockHandle::DecodeFrom(StringPiece* input) {
+absl::Status BlockHandle::DecodeFrom(absl::string_view* input) {
   if (core::GetVarint64(input, &offset_) && core::GetVarint64(input, &size_)) {
-    return OkStatus();
+    return absl::OkStatus();
   } else {
     return errors::DataLoss("bad block handle");
   }
@@ -56,7 +56,7 @@ void Footer::EncodeTo(string* dst) const {
   assert(dst->size() == original_size + kEncodedLength);
 }
 
-Status Footer::DecodeFrom(StringPiece* input) {
+absl::Status Footer::DecodeFrom(absl::string_view* input) {
   const char* magic_ptr = input->data() + kEncodedLength - 8;
   const uint32 magic_lo = core::DecodeFixed32(magic_ptr);
   const uint32 magic_hi = core::DecodeFixed32(magic_ptr + 4);
@@ -66,21 +66,21 @@ Status Footer::DecodeFrom(StringPiece* input) {
     return errors::DataLoss("not an sstable (bad magic number)");
   }
 
-  Status result = metaindex_handle_.DecodeFrom(input);
+  absl::Status result = metaindex_handle_.DecodeFrom(input);
   if (result.ok()) {
     result = index_handle_.DecodeFrom(input);
   }
   if (result.ok()) {
     // We skip over any leftover data (just padding for now) in "input"
     const char* end = magic_ptr + 8;
-    *input = StringPiece(end, input->data() + input->size() - end);
+    *input = absl::string_view(end, input->data() + input->size() - end);
   }
   return result;
 }
 
-Status ReadBlock(RandomAccessFile* file, const BlockHandle& handle,
-                 BlockContents* result) {
-  result->data = StringPiece();
+absl::Status ReadBlock(RandomAccessFile* file, const BlockHandle& handle,
+                       BlockContents* result) {
+  result->data = absl::string_view();
   result->cacheable = false;
   result->heap_allocated = false;
 
@@ -93,8 +93,9 @@ Status ReadBlock(RandomAccessFile* file, const BlockHandle& handle,
   }
 
   char* buf = new char[n + kBlockTrailerSize];
-  StringPiece contents;
-  Status s = file->Read(handle.offset(), n + kBlockTrailerSize, &contents, buf);
+  absl::string_view contents;
+  absl::Status s =
+      file->Read(handle.offset(), n + kBlockTrailerSize, &contents, buf);
   if (!s.ok()) {
     delete[] buf;
     return s;
@@ -125,11 +126,11 @@ Status ReadBlock(RandomAccessFile* file, const BlockHandle& handle,
         // Use it directly under the assumption that it will be live
         // while the file is open.
         delete[] buf;
-        result->data = StringPiece(data, n);
+        result->data = absl::string_view(data, n);
         result->heap_allocated = false;
         result->cacheable = false;  // Do not double-cache
       } else {
-        result->data = StringPiece(buf, n);
+        result->data = absl::string_view(buf, n);
         result->heap_allocated = true;
         result->cacheable = true;
       }
@@ -149,7 +150,7 @@ Status ReadBlock(RandomAccessFile* file, const BlockHandle& handle,
         return errors::DataLoss("corrupted compressed block contents");
       }
       delete[] buf;
-      result->data = StringPiece(ubuf, ulength);
+      result->data = absl::string_view(ubuf, ulength);
       result->heap_allocated = true;
       result->cacheable = true;
       break;
@@ -159,7 +160,7 @@ Status ReadBlock(RandomAccessFile* file, const BlockHandle& handle,
       return errors::DataLoss("bad block type");
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace table

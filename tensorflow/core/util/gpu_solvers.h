@@ -34,7 +34,6 @@ limitations under the License.
 #include "rocm/include/hip/hip_complex.h"
 #include "rocm/include/rocblas.h"
 #include "rocm/rocm_config.h"
-#include "xla/stream_executor/blas.h"
 #if TF_ROCM_VERSION >= 40500
 #include "xla/stream_executor/rocm/hipsolver_wrapper.h"
 #endif

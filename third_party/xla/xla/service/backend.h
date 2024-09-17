@@ -24,15 +24,16 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/stream_pool.h"
 #include "xla/service/transfer_manager.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 
 namespace Eigen {
 struct ThreadPoolDevice;
@@ -168,7 +169,7 @@ class Backend {
   tsl::thread::ThreadPool* eigen_intra_op_thread_pool() const;
 
   // Resets the devices associated with this backend.
-  Status ResetDevices();
+  absl::Status ResetDevices();
 
  private:
   Backend(se::Platform* platform, Compiler* compiler,

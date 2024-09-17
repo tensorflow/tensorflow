@@ -20,13 +20,21 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/macros.h"
 #include "tsl/profiler/lib/scoped_memory_debug_annotation.h"
+
+// TODO: b/323943471 - This macro should eventually be provided by Abseil.
+#ifndef ABSL_DEPRECATE_AND_INLINE
+#define ABSL_DEPRECATE_AND_INLINE()
+#endif
 
 namespace tensorflow {
 namespace profiler {
 
-using tsl::profiler::MemoryDebugAnnotation;        // NOLINT
-using tsl::profiler::ScopedMemoryDebugAnnotation;  // NOLINT
+using MemoryDebugAnnotation ABSL_DEPRECATE_AND_INLINE() =
+    tsl::profiler::MemoryDebugAnnotation;  // NOLINT
+using ScopedMemoryDebugAnnotation ABSL_DEPRECATE_AND_INLINE() =
+    tsl::profiler::ScopedMemoryDebugAnnotation;  // NOLINT
 
 }  // namespace profiler
 }  // namespace tensorflow

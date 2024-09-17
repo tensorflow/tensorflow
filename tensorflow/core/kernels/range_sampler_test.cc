@@ -74,7 +74,7 @@ class RangeSamplerTest : public ::testing::Test {
       a[i] = i;
     }
     for (int64_t i = 1; i < 10; i++) {
-      sampler_->Update(ArraySlice<int64_t>(a + i, 10 - i));
+      sampler_->Update(absl::Span<const int64_t>(a + i, 10 - i));
     }
   }
   std::unique_ptr<RangeSampler> sampler_;
@@ -321,7 +321,7 @@ TEST_F(RangeSamplerTest, Unique) {
 
   // Sample one batch and get the expected counts of all values
   sampler_->SampleBatchGetExpectedCount(&rnd, true, absl::MakeSpan(batch),
-                                        MutableArraySlice<float>(), all_values,
+                                        absl::Span<float>(), all_values,
                                         absl::MakeSpan(expected));
   // Check that all elements are unique
   std::set<int64_t> s(batch.begin(), batch.end());
@@ -329,9 +329,9 @@ TEST_F(RangeSamplerTest, Unique) {
 
   for (int trial = 0; trial < num_batches; trial++) {
     std::vector<float> trial_expected(range);
-    sampler_->SampleBatchGetExpectedCount(
-        &rnd, true, absl::MakeSpan(batch), MutableArraySlice<float>(),
-        all_values, absl::MakeSpan(trial_expected));
+    sampler_->SampleBatchGetExpectedCount(&rnd, true, absl::MakeSpan(batch),
+                                          absl::Span<float>(), all_values,
+                                          absl::MakeSpan(trial_expected));
     for (int i = 0; i < range; i++) {
       EXPECT_NEAR(expected[i], trial_expected[i], expected[i] * 0.5);
     }
@@ -358,8 +358,8 @@ TEST_F(RangeSamplerTest, Avoid) {
 
   // We expect to pick all elements of [0, 100) except the avoided two.
   sampler_->SampleBatchGetExpectedCountAvoid(
-      &rnd, true, absl::MakeSpan(batch), MutableArraySlice<float>(),
-      ArraySlice<int64_t>(), MutableArraySlice<float>(), avoided);
+      &rnd, true, absl::MakeSpan(batch), absl::Span<float>(),
+      absl::Span<const int64_t>(), absl::Span<float>(), avoided);
 
   int sum = 0;
   for (auto val : batch) {

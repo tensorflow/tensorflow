@@ -40,7 +40,7 @@ ComputeEngineMetadataClient::ComputeEngineMetadataClient(
     : http_request_factory_(std::move(http_request_factory)),
       retry_config_(config) {}
 
-Status ComputeEngineMetadataClient::GetMetadata(
+absl::Status ComputeEngineMetadataClient::GetMetadata(
     const string& path, std::vector<char>* response_buffer) {
   const auto get_metadata_from_gce = [path, response_buffer, this]() {
     string metadata_url;
@@ -56,7 +56,7 @@ Status ComputeEngineMetadataClient::GetMetadata(
     request->AddHeader("Metadata-Flavor", "Google");
     request->SetResultBuffer(response_buffer);
     TF_RETURN_IF_ERROR(request->Send());
-    return OkStatus();
+    return absl::OkStatus();
   };
 
   return RetryingUtils::CallWithRetries(get_metadata_from_gce, retry_config_);

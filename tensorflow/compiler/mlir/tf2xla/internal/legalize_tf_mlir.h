@@ -33,7 +33,7 @@ namespace internal {
 // result of running all the MLIR Bridge passes. If compile_to_xla_hlo is true
 // then those passes include all the Legalization to XLA HLO which is returned
 // in the compilation_result.
-tsl::StatusOr<std::string> CompileFromMlirToXlaHlo(
+absl::StatusOr<std::string> CompileFromMlirToXlaHlo(
     bool lower_to_xla_hlo, const tpu::MlirToHloArgs& computation,
     const tpu::TPUCompileMetadataProto& metadata, llvm::StringRef device_type,
     const XlaShapeLayoutHelpers::ShapeDeterminationFns& shape_determination_fns,
@@ -45,7 +45,7 @@ tsl::StatusOr<std::string> CompileFromMlirToXlaHlo(
 
 // Compiles a serialized MLIR module into XLA HLO, generates all accompanying
 // metadata and stores them in CompilationResult.
-tsl::StatusOr<XlaCompilationResult> LegalizeWithMlirBridge(
+absl::StatusOr<XlaCompilationResult> LegalizeWithMlirBridge(
     const tpu::MlirToHloArgs& computation,
     const tpu::TPUCompileMetadataProto& metadata, bool use_tuple_args,
     llvm::StringRef device_type,

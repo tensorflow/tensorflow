@@ -35,7 +35,7 @@ class StatsAggregatorWithTagAndPrefix : public StatsAggregator {
       const string& prefix)
       : wrapped_(stats_aggregator), tag_(tag), prefix_(prefix) {}
 
-  void AddToHistogram(const string& name, gtl::ArraySlice<double> values,
+  void AddToHistogram(const string& name, absl::Span<const double> values,
                       int64_t steps) override {
     wrapped_->AddToHistogram(TaggedName(name), values, steps);
   }

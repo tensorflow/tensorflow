@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
 #include "tensorflow/core/data/service/export.pb.h"
@@ -31,13 +32,18 @@ limitations under the License.
 #include "tensorflow/core/data/service/grpc_worker_impl.h"
 #include "tensorflow/core/data/service/worker_client.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/str_util.h"
 
 namespace tensorflow {
 namespace data {
 
 namespace {
+
+// See `WorkerConfig` docs.
 constexpr char kPortPlaceholder[] = "%port%";
-}
+constexpr char kDataTransferPortPlaceholder[] = "%dts_port%";
+
+}  // namespace
 
 GrpcDataServerBase::GrpcDataServerBase(
     int port, const std::string& protocol, const std::string& server_type,
@@ -208,10 +214,10 @@ void WorkerGrpcDataServer::MaybeStartAlternativeDataTransferServer(
             << config_.worker_address();
   DataTransferServerInfo alternative_transfer_server;
   alternative_transfer_server.set_protocol(config_.data_transfer_protocol());
-  alternative_transfer_server.set_address(
-      str_util::StringReplace(config_.data_transfer_address(), kPortPlaceholder,
-                              absl::StrCat(transfer_server_->Port()),
-                              /*replace_all=*/false));
+  alternative_transfer_server.set_address(str_util::StringReplace(
+      config_.data_transfer_address(), kDataTransferPortPlaceholder,
+      absl::StrCat(transfer_server_->Port()),
+      /*replace_all=*/false));
   absl::StatusOr<std::string> compatibility_info =
       transfer_server_->GetCompatibilityInfo();
   if (!compatibility_info.ok()) {

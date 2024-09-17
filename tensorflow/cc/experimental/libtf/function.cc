@@ -68,7 +68,7 @@ tensorflow::Status ExecuteFunction(
 
 Status VerifySupportedSignature(TaggedValue signature) {
   if (signature.type() == TaggedValue::Type::TENSOR_SPEC) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   if (signature.type() == TaggedValue::Type::TUPLE) {
     for (const auto& t : signature.tuple()) {
@@ -76,7 +76,7 @@ Status VerifySupportedSignature(TaggedValue signature) {
         break;
       }
     }
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   return tensorflow::errors::Unimplemented(
       "Only functions with inputs/outputs containing a single tensor or a tuple"
@@ -85,7 +85,7 @@ Status VerifySupportedSignature(TaggedValue signature) {
 
 Status VerifySupportedArgs(TaggedValue args) {
   if (args.type() == TaggedValue::Type::TENSOR) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   if (args.type() == TaggedValue::Type::TUPLE) {
     for (const auto& t : args.tuple()) {
@@ -93,7 +93,7 @@ Status VerifySupportedArgs(TaggedValue args) {
         break;
       }
     }
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   return tensorflow::errors::Unimplemented(
       "Only functions with inputs/outputs containing a single tensor or a tuple"
@@ -106,7 +106,7 @@ Status Function::RegisterTrace(AbstractFunctionPtr fn,
   TF_RETURN_IF_ERROR(VerifySupportedSignature(input_signature));
   TF_RETURN_IF_ERROR(VerifySupportedSignature(output_signature));
   concrete_fns_.push_back({fn, input_signature, output_signature});
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 bool Match(TaggedValue signature, TaggedValue value) {
@@ -162,7 +162,7 @@ void Flatten(const TaggedValue& value,
   }
 }
 
-StatusOr<TaggedValue> Unflatten(
+absl::StatusOr<TaggedValue> Unflatten(
     absl::Span<AbstractTensorHandle* const> flat_args, TaggedValue structure) {
   if (structure.type() == TaggedValue::Type::TENSOR_SPEC) {
     if (flat_args.size() != 1) {
@@ -227,8 +227,8 @@ size_t GetFlatSize(const TaggedValue& value) {
   return 1;
 }
 
-StatusOr<TaggedValue> Function::Execute(AbstractContext* ctx,
-                                        TaggedValue value) const {
+absl::StatusOr<TaggedValue> Function::Execute(AbstractContext* ctx,
+                                              TaggedValue value) const {
   TF_RETURN_IF_ERROR(VerifySupportedArgs(value));
   TF_ASSIGN_OR_RETURN(auto concrete_fn, GetConcreteFunction(value));
   std::vector<AbstractTensorHandle*> args;
@@ -245,7 +245,7 @@ StatusOr<TaggedValue> Function::Execute(AbstractContext* ctx,
   return Unflatten(outs, concrete_fn.output_signature);
 }
 
-StatusOr<Function::ConcreteFunction> Function::GetConcreteFunction(
+absl::StatusOr<Function::ConcreteFunction> Function::GetConcreteFunction(
     TaggedValue value) const {
   if (concrete_fns_.empty()) {
     return tensorflow::errors::FailedPrecondition(

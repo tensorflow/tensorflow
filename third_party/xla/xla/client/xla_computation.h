@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
@@ -45,7 +46,7 @@ class XlaComputation {
 
   // Returns the "program shape" (parameter and return shapes) for this
   // computation.
-  StatusOr<ProgramShape> GetProgramShape() const;
+  absl::StatusOr<ProgramShape> GetProgramShape() const;
 
   const std::string& name() const { return proto().name(); }
 
@@ -54,7 +55,7 @@ class XlaComputation {
 
   // Requests that we snapshot the computation into a serializable protocol
   // buffer form.
-  StatusOr<std::unique_ptr<HloSnapshot>> Snapshot() const;
+  absl::StatusOr<std::unique_ptr<HloSnapshot>> Snapshot() const;
 
   // Returns true if this object is a null Computation.
   bool IsNull() const { return unique_id_ == -1; }

@@ -35,18 +35,18 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "third_party/gloo/gloo/algorithm.h"
-#include "third_party/gloo/gloo/allgather.h"
-#include "third_party/gloo/gloo/allreduce.h"
-#include "third_party/gloo/gloo/context.h"
-#include "third_party/gloo/gloo/math.h"
-#include "third_party/gloo/gloo/reduce_scatter.h"
-#include "third_party/gloo/gloo/rendezvous/context.h"
-#include "third_party/gloo/gloo/rendezvous/prefix_store.h"
-#include "third_party/gloo/gloo/rendezvous/store.h"
-#include "third_party/gloo/gloo/transport/device.h"
-#include "third_party/gloo/gloo/transport/unbound_buffer.h"
-#include "third_party/gloo/gloo/types.h"
+#include "gloo/algorithm.h"
+#include "gloo/allgather.h"
+#include "gloo/allreduce.h"
+#include "gloo/context.h"
+#include "gloo/math.h"
+#include "gloo/reduce_scatter.h"
+#include "gloo/rendezvous/context.h"
+#include "gloo/rendezvous/prefix_store.h"
+#include "gloo/rendezvous/store.h"
+#include "gloo/transport/device.h"
+#include "gloo/transport/unbound_buffer.h"
+#include "gloo/types.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/cpu/collectives_interface.h"
@@ -439,12 +439,21 @@ GlooCollectives::~GlooCollectives() = default;
 absl::StatusOr<std::shared_ptr<CollectivesCommunicator>>
 GlooCollectives::GetCommunicator(
     absl::Span<GlobalDeviceId const> global_devices, int rank) {
-  absl::MutexLock lock(&mu_);
-  auto& context = contexts_[std::make_tuple(
-      std::vector<GlobalDeviceId>(global_devices.begin(), global_devices.end()),
-      rank)];
-  if (context) {
-    return context;
+  Context* context;
+  {
+    absl::MutexLock lock(&mu_);
+    auto& context_ref = contexts_[std::make_tuple(
+        std::vector<GlobalDeviceId>(global_devices.begin(),
+                                    global_devices.end()),
+        rank)];
+    if (!context_ref) {
+      context_ref = std::make_unique<Context>();
+    }
+    context = context_ref.get();
+  }
+  absl::MutexLock context_lock(&context->mu);
+  if (context->communicator) {
+    return context->communicator;
   }
   auto gloo_context =
       std::make_shared<gloo::rendezvous::Context>(rank, global_devices.size());
@@ -461,9 +470,9 @@ GlooCollectives::GetCommunicator(
     return absl::UnknownError(
         absl::StrCat("Gloo context initialization failed: ", e.what()));
   }
-  context =
+  context->communicator =
       std::make_shared<GlooCollectivesCommunicator>(std::move(gloo_context));
-  return context;
+  return context->communicator;
 }
 
 }  // namespace xla::cpu

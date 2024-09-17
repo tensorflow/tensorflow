@@ -18,9 +18,9 @@ limitations under the License.
 #include <iostream>
 #include <utility>
 
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/translate/hlo_to_mhlo/hlo_utils.h"
@@ -154,7 +154,7 @@ TEST(TypeToShapeTest, ConvertMemRefToShape) {
   MLIRContext context;
   mlir::Builder builder(&context);
 
-  StatusOr<mlir::Type> mlir_type =
+  absl::StatusOr<mlir::Type> mlir_type =
       ConvertShapeToType<MemRefType>(shape, builder);
   ASSERT_TRUE(mlir_type.ok());
   mlir::Type type = std::move(mlir_type).value();
@@ -171,7 +171,7 @@ TEST(TypeToShapeTest, ConvertMemRefToShape2) {
   MLIRContext context;
   mlir::Builder builder(&context);
 
-  StatusOr<mlir::Type> mlir_type =
+  absl::StatusOr<mlir::Type> mlir_type =
       ConvertShapeToType<MemRefType>(shape, builder);
   ASSERT_TRUE(mlir_type.ok());
   mlir::Type type = std::move(mlir_type).value();

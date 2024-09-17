@@ -29,6 +29,8 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
@@ -42,12 +44,11 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -612,9 +613,9 @@ absl::StatusOr<std::array<std::vector<int64_t>, 3>> ParseEinsumString(
     return InvalidArgument("Expected one \",\" in einsum_config.");
   }
 
-  auto maybe_invalid_character = [](char d) {
+  auto maybe_invalid_character = [](char d) -> absl::Status {
     if (absl::ascii_isalpha(d)) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     if (d == '.') {
       return InvalidArgument("Unsupported \".\" in einsum config.");

@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/map_util.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -98,9 +98,13 @@ HloReplicationAnalysis::DetermineHloInstructionIsReplicated(
         bool replicated_across_replicas = true;
         const int64_t num_partitions =
             hlo->GetModule()->config().num_partitions();
+        absl::flat_hash_set<int64_t> visited_partitions;
+        absl::flat_hash_set<int64_t> visited_replicas;
         for (const auto& group : hlo->replica_groups()) {
-          absl::flat_hash_set<int64_t> visited_partitions;
-          absl::flat_hash_set<int64_t> visited_replicas;
+          visited_partitions.clear();
+          visited_replicas.clear();
+          visited_replicas.reserve(group.replica_ids().size());
+          visited_partitions.reserve(group.replica_ids().size());
           for (int64_t id : group.replica_ids()) {
             int64_t rid = id / num_partitions;
             int64_t pid = id % num_partitions;
@@ -350,6 +354,9 @@ bool HloReplicationAnalysis::ComputeHloReplicationOnComputation(
         shape_tree.CopySubtreeFrom(hlo_replication_[inst->operand(i)], {}, {i});
       }
       changed |= assign_or_combine_shapetree(std::move(shape_tree), inst);
+    } else if (inst->opcode() == HloOpcode::kOptimizationBarrier) {
+      ShapeTree<HloReplication> shape_tree = hlo_replication_[inst->operand(0)];
+      changed |= assign_or_combine_shapetree(std::move(shape_tree), inst);
     } else if (inst->opcode() == HloOpcode::kGetTupleElement) {
       ShapeTree<HloReplication> shape_tree(
           inst->shape(), HloReplication::ReplicatedOnAllDevices());
@@ -392,7 +399,7 @@ bool HloReplicationAnalysis::ComputeHloReplicationOnComputation(
   return changed;
 }
 
-Status HloReplicationAnalysis::ComputeHloReplication() {
+absl::Status HloReplicationAnalysis::ComputeHloReplication() {
   // Add entry parameters to the above sets according to user annotation.
   // Replicated modules read from `parameter_replicated_at_leaf_buffers` whereas
   // SPMD partitioned modules read from HloSharding attributes.
@@ -403,10 +410,10 @@ Status HloReplicationAnalysis::ComputeHloReplication() {
                                          HloReplication::UniqueOnAllDevices());
     const auto& replication = param->parameter_replicated_at_leaf_buffers();
     int leaf_index = 0;
-    Status status = ShapeUtil::ForEachSubshapeWithStatus(
+    absl::Status status = ShapeUtil::ForEachSubshapeWithStatus(
         param->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
           if (!ShapeUtil::IsLeafIndex(param->shape(), index)) {
-            return OkStatus();
+            return absl::OkStatus();
           }
           if (cross_partition_spmd_ && param->has_sharding()) {
             // In cross-partition spmd mode, set parameter replication status
@@ -435,14 +442,14 @@ Status HloReplicationAnalysis::ComputeHloReplication() {
             }
             ++leaf_index;
           }
-          return OkStatus();
+          return absl::OkStatus();
         });
     TF_RETURN_IF_ERROR(status);
     hlo_replication_[param] = std::move(shape_tree);
   }
   ComputeHloReplicationOnComputation(entry,
                                      /*mark_everything_not_replicated=*/false);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool HloReplicationAnalysis::HloInstructionIsReplicatedAt(

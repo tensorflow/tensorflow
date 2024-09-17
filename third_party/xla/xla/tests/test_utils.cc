@@ -24,6 +24,7 @@ limitations under the License.
 #include <random>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/literal_util.h"
@@ -260,8 +261,8 @@ absl::StatusOr<Literal> MakeFakeLiteralInternal(
   new_shape.mutable_layout()->set_element_size_in_bits(0);
   Literal literal(new_shape);
 
-  TF_RETURN_IF_ERROR(primitive_util::PrimitiveTypeSwitch<Status>(
-      [&](auto primitive_type_constant) -> Status {
+  TF_RETURN_IF_ERROR(primitive_util::PrimitiveTypeSwitch<absl::Status>(
+      [&](auto primitive_type_constant) -> absl::Status {
         if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
           using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
           if constexpr (primitive_util::IsFloatingPointType(
@@ -269,7 +270,7 @@ absl::StatusOr<Literal> MakeFakeLiteralInternal(
             PopulateWithFloatingPointData<NativeT>(
                 &literal, engine, no_duplicates, use_large_range,
                 max_bits_of_precision);
-            return OkStatus();
+            return absl::OkStatus();
           }
           if constexpr (primitive_type_constant == PRED) {
             std::uniform_int_distribution<int> generator(0, 1);
@@ -277,7 +278,7 @@ absl::StatusOr<Literal> MakeFakeLiteralInternal(
                 [&](absl::Span<const int64_t> /*indices*/) {
                   return generator(*engine);
                 }));
-            return OkStatus();
+            return absl::OkStatus();
           }
           if constexpr (primitive_util::IsIntegralType(
                             primitive_type_constant)) {
@@ -302,13 +303,13 @@ absl::StatusOr<Literal> MakeFakeLiteralInternal(
               std::sort(literal.data<NativeT>().begin(),
                         literal.data<NativeT>().end());
             }
-            return OkStatus();
+            return absl::OkStatus();
           }
           if constexpr (primitive_util::IsComplexType(
                             primitive_type_constant)) {
             PopulateWithComplexData<NativeT>(&literal, engine, no_duplicates,
                                              use_large_range);
-            return OkStatus();
+            return absl::OkStatus();
           }
         }
         return Unimplemented(
@@ -605,9 +606,20 @@ absl::StatusOr<Literal> MakeFakeLiteral(const Shape& shape, bool pseudo_random,
 absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
     const HloModule* module, bool pseudo_random, bool use_large_range,
     bool treat_gte_as_data_formatting,
-    std::optional<int64_t> max_bits_of_precision) {
-  auto engine = pseudo_random ? std::make_unique<std::minstd_rand0>() : nullptr;
-  return MakeFakeArguments(module, engine.get(), use_large_range,
+    std::optional<int64_t> max_bits_of_precision, std::minstd_rand0* engine) {
+  if (!pseudo_random) {
+    return MakeFakeArguments(module, nullptr, use_large_range,
+                             treat_gte_as_data_formatting,
+                             max_bits_of_precision);
+  }
+  if (engine == nullptr) {
+    auto new_engine =
+        pseudo_random ? std::make_unique<std::minstd_rand0>() : nullptr;
+    return MakeFakeArguments(module, new_engine.get(), use_large_range,
+                             treat_gte_as_data_formatting,
+                             max_bits_of_precision);
+  }
+  return MakeFakeArguments(module, engine, use_large_range,
                            treat_gte_as_data_formatting, max_bits_of_precision);
 }
 
@@ -639,8 +651,8 @@ absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
   return std::move(arguments);
 }
 
-Status VerifyHloModule(HloModule* const module, bool layout_sensitive,
-                       bool allow_mixed_precision) {
+absl::Status VerifyHloModule(HloModule* const module, bool layout_sensitive,
+                             bool allow_mixed_precision) {
   return HloVerifier(/*layout_sensitive=*/layout_sensitive,
                      /*allow_mixed_precision=*/allow_mixed_precision)
       .Run(module)

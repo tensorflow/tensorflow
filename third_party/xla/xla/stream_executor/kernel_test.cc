@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/typed_kernel_factory.h"
 #include "tsl/platform/test.h"
 #include "tsl/platform/test_benchmark.h"
 
@@ -65,15 +66,12 @@ static_assert(
     std::is_same_v<ArgsStorage<DeviceMemoryBase*, const DeviceMemoryBase*>,
                    std::tuple<const void*, const void*>>);
 
-static std::unique_ptr<StreamExecutor> NewStreamExecutor() {
+static StreamExecutor* NewStreamExecutor() {
   Platform* platform = PlatformManager::PlatformWithName("Host").value();
-  StreamExecutorConfig config(/*ordinal=*/0);
-  return platform->GetUncachedExecutor(config).value();
+  return platform->ExecutorForDevice(/*ordinal=*/0).value();
 }
 
 TEST(KernelTest, PackDeviceMemoryArguments) {
-  auto executor = NewStreamExecutor();
-
   DeviceMemoryBase a(reinterpret_cast<void*>(0x12345678));
   DeviceMemoryBase b(reinterpret_cast<void*>(0x87654321));
 
@@ -124,7 +122,7 @@ TEST(KernelTest, FailToCreateTypedKernelFromEmptySpec) {
   MultiKernelLoaderSpec empty_spec(/*arity=*/0);
 
   auto executor = NewStreamExecutor();
-  auto kernel = TypedKernel<>::Create(executor.get(), empty_spec);
+  auto kernel = TypedKernelFactory<>::Create(executor, empty_spec);
   EXPECT_FALSE(kernel.ok());
 }
 

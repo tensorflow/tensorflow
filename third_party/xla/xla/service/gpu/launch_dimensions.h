@@ -76,44 +76,15 @@ class LaunchDimensions {
                         thread_counts_per_block_.z, "}");
   }
 
-  bool operator==(const LaunchDimensions& other) const {
-    return block_counts_ == other.block_counts_ &&
-           thread_counts_per_block_ == other.thread_counts_per_block_;
-  }
-
-  bool operator!=(const LaunchDimensions& other) const {
-    return !(*this == other);
-  }
-
  private:
   se::BlockDim block_counts_;
   se::ThreadDim thread_counts_per_block_;
 };
 
-std::ostream& operator<<(std::ostream& out,
-                         const LaunchDimensions& launch_dims);
-
 struct LaunchDimensionsConfig {
   // The kernel implementation will be unrolled if `unroll_factor` is
   // greater than one.
   int unroll_factor = 1;
-  // A wave is a group of blocks that execute at the same time on the
-  // GPU. If there are more blocks then the number that can run
-  // concurrently, there are multiple waves of blocks running
-  // sequentially.  If `few_waves` is true, each thread will loop over
-  // a block of unroll_factor elements. Otherwise each thread will
-  // handle only unroll_factor.
-  bool few_waves = false;
-  // If `row_vectorized` is true, then the block size will equal to
-  // `hlo.shape().dimensions().back()/unroll_factor`.
-  // Currently few_waves and row_vectorized do not work together.
-  bool row_vectorized = false;
-
-  std::string ToString() {
-    return absl::StrCat("unroll_factor=", unroll_factor,
-                        ", few_waves=", few_waves,
-                        ", row_vectorized=", row_vectorized);
-  }
 };
 
 // Returns -1 if the shape doesn't allow the row vectorization code path.

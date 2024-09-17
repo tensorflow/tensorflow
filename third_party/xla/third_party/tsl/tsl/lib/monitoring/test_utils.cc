@@ -18,10 +18,10 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
 #include "tsl/lib/monitoring/types.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/protobuf/histogram.pb.h"
 
 namespace tsl {
@@ -40,7 +40,7 @@ double Histogram::num(size_t bucket) const {
 double Histogram::sum() const { return histogram_proto_.sum(); }
 double Histogram::sum_squares() const { return histogram_proto_.sum_squares(); }
 
-StatusOr<Histogram> Histogram::Subtract(const Histogram& other) const {
+absl::StatusOr<Histogram> Histogram::Subtract(const Histogram& other) const {
   HistogramProto histogram_proto = histogram_proto_;
   if (other.histogram_proto_.bucket_limit().empty() &&
       other.histogram_proto_.bucket().empty()) {

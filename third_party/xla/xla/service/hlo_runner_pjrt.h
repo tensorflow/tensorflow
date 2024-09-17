@@ -40,9 +40,10 @@ class HloRunnerPjRt : public HloRunnerInterface {
 
   // Transfers data between the host and device.
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> TransferLiteralToDevice(
-      const Literal& literal);
+      const Literal& literal, int64_t memory_space);
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-  TransferLiteralsToDevice(absl::Span<const Literal* const> literals);
+  TransferLiteralsToDevice(const ComputationLayout& entry_layout,
+                           absl::Span<const Literal* const> literals);
   absl::StatusOr<Literal> TransferLiteralFromDevice(PjRtBuffer& buffer);
 
   // Executes the given module with given literals as input and returns the
@@ -56,7 +57,7 @@ class HloRunnerPjRt : public HloRunnerInterface {
   // buffers.
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   ExecuteWithDeviceBuffers(
-      PjRtLoadedExecutable* executable,
+      PjRtLoadedExecutable* executable, const ExecuteOptions& execute_options,
       const std::vector<std::unique_ptr<PjRtBuffer>>& arguments);
 
   // Creates an executable object for an HloModule.

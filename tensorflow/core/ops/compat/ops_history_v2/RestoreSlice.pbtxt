@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "RestoreSlice"
   input_arg {
     name: "file_pattern"

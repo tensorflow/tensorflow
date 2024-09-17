@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -25,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/data/graph_test_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/platform/status_matchers.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
@@ -74,7 +74,8 @@ TEST(RemoveCompressionMap, Success) {
            /*input_node_name=*/"RangeDataset/_3",
            /*num_parallel_calls_node_name=*/"Const/_4",
            /*function_name=*/"__inference_Dataset_map_lambda_10",
-           /*deterministic=*/"default"),
+           /*deterministic=*/"default",
+           /*use_unbounded_threadpool=*/false),
 
        NDef("dataset",                    // name
             "_Retval",                    // op

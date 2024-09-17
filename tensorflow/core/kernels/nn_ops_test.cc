@@ -800,7 +800,7 @@ static void BM_LRNFloat(::testing::benchmark::State& state, int depth, int cols,
                                            num_threads);
   device->set_eigen_cpu_device(&eigen_cpu_device);
 
-  gtl::InlinedVector<TensorValue, 4> inputs;
+  absl::InlinedVector<TensorValue, 4> inputs;
   TensorShape shape({batch_size, rows, cols, depth});
 
   Tensor input(DT_FLOAT, shape);
@@ -881,7 +881,7 @@ static void BM_AvgPool(::testing::benchmark::State& state, int batch_size,
                                            num_threads);
   device->set_eigen_cpu_device(&eigen_cpu_device);
 
-  gtl::InlinedVector<TensorValue, 4> inputs;
+  absl::InlinedVector<TensorValue, 4> inputs;
   TensorShape shape1({batch_size, rows, cols, depth});
   Tensor input1(DT_FLOAT, shape1);
   test::FillIota<float>(&input1, 1.0);
@@ -971,7 +971,7 @@ static void BM_AvgPoolBk(::testing::benchmark::State& state, int batch_size,
                                            num_threads);
   device->set_eigen_cpu_device(&eigen_cpu_device);
 
-  gtl::InlinedVector<TensorValue, 4> inputs;
+  absl::InlinedVector<TensorValue, 4> inputs;
 
   int64_t out_height, out_width, pad_rows, pad_cols;
   TF_CHECK_OK(GetWindowedOutputSize(rows, kernel_rows, /*dilation_rate=*/1,
@@ -1076,7 +1076,7 @@ static void BM_MaxPool(::testing::benchmark::State& state, int batch_size,
                                            num_threads);
   device->set_eigen_cpu_device(&eigen_cpu_device);
 
-  gtl::InlinedVector<TensorValue, 4> inputs;
+  absl::InlinedVector<TensorValue, 4> inputs;
   TensorShape shape1({batch_size, rows, cols, depth});
   Tensor input1(DT_FLOAT, shape1);
   test::FillIota<float>(&input1, 1.0);
@@ -1186,10 +1186,10 @@ static void BM_MaxPoolBk(::testing::benchmark::State& state, int batch_size,
   output_diff.flat<float>().setRandom();
 
   CHECK_EQ(kernel_rows, kernel_cols);
-  ops::internal::MaxPoolGrad(root, input_data, output_data, output_diff,
-                             {1, kernel_rows, kernel_cols, 1} /* ksize */,
-                             {1, stride, stride, 1} /* stride */,
-                             padding == VALID ? "VALID" : "SAME");
+  ops::internal::MaxPoolGrad give_me_a_name(
+      root, input_data, output_data, output_diff,
+      {1, kernel_rows, kernel_cols, 1} /* ksize */,
+      {1, stride, stride, 1} /* stride */, padding == VALID ? "VALID" : "SAME");
   TF_CHECK_OK(root.status());
   Graph* g = new Graph(OpRegistry::Global());
   TF_CHECK_OK(root.ToGraph(g));
@@ -1262,7 +1262,7 @@ static void BM_ReluFloat(::testing::benchmark::State& state, int batch_size,
                                            num_threads);
   device->set_eigen_cpu_device(&eigen_cpu_device);
 
-  gtl::InlinedVector<TensorValue, 4> inputs;
+  absl::InlinedVector<TensorValue, 4> inputs;
   TensorShape shape1({batch_size, rows, cols, depth});
   Tensor input1(DT_FLOAT, shape1);
   test::FillIota<float>(&input1, 1.0);
@@ -1333,7 +1333,7 @@ static void BM_SoftplusFloat(::testing::benchmark::State& state, int batch_size,
                                            num_threads);
   device->set_eigen_cpu_device(&eigen_cpu_device);
 
-  gtl::InlinedVector<TensorValue, 4> inputs;
+  absl::InlinedVector<TensorValue, 4> inputs;
   TensorShape shape1({batch_size, rows, cols, depth});
   Tensor input1(DT_FLOAT, shape1);
   input1.flat<float>().setRandom();

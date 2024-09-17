@@ -29,6 +29,9 @@ REGISTER_OP_NO_GRADIENT("OnesLike");
 REGISTER_OP_NO_GRADIENT("Const");
 REGISTER_OP_NO_GRADIENT("EditDistance");
 REGISTER_OP_NO_GRADIENT("StopGradient");
+REGISTER_OP_NO_GRADIENT("FakeQuantWithMinMaxArgsGradient");
+REGISTER_OP_NO_GRADIENT("FakeQuantWithMinMaxVarsGradient");
+REGISTER_OP_NO_GRADIENT("FakeQuantWithMinMaxVarsPerChannelGradient");
 
 Status ReshapeGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
@@ -154,7 +157,6 @@ Status ConcatGradHelper(const AttrSlice& attrs, FunctionDef* g,
     offset_i.push_back(strings::StrCat("offset:offset:", i));
     dx_i.push_back(strings::StrCat("dx_", i, ":output:0"));
   }
-  DataTypeVector dtype_list(N, T);
 
   // ConcatGrad(dim, x, dy):
   //   for i in range(N):

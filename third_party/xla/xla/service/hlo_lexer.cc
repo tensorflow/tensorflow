@@ -22,10 +22,10 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/casts.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/numbers.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/numbers.h"
 

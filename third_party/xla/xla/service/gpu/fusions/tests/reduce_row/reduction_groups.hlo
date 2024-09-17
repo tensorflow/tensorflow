@@ -1,0 +1,22 @@
+// RUN: fusion_to_mlir %s | FileCheck %s
+// RUN: test_correctness %s
+
+%add_f32 {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add = f32[] add(%x, %y)
+}
+
+fusion {
+  %param0 = f32[1024] parameter(0)
+  %param1 = f32[1024] parameter(1)
+  %constant0 = f32[] constant(0)
+  %reduce1 = f32[] reduce(%param0, %constant0), dimensions={0}, to_apply=%add_f32
+  %reduce2 = f32[] reduce(%param1, %constant0), dimensions={0}, to_apply=%add_f32
+  ROOT %tuple = (f32[], f32[]) tuple(%reduce1, %reduce2)
+}
+
+// CHECK: %[[BLOCK_ID_Y:.*]] = gpu.block_id y
+// CHECK: scf.index_switch %[[BLOCK_ID_Y]]
+// CHECK: case 1 {
+// CHECK: default {

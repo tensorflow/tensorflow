@@ -137,10 +137,16 @@ struct Parameter {
   std::shared_ptr<SharedState> state;
 };
 
-// Returns a new tunable parameter.
+// Returns a new tunable parameter with the value set to `min`.
 std::shared_ptr<Parameter> MakeParameter(const string& name,
                                          std::shared_ptr<SharedState> state,
                                          double min, double max);
+
+// Returns a new tunable parameter with the value set to `value` instead
+// of `min`.
+std::shared_ptr<Parameter> MakeParameter(const string& name,
+                                         std::shared_ptr<SharedState> state,
+                                         double min, double max, double value);
 
 // Returns a new non-tunable parameter.
 std::shared_ptr<Parameter> MakeNonTunableParameter(const string& name,
@@ -630,6 +636,11 @@ class Node {
   // name matches `parameter_name`.
   void SyncStateValuesToParameterValues(const std::string& parameter_name);
 
+  void SetEstimatedElementSize(std::optional<int64_t> estimated_element_size) {
+    mutex_lock l(mu_);
+    estimated_element_size_ = estimated_element_size;
+  }
+
  protected:
   // Used for (incrementally) recording metrics. The class is thread-safe.
   class Metrics {
@@ -854,6 +865,8 @@ class Node {
   // node results in recursive deletion of the subtree rooted in the node.
   Node* const output_;
   std::weak_ptr<Node> output_weak_ptr_;
+  std::optional<int64_t> estimated_element_size_ TF_GUARDED_BY(mu_) =
+      std::nullopt;
 };
 
 // InterleaveMany is used to model datasets whose inputs are used to create
@@ -876,10 +889,13 @@ std::shared_ptr<Node> MakeAsyncKnownRatioNode(
     std::vector<std::shared_ptr<Parameter>> parameters,
     bool is_legacy_prefetch_autotuned = false);
 
+// Makes an AsyncKnownRatioNode. If `estimated_element_size` is provided,
+// it will be used during the estimation of maximum buffered bytes.
 std::shared_ptr<Node> MakeAsyncKnownRatioNode(
     Node::Args args, double ratio,
     std::vector<std::shared_ptr<Parameter>> parameters,
-    bool is_legacy_prefetch_autotuned = false);
+    bool is_legacy_prefetch_autotuned = false,
+    std::optional<int64_t> estimated_element_size = std::nullopt);
 
 // Source nodes represent data sources.
 std::shared_ptr<Node> MakeSourceNode(Node::Args args);

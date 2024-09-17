@@ -65,6 +65,8 @@ int main(int argc, char** argv) {
   std::string target_cpu = argv[1];
   if (target_cpu == "k8") {
     triple_string = "x86_64-none-linux-gnu";
+  } else if (target_cpu == "darwin_arm64") {
+    triple_string = "arm64-apple-darwin";
   } else if (target_cpu == "darwin") {
     triple_string = "x86_64-apple-macosx";
   } else if ((target_cpu == "arm") || (target_cpu == "aarch64")) {

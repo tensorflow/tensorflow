@@ -17,11 +17,13 @@ limitations under the License.
 #define XLA_SERVICE_LOGICAL_BUFFER_ANALYSIS_H_
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/logical_buffer.h"
-#include "xla/statusor.h"
+#include "xla/shape_util.h"
 
 namespace xla {
 // A class to create all the logical buffers defined by the HLO ops in a module.
@@ -46,7 +48,7 @@ class LogicalBufferAnalysis : public DfsHloVisitorWithDefault {
 
  private:
   explicit LogicalBufferAnalysis(const HloModule* module) : module_(module) {}
-  Status Analyze();
+  absl::Status Analyze();
 
   // The module this analysis is performed on.
   const HloModule* module_;
@@ -56,19 +58,20 @@ class LogicalBufferAnalysis : public DfsHloVisitorWithDefault {
   // accessed with GetBuffer.
   void NewLogicalBuffer(HloInstruction* instruction, const ShapeIndex& index);
 
-  Status DefaultAction(HloInstruction* hlo_instruction) override;
-  Status HandleTuple(HloInstruction* tuple) override;
-  Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
-  Status HandleBitcast(HloInstruction* bitcast) override;
-  Status HandleDomain(HloInstruction* domain) override;
-  Status HandleCopy(HloInstruction* copy) override;
-  Status HandleCopyStart(HloInstruction* copy_start) override;
-  Status HandleCopyDone(HloInstruction* copy_done) override;
-  Status HandleRecvDone(HloInstruction* recv_done) override;
-  Status HandleSend(HloInstruction* send) override;
-  Status HandleAddDependency(HloInstruction* add_dependency) override;
-  Status HandleCustomCall(HloInstruction* custom_call) override;
-  Status HandleFusion(HloInstruction* fusion) override;
+  absl::Status DefaultAction(HloInstruction* hlo_instruction) override;
+  absl::Status HandleTuple(HloInstruction* tuple) override;
+  absl::Status HandleGetTupleElement(
+      HloInstruction* get_tuple_element) override;
+  absl::Status HandleBitcast(HloInstruction* bitcast) override;
+  absl::Status HandleDomain(HloInstruction* domain) override;
+  absl::Status HandleCopy(HloInstruction* copy) override;
+  absl::Status HandleCopyStart(HloInstruction* copy_start) override;
+  absl::Status HandleCopyDone(HloInstruction* copy_done) override;
+  absl::Status HandleRecvDone(HloInstruction* recv_done) override;
+  absl::Status HandleSend(HloInstruction* send) override;
+  absl::Status HandleAddDependency(HloInstruction* add_dependency) override;
+  absl::Status HandleCustomCall(HloInstruction* custom_call) override;
+  absl::Status HandleFusion(HloInstruction* fusion) override;
 
   // A map from the buffer ID to the logical buffer
   std::vector<std::unique_ptr<LogicalBuffer>> logical_buffers_;

@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -42,7 +43,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/map_util.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
@@ -1418,7 +1418,7 @@ InstructionValueSet& HloDataflowAnalysis::GetInstructionValueSet(
   return *value_sets_.find(instruction)->second;
 }
 
-Status HloDataflowAnalysis::InitializeInstructionValueSets() {
+absl::Status HloDataflowAnalysis::InitializeInstructionValueSets() {
   for (const HloComputation* computation : module_.MakeComputationSorted()) {
     if (!HloInstruction::IsThreadIncluded(computation->execution_thread(),
                                           execution_threads_)) {
@@ -1621,7 +1621,7 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void HloDataflowAnalysis::OptimizePhiValues() {
@@ -1668,7 +1668,7 @@ void HloDataflowAnalysis::OptimizePhiValues() {
 }
 
 /* static */
-StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
+absl::StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
     const HloModule& module, bool ssa_form, bool bitcast_defines_value,
     const CanShareBuffer& can_share_buffer, const ForwardsValue& forwards_value,
     absl::flat_hash_set<absl::string_view> execution_threads) {
@@ -1731,7 +1731,7 @@ StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
   return std::move(dataflow_analysis);
 }
 
-Status HloDataflowAnalysis::Verify() const {
+absl::Status HloDataflowAnalysis::Verify() const {
   // Verify each HloValue appears in the value sets that the value's positions()
   // indicate.
   for (const HloValue* value : values()) {
@@ -1751,6 +1751,13 @@ Status HloDataflowAnalysis::Verify() const {
       continue;
     }
     for (const auto& instruction : computation->instructions()) {
+      // TODO(b/361618355): Teach HloDataflowAnalysis how to handle input/output
+      // aliasing for async calls.
+      if (instruction->opcode() == HloOpcode::kAsyncStart &&
+          (instruction->async_wrapped_opcode() == HloOpcode::kCall ||
+           instruction->async_wrapped_opcode() == HloOpcode::kCustomCall)) {
+        continue;
+      }
       for (const auto& pair : GetInstructionValueSet(instruction)) {
         const ShapeIndex& index = pair.first;
         const HloValueSet& value_set = pair.second;
@@ -1764,7 +1771,7 @@ Status HloDataflowAnalysis::Verify() const {
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool HloDataflowAnalysis::DoesNotUseOperandBuffer(
@@ -1815,37 +1822,6 @@ bool HloDataflowAnalysis::DoesNotUseOperandBuffer(
 
 namespace {
 
-// Removes layers of tuple indirection introduced via 'tuple' and
-// 'get-tuple-element' instructions to more directly identify the source of the
-// given HLO value (identified by the given `ShapeIndex` into the output of the
-// given `HloInstruction`).
-//
-// e.g. for the following:
-//    %x = some-op(...)
-//    %foo = get-tuple-element(%x), index=0
-//    %bar = tuple(%y, %foo)
-//
-// ... FollowTupleIndirection(%bar, {1}) == {%x, {0}} (output 1 of 'bar' comes
-// from output 0 of %x).
-//
-// Note that all 'tuple' instructions are followed before all
-// 'get-tuple-element' instructions are followed. This is because it is assumed
-// that tupling a value and then extracting it from the tuple again will not
-// occur in properly-optimized IR.
-std::pair<const HloInstruction*, ShapeIndex> FollowTupleIndirection(
-    const HloInstruction* instruction, ShapeIndex operand_index) {
-  while (instruction->opcode() == HloOpcode::kTuple && !operand_index.empty()) {
-    instruction = instruction->operand(operand_index.front());
-    operand_index.pop_front();
-  }
-  while (instruction->opcode() == HloOpcode::kGetTupleElement) {
-    operand_index.push_front(instruction->tuple_index());
-    instruction = instruction->operand(0);
-  }
-
-  return {instruction, operand_index};
-}
-
 // Returns in-place input/output pairs for the given fusion instruction,
 // according to the aliasing rules for the corresponding fusion computation.
 //
@@ -1892,23 +1868,40 @@ GetFusionInstructionInPlaceInputOutputPairs(const HloInstruction* instruction) {
             in_place_input_source =
                 output_source_instruction->operand(input.operand_number);
             in_place_input_index = input.operand_index;
+            // Follow tuple indirection backwards from the instruction input to
+            // try to find a fusion parameter. If found, that parameter aliases
+            // the current output. If not, the current output aliases no input.
+            std::tie(in_place_input_source, in_place_input_index) =
+                FollowTupleIndirection(in_place_input_source,
+                                       in_place_input_index);
+            if (in_place_input_source->opcode() == HloOpcode::kFusion) {
+              // Nested fusions can have aliasing that allows us to peephole
+              // through to their producer.
+              auto nested_in_place_input_output_pairs =
+                  HloDataflowAnalysis::GetInPlaceInputOutputPairs(
+                      in_place_input_source);
+              for (const auto& pair : nested_in_place_input_output_pairs) {
+                if (pair.second == in_place_input_index) {
+                  // If the nested fusion has aliasing that matches the index of
+                  // this input for its output, then peephole to its input.
+                  in_place_input_source =
+                      in_place_input_source->operand(pair.first.operand_number);
+                  in_place_input_index = pair.first.operand_index;
+                  std::tie(in_place_input_source, in_place_input_index) =
+                      FollowTupleIndirection(in_place_input_source,
+                                             in_place_input_index);
+                }
+              }
+            }
           }
         }
 
-        if (in_place_input_source) {
-          // Follow tuple indirection backwards from the instruction input to
-          // try to find a fusion parameter. If found, that parameter aliases
-          // the current output. If not, the current output aliases no input.
-          std::tie(in_place_input_source, in_place_input_index) =
-              FollowTupleIndirection(in_place_input_source,
-                                     in_place_input_index);
-
-          if (in_place_input_source->opcode() == HloOpcode::kParameter) {
-            in_place_input_output_pairs.emplace_back(
-                HloOperandIndex{in_place_input_source->parameter_number(),
-                                in_place_input_index},
-                index);
-          }
+        if (in_place_input_source != nullptr &&
+            in_place_input_source->opcode() == HloOpcode::kParameter) {
+          in_place_input_output_pairs.emplace_back(
+              HloOperandIndex{in_place_input_source->parameter_number(),
+                              in_place_input_index},
+              index);
         }
       });
   return in_place_input_output_pairs;
@@ -2178,6 +2171,20 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
   // Loop fusions that contain transposing copies won't reach here as they have
   // different layouts, which fails the check in the beginning of this function.
   return user->IsElementwiseOnOperand(user->operand_index(operand));
+}
+
+std::pair<const HloInstruction*, ShapeIndex> FollowTupleIndirection(
+    const HloInstruction* instruction, ShapeIndex operand_index) {
+  while (instruction->opcode() == HloOpcode::kTuple && !operand_index.empty()) {
+    instruction = instruction->operand(operand_index.front());
+    operand_index.pop_front();
+  }
+  while (instruction->opcode() == HloOpcode::kGetTupleElement) {
+    operand_index.push_front(instruction->tuple_index());
+    instruction = instruction->operand(0);
+  }
+
+  return {instruction, operand_index};
 }
 
 }  // namespace xla

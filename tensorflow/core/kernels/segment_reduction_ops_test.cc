@@ -45,7 +45,7 @@ static void BM_UnsortedSegmentReduction(::testing::benchmark::State& state,
       DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));
 
   // Create inputs
-  gtl::InlinedVector<TensorValue, 4> reduction_inputs;
+  absl::InlinedVector<TensorValue, 4> reduction_inputs;
   TensorShape shape1({num_rows, num_cols});
   Tensor input(DT_FLOAT, shape1);
   // input.flat<float>().setRandom();
@@ -114,7 +114,7 @@ static void BM_SegmentReduction(::testing::benchmark::State& state,
       DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));
 
   // Create inputs
-  gtl::InlinedVector<TensorValue, 4> reduction_inputs;
+  absl::InlinedVector<TensorValue, 4> reduction_inputs;
   TensorShape shape1({num_rows, num_cols});
   Tensor input1(DT_FLOAT, shape1);
   reduction_inputs.push_back({nullptr, &input1});

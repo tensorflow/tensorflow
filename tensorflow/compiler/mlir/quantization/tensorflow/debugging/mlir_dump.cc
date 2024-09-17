@@ -102,7 +102,7 @@ class WritableFileWrapper : public llvm::raw_ostream {
   }
 
   void write_impl(const char* ptr, size_t size) override {
-    if (file_ && !file_->Append(tsl::StringPiece(ptr, size)).ok()) {
+    if (file_ && !file_->Append(absl::string_view(ptr, size)).ok()) {
       file_ = nullptr;
     }
   }
@@ -228,7 +228,6 @@ void EnableIrPrinting(mlir::PassManager& pm,
       /*print_after_only_on_change=*/true, flag));
 }
 
-// TODO(b/259374854): Create tests for MaybeEnableIrPrinting.
 absl::Status MaybeEnableIrPrinting(mlir::PassManager& pm,
                                    absl::string_view file_name_prefix) {
   if (!VLOG_IS_ON(1)) {

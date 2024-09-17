@@ -161,8 +161,6 @@ class HloExecutionProfile {
     return profile_counters_;
   }
 
-  HloExecutionProfileData ToProto() const;
-
  private:
   const HloProfilePrinterData& hlo_profile_printer_data_;
   const HloProfileIndexMap& hlo_profile_index_map_;

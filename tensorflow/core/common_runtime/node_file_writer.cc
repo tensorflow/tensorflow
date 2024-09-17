@@ -66,7 +66,7 @@ const int kMaxInt32Elems = 10;
 
 namespace tensorflow {
 
-/*static*/ StatusOr<NodeFileWriter*>
+/*static*/ absl::StatusOr<NodeFileWriter*>
 tensorflow::NodeFileWriter::GetNodeFileWriterIfEnabled(
     const std::string& device_name, Env* env) {
   // First get the directory from TF_NODE_FILE_WRITER_DIRECTORY.

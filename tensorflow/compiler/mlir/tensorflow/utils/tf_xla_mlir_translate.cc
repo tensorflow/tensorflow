@@ -37,6 +37,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
@@ -396,11 +397,11 @@ SerializedMlirStringAttrToMlirModuleTranslate(llvm::StringRef input,
   // an output parameter is provided for returning the number of chars read.
   size_t numRead;
   mlir::Attribute attr = mlir::parseAttribute(input, context, {}, &numRead);
-  if (!attr || !attr.isa<mlir::StringAttr>()) {
+  if (!attr || !mlir::isa<mlir::StringAttr>(attr)) {
     LOG(ERROR) << "Input is not parsable as a MLIR StringAttr.";
     return nullptr;
   }
-  auto str_attr = attr.cast<mlir::StringAttr>();
+  auto str_attr = mlir::cast<mlir::StringAttr>(attr);
 
   mlir::DialectRegistry registry;
   RegisterMlirInputDialects(registry);

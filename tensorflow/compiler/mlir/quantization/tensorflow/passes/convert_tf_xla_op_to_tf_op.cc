@@ -158,10 +158,8 @@ Value CreateEinsumOpFromXlaDotV2Op(OpBuilder& builder, const Location loc,
   xla::DotDimensionNumbers dot_dimension_numbers;
   dot_dimension_numbers.ParseFromString(dot_dimension_numbers_str.str());
   SmallVector<Value> input_arguments = {lhs, rhs};
-  const int lhs_rank =
-      lhs.getType().template cast<ShapedType>().getShape().size();
-  const int rhs_rank =
-      rhs.getType().template cast<ShapedType>().getShape().size();
+  const int lhs_rank = mlir::cast<ShapedType>(lhs.getType()).getShape().size();
+  const int rhs_rank = mlir::cast<ShapedType>(rhs.getType()).getShape().size();
 
   const std::string einsum_equation =
       CreateEinsumEquation(dot_dimension_numbers, lhs_rank, rhs_rank);
@@ -218,7 +216,7 @@ RankedTensorType RestoreCollapsedDimensions(
 Type GetSliceOpOutputType(Type xla_gather_op_output_type,
                           const absl::flat_hash_set<int64_t>& collapsed_dims) {
   if (auto ranked_output_type =
-          xla_gather_op_output_type.dyn_cast<RankedTensorType>();
+          mlir::dyn_cast<RankedTensorType>(xla_gather_op_output_type);
       ranked_output_type) {
     return RestoreCollapsedDimensions(ranked_output_type, collapsed_dims);
   }
@@ -228,9 +226,9 @@ Type GetSliceOpOutputType(Type xla_gather_op_output_type,
 
 // TODO (b/275225582): Supports Xla Gather op in general case.
 bool IsXlaGatherWithoutBatch(Value operand, Value start_indices) {
-  auto operand_type = operand.getType().dyn_cast_or_null<ShapedType>();
+  auto operand_type = mlir::dyn_cast_or_null<ShapedType>(operand.getType());
   auto start_indices_type =
-      start_indices.getType().dyn_cast_or_null<ShapedType>();
+      mlir::dyn_cast_or_null<ShapedType>(start_indices.getType());
   if (start_indices_type == nullptr || operand_type == nullptr) return false;
   return start_indices_type.getShape().size() == 1;
 }
@@ -245,7 +243,7 @@ Value CreateSliceAndReshapeOpFromXlaGatherOpWithoutBatch(
   // Construct full start_indices with given start_indices and
   // start_index_map.
   const ArrayRef<int64_t> operand_shape =
-      operand.getType().cast<ShapedType>().getShape();
+      mlir::cast<ShapedType>(operand.getType()).getShape();
   const int64_t operand_rank = operand_shape.size();
 
   // Fills zeros if start_index is not given in start_indices.
@@ -273,7 +271,7 @@ Value CreateSliceAndReshapeOpFromXlaGatherOpWithoutBatch(
       builder.create<TF::CastOp>(
           loc,
           RankedTensorType::get(
-              start_indices.getType().template cast<ShapedType>().getShape(),
+              mlir::cast<ShapedType>(start_indices.getType()).getShape(),
               builder.getI64Type()),
           start_indices));
 
@@ -289,7 +287,7 @@ Value CreateSliceAndReshapeOpFromXlaGatherOpWithoutBatch(
       builder.create<TF::CastOp>(
           loc,
           RankedTensorType::get(
-              slice_sizes.getType().template cast<ShapedType>().getShape(),
+              mlir::cast<ShapedType>(slice_sizes.getType()).getShape(),
               builder.getI64Type()),
           slice_sizes));
 

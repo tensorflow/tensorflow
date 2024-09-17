@@ -1,12 +1,12 @@
 # libtf implementation details.
 
 load(
-    "//tensorflow/core/platform:rules_cc.bzl",
-    "cc_library",
-)
-load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
+)
+load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
 )
 
 package(
@@ -39,6 +39,8 @@ tf_cc_test(
         ":scalars",
         ":string",
         ":tensor_spec",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -123,6 +125,8 @@ tf_cc_test(
     deps = [
         ":iostream",  # Necessary for absl::VerifyTypeImplementsAbslHashCorrectly.
         ":tensor_spec",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/hash:hash_testing",

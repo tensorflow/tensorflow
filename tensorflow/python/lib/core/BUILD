@@ -39,8 +39,8 @@ cc_library(
         "//tensorflow/c:tf_datatype_hdrs",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "@local_tsl//tsl/python/lib/core:ml_dtypes_lib",
-        "@local_tsl//tsl/python/lib/core:numpy",
+        "@local_xla//xla/tsl/python/lib/core:ml_dtypes_lib",
+        "@local_xla//xla/tsl/python/lib/core:numpy",
     ],
 )
 
@@ -171,7 +171,7 @@ cc_library(
         "//tensorflow/python/eager:pywrap_tfe_lib",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
-        "@local_tsl//tsl/python/lib/core:numpy",
+        "@local_xla//xla/tsl/python/lib/core:numpy",
     ],
     alwayslink = 1,
 )
@@ -213,7 +213,7 @@ cc_library(
         "//tensorflow/c:headers",
         "//tensorflow/c:safe_ptr_hdr",
         "//tensorflow/c/eager:headers",
-        "@local_tsl//tsl/python/lib/core:numpy_hdr",
+        "@local_xla//xla/tsl/python/lib/core:numpy_hdr",
     ],
     features = [
         "-parse_headers",
@@ -228,7 +228,7 @@ cc_library(
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
-        "@local_tsl//tsl/python/lib/core:numpy",
+        "@local_xla//xla/tsl/python/lib/core:numpy",
     ],
 )
 
@@ -249,8 +249,8 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",
-        "@local_tsl//tsl/python/lib/core:ml_dtypes_lib",
-        "@local_tsl//tsl/python/lib/core:numpy",
+        "@local_xla//xla/tsl/python/lib/core:ml_dtypes_lib",
+        "@local_xla//xla/tsl/python/lib/core:numpy",
     ],
 )
 
@@ -273,7 +273,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
-        "@local_tsl//tsl/python/lib/core:numpy",
+        "@local_xla//xla/tsl/python/lib/core:numpy",
     ],
 )
 
@@ -288,3 +288,23 @@ cc_library(
         "//third_party/python_runtime:headers",
     ],
 )
+
+# copybara:uncomment_begin(google-only)
+# cc_library(
+#     name = "pyclif_tensor",
+#     srcs = ["pyclif_tensor.cc"],
+#     hdrs = ["pyclif_tensor.h"],
+#     visibility = ["//visibility:public"],
+#     deps = [
+#         ":ndarray_tensor",
+#         ":ndarray_tensor_bridge",
+#         ":safe_pyobject_ptr",
+#         "@com_google_absl//absl/log:check",
+#         "@com_google_absl//absl/status",
+#         "//third_party/clif/python:clif",
+#         "//third_party/python_runtime:headers",
+#         "@local_xla//xla/tsl/python/lib/core:numpy",
+#         "//tensorflow/core:framework",
+#     ],
+# )
+# copybara:uncomment_end

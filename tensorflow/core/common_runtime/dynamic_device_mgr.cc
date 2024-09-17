@@ -127,7 +127,7 @@ bool DynamicDeviceMgr::ContainsDevice(int64_t device_incarnation) const {
 }
 
 void DynamicDeviceMgr::ClearContainers(
-    gtl::ArraySlice<string> containers) const {
+    absl::Span<const string> containers) const {
   Status s;
   tf_shared_lock l(devices_mu_);
   for (const auto& it : dynamic_devices_) {

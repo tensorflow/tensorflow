@@ -75,8 +75,8 @@ func.func @conv_output_dim_numbers_mismatch(%arg0: tensor<1x8x4x4xf32>) -> tenso
 // Tests that a quantized convolution does not match. No conversion occurs.
 
 // CHECK-LABEL: quantized_convolution
-func.func @quantized_convolution(%arg0: tensor<1x4x3x3x!quant.uniform<i8:f32, 1.000000e+0:-100>>, %arg1: tensor<2x4x3x3x!quant.uniform<i8:f32:1, {2.000000e+2, 3.000000e+3}>>) -> tensor<1x2x3x3x!quant.uniform<i8:f32, 4.000000e+0>> {
-  %0 = stablehlo.convolution(%arg0, %arg1) dim_numbers = [b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1], window = {pad = [[1, 1], [1, 1]]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<1x4x3x3x!quant.uniform<i8:f32, 1.000000e+0:-100>>, tensor<2x4x3x3x!quant.uniform<i8:f32:1, {2.000000e+2, 3.000000e+3}>>) -> tensor<1x2x3x3x!quant.uniform<i8:f32, 4.000000e+0>>
+func.func @quantized_convolution(%arg0: tensor<1x4x3x3x!quant.uniform<i8:f32, 1.000000e+0:-100>>, %arg1: tensor<2x4x3x3x!quant.uniform<i8:f32:0, {2.000000e+2, 3.000000e+3}>>) -> tensor<1x2x3x3x!quant.uniform<i8:f32, 4.000000e+0>> {
+  %0 = stablehlo.convolution(%arg0, %arg1) dim_numbers = [b, f, 0, 1]x[o, i, 0, 1]->[b, f, 0, 1], window = {pad = [[1, 1], [1, 1]]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64} : (tensor<1x4x3x3x!quant.uniform<i8:f32, 1.000000e+0:-100>>, tensor<2x4x3x3x!quant.uniform<i8:f32:0, {2.000000e+2, 3.000000e+3}>>) -> tensor<1x2x3x3x!quant.uniform<i8:f32, 4.000000e+0>>
   return %0 : tensor<1x2x3x3x!quant.uniform<i8:f32, 4.000000e+0>>
 }
 

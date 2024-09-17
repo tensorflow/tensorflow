@@ -15,6 +15,13 @@ limitations under the License.
 
 #include "tsl/lib/monitoring/collection_registry.h"
 
+#include "tsl/lib/monitoring/collected_metrics.h"
+#include "tsl/lib/monitoring/metric_def.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/mutex.h"
+#include "tsl/platform/stringpiece.h"
+#include "tsl/platform/types.h"
+
 // We replace this implementation with a null implementation for mobile
 // platforms.
 #ifndef IS_MOBILE_PLATFORM
@@ -49,7 +56,7 @@ void Collector::CollectMetricDescriptor(
   metric_descriptor->name = string(metric_def->name());
   metric_descriptor->description = string(metric_def->description());
 
-  for (const StringPiece label_name : metric_def->label_descriptions()) {
+  for (const absl::string_view label_name : metric_def->label_descriptions()) {
     metric_descriptor->label_names.emplace_back(label_name);
   }
 

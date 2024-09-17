@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/service/compiler.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/tsl/framework/device_type.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -46,7 +47,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/common/global_state.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
-#include "tsl/framework/device_type.h"
 
 namespace tensorflow {
 namespace {
@@ -377,7 +377,7 @@ XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device_base) {
     auto device = static_cast<Device*>(device_base);
     platform_id = device->tensorflow_accelerator_device_info()
                       ->stream->parent()
-                      ->platform()
+                      ->GetPlatform()
                       ->id();
   } else if (XlaDevice::GetMetadataFromDevice(device_base, &xla_device_metadata)
                  .ok()) {

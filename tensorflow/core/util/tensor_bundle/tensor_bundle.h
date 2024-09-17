@@ -190,7 +190,7 @@ class BundleWriter {
 //
 // Returns a NotFoundError when "allow_missing_files" is set to false and
 // any data file named in "prefixes" does not exist.
-Status MergeBundles(Env* env, gtl::ArraySlice<tstring> prefixes,
+Status MergeBundles(Env* env, absl::Span<const tstring> prefixes,
                     absl::string_view merged_prefix,
                     bool allow_missing_files = false);
 
@@ -387,7 +387,7 @@ Status BundleReader::SortForSequentialAccess(
       return file_offset_a.shard_id < file_offset_b.shard_id;
     }
   });
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // BundleCache provides cached opening of files.

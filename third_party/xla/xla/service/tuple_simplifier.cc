@@ -15,18 +15,24 @@ limitations under the License.
 
 #include "xla/service/tuple_simplifier.h"
 
-#include <queue>
+#include <cstdint>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/shape_util.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
 TupleSimplifier::TupleSimplifier(bool exclude_entry_computation)
     : exclude_entry_computation_(exclude_entry_computation) {}
 
-StatusOr<bool> TupleSimplifier::RemoveWholeTuple(HloInstruction* tuple) {
+absl::StatusOr<bool> TupleSimplifier::RemoveWholeTuple(HloInstruction* tuple) {
   HloInstruction* top_tuple = nullptr;
   for (int64_t operand_number = 0; operand_number < tuple->operand_count();
        ++operand_number) {
@@ -53,7 +59,7 @@ StatusOr<bool> TupleSimplifier::RemoveWholeTuple(HloInstruction* tuple) {
   return changed;
 }
 
-StatusOr<bool> TupleSimplifier::Run(
+absl::StatusOr<bool> TupleSimplifier::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Initially add all GTE and Tuple instructions to the worklist.
@@ -68,8 +74,8 @@ StatusOr<bool> TupleSimplifier::Run(
         TF_ASSIGN_OR_RETURN(bool c, RemoveWholeTuple(instruction));
         changed |= c;
       } else {
-        auto ancestor = instruction->LatestNonGteAncestorAndIndex();
-        if (ancestor.first == instruction) {
+        auto [ancestor, index] = instruction->LatestNonGteAncestorAndIndex();
+        if (ancestor == instruction) {
           continue;
         }
         // If possible replace a chain of GTE with the operation which produces
@@ -91,13 +97,13 @@ StatusOr<bool> TupleSimplifier::Run(
         // if only a subset of tuple's elements are used, this transform
         // optimizes them one at a time, and after the last use is optimized,
         // the Tuple will also be deleted.
-        HloInstruction* replacement = ancestor.first;
-        for (int i = 0; i < ancestor.second.size(); ++i) {
+        HloInstruction* replacement = ancestor;
+        for (int i = 0; i < index.size(); ++i) {
           if (replacement->opcode() != HloOpcode::kTuple) {
             replacement = nullptr;
             break;
           }
-          replacement = replacement->mutable_operand(ancestor.second[i]);
+          replacement = replacement->mutable_operand(index[i]);
         }
 
         if (replacement) {
@@ -111,6 +117,11 @@ StatusOr<bool> TupleSimplifier::Run(
       }
     }
   }
+
+  if (module->has_schedule()) {
+    TF_RETURN_IF_ERROR(module->schedule().Update());
+  }
+
   return changed;
 }
 

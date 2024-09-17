@@ -138,7 +138,7 @@ Status ShapeInferenceTestutil::InferShapes(ShapeInferenceTestOp op,
     }
 
     // Verify the dimensions.
-    CHECK(absl::StartsWith(expected, "[") && str_util::EndsWith(expected, "]"))
+    CHECK(absl::StartsWith(expected, "[") && absl::EndsWith(expected, "]"))
         << expected;
     expected.remove_prefix(1);
     expected.remove_suffix(1);
@@ -226,7 +226,7 @@ Status ShapeInferenceTestutil::InferShapes(ShapeInferenceTestOp op,
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // static
@@ -235,7 +235,7 @@ Status ShapeInferenceTestutil::MakeShapeFromString(
     ShapeHandle* output) {
   if (spec == "?") {
     *output = manager->UnknownShape();
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   std::vector<DimensionHandle> dims;
@@ -270,7 +270,7 @@ Status ShapeInferenceTestutil::MakeShapeFromString(
   }
   *output = manager->MakeShape(dims);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace shape_inference

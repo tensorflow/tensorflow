@@ -20,30 +20,30 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#define EIGEN_USE_THREADS
-
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
+#include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_matcher.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_tensor_utils.h"
-#include "tsl/concurrency/ref_count.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/ml_dtypes.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -87,13 +87,20 @@ xla::HloSharding Maximal(int64_t device_index = 0) {
   return xla::HloSharding::AssignDevice(device_index);
 }
 
+// Wrapper function to build int4 tensor
+tensorflow::Tensor AsInt4Tensor(absl::Span<const int> values,
+                                const TensorShape& shape) {
+  tensorflow::Tensor tensor(tensorflow::DT_INT4, shape);
+  for (int i = 0; i < values.size(); ++i) {
+    tensor.flat<tsl::int4>()(i) = static_cast<tsl::int4>(values[i]);
+  }
+  return tensor;
+}
+
 TEST_P(ReshardToTensorTest, MakeHostTensorFromDeviceArrays) {
   constexpr int kMaxParallelism = 16;
-  auto thread_pool = std::make_unique<tsl::thread::ThreadPool>(
-      tsl::Env::Default(), tsl::ThreadOptions(), "Resharding", kMaxParallelism);
-
-  Eigen::ThreadPoolDevice device(thread_pool->AsEigenThreadPool(),
-                                 kMaxParallelism);
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), tsl::ThreadOptions(),
+                                      "Resharding", kMaxParallelism);
 
   // Create contexts required for the compiler execution.
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
@@ -106,13 +113,14 @@ TEST_P(ReshardToTensorTest, MakeHostTensorFromDeviceArrays) {
   for (int i = 0; i < GetParam().split_tensors.size(); ++i) {
     const auto& split_tensor = GetParam().split_tensors[i];
     auto single_device_sharding = xla::ifrt::SingleDeviceSharding::Create(
-        device_list[i], xla::ifrt::MemoryKind());
+        device_list->devices()[i], xla::ifrt::MemoryKind());
     TF_ASSERT_OK_AND_ASSIGN(auto dtype, ToIfrtDType(split_tensor.dtype()));
     TF_ASSERT_OK_AND_ASSIGN(
         auto array,
         client->MakeArrayFromHostBuffer(
             split_tensor.data(), dtype, ToIfrtShape(split_tensor.shape()),
-            /*byte_strides=*/{}, std::move(single_device_sharding),
+            GetByteStrides(split_tensor.dtype(), split_tensor.shape()),
+            std::move(single_device_sharding),
             xla::ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
             /*on_done_with_host_buffer=*/{}));
     split_arrays.push_back(std::move(array));
@@ -132,7 +140,8 @@ TEST_P(ReshardToTensorTest, MakeHostTensorFromDeviceArrays) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto output_tensor,
       MakeTensorFromArray(*client, *assembled_array, GetParam().sharding,
-                          device_list, device));
+                          device_list, thread_pool)
+          .Await());
 
   EXPECT_THAT(GetParam().expected_out_tensor, TensorEq(output_tensor));
 }
@@ -197,6 +206,17 @@ INSTANTIATE_TEST_SUITE_P(
                     },
                 .expected_out_tensor =
                     test::AsTensor<int32_t>({1, 2, 3, 4}, TensorShape({4})),
+                .device_indices = {0, 1},
+                .sharding = Tile({2}),
+            },
+            {
+                .split_tensors =
+                    {
+                        AsInt4Tensor({1, 2}, TensorShape({2})),
+                        AsInt4Tensor({3, 4}, TensorShape({2})),
+                    },
+                .expected_out_tensor = AsInt4Tensor({1, 2, 3, 4},
+                                                    TensorShape({4})),
                 .device_indices = {0, 1},
                 .sharding = Tile({2}),
             },
@@ -307,11 +327,8 @@ INSTANTIATE_TEST_SUITE_P(
 
 TEST_P(TensorToArrayTest, MakeArrayFromTensor) {
   constexpr int kMaxParallelism = 16;
-  auto thread_pool = std::make_unique<tsl::thread::ThreadPool>(
-      tsl::Env::Default(), tsl::ThreadOptions(), "Resharding", kMaxParallelism);
-
-  Eigen::ThreadPoolDevice device(thread_pool->AsEigenThreadPool(),
-                                 kMaxParallelism);
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), tsl::ThreadOptions(),
+                                      "Resharding", kMaxParallelism);
 
   auto input_tensor = GetParam().in_tensor;
 
@@ -323,7 +340,7 @@ TEST_P(TensorToArrayTest, MakeArrayFromTensor) {
       auto assembled_array,
       MakeArrayFromTensor(*client, input_tensor,
                           absl::MakeSpan(GetParam().device_ids),
-                          GetParam().sharding, device));
+                          GetParam().sharding, thread_pool));
 
   TF_ASSERT_OK_AND_ASSIGN(auto disassembled_arrays,
                           assembled_array->DisassembleIntoSingleDeviceArrays(
@@ -341,8 +358,10 @@ TEST_P(TensorToArrayTest, MakeArrayFromTensor) {
                                    expected_out_tensor.shape());
     TF_ASSERT_OK(
         disassembled_array
-            ->CopyToHostBuffer(host_tensor.data(), /*byte_strides=*/{},
-                               xla::ifrt::ArrayCopySemantics::kAlwaysCopy)
+            ->CopyToHostBuffer(
+                host_tensor.data(),
+                GetByteStrides(host_tensor.dtype(), host_tensor.shape()),
+                xla::ifrt::ArrayCopySemantics::kAlwaysCopy)
             .Await());
     EXPECT_THAT(expected_out_tensor, TensorEq(host_tensor));
   }
@@ -414,6 +433,17 @@ INSTANTIATE_TEST_SUITE_P(
                 .device_ids = {0, 1},
                 .sharding = Tile({2}),
             },
+            {
+                .in_tensor = AsInt4Tensor({1, 2, 3, 4}, TensorShape({4})),
+                .expected_out_tensors =
+                    {
+                        AsInt4Tensor({1, 2}, TensorShape({2})),
+                        AsInt4Tensor({3, 4}, TensorShape({2})),
+                    },
+                .device_ids = {0, 1},
+                .sharding = Tile({2}),
+            },
+
             {
                 .in_tensor = test::AsTensor<int32_t>({1, 2, 3, 4},
                                                      TensorShape({2, 2})),
@@ -543,11 +573,8 @@ INSTANTIATE_TEST_SUITE_P(
 
 TEST(ShardingUtilsTest, MismatchRank) {
   constexpr int kMaxParallelism = 16;
-  auto thread_pool = std::make_unique<tsl::thread::ThreadPool>(
-      tsl::Env::Default(), tsl::ThreadOptions(), "Resharding", kMaxParallelism);
-
-  Eigen::ThreadPoolDevice device(thread_pool->AsEigenThreadPool(),
-                                 kMaxParallelism);
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), tsl::ThreadOptions(),
+                                      "Resharding", kMaxParallelism);
 
   auto input_tensor =
       test::AsTensor<int32_t>({1, 2, 3, 4}, TensorShape({2, 1, 2}));
@@ -561,7 +588,7 @@ TEST(ShardingUtilsTest, MismatchRank) {
   xla::HloSharding sharding = Tile({2, 1});
 
   EXPECT_THAT(MakeArrayFromTensor(*client, input_tensor, device_list,
-                                  std::move(sharding), device),
+                                  std::move(sharding), thread_pool),
               StatusIs(absl::StatusCode::kInvalidArgument,
                        "shape must have 2 dimensions, but has 3 dimensions: "
                        "shape=[2,1,2], sharding={devices=[2,1]<=[2]}"));

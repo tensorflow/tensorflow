@@ -15,10 +15,24 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "xla/literal.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/status_macros.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
@@ -40,7 +54,7 @@ Status HostTensorToBorrowingLiteral(const xla::Shape& xla_shape,
       << "Provided xla::Shape must have the same dims as the Tensor shape.";
   *literal = xla::BorrowingLiteral(
       static_cast<const char*>(DMAHelper::base(&host_tensor)), xla_shape);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<xla::Literal> HostTensorToLiteral(const Tensor& host_tensor) {
@@ -63,7 +77,7 @@ Status HostTensorToMutableBorrowingLiteral(
   *literal = xla::MutableBorrowingLiteral(
       static_cast<const char*>(DMAHelper::base(host_tensor)), xla_shape);
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status HostTensorsToBorrowingLiteralTuple(absl::Span<const Tensor> host_tensors,
@@ -83,7 +97,7 @@ Status HostTensorsToBorrowingLiteralTuple(absl::Span<const Tensor> host_tensors,
   *literal = xla::BorrowingLiteral(
       buf_ptrs, xla::ShapeUtil::MakeTupleShape(tensor_shapes));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status CopyLiteralToHostTensor(const xla::LiteralSlice& literal,
@@ -106,7 +120,7 @@ Status CopyLiteralToHostTensor(const xla::LiteralSlice& literal,
     void* dst_ptr = DMAHelper::base(host_tensor);
     memcpy(dst_ptr, src_ptr, total_bytes);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status LiteralToHostTensor(const xla::LiteralSlice& literal,

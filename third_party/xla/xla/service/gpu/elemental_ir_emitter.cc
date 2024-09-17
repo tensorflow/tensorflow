@@ -15,24 +15,32 @@ limitations under the License.
 
 #include "xla/service/gpu/elemental_ir_emitter.h"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
 // IWYU pragma: no_include "llvm/IR/Attributes.gen.inc"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "llvm/IR/Attributes.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
 #include "llvm/Support/ModRef.h"
+#include "llvm/TargetParser/Triple.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout.h"
-#include "xla/literal.h"
+#include "xla/service/elemental_ir_emitter.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/ir_emitter_nested.h"
@@ -40,14 +48,12 @@ limitations under the License.
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/llvm_ir/math_ops.h"
-#include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
-
-using absl::StrAppend;
 
 GpuElementalIrEmitter::GpuElementalIrEmitter(
     IrEmitterContext& ir_emitter_context, llvm::IRBuilder<>* b)
@@ -125,7 +131,7 @@ llvm_ir::IrArray::Index GpuElementalIrEmitter::GetSourceIndexOfBitcast(
   // Decode the layout of the shape from the Protobufs attached to
   // backend_config_.
   auto gpu_config = hlo->backend_config<GpuBackendConfig>();
-  CHECK(gpu_config.ok());
+  CHECK_OK(gpu_config);
 
   const BitcastBackendConfig& bitcast_config =
       gpu_config.value().bitcast_backend_config();
@@ -154,17 +160,6 @@ absl::StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatBinaryOp(
     return llvm_ir::EmitCallToIntrinsic(
         opcode == HloOpcode::kMaximum ? llvm::Intrinsic::maxnum
                                       : llvm::Intrinsic::minnum,
-        {lhs_value, rhs_value}, {lhs_value->getType()}, b());
-  }
-
-  // sm_80 and up has min.NaN and max.NaN instructions.
-  if (output_type == F32 &&
-      ir_emitter_context_.cuda_compute_capability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE) &&
-      (opcode == HloOpcode::kMaximum || opcode == HloOpcode::kMinimum)) {
-    return llvm_ir::EmitCallToIntrinsic(
-        opcode == HloOpcode::kMaximum ? llvm::Intrinsic::maximum
-                                      : llvm::Intrinsic::minimum,
         {lhs_value, rhs_value}, {lhs_value->getType()}, b());
   }
 

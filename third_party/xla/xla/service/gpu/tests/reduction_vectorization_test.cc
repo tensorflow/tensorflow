@@ -107,6 +107,9 @@ CHECK: st.global.v2.f32
 }
 
 TEST_F(ReductionVectorizationTest, NoVectorizationForBlockSmallerThanWarpSize) {
+  if (GetDebugOptionsForTest().xla_gpu_mlir_emitter_level() >= 4) {
+    GTEST_SKIP() << "MLIR emitters can vectorize this";
+  }
   const char* hlo_text = R"(
 HloModule SlowModule
 
@@ -140,7 +143,7 @@ CHECK-NOT: SHUFFLE
       expected_optimized_llvm_ir,
       {{"X_THREAD", is_built_with_rocm_ ? "@llvm.amdgcn.workitem.id.x"
                                         : "@llvm.nvvm.read.ptx.sreg.tid.x"},
-       {"SHUFFLE", is_built_with_rocm_ ? "llvm.amdgcn.ds.bpermute"
+       {"SHUFFLE", is_built_with_rocm_ ? "@llvm.amdgcn.ds.swizzle"
                                        : "llvm.nvvm.shfl.sync.down.f32"}});
 
   CompileAndVerifyIr(hlo_text, expected_optimized_llvm_ir, true);

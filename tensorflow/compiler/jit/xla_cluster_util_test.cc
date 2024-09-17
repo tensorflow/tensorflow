@@ -48,7 +48,7 @@ TEST(CreateCycleDetectionGraph, ConnectivityThroughEnterExitRegion) {
 
   FixupSourceAndSinkEdges(root.graph());
 
-  GraphCycles cycles;
+  xla::GraphCycles cycles;
   TF_ASSERT_OK(CreateCycleDetectionGraph(root.graph(), &cycles).status());
   EXPECT_FALSE(cycles.CanContractEdge(a.node()->id(), b.node()->id()));
 }
@@ -67,7 +67,7 @@ TEST(CreateCycleDetectionGraph, ConnectivityThroughMultipleEnterExitRegions) {
 
   FixupSourceAndSinkEdges(root.graph());
 
-  GraphCycles cycles;
+  xla::GraphCycles cycles;
   TF_ASSERT_OK(CreateCycleDetectionGraph(root.graph(), &cycles).status());
   EXPECT_FALSE(cycles.CanContractEdge(a.node()->id(), b.node()->id()));
 }
@@ -89,7 +89,7 @@ TEST(CreateCycleDetectionGraph, ReachingEnterExit) {
 
   FixupSourceAndSinkEdges(root.graph());
 
-  GraphCycles cycles;
+  xla::GraphCycles cycles;
   TF_ASSERT_OK_AND_ASSIGN(bool ok,
                           CreateCycleDetectionGraph(root.graph(), &cycles));
   EXPECT_FALSE(ok);

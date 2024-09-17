@@ -87,8 +87,10 @@ class GrpcServerTest(test.TestCase):
       # Verifies that resetting target with no server times out.
       with self.assertRaises(errors_impl.DeadlineExceededError):
         session.Session.reset(
-            "grpc://localhost:0", ["test0"],
-            config=config_pb2.ConfigProto(operation_timeout_in_ms=5))
+            "grpc://localhost:0",
+            ["test0"],
+            config=config_pb2.ConfigProto(operation_timeout_in_ms=5),
+        )
 
       # Verifies no containers are reset with non-existent container.
       server = self._cached_server
@@ -114,8 +116,11 @@ class GrpcServerTest(test.TestCase):
     Returns:
       A `tf.compat.v1.ConfigProto`.
     """
-    return config_pb2.ConfigProto(rpc_options=rpc_options_pb2.RPCOptions(
-        use_rpc_for_inprocess_master=True))
+    return config_pb2.ConfigProto(
+        rpc_options=rpc_options_pb2.RPCOptions(
+            use_rpc_for_inprocess_master=True
+        )
+    )
 
   def testLargeConstant(self):
     server = self._cached_server
@@ -159,8 +164,9 @@ class GrpcServerTest(test.TestCase):
       sess.run(dequeue_t)
 
       def blocking_dequeue():
-        with self.assertRaisesRegex(errors_impl.CancelledError,
-                                    "Session::Close"):
+        with self.assertRaisesRegex(
+            errors_impl.CancelledError, "Session::Close"
+        ):
           sess.run(dequeue_t)
 
       blocking_thread = self.checkedThread(blocking_dequeue)
@@ -180,26 +186,29 @@ class GrpcServerTest(test.TestCase):
 
   def testSetConfiguration(self):
     config = config_pb2.ConfigProto(
-        gpu_options=config_pb2.GPUOptions(per_process_gpu_memory_fraction=0.1))
+        gpu_options=config_pb2.GPUOptions(per_process_gpu_memory_fraction=0.1)
+    )
 
     # Configure a server using the default local server options.
     server = server_lib.Server.create_local_server(config=config, start=False)
-    self.assertEqual(0.1, server.server_def.default_session_config.gpu_options.
-                     per_process_gpu_memory_fraction)
+    self.assertEqual(
+        0.1,
+        server.server_def.default_session_config.gpu_options.per_process_gpu_memory_fraction,
+    )
 
     # Configure a server using an explicit ServerDefd with an
     # overridden config.
-    cluster_def = server_lib.ClusterSpec({
-        "localhost": ["localhost:0"]
-    }).as_cluster_def()
+    cluster_def = server_lib.ClusterSpec(
+        {"localhost": ["localhost:0"]}
+    ).as_cluster_def()
     server_def = tensorflow_server_pb2.ServerDef(
-        cluster=cluster_def,
-        job_name="localhost",
-        task_index=0,
-        protocol="grpc")
+        cluster=cluster_def, job_name="localhost", task_index=0, protocol="grpc"
+    )
     server = server_lib.Server(server_def, config=config, start=False)
-    self.assertEqual(0.1, server.server_def.default_session_config.gpu_options.
-                     per_process_gpu_memory_fraction)
+    self.assertEqual(
+        0.1,
+        server.server_def.default_session_config.gpu_options.per_process_gpu_memory_fraction,
+    )
 
   def testRestartedMaster(self):
     master_old = server_lib.Server.create_local_server()
@@ -210,10 +219,10 @@ class GrpcServerTest(test.TestCase):
       cluster_def = cluster_pb2.ClusterDef()
       job = cluster_def.job.add()
       job.name = "master"
-      job.tasks[0] = master.target[len("grpc://"):]
+      job.tasks[0] = master.target[len("grpc://") :]
       job = cluster_def.job.add()
       job.name = "worker"
-      job.tasks[0] = worker.target[len("grpc://"):]
+      job.tasks[0] = worker.target[len("grpc://") :]
       return cluster_def
 
     def check_session_devices(sess):
@@ -230,7 +239,8 @@ class GrpcServerTest(test.TestCase):
         b = a + a
 
       config = config_pb2.ConfigProto(
-          cluster_def=get_cluster_def(master_old, worker))
+          cluster_def=get_cluster_def(master_old, worker)
+      )
       sess_old = session.Session(master_old.target, config=config)
       check_session_devices(sess_old)
 
@@ -241,7 +251,8 @@ class GrpcServerTest(test.TestCase):
       # the old master incarnation to be garbage collected.
 
       config = config_pb2.ConfigProto(
-          cluster_def=get_cluster_def(master_new, worker))
+          cluster_def=get_cluster_def(master_new, worker)
+      )
       sess_new = session.Session(master_new.target, config=config)
       check_session_devices(sess_new)
 
@@ -251,8 +262,9 @@ class GrpcServerTest(test.TestCase):
 
       # Running on worker with the old session should raise an exception since
       # the WorkerSession of the old session has been garbage collected
-      with self.assertRaisesRegex(errors_impl.AbortedError,
-                                  "Session handle is not found"):
+      with self.assertRaisesRegex(
+          errors_impl.AbortedError, "Session handle is not found"
+      ):
         sess_old.run(b)
 
     sess_old.close()
@@ -261,9 +273,8 @@ class GrpcServerTest(test.TestCase):
   def testInvalidHostname(self):
     with self.assertRaisesRegex(errors_impl.InvalidArgumentError, "port"):
       _ = server_lib.Server(
-          {
-              "local": ["localhost"]
-          }, job_name="local", task_index=0)
+          {"local": ["localhost"]}, job_name="local", task_index=0
+      )
 
   def testTimeoutRaisesException(self):
     server = self._cached_server
@@ -274,29 +285,32 @@ class GrpcServerTest(test.TestCase):
       with session.Session(server.target) as sess:
         with self.assertRaises(errors_impl.DeadlineExceededError):
           sess.run(
-              blocking_t, options=config_pb2.RunOptions(timeout_in_ms=1000))
+              blocking_t, options=config_pb2.RunOptions(timeout_in_ms=1000)
+          )
 
       with session.Session(server.target, config=self._useRPCConfig()) as sess:
         with self.assertRaises(errors_impl.DeadlineExceededError):
           sess.run(
-              blocking_t, options=config_pb2.RunOptions(timeout_in_ms=1000))
+              blocking_t, options=config_pb2.RunOptions(timeout_in_ms=1000)
+          )
 
   def testTwoServersSamePort(self):
     # Starting a server with the same target as the cached server should fail.
     server = self._cached_server
     with self.assertRaises(errors_impl.UnknownError):
-      _ = server_lib.Server(
-          {"local_2": [server.target[len("grpc://"):]]})
+      _ = server_lib.Server({"local_2": [server.target[len("grpc://") :]]})
 
   def testExtendAfterQueueRunners(self):
     server = self._cached_server
     with session.Session(server.target) as sess:
-      input_queue = input_ops.input_producer(constant_op.constant(
-          [0.], dtype=dtypes.float32))
+      input_queue = input_ops.input_producer(
+          constant_op.constant([0.0], dtype=dtypes.float32)
+      )
       self.assertIsNotNone(input_queue)
 
       var = variable_v1.VariableV1(
-          1., dtype=dtypes.float32, trainable=False, name="var")
+          1.0, dtype=dtypes.float32, trainable=False, name="var"
+      )
 
       sess.run(variables.global_variables_initializer())
       queue_runner_impl.start_queue_runners(sess)
@@ -319,7 +333,10 @@ class GrpcServerTest(test.TestCase):
 
       # Initially all variables are initialized.
       for sess in [
-          sharing_sess_0, sharing_sess_1, isolate_sess_0, isolate_sess_1
+          sharing_sess_0,
+          sharing_sess_1,
+          isolate_sess_0,
+          isolate_sess_1,
       ]:
         with self.assertRaises(errors_impl.FailedPreconditionError):
           sess.run(v)
@@ -391,37 +408,45 @@ class GrpcServerTest(test.TestCase):
 class ServerDefTest(test.TestCase):
 
   def testLocalServer(self):
-    cluster_def = server_lib.ClusterSpec({
-        "local": ["localhost:2222"]
-    }).as_cluster_def()
+    cluster_def = server_lib.ClusterSpec(
+        {"local": ["localhost:2222"]}
+    ).as_cluster_def()
     server_def = tensorflow_server_pb2.ServerDef(
-        cluster=cluster_def, job_name="local", task_index=0, protocol="grpc")
+        cluster=cluster_def, job_name="local", task_index=0, protocol="grpc"
+    )
 
-    self.assertProtoEquals("""
+    self.assertProtoEquals(
+        """
     cluster {
       job { name: 'local' tasks { key: 0 value: 'localhost:2222' } }
     }
     job_name: 'local' task_index: 0 protocol: 'grpc'
-    """, server_def)
+    """,
+        server_def,
+    )
 
     # Verifies round trip from Proto->Spec->Proto is correct.
     cluster_spec = server_lib.ClusterSpec(cluster_def)
     self.assertProtoEquals(cluster_def, cluster_spec.as_cluster_def())
 
   def testTwoProcesses(self):
-    cluster_def = server_lib.ClusterSpec({
-        "local": ["localhost:2222", "localhost:2223"]
-    }).as_cluster_def()
+    cluster_def = server_lib.ClusterSpec(
+        {"local": ["localhost:2222", "localhost:2223"]}
+    ).as_cluster_def()
     server_def = tensorflow_server_pb2.ServerDef(
-        cluster=cluster_def, job_name="local", task_index=1, protocol="grpc")
+        cluster=cluster_def, job_name="local", task_index=1, protocol="grpc"
+    )
 
-    self.assertProtoEquals("""
+    self.assertProtoEquals(
+        """
     cluster {
       job { name: 'local' tasks { key: 0 value: 'localhost:2222' }
                           tasks { key: 1 value: 'localhost:2223' } }
     }
     job_name: 'local' task_index: 1 protocol: 'grpc'
-    """, server_def)
+    """,
+        server_def,
+    )
 
     # Verifies round trip from Proto->Spec->Proto is correct.
     cluster_spec = server_lib.ClusterSpec(cluster_def)
@@ -430,12 +455,14 @@ class ServerDefTest(test.TestCase):
   def testTwoJobs(self):
     cluster_def = server_lib.ClusterSpec({
         "ps": ["ps0:2222", "ps1:2222"],
-        "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]
+        "worker": ["worker0:2222", "worker1:2222", "worker2:2222"],
     }).as_cluster_def()
     server_def = tensorflow_server_pb2.ServerDef(
-        cluster=cluster_def, job_name="worker", task_index=2, protocol="grpc")
+        cluster=cluster_def, job_name="worker", task_index=2, protocol="grpc"
+    )
 
-    self.assertProtoEquals("""
+    self.assertProtoEquals(
+        """
     cluster {
       job { name: 'ps' tasks { key: 0 value: 'ps0:2222' }
                        tasks { key: 1 value: 'ps1:2222' } }
@@ -444,7 +471,9 @@ class ServerDefTest(test.TestCase):
                            tasks { key: 2 value: 'worker2:2222' } }
     }
     job_name: 'worker' task_index: 2 protocol: 'grpc'
-    """, server_def)
+    """,
+        server_def,
+    )
 
     # Verifies round trip from Proto->Spec->Proto is correct.
     cluster_spec = server_lib.ClusterSpec(cluster_def)
@@ -453,15 +482,14 @@ class ServerDefTest(test.TestCase):
   def testDenseAndSparseJobs(self):
     cluster_def = server_lib.ClusterSpec({
         "ps": ["ps0:2222", "ps1:2222"],
-        "worker": {
-            0: "worker0:2222",
-            2: "worker2:2222"
-        }
+        "worker": {0: "worker0:2222", 2: "worker2:2222"},
     }).as_cluster_def()
     server_def = tensorflow_server_pb2.ServerDef(
-        cluster=cluster_def, job_name="worker", task_index=2, protocol="grpc")
+        cluster=cluster_def, job_name="worker", task_index=2, protocol="grpc"
+    )
 
-    self.assertProtoEquals("""
+    self.assertProtoEquals(
+        """
     cluster {
       job { name: 'ps' tasks { key: 0 value: 'ps0:2222' }
                        tasks { key: 1 value: 'ps1:2222' } }
@@ -469,7 +497,9 @@ class ServerDefTest(test.TestCase):
                            tasks { key: 2 value: 'worker2:2222' } }
     }
     job_name: 'worker' task_index: 2 protocol: 'grpc'
-    """, server_def)
+    """,
+        server_def,
+    )
 
     # Verifies round trip from Proto->Spec->Proto is correct.
     cluster_spec = server_lib.ClusterSpec(cluster_def)
@@ -479,20 +509,20 @@ class ServerDefTest(test.TestCase):
 class ClusterSpecTest(test.TestCase):
 
   def testStringConversion(self):
-    cluster_spec = server_lib.ClusterSpec({
-        "ps": ["ps0:1111"],
-        "worker": ["worker0:3333", "worker1:4444"]
-    })
+    cluster_spec = server_lib.ClusterSpec(
+        {"ps": ["ps0:1111"], "worker": ["worker0:3333", "worker1:4444"]}
+    )
 
     expected_str = (
         "ClusterSpec({'ps': ['ps0:1111'], 'worker': ['worker0:3333', "
-        "'worker1:4444']})")
+        "'worker1:4444']})"
+    )
     self.assertEqual(expected_str, str(cluster_spec))
 
   def testProtoDictDefEquivalences(self):
     cluster_spec = server_lib.ClusterSpec({
         "ps": ["ps0:2222", "ps1:2222"],
-        "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]
+        "worker": ["worker0:2222", "worker1:2222", "worker2:2222"],
     })
 
     expected_proto = """
@@ -505,22 +535,21 @@ class ClusterSpecTest(test.TestCase):
 
     self.assertProtoEquals(expected_proto, cluster_spec.as_cluster_def())
     self.assertProtoEquals(
-        expected_proto,
-        server_lib.ClusterSpec(cluster_spec).as_cluster_def())
+        expected_proto, server_lib.ClusterSpec(cluster_spec).as_cluster_def()
+    )
     self.assertProtoEquals(
         expected_proto,
-        server_lib.ClusterSpec(cluster_spec.as_cluster_def()).as_cluster_def())
+        server_lib.ClusterSpec(cluster_spec.as_cluster_def()).as_cluster_def(),
+    )
     self.assertProtoEquals(
         expected_proto,
-        server_lib.ClusterSpec(cluster_spec.as_dict()).as_cluster_def())
+        server_lib.ClusterSpec(cluster_spec.as_dict()).as_cluster_def(),
+    )
 
   def testProtoDictDefEquivalencesWithStringTaskIndex(self):
-    cluster_spec = server_lib.ClusterSpec({
-        "ps": ["ps0:2222", "ps1:2222"],
-        "worker": {
-            "1": "worker1:2222"
-        }
-    })
+    cluster_spec = server_lib.ClusterSpec(
+        {"ps": ["ps0:2222", "ps1:2222"], "worker": {"1": "worker1:2222"}}
+    )
 
     expected_proto = """
     job { name: 'ps' tasks { key: 0 value: 'ps0:2222' }
@@ -530,20 +559,21 @@ class ClusterSpecTest(test.TestCase):
 
     self.assertProtoEquals(expected_proto, cluster_spec.as_cluster_def())
     self.assertProtoEquals(
-        expected_proto,
-        server_lib.ClusterSpec(cluster_spec).as_cluster_def())
+        expected_proto, server_lib.ClusterSpec(cluster_spec).as_cluster_def()
+    )
     self.assertProtoEquals(
         expected_proto,
-        server_lib.ClusterSpec(cluster_spec.as_cluster_def()).as_cluster_def())
+        server_lib.ClusterSpec(cluster_spec.as_cluster_def()).as_cluster_def(),
+    )
     self.assertProtoEquals(
         expected_proto,
-        server_lib.ClusterSpec(cluster_spec.as_dict()).as_cluster_def())
+        server_lib.ClusterSpec(cluster_spec.as_dict()).as_cluster_def(),
+    )
 
   def testProtoDictDefEquivalencesWithZeroWorker(self):
-    cluster_spec = server_lib.ClusterSpec({
-        "ps": ["ps0:2222", "ps1:2222"],
-        "worker": []
-    })
+    cluster_spec = server_lib.ClusterSpec(
+        {"ps": ["ps0:2222", "ps1:2222"], "worker": []}
+    )
 
     expected_proto = """
     job { name: 'ps' tasks { key: 0 value: 'ps0:2222' }
@@ -553,22 +583,22 @@ class ClusterSpecTest(test.TestCase):
 
     self.assertProtoEquals(expected_proto, cluster_spec.as_cluster_def())
     self.assertProtoEquals(
-        expected_proto, server_lib.ClusterSpec(cluster_spec).as_cluster_def())
+        expected_proto, server_lib.ClusterSpec(cluster_spec).as_cluster_def()
+    )
     self.assertProtoEquals(
         expected_proto,
-        server_lib.ClusterSpec(cluster_spec.as_cluster_def()).as_cluster_def())
+        server_lib.ClusterSpec(cluster_spec.as_cluster_def()).as_cluster_def(),
+    )
     self.assertProtoEquals(
         expected_proto,
-        server_lib.ClusterSpec(cluster_spec.as_dict()).as_cluster_def())
+        server_lib.ClusterSpec(cluster_spec.as_dict()).as_cluster_def(),
+    )
 
   def testClusterSpecAccessors(self):
     original_dict = {
         "ps": ["ps0:2222", "ps1:2222"],
         "worker": ["worker0:2222", "worker1:2222", "worker2:2222"],
-        "sparse": {
-            0: "sparse0:2222",
-            3: "sparse3:2222"
-        }
+        "sparse": {0: "sparse0:2222", 3: "sparse3:2222"},
     }
     cluster_spec = server_lib.ClusterSpec(original_dict)
 
@@ -596,10 +626,14 @@ class ClusterSpecTest(test.TestCase):
     # NOTE(mrry): `ClusterSpec.job_tasks()` is not recommended for use
     # with sparse jobs.
     self.assertEqual(["ps0:2222", "ps1:2222"], cluster_spec.job_tasks("ps"))
-    self.assertEqual(["worker0:2222", "worker1:2222", "worker2:2222"],
-                     cluster_spec.job_tasks("worker"))
-    self.assertEqual(["sparse0:2222", None, None, "sparse3:2222"],
-                     cluster_spec.job_tasks("sparse"))
+    self.assertEqual(
+        ["worker0:2222", "worker1:2222", "worker2:2222"],
+        cluster_spec.job_tasks("worker"),
+    )
+    self.assertEqual(
+        ["sparse0:2222", None, None, "sparse3:2222"],
+        cluster_spec.job_tasks("sparse"),
+    )
     with self.assertRaises(ValueError):
       cluster_spec.job_tasks("unknown")
 
@@ -616,9 +650,9 @@ class ClusterSpecTest(test.TestCase):
         server_lib.ClusterSpec({"job": ["host:2222"]}),
     )
     self.assertEqual(
-        server_lib.ClusterSpec({"job": {
-            0: "host:2222"
-        }}), server_lib.ClusterSpec({"job": ["host:2222"]}))
+        server_lib.ClusterSpec({"job": {0: "host:2222"}}),
+        server_lib.ClusterSpec({"job": ["host:2222"]}),
+    )
 
   def testNe(self):
     self.assertNotEqual(

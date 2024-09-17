@@ -49,7 +49,7 @@ bool HasDcnCollectiveStatsInXSpace(const XSpace& xspace) {
   return false;
 }
 
-StatusOr<bool> GetDcnCollectiveStatsFromMultiXSpaceAndSaveToFile(
+absl::StatusOr<bool> GetDcnCollectiveStatsFromMultiXSpaceAndSaveToFile(
     const SessionSnapshot& session_snapshot) {
   DcnSlackAnalysisCombiner combiner;
   for (int idx = 0; idx < session_snapshot.XSpaceSize(); idx++) {
@@ -87,7 +87,7 @@ StatusOr<bool> GetDcnCollectiveStatsFromMultiXSpaceAndSaveToFile(
 
 }  // namespace
 
-StatusOr<bool> HasDcnCollectiveStatsInMultiXSpace(
+absl::StatusOr<bool> HasDcnCollectiveStatsInMultiXSpace(
     const SessionSnapshot& session_snapshot) {
   std::pair<bool, std::string> hasCacheFile;
   TF_ASSIGN_OR_RETURN(hasCacheFile, session_snapshot.HasCacheFile(
@@ -118,7 +118,7 @@ StatusOr<bool> HasDcnCollectiveStatsInMultiXSpace(
   }
 }
 
-StatusOr<bool> ConvertMultiXSpaceToDcnCollectiveStats(
+absl::StatusOr<bool> ConvertMultiXSpaceToDcnCollectiveStats(
     const SessionSnapshot& session_snapshot) {
   std::pair<bool, std::string> hasCacheFile;
   TF_ASSIGN_OR_RETURN(hasCacheFile, session_snapshot.HasCacheFile(
@@ -140,7 +140,7 @@ StatusOr<bool> ConvertMultiXSpaceToDcnCollectiveStats(
   }
 }
 
-StatusOr<DcnSlackAnalysis> GetDcnSlackAnalysisByHostName(
+absl::StatusOr<DcnSlackAnalysis> GetDcnSlackAnalysisByHostName(
     const SessionSnapshot& session_snapshot, const std::string hostname) {
   TF_ASSIGN_OR_RETURN(bool hasDcnCollectiveStats,
                       ConvertMultiXSpaceToDcnCollectiveStats(session_snapshot));

@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "xla/tsl/util/determinism_test_util.h"
 #include "tensorflow/core/data/compression_utils.h"
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/data/serialization_utils.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/work_sharder.h"
 #include "tsl/platform/status_matchers.h"
-#include "tsl/util/determinism_test_util.h"
 
 namespace tensorflow {
 namespace data {
@@ -359,11 +359,10 @@ TEST_P(GetExperimentsOptTest, DatasetUtils) {
   auto opt_ins = test_case.opt_ins;
   auto opt_outs = test_case.opt_outs;
   if (!opt_ins.empty()) {
-    setenv("TF_DATA_EXPERIMENT_OPT_IN", str_util::Join(opt_ins, ",").c_str(),
-           1);
+    setenv("TF_DATA_EXPERIMENT_OPT_IN", absl::StrJoin(opt_ins, ",").c_str(), 1);
   }
   if (!opt_outs.empty()) {
-    setenv("TF_DATA_EXPERIMENT_OPT_OUT", str_util::Join(opt_outs, ",").c_str(),
+    setenv("TF_DATA_EXPERIMENT_OPT_OUT", absl::StrJoin(opt_outs, ",").c_str(),
            1);
   }
   const std::string job_name = "job";
@@ -376,14 +375,14 @@ TEST_P(GetExperimentsOptTest, DatasetUtils) {
   for (const auto& experiment : test_case.expected_in) {
     EXPECT_TRUE(experiment_set.find(experiment) != experiment_set.end())
         << "experiment=" << experiment << " opt_ins={"
-        << str_util::Join(opt_ins, ",") << "} opt_outs={"
-        << str_util::Join(opt_outs, ",") << "}";
+        << absl::StrJoin(opt_ins, ",") << "} opt_outs={"
+        << absl::StrJoin(opt_outs, ",") << "}";
   }
   for (const auto& experiment : test_case.expected_out) {
     EXPECT_TRUE(experiment_set.find(experiment) == experiment_set.end())
         << "experiment=" << experiment << " opt_ins={"
-        << str_util::Join(opt_ins, ",") << "} opt_outs={"
-        << str_util::Join(opt_outs, ",") << "}";
+        << absl::StrJoin(opt_ins, ",") << "} opt_outs={"
+        << absl::StrJoin(opt_outs, ",") << "}";
   }
 
   if (!opt_ins.empty()) {

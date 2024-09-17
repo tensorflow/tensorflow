@@ -57,9 +57,9 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/framework:device_id_utils",
         "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor/integrations:device_mem_allocator",
+        "@local_xla//xla/tsl/framework:device_id_utils",
     ],
     alwayslink = 1,
 )

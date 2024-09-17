@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
@@ -35,8 +36,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace mlir {
 namespace TFL {
@@ -56,7 +57,8 @@ absl::StatusOr<TypedAttr> CreateTypedAttr(ShapedType shaped_type, int value) {
   } else if (element_type.isF32()) {
     return DenseElementsAttr::get<float>(shaped_type,
                                          static_cast<float>(value));
-  } else if (auto complex_type = element_type.dyn_cast<mlir::ComplexType>()) {
+  } else if (auto complex_type =
+                 mlir::dyn_cast<mlir::ComplexType>(element_type)) {
     auto etype = complex_type.getElementType();
     if (etype.isF32()) {
       tensorflow::TensorProto repr;
@@ -77,7 +79,7 @@ absl::StatusOr<TypedAttr> CreateTypedAttr(ShapedType shaped_type, int value) {
       return tensorflow::Status(absl::StatusCode::kInvalidArgument,
                                 "Unsupported type");
     }
-  } else if (auto itype = element_type.dyn_cast<mlir::IntegerType>()) {
+  } else if (auto itype = mlir::dyn_cast<mlir::IntegerType>(element_type)) {
     if (element_type.isSignedInteger()) {
       switch (itype.getWidth()) {
         case 8:

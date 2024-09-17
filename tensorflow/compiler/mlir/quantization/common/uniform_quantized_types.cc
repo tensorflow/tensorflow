@@ -94,12 +94,12 @@ bool IsStorageTypeI32(const QuantizedType quantized_type) {
 
 bool IsExpressedTypeF32(const QuantizedType quantized_type) {
   const Type expressed_type = quantized_type.getExpressedType();
-  return expressed_type.isa<Float32Type>();
+  return mlir::isa<Float32Type>(expressed_type);
 }
 
 bool IsI8F32UniformQuantizedType(const Type type) {
   const UniformQuantizedType quantized_type =
-      type.dyn_cast_or_null<UniformQuantizedType>();
+      mlir::dyn_cast_or_null<UniformQuantizedType>(type);
   if (!quantized_type) {
     LLVM_DEBUG(llvm::dbgs()
                << "Expected a uniform quantized type. Got: " << type << ".\n");
@@ -123,7 +123,7 @@ bool IsI8F32UniformQuantizedType(const Type type) {
 
 bool IsI8F32UniformQuantizedPerAxisType(const Type type) {
   const UniformQuantizedPerAxisType quantized_per_axis_type =
-      type.dyn_cast_or_null<UniformQuantizedPerAxisType>();
+      mlir::dyn_cast_or_null<UniformQuantizedPerAxisType>(type);
   if (!quantized_per_axis_type) {
     LLVM_DEBUG(llvm::dbgs()
                << "Expected a uniform quantized type. Got: " << type << ".\n");
@@ -147,7 +147,7 @@ bool IsI8F32UniformQuantizedPerAxisType(const Type type) {
 
 bool IsI32F32UniformQuantizedType(const Type type) {
   const UniformQuantizedType quantized_type =
-      type.dyn_cast_or_null<UniformQuantizedType>();
+      mlir::dyn_cast_or_null<UniformQuantizedType>(type);
   if (!quantized_type) {
     LLVM_DEBUG(llvm::dbgs()
                << "Expected a uniform quantized type. Got: " << type << ".\n");
@@ -171,7 +171,7 @@ bool IsI32F32UniformQuantizedType(const Type type) {
 
 bool IsI32F32UniformQuantizedPerAxisType(const Type type) {
   const UniformQuantizedPerAxisType quantized_per_axis_type =
-      type.dyn_cast_or_null<UniformQuantizedPerAxisType>();
+      mlir::dyn_cast_or_null<UniformQuantizedPerAxisType>(type);
   if (!quantized_per_axis_type) {
     LLVM_DEBUG(llvm::dbgs()
                << "Expected a uniform quantized type. Got: " << type << ".\n");
@@ -208,11 +208,11 @@ bool IsSupportedByTfliteQuantizeOrDequantizeOps(IntegerType storage_type) {
 }
 
 bool IsQuantizedTensorType(Type type) {
-  if (!type.isa<TensorType>()) {
+  if (!mlir::isa<TensorType>(type)) {
     return false;
   }
-  Type element_type = type.cast<TensorType>().getElementType();
-  return element_type.isa<QuantizedType>();
+  Type element_type = mlir::cast<TensorType>(type).getElementType();
+  return mlir::isa<QuantizedType>(element_type);
 }
 
 bool IsOpFullyQuantized(Operation* op) {

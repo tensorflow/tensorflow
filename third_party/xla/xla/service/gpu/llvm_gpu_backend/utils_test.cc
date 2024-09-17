@@ -21,7 +21,6 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/resource_loader.h"
 #include "tsl/platform/test.h"
 
 namespace xla {

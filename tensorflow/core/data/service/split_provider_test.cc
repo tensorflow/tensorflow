@@ -21,10 +21,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/test_util.h"
 #include "tensorflow/core/framework/dataset.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 

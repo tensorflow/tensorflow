@@ -153,7 +153,7 @@ TEST_F(ShapeInferenceTest, Run) {
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 6, &h));
       c->set_output(0, c->input(0));
       c->set_output(1, c->input(0));
-      return OkStatus();
+      return absl::OkStatus();
     };
     TF_ASSERT_OK(c.Run(fn));
   }
@@ -164,7 +164,7 @@ TEST_F(ShapeInferenceTest, Run) {
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 0, &h));
       c->set_output(0, c->input(0));
       c->set_output(1, c->input(0));
-      return OkStatus();
+      return absl::OkStatus();
     };
     // Extra error message is attached when Run fails.
     EXPECT_THAT(
@@ -189,7 +189,7 @@ TEST_F(ShapeInferenceTest, AttachContext) {
       ShapeHandle h;
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 0, &h));
       c->set_output(0, c->input(0));
-      return OkStatus();
+      return absl::OkStatus();
     };
     EXPECT_THAT(
         c.Run(fn),
@@ -212,7 +212,7 @@ TEST_F(ShapeInferenceTest, AttachContext) {
       ShapeHandle h;
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 0, &h));
       c->set_output(0, c->input(0));
-      return OkStatus();
+      return absl::OkStatus();
     };
     EXPECT_THAT(
         c.Run(fn),
@@ -238,7 +238,7 @@ TEST_F(ShapeInferenceTest, AttachContext) {
       ShapeHandle h;
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 0, &h));
       c->set_output(0, c->input(0));
-      return OkStatus();
+      return absl::OkStatus();
     };
     EXPECT_THAT(
         c.Run(fn),
@@ -264,7 +264,7 @@ TEST_F(ShapeInferenceTest, AttachContext) {
       ShapeHandle h;
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 0, &h));
       c->set_output(0, c->input(0));
-      return OkStatus();
+      return absl::OkStatus();
     };
     EXPECT_THAT(
         c.Run(fn),

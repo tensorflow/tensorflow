@@ -9,6 +9,7 @@ You may obtain a copy of the License at
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
@@ -25,11 +26,10 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/AffineExpr.h"  // from @llvm-project
-#include "mlir/IR/AffineMap.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/AffineMap.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/fusions/tiling_util.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/service/gpu/model/indexing_map.h"
@@ -62,8 +62,6 @@ struct HloInstructionIndexing {
 std::ostream& operator<<(std::ostream& out,
                          const HloInstructionIndexing& instr_indexing);
 
-std::string ToString(const mlir::AffineMap& affine_map);
-
 // Computes indexing maps for all input operands necessary to compute an element
 // of the `output_id` instruction output.
 HloInstructionIndexing ComputeOutputToInputIndexing(const HloInstruction* instr,
@@ -75,6 +73,34 @@ HloInstructionIndexing ComputeOutputToInputIndexing(const HloInstruction* instr,
 HloInstructionIndexing ComputeInputToOutputIndexing(const HloInstruction* instr,
                                                     int input_id,
                                                     mlir::MLIRContext* ctx);
+
+// Computes the indexing for `epilogue_parent`'s epilogue. For example, if
+// `epilogue_parent` is a transpose, computes the input to output indexing for
+// the path from the transpose's output to the root's output.
+//
+//   transpose
+//       |
+//     bitcast
+//       |
+//      ROOT
+//
+// The root must be specified because in HLO, an instruction can both be a hero
+// and part of a side output:
+//
+//          reduce
+//         /      \
+//   broadcast    log
+//        |        |
+//       neg    bitcast
+//         \      /
+//           ROOT
+//
+// Here, the we must use the path through the `log` for the epilogue indexing,
+// since the other path is not actually an epilogue (it's a side output). This
+// fusion does not make much sense, but they are created sometimes.
+IndexingMap ComputeEpilogueInputToOutputIndexing(
+    HloInstructionAdaptor epilogue_parent, HloInstructionAdaptor epilogue_root,
+    mlir::MLIRContext* mlir_context);
 
 using GroupedByOpIndexingMap =
     absl::flat_hash_map<const HloInstruction*, IndexingMapSet>;
@@ -102,42 +128,41 @@ bool FuseProducerConsumerOutputToInputIndexing(
 // Equivalent to linearizing the input_shape index and then delinearizing it
 // to output_shape.
 IndexingMap GetBitcastMap(const Shape& input_shape, const Shape& output_shape,
-                          mlir::MLIRContext* ctx);
+                          mlir::MLIRContext* mlir_context);
+IndexingMap GetBitcastMap(absl::Span<const int64_t> input_shape,
+                          const Shape& output_shape,
+                          mlir::MLIRContext* mlir_context);
 
 // Creates an indexing map from the physical layout of the tensor to its logical
 // layout.
-IndexingMap GetIndexingMapFromPhysicalLayoutToLogical(const Shape& shape,
-                                                      mlir::MLIRContext* ctx);
+IndexingMap GetIndexingMapFromPhysicalLayoutToLogical(
+    const Shape& shape, mlir::MLIRContext* mlir_context);
 
 // Creates an indexing map from the logical layout of the tensor to its physical
 // layout.
-IndexingMap GetIndexingMapFromLogicalToPhysicalLayout(const Shape& shape,
-                                                      mlir::MLIRContext* ctx);
-
-// Creates an indexing map from thread and block IDs to elements of the tiled
-// shape. Uses the same convention as KernelFusionInterface: dimensions 0 to 2
-// are thread indices (currently only 0 is used), dimensions 3 to 5 are block
-// indices (currently only 3 is used).
-mlir::AffineMap GetBlockOffsetsForTiling(const Tiling& tiling,
-                                         mlir::MLIRContext* ctx);
-mlir::AffineMap GetThreadOffsetsForTiling(const Tiling& tiling,
-                                          mlir::MLIRContext* ctx);
-
-// Convenience functions for the two functions above
-// (`GetBlockOffsestsForTiling` + `GetThreadOffsetsForTiling`). Also sets up
-// the ranges of dimensions and symbols.
-IndexingMap GetIndexingMapForTiling(const Tiling& tiling,
-                                    mlir::MLIRContext* ctx);
-IndexingMap GetIndexingMapForTiling(mlir::AffineMap block_offsets,
-                                    mlir::AffineMap thread_offsets,
-                                    const Tiling& tiling);
+IndexingMap GetIndexingMapFromLogicalToPhysicalLayout(
+    const Shape& shape, mlir::MLIRContext* mlir_context);
 
 // Returns the shape of the output of the instruction.
 const Shape& GetOutputShape(const HloInstruction* instr, int64_t output_id);
 
+// Computes 1D index given a shape and N-d indexing expressions.
+mlir::AffineExpr LinearizeShape(
+    absl::Span<const int64_t> dims,
+    absl::Span<const mlir::AffineExpr> dimension_exprs,
+    mlir::MLIRContext* mlir_context);
+
+// Computes N-d indexing expressions given a linear index and a shape.
+std::vector<mlir::AffineExpr> DelinearizeIndex(absl::Span<const int64_t> dims,
+                                               mlir::AffineExpr linear_index,
+                                               mlir::MLIRContext* mlir_context);
+
+// Creates an identity indexing map corresponding to the parameter shape.
+IndexingMap CreateIdentityMap(const Shape& shape,
+                              mlir::MLIRContext* mlir_context);
+
 llvm::SmallVector<mlir::AffineExpr, 4> DelinearizeInBoundsIndex(
-    mlir::AffineExpr linear, absl::Span<const int64_t> sizes,
-    absl::Span<const int64_t> strides);
+    mlir::AffineExpr linear, absl::Span<const int64_t> sizes);
 
 }  // namespace gpu
 }  // namespace xla

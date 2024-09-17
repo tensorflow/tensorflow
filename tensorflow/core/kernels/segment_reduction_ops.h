@@ -152,7 +152,7 @@ struct SparseSegmentGradFunctor {
                   typename TTypes<T>::ConstMatrix input_flat,
                   typename TTypes<Index>::ConstVec indices_vec,
                   typename TTypes<SegmentId>::ConstVec segment_vec,
-                  typename TTypes<T>::Matrix output_flat);
+                  Tensor* output);
 };
 
 template <class Device, typename T, typename Index, typename SegmentId>

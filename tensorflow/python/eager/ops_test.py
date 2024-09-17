@@ -468,6 +468,10 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     weak_y = weakref.ref(y)
     del x
     del y
+    # Run a gc a few times to ensure cycles are resolved.
+    gc.collect()
+    gc.collect()
+    gc.collect()
     gc.collect()
     self.assertIs(weak_x(), None)
     self.assertIs(weak_y(), None)

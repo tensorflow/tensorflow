@@ -1,0 +1,17 @@
+// RUN: fusion_to_mlir %s | FileCheck %s
+// RUN: test_correctness %s --bijection_inputs=reduce:0 --bijection_outputs=reduce
+
+add {
+  lhs = f64[] parameter(0)
+  rhs = f64[] parameter(1)
+  ROOT add = f64[] add(lhs, rhs)
+}
+
+fusion {
+  param_0 = f64[100,128] parameter(0)
+  param_1 = f64[] parameter(1)
+  ROOT reduce = f64[100] reduce(param_0, param_1), dimensions={1}, to_apply=add
+}
+
+// This reduction is small enough to not require any shared memory.
+// CHECK-NOT: allocate_shared

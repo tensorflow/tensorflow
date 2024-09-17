@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/statusor.h"
 #include "xla/literal.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 
 namespace xla {

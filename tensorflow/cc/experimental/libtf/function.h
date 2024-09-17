@@ -35,8 +35,8 @@ class Function {
   // Executes this function under the execution context.
   //
   // Raises an error is no matching signature is found for TaggedValue.
-  tensorflow::StatusOr<TaggedValue> Execute(tensorflow::AbstractContext*,
-                                            TaggedValue) const;
+  absl::StatusOr<TaggedValue> Execute(tensorflow::AbstractContext*,
+                                      TaggedValue) const;
 
  private:
   struct ConcreteFunction {
@@ -44,7 +44,7 @@ class Function {
     TaggedValue input_signature;
     TaggedValue output_signature;
   };
-  tensorflow::StatusOr<ConcreteFunction> GetConcreteFunction(TaggedValue) const;
+  absl::StatusOr<ConcreteFunction> GetConcreteFunction(TaggedValue) const;
   std::vector<ConcreteFunction> concrete_fns_;
 };
 

@@ -14,13 +14,16 @@ limitations under the License.
 
 #include "xla/translate/hlo_to_mhlo/translate.h"
 
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/Location.h"  // from @llvm-project
+#include "absl/status/status.h"
+#include "llvm/Support/LogicalResult.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Location.h"
+#include "mlir/Pass/PassManager.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/status.h"
 #include "xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "tsl/platform/protobuf.h"
 
@@ -47,7 +50,7 @@ bool LoadHloProto(const std::string& contents, HloProto* hlo_proto) {
 
 mlir::OwningOpRef<mlir::ModuleOp> HloToMlirHloTranslateFunction(
     llvm::StringRef input, mlir::MLIRContext* context,
-    bool import_all_computations) {
+    bool import_all_computations, bool flatten_computation_args_result) {
   HloProto hlo_proto;
   std::string content(input.data(), input.size());
   if (!LoadHloProto(content, &hlo_proto)) {
@@ -58,7 +61,8 @@ mlir::OwningOpRef<mlir::ModuleOp> HloToMlirHloTranslateFunction(
   mlir::OwningOpRef<mlir::ModuleOp> module =
       llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(context));
   auto status = ConvertHloToMlirHlo(
-      module.get(), hlo_proto.mutable_hlo_module(), import_all_computations);
+      module.get(), hlo_proto.mutable_hlo_module(), import_all_computations,
+      flatten_computation_args_result);
   if (!status.ok()) {
     LOG(ERROR) << "Hlo module import failed: " << status;
     return nullptr;
@@ -69,7 +73,7 @@ mlir::OwningOpRef<mlir::ModuleOp> HloToMlirHloTranslateFunction(
 
 mlir::OwningOpRef<mlir::ModuleOp> HloTextToMlirHloTranslateFunction(
     llvm::StringRef input, mlir::MLIRContext* context,
-    bool import_all_computations) {
+    bool import_all_computations, bool flatten_computation_args_result) {
   std::string content(input.data(), input.size());
 
   auto hlo_module_error = ParseAndReturnUnverifiedModule(content);
@@ -82,9 +86,40 @@ mlir::OwningOpRef<mlir::ModuleOp> HloTextToMlirHloTranslateFunction(
   mlir::OwningOpRef<mlir::ModuleOp> module =
       llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(context));
   auto status =
-      ConvertHloToMlirHlo(*module, hlo_module.get(), import_all_computations);
+      ConvertHloToMlirHlo(*module, hlo_module.get(), import_all_computations,
+                          flatten_computation_args_result);
   if (!status.ok()) {
     LOG(ERROR) << "HLO Module import failed: " << status;
+    return nullptr;
+  }
+
+  return module;
+}
+
+mlir::OwningOpRef<mlir::ModuleOp> HloToStablehloTranslateFunction(
+    llvm::StringRef input, mlir::MLIRContext* context,
+    bool import_all_computations, bool flatten_computation_args_result) {
+  auto module = xla::HloToMlirHloTranslateFunction(
+      input, context, import_all_computations, flatten_computation_args_result);
+  mlir::PassManager pm(module->getContext());
+  pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
+  if (failed(pm.run(*module))) {
+    module->emitError("Failed to legalize to StableHLO");
+    return nullptr;
+  }
+
+  return module;
+}
+
+mlir::OwningOpRef<mlir::ModuleOp> HloTextToStablehloTranslateFunction(
+    llvm::StringRef input, mlir::MLIRContext* context,
+    bool import_all_computations, bool flatten_computation_args_result) {
+  auto module = xla::HloTextToMlirHloTranslateFunction(
+      input, context, import_all_computations, flatten_computation_args_result);
+  mlir::PassManager pm(module->getContext());
+  pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
+  if (failed(pm.run(*module))) {
+    module->emitError("Failed to legalize to StableHLO");
     return nullptr;
   }
 

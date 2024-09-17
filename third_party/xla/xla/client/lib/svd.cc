@@ -19,6 +19,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/client/lib/arithmetic.h"
 #include "xla/client/lib/comparators.h"
 #include "xla/client/lib/constants.h"
@@ -27,12 +32,10 @@ limitations under the License.
 #include "xla/client/lib/matrix.h"
 #include "xla/client/lib/slicing.h"
 #include "xla/client/xla_builder.h"
-#include "xla/literal_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -829,7 +832,7 @@ absl::StatusOr<SVDResult> SortBySingularValuesAndPostProcessing(
 SVDResult SVD(XlaOp a, int64_t max_iter, float epsilon,
               PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
-  auto return_error = [&](const Status& status) {
+  auto return_error = [&](const absl::Status& status) {
     SVDResult result;
     result.u = builder->ReportError(status);
     result.v = builder->ReportError(status);

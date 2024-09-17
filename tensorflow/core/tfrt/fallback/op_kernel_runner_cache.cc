@@ -24,7 +24,7 @@ limitations under the License.
 namespace tensorflow {
 namespace tfrt_stub {
 
-StatusOr<OpKernelRunner*> OpKernelRunnerCache::GetOrCreate(
+absl::StatusOr<OpKernelRunner*> OpKernelRunnerCache::GetOrCreate(
     tfrt::Location loc, absl::string_view op_name,
     absl::string_view device_name, int num_args,
     const std::function<Status(tensorflow::AttrValueMap*)>& attr_builder,

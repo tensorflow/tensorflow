@@ -100,14 +100,14 @@ void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
   AddTfDeviceAssignmentPasses(pm, options);
 
   // After the standard pass, we now have MLIR in TF dialect, and now we convert
-  // reference variable to resource variables, which is besteffort.
+  // reference variable to resource variables, which is best effort.
   pm.addPass(CreateConvertReferenceVariableToResourceVariablePass());
 
   // Move the tf.Assert op to the end of the function, so that it does not
   // impose unnecessary control dependencies on other ops.
   pm.addPass(tfrt_compiler::CreateReorderTfAssertPass());
 
-  // Optimze the side-effects of control flow ops by examining the ops in its
+  // Optimize the side-effects of control flow ops by examining the ops in its
   // callees.
   pm.addPass(tfrt_compiler::CreateOptimizeTfControlFlowSideEffectPass());
 
@@ -116,6 +116,12 @@ void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
 
   // Merge non-side-effecting tf.If ops if their operands are the same.
   pm.addPass(tfrt_compiler::CreateMergeTfIfOpsPass());
+
+  pm.addPass(tfrt_compiler::CreateReconfigBatchOpPass({
+      .min_num_batch_threads = options.min_num_batch_threads,
+      .min_max_enqueued_batches = options.min_max_enqueued_batches,
+      .batch_padding_policy = options.batch_padding_policy,
+  }));
 
   // Deduplicate functions invoked by tf.BatchFunction with the same
   // shared_name

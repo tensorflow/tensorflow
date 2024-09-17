@@ -86,11 +86,11 @@ tensorflow::Status GraphToFunc(GraphOp graph, ArrayRef<Value> feeds,
     feed.replaceAllUsesWith(body->addArgument(feed.getType(), loc));
     body->addArgument(control_ty, loc);
     llvm::SmallVector<NamedAttribute> arg_attrs;
-    std::string slot = OpResultToSlotName(feed.cast<OpResult>());
+    std::string slot = OpResultToSlotName(mlir::cast<OpResult>(feed));
     arg_attrs.push_back(NamedAttribute(tfg_name, builder.getStringAttr(slot)));
-    arg_attrs.push_back(
-        NamedAttribute(lifted_value_name,
-                       createLiftedValueAttr(builder, feed.cast<OpResult>())));
+    arg_attrs.push_back(NamedAttribute(
+        lifted_value_name,
+        createLiftedValueAttr(builder, mlir::cast<OpResult>(feed))));
     args_rets_attrs.push_back(builder.getDictionaryAttr(arg_attrs));
     args_rets_attrs.push_back(Attribute{});
   }
@@ -99,7 +99,7 @@ tensorflow::Status GraphToFunc(GraphOp graph, ArrayRef<Value> feeds,
   args_rets_attrs.clear();
   for (Value fetch : fetches) {
     llvm::SmallVector<NamedAttribute> arg_attrs;
-    std::string slot = OpResultToSlotName(fetch.cast<OpResult>());
+    std::string slot = OpResultToSlotName(mlir::cast<OpResult>(fetch));
     arg_attrs.push_back(NamedAttribute(tfg_name, builder.getStringAttr(slot)));
     args_rets_attrs.push_back(builder.getDictionaryAttr(arg_attrs));
   }

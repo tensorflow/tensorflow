@@ -17,16 +17,14 @@ limitations under the License.
 #define XLA_PYTHON_SHARDING_H_
 
 #include <cstddef>
-#include <memory>
 #include <optional>
-#include <string>
 #include <utility>
 
 // placeholder for index annotation headers
 #include "absl/hash/hash.h"
-#include "third_party/nanobind/include/nanobind/nanobind.h"
+#include "absl/status/statusor.h"
+#include "nanobind/nanobind.h"
 #include "xla/hlo/ir/hlo_sharding.h"
-#include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/nb_class_ptr.h"
@@ -69,17 +67,7 @@ size_t ShardingHash(nanobind::handle sharding);
 
 bool ShardingEqual(nanobind::handle a, nanobind::handle b);
 
-xla::ClientAndPtr<xla::PjRtMemorySpace> GetMemory(
-    const xla::ClientAndPtr<xla::PjRtDevice>& device, const std::string& kind);
-
-class XLACompatibleSharding : public Sharding {
- public:
-  using Sharding::Sharding;
-
-  ~XLACompatibleSharding() override = default;
-};
-
-class NamedSharding : public XLACompatibleSharding {
+class NamedSharding : public Sharding {
  public:
   NamedSharding(nanobind::object mesh, nanobind::object spec,
                 nanobind::object memory_kind, nanobind::object parsed_pspec,
@@ -99,8 +87,13 @@ class NamedSharding : public XLACompatibleSharding {
     return type;
   }
 
-  xla::nb_class_ptr<PyDeviceList> internal_device_list() const {
-    return internal_device_list_;
+  absl::StatusOr<xla::nb_class_ptr<PyDeviceList>> internal_device_list() const {
+    if (internal_device_list_) {
+      return *internal_device_list_;
+    }
+    return xla::InvalidArgument(
+        "internal_device_list is not implemented for "
+        "`jax.sharding.AbstractMesh`");
   }
 
  private:
@@ -109,17 +102,17 @@ class NamedSharding : public XLACompatibleSharding {
   nanobind::object memory_kind_;
   nanobind::object parsed_pspec_;
   nanobind::object manual_axes_;
-  xla::nb_class_ptr<PyDeviceList> internal_device_list_;
+  std::optional<xla::nb_class_ptr<PyDeviceList>> internal_device_list_;
 };
 
-class SingleDeviceSharding : public XLACompatibleSharding {
+class SingleDeviceSharding : public Sharding {
  public:
   explicit SingleDeviceSharding(
       nanobind::object device, nanobind::object memory_kind = nanobind::none());
 
   // Used only in C++ to accelerate `PyArray::MakeFromSingleDeviceArray()`.
-  SingleDeviceSharding(std::shared_ptr<xla::PyClient> client,
-                       xla::ifrt::DeviceList device_list,
+  SingleDeviceSharding(xla::nb_class_ptr<xla::PyClient> client,
+                       tsl::RCReference<xla::ifrt::DeviceList> device_list,
                        nanobind::object memory_kind);
 
   const nanobind::object& device() const { return device_; }
@@ -142,7 +135,7 @@ class SingleDeviceSharding : public XLACompatibleSharding {
 
 // The C++ implementation of jax.PmapSharding in python. It contains a few key
 // data members and methods that are performance-critical.
-class PmapSharding : public XLACompatibleSharding {
+class PmapSharding : public Sharding {
  public:
   PmapSharding(xla::nb_numpy_ndarray devices, ShardingSpec sharding_spec);
 
@@ -167,7 +160,7 @@ class PmapSharding : public XLACompatibleSharding {
   xla::nb_class_ptr<PyDeviceList> internal_device_list_;
 };
 
-class GSPMDSharding : public XLACompatibleSharding {
+class GSPMDSharding : public Sharding {
  public:
   GSPMDSharding(nanobind::sequence devices, xla::OpSharding op_sharding,
                 nanobind::object memory_kind, nanobind::object device_list)

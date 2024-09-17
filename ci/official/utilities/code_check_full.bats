@@ -53,6 +53,7 @@ do_external_licenses_check(){
 @com_github_grpc_grpc//src/compiler
 @platforms//os
 @ruy//
+@rules_python//
 @stablehlo//stablehlo/experimental
 EOF
 
@@ -215,6 +216,9 @@ EOF
   bazel cquery \
     --experimental_cc_shared_library \
     --@local_config_cuda//:enable_cuda \
+    --@local_config_cuda//cuda:include_cuda_libs=false \
+    --repo_env=HERMETIC_CUDA_VERSION="12.3.2" \
+    --repo_env=HERMETIC_CUDNN_VERSION="8.9.7.29" \
     "somepath(//tensorflow/tools/pip_package:wheel, " \
     "@local_config_cuda//cuda:cudart + "\
     "@local_config_cuda//cuda:cudart + "\
@@ -236,6 +240,9 @@ EOF
   bazel cquery \
     --experimental_cc_shared_library \
     --@local_config_cuda//:enable_cuda \
+    --@local_config_cuda//cuda:include_cuda_libs=false \
+    --repo_env=HERMETIC_CUDA_VERSION="12.3.2" \
+    --repo_env=HERMETIC_CUDNN_VERSION="8.9.7.29" \
     --define framework_shared_object=false \
     "somepath(//tensorflow/tools/pip_package:wheel, " \
     "@local_config_cuda//cuda:cudart + "\

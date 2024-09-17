@@ -18,7 +18,10 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
@@ -62,7 +65,7 @@ TransposeOperator* FindTransposeOpWithInput(const Model& model,
   *modified = false;
   auto matmul_it = model->operators.begin() + op_index;
   if (matmul_it->get()->type != OperatorType::kMatMul) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
   const auto* matmul_op =
       static_cast<const TensorFlowMatMulOperator*>(matmul_it->get());
@@ -87,7 +90,7 @@ TransposeOperator* FindTransposeOpWithInput(const Model& model,
           "Not replacing %s by a FullyConnected operator, because it has "
           "the transpose_a attribute and LHS has no shape",
           LogName(*matmul_op));
-      return ::tensorflow::OkStatus();
+      return absl::OkStatus();
     }
 
     int dimensions_count = lhs_array.shape().dimensions_count();
@@ -228,7 +231,7 @@ TransposeOperator* FindTransposeOpWithInput(const Model& model,
   // erase the MatMul operator
   model->operators.erase(matmul_it);
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

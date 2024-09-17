@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "xla/tests/hlo_test_base.h"
 
+#include <cstdint>
 #include <functional>
+#include <iterator>
 #include <memory>
 #include <set>
 #include <string>
@@ -24,8 +26,13 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/utils/hlo_query.h"
 #include "xla/layout_util.h"
 #include "xla/service/hlo_module_util.h"
 #include "xla/service/hlo_parser.h"
@@ -34,14 +41,16 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
+#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/pjrt_client_registry.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tests/verified_hlo_module.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/types.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/test.h"
 
@@ -98,6 +107,7 @@ HloTestBase::HloTestBase(se::Platform* test_platform,
       verifier_layout_sensitive_(verifier_layout_sensitive),
       allow_mixed_precision_in_hlo_verifier_(
           allow_mixed_precision_in_hlo_verifier),
+      instruction_can_change_layout_func_(instruction_can_change_layout_func),
       test_platform_(test_platform) {
   hlo_verifier_ = std::make_unique<HloVerifier>(
       /*layout_sensitive=*/verifier_layout_sensitive,
@@ -128,19 +138,39 @@ std::unique_ptr<VerifiedHloModule> HloTestBase::CreateNewVerifiedModule(
   return std::make_unique<VerifiedHloModule>(
       name, GetModuleConfigForTest(replica_count), verifier_layout_sensitive_,
       allow_mixed_precision_in_hlo_verifier_,
-      backend().compiler()->ShapeSizeBytesFunction());
+      backend().compiler()->ShapeSizeBytesFunction(),
+      instruction_can_change_layout_func_);
 }
 
 absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
 HloTestBase::ParseAndReturnVerifiedModule(absl::string_view hlo_text,
                                           int64_t replica_count,
                                           int64_t num_partitions) {
-  TF_ASSIGN_OR_RETURN(
-      auto module,
-      ParseAndReturnVerifiedModule(
-          hlo_text, GetModuleConfigForTest(replica_count, num_partitions)));
-  UpdateEntryComputationLayout(module.get());
-  return module;
+  return ParseAndReturnVerifiedModule(
+      hlo_text, GetModuleConfigForTest(replica_count, num_partitions));
+}
+
+absl::Status HloTestBase::UpdateEntryComputationLayoutToMatchProgramLayout(
+    HloModule* module) {
+  for (auto* const computation : module->computations({})) {
+    if (computation->IsEntryComputation()) {
+      for (int64_t i = 0; i < computation->num_parameters(); ++i) {
+        const Shape& param_shape =
+            computation->parameter_instruction(i)->shape();
+        TF_RETURN_IF_ERROR(computation->parent()
+                               ->mutable_entry_computation_layout()
+                               ->mutable_parameter_layout(i)
+                               ->CopyLayoutFromShape(param_shape));
+      }
+
+      TF_RETURN_IF_ERROR(
+          computation->parent()
+              ->mutable_entry_computation_layout()
+              ->mutable_result_layout()
+              ->CopyLayoutFromShape(computation->root_instruction()->shape()));
+    }
+  }
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::unique_ptr<VerifiedHloModule>>
@@ -149,7 +179,8 @@ HloTestBase::ParseAndReturnVerifiedModule(absl::string_view hlo_text,
   auto module = std::make_unique<VerifiedHloModule>(
       TestName(), config, verifier_layout_sensitive_,
       allow_mixed_precision_in_hlo_verifier_,
-      backend().compiler()->ShapeSizeBytesFunction());
+      backend().compiler()->ShapeSizeBytesFunction(),
+      instruction_can_change_layout_func_);
   TF_RETURN_IF_ERROR(module->ParseHloStringAndVerifyModule(hlo_text));
   UpdateEntryComputationLayout(module.get());
   return std::move(module);
@@ -293,15 +324,15 @@ void HloTestBase::RunAndFilecheckHloModuleGroupRewrite(
 }
 
 absl::StatusOr<Literal> HloTestBase::Execute(
-    std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments) {
-  return runner_->Execute(std::move(module), arguments);
+    std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
+    bool run_hlo_passes) {
+  return runner_->Execute(std::move(module), arguments, run_hlo_passes);
 }
 
 Literal HloTestBase::ExecuteNoHloPasses(std::unique_ptr<HloModule> module,
                                         absl::Span<Literal* const> arguments) {
-  return runner_
-      ->Execute(std::move(module), arguments,
-                /*run_hlo_passes=*/false)
+  return Execute(std::move(module), arguments,
+                 /*run_hlo_passes=*/false)
       .value();
 }
 
@@ -322,6 +353,48 @@ HloTestBase::GetHloRunner() {
 Literal HloTestBase::ExecuteAndTransfer(std::unique_ptr<HloModule> module,
                                         absl::Span<Literal* const> arguments) {
   return runner_->Execute(std::move(module), arguments, true, nullptr).value();
+}
+
+std::vector<int> HloTestBase::CompareInputs(const HloModule& module_0,
+                                            const HloModule& module_1) {
+  const auto params_0 = module_0.entry_computation()->parameter_instructions();
+  const auto params_1 = module_1.entry_computation()->parameter_instructions();
+  std::vector<int> mismatches;
+  int64_t min = std::min(params_0.size(), params_1.size());
+  int64_t max = std::max(params_0.size(), params_1.size());
+  for (int64_t i = 0; i < min; ++i) {
+    const HloModuleConfig& module_config_0 = module_0.config();
+    const Shape& param_shape_0 =
+        (module_config_0.has_entry_computation_layout() &&
+         module_config_0.entry_computation_layout()
+             .parameter_layout(i)
+             .shape()
+             .is_static())
+            ? module_config_0.entry_computation_layout()
+                  .parameter_layout(i)
+                  .shape()
+            : params_0[i]->shape();
+
+    const HloModuleConfig& module_config_1 = module_1.config();
+    const Shape& param_shape_1 =
+        (module_config_1.has_entry_computation_layout() &&
+         module_config_1.entry_computation_layout()
+             .parameter_layout(i)
+             .shape()
+             .is_static())
+            ? module_config_1.entry_computation_layout()
+                  .parameter_layout(i)
+                  .shape()
+            : params_1[i]->shape();
+
+    if (!Shape::Equal().IgnoreTilesInLayout()(param_shape_0, param_shape_1)) {
+      mismatches.push_back(i);
+    }
+  }
+  for (int64_t i = min; i < max; i++) {
+    mismatches.push_back(i);
+  }
+  return mismatches;
 }
 
 absl::StatusOr<std::vector<Literal>> HloTestBase::ExecuteReplicated(
@@ -368,6 +441,29 @@ absl::StatusOr<std::vector<Literal>> HloTestBase::ExecuteReplicated(
                                     options, device_assignment);
 }
 
+absl::StatusOr<std::vector<Literal>> HloTestBase::ExecuteReplicated(
+    std::unique_ptr<HloModule> module,
+    std::vector<std::vector<Literal*>> arguments, int64_t num_replicas,
+    bool run_hlo_passes) {
+  CHECK(num_replicas > 0 && "expect at least one replica");
+  CHECK(num_replicas == arguments.size() &&
+        "expect arguments for each replica");
+  int64_t argument_count = arguments.front().size();
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<Executable> executable,
+      runner_->CreateExecutable(std::unique_ptr<HloModule>(std::move(module)),
+                                run_hlo_passes));
+  return ExecuteReplicated(
+      /*executable_provider=*/[&](int64_t) { return executable.get(); },
+      /*argument_count_provider=*/[&](int64_t) { return argument_count; },
+      /*argument_provider=*/
+      [&](int64_t replica_idx, int64_t argument_idx) -> const Literal* {
+        return arguments[replica_idx][argument_idx];
+      },
+      num_replicas, /*run_hlo_passes=*/run_hlo_passes,
+      /*device_assignment=*/nullptr);
+}
+
 absl::StatusOr<std::unique_ptr<HloModule>> HloTestBase::MakeReferenceModule(
     const HloModule& test_module,
     const std::function<void(HloModule*)>& reference_preprocessor) {
@@ -390,11 +486,14 @@ absl::StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
     std::unique_ptr<HloModule> module,
     const absl::Span<Literal* const> arguments,
     const optional<ErrorSpec>& error, bool run_hlo_passes,
-    const std::function<void(HloModule*)>& reference_preprocessor) {
+    const std::function<void(HloModule*)>& reference_preprocessor,
+    const std::function<void(HloModule*)>& test_preprocessor) {
   TF_RETURN_IF_ERROR(hlo_verifier_->Run(module.get()).status());
   TF_ASSIGN_OR_RETURN(auto reference_module,
                       MakeReferenceModule(*module, reference_preprocessor));
-
+  if (test_preprocessor) {
+    test_preprocessor(module.get());
+  }
   // Execute on two backends.
   TF_ASSIGN_OR_RETURN(auto test, runner_->Execute(std::move(module), arguments,
                                                   run_hlo_passes));
@@ -427,10 +526,11 @@ absl::StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
     std::unique_ptr<HloModule> module,
     const absl::Span<Literal* const> arguments,
     const optional<ErrorSpec>& error,
-    const std::function<void(HloModule*)>& reference_preprocessor) {
-  auto result =
-      RunAndCompareInternal(std::move(module), arguments, error,
-                            /*run_hlo_passes=*/false, reference_preprocessor);
+    const std::function<void(HloModule*)>& reference_preprocessor,
+    const std::function<void(HloModule*)>& test_preprocessor) {
+  auto result = RunAndCompareInternal(
+      std::move(module), arguments, error,
+      /*run_hlo_passes=*/false, reference_preprocessor, test_preprocessor);
   if (!result.ok()) {
     return ::testing::AssertionFailure() << result.status();
   }
@@ -439,8 +539,14 @@ absl::StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 
 ::testing::AssertionResult HloTestBase::RunAndCompare(
     std::unique_ptr<HloModule> module, const optional<ErrorSpec>& error,
-    const std::function<void(HloModule*)>& reference_preprocessor) {
-  auto fake_arguments = MakeFakeArguments(module.get()).value();
+    const std::function<void(HloModule*)>& reference_preprocessor,
+    std::optional<int64_t> args_max_bits_of_precision) {
+  auto fake_arguments =
+      MakeFakeArguments(module.get(), /*pseudo_random=*/true,
+                        /*use_large_range=*/false,
+                        /*treat_gte_as_data_formatting=*/false,
+                        args_max_bits_of_precision)
+          .value();
 
   std::vector<Literal*> fake_argument_ptrs;
   absl::c_transform(
@@ -453,15 +559,31 @@ absl::StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 
 ::testing::AssertionResult HloTestBase::RunAndCompareNoHloPasses(
     std::unique_ptr<HloModule> module, const optional<ErrorSpec>& error,
-    const std::function<void(HloModule*)>& reference_preprocessor) {
+    const std::function<void(HloModule*)>& reference_preprocessor,
+    const std::function<void(HloModule*)>& test_preprocessor) {
   const auto fake_arguments = MakeFakeArguments(module.get()).value();
   std::vector<Literal*> fake_argument_ptrs;
   absl::c_transform(
       fake_arguments, std::back_inserter(fake_argument_ptrs),
       [](const Literal& literal) { return const_cast<Literal*>(&literal); });
 
-  return RunAndCompareNoHloPasses(std::move(module), fake_argument_ptrs, error,
-                                  reference_preprocessor);
+  auto assertion_result =
+      RunAndCompareNoHloPasses(std::move(module), fake_argument_ptrs, error,
+                               reference_preprocessor, test_preprocessor);
+  if (!assertion_result) {
+    for (const auto& literal : fake_arguments) {
+      uint64_t total_elements = 1;
+      absl::c_for_each(literal.shape().dimensions(),
+                       [&](int64_t dim) { total_elements *= dim; });
+      if (total_elements > 1000) {
+        assertion_result << "argument literal is too large to print: "
+                         << literal.shape().ToString();
+        continue;
+      }
+      assertion_result << "argument literal: " << literal.ToString();
+    }
+  }
+  return assertion_result;
 }
 
 ::testing::AssertionResult HloTestBase::Run(std::unique_ptr<HloModule> module,
@@ -481,7 +603,8 @@ absl::StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 
 ::testing::AssertionResult HloTestBase::RunAndCompare(
     string_view hlo_string, const std::optional<ErrorSpec>& error,
-    const std::function<void(HloModule*)>& reference_preprocessor) {
+    const std::function<void(HloModule*)>& reference_preprocessor,
+    std::optional<int64_t> args_max_bits_of_precision) {
   auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
   if (!module_or_status.ok()) {
     return ::testing::AssertionFailure()
@@ -489,7 +612,121 @@ absl::StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
            << module_or_status.status().ToString();
   }
   return RunAndCompare(std::move(module_or_status).value(), error,
-                       reference_preprocessor);
+                       reference_preprocessor, args_max_bits_of_precision);
+}
+
+absl::StatusOr<::testing::AssertionResult>
+HloTestBase::RunAndCompareTwoModulesInternalReplicated(
+    std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
+    HloRunner::ReplicatedExecuteOptions options,
+    const std::optional<ErrorSpec>& error) {
+  TF_RETURN_IF_ERROR(hlo_verifier_->Run(module_0.get()).status());
+  TF_RETURN_IF_ERROR(hlo_verifier_->Run(module_1.get()).status());
+
+  // Execute the two modules.
+  TF_ASSIGN_OR_RETURN(auto test_0,
+                      runner_->ExecuteReplicated(std::move(module_0), options));
+  TF_ASSIGN_OR_RETURN(auto test_1,
+                      runner_->ExecuteReplicated(std::move(module_1), options));
+
+  for (auto [expected, actual] : llvm::zip_equal(test_0, test_1)) {
+    auto compare_result = LiteralTestUtil::NearOrEqual(expected, actual, error);
+    if (!compare_result) {
+      return compare_result;
+    }
+  }
+  return ::testing::AssertionSuccess();
+}
+
+::testing::AssertionResult HloTestBase::RunAndCompareTwoModulesReplicated(
+    std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
+    HloRunner::ReplicatedExecuteOptions options,
+    const optional<ErrorSpec>& error) {
+  int replica_count = module_0->config().replica_count();
+  if (replica_count != module_1->config().replica_count()) {
+    return ::testing::AssertionFailure()
+           << "Number of replicas is not the same: " << replica_count << " Vs "
+           << module_1->config().replica_count();
+  }
+  if (options.num_replicas != replica_count) {
+    return ::testing::AssertionFailure()
+           << "Number of execution replicas is different from number of "
+              "replicas in the module: requested number of replicas = "
+           << options.num_replicas
+           << ", number of replicas in hlo = " << replica_count;
+  }
+
+  std::vector<int> mismatches = CompareInputs(*module_0, *module_1);
+  if (!mismatches.empty()) {
+    return ::testing::AssertionFailure()
+           << "Error: parameter mismatch at indices: "
+           << absl::StrJoin(mismatches, ",");
+  }
+  auto num_args = module_0->entry_computation()->num_parameters();
+  if (num_args != options.arguments.size()) {
+    return ::testing::AssertionFailure()
+           << "Mismatch in number of arguments passed while running replicated "
+              "hlo module. Expected: "
+           << num_args << ", actual: " << options.arguments.size();
+  }
+  auto result = RunAndCompareTwoModulesInternalReplicated(
+      std::move(module_0), std::move(module_1), options, error);
+  if (!result.ok()) {
+    return ::testing::AssertionFailure() << result.status();
+  }
+  return result.value();
+}
+
+::testing::AssertionResult HloTestBase::RunAndCompareTwoModulesReplicated(
+    std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
+    bool run_hlo_passes, bool use_threads,
+    const std::optional<ErrorSpec>& error) {
+  absl::StatusOr<std::vector<Literal>> fake_arguments = MakeFakeArguments(
+      /*module=*/module_0.get(), /*pseudo_random=*/true,
+      /*use_large_range=*/false,
+      /*treat_gte_as_data_formatting=*/false,
+      /*max_bits_of_precision=*/std::nullopt);
+  CHECK_OK(fake_arguments);
+  std::vector<const Literal*> fake_argument_ptrs;
+  absl::c_transform(
+      /*input=*/*fake_arguments,
+      /*output=*/std::back_inserter(fake_argument_ptrs),
+      /*unary_op=*/[](const Literal& literal) -> Literal* {
+        return const_cast<Literal*>(&literal);
+      });
+  HloRunner::ReplicatedExecuteOptions options{
+      /*num_replicas=*/module_0->config().replica_count(),
+      /*arguments=*/fake_argument_ptrs,
+      /*infeed_values=*/{},
+      /*infeed_steps=*/-1,
+      /*outfeed_shape=*/{},
+      /*outfeed_values=*/nullptr,
+      /*run_hlo_passes=*/run_hlo_passes,
+      /*use_threads=*/use_threads};
+  return RunAndCompareTwoModulesReplicated(std::move(module_0),
+                                           std::move(module_1), options, error);
+}
+
+::testing::AssertionResult HloTestBase::RunAndCompareTwoModulesReplicated(
+    absl::string_view module_0, absl::string_view module_1, bool run_hlo_passes,
+    bool use_threads, const std::optional<ErrorSpec>& error) {
+  auto module_0_or_status = ParseAndReturnVerifiedModule(module_0);
+  if (!module_0_or_status.ok()) {
+    return ::testing::AssertionFailure()
+           << "Error while parsing HLO text format: "
+           << module_0_or_status.status().ToString();
+  }
+
+  auto module_1_or_status = ParseAndReturnVerifiedModule(module_1);
+  if (!module_1_or_status.ok()) {
+    return ::testing::AssertionFailure()
+           << "Error while parsing HLO text format: "
+           << module_1_or_status.status().ToString();
+  }
+  return RunAndCompareTwoModulesReplicated(
+      std::move(module_0_or_status).value(),
+      std::move(module_1_or_status).value(), run_hlo_passes, use_threads,
+      error);
 }
 
 absl::StatusOr<::testing::AssertionResult>
@@ -527,39 +764,11 @@ HloTestBase::RunAndCompareTwoModulesInternal(
     std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
     const optional<ErrorSpec>& error, bool run_hlo_passes,
     std::optional<int64_t> args_max_bits_of_precision) {
-  const auto params_0 = module_0->entry_computation()->parameter_instructions();
-  const auto params_1 = module_1->entry_computation()->parameter_instructions();
-  for (int i = 0; i < params_0.size(); ++i) {
-    const HloModuleConfig& module_config_0 = module_0->config();
-    const Shape& param_shape_0 =
-        (module_config_0.has_entry_computation_layout() &&
-         module_config_0.entry_computation_layout()
-             .parameter_layout(i)
-             .shape()
-             .is_static())
-            ? module_config_0.entry_computation_layout()
-                  .parameter_layout(i)
-                  .shape()
-            : params_0[i]->shape();
-
-    const HloModuleConfig& module_config_1 = module_1->config();
-    const Shape& param_shape_1 =
-        (module_config_1.has_entry_computation_layout() &&
-         module_config_1.entry_computation_layout()
-             .parameter_layout(i)
-             .shape()
-             .is_static())
-            ? module_config_1.entry_computation_layout()
-                  .parameter_layout(i)
-                  .shape()
-            : params_1[i]->shape();
-
-    if (!Shape::Equal().IgnoreTilesInLayout()(param_shape_0, param_shape_1)) {
-      return ::testing::AssertionFailure()
-             << "Error : mismatching parameter shapes: "
-             << param_shape_0.ToString(true) << " Vs. "
-             << param_shape_1.ToString(true);
-    }
+  std::vector<int> mismatches = CompareInputs(*module_0, *module_1);
+  if (!mismatches.empty()) {
+    return ::testing::AssertionFailure()
+           << "Error : mismatching parameter shapes for parameters "
+           << absl::StrJoin(mismatches, ", ");
   }
 
   absl::StatusOr<std::vector<Literal>> fake_arguments = MakeFakeArguments(
@@ -680,7 +889,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
     // Set backend configuration if it is given.
     HloInstruction* instruction =
         module->entry_computation()->root_instruction();
-    Status s = instruction->set_backend_config(*backend_config);
+    absl::Status s = instruction->set_backend_config(*backend_config);
     return s.ok() ? ::testing::AssertionSuccess()
                   : ::testing::AssertionFailure() << s.message();
   }
@@ -716,7 +925,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
     // Set backend configuration if it is given.
     HloInstruction* instruction =
         module->entry_computation()->root_instruction();
-    Status s = instruction->set_backend_config(*backend_config);
+    absl::Status s = instruction->set_backend_config(*backend_config);
     return s.ok() ? ::testing::AssertionSuccess()
                   : ::testing::AssertionFailure() << s.message();
   }
@@ -772,7 +981,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
       // Set backend configuration if it is given.
       HloInstruction* instruction =
           module->entry_computation()->root_instruction();
-      Status s = instruction->set_backend_config(*backend_config);
+      absl::Status s = instruction->set_backend_config(*backend_config);
       return s.ok() ? ::testing::AssertionSuccess()
                     : ::testing::AssertionFailure() << s.message();
     }
@@ -825,7 +1034,8 @@ HloTestBase::RunAndCompareTwoModulesInternal(
 
 ::testing::AssertionResult HloTestBase::RunAndCompareNoHloPasses(
     string_view hlo_string, const std::optional<ErrorSpec>& error,
-    const std::function<void(HloModule*)>& reference_preprocessor) {
+    const std::function<void(HloModule*)>& reference_preprocessor,
+    const std::function<void(HloModule*)>& test_preprocessor) {
   auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
   if (!module_or_status.ok()) {
     return ::testing::AssertionFailure()
@@ -833,7 +1043,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
            << module_or_status.status().ToString();
   }
   return RunAndCompareNoHloPasses(std::move(module_or_status).value(), error,
-                                  reference_preprocessor);
+                                  reference_preprocessor, test_preprocessor);
 }
 
 ::testing::AssertionResult HloTestBase::RunAndCompareNoHloPassesFromFile(
@@ -851,23 +1061,15 @@ HloTestBase::RunAndCompareTwoModulesInternal(
 
 HloComputation* HloTestBase::FindComputation(HloModule* module,
                                              absl::string_view name) {
-  auto computations = module->computations();
-  auto it = absl::c_find_if(
-      computations, [&](HloComputation* c) { return c->name() == name; });
-  if (it == computations.end()) {
-    return nullptr;
-  }
-  return *it;
+  return hlo_query::FindComputation(module, name);
 }
 
 HloInstruction* HloTestBase::FindInstruction(HloModule* module,
                                              absl::string_view name) {
-  for (const HloComputation* c : module->computations()) {
-    auto instructions = c->instructions();
-    auto it = absl::c_find_if(
-        instructions, [&](HloInstruction* i) { return i->name() == name; });
-    if (it != instructions.end()) {
-      return *it;
+  for (const HloComputation* computation : module->computations()) {
+    if (auto instruction = hlo_query::FindFirstInstruction(computation, name);
+        instruction.first != nullptr) {
+      return instruction.first;
     }
   }
   return nullptr;
@@ -875,18 +1077,35 @@ HloInstruction* HloTestBase::FindInstruction(HloModule* module,
 
 HloInstruction* HloTestBase::FindInstruction(HloModule* module,
                                              HloOpcode opcode) {
-  for (const HloComputation* c : module->computations()) {
-    auto instructions = c->instructions();
-    auto it = absl::c_find_if(
-        instructions, [&](HloInstruction* i) { return i->opcode() == opcode; });
-    if (it != instructions.end()) {
-      return *it;
+  for (const HloComputation* computation : module->computations()) {
+    if (auto instruction = hlo_query::FindFirstInstruction(computation, opcode);
+        instruction.first != nullptr) {
+      return instruction.first;
     }
   }
   return nullptr;
 }
 
+std::vector<HloInstruction*> HloTestBase::FindInstructions(HloModule* module,
+                                                           HloOpcode opcode) {
+  std::vector<HloInstruction*> instructions;
+  for (const HloComputation* c : module->computations()) {
+    absl::c_copy_if(c->instructions(), std::back_inserter(instructions),
+                    [&](HloInstruction* i) { return i->opcode() == opcode; });
+  }
+  return instructions;
+}
+
+se::DeviceMemoryAllocator* HloTestBase::GetAllocator() {
+  if (allocator_ == nullptr) {
+    allocator_ = std::make_unique<se::StreamExecutorMemoryAllocator>(
+        backend().default_stream_executor());
+  }
+  return allocator_.get();
+}
+
 Backend& HloTestBase::backend() { return test_runner_.backend(); }
+const Backend& HloTestBase::backend() const { return test_runner_.backend(); }
 
 /* static */
 std::string HloTestBase::TestName() {
@@ -912,15 +1131,14 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloTestBase::GetOptimizedModule(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(hlo, GetModuleConfigForTest()));
   return backend().compiler()->RunHloPasses(
-      std::move(module), backend().default_stream_executor(),
-      backend().default_stream_executor()->GetAllocator());
+      std::move(module), backend().default_stream_executor(), GetAllocator());
 }
 
 absl::StatusOr<std::unique_ptr<HloModule>> HloTestBase::GetOptimizedModule(
     std::unique_ptr<HloModule> hlo_module) {
-  return backend().compiler()->RunHloPasses(
-      std::move(hlo_module), backend().default_stream_executor(),
-      backend().default_stream_executor()->GetAllocator());
+  return backend().compiler()->RunHloPasses(std::move(hlo_module),
+                                            backend().default_stream_executor(),
+                                            GetAllocator());
 }
 
 absl::StatusOr<std::unique_ptr<HloRunnerInterface>>

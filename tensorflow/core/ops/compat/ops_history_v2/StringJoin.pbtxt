@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "StringJoin"
   input_arg {
     name: "inputs"

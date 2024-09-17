@@ -25,7 +25,7 @@ namespace table {
 
 namespace {
 
-typedef Iterator* (*BlockFunction)(void*, const StringPiece&);
+typedef Iterator* (*BlockFunction)(void*, const absl::string_view&);
 
 class TwoLevelIterator : public Iterator {
  public:
@@ -34,22 +34,22 @@ class TwoLevelIterator : public Iterator {
 
   ~TwoLevelIterator() override;
 
-  void Seek(const StringPiece& target) override;
+  void Seek(const absl::string_view& target) override;
   void SeekToFirst() override;
   void Next() override;
 
   bool Valid() const override {
     return (data_iter_ == nullptr) ? false : data_iter_->Valid();
   }
-  StringPiece key() const override {
+  absl::string_view key() const override {
     assert(Valid());
     return data_iter_->key();
   }
-  StringPiece value() const override {
+  absl::string_view value() const override {
     assert(Valid());
     return data_iter_->value();
   }
-  Status status() const override {
+  absl::Status status() const override {
     // It'd be nice if status() returned a const Status& instead of a
     // Status
     if (!index_iter_->status().ok()) {
@@ -62,7 +62,7 @@ class TwoLevelIterator : public Iterator {
   }
 
  private:
-  void SaveError(const Status& s) {
+  void SaveError(const absl::Status& s) {
     if (status_.ok() && !s.ok()) status_ = s;
   }
   void SkipEmptyDataBlocksForward();
@@ -71,7 +71,7 @@ class TwoLevelIterator : public Iterator {
 
   BlockFunction block_function_;
   void* arg_;
-  Status status_;
+  absl::Status status_;
   Iterator* index_iter_;
   Iterator* data_iter_;  // May be NULL
   // If data_iter_ is non-NULL, then "data_block_handle_" holds the
@@ -91,7 +91,7 @@ TwoLevelIterator::~TwoLevelIterator() {
   delete data_iter_;
 }
 
-void TwoLevelIterator::Seek(const StringPiece& target) {
+void TwoLevelIterator::Seek(const absl::string_view& target) {
   index_iter_->Seek(target);
   InitDataBlock();
   if (data_iter_ != nullptr) data_iter_->Seek(target);
@@ -136,7 +136,7 @@ void TwoLevelIterator::InitDataBlock() {
   if (!index_iter_->Valid()) {
     SetDataIterator(nullptr);
   } else {
-    StringPiece handle = index_iter_->value();
+    absl::string_view handle = index_iter_->value();
     if (data_iter_ != nullptr && handle.compare(data_block_handle_) == 0) {
       // data_iter_ is already constructed with this iterator, so
       // no need to change anything

@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_tensor.h"
+#include "xla/tsl/framework/allocator.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_device_context_c_api.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_device_context_c_api_helper.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_rendezvous_c_api.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tsl/framework/allocator.h"
 
 #define CONCAT_HELPER(a, b) a##b
 #define CONCAT(a, b) CONCAT_HELPER(a, b)

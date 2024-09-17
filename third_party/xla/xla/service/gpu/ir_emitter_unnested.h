@@ -23,16 +23,14 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
-#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Value.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -44,15 +42,15 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/nccl_collective_thunk.h"
+#include "xla/service/gpu/runtime/copy_thunk.h"
 #include "xla/service/gpu/runtime/send_recv_thunk.h"
-#include "xla/service/gpu/thunk.h"
+#include "xla/service/gpu/runtime/sequential_thunk.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/llvm_ir/loop_emitter.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
 #include "tsl/platform/errors.h"
 
 #if TENSORFLOW_USE_ROCM
@@ -114,8 +112,9 @@ class IrEmitterUnnested : public IrEmitter {
       IrEmitterContext* ir_emitter_context);
 
   // Transfers the ownship of thunk_sequence_ out.
-  std::unique_ptr<ThunkSequence> ConsumeThunkSequence() {
-    return std::make_unique<ThunkSequence>(std::move(thunk_sequence_));
+  std::unique_ptr<SequentialThunk> ConsumeThunkSequence() {
+    return std::make_unique<SequentialThunk>(Thunk::ThunkInfo{},
+                                             std::move(thunk_sequence_));
   }
 
   // Emits code for the given HLO computation.
@@ -142,14 +141,13 @@ class IrEmitterUnnested : public IrEmitter {
   absl::Status EmitGemmThunk(const HloCustomCallInstruction* instr);
 #if GOOGLE_CUDA || TF_HIPBLASLT
   absl::Status EmitCublasLtMatmulThunk(const HloCustomCallInstruction* instr);
+  absl::Status EmitCublasLtMatmulThunkF8(const HloCustomCallInstruction* instr);
 #endif  // GOOGLE_CUDA || TF_HIPBLASLT
 #if GOOGLE_CUDA
-  absl::Status EmitCublasLtMatmulThunkF8(const HloCustomCallInstruction* instr);
   absl::Status EmitConvolutionReorderThunk(
       const HloCustomCallInstruction* instr);
   absl::Status EmitNormThunk(const HloCustomCallInstruction* instr);
-  absl::Status EmitFusedMHAThunk(const HloCustomCallInstruction* instr);
-  absl::Status EmitFusedMHABackwardThunk(const HloCustomCallInstruction* instr);
+  absl::Status EmitCuDnnThunk(const HloCustomCallInstruction* instr);
 #endif  // GOOGLE_CUDA
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   absl::Status EmitCubDeviceRadixSort(const HloCustomCallInstruction* instr);
@@ -157,8 +155,8 @@ class IrEmitterUnnested : public IrEmitter {
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   absl::Status EmitCustomCallThunk(const HloCustomCallInstruction* instr);
   absl::Status EmitFftThunk(const HloFftInstruction* instr);
-  absl::Status EmitFusion(const HloFusionInstruction* instr,
-                          HloFusionAnalysis& fusion_analysis);
+  absl::Status EmitFusion(const HloFusionInstruction* instr);
+  absl::Status EmitAsyncCustomCallStart(const HloInstruction* instr);
   absl::Status EmitSelectAndScatter(
       const HloSelectAndScatterInstruction* instr);
   absl::Status EmitWhile(const HloInstruction* instr);
@@ -188,9 +186,6 @@ class IrEmitterUnnested : public IrEmitter {
 
   absl::Status EmitNcclAsyncDone(Thunk::Kind kind, const HloInstruction* instr);
 
-  absl::Status EmitWaitForStreamsThunk(const HloInstruction* inst,
-                                       GpuBackendConfig& gpu_config,
-                                       bool is_async_done);
   template <typename ThunkType>
   absl::Status EmitReplicaOrPartitionId(const HloInstruction* instr);
 
@@ -202,6 +197,8 @@ class IrEmitterUnnested : public IrEmitter {
 
   absl::Status EmitCopyStartThunk(const HloCopyStartInstruction* instr);
 
+  absl::Status EmitCopyDoneThunk(const HloInstruction* instr);
+
   absl::Status EmitHloInstruction(const HloInstruction* instr);
 
   absl::Status EmitTargetElementLoop(
@@ -211,15 +208,6 @@ class IrEmitterUnnested : public IrEmitter {
   // Add a owning Thunk object to the thunk sequence.
   void AddThunkToThunkSequence(std::unique_ptr<Thunk> thunk) {
     thunk_sequence_.emplace_back(std::move(thunk));
-  }
-
-  absl::Status AddThunksToThunkSequence(
-      absl::StatusOr<FusionEmissionResult> result) {
-    TF_RETURN_IF_ERROR(result.status());
-    for (auto& thunk : result->thunks) {
-      AddThunkToThunkSequence(std::move(thunk));
-    }
-    return absl::OkStatus();
   }
 
   // Load data from potentially unaligned address. If address is offset by
@@ -379,6 +367,9 @@ class IrEmitterUnnested : public IrEmitter {
 
   // Container for async send/recv events shared by send/recv thunks.
   std::shared_ptr<SendRecvAsyncEvents> send_recv_events_;
+
+  // Container for async copy-start/copy-done events.
+  std::shared_ptr<CopyThunk::AsyncEvents> copy_events_;
 
   // Returns the ShapedSlices for the given operands.
   absl::StatusOr<std::vector<ShapedSlice>> GetShapedSlices(

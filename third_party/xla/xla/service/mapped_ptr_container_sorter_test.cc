@@ -23,8 +23,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/functional/bind_front.h"
+#include "absl/log/log.h"
 #include "xla/test.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {

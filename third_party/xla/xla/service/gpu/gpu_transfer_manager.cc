@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/cleanup/cleanup.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
@@ -63,16 +64,43 @@ GpuTransferManager::GpuTransferManager(se::Platform::Id id,
                                        unsigned pointer_size)
     : GenericTransferManager(id, pointer_size) {}
 
+InfeedManager* GpuTransferManager::GetOrCreateInfeedManager(
+    se::StreamExecutor* executor) {
+  static absl::Mutex* mutex = new absl::Mutex();
+  static auto* infeed_managers =
+      new absl::flat_hash_map<se::StreamExecutor*,
+                              std::unique_ptr<InfeedManager>>();
+  absl::MutexLock lock(mutex);
+  if (!infeed_managers->contains(executor)) {
+    infeed_managers->emplace(executor,
+                             std::make_unique<InfeedManager>(executor));
+  }
+  return infeed_managers->at(executor).get();
+}
+
+OutfeedManager* GpuTransferManager::GetOrCreateOutfeedManager(
+    se::StreamExecutor* executor) {
+  static absl::Mutex* mutex = new absl::Mutex();
+  static auto* outfeed_managers =
+      new absl::flat_hash_map<se::StreamExecutor*,
+                              std::unique_ptr<OutfeedManager>>();
+  absl::MutexLock lock(mutex);
+  if (!outfeed_managers->contains(executor)) {
+    outfeed_managers->emplace(executor, std::make_unique<OutfeedManager>());
+  }
+  return outfeed_managers->at(executor).get();
+}
+
 absl::Status GpuTransferManager::TransferLiteralToInfeed(
     se::StreamExecutor* executor, const LiteralSlice& literal) {
-  return gpu::GetOrCreateInfeedManager(executor)->TransferLiteralToInfeed(
-      executor, literal);
+  InfeedManager* infeed_manager = GetOrCreateInfeedManager(executor);
+  return infeed_manager->TransferLiteralToInfeed(executor, literal);
 }
 
 absl::Status GpuTransferManager::TransferLiteralFromOutfeed(
     se::StreamExecutor* executor, MutableBorrowingLiteral literal) {
-  return gpu::GetOrCreateOutfeedManager(executor)->TransferLiteralFromOutfeed(
-      executor, literal);
+  OutfeedManager* outfeed_manager = GetOrCreateOutfeedManager(executor);
+  return outfeed_manager->TransferLiteralFromOutfeed(executor, literal);
 }
 
 absl::Status GpuTransferManager::EnsurePinnedBuffersAllocated(
@@ -83,7 +111,6 @@ absl::Status GpuTransferManager::EnsurePinnedBuffersAllocated(
 
   TF_ASSIGN_OR_RETURN(pinned_chunk_,
                       executor->HostMemoryAllocate(kPinnedChunkBytes));
-  pinned_chunk_se_ = executor;
 
   static_assert(kPinnedChunkBytes % kPinnedBufferBytes == 0,
                 "assumption of loop below");
@@ -102,8 +129,8 @@ absl::Status GpuTransferManager::ReadDynamicShapes(
   DCHECK(device_shape->is_dynamic());
   Shape original_device_shape = *device_shape;
 
-  TF_ASSIGN_OR_RETURN(auto compiler,
-                      Compiler::GetForPlatform(stream->parent()->platform()));
+  TF_ASSIGN_OR_RETURN(
+      auto compiler, Compiler::GetForPlatform(stream->parent()->GetPlatform()));
   auto shape_size_fn = compiler->ShapeSizeBytesFunction();
 
   // First, figure out which parts of `device_shape` are dynamic and where the
@@ -112,7 +139,8 @@ absl::Status GpuTransferManager::ReadDynamicShapes(
   std::vector<std::pair<se::DeviceMemoryBase, Shape*>> copies;
 
   TF_RETURN_IF_ERROR(device_buffer->buffers().ForEachElementWithStatus(
-      [&](const ShapeIndex& index, const se::DeviceMemoryBase& buffer) {
+      [&](const ShapeIndex& index,
+          const se::DeviceMemoryBase& buffer) -> absl::Status {
         const Shape& buffer_shape =
             ShapeUtil::GetSubshape(*device_shape, index);
         if (buffer_shape.IsTuple()) {
@@ -317,10 +345,7 @@ GpuTransferManager::GetOrCreateStagingBuffer(se::StreamExecutor* executor) {
   TF_ASSIGN_OR_RETURN(auto staging_buffer,
                       executor->HostMemoryAllocate(kStagingBufferSize));
 
-  auto transfer_completed = std::make_unique<se::Event>(executor);
-  if (!transfer_completed->Init()) {
-    return absl::InternalError("Failed to initialize transfer completed event");
-  }
+  TF_ASSIGN_OR_RETURN(auto transfer_completed, executor->CreateEvent());
 
   auto emplaced = staging_buffers_.try_emplace(
       executor, std::move(staging_buffer), std::move(transfer_completed));

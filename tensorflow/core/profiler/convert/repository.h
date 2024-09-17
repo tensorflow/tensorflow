@@ -55,7 +55,7 @@ class SessionSnapshot {
   // <xspace_paths> are the file paths to XSpace protos.
   // Optionally, <xspaces> can contain the XSpace protos pre-loaded by the
   // profiler plugin.
-  static StatusOr<SessionSnapshot> Create(
+  static absl::StatusOr<SessionSnapshot> Create(
       std::vector<std::string> xspace_paths,
       std::optional<std::vector<std::unique_ptr<XSpace>>> xspaces);
 
@@ -64,11 +64,11 @@ class SessionSnapshot {
 
   // Gets XSpace proto.
   // The caller of this function will take ownership of the XSpace.
-  StatusOr<std::unique_ptr<XSpace>> GetXSpace(size_t index) const;
+  absl::StatusOr<std::unique_ptr<XSpace>> GetXSpace(size_t index) const;
 
   // Gets XSpace proto.
   // The caller of this function will take ownership of the XSpace.
-  StatusOr<std::unique_ptr<XSpace>> GetXSpaceByName(
+  absl::StatusOr<std::unique_ptr<XSpace>> GetXSpaceByName(
       absl::string_view name) const;
 
   // Gets host name.
@@ -86,11 +86,11 @@ class SessionSnapshot {
                                          absl::string_view host) const;
 
   // Gets the name of the host data file.
-  StatusOr<std::string> GetHostDataFileName(StoredDataType data_type,
-                                            std::string host) const;
+  absl::StatusOr<std::string> GetHostDataFileName(StoredDataType data_type,
+                                                  std::string host) const;
 
   // Gets the path of the host data file.
-  StatusOr<std::optional<std::string>> GetHostDataFilePath(
+  absl::StatusOr<std::optional<std::string>> GetHostDataFilePath(
       StoredDataType data_type, std::string host) const;
 
   /* Gets whether the cache file is present in run dir. First value indicates
@@ -102,7 +102,7 @@ class SessionSnapshot {
       3. <true, filepath>: If cache file is present and file contains data_type
      events
   */
-  StatusOr<std::pair<bool, std::string>> HasCacheFile(
+  absl::StatusOr<std::pair<bool, std::string>> HasCacheFile(
       StoredDataType data_type) const;
 
   template <typename T>

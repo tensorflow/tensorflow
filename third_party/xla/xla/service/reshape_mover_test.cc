@@ -21,13 +21,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/service/algebraic_simplifier.h"
-#include "xla/service/hlo_pass_fix.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/tests/hlo_test_base.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -37,8 +37,8 @@ namespace m = xla::match;
 class ReshapeMoverTest : public HloTestBase {
  protected:
   // ReshapeMover relies on algsimp for cleanup.
-  Status RunPass(HloModule* module, bool change_expected,
-                 ReshapeMoverOptions options = ReshapeMoverOptions{}) {
+  absl::Status RunPass(HloModule* module, bool change_expected,
+                       ReshapeMoverOptions options = ReshapeMoverOptions{}) {
     TF_ASSIGN_OR_RETURN(bool changed,
                         RunHloPass(ReshapeMover(options), module));
     SCOPED_TRACE(module->ToString());
@@ -48,7 +48,7 @@ class ReshapeMoverTest : public HloTestBase {
                                 AlgebraicSimplifierOptions()),
                             module)
                      .status());
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

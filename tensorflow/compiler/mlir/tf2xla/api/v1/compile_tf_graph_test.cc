@@ -29,11 +29,11 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/translate/mhlo_to_hlo/type_to_shape.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/lib/monitoring/test_utils.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -76,7 +76,7 @@ MlirToHloArgs CreateTestMlirToHloArgs(const char* module_str = kMlirModuleStr) {
 
 class CompileTFGraphTest : public ::testing::Test {
  public:
-  tsl::StatusOr<XlaCompilationResult> CompileWithComputation(
+  absl::StatusOr<XlaCompilationResult> CompileWithComputation(
       const std::variant<tpu::MlirToHloArgs, tpu::FunctionToHloArgs>
           computation) {
     XlaCompilationResult compilation_result;
@@ -99,7 +99,7 @@ class CompileTFGraphTest : public ::testing::Test {
 
     XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns;
 
-    tsl::Status compilation_status =
+    absl::Status compilation_status =
         tensorflow::tf2xla::v1::CompileTensorflowGraphToHlo(
             computation, metadata_proto, use_tuple_args,
             shape_determination_fns, arg_shapes, &arg_core_mapping,

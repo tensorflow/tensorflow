@@ -1212,9 +1212,13 @@ A set of element-wise binary arithmetic operations is supported.
 
 <b> `Op(lhs, rhs)` </b>
 
-Where `Op` is one of `Add` (addition), `Sub` (subtraction), `Mul`
-(multiplication), `Div` (division), `Rem` (remainder), `Max` (maximum), `Min`
-(minimum), `LogicalAnd` (logical AND), or `LogicalOr` (logical OR).
+Where `Op` is one of `Add` (addition), `Sub`(subtraction), `Mul`
+(multiplication), `Div` (division), `Pow` (power), `Rem` (remainder), `Max`
+(maximum), `Min` (minimum), `And` (logical AND), `Or` (logical
+OR), `Xor` (logical XOR), `ShiftLeft` (Left Shift),
+`ShiftRightArithmetic` (arithmetic Right Shift), `ShiftRightLogical` (logical
+Right Shift), `Atan2` (2-argument arctangent), or `Complex` (combines real and
+imaginary parts into a complex number)
 
 Arguments | Type    | Semantics
 --------- | ------- | ----------------------------------------
@@ -1301,11 +1305,21 @@ XlaBuilder supports these element-wise unary functions:
 
 <b>`Abs(operand)`</b> Element-wise abs `x -> |x|`.
 
+<b>`Cbrt(operand)`</b> Element-wise cubic root operation `x -> cbrt(x)`.
+
 <b>`Ceil(operand)`</b> Element-wise ceil `x -> ⌈x⌉`.
+
+<b>`Clz(operand)`</b> Element-wise count leading zeros.
 
 <b>`Cos(operand)`</b> Element-wise cosine `x -> cos(x)`.
 
+<b>`Erf(operand)`</b> Element-wise error function `x -> erf(x)` where
+
+$$\text{erf}(x) = \frac{2}{\sqrt{\pi}}\int_0^x e^{-t^2} \, dt$$.
+
 <b>`Exp(operand)`</b> Element-wise natural exponential `x -> e^x`.
+
+<b>`Expm1(operand)`</b> Element-wise natural exponential minus one `x -> e^x - 1`.
 
 <b>`Floor(operand)`</b> Element-wise floor `x -> ⌊x⌋`.
 
@@ -1319,18 +1333,24 @@ if and only if the corresponding input element is finite.
 
 <b>`Log(operand)`</b> Element-wise natural logarithm `x -> ln(x)`.
 
-<b>`LogicalNot(operand)`</b> Element-wise logical not `x -> !(x)`.
+<b>`Log1p(operand)`</b> Element-wise shifted natural logarithm `x -> ln(1+x)`.
 
 <b>`Logistic(operand)`</b> Element-wise logistic function computation `x ->
 logistic(x)`.
 
+<b>`Neg(operand)`</b> Element-wise negation `x -> -x`.
+
+<b>`Not(operand)`</b> Element-wise logical not `x -> !(x)`.
+
 <b>`PopulationCount(operand)`</b> Computes the number of bits set in each
 element of `operand`.
 
-<b>`Neg(operand)`</b> Element-wise negation `x -> -x`.
-
 <b>`Real(operand)`</b> Element-wise real part of a complex (or real) shape.
 `x -> real(x)`. If the operand is a floating point type, returns the same value.
+
+<b>`Round(operand)`</b> Element-wise rounding, ties away from zero.
+
+<b>`RoundNearestEven(operand)`</b> Element-wise rounding, ties to nearest even.
 
 <b>`Rsqrt(operand)`</b> Element-wise reciprocal of square root operation
 `x -> 1.0 / sqrt(x)`.
@@ -1341,15 +1361,13 @@ $$\text{sgn}(x) = \begin{cases} -1 & x < 0\\ -0 & x = -0\\ NaN & x = NaN\\ +0 & 
 
 using the comparison operator of the element type of `operand`.
 
+<b>`Sin(operand)`</b> Element-wise sine `x -> sin(x)`.
+
 <b>`Sqrt(operand)`</b> Element-wise square root operation `x -> sqrt(x)`.
 
-<b>`Cbrt(operand)`</b> Element-wise cubic root operation `x -> cbrt(x)`.
+<b>`Tan(operand)`</b> Element-wise tangent `x -> tan(x)`.
 
 <b>`Tanh(operand)`</b> Element-wise hyperbolic tangent `x -> tanh(x)`.
-
-<b>`Round(operand)`</b> Element-wise rounding, ties away from zero.
-
-<b>`RoundNearestEven(operand)`</b> Element-wise rounding, ties to nearest even.
 
 Arguments | Type    | Semantics
 --------- | ------- | ---------------------------
@@ -1416,7 +1434,6 @@ For a more intuitive description, see the "Informal Description" section below.
 | `collapsed_slice_dims` | `ArraySlice<int64>` | The set of dimensions in each slice that are collapsed away. These dimensions must have size 1. |
 | `start_index_map`      | `ArraySlice<int64>` | A map that describes how to map indices in `start_indices` to legal indices into operand. |
 | `indices_are_sorted`   | `bool`              | Whether the indices are guaranteed to be sorted by the caller. |
-| `unique_indices`       | `bool`              | Whether the indices are guaranteed to be unique by the caller. |
 
 For convenience, we label dimensions in the output array not in `offset_dims`
 as `batch_dims`.
@@ -1485,11 +1502,6 @@ if, e.g., `offset_dims.size` is `4`, `operand.rank` is `6` and
 If `indices_are_sorted` is set to true then XLA can assume that `start_indices`
 are sorted (in ascending `start_index_map` order) by the user. If they are not
 then the semantics is implementation defined.
-
-If `unique_indices` is set to true then XLA can assume that all elements
-scattered to are unique. So XLA could use non-atomic operations. If
-`unique_indices` is set to true and the indices being scattered to are not
-unique then the semantics is implementation defined.
 
 ### Informal Description and Examples
 
@@ -2382,6 +2394,7 @@ Arguments                      | Type                  | Semantics
 `inserted_window_dims`         | `ArraySlice<int64>`   | The set of *window dimensions* that must be inserted into `updates` shape.
 `scatter_dims_to_operand_dims` | `ArraySlice<int64>`   | A dimensions map from the scatter indices to the operand index space. This array is interpreted as mapping `i` to `scatter_dims_to_operand_dims[i]` . It has to be one-to-one and total.
 `indices_are_sorted`           | `bool`                | Whether the indices are guaranteed to be sorted by the caller.
+`unique_indices`               | `bool`                | Whether the indices are guaranteed to be unique by the caller.
 
 Where:
 
@@ -2483,6 +2496,11 @@ specifically for cases when the `update_computation` is _not commutative_.
 If `indices_are_sorted` is set to true then XLA can assume that `start_indices`
 are sorted (in ascending `start_index_map` order) by the user. If they are not
 then the semantics is implementation defined.
+
+If `unique_indices` is set to true then XLA can assume that all elements
+scattered to are unique. So XLA could use non-atomic operations. If
+`unique_indices` is set to true and the indices being scattered to are not
+unique then the semantics is implementation defined.
 
 Informally, the scatter op can be viewed as an _inverse_ of the gather op, i.e.
 the scatter op updates the elements in the input that are extracted by the

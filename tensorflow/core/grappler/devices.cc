@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/grappler/devices.h"
+
 #include <memory>
 
-#include "tensorflow/core/grappler/devices.h"
-#include "tensorflow/core/platform/byte_order.h"
+#include "absl/log/log.h"
 #include "tensorflow/core/platform/cpu_info.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM

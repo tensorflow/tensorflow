@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/float_support.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -27,9 +28,11 @@ namespace gpu {
 
 class GpuFloatSupport : public FloatSupport {
  public:
-  explicit GpuFloatSupport(PrimitiveType low_precision_type,
+  explicit GpuFloatSupport(se::GpuComputeCapability cc,
+                           PrimitiveType low_precision_type,
                            PrimitiveType high_precision_type = F32)
-      : FloatSupport(low_precision_type, high_precision_type) {}
+      : FloatSupport(low_precision_type, high_precision_type),
+        compute_capability_(cc) {}
 
   bool SupportsLowPrecisionOperand(const HloInstruction& hlo,
                                    int64_t operand_index) const override {
@@ -45,6 +48,8 @@ class GpuFloatSupport : public FloatSupport {
 
  private:
   bool IsSupported(const HloInstruction& hlo) const;
+
+  const se::GpuComputeCapability compute_capability_;
 };
 
 }  // namespace gpu

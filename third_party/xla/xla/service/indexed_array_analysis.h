@@ -19,9 +19,20 @@ limitations under the License.
 #include <type_traits>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/literal.h"
+#include "xla/shape.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -253,7 +264,7 @@ class IndexedArrayAnalysis {
  private:
   // Helper function that ensures that every HLO instruction that is
   // transitively used by `root` has an entry in `cache_`.
-  Status TraverseAndPopulateCache(const HloInstruction* root);
+  absl::Status TraverseAndPopulateCache(const HloInstruction* root);
 
   // Creates an Array instance for `instr` under the assumption that all
   // operations of `instr` are present in `cache_`.
@@ -370,7 +381,9 @@ class IndexedArrayAnalysis {
 // unconditionally add to the regular HLO pass pipeline.
 class IndexedArrayAnalysisPrinterPass : public HloModulePass {
  public:
-  absl::string_view name() const override;
+  absl::string_view name() const override {
+    return "indexed-array-analysis-printer-pass";
+  }
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(
       HloModule* module,

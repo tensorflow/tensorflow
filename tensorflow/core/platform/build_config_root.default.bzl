@@ -3,7 +3,7 @@
 # unused in TSL
 def tf_additional_plugin_deps():
     return select({
-        str(Label("@local_tsl//tsl:with_xla_support")): [
+        str(Label("@local_xla//xla/tsl:with_xla_support")): [
             str(Label("//tensorflow/compiler/jit")),
         ],
         "//conditions:default": [],

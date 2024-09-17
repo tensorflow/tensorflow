@@ -34,21 +34,15 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_runner.h"
-#include "xla/service/platform_util.h"
-#include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/tools/hlo_module_loader.h"
 #include "xla/tools/hlo_opt/opt_lib.h"
-#include "xla/tools/run_hlo_module.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/util/command_line_flags.h"
 
 namespace {
 const char* const kUsage = R"(
@@ -173,7 +167,7 @@ absl::StatusOr<std::string> TranslateToStage(int argc, char** argv,
   return out_combined;
 }
 
-Status RunOpt(int argc, char** argv, const HloOptConfig& opts) {
+absl::Status RunOpt(int argc, char** argv, const HloOptConfig& opts) {
   TF_ASSIGN_OR_RETURN(std::string output, TranslateToStage(argc, argv, opts));
   if (opts.output_file == "-") {
     std::cout << output << std::endl;
@@ -181,7 +175,7 @@ Status RunOpt(int argc, char** argv, const HloOptConfig& opts) {
     TF_RETURN_IF_ERROR(
         tsl::WriteStringToFile(tsl::Env::Default(), opts.output_file, output));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -209,7 +203,8 @@ int main(int argc, char** argv) {
                 "\t\t\t * llvm : LLVM IR\n"
                 "\t\t\t * ptx : PTX dump\n"
                 "\t\t\t * buffer-assignment: Buffer Assignment\n"
-                "\t\t\t * hlo-backend: HLO after backend passes\n"),
+                "\t\t\t * hlo-backend: HLO after backend passes\n"
+                "\t\t\t * html: HTML dump\n"),
       tsl::Flag("list-stages", &opts.list_stages,
                 "Print all supported stages for a given platform and exit"),
       tsl::Flag("split-input-file", &opts.split_input_file,
@@ -229,7 +224,7 @@ int main(int argc, char** argv) {
     LOG(QFATAL) << kUsageString;
   }
 
-  xla::Status s = xla::RunOpt(argc, argv, opts);
+  absl::Status s = xla::RunOpt(argc, argv, opts);
   if (!s.ok()) {
     std::cerr << s;
     return 1;

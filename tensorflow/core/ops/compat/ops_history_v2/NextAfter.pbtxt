@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "NextAfter"
   input_arg {
     name: "x1"

@@ -31,6 +31,7 @@ from tensorflow.lite.python import util
 from tensorflow.lite.python.convert import ConverterError
 from tensorflow.lite.python.convert import mlir_quantize
 from tensorflow.lite.python.interpreter import Interpreter
+from tensorflow.lite.python.interpreter import OpResolverType
 from tensorflow.lite.python.util import get_conversion_metadata
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
@@ -426,10 +427,15 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     quantized_tflite_model = quantized_converter.convert()
     self.assertIsNotNone(quantized_tflite_model)
 
-    interpreter = Interpreter(model_content=quantized_tflite_model)
-    interpreter.allocate_tensors()
-    detail = next((d for d in interpreter.get_tensor_details()
-                   if d['name'] == k_conv_name))
+    # Do not apply delegates as XNNPack converts per tensor to per channel.
+    interp = Interpreter(
+        model_content=quantized_tflite_model,
+        experimental_op_resolver_type=OpResolverType.BUILTIN_WITHOUT_DEFAULT_DELEGATES,
+    )
+    interp.allocate_tensors()
+    detail = next(
+        (d for d in interp.get_tensor_details() if d['name'] == k_conv_name)
+    )
     quant_params = detail['quantization_parameters']
     expected_num_params = 1 if disable_per_channel else k_num_filters
     self.assertLen(quant_params['scales'], expected_num_params)
@@ -454,13 +460,13 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     input_details = interpreter.get_input_details()
     self.assertLen(input_details, 1)
     self.assertEqual('Placeholder', input_details[0]['name'])
-    self.assertEqual(np.string_, input_details[0]['dtype'])
+    self.assertEqual(np.bytes_, input_details[0]['dtype'])
     self.assertAllEqual([4], input_details[0]['shape'])
 
     output_details = interpreter.get_output_details()
     self.assertLen(output_details, 1)
     self.assertEqual('Reshape', output_details[0]['name'])
-    self.assertEqual(np.string_, output_details[0]['dtype'])
+    self.assertEqual(np.bytes_, output_details[0]['dtype'])
     self.assertAllEqual([2, 2], output_details[0]['shape'])
     # TODO(b/122659643): Test setting/getting string data via the python
     # interpreter API after support has been added.
@@ -778,42 +784,6 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     self.assertIsNotNone(
         os.path.exists(
             os.path.join(graphviz_dir, 'toco_AFTER_TRANSFORMATIONS.dot')))
-
-  def testDumpConversionSummary(self):
-    with ops.Graph().as_default():
-      in_tensor = array_ops.placeholder(
-          shape=[1, 16, 16, 3], dtype=dtypes.float32)
-      out_tensor = in_tensor + in_tensor
-      sess = session.Session()
-
-    # Convert model and ensure model is not None.
-    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
-                                                  [out_tensor])
-    log_dir = self.get_temp_dir()
-    converter.conversion_summary_dir = log_dir
-    tflite_model = converter.convert()
-    self.assertIsNotNone(tflite_model)
-
-    self.assertNotEmpty(os.listdir(log_dir))
-
-  def testDumpConversionSummaryWithOldConverter(self):
-    with ops.Graph().as_default():
-      in_tensor = array_ops.placeholder(
-          shape=[1, 16, 16, 3], dtype=dtypes.float32)
-      out_tensor = in_tensor + in_tensor
-      sess = session.Session()
-
-    # Convert model and ensure model is not None.
-    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
-                                                  [out_tensor])
-    converter.experimental_new_converter = False
-    log_dir = self.get_temp_dir()
-    converter.conversion_summary_dir = log_dir
-    tflite_model = converter.convert()
-    self.assertIsNotNone(tflite_model)
-    # Check nothing is generated under the conversion summary path.
-    num_items_conversion_summary = len(os.listdir(log_dir))
-    self.assertEqual(num_items_conversion_summary, 0)
 
   def testQuantizeDynamicRange(self):
     np.random.seed(0)

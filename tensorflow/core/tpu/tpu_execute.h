@@ -19,10 +19,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/tpu/tpu_node_context.h"
 #include "xla/stream_executor/tpu/tpu_ops_c_api.h"
@@ -37,7 +37,7 @@ namespace tensorflow {
 // `output_shape` is the output shape of the XLA computation from which
 // `program` was derived. If `session_module` is not nullptr, it will be filled
 // with the input and output literals of the execution.
-xla::StatusOr<xla::ExecutionOutput> TPUExecute(
+absl::StatusOr<xla::ExecutionOutput> TPUExecute(
     const TPUExecutableInfoProto& executable,
     const TPUHostTransferInfoProto& host_transfers,
     const xla::HloProto& hlo_metadata,

@@ -54,22 +54,29 @@ bool DimensionRequiresPadding(const int64_t size, const PrimitiveType data_type,
       gpu_cc);
 }
 
-bool ShapeRequiresPadding(const Shape& shape,
+bool ShapeRequiresPadding(const Shape& shape, int batch_dimensions_size,
                           const se::GpuComputeCapability& cc) {
-  // Since dots are canonicalized before padding only the last two dimensions
-  // of each operand represent non-batch dimensions and may need padding.
-  return DimensionRequiresPadding(shape.dimensions(shape.rank() - 1),
-                                  shape.element_type(), cc) ||
-         DimensionRequiresPadding(shape.dimensions(shape.rank() - 2),
-                                  shape.element_type(), cc);
+  // Non-batch dimensions requiring potential padding are placed at higher
+  // indices than batch dimensions. This is because dots are canonicalized prior
+  // to padding.
+  for (int i = batch_dimensions_size; i < shape.rank(); i++) {
+    if (DimensionRequiresPadding(shape.dimensions(i), shape.element_type(),
+                                 cc)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 }  // namespace
 
 bool CublasRequiresPadding(const HloDotInstruction& dot,
                            const se::GpuComputeCapability& cc) {
-  return ShapeRequiresPadding(dot.operand(0)->shape(), cc) ||
-         ShapeRequiresPadding(dot.operand(1)->shape(), cc);
+  const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
+  return ShapeRequiresPadding(dot.operand(0)->shape(),
+                              dim_numbers.lhs_batch_dimensions_size(), cc) ||
+         ShapeRequiresPadding(dot.operand(1)->shape(),
+                              dim_numbers.rhs_batch_dimensions_size(), cc);
 }
 
 }  // namespace gpu

@@ -62,8 +62,8 @@ uint64_t GrpcClientHostBufferStore::NextHandle() {
   return next_handle_.fetch_add(1, std::memory_order_relaxed);
 }
 
-Future<absl::Status> GrpcClientHostBufferStore::Store(uint64_t handle,
-                                                      absl::string_view data) {
+Future<> GrpcClientHostBufferStore::Store(uint64_t handle,
+                                          absl::string_view data) {
   // The current implementation synchronously sends host buffer chunks. We may
   // consider making it asynchronous if the caller can leverage such asynchrony.
 
@@ -91,15 +91,15 @@ Future<absl::Status> GrpcClientHostBufferStore::Store(uint64_t handle,
   }
 
   if (!writer->WritesDone()) {
-    return Future<absl::Status>(
+    return Future<>(
         absl::InternalError("Failed to write all host buffer chunks"));
   }
 
-  return Future<absl::Status>(xla::FromGrpcStatus(writer->Finish()));
+  return Future<>(xla::FromGrpcStatus(writer->Finish()));
 }
 
-Future<absl::Status> GrpcClientHostBufferStore::Store(uint64_t handle,
-                                                      const absl::Cord& data) {
+Future<> GrpcClientHostBufferStore::Store(uint64_t handle,
+                                          const absl::Cord& data) {
   // The current implementation synchronously sends host buffer chunks. We may
   // consider making it asynchronous if the caller can leverage such asynchrony.
 
@@ -128,16 +128,15 @@ Future<absl::Status> GrpcClientHostBufferStore::Store(uint64_t handle,
     }
   }
   if (!writer->WritesDone()) {
-    return Future<absl::Status>(
+    return Future<>(
         absl::InternalError("Failed to write all host buffer chunks"));
   }
 
-  return Future<absl::Status>(xla::FromGrpcStatus(writer->Finish()));
+  return Future<>(xla::FromGrpcStatus(writer->Finish()));
 }
 
-Future<absl::StatusOr<absl::Cord>> GrpcClientHostBufferStore::Lookup(
-    uint64_t handle) {
-  auto promise = Future<absl::StatusOr<absl::Cord>>::CreatePromise();
+Future<absl::Cord> GrpcClientHostBufferStore::Lookup(uint64_t handle) {
+  auto promise = Future<absl::Cord>::CreatePromise();
 
   lookup_work_queue_->Schedule([this, handle, promise]() mutable -> void {
     GrpcHostBufferLookupRequest request;
@@ -163,17 +162,17 @@ Future<absl::StatusOr<absl::Cord>> GrpcClientHostBufferStore::Lookup(
     }
   });
 
-  return Future<absl::StatusOr<absl::Cord>>(promise);
+  return Future<absl::Cord>(promise);
 }
 
-Future<absl::Status> GrpcClientHostBufferStore::Delete(uint64_t handle) {
+Future<> GrpcClientHostBufferStore::Delete(uint64_t handle) {
   GrpcHostBufferDeleteRequest request;
   request.set_session_id(session_id_);
   request.set_handle(handle);
 
   ::grpc::ClientContext context;
   GrpcHostBufferDeleteResponse response;
-  return Future<absl::Status>(xla::FromGrpcStatus(
+  return Future<>(xla::FromGrpcStatus(
       stub_->HostBufferDelete(&context, request, &response)));
 }
 

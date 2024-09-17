@@ -21,7 +21,7 @@ limitations under the License.
 #include "xla/client/local_client.h"
 #include "xla/client/xla_builder.h"
 #include "xla/tests/client_library_test_base.h"
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/test.h"
 
 namespace xla {

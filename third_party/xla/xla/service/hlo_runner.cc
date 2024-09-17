@@ -21,7 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/layout_util.h"
 #include "xla/service/executable.h"
@@ -30,6 +30,8 @@ limitations under the License.
 #include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -49,6 +51,14 @@ HloRunner::HloRunner(se::Platform* platform, int intra_op_parallelism_threads) {
 }
 
 HloRunner::~HloRunner() {}
+
+se::DeviceMemoryAllocator* HloRunner::GetAllocator() {
+  if (allocator_ == nullptr) {
+    allocator_ = std::make_unique<se::StreamExecutorMemoryAllocator>(
+        backend().default_stream_executor());
+  }
+  return allocator_.get();
+}
 
 absl::StatusOr<ScopedShapedBuffer> HloRunner::TransferLiteralToDevice(
     const Literal& literal, int64_t param_no) {
@@ -290,7 +300,7 @@ absl::StatusOr<ExecutionOutput> HloRunner::ExecuteWithDeviceBuffers(
       ExecutionInputsFromScopedShapedBuffers(
           arguments, executable->module().input_output_alias_config(),
           backend().default_stream_executor()->device_ordinal(),
-          backend().default_stream_executor()->GetAllocator());
+          GetAllocator());
   return ExecuteWithExecutionInputs(executable, std::move(execution_arguments),
                                     profile);
 }
@@ -329,8 +339,7 @@ absl::StatusOr<ExecutionOutput> HloRunner::ExecuteWithMovedDeviceBuffers(
   ExecutionInputsFromMovedScopedShapedBuffers(
       &execution_arguments, &owned_arguments, std::move(arguments),
       executable->module().input_output_alias_config(),
-      backend().default_stream_executor()->device_ordinal(),
-      backend().default_stream_executor()->GetAllocator());
+      backend().default_stream_executor()->device_ordinal(), GetAllocator());
 
   TF_ASSIGN_OR_RETURN(ExecutionOutput retval,
                       ExecuteWithExecutionInputs(
@@ -353,7 +362,8 @@ absl::StatusOr<ExecutionOutput> HloRunner::ExecuteWithExecutionInputs(
                       backend().default_stream_executor()->CreateStream());
   ServiceExecutableRunOptions service_run_options =
       GetServiceRunOptionsForDevice(backend().default_device_ordinal(),
-                                    stream.get(), nullptr, RunId());
+                                    stream.get(), nullptr, RunId(),
+                                    backend().device_count());
   service_run_options.mutable_run_options()->set_execution_profile(profile);
 
   TF_ASSIGN_OR_RETURN(ExecutionOutput retval,
@@ -413,7 +423,8 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
     TF_ASSIGN_OR_RETURN(auto stream, executor->CreateStream());
     streams.emplace_back(std::move(stream));
     service_run_options.emplace_back(GetServiceRunOptionsForDevice(
-        device, streams.back().get(), device_assignment, run_id));
+        device, streams.back().get(), device_assignment, run_id,
+        backend().device_count()));
 
     // Copy arguments to device.
     const int64_t argument_count = argument_count_provider(i);
@@ -525,7 +536,7 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
                                                     argument_buffer_slices));
         } else {
           absl::Mutex mutex;
-          std::vector<StatusOr<ScopedShapedBuffer>> thread_results(
+          std::vector<absl::StatusOr<ScopedShapedBuffer>> thread_results(
               options.num_replicas);
           {
             VLOG(1) << "Creating thread pool for " << options.num_replicas
@@ -581,7 +592,7 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
         TF_RET_CHECK(options.use_threads);
         std::vector<ScopedShapedBuffer> results;
         absl::Mutex mutex;
-        std::vector<StatusOr<ScopedShapedBuffer>> thread_results(
+        std::vector<absl::StatusOr<ScopedShapedBuffer>> thread_results(
             options.num_replicas);
         {
           VLOG(1) << "Creating thread pool for " << options.num_replicas
@@ -661,9 +672,11 @@ HloRunner::CreateExecutableWithBufferAssignment(
 
 ServiceExecutableRunOptions HloRunner::GetServiceRunOptionsForDevice(
     int64_t device, se::Stream* stream, DeviceAssignment* device_assignment,
-    RunId run_id) {
+    RunId run_id, int local_device_count) {
   ExecutableRunOptions run_options;
   run_options.set_device_ordinal(device);
+  run_options.set_local_device_count(local_device_count);
+
   run_options.set_stream(stream);
   run_options.set_allocator(backend().memory_allocator());
   run_options.set_intra_op_thread_pool(

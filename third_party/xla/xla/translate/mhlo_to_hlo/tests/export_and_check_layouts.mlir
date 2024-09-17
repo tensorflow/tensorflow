@@ -19,7 +19,7 @@ func.func @main(%arg0: tensor<2x3xf32>, %arg1: tensor<5x5xf32>) -> tensor<1x2x3x
 // CHECK: (token[]) custom-call(
 module @jit_f {
   func.func public @main(%arg0: tensor<0xi1>, %arg1: tensor<i64>) -> tensor<0xi1> {
-    %0 = mhlo.create_token : !mhlo.token
+    %0 = mhlo.after_all : !mhlo.token
     %1 = mhlo.constant dense<57202498903760> : tensor<i64>
     %2 = "mhlo.custom_call"(%1, %0, %arg1) {api_version = 2 : i32, call_target_name ="xla_python_cpu_callback", has_side_effect = true, operand_layouts = [dense<> : tensor<0xindex>, dense<> : tensor<0xindex>, dense<> : tensor<0xindex>], result_layouts = [dense<> : tensor<0xindex>]} : (tensor<i64>, !mhlo.token, tensor<i64>) -> tuple<!mhlo.token>
     %3 = mhlo.get_tuple_element %2[0] : (tuple<!mhlo.token>) -> !mhlo.token

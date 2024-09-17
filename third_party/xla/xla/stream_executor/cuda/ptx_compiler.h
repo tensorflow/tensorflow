@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
+#include "xla/stream_executor/semantic_version.h"
 
 namespace stream_executor {
 
@@ -28,6 +29,8 @@ namespace stream_executor {
 absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingLibNvPtxCompiler(
     int cc_major, int cc_minor, const char* ptx_contents, GpuAsmOpts options,
     bool cancel_if_reg_spill);
+
+absl::StatusOr<SemanticVersion> GetLibNvPtxCompilerVersion();
 
 }  // namespace stream_executor
 

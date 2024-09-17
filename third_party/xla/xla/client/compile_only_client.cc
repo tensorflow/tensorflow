@@ -18,9 +18,19 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/TargetParser/Triple.h"
+#include "xla/service/compile_only_service.h"
+#include "xla/service/compiler.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/shape.h"
 #include "xla/status_macros.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 

@@ -1,6 +1,9 @@
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//tensorflow/core/tfrt/ifrt:__subpackages__"],
+    default_visibility = [
+        "//tensorflow/core/tfrt/ifrt:__subpackages__",
+        "//tensorflow/core/tfrt/kernels:__subpackages__",
+    ],
     licenses = ["notice"],
 )
 

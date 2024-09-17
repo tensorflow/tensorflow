@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <utility>
 
-#include "xla/statusor.h"
+#include "absl/status/statusor.h"
 
 namespace xla {
 

@@ -71,7 +71,7 @@ Before sending your pull requests, make sure you do the following:
 
 In a graphical form, the entire lifetime of a PR looks like
 
-![image](https://user-images.githubusercontent.com/323199/229561784-0a2f5509-b731-493f-ad88-bad487688c8d.png)
+![image](https://github.com/tensorflow/tensorflow/assets/52792999/3eea4ca5-daa0-4570-b0b5-2a2b03a724a3)
 
 ### Contributor License Agreements
 
@@ -253,13 +253,21 @@ There are two ways to run TensorFlow unit tests.
     export flags="--config=opt -k"
     ```
 
-    If the tests are to be run on the GPU, add CUDA paths to LD_LIBRARY_PATH and
-    add the `cuda` option flag
+    If the tests are to be run on the GPU:
+    *   For TensorFlow versions starting from v.2.18.0:
+        Add the `cuda` option flag.
 
-    ```bash
-    export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH"
-    export flags="--config=opt --config=cuda -k"
-    ```
+        ```bash
+        export flags="--config=opt --config=cuda -k"
+        ```
+
+    *   For TensorFlow versions prior v.2.18.0:
+        Add CUDA paths to LD_LIBRARY_PATH and add the `cuda` option flag.
+
+        ```bash
+        export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH"
+        export flags="--config=opt --config=cuda -k"
+        ```
 
     For example, to run all tests under tensorflow/python, do:
 

@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/base/call_once.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/jit/compilability_check_util.h"
 #include "tensorflow/compiler/jit/deadness_analysis.h"
@@ -45,7 +46,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "xla/service/graphcycles/graphcycles.h"
-#include "xla/statusor.h"
 #include "xla/union_find.h"
 #include "xla/util.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -482,9 +482,9 @@ class MarkForCompilationPassImpl {
   bool clusters_created_ = false;
 
   std::vector<std::unique_ptr<Cluster>> cluster_storage_;
-  std::vector<UnionFind<Cluster*>> cluster_for_node_;
+  std::vector<xla::UnionFind<Cluster*>> cluster_for_node_;
   absl::flat_hash_set<const Node*> declustered_nodes_;
-  GraphCycles cycles_graph_;
+  xla::GraphCycles cycles_graph_;
   OrderedNodeSet compilation_candidates_;
   std::unique_ptr<DeadnessAnalysis> deadness_analysis_;
   int64_t iteration_count_ = 0;

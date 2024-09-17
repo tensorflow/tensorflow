@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/time/time.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/data/service/client/common.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/test_cluster.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace data {
@@ -134,7 +134,8 @@ TEST(DataServiceClientTest, NoSharding) {
   DataServiceParams params = GetDataServiceParams(
       dataset_id, test_cluster.DispatcherAddress(), ProcessingModeDef::OFF);
   DataServiceClient client(params);
-  TF_ASSERT_OK(client.Initialize(/*allocator=*/nullptr));
+  TF_ASSERT_OK(client.Initialize(/*accelerator_device_info=*/nullptr,
+                                 /*allocator=*/nullptr));
   EXPECT_THAT(GetResults<int64_t>(client),
               IsOkAndHolds(ElementsAreArray(Range(10))));
   client.Cancel();
@@ -150,7 +151,8 @@ TEST(DataServiceClientTest, DynamicSharding) {
   DataServiceParams params = GetDataServiceParams(
       dataset_id, test_cluster.DispatcherAddress(), ProcessingModeDef::DYNAMIC);
   DataServiceClient client(params);
-  TF_ASSERT_OK(client.Initialize(/*allocator=*/nullptr));
+  TF_ASSERT_OK(client.Initialize(/*accelerator_device_info=*/nullptr,
+                                 /*allocator=*/nullptr));
   EXPECT_THAT(GetResults<int64_t>(client),
               IsOkAndHolds(UnorderedElementsAreArray(Range(10))));
   client.Cancel();
@@ -167,7 +169,8 @@ TEST(DataServiceClientTest, StaticSharding) {
       GetDataServiceParams(dataset_id, test_cluster.DispatcherAddress(),
                            ProcessingModeDef::FILE_OR_DATA);
   DataServiceClient client(params);
-  TF_ASSERT_OK(client.Initialize(/*allocator=*/nullptr));
+  TF_ASSERT_OK(client.Initialize(/*accelerator_device_info=*/nullptr,
+                                 /*allocator=*/nullptr));
   EXPECT_THAT(GetResults<int64_t>(client),
               IsOkAndHolds(UnorderedElementsAreArray(Range(10))));
   client.Cancel();
@@ -183,7 +186,8 @@ TEST(DataServiceClientTest, RecordBufferEvents) {
   DataServiceParams params = GetDataServiceParams(
       dataset_id, test_cluster.DispatcherAddress(), ProcessingModeDef::OFF);
   DataServiceClient client(params);
-  TF_ASSERT_OK(client.Initialize(/*allocator=*/nullptr));
+  TF_ASSERT_OK(client.Initialize(/*accelerator_device_info=*/nullptr,
+                                 /*allocator=*/nullptr));
 
   auto mock_context = std::make_unique<TestDataServiceContext>();
   TestDataServiceContext* ctx = mock_context.get();
@@ -206,7 +210,8 @@ TEST(DataServiceClientTest, Cancel) {
   DataServiceParams params = GetDataServiceParams(
       dataset_id, test_cluster.DispatcherAddress(), ProcessingModeDef::OFF);
   DataServiceClient client(params);
-  TF_ASSERT_OK(client.Initialize(/*allocator=*/nullptr));
+  TF_ASSERT_OK(client.Initialize(/*accelerator_device_info=*/nullptr,
+                                 /*allocator=*/nullptr));
   client.Cancel();
   EXPECT_THAT(client.GetNext(GetTestDataServiceContext),
               StatusIs(error::CANCELLED));
@@ -218,7 +223,8 @@ TEST(DataServiceClientTest, ValidationError) {
   params.target_workers = TARGET_WORKERS_LOCAL;
   DataServiceClient client(params);
   EXPECT_THAT(
-      client.Initialize(/*allocator=*/nullptr),
+      client.Initialize(/*accelerator_device_info=*/nullptr,
+                        /*allocator=*/nullptr),
       StatusIs(
           error::INVALID_ARGUMENT,
           HasSubstr(

@@ -51,3 +51,7 @@ cc_library(
         "//absl/types:span",
     ],
 )
+
+cc_library(
+    name = "bit_gen_ref",
+)

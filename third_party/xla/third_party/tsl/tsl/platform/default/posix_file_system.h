@@ -76,7 +76,7 @@ class PosixFileSystem : public FileSystem {
 class LocalPosixFileSystem : public PosixFileSystem {
  public:
   string TranslateName(const string& name) const override {
-    StringPiece scheme, host, path;
+    absl::string_view scheme, host, path;
     io::ParseURI(name, &scheme, &host, &path);
     return string(path);
   }

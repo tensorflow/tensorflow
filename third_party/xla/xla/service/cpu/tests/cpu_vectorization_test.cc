@@ -16,12 +16,20 @@ limitations under the License.
 #include <algorithm>
 #include <string>
 
+#include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "llvm-c/Target.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/tests/cpu_codegen_test.h"
+#include "xla/shape_util.h"
+#include "xla/tests/hlo_test_base.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/test.h"
 
 namespace xla {

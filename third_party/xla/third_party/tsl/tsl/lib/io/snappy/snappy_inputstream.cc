@@ -45,7 +45,8 @@ SnappyInputStream::~SnappyInputStream() {
   }
 }
 
-Status SnappyInputStream::ReadNBytes(int64_t bytes_to_read, tstring* result) {
+absl::Status SnappyInputStream::ReadNBytes(int64_t bytes_to_read,
+                                           tstring* result) {
   result->clear();
   result->resize_uninitialized(bytes_to_read);
 
@@ -67,22 +68,22 @@ Status SnappyInputStream::ReadNBytes(int64_t bytes_to_read, tstring* result) {
     result_ptr += bytes_read;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 #if defined(TF_CORD_SUPPORT)
-Status SnappyInputStream::ReadNBytes(int64_t bytes_to_read,
-                                     absl::Cord* result) {
+absl::Status SnappyInputStream::ReadNBytes(int64_t bytes_to_read,
+                                           absl::Cord* result) {
   // TODO(frankchn): Optimize this instead of bouncing through the buffer.
   tstring buf;
   TF_RETURN_IF_ERROR(ReadNBytes(bytes_to_read, &buf));
   result->Clear();
   result->Append(buf.data());
-  return OkStatus();
+  return absl::OkStatus();
 }
 #endif
 
-Status SnappyInputStream::Inflate() {
+absl::Status SnappyInputStream::Inflate() {
   tstring compressed_block_length_ts;
   uint32 compressed_block_length;
 
@@ -97,7 +98,7 @@ Status SnappyInputStream::Inflate() {
   tstring compressed_block;
   compressed_block.resize_uninitialized(compressed_block_length);
 
-  Status s =
+  absl::Status s =
       input_stream_->ReadNBytes(compressed_block_length, &compressed_block);
   if (errors::IsOutOfRange(s)) {
     return errors::DataLoss("Failed to read ", compressed_block_length,
@@ -128,7 +129,7 @@ Status SnappyInputStream::Inflate() {
   }
   avail_out_ += uncompressed_length;
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 size_t SnappyInputStream::ReadBytesFromCache(size_t bytes_to_read,
@@ -145,11 +146,11 @@ size_t SnappyInputStream::ReadBytesFromCache(size_t bytes_to_read,
 
 int64_t SnappyInputStream::Tell() const { return bytes_read_; }
 
-Status SnappyInputStream::Reset() {
+absl::Status SnappyInputStream::Reset() {
   TF_RETURN_IF_ERROR(input_stream_->Reset());
   avail_out_ = 0;
   bytes_read_ = 0;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace io

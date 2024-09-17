@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "xla/mlir/framework/ir/xla_framework.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
-#include "xla/service/cpu/hlo_xla_runtime_pipeline.h"
 
 namespace mlir {
 
@@ -38,7 +37,6 @@ void RegisterCommonToolingDialects(mlir::DialectRegistry& registry) {
   mlir::registerAllDialects(registry);
   mlir::registerAllExtensions(registry);
   mlir::stablehlo::registerAllDialects(registry);
-  xla::cpu::RegisterHloXlaRuntimePipelineDialects(registry);
 
   registry.insert<mlir::TFL::TensorFlowLiteDialect>();
   registry.insert<mlir::kernel_gen::tf_framework::TFFrameworkDialect>();

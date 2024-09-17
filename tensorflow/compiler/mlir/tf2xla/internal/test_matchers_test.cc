@@ -43,14 +43,14 @@ template <typename T>
 tsl::StatusOr<T> success(T t) {
   return t;
 }
-tsl::StatusOr<int> success() { return kArbitraryIntResult; }
+absl::StatusOr<int> success() { return kArbitraryIntResult; }
 template <typename T>
 tsl::StatusOr<T> filtered(T t) {
   return tsl::StatusOr<T>(tensorflow::CompileToHloGraphAnalysisFailedError());
 }
-tsl::StatusOr<int> filtered() { return filtered(kArbitraryIntResult); }
-tsl::StatusOr<int> failed() {
-  return tsl::StatusOr<int>(absl::InternalError("fail"));
+absl::StatusOr<int> filtered() { return filtered(kArbitraryIntResult); }
+absl::StatusOr<int> failed() {
+  return absl::StatusOr<int>(absl::InternalError("fail"));
 }
 
 TEST(TestUtil, MatchesOk) { ASSERT_THAT(success(), IsOkOrFiltered()); }

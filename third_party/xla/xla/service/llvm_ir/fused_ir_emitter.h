@@ -19,10 +19,11 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "llvm/IR/Value.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/elemental_ir_emitter.h"
-#include "xla/statusor.h"
+#include "xla/service/llvm_ir/loop_emitter.h"
 
 namespace xla {
 

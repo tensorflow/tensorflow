@@ -29,9 +29,9 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "third_party/gloo/gloo/context.h"
-#include "third_party/gloo/gloo/rendezvous/store.h"
-#include "third_party/gloo/gloo/transport/device.h"
+#include "gloo/context.h"
+#include "gloo/rendezvous/store.h"
+#include "gloo/transport/device.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/cpu/collectives_interface.h"
 #include "xla/service/global_device_id.h"
@@ -84,8 +84,12 @@ class GlooCollectives : public CollectivesInterface {
   std::unique_ptr<gloo::rendezvous::Store> store_;
   std::shared_ptr<gloo::transport::Device> device_;
   absl::Mutex mu_;
+  struct Context {
+    absl::Mutex mu;
+    std::shared_ptr<GlooCollectivesCommunicator> communicator;
+  };
   absl::flat_hash_map<std::tuple<std::vector<GlobalDeviceId>, int>,
-                      std::shared_ptr<GlooCollectivesCommunicator>>
+                      std::unique_ptr<Context>>
       contexts_ ABSL_GUARDED_BY(mu_);
 };
 

@@ -51,6 +51,22 @@ class MatmulTestWithCublas : public HloTestBase,
   const bool use_cublas_lt_{GetParam()};
 };
 
+TEST_P(MatmulTestWithCublas, GemmRewriter_RegressionTestF64) {
+  const char* module_str = R"(
+HloModule GeneralMatMulActivation.7, entry_computation_layout={(f64[2,2,2]{2,1,0}, f64[2,2,2]{2,1,0})->f64[2,2,2]{2,1,0}}
+
+ENTRY GeneralMatMulActivation.7 {
+  x.1 = f64[2,2,2]{2,1,0} parameter(0)
+  y.2 = f64[2,2,2]{2,1,0} parameter(1)
+  dot.3 = f64[2,2,2]{2,1,0} dot(x.1, y.2), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+  constant.4 = f64[] constant(0)
+  broadcast.5 = f64[2,2,2]{2,1,0} broadcast(constant.4), dimensions={}
+  ROOT maximum.6 = f64[2,2,2]{2,1,0} maximum(dot.3, broadcast.5)
+})";
+
+  EXPECT_TRUE(RunAndCompare(module_str, ErrorSpec{1e-4, 1e-4}));
+}
+
 // There was an issue where the compilation process of an Inverse operation was
 // resulting in a cached cuBLASLt matmul plan which was incorrectly fetched at
 // the time of the Matmul operation

@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "xla/client/lib/arithmetic.h"
 #include "xla/client/lib/constants.h"
 #include "xla/client/lib/loops.h"
@@ -30,7 +31,6 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 
@@ -106,8 +106,8 @@ XlaOp Norm(std::vector<XlaOp> xs) {
 //   return (v, tau, beta)
 // TODO(phawkins): LAPACK's xLARFG implementation has code for handling
 // overflows in the norm/beta calculations. Perhaps do the same here.
-Status House(XlaOp x, XlaOp k, absl::Span<const int64_t> batch_dims,
-             const int64_t m, XlaOp* v, XlaOp* tau, XlaOp* beta) {
+absl::Status House(XlaOp x, XlaOp k, absl::Span<const int64_t> batch_dims,
+                   const int64_t m, XlaOp* v, XlaOp* tau, XlaOp* beta) {
   XlaBuilder* const builder = x.builder();
   TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
   const PrimitiveType type = x_shape.element_type();
@@ -169,7 +169,7 @@ Status House(XlaOp x, XlaOp k, absl::Span<const int64_t> batch_dims,
   // Form v as [0, 0, ..., 1] ++ x[k+1:] / divisor
   // If sigma is zero, x[k+1:] is zero, so use any non-zero divisor.
   *v = e_k + Div(x_after_k, divisor, /*broadcast_dimensions=*/batch_dim_ids);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -509,9 +509,12 @@ bool QrExpander::InstructionMatchesPattern(HloInstruction* instruction) {
 
 absl::StatusOr<HloInstruction*> QrExpander::ExpandInstruction(
     HloInstruction* instruction) {
-  const std::string name =
+  std::string name =
       absl::StrFormat("xla.%s_%s", instruction->custom_call_target(),
                       instruction->operand(0)->shape().ToString());
+  if (instruction->custom_call_target() == kHouseholderProductCustomCallName) {
+    name += "_" + instruction->operand(1)->shape().ToString();
+  }
 
   HloModule* module = instruction->GetModule();
 

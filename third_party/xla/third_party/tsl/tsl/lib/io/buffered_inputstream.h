@@ -43,9 +43,9 @@ class BufferedInputStream : public InputStreamInterface {
 
   ~BufferedInputStream() override;
 
-  Status ReadNBytes(int64_t bytes_to_read, tstring* result) override;
+  absl::Status ReadNBytes(int64_t bytes_to_read, tstring* result) override;
 
-  Status SkipNBytes(int64_t bytes_to_skip) override;
+  absl::Status SkipNBytes(int64_t bytes_to_skip) override;
 
   int64_t Tell() const override;
 
@@ -58,7 +58,7 @@ class BufferedInputStream : public InputStreamInterface {
   // Note: When seeking backwards in a stream, this implementation uses
   // Reset() + SkipNBytes(), so its performance will be dependent
   // largely on the performance of SkipNBytes().
-  Status Seek(int64_t position);
+  absl::Status Seek(int64_t position);
 
   // Read one text line of data into "*result" until end-of-file or a
   // \n is read.  (The \n is not included in the result.)  Overwrites
@@ -67,8 +67,8 @@ class BufferedInputStream : public InputStreamInterface {
   // If successful, returns OK.  If we are already at the end of the
   // file, we return an OUT_OF_RANGE error.  Otherwise, we return
   // some other non-OK status.
-  Status ReadLine(std::string* result);
-  Status ReadLine(tstring* result);
+  absl::Status ReadLine(std::string* result);
+  absl::Status ReadLine(tstring* result);
 
   // Returns one text line of data until end-of-file or a '\n' is read. The '\n'
   // is included in the result.
@@ -83,21 +83,21 @@ class BufferedInputStream : public InputStreamInterface {
   // If successful, returns OK.  If we are already at the end of the
   // file, we return an OUT_OF_RANGE error.  Otherwise, we return
   // some other non-OK status.
-  Status SkipLine();
+  absl::Status SkipLine();
 
   // Reads the entire contents of the file into *result.
   //
   // Note: the amount of memory used by this function call is unbounded, so only
   // use in ops that expect that behavior.
   template <typename T>
-  Status ReadAll(T* result);
+  absl::Status ReadAll(T* result);
 
-  Status Reset() override;
+  absl::Status Reset() override;
 
  private:
-  Status FillBuffer();
+  absl::Status FillBuffer();
   template <typename StringType>
-  Status ReadLineHelper(StringType* result, bool include_eol);
+  absl::Status ReadLineHelper(StringType* result, bool include_eol);
 
   InputStreamInterface* input_stream_;  // not owned.
   size_t size_;                         // buffer size.
@@ -108,7 +108,7 @@ class BufferedInputStream : public InputStreamInterface {
   bool owns_input_stream_ = false;
   // When EoF is reached, file_status_ contains the status to skip unnecessary
   // buffer allocations.
-  Status file_status_ = OkStatus();
+  absl::Status file_status_ = absl::OkStatus();
 
   BufferedInputStream(const BufferedInputStream&) = delete;
   void operator=(const BufferedInputStream&) = delete;

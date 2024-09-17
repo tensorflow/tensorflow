@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -28,9 +29,9 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -135,15 +136,7 @@ absl::StatusOr<std::optional<HloInstruction*>> UpdateLayoutForCudnnConvolution(
     const Shape& s = op->shape();
     Shape s_reordered =
         ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(s);
-    HloInstruction* normalized_op = op->mutable_operand(0);
-    HloInstruction* new_op;
-    if (normalized_op->shape() == s_reordered) {
-      new_op = normalized_op;
-    } else {
-      new_op = MakeBitcastHlo(op, s_reordered);
-      performed_normalization = true;
-    }
-    normalized_operands.push_back(new_op);
+    normalized_operands.emplace_back(MakeBitcastHlo(op, s_reordered));
   }
 
   // Avoid replacing the Custom Call with an identical copy.

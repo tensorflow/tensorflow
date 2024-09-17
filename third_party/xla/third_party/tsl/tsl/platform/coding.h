@@ -22,6 +22,7 @@ limitations under the License.
 #define TENSORFLOW_TSL_PLATFORM_CODING_H_
 
 #include "tsl/platform/stringpiece.h"
+#include "tsl/platform/tstring.h"
 #include "tsl/platform/types.h"
 
 namespace tsl {
@@ -48,8 +49,8 @@ extern void PutVarint64(string* dst, uint64 value);
 extern void PutVarint32(tstring* dst, uint32 value);
 extern void PutVarint64(tstring* dst, uint64 value);
 
-extern bool GetVarint32(StringPiece* input, uint32* value);
-extern bool GetVarint64(StringPiece* input, uint64* value);
+extern bool GetVarint32(absl::string_view* input, uint32* value);
+extern bool GetVarint64(absl::string_view* input, uint64* value);
 
 extern const char* GetVarint32Ptr(const char* p, const char* limit, uint32* v);
 extern const char* GetVarint64Ptr(const char* p, const char* limit, uint64* v);

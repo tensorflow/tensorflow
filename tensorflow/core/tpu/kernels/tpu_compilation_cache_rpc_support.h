@@ -1,3 +1,4 @@
+#include "absl/status/statusor.h"
 /* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -89,7 +90,7 @@ Status DeserializeRpcResponseToCacheEntry(
     std::shared_ptr<CacheEntry>* cache_entry);
 
 // Serializes `TpuCompilationCacheEntry` to gRPC bufer slices.
-xla::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(
+absl::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(
     const TpuCompilationCacheEntry& cache_entry);
 }  // namespace tpu
 }  // namespace tensorflow

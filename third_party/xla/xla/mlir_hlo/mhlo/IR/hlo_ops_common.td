@@ -22,7 +22,6 @@ def MHLO_Dialect : Dialect {
 
   let useDefaultAttributePrinterParser = 0;
   let useDefaultTypePrinterParser = 0;
-  let usePropertiesForAttributes = 0;
 }
 
 include "mhlo/IR/hlo_base.td"

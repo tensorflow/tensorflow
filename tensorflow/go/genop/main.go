@@ -21,7 +21,6 @@ import (
 	"bytes"
 	"flag"
 	"go/format"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -42,7 +41,7 @@ func main() {
 		log.Fatal("-outfile must be set")
 	}
 	if *header != "" {
-		hdr, err := ioutil.ReadFile(*header)
+		hdr, err := os.ReadFile(*header)
 		if err != nil {
 			log.Fatalf("Unable to read %s: %v", *header, err)
 		}
@@ -64,7 +63,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to generate valid source? 'go fmt' failed: %v", err)
 	}
-	if err := ioutil.WriteFile(*filename, formatted, 0644); err != nil {
+	if err := os.WriteFile(*filename, formatted, 0644); err != nil {
 		log.Fatalf("Failed to write to %q: %v", *filename, err)
 	}
 }

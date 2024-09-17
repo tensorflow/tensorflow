@@ -38,8 +38,8 @@ rocblas_Xtrsm   //    ----           //     ----                   / / Ungqr //
 #include <unordered_map>
 #include <vector>
 
-#include "xla/stream_executor/gpu/gpu_activation.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
+#include "xla/stream_executor/gpu/scoped_activate_context.h"
 #include "xla/stream_executor/platform/default/dso_loader.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/rocm/rocblas_wrapper.h"
@@ -59,7 +59,7 @@ namespace tensorflow {
 namespace {
 
 using stream_executor::gpu::GpuExecutor;
-using stream_executor::gpu::ScopedActivateExecutorContext;
+using stream_executor::gpu::ScopedActivateContext;
 
 inline bool CopyHostToDevice(OpKernelContext* context, void* dst,
                              const void* src, uint64 bytes) {
@@ -71,7 +71,7 @@ inline bool CopyHostToDevice(OpKernelContext* context, void* dst,
 struct GpuSolverHandles {
   explicit GpuSolverHandles(GpuExecutor* parent, hipStream_t stream) {
     parent_ = parent;
-    ScopedActivateExecutorContext sac{parent_};
+    ScopedActivateContext sac{parent_};
 #if TF_ROCM_VERSION >= 40500
     CHECK(se::wrap::hipsolverCreate(&hipsolver_handle) ==
           rocblas_status_success)
@@ -86,7 +86,7 @@ struct GpuSolverHandles {
   }
 
   ~GpuSolverHandles() {
-    ScopedActivateExecutorContext sac{parent_};
+    ScopedActivateContext sac{parent_};
     CHECK(se::wrap::rocblas_destroy_handle(rocm_blas_handle) ==
           rocblas_status_success)
         << "Failed to destroy rocBlas instance.";
@@ -184,7 +184,7 @@ void GpuSolver::CheckLapackInfoAndDeleteSolverAsync(
           std::function<void(const Status&, const std::vector<HostLapackInfo>&)>
               info_checker_callback,
           std::vector<HostLapackInfo> host_lapack_infos) {
-        ScopedActivateExecutorContext scoped_activation{stream->parent()};
+        ScopedActivateContext scoped_activation{stream->parent()};
         Status status;
         for (const auto& host_lapack_info : host_lapack_infos) {
           for (int i = 0; i < host_lapack_info.size() && status.ok(); ++i) {
@@ -790,7 +790,7 @@ static inline Status TrsmImpl(GpuExecutor* gpu_executor, SolverFnT solver,
   mutex_lock lock(handle_map_mutex);
   using ROCmScalar = typename ROCmComplexT<Scalar>::type;
 
-  ScopedActivateExecutorContext sac{gpu_executor};
+  ScopedActivateContext sac{gpu_executor};
   TF_RETURN_IF_ROCBLAS_ERROR(solver(rocm_blas_handle, side, uplo, trans, diag,
                                     m, n,
                                     reinterpret_cast<const ROCmScalar*>(alpha),
@@ -826,7 +826,7 @@ Status MatInvBatchedImpl(GpuExecutor* gpu_executor, SolverFnT solver,
                          int batch_size) {
   mutex_lock lock(handle_map_mutex);
   using ROCmScalar = typename ROCmComplexT<Scalar>::type;
-  ScopedActivateExecutorContext sac{gpu_executor};
+  ScopedActivateContext sac{gpu_executor};
 
   GetrfBatched(n, host_a_dev_ptrs, lda, dev_pivots, dev_lapack_info,
                batch_size);
@@ -900,7 +900,7 @@ Status GeamImpl(GpuExecutor* gpu_executor, SolverFnT solver,
   mutex_lock lock(handle_map_mutex);
   using ROCmScalar = typename ROCmComplexT<Scalar>::type;
 
-  ScopedActivateExecutorContext sac{gpu_executor};
+  ScopedActivateContext sac{gpu_executor};
   TF_RETURN_IF_ROCBLAS_ERROR(solver(rocm_blas_handle, transa, transb, m, n,
                                     reinterpret_cast<const ROCmScalar*>(alpha),
                                     reinterpret_cast<const ROCmScalar*>(A), lda,

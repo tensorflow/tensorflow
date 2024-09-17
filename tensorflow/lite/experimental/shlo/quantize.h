@@ -37,7 +37,7 @@ inline constexpr StorageT Quantize(ExpressedT expressed_value,
   tmp = std::clamp(tmp, static_cast<ExpressedT>(min_value),
                    static_cast<ExpressedT>(max_value));
   auto rounded_value = static_cast<StorageT>(tmp);
-  StorageT storage_value = rounded_value + zero_point;
+  StorageT storage_value(rounded_value + zero_point);
 
   // Clamp again using the min & max values.
   return std::clamp(storage_value, min_value, max_value);

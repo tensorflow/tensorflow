@@ -51,20 +51,22 @@ class RetryingUtils {
   /// If initial_delay_microseconds is zero, no delays will be made between
   /// retries.
   /// If all retries failed, returns the last error status.
-  static Status CallWithRetries(const std::function<Status()>& f,
-                                const RetryConfig& config);
+  static absl::Status CallWithRetries(const std::function<absl::Status()>& f,
+                                      const RetryConfig& config);
 
   /// sleep_usec is a function that sleeps for the given number of microseconds.
-  static Status CallWithRetries(const std::function<Status()>& f,
-                                const std::function<void(int64_t)>& sleep_usec,
-                                const RetryConfig& config);
+  static absl::Status CallWithRetries(
+      const std::function<absl::Status()>& f,
+      const std::function<void(int64_t)>& sleep_usec,
+      const RetryConfig& config);
   /// \brief A retrying wrapper for a function that deletes a resource.
   ///
   /// The function takes care of the scenario when a delete operation
   /// returns a failure but succeeds under the hood: if a retry returns
   /// NOT_FOUND, the whole operation is considered a success.
-  static Status DeleteWithRetries(const std::function<Status()>& delete_func,
-                                  const RetryConfig& config);
+  static absl::Status DeleteWithRetries(
+      const std::function<absl::Status()>& delete_func,
+      const RetryConfig& config);
 };
 
 // Given the total number of retries attempted, returns a randomized duration of

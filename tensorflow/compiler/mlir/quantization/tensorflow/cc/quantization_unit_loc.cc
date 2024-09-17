@@ -65,9 +65,9 @@ bool QuantizationUnitLoc::classof(Attribute attr) {
   if (!llvm::isa<CallSiteLoc>(attr)) return false;
   auto callsite_loc = llvm::dyn_cast<CallSiteLoc>(attr);
 
-  if (!callsite_loc.getCaller().isa<NameLoc>()) return false;
+  if (!mlir::isa<NameLoc>(callsite_loc.getCaller())) return false;
   StringRef caller_name =
-      callsite_loc.getCaller().cast<NameLoc>().getName().strref();
+      mlir::cast<NameLoc>(callsite_loc.getCaller()).getName().strref();
   return caller_name.starts_with(kQuantizationUnitPrefix) &&
          caller_name.ends_with(kQuantizationUnitSuffix);
 }
@@ -75,8 +75,8 @@ bool QuantizationUnitLoc::classof(Attribute attr) {
 std::optional<QuantizationUnitLoc::QuantizationUnit>
 FindQuantizationUnitFromLoc(Location loc) {
   if (isa<QuantizationUnitLoc>(loc)) {
-    Location caller = loc.cast<CallSiteLoc>().getCaller();
-    StringRef caller_name = caller.cast<NameLoc>().getName().strref();
+    Location caller = mlir::cast<CallSiteLoc>(loc).getCaller();
+    StringRef caller_name = mlir::cast<NameLoc>(caller).getName().strref();
     const size_t start_index = kQuantizationUnitPrefix.size();
     const size_t end_index = caller_name.rfind(kQuantizationUnitSuffix);
     std::string serialized_proto =
@@ -87,14 +87,15 @@ FindQuantizationUnitFromLoc(Location loc) {
     }
   } else if (isa<FusedLoc>(loc)) {
     // If the op is rewritten, FusedLoc can be created.
-    for (Location child_loc : loc.cast<FusedLoc>().getLocations()) {
+    for (Location child_loc : mlir::cast<FusedLoc>(loc).getLocations()) {
       std::optional<QuantizationUnitLoc::QuantizationUnit> found_unit =
           FindQuantizationUnitFromLoc(child_loc);
       if (found_unit.has_value()) return found_unit;
     }
   } else if (isa<CallSiteLoc>(loc)) {
     // If the graph is inlined, CallSiteLoc can be created.
-    return FindQuantizationUnitFromLoc(loc.cast<CallSiteLoc>().getCallee());
+    return FindQuantizationUnitFromLoc(
+        mlir::cast<CallSiteLoc>(loc).getCallee());
   }
 
   return std::nullopt;

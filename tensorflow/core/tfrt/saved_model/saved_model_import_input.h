@@ -30,7 +30,7 @@ namespace tfrt_stub {
 // the MLIR importer.
 class TfrtSavedModelMLIRImportInput : public SavedModelMLIRImportInput {
  public:
-  static StatusOr<TfrtSavedModelMLIRImportInput> Create(
+  static absl::StatusOr<TfrtSavedModelMLIRImportInput> Create(
       const FallbackState& fallback_state, const MetaGraphDef* meta_graph_def,
       const GraphDebugInfo& debug_info,
       bool run_placer_grappler_on_nested_functions = false);
@@ -39,7 +39,7 @@ class TfrtSavedModelMLIRImportInput : public SavedModelMLIRImportInput {
       const MetaGraphDef* meta_graph_def, const GraphDebugInfo& debug_info,
       std::unique_ptr<TfrtGraphExecutionState> graph_execution_state);
 
-  StatusOr<const tensorflow::Graph*> GetSubGraph(
+  absl::StatusOr<const tensorflow::Graph*> GetSubGraph(
       absl::string_view name, GraphImportConfig& graph_import_config) override;
 
   // Return the time used by grappler.

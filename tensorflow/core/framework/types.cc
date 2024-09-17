@@ -156,7 +156,7 @@ string DataTypeString(DataType dtype) {
 }
 
 bool DataTypeFromString(StringPiece sp, DataType* dt) {
-  if (str_util::EndsWith(sp, "_ref")) {
+  if (absl::EndsWith(sp, "_ref")) {
     sp.remove_suffix(4);
     DataType non_ref;
     if (DataTypeFromString(sp, &non_ref) && !IsRefType(non_ref)) {

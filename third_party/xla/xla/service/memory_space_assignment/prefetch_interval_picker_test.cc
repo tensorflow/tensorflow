@@ -79,9 +79,10 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, PrefetchIntervalOrder) {
 
   HloCostAnalysis hlo_cost_analysis(ShapeSize);
   CostAnalysisOptions options;
+  HloCostAnalysisCosts hlo_cost_analysis_costs(hlo_cost_analysis);
   TF_ASSERT_OK_AND_ASSIGN(
       auto cost_analysis,
-      FakeCostAnalysis::Create(hlo_cost_analysis, *module, options));
+      FakeCostAnalysis::Create(hlo_cost_analysis_costs, *module, options));
   CostAnalysisPrefetchIntervalPicker interval_picker(
       *cost_analysis,
       /*min_overlap_to_async_copy_ratio=*/1.0,
@@ -178,9 +179,10 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, PrefetchIntervalOrderWhile) {
 
   HloCostAnalysis hlo_cost_analysis(ShapeSize);
   CostAnalysisOptions options;
+  HloCostAnalysisCosts hlo_cost_analysis_costs(hlo_cost_analysis);
   TF_ASSERT_OK_AND_ASSIGN(
       auto cost_analysis,
-      FakeCostAnalysis::Create(hlo_cost_analysis, *module, options));
+      FakeCostAnalysis::Create(hlo_cost_analysis_costs, *module, options));
   CostAnalysisPrefetchIntervalPicker interval_picker(
       *cost_analysis,
       /*min_overlap_to_async_copy_ratio=*/1.0,
@@ -261,9 +263,10 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, NestedWhile) {
 
   HloCostAnalysis hlo_cost_analysis(ShapeSize);
   CostAnalysisOptions options;
+  HloCostAnalysisCosts hlo_cost_analysis_costs(hlo_cost_analysis);
   TF_ASSERT_OK_AND_ASSIGN(
       auto cost_analysis,
-      FakeCostAnalysis::Create(hlo_cost_analysis, *module, options));
+      FakeCostAnalysis::Create(hlo_cost_analysis_costs, *module, options));
   CostAnalysisPrefetchIntervalPicker interval_picker(
       *cost_analysis,
       /*min_overlap_to_async_copy_ratio=*/1.0,
@@ -329,9 +332,10 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, ConsecutiveConditionals) {
 
   HloCostAnalysis hlo_cost_analysis(ShapeSize);
   CostAnalysisOptions options;
+  HloCostAnalysisCosts hlo_cost_analysis_costs(hlo_cost_analysis);
   TF_ASSERT_OK_AND_ASSIGN(
       auto cost_analysis,
-      FakeCostAnalysis::Create(hlo_cost_analysis, *module, options));
+      FakeCostAnalysis::Create(hlo_cost_analysis_costs, *module, options));
   CostAnalysisPrefetchIntervalPicker interval_picker(
       *cost_analysis,
       /*min_overlap_to_async_copy_ratio=*/1.0,
@@ -374,9 +378,10 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, EarliestLatestWindowTooSmall) {
 
   HloCostAnalysis hlo_cost_analysis(ShapeSize);
   CostAnalysisOptions options;
+  HloCostAnalysisCosts hlo_cost_analysis_costs(hlo_cost_analysis);
   TF_ASSERT_OK_AND_ASSIGN(
       auto cost_analysis,
-      FakeCostAnalysis::Create(hlo_cost_analysis, *module, options));
+      FakeCostAnalysis::Create(hlo_cost_analysis_costs, *module, options));
   cost_analysis->SetOverrideForGetInstructionElapsed(
       [](const HloInstruction& hlo) {
         if (hlo.opcode() == HloOpcode::kTanh) {

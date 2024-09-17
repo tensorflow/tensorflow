@@ -32,26 +32,36 @@ limitations under the License.
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api_custom_partitioner_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_ffi_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_ffi_internal.h"
 #include "xla/pjrt/c/pjrt_c_api_gpu_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_stream_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/gpu/gpu_helpers.h"
+#include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
+#include "xla/pjrt/pjrt_executable.h"
+#include "xla/python/custom_partition_callback.h"
 #include "xla/service/compiler.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
-#include "tsl/platform/errors.h"
 
 namespace pjrt {
 namespace gpu_plugin {
 
+#if TENSORFLOW_USE_ROCM
+#define PJRT_GPU_PLUGIN_PLATFORM_NAME "ROCM"
+#else
 #define PJRT_GPU_PLUGIN_PLATFORM_NAME "CUDA"
+#endif
 
 PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
@@ -148,6 +158,15 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   return nullptr;
 }
 
+PJRT_Error* PJRT_ExecuteContext_Create(PJRT_ExecuteContext_Create_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_ExecuteContext_Create_Args",
+      PJRT_ExecuteContext_Create_Args_STRUCT_SIZE, args->struct_size));
+  auto execute_context = std::make_unique<xla::ExecuteContext>();
+  args->context = pjrt::CreateWrapperExecuteContext(std::move(execute_context));
+  return nullptr;
+}
+
 PJRT_Error* PJRT_GpuDeviceTopology_Create(
     PJRT_TopologyDescription_Create_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
@@ -168,9 +187,25 @@ PJRT_Error* PJRT_GpuDeviceTopology_Create(
     device_ids.push_back(executor->device_ordinal());
   }
   auto gpu_target_config = xla::Compiler::TargetConfig(executor);
+  // TODO(b/341334898): Create a single-host GPU topology. Will be updated for
+  // multi-host support in the future.
+  auto gpu_topology = std::make_shared<const xla::GpuTopology>(
+      device_ids, description.name(),
+      /*num_slices=*/1,
+      /*num_hosts_per_slice=*/1,
+      /*num_devices_per_host=*/device_ids.size());
+
+  // Determine the platform ID and name based on the platform.
+  xla::PjRtPlatformId platform_id =
+      (std::string(PJRT_GPU_PLUGIN_PLATFORM_NAME) == "ROCM") ? xla::RocmId()
+                                                             : xla::CudaId();
+  std::string platform_name =
+      (std::string(PJRT_GPU_PLUGIN_PLATFORM_NAME) == "ROCM") ? xla::RocmName()
+                                                             : xla::CudaName();
+
   auto pjrt_topology =
       std::make_unique<xla::StreamExecutorGpuTopologyDescription>(
-          xla::CudaId(), xla::CudaName(), description.name(), device_ids,
+          platform_id, platform_name, std::move(gpu_topology),
           absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute>{
               {"target_config",
                gpu_target_config.ToProto().SerializeAsString()}});
@@ -196,6 +231,57 @@ PJRT_Profiler_Extension profiler_extension{
     /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Profiler,
     /*next=*/nullptr,
     /*profiler_api=*/&profiler_api,
+};
+
+PJRT_Error* PJRT_Register_Custom_Partitioner(
+    PJRT_Register_Custom_Partitioner_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Register_Custom_Partitioner_Args",
+      PJRT_Register_Custom_Partitioner_Args_STRUCT_SIZE, args->struct_size));
+  std::string name(args->name, args->name_size);
+  RegisterCustomCallPartitioner(
+      name, jax::CreateCApiCustomCallPartitioner(args->callbacks));
+  return nullptr;
+}
+
+PJRT_Custom_Partitioner_Extension custom_partitioner{
+    /*struct_size=*/PJRT_Custom_Partitioner_Extension_STRUCT_SIZE,
+    /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Custom_Partitioner,
+    /*next=*/reinterpret_cast<PJRT_Extension_Base*>(&profiler_extension),
+    /*register_custom_partitioner=*/PJRT_Register_Custom_Partitioner,
+};
+
+PJRT_Error* PJRT_Get_Stream_For_External_Ready_Events(
+    PJRT_Get_Stream_For_External_Ready_Events_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Get_Stream_For_External_Ready_Events_Args",
+      PJRT_Get_Stream_For_External_Ready_Events_Args_STRUCT_SIZE,
+      args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(
+      args->stream, args->device->device->GetStreamForExternalReadyEvents());
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Wait_Until_Buffer_Ready_On_Stream(
+    PJRT_Wait_Until_Buffer_Ready_On_Stream_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Wait_Until_Buffer_Ready_On_Stream_Args",
+      PJRT_Wait_Until_Buffer_Ready_On_Stream_Args_STRUCT_SIZE,
+      args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::PjRtBuffer::ExternalReference> external_reference,
+      args->buffer->buffer->AcquireExternalReference());
+  PJRT_RETURN_IF_ERROR(
+      external_reference->WaitUntilBufferReadyOnStream(args->stream));
+  return nullptr;
+}
+
+PJRT_Stream_Extension stream{
+    /*struct_size=*/PJRT_Stream_Extension_STRUCT_SIZE,
+    /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Stream,
+    /*next=*/reinterpret_cast<PJRT_Extension_Base*>(&custom_partitioner),
+    /*get_stream=*/PJRT_Get_Stream_For_External_Ready_Events,
+    /*wait_stream=*/PJRT_Wait_Until_Buffer_Ready_On_Stream,
 };
 
 PJRT_Error* PJRT_Gpu_Register_Custom_Call(
@@ -228,14 +314,24 @@ const PJRT_Api* GetGpuPjrtApi() {
   static PJRT_Gpu_Custom_Call custom_call{
       /*struct_size=*/PJRT_Gpu_Custom_Call_STRUCT_SIZE,
       /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Gpu_Custom_Call,
-      /*next=*/reinterpret_cast<PJRT_Extension_Base*>(&profiler_extension),
+      /*next=*/reinterpret_cast<PJRT_Extension_Base*>(&stream),
       /*custom_call=*/PJRT_Gpu_Register_Custom_Call,
   };
-  static const PJRT_Api pjrt_api =
-      pjrt::CreatePjrtApi(pjrt::gpu_plugin::PJRT_Client_Create,
-                          pjrt::gpu_plugin::PJRT_GpuDeviceTopology_Create,
-                          pjrt::PJRT_Plugin_Initialize_NoOp,
-                          reinterpret_cast<PJRT_Extension_Base*>(&custom_call));
+
+  static PJRT_Layouts_Extension layouts_extension =
+      pjrt::CreateLayoutsExtension(
+          reinterpret_cast<PJRT_Extension_Base*>(&custom_call));
+
+  static PJRT_FFI_Extension ffi_extension = pjrt::CreateFfiExtension(
+      reinterpret_cast<PJRT_Extension_Base*>(&layouts_extension));
+
+  static const PJRT_Api pjrt_api = pjrt::CreatePjrtApi(
+      pjrt::gpu_plugin::PJRT_Client_Create,
+      pjrt::gpu_plugin::PJRT_ExecuteContext_Create,
+      pjrt::gpu_plugin::PJRT_GpuDeviceTopology_Create,
+      pjrt::PJRT_Plugin_Initialize_NoOp,
+      reinterpret_cast<PJRT_Extension_Base*>(&ffi_extension),
+      pjrt::PJRT_Plugin_Attributes_Xla);
 
   return &pjrt_api;
 }

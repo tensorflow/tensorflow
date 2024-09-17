@@ -15,11 +15,9 @@ limitations under the License.
 
 #include "xla/stream_executor/platform.h"
 
-#include <map>
 #include <string>
 
 #include "absl/status/status.h"
-#include "xla/stream_executor/device_options.h"
 
 namespace stream_executor {
 
@@ -34,23 +32,8 @@ std::string StreamPriorityToString(StreamPriority priority) {
   }
 }
 
-StreamExecutorConfig::StreamExecutorConfig()
-    : ordinal(-1), device_options(DeviceOptions::Default()) {}
-
-StreamExecutorConfig::StreamExecutorConfig(int ordinal_in)
-    : ordinal(ordinal_in), device_options(DeviceOptions::Default()) {}
-
-Platform::~Platform() {}
-
 bool Platform::Initialized() const { return true; }
 
-absl::Status Platform::Initialize(
-    const std::map<std::string, std::string> &platform_options) {
-  if (!platform_options.empty()) {
-    return absl::UnimplementedError(
-        "this platform does not support custom initialization");
-  }
-  return absl::OkStatus();
-}
+absl::Status Platform::Initialize() { return absl::OkStatus(); }
 
 }  // namespace stream_executor

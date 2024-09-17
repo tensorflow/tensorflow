@@ -44,6 +44,7 @@ limitations under the License.
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
@@ -114,6 +115,10 @@ bool CanHoist(const llvm::DenseSet<mlir::TF::ResourceHandle> &read_only_vars,
               mlir::Operation *op) {
   // return ops should not be hoisted.
   if (op->mightHaveTrait<mlir::OpTrait::IsTerminator>()) return false;
+
+  // Fixes a corner case where hoisting the tf.BatchFunction leads to
+  // a compilation error; such a case may occur in unit tests.
+  if (llvm::isa<mlir::TF::BatchFunctionOp>(op)) return false;
 
   // Non-side-effecting ops can be hoisted.
   if (mlir::isMemoryEffectFree(op)) return true;
@@ -227,7 +232,7 @@ void FindCalleesRecursiveForOp(const mlir::SymbolTable &symbol_table,
                                llvm::StringSet<> &callees) {
   for (const auto &named_attr : op->getAttrs()) {
     if (auto symbol_attr =
-            named_attr.getValue().dyn_cast<mlir::FlatSymbolRefAttr>()) {
+            mlir::dyn_cast<mlir::FlatSymbolRefAttr>(named_attr.getValue())) {
       auto symbol = symbol_attr.getValue();
       if (!callees.contains(symbol)) {
         callees.insert(symbol);
@@ -333,7 +338,8 @@ class LowerTFSavedModelPass
           func_op->removeAttr(kTfSavedModelExportedNamesAttr);
           for (auto exported_name : exported_names) {
             auto exported_func_op = func_op.clone();
-            exported_func_op.setName(exported_name.cast<mlir::StringAttr>());
+            exported_func_op.setName(
+                mlir::cast<mlir::StringAttr>(exported_name));
 
             // If it is a session initializer, we want to maximize parallelism
             // and do not perform any stream merge, to minimize latency.
@@ -402,7 +408,7 @@ void LowerTFSavedModelPass::HoistInvariantOps(mlir::ModuleOp module) {
     } else if (auto func = llvm::dyn_cast<mlir::func::FuncOp>(op)) {
       if (!IsSessionInitializer(func)) return;
       FindCalleesRecursive(symbol_table, func, init_callees);
-    } else if (op->getName().getStringRef().str() == "tf.XlaLaunch") {
+    } else if (llvm::isa<mlir::TF::XlaLaunchOp>(op)) {
       // TODO(b/275095412): Clean up MLIR XLA functions after they are written
       // back to function library, so that we don't need to do special handling
       // for those functions here.
@@ -627,8 +633,8 @@ class ConvertReferenceVariableToResourceVariablePass
 
 mlir::LogicalResult ConvertReferenceVariableToResourceVariable(
     mlir::TF::VariableV2Op var_op) {
-  auto tensor_type =
-      mlir::TF::DropRefType(var_op.getRef().getType()).cast<mlir::TensorType>();
+  auto tensor_type = mlir::cast<mlir::TensorType>(
+      mlir::TF::DropRefType(var_op.getRef().getType()));
 
   llvm::SmallVector<mlir::TF::IdentityOp, 4> identity_ops;
   llvm::SmallVector<mlir::TF::AssignOp, 4> assign_ops;

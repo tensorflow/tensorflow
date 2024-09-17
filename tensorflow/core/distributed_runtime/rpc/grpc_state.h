@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "grpcpp/generic/generic_stub.h"
 #include "grpcpp/grpcpp.h"
+#include "xla/tsl/distributed_runtime/rpc/grpc_state.h"
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_client_cq_tag.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/util/env_var.h"
-#include "tsl/distributed_runtime/rpc/grpc_state.h"
 
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)

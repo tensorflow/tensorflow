@@ -13,15 +13,30 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/service/elemental_ir_emitter.h"
+
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
+
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
 #include "xla/error_spec.h"
-#include "xla/execution_options_util.h"
-#include "xla/service/hlo_parser.h"
-#include "xla/status_macros.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/service/llvm_ir/ir_array.h"
 #include "xla/test.h"
-#include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -811,6 +826,33 @@ ENTRY e {
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3,
                                                 /*arel=*/1e-3}));
+}
+
+class ElementalIrEmitterInternalTest : public HloTestBase {};
+
+XLA_TEST_F(ElementalIrEmitterInternalTest, SparseDotIsUnsupported) {
+  constexpr absl::string_view kHloText = R"(
+HloModule test
+
+ENTRY main {
+  lhs = f16[5,16] parameter(0)
+  rhs = f16[32,10] parameter(1)
+  meta = u16[5,2] parameter(2)
+  ROOT dot = f32[5,10] dot(lhs, rhs, meta),
+      lhs_contracting_dims={1}, rhs_contracting_dims={0}, sparsity=L.1@2:4
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+
+  llvm::LLVMContext llvm_context;
+  llvm::Module llvm_module("", llvm_context);
+  llvm::IRBuilder<> builder(llvm_context);
+  ElementalIrEmitterForTests emitter(&llvm_module, &builder);
+
+  llvm_ir::IrArray::Index test_index{builder.getInt64Ty()};
+  auto result = emitter.TestElementalDot(root, test_index);
+  EXPECT_FALSE(result.ok());
 }
 
 }  // namespace

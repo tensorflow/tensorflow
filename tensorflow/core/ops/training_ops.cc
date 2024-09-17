@@ -60,6 +60,11 @@ static Status HandleGradAndIndicesInputs(InferenceContext* c, int grad_idx,
   ShapeHandle indices;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(grad_idx + 1), 1, &indices));
   DimensionHandle unused;
+  const auto rank = c->Rank(grad);
+  if (!rank) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Argument grad must not be a scalar. ", "Got grad with rank ", rank));
+  }
   TF_RETURN_IF_ERROR(c->Merge(c->Dim(indices, 0), c->Dim(grad, 0), &unused));
   // Trailing part of grad matches trailing part of *s.
   ShapeHandle grad_unknown_first;

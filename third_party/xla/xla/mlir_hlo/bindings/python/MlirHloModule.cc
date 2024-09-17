@@ -97,16 +97,22 @@ PYBIND11_MODULE(_mlirHlo, m) {
           "get",
           [](py::object cls, const std::vector<int64_t> &updateWindowDims,
              const std::vector<int64_t> &insertedWindowDims,
+             const std::vector<int64_t> &inputBatchingDims,
+             const std::vector<int64_t> &scatterIndicesBatchingDims,
              const std::vector<int64_t> &scatteredDimsToOperandDims,
              int64_t indexVectorDim, MlirContext ctx) {
             return cls(mlirMhloScatterDimensionNumbersGet(
                 ctx, updateWindowDims.size(), updateWindowDims.data(),
                 insertedWindowDims.size(), insertedWindowDims.data(),
+                inputBatchingDims.size(), inputBatchingDims.data(),
+                scatterIndicesBatchingDims.size(),
+                scatterIndicesBatchingDims.data(),
                 scatteredDimsToOperandDims.size(),
                 scatteredDimsToOperandDims.data(), indexVectorDim));
           },
           py::arg("cls"), py::arg("update_window_dims"),
-          py::arg("inserted_window_dims"),
+          py::arg("inserted_window_dims"), py::arg("input_batching_dims"),
+          py::arg("scatter_indices_batching_dims"),
           py::arg("scattered_dims_to_operand_dims"),
           py::arg("index_vector_dim"), py::arg("context") = py::none(),
           "Creates a ScatterDimensionNumbers with the given dimension "
@@ -125,6 +131,22 @@ PYBIND11_MODULE(_mlirHlo, m) {
                 self, mlirMhloScatterDimensionNumbersGetInsertedWindowDimsSize,
                 mlirMhloScatterDimensionNumbersGetInsertedWindowDimsElem);
           })
+      .def_property_readonly(
+          "input_batching_dims",
+          [](MlirAttribute self) {
+            return attributePropertyVector(
+                self, mlirMhloScatterDimensionNumbersGetInputBatchingDimsSize,
+                mlirMhloScatterDimensionNumbersGetInputBatchingDimsElem);
+          })
+      .def_property_readonly(
+          "scatter_indices_batching_dims",
+          [](MlirAttribute self) {
+            return attributePropertyVector(
+                self,
+                mlirMhloScatterDimensionNumbersGetScatterIndicesBatchingDimsSize,  // NOLINT(whitespace/line_length)
+                mlirMhloScatterDimensionNumbersGetScatterIndicesBatchingDimsElem  // NOLINT(whitespace/line_length)
+            );
+          })
       .def_property_readonly("scattered_dims_to_operand_dims",
                              scatteredDimsToOperandDimsFunc)
       .def_property_readonly("index_vector_dim", [](MlirAttribute self) {
@@ -137,15 +159,21 @@ PYBIND11_MODULE(_mlirHlo, m) {
           "get",
           [](py::object cls, const std::vector<int64_t> &offsetDims,
              const std::vector<int64_t> &collapsedSliceDims,
+             const std::vector<int64_t> &operandBatchingDims,
+             const std::vector<int64_t> &startIndicesBatchingDims,
              const std::vector<int64_t> &startIndexMap, int64_t indexVectorDim,
              MlirContext ctx) {
             return cls(mlirMhloGatherDimensionNumbersGet(
                 ctx, offsetDims.size(), offsetDims.data(),
                 collapsedSliceDims.size(), collapsedSliceDims.data(),
-                startIndexMap.size(), startIndexMap.data(), indexVectorDim));
+                operandBatchingDims.size(), operandBatchingDims.data(),
+                startIndicesBatchingDims.size(),
+                startIndicesBatchingDims.data(), startIndexMap.size(),
+                startIndexMap.data(), indexVectorDim));
           },
           py::arg("cls"), py::arg("offset_dims"),
-          py::arg("collapsed_slice_dims"), py::arg("start_index_map"),
+          py::arg("collapsed_slice_dims"), py::arg("operand_batching_dims"),
+          py::arg("start_indices_batching_dims"), py::arg("start_index_map"),
           py::arg("index_vector_dim"), py::arg("context") = py::none(),
           "Creates a GatherDimensionNumbers attribute with the given dimension "
           "configuration.")
@@ -162,6 +190,21 @@ PYBIND11_MODULE(_mlirHlo, m) {
             return attributePropertyVector(
                 self, mlirMhloGatherDimensionNumbersGetCollapsedSliceDimsSize,
                 mlirMhloGatherDimensionNumbersGetCollapsedSliceDimsElem);
+          })
+      .def_property_readonly(
+          "operand_batching_dims",
+          [](MlirAttribute self) {
+            return attributePropertyVector(
+                self, mlirMhloGatherDimensionNumbersGetOperandBatchingDimsSize,
+                mlirMhloGatherDimensionNumbersGetOperandBatchingDimsElem);
+          })
+      .def_property_readonly(
+          "start_indices_batching_dims",
+          [](MlirAttribute self) {
+            return attributePropertyVector(
+                self,
+                mlirMhloGatherDimensionNumbersGetStartIndicesBatchingDimsSize,
+                mlirMhloGatherDimensionNumbersGetStartIndicesBatchingDimsElem);
           })
       .def_property_readonly(
           "start_index_map",
@@ -507,5 +550,30 @@ PYBIND11_MODULE(_mlirHlo, m) {
         return attributePropertyVector(self,
                                        mlirMhloTypeExtensionsGetBoundsSize,
                                        mlirMhloTypeExtensionsGetBoundsElem);
+      });
+
+  mlir::python::adaptors::mlir_attribute_subclass(
+      m, "SparsityDescriptor", mlirMhloAttributeIsASparsityDescriptor)
+      .def_classmethod(
+          "get",
+          [](py::object cls, const int64_t dimension, const int64_t n,
+             const int64_t m, MlirContext ctx) {
+            return cls(mlirMhloSparsityDescriptorGet(ctx, dimension, n, m));
+          },
+          py::arg("cls"), py::arg("dimension"), py::arg("n"), py::arg("m"),
+          py::arg("context") = py::none(),
+          "Creates a SparseDescriptor attribute with the given sparsity "
+          "configurations.")
+      .def_property_readonly(
+          "dimension",
+          [](MlirAttribute self) {
+            return mlirMhloSparsityDescriptorGetDimension(self);
+          })
+      .def_property_readonly("n",
+                             [](MlirAttribute self) {
+                               return mlirMhloSparsityDescriptorGetN(self);
+                             })
+      .def_property_readonly("m", [](MlirAttribute self) {
+        return mlirMhloSparsityDescriptorGetM(self);
       });
 }

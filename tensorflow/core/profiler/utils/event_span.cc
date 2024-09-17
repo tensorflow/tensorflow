@@ -222,12 +222,30 @@ std::string PrintStepEvents(const StepEvents& step_events) {
   return absl::StrCat(result, "\n}");
 }
 
-void CombineStepEvents(const StepEvents& src, StepEvents* dst) {
+void UnionCombineStepEvents(const StepEvents& src, StepEvents* dst) {
   for (const auto& step_details : src) {
     int64_t step_id = step_details.first;
     const StepDetails& src_details = step_details.second;
     StepDetails* dst_details = &(*dst)[step_id];
     dst_details->Combine(src_details);
+  }
+}
+
+void IntersectCombineStepEvents(const StepEvents& src, StepEvents* dst) {
+  if (dst->empty()) {
+    *dst = src;
+    return;
+  }
+  auto iter = dst->begin();
+  while (iter != dst->end()) {
+    if (!src.contains(iter->first)) {
+      // This is safe because the post-increment is sequenced after the full
+      // expression that contains it.
+      dst->erase(iter++);
+    } else {
+      iter->second.Combine(src.at(iter->first));
+      iter++;
+    }
   }
 }
 

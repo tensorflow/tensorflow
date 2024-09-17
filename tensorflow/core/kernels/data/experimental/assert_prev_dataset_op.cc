@@ -43,7 +43,7 @@ namespace {
 
 // Returns a `NameAttrList` of an op name and attrs, parsed from
 // `transformation`.
-StatusOr<NameAttrList> GetAssertions(const tstring& transformation) {
+absl::StatusOr<NameAttrList> GetAssertions(const tstring& transformation) {
   NameAttrList assertions;
   if (!std::is_base_of<protobuf::Message, NameAttrList>()) {
     return errors::InvalidArgument(
@@ -58,7 +58,8 @@ StatusOr<NameAttrList> GetAssertions(const tstring& transformation) {
 }
 
 // Returns `dataset`'s input dataset.
-StatusOr<const DatasetBase*> GetPreviousDataset(const DatasetBase& dataset) {
+absl::StatusOr<const DatasetBase*> GetPreviousDataset(
+    const DatasetBase& dataset) {
   std::vector<const DatasetBase*> inputs;
   TF_RETURN_IF_ERROR(dataset.InputDatasets(&inputs));
   if (inputs.empty()) {
@@ -78,8 +79,8 @@ Status CheckOpName(const DatasetBase& dataset, const NameAttrList& assertions) {
 }
 
 // Returns a NodeDef representation of `dataset`.
-StatusOr<NodeDef> GetDatasetNode(const DatasetBase& dataset,
-                                 absl::string_view op_name) {
+absl::StatusOr<NodeDef> GetDatasetNode(const DatasetBase& dataset,
+                                       absl::string_view op_name) {
   SerializationContext serialization_ctx((SerializationContext::Params()));
   GraphDefBuilder b;
   GraphDef graph_def;
@@ -196,7 +197,7 @@ class AssertPrevDatasetOp::Dataset : public DatasetBase {
     Status Initialize(IteratorContext* ctx) override {
       const DatasetBase* current_dataset = dataset();
       for (int i = 0; i < dataset()->transformations_.size(); ++i) {
-        StatusOr<const DatasetBase*> previous_dataset =
+        absl::StatusOr<const DatasetBase*> previous_dataset =
             GetPreviousDataset(*current_dataset);
         if (!previous_dataset.ok()) {
           return errors::InvalidArgument(

@@ -15,13 +15,23 @@ limitations under the License.
 
 #include "tensorflow/tools/benchmark/benchmark_model.h"
 
-#include "tensorflow/cc/ops/standard_ops.h"
+#include <memory>
+
+#include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/cc/ops/array_ops.h"
+#include "tensorflow/cc/ops/math_ops.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
-#include "tensorflow/core/graph/graph_def_builder.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/public/session.h"
+#include "tensorflow/core/util/stat_summarizer.h"
 
 namespace tensorflow {
 namespace {
@@ -66,7 +76,8 @@ TEST(BenchmarkModelTest, InitializeAndRun) {
   TF_ASSERT_OK(benchmark_model::InitializeSession(1, filename_pb, &session,
                                                   &loaded_graph_def));
   std::unique_ptr<StatSummarizer> stats;
-  stats.reset(new tensorflow::StatSummarizer(*(loaded_graph_def.get())));
+  stats =
+      std::make_unique<tensorflow::StatSummarizer>(*(loaded_graph_def.get()));
   int64_t time;
   int64_t num_runs = 0;
   TF_ASSERT_OK(benchmark_model::TimeMultipleRuns(
@@ -91,7 +102,8 @@ TEST(BenchmarkModeTest, TextProto) {
   TF_ASSERT_OK(benchmark_model::InitializeSession(1, filename_txt, &session,
                                                   &loaded_graph_def));
   std::unique_ptr<StatSummarizer> stats;
-  stats.reset(new tensorflow::StatSummarizer(*(loaded_graph_def.get())));
+  stats =
+      std::make_unique<tensorflow::StatSummarizer>(*(loaded_graph_def.get()));
   int64_t time;
   int64_t num_runs = 0;
   TF_ASSERT_OK(benchmark_model::TimeMultipleRuns(

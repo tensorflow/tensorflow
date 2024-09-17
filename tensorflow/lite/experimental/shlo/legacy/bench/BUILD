@@ -7,6 +7,7 @@ cc_library(
     hdrs = [
         "util.h",
     ],
+    tags = ["no_oss"],
     deps = [
         "//tensorflow/lite/experimental/shlo/legacy:float",
     ],
@@ -17,6 +18,7 @@ cc_binary(
     srcs = [
         "shlo_benchmark.cc",
     ],
+    tags = ["no_oss"],
     deps = [
         ":util",
         "//tensorflow/lite/experimental/shlo/legacy:shlo",
@@ -35,6 +37,7 @@ cc_binary(
     ],
     data = [
     ],
+    tags = ["no_oss"],
     deps = [
         ":util",
         "//tensorflow/lite/experimental/shlo/legacy:float",

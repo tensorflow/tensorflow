@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
+#include "tensorflow/lite/core/acceleration/configuration/c/delegate_plugin.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 
@@ -38,6 +39,10 @@ static TfLiteDelegate* CreateDelegate(const void* settings) {
     // those flags (i.e. discard the default flags).
     if (xnnpack_settings->flags()) {
       options.flags = xnnpack_settings->flags();
+    }
+    if (xnnpack_settings->weight_cache_file_path()) {
+      options.weight_cache_file_path =
+          xnnpack_settings->weight_cache_file_path()->c_str();
     }
   }
   return TfLiteXNNPackDelegateCreate(&options);

@@ -22,7 +22,7 @@ namespace tensorflow {
 Status SendTensorsToRendezvous(
     RendezvousInterface* rendezvous, DeviceContext* device_context,
     const std::vector<AllocatorAttributes>& alloc_attrs,
-    const std::vector<string>& keys, gtl::ArraySlice<Tensor> tensors_to_send) {
+    const std::vector<string>& keys, absl::Span<const Tensor> tensors_to_send) {
   if (keys.size() != tensors_to_send.size()) {
     return errors::InvalidArgument(
         "keys and tensors_to_send are not the same size. keys.size() = ",

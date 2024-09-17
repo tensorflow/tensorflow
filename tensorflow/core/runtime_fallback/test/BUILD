@@ -45,6 +45,9 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/framework:tensor_shape",
+        "//tensorflow/core/framework:types_proto_cc",
         "@tf_runtime//:hostcontext",
     ] + select({
         "//tensorflow:android": [
@@ -231,6 +234,7 @@ cc_library(
     ],
     visibility = ["//tensorflow/core/runtime_fallback:__subpackages__"],
     deps = [
+        "@com_google_absl//absl/log",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs

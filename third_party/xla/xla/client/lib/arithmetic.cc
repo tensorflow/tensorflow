@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/client/lib/constants.h"
 #include "xla/client/xla_builder.h"
@@ -28,8 +29,8 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -172,10 +173,6 @@ XlaOp ArgMinMax(XlaOp input, PrimitiveType output_type, int axis, bool is_min) {
 
 XlaOp ArgMax(XlaOp input, PrimitiveType output_type, int axis) {
   return ArgMinMax(input, output_type, axis, /*is_min=*/false);
-}
-
-XlaOp ArgMin(XlaOp input, PrimitiveType output_type, int axis) {
-  return ArgMinMax(input, output_type, axis, /*is_min=*/true);
 }
 
 }  // namespace xla

@@ -1,3 +1,4 @@
+#include "tsl/platform/status.h"
 /* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,9 +25,10 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
-#include "xla/statusor.h"
+#include "absl/status/statusor.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/casts.h"
+#include "tsl/platform/platform.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
@@ -84,7 +86,7 @@ class CompilationEnvironments {
   // All added environments are processed via registered ProcessNewEnvFns. If
   // such a function was not regitered for env's proto descriptor or env's
   // proto type is unknown, an error will be returned.
-  Status AddEnv(std::unique_ptr<tsl::protobuf::Message> env);
+  absl::Status AddEnv(std::unique_ptr<tsl::protobuf::Message> env);
 
   // Returns the CompilationEnvironment corresponding to T. If such an
   // environment has not been added, ProcessNewEnvFn(nullptr) will be added and
@@ -122,8 +124,8 @@ class CompilationEnvironments {
   // are added to CompilationEnvironments.
   static void EnvAdded(std::string_view env_type);
 
-  Status AddEnvImpl(const tsl::protobuf::Descriptor& descriptor,
-                    std::unique_ptr<tsl::protobuf::Message> env);
+  absl::Status AddEnvImpl(const tsl::protobuf::Descriptor& descriptor,
+                          std::unique_ptr<tsl::protobuf::Message> env);
 
   absl::flat_hash_map<const tsl::protobuf::Descriptor*,
                       std::unique_ptr<tsl::protobuf::Message>>
@@ -142,7 +144,12 @@ T& CompilationEnvironments::GetMutableEnv() {
     it = environments_.find(descriptor);
   }
 
+  // TODO(b/302086111): Remove after XLA has an updated protobuf version.
+#if TSL_IS_IN_OSS
   return tensorflow::down_cast<T&>(*it->second);
+#else
+  return tsl::protobuf::DownCastToGenerated<T>(*it->second);
+#endif
 }
 
 template <typename T>

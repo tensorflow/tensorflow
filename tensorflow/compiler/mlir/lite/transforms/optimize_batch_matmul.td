@@ -25,6 +25,10 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
 def NotFromDequant : Constraint<CPred<"NotFromDequant($0)">>;
 
+def IsResultRankEqualTo : Constraint<CPred<
+  "$0.getType().front().cast<ShapedType>().getRank() == "
+  "$1.getType().cast<ShapedType>().getRank()">>;
+
 // Fuses TFL_FullyConnectedOp and TFL_TransposeOp Rhs to TFL_BatchMatMulOp when
 // it's used by TFL_BatchMatMulOp and "transpose_lhs" is true.
 def FuseTransposeFCLhsToBatchMatmul : Pat<
@@ -51,8 +55,8 @@ def FuseTransposeFCLhsToBatchMatmul : Pat<
 
 // Fuses TFL_FullyConnectedOp and TFL_TransposeOp Rhs to TFL_BatchMatMulOp
 def FuseTransposeFCRhsToBatchMatmul : Pat<
-  (TFL_FullyConnectedOp
-    2DTensorOf<[F32]>:$lhs,
+  (TFL_FullyConnectedOp:$output
+    TensorOf<[F32]>:$lhs,
     (TFL_TransposeOp TensorOf<[F32]>:$rhs, (Arith_ConstantOp:$perm_value $p0)),
     $bias, $TFL_AF_None, $TFL_FCWO_Default,
     $keep_num_dims, $asymmetric_quantize_inputs
@@ -62,4 +66,10 @@ def FuseTransposeFCRhsToBatchMatmul : Pat<
   [(NotConstantLike $rhs),
    (AreLastTwoDimsTransposed $perm_value),
    (IsNoneType $bias),
+   //if the output rank is less-than the input rank, it means keep_num_dims has
+   //reduced the output. The right thing to do here will be to apply the pattern
+   //only if keep_num_dims==True. But checking for rank will improve the
+   //coverage. This pattern will now work for all the transpose->fc patterns
+   //where the fc has not done imlicit reshape of the output
+   (IsResultRankEqualTo $output, $lhs),
    (NotFromDequant $rhs)]>;

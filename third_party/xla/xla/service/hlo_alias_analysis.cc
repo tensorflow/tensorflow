@@ -316,7 +316,7 @@ std::vector<const HloBuffer*> HloAliasAnalysis::ComputeBuffersAt(
   return buffers;
 }
 
-Status HloAliasAnalysis::Verify() const {
+absl::Status HloAliasAnalysis::Verify() const {
   // Verify consistency between the value_to_buffer_ map and
   // HloBuffer::values().
   for (const auto& pair : value_to_buffer_) {
@@ -339,7 +339,7 @@ Status HloAliasAnalysis::Verify() const {
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 std::string HloAliasAnalysis::ToString() const {
@@ -381,7 +381,7 @@ std::string HloAliasAnalysis::ToString() const {
 }
 
 /* static */
-StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
+absl::StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
     const HloModule* module,
     const HloDataflowAnalysis::CanShareBuffer& can_share_buffer) {
   VLOG(2) << "HloAliasAnalysis::Run on module " << module->name();

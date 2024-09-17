@@ -96,3 +96,16 @@ func.func @main(%arg0: !mhlo.token) -> !mhlo.token {
 
 // CHECK: after-all
 // CHECK-SAME: metadata={op_name="multiple_sources" source_file="source2" source_line=3}
+
+// -----
+
+// CHECK-LABEL: %main
+func.func @main(%arg0: tensor<4xf32> loc("x"), %arg1: tensor<4xf32> loc("y")) -> tensor<4xf32> {
+  %0 = "mhlo.add"(%arg0, %arg1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  func.return %0 : tensor<4xf32>
+}
+
+// CHECK: parameter(0)
+// CHECK-SAME: metadata={op_name="x"}
+// CHECK: parameter(1)
+// CHECK-SAME: metadata={op_name="y"}

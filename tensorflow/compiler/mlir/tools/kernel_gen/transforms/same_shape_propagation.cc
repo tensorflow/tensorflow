@@ -217,7 +217,7 @@ class ShapeEqualityKnowledge {
       }
       if (auto alloc = dyn_cast<memref::AllocOp>(op)) {
         SmallVector<ValueOrConst, 4> shape;
-        ShapedType type = alloc.getResult().getType().cast<ShapedType>();
+        ShapedType type = mlir::cast<ShapedType>(alloc.getResult().getType());
         fillShapeFromAllocLike(alloc.getDynamicSizes(), type, shape);
         registerAssociation(ShapeValue{shape}, alloc.getResult());
         return;
@@ -225,7 +225,7 @@ class ShapeEqualityKnowledge {
       if (auto alloc = dyn_cast<tf_framework::TFAllocOp>(op)) {
         // Construct a symbol representing the allocated shape.
         SmallVector<ValueOrConst, 4> shape;
-        ShapedType type = alloc.getResult().getType().cast<ShapedType>();
+        ShapedType type = mlir::cast<ShapedType>(alloc.getResult().getType());
         fillShapeFromAllocLike(alloc.getDynSizes(), type, shape);
         registerAssociation(ShapeValue{shape}, alloc.getResult());
         return;
@@ -331,7 +331,7 @@ struct PropagateShapeKnowledgeToKernels
       // Position of the kernel argument we are currently at.
       int kernel_p = 0;
       for (auto operand : launch.getKernelOperands()) {
-        auto memref = operand.getType().dyn_cast<MemRefType>();
+        auto memref = mlir::dyn_cast<MemRefType>(operand.getType());
         if (!memref) {
           // Scalar argument, advance kernel position by one.
           kernel_p++;
@@ -341,7 +341,7 @@ struct PropagateShapeKnowledgeToKernels
           if (!knowledge.haveSameShape(operand, previous.first)) {
             continue;
           }
-          auto previous_type = previous.first.getType().cast<MemRefType>();
+          auto previous_type = mlir::cast<MemRefType>(previous.first.getType());
           // We use the first equality found and replace uses of corresponding
           // size and (potentially) stride information here.
           auto args_to_replace = memref.getRank();

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_CLIENT_LIB_TRIDIAGONAL_H_
 #define XLA_CLIENT_LIB_TRIDIAGONAL_H_
 
+#include "absl/status/statusor.h"
 #include "xla/client/xla_builder.h"
 #include "xla/xla_data.pb.h"
 

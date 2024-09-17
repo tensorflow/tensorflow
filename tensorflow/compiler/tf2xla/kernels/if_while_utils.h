@@ -19,7 +19,11 @@ limitations under the License.
 #include <functional>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/core/common_runtime/function_body.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {

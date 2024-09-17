@@ -18,16 +18,10 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <initializer_list>
-#include <map>
-#include <vector>
 
-#include "absl/base/thread_annotations.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
-#include "absl/types/span.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/platform.h"
 #include "tsl/platform/errors.h"
@@ -69,19 +63,6 @@ class ScopedDeviceMemory {
     DCHECK_GE(device_ordinal_, 0);
   }
 
-  // A helper constructor to generate a scoped device memory given an already
-  // allocated memory and a stream executor.
-  //
-  // Precondition: memory was allocated by the stream executor `parent`.
-  ScopedDeviceMemory(StreamExecutor *parent, DeviceMemoryBase value);
-
-  // Constructor overload that places a literal array into device memory.
-  //
-  // Relies on the allocation function exposed by the stream executor `parent`,
-  // which will be also used for deallocating the memory
-  ScopedDeviceMemory(StreamExecutor *parent,
-                     std::initializer_list<ElemT> values);
-
   // Moves ownership of the memory from other to the constructed
   // object.
   //
@@ -91,8 +72,7 @@ class ScopedDeviceMemory {
         device_ordinal_(other.device_ordinal_),
         allocator_(other.allocator_) {}
 
-  // Releases the memory that was provided in the constructor, through the
-  // "parent" StreamExecutor.
+  // Releases the memory that was provided in the constructor.
   ~ScopedDeviceMemory() { TF_CHECK_OK(Free()); }
 
   // Moves ownership of the memory from other to this object.
@@ -173,8 +153,9 @@ class DeviceMemoryAllocator {
 
   // Allocates memory on the device.
   //
-  // If size > 0 and the returned StatusOr is OK, the wrapped OwningDeviceMemory
-  // must not be null.  If size == 0, must return a null OwningDeviceMemory.
+  // If size > 0 and the returned absl::StatusOr is OK, the wrapped
+  // OwningDeviceMemory must not be null.  If size == 0, must return a null
+  // OwningDeviceMemory.
   //
   // 'retry_on_failure': If false, and the first attempt to allocate the memory
   // fails, the allocation should return immediately without retrying.  An
@@ -232,50 +213,6 @@ class DeviceMemoryAllocator {
 
  protected:
   const Platform *platform_;
-};
-
-// Default memory allocator for a platform which uses
-// StreamExecutor::Allocate/Deallocate.
-class StreamExecutorMemoryAllocator : public DeviceMemoryAllocator {
- public:
-  // Create an allocator supporting a single device, corresponding to the passed
-  // executor.
-  explicit StreamExecutorMemoryAllocator(StreamExecutor *executor);
-
-  // Create an allocator supporting multiple stream executors.
-  //
-  // Precondition: all stream_executors have different device ordinals.
-  StreamExecutorMemoryAllocator(
-      const Platform *platform,
-      absl::Span<StreamExecutor *const> stream_executors);
-
-  absl::StatusOr<OwningDeviceMemory> Allocate(int device_ordinal, uint64_t size,
-                                              bool retry_on_failure,
-                                              int64_t memory_space) override;
-
-  // Pull in two-arg overload that sets retry_on_failure to true.
-  using DeviceMemoryAllocator::Allocate;
-
-  absl::Status Deallocate(int device_ordinal, DeviceMemoryBase mem) override;
-
-  bool AllowsAsynchronousDeallocation() const override;
-
-  // Gets-or-creates a stream for a given `device_ordinal` from an appropriate
-  // stream executor.
-  absl::StatusOr<Stream *> GetStream(int device_ordinal) override;
-
-  // Gets the stream executor for given device ordinal.
-  absl::StatusOr<StreamExecutor *> GetStreamExecutor(int device_ordinal) const;
-
- private:
-  // Available stream executors. Each stream executor has a different device
-  // ordinal.
-  std::vector<StreamExecutor *> stream_executors_;
-
-  absl::Mutex mutex_;
-
-  // Cache of streams for GetStream.
-  std::map<int, Stream> streams_ ABSL_GUARDED_BY(mutex_);
 };
 
 template <typename ElemT>

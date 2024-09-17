@@ -24,6 +24,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "xla/comparison_util.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/statusor.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
@@ -43,11 +43,11 @@ namespace {
 
 class WhileLoopAnalysisTest : public HloTestBase {
  protected:
-  [[nodiscard]] StatusOr<int64_t> MakeWhileLoopAndGetTripCount(
+  [[nodiscard]] absl::StatusOr<int64_t> MakeWhileLoopAndGetTripCount(
       int init, int limit, int step, ComparisonDirection dir);
 };
 
-StatusOr<int64_t> WhileLoopAnalysisTest::MakeWhileLoopAndGetTripCount(
+absl::StatusOr<int64_t> WhileLoopAnalysisTest::MakeWhileLoopAndGetTripCount(
     int init, int limit, int step, ComparisonDirection dir) {
   std::string hlo_string_template = R"(
   HloModule ModuleWithWhile
@@ -128,6 +128,71 @@ TEST_F(WhileLoopAnalysisTest, SingleIterationUpperBound) {
 
   HloInstruction* while_op = module->entry_computation()->root_instruction();
   EXPECT_EQ(*ComputeWhileLoopTripCountUpperBound(while_op), 1);
+}
+
+TEST_F(WhileLoopAnalysisTest, SimpleLoopWithCustomCallNonTuple) {
+  std::string hlo_string = R"(
+  HloModule SimpleLoop
+  SimpleLoop.body {
+    loop_var.1 = (s32[]{:T(128)}, s32[3]{0}) parameter(0)
+    custom-call.1 = (s32[]{:T(128)}, s32[3]{0}) custom-call(loop_var.1), custom_call_target="CustomCallStart"
+    get-tuple-element.1 = s32[]{:T(128)} get-tuple-element(custom-call.1), index=0
+    constant.1 = s32[]{:T(128)} constant(1)
+    idx = s32[]{:T(128)} add(get-tuple-element.1, constant.1)
+    get-tuple-element.2 = s32[3]{0} get-tuple-element(custom-call.1), index=1
+    output = s32[3]{0} add(get-tuple-element.2, get-tuple-element.2)
+    ROOT custom-call.2 = (s32[]{:T(128)}, s32[3]{0}) custom-call(idx, output), custom_call_target="CustomCallEnd"
+  }
+  SimpleLoop.condition {
+    loop_var.2 = (s32[]{:T(128)}, s32[3]{0}) parameter(0)
+    get-tuple-element.5 = s32[] get-tuple-element(loop_var.2), index=0
+    constant.2 = s32[]{:T(128)} constant(5)
+    ROOT less-than = pred[] compare(get-tuple-element.5, constant.2), direction=LT
+  }
+  ENTRY SimpleLoop {
+    constant.3 = s32[]{:T(128)} constant(0)
+    constant.4 = s32[3]{0} constant({0, 1, 2})
+    tuple.1 = (s32[]{:T(128)}, s32[3]{0}) tuple(constant.3, constant.4)
+    ROOT while = (s32[]{:T(128)}, s32[3]{0}) while(tuple.1), condition=
+      SimpleLoop.condition, body=SimpleLoop.body
+  }
+  )";
+  auto m = ParseAndReturnVerifiedModule(hlo_string).value();
+  HloInstruction* while_op = m->entry_computation()->root_instruction();
+  EXPECT_EQ(*ComputeWhileLoopTripCountUpperBound(while_op), 5);
+}
+
+TEST_F(WhileLoopAnalysisTest, SimpleLoopWithCustomCall) {
+  std::string hlo_string = R"(
+  HloModule SimpleLoop
+  SimpleLoop.body {
+    loop_var.1 = (s32[]{:T(128)}, s32[3]{0}) parameter(0)
+    custom-call.1 = (s32[]{:T(128)}, s32[3]{0}) custom-call(loop_var.1), custom_call_target="CustomCallStart"
+    get-tuple-element.1 = s32[]{:T(128)} get-tuple-element(custom-call.1), index=0
+    constant.1 = s32[]{:T(128)} constant(1)
+    idx = s32[]{:T(128)} add(get-tuple-element.1, constant.1)
+    get-tuple-element.2 = s32[3]{0} get-tuple-element(custom-call.1), index=1
+    output = s32[3]{0} add(get-tuple-element.2, get-tuple-element.2)
+    tuple = (s32[]{:T(128)}, s32[3]{0}) tuple(idx, output)
+    ROOT custom-call.2 = (s32[]{:T(128)}, s32[3]{0}) custom-call(tuple), custom_call_target="CustomCallEnd"
+  }
+  SimpleLoop.condition {
+    loop_var.2 = (s32[]{:T(128)}, s32[3]{0}) parameter(0)
+    get-tuple-element.3 = s32[] get-tuple-element(loop_var.2), index=0
+    constant.2 = s32[]{:T(128)} constant(5)
+    ROOT less-than = pred[] compare(get-tuple-element.3, constant.2), direction=LT
+  }
+  ENTRY SimpleLoop {
+    constant.3 = s32[]{:T(128)} constant(0)
+    constant.4 = s32[3]{0} constant({0, 1, 2})
+    tuple.1 = (s32[]{:T(128)}, s32[3]{0}) tuple(constant.3, constant.4)
+    ROOT while = (s32[]{:T(128)}, s32[3]{0}) while(tuple.1), condition=
+      SimpleLoop.condition, body=SimpleLoop.body
+  }
+  )";
+  auto m = ParseAndReturnVerifiedModule(hlo_string).value();
+  HloInstruction* while_op = m->entry_computation()->root_instruction();
+  EXPECT_EQ(*ComputeWhileLoopTripCountUpperBound(while_op), 5);
 }
 
 TEST_F(WhileLoopAnalysisTest, NoUpperBound) {

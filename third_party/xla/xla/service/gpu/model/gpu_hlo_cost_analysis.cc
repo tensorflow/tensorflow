@@ -40,13 +40,11 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
-#include "xla/service/gpu/model/hlo_op_profiles.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status.h"
-#include "xla/stream_executor/device_description.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -218,12 +216,19 @@ bool GpuHloCostAnalysis::ProducerConsumerMergedTooLarge(
                      IrBasicBlockSplitCount(consumer);
   VLOG(5) << "Basic block split counts: " << IrBasicBlockSplitCount(producer)
           << ", " << IrBasicBlockSplitCount(consumer) << " -> " << n_splits;
-  if (n_splits > kMaxBasicBlockSplitsPerFusion) {
-    return true;
-  }
   int64_t merged_ir_size =
-      (IrSize(producer) * producer_replication + IrSize(consumer)) *
-      (1 << n_splits);
+      (IrSize(producer) * producer_replication + IrSize(consumer));
+  // The MLIR emitters don't have the problem with cache invalidation, so we
+  // don't need to evaluate basic block split counts.
+  if (producer.GetModule()
+          ->config()
+          .debug_options()
+          .xla_gpu_mlir_emitter_level() < 4) {
+    if (n_splits > kMaxBasicBlockSplitsPerFusion) {
+      return true;
+    }
+    merged_ir_size *= (1 << n_splits);
+  }
   VLOG(5) << "IR sizes: " << IrSize(producer) << ", " << IrSize(consumer)
           << " -> " << merged_ir_size;
   return merged_ir_size > kMaxIRSize;
@@ -324,26 +329,24 @@ int64_t GpuHloCostAnalysis::GetConvolutionFlops(
                                               result_shape);
 }
 
-int64_t FlopsPerElement(const se::DeviceDescription* device_info,
-                        const PrimitiveType type, const HloOpcode opcode) {
-  auto device_profile = HloOpProfiles::Singleton().GetProfile(device_info);
+int64_t GpuHloCostAnalysis::GetFlopsPerElementwiseOpElement(
+    const PrimitiveType type, const HloOpcode opcode) {
   // Elementwise instructions typically take at least a few clock cycles.
   constexpr int64_t kDefaultFlopsPerElement = 3;
-  return FindOrDefault(device_profile, std::make_pair(opcode, type),
-                       kDefaultFlopsPerElement);
+  return FindOrDefault(hlo_elementwise_op_profile_,
+                       std::make_pair(opcode, type), kDefaultFlopsPerElement);
 }
 
-int64_t GetFlopsForElementwiseOp(const se::DeviceDescription* gpu_device_info,
-                                 const HloOpcode op_code, const Shape& shape) {
+int64_t GpuHloCostAnalysis::GetFlopsForElementwiseOp(const HloOpcode op_code,
+                                                     const Shape& shape) {
   int64_t flop_per_element =
-      FlopsPerElement(gpu_device_info, shape.element_type(), op_code);
+      GetFlopsPerElementwiseOpElement(shape.element_type(), op_code);
   return flop_per_element * ShapeUtil::ElementsInRecursive(shape);
 }
 
-int64_t GetFlopsForElementwiseOp(const se::DeviceDescription* gpu_device_info,
-                                 const HloInstruction* instr) {
-  return GetFlopsForElementwiseOp(gpu_device_info, instr->opcode(),
-                                  instr->shape());
+int64_t GpuHloCostAnalysis::GetFlopsForElementwiseOp(
+    const HloInstruction* instr) {
+  return GetFlopsForElementwiseOp(instr->opcode(), instr->shape());
 }
 
 absl::Status GpuHloCostAnalysis::HandleAllReduce(
@@ -391,8 +394,7 @@ absl::Status GpuHloCostAnalysis::HandleAllReduce(
   // Since allreduce has compute, we need to get flops for the compute
   // part which is an elementwise op.
   current_properties_[kFlopsKey] = GetFlopsForElementwiseOp(
-      device_info_, allreduce->to_apply()->root_instruction()->opcode(),
-      allreduce->shape());
+      allreduce->to_apply()->root_instruction()->opcode(), allreduce->shape());
 
   // TODO TJ support multi-node case, we need to know how many nodes there are.
   int num_intra_steps = 2 * (num_ranks - 1);
@@ -478,23 +480,14 @@ absl::Status GpuHloCostAnalysis::HandleReduce(const HloInstruction* hlo) {
 
 absl::Status GpuHloCostAnalysis::HandleElementwiseOp(
     const HloInstruction* hlo) {
-  current_properties_[kFlopsKey] = GetFlopsForElementwiseOp(device_info_, hlo);
+  current_properties_[kFlopsKey] = GetFlopsForElementwiseOp(hlo);
   return absl::OkStatus();
-}
-
-absl::Status GpuHloCostAnalysis::HandleElementwiseUnary(
-    const HloInstruction* hlo) {
-  return HandleElementwiseOp(hlo);
-}
-
-absl::Status GpuHloCostAnalysis::HandleElementwiseBinary(
-    const HloInstruction* hlo) {
-  return HandleElementwiseOp(hlo);
 }
 
 std::unique_ptr<HloCostAnalysis>
 GpuHloCostAnalysis::CreateNestedCostAnalysis() {
-  return std::make_unique<GpuHloCostAnalysis>(options_, device_info_);
+  return std::make_unique<GpuHloCostAnalysis>(options_,
+                                              hlo_elementwise_op_profile_);
 }
 
 bool GpuHloCostAnalysis::KeyToCopyFromSubcomputation(

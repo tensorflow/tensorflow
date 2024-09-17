@@ -42,7 +42,8 @@ mlir::OwningOpRef<mlir::ModuleOp> FlatBufferToMlir(
     mlir::Location base_loc, bool use_external_constant = false,
     const std::vector<std::string>& ordered_input_arrays = {},
     const std::vector<std::string>& ordered_output_arrays = {},
-    bool experimental_prune_unreachable_nodes_unconditionally = false);
+    bool experimental_prune_unreachable_nodes_unconditionally = false,
+    bool disable_vhlo_to_stablehlo = false);
 }  // namespace tflite
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_IMPORT_H_

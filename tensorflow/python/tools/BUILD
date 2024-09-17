@@ -294,6 +294,7 @@ py_strict_test(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:image_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:math_ops_gen",
         "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/ops:nn_ops_gen",
         "//tensorflow/python/platform:client_testlib",
@@ -621,5 +622,10 @@ tf_cc_test(
 # gensignature(
 #     name = "inspect_checkpoint.par_sig",
 #     srcs = [":inspect_checkpoint.par"],
+# )
+#
+# gensignature(
+#     name = "saved_model_cli.par_sig",
+#     srcs = [":saved_model_cli.par"],
 # )
 # copybara:uncomment_end

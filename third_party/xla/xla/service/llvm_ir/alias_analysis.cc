@@ -19,9 +19,15 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "llvm/IR/MDBuilder.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/service/hlo_value.h"
+#include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/service/logical_buffer.h"
-#include "xla/types.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 
 namespace xla {
 namespace llvm_ir {

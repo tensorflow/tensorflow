@@ -56,7 +56,7 @@ Status Instantiate(OpKernelContext* ctx, const NameAttrList& func,
 }
 
 // If "t" is a scalar of a supported type, returns t != 0 in "*v".
-Status ToBool(gtl::ArraySlice<Tensor> t, bool* v) {
+Status ToBool(absl::Span<const Tensor> t, bool* v) {
   if (t.size() != 1) {
     return errors::InvalidArgument(
         "Expected a single scalar which can be converted to a boolean, got ",
@@ -96,7 +96,7 @@ Status ToBool(gtl::ArraySlice<Tensor> t, bool* v) {
 // Sets "rets" to be the output of "ctx". Validates rets' types based
 // on "kernel".
 Status SetOutputs(const OpKernel* kernel, OpKernelContext* ctx,
-                  gtl::ArraySlice<Tensor> rets) {
+                  absl::Span<const Tensor> rets) {
   if (rets.size() != ctx->num_outputs()) {
     return errors::Internal("Expect to produce ", ctx->num_outputs(),
                             " tensors, but only get ", rets.size());
@@ -199,7 +199,7 @@ class IfOp : public AsyncOpKernel {
     void Start() {
       FHandle handle = cond_ ? then_handle_ : else_handle_;
       rets_.clear();
-      profiler::TraceMe trace_me("IfOp");
+      tsl::profiler::TraceMe trace_me("IfOp");
       lib_->Run(
           // Evaluate one of the branch.
           opts_, handle, args_, &rets_,
@@ -378,7 +378,7 @@ class CaseOp : public AsyncOpKernel {
         branch = branch_handles_.size() - 1;
       }
       rets_.clear();
-      profiler::TraceMe trace_me("CaseOp");
+      tsl::profiler::TraceMe trace_me("CaseOp");
       lib_->Run(
           // Evaluate one of the branch.
           opts_, branch_handles_[branch], args_, &rets_,
@@ -633,7 +633,7 @@ class WhileOp : public AsyncOpKernel {
     std::unique_ptr<BodyFuncCallFrame> body_frame_;
 
     void EvalCond() {
-      profiler::TraceMe trace_me("WhileOp-EvalCond");
+      tsl::profiler::TraceMe trace_me("WhileOp-EvalCond");
       lib_->Run(
           // Evaluate the condition.
           opts_, cond_handle_, args_, &rets_,
@@ -669,7 +669,7 @@ class WhileOp : public AsyncOpKernel {
       }
       rets_.clear();
       rets_.resize(args_.size());
-      profiler::TraceMe trace_me("WhileOp-StartBody");
+      tsl::profiler::TraceMe trace_me("WhileOp-StartBody");
       lib_->Run(
           // Evaluate the body.
           opts_, body_handle_, body_frame_.get(),
@@ -724,7 +724,7 @@ class WhileOp : public AsyncOpKernel {
     do {
       // Evaluate the cond function on the current loop variables.
       {
-        profiler::TraceMe trace_me("WhileOp-EvalCond");
+        tsl::profiler::TraceMe trace_me("WhileOp-EvalCond");
         TF_RETURN_IF_ERROR(lib->RunSync(opts, cond_handle, args, &cond_rets));
       }
       if (cond_rets.size() != 1) {
@@ -745,7 +745,7 @@ class WhileOp : public AsyncOpKernel {
       // Evaluate the body function on the current loop variables, to get an
       // updated vector of loop variables.
       {
-        profiler::TraceMe trace_me("WhileOp-StartBody");
+        tsl::profiler::TraceMe trace_me("WhileOp-StartBody");
         body_rets.resize(num_loop_vars);
         BodyFuncCallFrame call_frame(&args, &body_rets, loop_var_types);
         TF_RETURN_IF_ERROR(lib->RunSync(opts, body_handle, &call_frame));
@@ -982,7 +982,7 @@ class ForOp : public AsyncOpKernel {
         args_[1 + i] = std::move(rets_[i]);
       }
       rets_.clear();
-      profiler::TraceMe trace_me("ForOp");
+      tsl::profiler::TraceMe trace_me("ForOp");
       lib_->Run(opts_, body_handle_, args_, &rets_, [this](const Status& s) {
         if (s.ok()) {
           *iter_ += delta_;

@@ -21,16 +21,19 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/framework/allocator.h"
+#include "xla/tsl/framework/allocator.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 
 namespace stream_executor {
@@ -141,9 +144,13 @@ class MultiDeviceAdapter : public DeviceMemoryAllocator {
       absl::MutexLock lock(&mu_);
       auto it = buffer_memory_spaces_.find({device_ordinal, mem.opaque()});
       if (it == buffer_memory_spaces_.end()) {
-        return absl::InternalError(
-            absl::StrFormat("Memory %p was not allocated on device %d.",
-                            mem.opaque(), device_ordinal));
+        // There might be situation when device memory was allocated somewhere
+        // outside of the current allocator. For backward compatibility in
+        // this case we are falling back to the first allocator to deallocate
+        // the memory.
+        // See b/325527293 for more details.
+        return memory_space_to_per_device_allocators_[0][device_ordinal]
+            ->Deallocate(device_ordinal, mem);
       }
       memory_space = it->second;
       buffer_memory_spaces_.erase(it);

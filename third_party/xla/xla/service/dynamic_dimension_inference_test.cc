@@ -30,8 +30,8 @@ limitations under the License.
 #include "xla/test_helpers.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test_benchmark.h"
 
@@ -46,7 +46,7 @@ class DynamicDimensionInferenceTest : public HloTestBase {
     module_ = CreateNewVerifiedModule();
   }
 
-  Status RunInference(
+  absl::Status RunInference(
       OpSupportsDynamismHandler op_supports_dynamism_handler = nullptr,
       DynamicDimensionInference::CustomCallInferenceHandler handler = nullptr,
       DynamicDimensionInference::ShapeCheckMode shape_check_mode =
@@ -59,7 +59,7 @@ class DynamicDimensionInferenceTest : public HloTestBase {
                             handler, shape_check_mode, assertion_generator));
 
     inference_ = std::make_unique<DynamicDimensionInference>(inference);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   HloComputation* GetAdd() {
@@ -603,7 +603,7 @@ TEST_F(DynamicDimensionInferenceTest, ReshapeTestMajorDimension) {
   module_->AddEntryComputation(builder.Build());
 
   SCOPED_TRACE(module_->ToString());
-  Status status = RunInference();
+  absl::Status status = RunInference();
   EXPECT_NE(inference_->GetDynamicSize(reshape, {}, 0), nullptr);
 }
 
@@ -1229,7 +1229,7 @@ TEST_F(DynamicDimensionInferenceTest, InfersCustomOp) {
     CHECK(inference != nullptr);
     CHECK(Cast<HloCustomCallInstruction>(hlo) != nullptr);
     handler_called = true;
-    return OkStatus();
+    return absl::OkStatus();
   };
   TF_ASSERT_OK(RunInference(/*op_supports_dynamism_handler=*/nullptr, handler));
 

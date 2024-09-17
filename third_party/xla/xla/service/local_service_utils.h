@@ -18,12 +18,15 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/backend.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/service.h"
+#include "xla/shape.h"
 
 namespace xla {
 // Validates the computation argument layouts, and returns the corresponding

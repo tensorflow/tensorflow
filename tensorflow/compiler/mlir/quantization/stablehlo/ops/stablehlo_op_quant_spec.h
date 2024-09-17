@@ -28,9 +28,9 @@ namespace mlir::quant::stablehlo {
 // Returns StableHLO quantization specs for an op.
 std::unique_ptr<OpQuantSpec> GetStableHloOpQuantSpec(Operation* op);
 
-// Returns quantization scale specs (fixed output, same scale) for a StableHLO
-// op.
-std::unique_ptr<OpQuantScaleSpec> GetStableHloQuantScaleSpec(Operation* op);
+// Returns quantization constraints (ex: fixed output, same scale) given
+// a StableHLO op.
+std::unique_ptr<OpQuantScaleSpec> GetStableHloQuantConstraints(Operation* op);
 
 // Checks if an op is quantizable in StableHLO quantizer. Argument op is not
 // necessarily a StableHLO op.

@@ -26,9 +26,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/service/gpu/runtime/command_buffer_allocations.h"
 #include "xla/service/gpu/runtime/command_buffer_cmd.h"
-#include "xla/service/gpu/thunk.h"
+#include "xla/service/gpu/runtime/sequential_thunk.h"
+#include "xla/service/gpu/runtime/thunk.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -38,7 +38,10 @@ namespace xla::gpu {
 class CommandBufferThunk : public Thunk {
  public:
   CommandBufferThunk(CommandBufferCmdSequence commands, ThunkInfo thunk_info,
-                     std::optional<ThunkSequence> thunks = std::nullopt);
+                     std::unique_ptr<SequentialThunk> thunks = nullptr,
+                     bool enable_command_buffers_during_profiling = false);
+
+  const std::unique_ptr<SequentialThunk>& thunks() const { return thunks_; }
 
   absl::Status Prepare(const PrepareParams& params,
                        ResourceRequests& resource_requests) override;
@@ -72,14 +75,6 @@ class CommandBufferThunk : public Thunk {
     // A manager for an external state attached by commands in a command
     // sequence to a command buffer.
     CommandBufferCmd::StateManager state ABSL_GUARDED_BY(mutex);
-
-    // TODO(ezhulenev): We need to move command buffer allocations all the way
-    // up to the GpuExecutable as we can have Allocate and Free commands in
-    // different command buffers. Consider making it a part of
-    // BufferAllocations (as std::unique_ptr<ExternalAllocations> member).
-
-    // Memory allocations performed by a `command_buffer`.
-    CommandBufferAllocations allocations ABSL_GUARDED_BY(mutex);
 
     // Mapping from buffer allocation index to the device memory passed at
     // that index to the last call of `commands_.Record(...)` for
@@ -132,7 +127,11 @@ class CommandBufferThunk : public Thunk {
   // Thunk sequence that executes the same commands as in `commands_` but using
   // thunk mechanism. We use it as a fallback mechanism to work around CUPTI
   // bugs that lead to memory corruption when CUPTI traces CUDA graph execution.
-  std::optional<ThunkSequence> thunks_;
+  std::unique_ptr<SequentialThunk> thunks_;
+
+  // When true, allows command buffers to be used while profiling active.
+  // TODO(b/355487968): Remove this option when validation complete.
+  bool enable_command_buffers_during_profiling_;
 
   // Command buffer thunk state allocated in heap to allow global (per-process)
   // management of instantiated command buffers.

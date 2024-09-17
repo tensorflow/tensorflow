@@ -19,14 +19,11 @@ limitations under the License.
 #include <vector>
 
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/framework/allocator.h"
-#include "tsl/framework/device_id.h"
+#include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/framework/device_id.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace stream_executor {
-
-// The type of memory that the allocator will use.
-enum class MemoryType { kDevice = 0, kUnified, kCollective, kHost = 5 };
 
 // Suballocator for StreamExecutor-based device memory.
 class DeviceMemAllocator : public tsl::SubAllocator {
@@ -85,7 +82,7 @@ class DeviceMemAllocator : public tsl::SubAllocator {
         auto status = stream_exec_->CollectiveMemoryDeallocate(ptr);
         CHECK(status.ok()) << status.message();
       } else if (memory_type_ == MemoryType::kHost) {
-        stream_exec_->HostMemoryDeallocate(ptr, num_bytes);
+        stream_exec_->HostMemoryDeallocate(ptr);
       } else {
         DeviceMemoryBase device_ptr(ptr);
         stream_exec_->Deallocate(&device_ptr);

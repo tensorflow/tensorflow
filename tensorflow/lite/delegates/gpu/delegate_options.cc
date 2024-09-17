@@ -35,7 +35,7 @@ TfLiteGpuDelegateOptionsV2 TfLiteGpuDelegateOptionsV2Default() {
   options.last_delegate_node_index = std::numeric_limits<int>::max();
 #endif
 #ifdef TFLITE_GPU_ENABLE_INVOKE_LOOP
-  options.gpu_invoke_loop_times = -1;
+  options.gpu_invoke_loop_times = 1;
 #endif
   return options;
 }

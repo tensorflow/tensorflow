@@ -20,7 +20,9 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -48,7 +50,7 @@ struct ConstantKey {
            (kIsLayoutSensitive ? Shape::Equal()
                                : Shape::Equal().IgnoreLayout())(
                lhs.hlo->shape(), rhs.hlo->shape()) &&
-           lhs.hlo->literal() == rhs.hlo->literal();
+           lhs.hlo->literal().Equal(rhs.hlo->literal(), kIsLayoutSensitive);
   }
   HloConstantInstruction* hlo;
   int64_t domain;
@@ -60,7 +62,8 @@ struct ConstantKey {
 // While we're here, also combine identical iota instructions, since they need
 // similar treatment.
 template <bool kIsLayoutSensitive>
-StatusOr<bool> CombineConstants(HloComputation* computation) {
+absl::StatusOr<bool> CombineConstants(HloComputation* computation,
+                                      bool only_scalars) {
   // Populating the domain map is somewhat expensive -- only do it if there are
   // kDomain ops in the computation.  If there are no kDomain ops, the domain
   // map is trivial, every op gets mapped to the same domain.
@@ -84,6 +87,10 @@ StatusOr<bool> CombineConstants(HloComputation* computation) {
     // Advance list iterator before loop body because iterator may be
     // invalidated due to deletion.
     ++inst_it;
+
+    if (only_scalars && !ShapeUtil::IsScalar(instruction->shape())) {
+      continue;
+    }
 
     HloInstruction* match = nullptr;
     if (auto* constant_inst = DynCast<HloConstantInstruction>(instruction)) {
@@ -215,7 +222,7 @@ struct CseKey {
 
 }  // namespace
 
-StatusOr<bool> HloCSE::Run(
+absl::StatusOr<bool> HloCSE::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
@@ -249,10 +256,11 @@ StatusOr<bool> HloCSE::Run(
       continue;
     }
 
-    TF_ASSIGN_OR_RETURN(bool combined,
-                        is_layout_sensitive_
-                            ? CombineConstants<true>(computation)
-                            : CombineConstants<false>(computation));
+    TF_ASSIGN_OR_RETURN(
+        bool combined,
+        is_layout_sensitive_
+            ? CombineConstants<true>(computation, only_scalars_)
+            : CombineConstants<false>(computation, only_scalars_));
     changed |= combined;
 
     // HLO instructions are grouped into equivalency classes by using the
@@ -274,6 +282,10 @@ StatusOr<bool> HloCSE::Run(
         continue;
       }
 
+      if (only_scalars_ && !ShapeUtil::IsScalar(instruction->shape())) {
+        continue;
+      }
+
       auto pair = representatives.insert(CseKey{instruction});
       if (!pair.second) {
         HloInstruction* equivalent_instruction = pair.first->hlo;
@@ -282,6 +294,8 @@ StatusOr<bool> HloCSE::Run(
         TF_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(
             instruction, /*cleanup=*/std::nullopt,
             ignore_control_dependencies_));
+        VLOG(4) << "Replaced " << instruction->name() << " with "
+                << equivalent_instruction->name();
         changed = true;
         continue;
       }
@@ -299,6 +313,32 @@ StatusOr<bool> HloCSE::Run(
           changed = true;
           if (b->IsDead()) {
             TF_RETURN_IF_ERROR(computation->RemoveInstruction(b));
+          }
+        }
+      }
+    }
+    if (auto fusion = computation->FusionInstruction()) {
+      if (fusion->IsMultiOutputFusion()) {
+        // Attach users to the representative instruction, thus making the
+        // duplicate fusion roots unused. HloDCE can then cleanup the unused
+        // fusion roots.
+        absl::flat_hash_map<const HloInstruction*, int64_t>
+            root_to_unique_index;
+        int64_t root_index = 0;
+        HloInstruction* root = computation->root_instruction();
+        for (const HloInstruction* hlo : root->operands()) {
+          if (root_to_unique_index.find(hlo) == root_to_unique_index.end()) {
+            root_to_unique_index[hlo] = root_to_unique_index[hlo] = root_index;
+          }
+          ++root_index;
+        }
+        if (root_to_unique_index.size() < root->operand_count()) {
+          for (HloInstruction* user : fusion->users()) {
+            if (user->opcode() == HloOpcode::kGetTupleElement) {
+              const HloInstruction* fusion_root =
+                  root->operand(user->tuple_index());
+              user->set_tuple_index(root_to_unique_index[fusion_root]);
+            }
           }
         }
       }

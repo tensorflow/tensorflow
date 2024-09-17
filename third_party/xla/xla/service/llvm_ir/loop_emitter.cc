@@ -18,14 +18,23 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Type.h"
+#include "llvm/IR/Value.h"
+#include "xla/layout_util.h"
+#include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_loop.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
-#include "xla/types.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/protobuf.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -72,13 +81,13 @@ BodyEmitter MakeBodyEmitter(const ElementGenerator& target_element_generator,
                                          target_arrays.end());
   if (!is_tuple) {
     CHECK_EQ(target_arrays.size(), 1);
-    return [=](const llvm_ir::IrArray::Index array_index) -> Status {
+    return [=](const llvm_ir::IrArray::Index array_index) -> absl::Status {
       // Convert target_element_generator to a BodyEmitter.
       TF_ASSIGN_OR_RETURN(llvm::Value * target_element,
                           target_element_generator(array_index));
       target_arrays_vec[0].EmitWriteArrayElement(array_index, target_element,
                                                  b);
-      return OkStatus();
+      return absl::OkStatus();
     };
   }
 
@@ -103,7 +112,7 @@ BodyEmitter MakeBodyEmitter(const ElementGenerator& target_element_generator,
       target_arrays_vec[i].EmitWriteArrayElement(
           used_index, b->CreateExtractValue(target_element, i), b);
     }
-    return OkStatus();
+    return absl::OkStatus();
   };
 }
 
@@ -178,8 +187,8 @@ std::vector<IrArray::Index> LoopEmitter::EmitIndexAndSetExitBasicBlock(
   return {array_index};
 }
 
-Status LoopEmitter::EmitLoop(absl::string_view loop_name,
-                             llvm::Type* index_type) {
+absl::Status LoopEmitter::EmitLoop(absl::string_view loop_name,
+                                   llvm::Type* index_type) {
   if (index_type == nullptr) {
     index_type = b_->getInt64Ty();
   }
@@ -195,7 +204,7 @@ Status LoopEmitter::EmitLoop(absl::string_view loop_name,
   if (exit_bb_ != nullptr) {
     b_->SetInsertPoint(exit_bb_);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace llvm_ir

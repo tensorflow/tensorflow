@@ -1,17 +1,17 @@
 load(
-    "//tsl:tsl.bzl",
+    "@local_tsl//tsl/platform:rules_cc.bzl",
+    "cc_library",
+)
+load(
+    "@local_xla//xla/tsl:tsl.bzl",
     "if_linux_x86_64",
     "internal_visibility",
     "tsl_copts",
 )
-load("//tsl:tsl.default.bzl", "filegroup")
+load("@local_xla//xla/tsl:tsl.default.bzl", "filegroup")
 load(
     "//tsl/platform:build_config.bzl",
     "tsl_cc_test",
-)
-load(
-    "@local_tsl//tsl/platform:rules_cc.bzl",
-    "cc_library",
 )
 
 package(

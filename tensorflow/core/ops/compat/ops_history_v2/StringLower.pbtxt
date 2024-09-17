@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "StringLower"
   input_arg {
     name: "input"

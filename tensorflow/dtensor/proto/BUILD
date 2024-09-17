@@ -13,7 +13,6 @@ package(
 tf_proto_library(
     name = "layout_proto",
     srcs = ["layout.proto"],
-    cc_api_version = 2,
     create_go_proto = False,
     create_java_proto = False,
 )

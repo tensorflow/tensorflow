@@ -30,9 +30,10 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
-#include "third_party/nanobind/include/nanobind/nanobind.h"
-#include "third_party/nanobind/include/nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
-#include "third_party/nanobind/include/nanobind/stl/vector.h"  // IWYU pragma: keep
+#include "nanobind/nanobind.h"
+#include "nanobind/stl/shared_ptr.h"  // IWYU pragma: keep
+#include "nanobind/stl/string.h"  // IWYU pragma: keep
+#include "nanobind/stl/vector.h"  // IWYU pragma: keep
 #include "xla/pjrt/lru_cache.h"
 #include "xla/python/nb_helpers.h"
 
@@ -174,6 +175,9 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
           }
           auto it = cache->entries_.find(
               WeakrefCacheEntry{nb::borrow<nb::weakref>(weakref), cached_hash});
+          if (it == cache->entries_.end()) {
+            return;
+          }
           // Create temp-var to avoid re-entrant erase.
           auto tmp = std::move(it->second);
           cache->entries_.erase(it);

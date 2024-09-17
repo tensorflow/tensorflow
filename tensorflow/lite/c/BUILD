@@ -292,7 +292,10 @@ cc_test(
     size = "small",
     srcs = ["c_api_signature_runner_test.cc"],
     copts = tflite_copts(),
-    data = ["//tensorflow/lite:testdata/multi_signatures.bin"],
+    data = [
+        "//tensorflow/lite:testdata/multi_signatures.bin",
+        "//tensorflow/lite:testdata/no_signatures.bin",
+    ],
     deps = [
         ":c_api",
         "//tensorflow/lite/core/c:c_api",
@@ -356,7 +359,7 @@ cc_library(
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/core/api:op_resolver",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/core/c:registration_external",
+        "//tensorflow/lite/core/c:operator",
     ],
 )
 
@@ -393,7 +396,7 @@ cc_library(
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/core/api:op_resolver",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/core/c:registration_external_without_alwayslink",
+        "//tensorflow/lite/core/c:operator_without_alwayslink",
     ],
 )
 

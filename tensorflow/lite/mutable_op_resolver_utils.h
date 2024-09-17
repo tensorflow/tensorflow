@@ -23,15 +23,13 @@ namespace tflite {
 
 /// Registers (the specified version of) the operator `op`.
 /// Replaces any previous registration for the same operator version.
-void AddOp(MutableOpResolver* mutable_op_resolver,
-           const TfLiteRegistrationExternal* op);
+void AddOp(MutableOpResolver* mutable_op_resolver, const TfLiteOperator* op);
 
 /// Registers the specified version range (versions `min_version` to
 /// `max_version`, inclusive) of the specified operator `op`.
 /// Replaces any previous registration for the same operator version.
-void AddOp(MutableOpResolver* mutable_op_resolver,
-           const TfLiteRegistrationExternal* op, int min_version,
-           int max_version);
+void AddOp(MutableOpResolver* mutable_op_resolver, const TfLiteOperator* op,
+           int min_version, int max_version);
 
 }  // namespace tflite
 

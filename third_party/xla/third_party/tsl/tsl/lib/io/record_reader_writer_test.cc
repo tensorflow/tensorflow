@@ -23,7 +23,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -226,7 +226,7 @@ TEST(RecordReaderWriterTest, TestSkipOutOfRange) {
       uint64 offset = 0;
       int num_skipped;
       tstring record;
-      Status s = reader.SkipRecords(&offset, 3, &num_skipped);
+      absl::Status s = reader.SkipRecords(&offset, 3, &num_skipped);
       EXPECT_EQ(2, num_skipped);
       EXPECT_EQ(error::OUT_OF_RANGE, s.code());
     }
@@ -254,7 +254,7 @@ TEST(RecordReaderWriterTest, TestMalformedInput) {
     tstring record;
     // At offset 0, the error message reminds of the file type.
     uint64 offset = 0;
-    Status s = reader.ReadRecord(&offset, &record);
+    absl::Status s = reader.ReadRecord(&offset, &record);
     EXPECT_EQ(error::DATA_LOSS, s.code());
     EXPECT_EQ("corrupted record at 0 (Is this even a TFRecord file?)",
               s.message());

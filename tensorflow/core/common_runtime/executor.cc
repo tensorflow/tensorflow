@@ -70,7 +70,6 @@ limitations under the License.
 #include "tensorflow/core/platform/profile_utils/cpu_utils.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/annotated_traceme.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
@@ -82,6 +81,7 @@ limitations under the License.
 #include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/managed_stack_trace.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
+#include "tsl/platform/tracing.h"
 
 namespace tensorflow {
 
@@ -142,8 +142,8 @@ struct KernelTimer {
 };
 
 // TODO(b/152925936): Re-evaluate these constants with current usage patterns.
-typedef gtl::InlinedVector<TensorValue, 4> TensorValueVec;
-typedef gtl::InlinedVector<AllocatorAttributes, 4> AllocatorAttributeVec;
+typedef absl::InlinedVector<TensorValue, 4UL> TensorValueVec;
+typedef absl::InlinedVector<AllocatorAttributes, 4UL> AllocatorAttributeVec;
 
 class ExecutorImpl : public Executor {
  public:
@@ -381,7 +381,7 @@ class ExecutorState {
   // Step-local container.
   ScopedStepContainer* step_container_;
   StepStatsCollectorInterface* const stats_collector_;
-  const tracing::EventCollector* const event_collector_;
+  const tsl::tracing::EventCollector* const event_collector_;
   Context context_;
 
   // QUESTION: Make it a checkpoint::TensorSliceReaderCacheWrapper
@@ -435,8 +435,8 @@ ExecutorState<PropagatorStateType>::ExecutorState(
       tensor_store_(args.tensor_store),
       step_container_(args.step_container),
       stats_collector_(args.stats_collector),
-      event_collector_(
-          tracing::GetEventCollector(tracing::EventCategory::kCompute)),
+      event_collector_(tsl::tracing::GetEventCollector(
+          tsl::tracing::EventCategory::kCompute)),
       context_(ContextKind::kThread),
       slice_reader_cache_(new checkpoint::TensorSliceReaderCacheWrapper),
       call_frame_(args.call_frame),
@@ -563,22 +563,23 @@ struct ExecutorState<PropagatorStateType>::AsyncState {
 
 // Returns true if `item` might be traced by the given trace and event
 // collectors. Returns false only if `item` definitely will not be traced.
-bool MightTrace(const tracing::EventCollector* event_collector,
+bool MightTrace(const tsl::tracing::EventCollector* event_collector,
                 bool is_expensive) {
   // Tracing will only be enabled if either `event_collector` is non null,
   // or `trace_collector` is non-null and enabled for this particular kernel.
   // Although `profiler::TraceMe`, `profiler::ScopedAnnotation`, and
-  // `tracing::ScopedRegion` check subsets of these properties internally in
-  // their constructors, the cost of passing the necessary arguments to them can
-  // be significant, so we avoid constructing them in the common case (when we
-  // know they will not be used).
+  // `tsl::tracing::ScopedRegion` check subsets of these properties internally
+  // in their constructors, the cost of passing the necessary arguments to them
+  // can be significant, so we avoid constructing them in the common case (when
+  // we know they will not be used).
   if (event_collector != nullptr) {
     return true;
   }
 
-  if (profiler::ScopedAnnotation::IsEnabled()) return true;
+  if (tsl::profiler::ScopedAnnotation::IsEnabled()) return true;
 
-  return profiler::TraceMe::Active(profiler::GetTFTraceMeLevel(is_expensive));
+  return tsl::profiler::TraceMe::Active(
+      tsl::profiler::GetTFTraceMeLevel(is_expensive));
 }
 
 template <class PropagatorStateType>
@@ -594,14 +595,14 @@ Status ExecutorState<PropagatorStateType>::ProcessSync(
   const bool is_expensive = kernel_stats_->IsExpensive(item);
 
   if (TF_PREDICT_FALSE(MightTrace(event_collector_, is_expensive))) {
-    tracing::ScopedRegion region(tracing::EventCategory::kCompute,
-                                 op_kernel->name_view());
+    tsl::tracing::ScopedRegion region(tsl::tracing::EventCategory::kCompute,
+                                      op_kernel->name_view());
     profiler::AnnotatedTraceMe activity(
         [op_kernel, &ctx] {
           return op_kernel->TraceString(
-              ctx, /*verbose=*/profiler::TfOpDetailsEnabled());
+              ctx, /*verbose=*/tsl::profiler::TfOpDetailsEnabled());
         },
-        profiler::GetTFTraceMeLevel(is_expensive));
+        tsl::profiler::GetTFTraceMeLevel(is_expensive));
     device->Compute(op_kernel, &ctx);
   } else if (kernel_stats_->HasExpensiveMarker(item)) {
     KernelTimer timer;
@@ -641,24 +642,24 @@ void ExecutorState<PropagatorStateType>::ProcessAsync(
     profiler::AnnotatedTraceMe activity(
         [async_kernel, state] {
           return async_kernel->TraceString(
-              state->ctx, /*verbose=*/profiler::TfOpDetailsEnabled());
+              state->ctx, /*verbose=*/tsl::profiler::TfOpDetailsEnabled());
         },
-        profiler::GetTFTraceMeLevel(/*is_expensive=*/false));
+        tsl::profiler::GetTFTraceMeLevel(/*is_expensive=*/false));
 
     // Trace async op start.
-    profiler::TraceMeProducer producer(
+    tsl::profiler::TraceMeProducer producer(
         [&] {
-          return profiler::TraceMeEncode(
+          return tsl::profiler::TraceMeEncode(
               "ExecutorState::ProcessAsync::Start",
               {{"name", async_kernel->name()},
                {"kernel_type", async_kernel->type_string()},
                {"step_id", step_id_}});
         },
-        profiler::ContextType::kTfExecutor);
+        tsl::profiler::ContextType::kTfExecutor);
 
     auto done = [this, state, activity_id, ctx_id = producer.GetContextId()]() {
       // Trace async op done.
-      profiler::TraceMeConsumer consumer(
+      tsl::profiler::TraceMeConsumer consumer(
           [&] {
             return profiler::TraceMeEncode(
                 "ExecutorState::ProcessAsync::Done",
@@ -666,7 +667,7 @@ void ExecutorState<PropagatorStateType>::ProcessAsync(
                  {"kernel_type", state->item->kernel->type_string()},
                  {"step_id", step_id_}});
           },
-          profiler::ContextType::kTfExecutor, ctx_id);
+          tsl::profiler::ContextType::kTfExecutor, ctx_id);
 
       Device* device = immutable_state_.params().device;
       NodeExecStatsInterface* stats = state->stats;  // Shorthand
@@ -728,8 +729,8 @@ void ExecutorState<PropagatorStateType>::ProcessConstTensor(
 template <class PropagatorStateType>
 void ExecutorState<PropagatorStateType>::Process(const TaggedNode& tagged_node,
                                                  int64_t scheduled_nsec) {
-  profiler::TraceMe traceme("ExecutorState::Process Scheduled",
-                            profiler::TraceMeLevel::kVerbose);
+  tsl::profiler::TraceMe traceme("ExecutorState::Process Scheduled",
+                                 tsl::profiler::TraceMeLevel::kVerbose);
   TaggedNodeReadyQueue inline_ready;
   inline_ready.push_back(tagged_node);
   return ProcessInline(&inline_ready, scheduled_nsec);
@@ -806,13 +807,13 @@ void ExecutorState<PropagatorStateType>::ProcessInline(
 
   bool completed = false;
   int64_t last_iter_num = -1;
-  std::unique_ptr<profiler::TraceMeConsumer> iteration_scope;
+  std::unique_ptr<tsl::profiler::TraceMeConsumer> iteration_scope;
   while (!inline_ready->empty()) {
     TaggedNode tagged_node = inline_ready->front();
 
     int64_t current_iter_num = tagged_node.get_iter_num();
     if (current_iter_num != last_iter_num) {
-      iteration_scope = std::make_unique<profiler::TraceMeConsumer>(
+      iteration_scope = std::make_unique<tsl::profiler::TraceMeConsumer>(
           // From TraceMeProducer in DirectSession::RunInternal,
           // GraphMgr::ExecuteAsync, or FunctionLibraryRuntime::Run.
           [&] {
@@ -824,8 +825,8 @@ void ExecutorState<PropagatorStateType>::ProcessInline(
                 "ExecutorState::Process",
                 {{"id", step_id_}, {"iter_num", tagged_node.get_iter_num()}});
           },
-          profiler::ContextType::kTfExecutor, trace_id_,
-          profiler::TraceMeLevel::kInfo);
+          tsl::profiler::ContextType::kTfExecutor, trace_id_,
+          tsl::profiler::TraceMeLevel::kInfo);
       last_iter_num = current_iter_num;
     }
     inline_ready->pop_front();
@@ -1236,7 +1237,7 @@ bool ExecutorState<PropagatorStateType>::NodeDone(
     }
 
     if (abort_run) {
-      TRACEPRINTF("StartAbort: %s", s.ToString().c_str());
+      TRACEPRINTF("StartAbort: %s", s.ToString());
       if (cancellation_manager_) {
         // Use VLOG instead of LOG(warning) because error status is expected
         // when the executor is run under the grappler optimization phase or
@@ -1265,7 +1266,7 @@ bool ExecutorState<PropagatorStateType>::NodeDone(
 template <class PropagatorStateType>
 void ExecutorState<PropagatorStateType>::ScheduleReady(
     TaggedNodeSeq* ready, TaggedNodeReadyQueue* inline_ready) {
-  profiler::TraceMe activity(
+  tsl::profiler::TraceMe activity(
       [&]() {
         return strings::StrCat(
             "ExecutorState::ScheduleReady#",
@@ -1273,7 +1274,7 @@ void ExecutorState<PropagatorStateType>::ScheduleReady(
             ",inline_ready_size=",
             (inline_ready == nullptr ? -1 : inline_ready->size()), "#");
       },
-      profiler::GetTFTraceMeLevel(/*is_expensive=*/false));
+      tsl::profiler::GetTFTraceMeLevel(/*is_expensive=*/false));
   DCHECK(!ready->empty());
 
   int64_t scheduled_nsec = 0;
@@ -1352,14 +1353,14 @@ void ExecutorState<PropagatorStateType>::ScheduleReady(
           TaggedNodeSeq ready_chunk{it, end};
           RunTask(
               [this, ready_chunk = std::move(ready_chunk), scheduled_nsec]() {
-                profiler::TraceMe activity(
+                tsl::profiler::TraceMe activity(
                     [&]() {
                       return strings::StrCat(
                           "ExecutorState::ScheduleReady::"
                           "ChildThreadExpensiveNodes#",
                           "ready_chunk_size=", ready_chunk.size(), "#");
                     },
-                    profiler::GetTFTraceMeLevel(/*is_expensive=*/false));
+                    tsl::profiler::GetTFTraceMeLevel(/*is_expensive=*/false));
                 for (auto& tagged_node : ready_chunk) {
                   RunTask(std::bind(&ExecutorState::Process, this, tagged_node,
                                     scheduled_nsec),
@@ -1458,15 +1459,15 @@ void ExecutorState<PropagatorStateType>::Finish() {
     }
     delete this;
     runner([step_id, trace_id, status, done_cb = std::move(done_cb)]() {
-      profiler::TraceMeConsumer activity(
+      tsl::profiler::TraceMeConsumer activity(
           // From TraceMeProducer in KernelAndDeviceFunc::RunAsync,
           // DirectSession::RunInternal or GraphMgr::ExecuteAsync.
           [&] {
-            return profiler::TraceMeEncode("ExecutorDoneCallback",
-                                           {{"id", step_id}});
+            return tsl::profiler::TraceMeEncode("ExecutorDoneCallback",
+                                                {{"id", step_id}});
           },
-          profiler::ContextType::kTfExecutor, trace_id,
-          profiler::TraceMeLevel::kInfo);
+          tsl::profiler::ContextType::kTfExecutor, trace_id,
+          tsl::profiler::TraceMeLevel::kInfo);
       done_cb(status);
     });
     return;
@@ -1481,30 +1482,30 @@ void ExecutorState<PropagatorStateType>::Finish() {
                   done_cb = std::move(done_cb)](const Status& status) mutable {
       delete this;
       runner([step_id, trace_id, status, done_cb = std::move(done_cb)]() {
-        profiler::TraceMeConsumer activity(
+        tsl::profiler::TraceMeConsumer activity(
             // From TraceMeProducer in KernelAndDeviceFunc::RunAsync,
             // DirectSession::RunInternal or GraphMgr::ExecuteAsync.
             [&] {
-              return profiler::TraceMeEncode("ExecutorDoneCallback",
-                                             {{"id", step_id}});
+              return tsl::profiler::TraceMeEncode("ExecutorDoneCallback",
+                                                  {{"id", step_id}});
             },
-            profiler::ContextType::kTfExecutor, trace_id,
-            profiler::TraceMeLevel::kInfo);
+            tsl::profiler::ContextType::kTfExecutor, trace_id,
+            tsl::profiler::TraceMeLevel::kInfo);
         done_cb(status);
       });
     });
   } else {
     delete this;
     runner([step_id, trace_id, status, done_cb = std::move(done_cb)]() {
-      profiler::TraceMeConsumer activity(
+      tsl::profiler::TraceMeConsumer activity(
           // From TraceMeProducer in KernelAndDeviceFunc::RunAsync,
           // DirectSession::RunInternal or GraphMgr::ExecuteAsync.
           [&] {
-            return profiler::TraceMeEncode("ExecutorDoneCallback",
-                                           {{"id", step_id}});
+            return tsl::profiler::TraceMeEncode("ExecutorDoneCallback",
+                                                {{"id", step_id}});
           },
-          profiler::ContextType::kTfExecutor, trace_id,
-          profiler::TraceMeLevel::kInfo);
+          tsl::profiler::ContextType::kTfExecutor, trace_id,
+          tsl::profiler::TraceMeLevel::kInfo);
       done_cb(status);
     });
   }

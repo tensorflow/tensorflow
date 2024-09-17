@@ -22,7 +22,7 @@ limitations under the License.
 
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/framework/device_id.h"
+#include "xla/tsl/framework/device_id.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
 

@@ -119,11 +119,6 @@ class GPUOperation {
 
   absl::Status AssembleCode(const GpuInfo& gpu_info);
 
-  virtual absl::Status PostCompileCheck(const GpuInfo& gpu_info,
-                                        const KernelInfo& kernel_info) {
-    return absl::OkStatus();
-  }
-
   const OperationDef& GetDefinition() const { return definition_; }
   CalculationsPrecision GetPrecision() const { return definition_.precision; }
 

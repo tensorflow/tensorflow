@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
@@ -73,7 +74,7 @@ struct ConvertMapOfElementwiseOps : public OpRewritePattern<MapOp> {
         operands.push_back(blockAndValueMap.lookup(value));
       auto *newOp = rewriter.create(
           op.getLoc(), op.getName().getIdentifier(), operands,
-          op.getResultTypes()[0].cast<TensorType>().clone(shape));
+          mlir::cast<TensorType>(op.getResultTypes()[0]).clone(shape));
       // Maps the result.
       blockAndValueMap.map(op.getResult(0), newOp->getResult(0));
     }

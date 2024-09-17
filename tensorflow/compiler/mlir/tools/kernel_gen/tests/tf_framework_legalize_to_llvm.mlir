@@ -1,4 +1,4 @@
-// RUN: kernel-gen-opt %s -tf-kernel-to-llvm -split-input-file | FileCheck %s
+// RUN: kernel-gen-opt %s -tf-kernel-to-llvm -reconcile-unrealized-casts -split-input-file | FileCheck %s
 
 // CHECK: llvm.func @_mlir_ciface_tf_alloc
 // CHECK-SAME:  (!llvm.ptr, i64, i64, i32, i32, !llvm.ptr) -> !llvm.ptr

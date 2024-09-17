@@ -18,19 +18,14 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
-#include <utility>
-#include <vector>
 
 #include "absl/base/thread_annotations.h"
-#include "absl/container/node_hash_map.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor {
-
-// Forward declare.
-class StreamExecutor;
 
 // Utility class to allow Platform objects to manage cached StreamExecutors.
 // Thread-safe.
@@ -42,43 +37,23 @@ class ExecutorCache {
   ExecutorCache();
   ~ExecutorCache();
 
-  // Looks up 'config' in the cache. Returns a pointer to the existing executor,
-  // if already present, or creates it using 'factory', if it does not.
-  // Factories may be executed concurrently for different device ordinals.
-  absl::StatusOr<StreamExecutor*> GetOrCreate(
-      const StreamExecutorConfig& config, const ExecutorFactory& factory);
+  // Looks up 'ordinal' in the cache. Returns a pointer to the existing
+  // executor, if already present, or creates it using 'factory', if it does
+  // not. Factories may be executed concurrently for different device ordinals.
+  absl::StatusOr<StreamExecutor*> GetOrCreate(int ordinal,
+                                              const ExecutorFactory& factory);
 
-  // Returns a pointer to the described executor (if one with a matching config
+  // Returns a pointer to the described executor (if one with a matching ordinal
   // has been created), or a NOT_FOUND status.
-  absl::StatusOr<StreamExecutor*> Get(const StreamExecutorConfig& config);
-
-  // Destroys all Executors and clears the cache.
-  // Performs no synchronization with the executors - undefined behavior may
-  // occur if any executors are active!
-  void DestroyAllExecutors();
+  absl::StatusOr<StreamExecutor*> Get(int ordinal);
 
  private:
-  // Each Entry contains zero or more cached executors for a device ordinal.
-  struct Entry {
-    ~Entry();
-
-    // Mutex that guards the contents of each entry. The 'mutex_' of the
-    // ExecutorCache class protects both the 'cache_' and the existence of each
-    // Entry, but not the Entry's contents. 'configurations_mutex' protects the
-    // contents of the entry after 'mutex_' has been dropped.
-    absl::Mutex configurations_mutex;
-
-    // Vector of cached {config, executor} pairs.
-    std::vector<
-        std::pair<StreamExecutorConfig, std::unique_ptr<StreamExecutor>>>
-        configurations ABSL_GUARDED_BY(configurations_mutex);
-  };
-
-  // Maps ordinal number to a list of cached executors for that ordinal.
-  // We key off of ordinal (instead of just looking up all fields in the
-  // StreamExecutorConfig) for a slight improvement in lookup time.
+  // Protects cache_.
   absl::Mutex mutex_;
-  absl::node_hash_map<int, Entry> cache_ ABSL_GUARDED_BY(mutex_);
+
+  // Maps ordinal number to a cached executor for that ordinal.
+  absl::flat_hash_map<int, std::unique_ptr<StreamExecutor>> cache_
+      ABSL_GUARDED_BY(mutex_);
 
   ExecutorCache(const ExecutorCache&) = delete;
   void operator=(const ExecutorCache&) = delete;

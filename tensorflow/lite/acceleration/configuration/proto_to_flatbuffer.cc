@@ -66,6 +66,8 @@ Delegate ConvertDelegate(proto::Delegate delegate) {
       return Delegate_CORE_ML;
     case proto::Delegate::ARMNN:
       return Delegate_ARMNN;
+    case proto::Delegate::MTK_NEURON:
+      return Delegate_MTK_NEURON;
   }
   TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Unexpected value for Delegate: %d",
                   delegate);
@@ -393,6 +395,42 @@ Offset<EdgeTpuSettings> ConvertEdgeTpuSettings(
           settings.use_layer_ir_tgc_backend()));
 }
 
+Offset<CompilationCachingSettings> ConvertCompilationCachingSettings(
+    const proto::CompilationCachingSettings& settings,
+    FlatBufferBuilder& builder) {
+  return CreateCompilationCachingSettings(
+      builder, builder.CreateString(settings.cache_dir()),
+      builder.CreateString(settings.model_token()));
+}
+
+Offset<ArmNNSettings> ConvertArmNNSettings(const proto::ArmNNSettings& settings,
+                                           FlatBufferBuilder& builder) {
+  return CreateArmNNSettings(
+      builder, builder.CreateString(settings.backends()), settings.fastmath(),
+      builder.CreateString(settings.additional_parameters()));
+}
+
+Offset<MtkNeuronSettings> ConvertMtkNeuronSettings(
+    const proto::MtkNeuronSettings& settings, FlatBufferBuilder& builder) {
+  return CreateMtkNeuronSettings(
+      builder,
+      static_cast<MtkNeuronSettings_::ExecutionPreference>(
+          settings.execution_preference()),
+      static_cast<MtkNeuronSettings_::ExecutionPriority>(
+          settings.execution_priority()),
+      builder.CreateVector(settings.optimization_hints().data(),
+                           settings.optimization_hints().size()),
+      static_cast<MtkNeuronSettings_::OperationCheckMode>(
+          settings.operation_check_mode()),
+      settings.allow_fp16_precision_for_fp32(), settings.use_ahwb(),
+      settings.use_cacheable_buffer(),
+      builder.CreateVectorOfStrings(settings.compile_options().begin(),
+                                    settings.compile_options().end()),
+      builder.CreateVectorOfStrings(settings.accelerator_names().begin(),
+                                    settings.accelerator_names().end()),
+      builder.CreateString(settings.neuron_config_path()));
+}
+
 Offset<CoralSettings> ConvertCoralSettings(const proto::CoralSettings& settings,
                                            FlatBufferBuilder& builder) {
   return CreateCoralSettings(
@@ -418,8 +456,11 @@ Offset<TFLiteSettings> ConvertTfliteSettings(
       settings.disable_default_delegates(),
       ConvertStableDelegateLoaderSettings(
           settings.stable_delegate_loader_settings(), builder),
-      ConvertGoogleEdgeTpuSettings(settings.google_edgetpu_settings(),
-                                   builder));
+      ConvertGoogleEdgeTpuSettings(settings.google_edgetpu_settings(), builder),
+      ConvertCompilationCachingSettings(settings.compilation_caching_settings(),
+                                        builder),
+      ConvertArmNNSettings(settings.armnn_settings(), builder),
+      ConvertMtkNeuronSettings(settings.mtk_neuron_settings(), builder));
 }
 
 Offset<ModelFile> ConvertModelFile(const proto::ModelFile& model_file,

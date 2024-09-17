@@ -18,23 +18,25 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dtensor_attributes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
-#include "tensorflow/dtensor/mlir/spmd_expander_common.h"
 #include "tensorflow/dtensor/mlir/value_utils.h"
 
 namespace tensorflow {
@@ -83,7 +85,7 @@ mlir::LogicalResult PropagateDTensorLayoutForRelayout(
 
   mlir::OpBuilder builder(relayout->getBlock(),
                           ++mlir::Block::iterator(relayout));
-  mlir::TensorType type = relayout.getType().dyn_cast<mlir::TensorType>();
+  mlir::TensorType type = mlir::dyn_cast<mlir::TensorType>(relayout.getType());
   if (!type) return relayout.emitOpError("type required for Relayout op");
 
   CreateDTensorLayoutOp(layout, relayout.getOutput(), type, relayout.getLoc(),
@@ -110,7 +112,7 @@ mlir::LogicalResult PropagateFunctionArgAttrToLayoutOp(
     mlir::OpBuilder builder(function.getBody());
     auto arg = function.getArgument(arg_index);
     mlir::Type tensor_type = GetSubtypeOrSelf(arg);
-    if (auto type = tensor_type.dyn_cast<mlir::TensorType>()) {
+    if (auto type = mlir::dyn_cast<mlir::TensorType>(tensor_type)) {
       CreateDTensorLayoutOp(layout_or_status.value(), arg, type,
                             function.getLoc(),
                             builder.getI64IntegerAttr(arg_index), &builder, &c);
@@ -149,7 +151,7 @@ mlir::LogicalResult PropagateFunctionDefaultLayoutAttrToLayoutOp(
     mlir::OpBuilder builder(function_terminator);
     auto return_value = function_terminator->getOperand(ret_index);
 
-    if (auto type = return_value.getType().dyn_cast<mlir::TensorType>())
+    if (auto type = mlir::dyn_cast<mlir::TensorType>(return_value.getType()))
       CreateDTensorLayoutOp(result_layout_or_status.value(), return_value, type,
                             function.getLoc(), nullptr, &builder, &c);
     else
@@ -187,7 +189,8 @@ mlir::LogicalResult PropagateOpAttrToLayoutOp(mlir::MLIRContext& context,
           if (!layout || layout->IsEmpty()) continue;
 
           auto op_output = op->getResult(index);
-          if (auto type = op_output.getType().dyn_cast<mlir::TensorType>()) {
+          if (auto type =
+                  mlir::dyn_cast<mlir::TensorType>(op_output.getType())) {
             CreateDTensorLayoutOp(*layout, op_output, type, function.getLoc(),
                                   arg_index, &builder, &context);
           } else {

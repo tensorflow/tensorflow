@@ -25,11 +25,24 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal.h"
 #include "xla/map_util.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -92,7 +105,7 @@ absl::StatusOr<Analysis::Array*> IndexedArrayAnalysis::GetArrayFor(
   return FindOrDie(cache_, instr);
 }
 
-Status IndexedArrayAnalysis::TraverseAndPopulateCache(
+absl::Status IndexedArrayAnalysis::TraverseAndPopulateCache(
     const HloInstruction* root) {
   // Depth first search over the DAG, invoking ComputeArrayFor in post order.
   // The HLO instructions already in the cache are considered leaves.
@@ -134,7 +147,7 @@ Status IndexedArrayAnalysis::TraverseAndPopulateCache(
     }
   } while (!stack.empty());
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 absl::StatusOr<Analysis::Array*> IndexedArrayAnalysis::ComputeArrayFor(
@@ -1144,10 +1157,6 @@ absl::StatusOr<Analysis::Array*> IndexedArrayAnalysis::ComputeArrayForDot(
   }
 
   return nullptr;
-}
-
-absl::string_view IndexedArrayAnalysisPrinterPass::name() const {
-  return "indexed-array-analysis-printer-pass";
 }
 
 absl::StatusOr<bool> IndexedArrayAnalysisPrinterPass::Run(

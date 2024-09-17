@@ -16,14 +16,20 @@ limitations under the License.
 // This pass inserts corert.transfer op to make sure any argument of any op is
 // on the same device of the op itself.
 
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tfrt/basic_kernels/opdefs/basic_kernels.h"  // from @tf_runtime
 #include "tfrt/basic_kernels/opdefs/types.h"  // from @tf_runtime
@@ -81,8 +87,8 @@ static std::string GetDevice(Operation *op) {
     SmallVector<std::pair<StringRef, Attribute>, 4> attrs;
     execute_op.getOpAttrs(&attrs);
     for (std::pair<StringRef, Attribute> entry : attrs) {
-      if (entry.first == kDeviceAttr && entry.second.isa<StringAttr>()) {
-        device = entry.second.cast<StringAttr>().getValue().str();
+      if (entry.first == kDeviceAttr && mlir::isa<StringAttr>(entry.second)) {
+        device = mlir::cast<StringAttr>(entry.second).getValue().str();
         break;
       }
     }
@@ -94,7 +100,7 @@ static std::string GetDevice(Operation *op) {
 // Return the device of the given value.
 static std::string GetDevice(mlir::Value value, func::FuncOp parent_func_op) {
   std::string device = "";
-  if (BlockArgument block_arg = value.dyn_cast<BlockArgument>()) {
+  if (BlockArgument block_arg = mlir::dyn_cast<BlockArgument>(value)) {
     if (StringAttr device_attr = parent_func_op.getArgAttrOfType<StringAttr>(
             block_arg.getArgNumber(), kTFRTDeviceAttr)) {
       device = device_attr.getValue().str();
@@ -140,10 +146,10 @@ void CrossDeviceTransferPass::runOnOperation() {
 
     for (mlir::Value arg : op->getOperands()) {
       // Do not transfer non-TensorHandle values.
-      if (!arg.getType().isa<tfrt::corert::TensorHandleType>()) continue;
+      if (!mlir::isa<tfrt::corert::TensorHandleType>(arg.getType())) continue;
 
       // Do not transfer the result of corert.transfer op.
-      if (OpResult op_result = arg.dyn_cast<OpResult>()) {
+      if (OpResult op_result = mlir::dyn_cast<OpResult>(arg)) {
         Operation *defining_op = arg.getDefiningOp();
         if (llvm::isa<tfrt::corert::TransferOp>(defining_op)) continue;
       }

@@ -178,7 +178,6 @@ class XlaSplitNDBaseOp : public XlaSplitNDShared<Device, T> {
       bool resource, OpKernelContext* ctx,
       const std::function<Status(const Tensor&)>& assign_or_copy_value_fn,
       const Tensor* input) {
-    const auto& input_shape = input->shape().dim_sizes();
 
     absl::string_view input_name = resource ? kResourceName : kTensorName;
     auto allocate_output_fn = [&](int i, const TensorShape& output_slice_shape,
@@ -352,7 +351,7 @@ class XlaConcatNDBaseOp : public XlaConcatNDShared<Device, T> {
   void ComputeInternal(
       bool resource, OpKernelContext* ctx, const OpInputList& inputs,
       const std::function<Status(const Tensor&)>& assign_or_copy_value_fn,
-      const std::function<StatusOr<Tensor*>()>& get_output_fn) {
+      const std::function<absl::StatusOr<Tensor*>()>& get_output_fn) {
     const Device& device = ctx->eigen_device<Device>();
     std::vector<Tensor> input_tensors(inputs.begin(), inputs.end());
     auto status = this->concatenator_->ComputeInternal(
@@ -379,7 +378,7 @@ class XlaConcatNDOp : public XlaConcatNDBaseOp<Device, T> {
       return absl::OkStatus();
     };
 
-    auto get_output_fn = [&ctx, &output_shape]() -> StatusOr<Tensor*> {
+    auto get_output_fn = [&ctx, &output_shape]() -> absl::StatusOr<Tensor*> {
       Tensor* output = nullptr;
       TF_RETURN_IF_ERROR(
           ctx->allocate_output(/*index=*/0, output_shape, &output));
@@ -447,7 +446,7 @@ class AssignVariableXlaConcatNDOp : public XlaConcatNDBaseOp<Device, T> {
     };
 
     auto get_output_fn = [this, &ctx, &output_shape,
-                          &variable]() -> StatusOr<Tensor*> {
+                          &variable]() -> absl::StatusOr<Tensor*> {
       if (variable->copy_on_read_mode.load() ||
           !variable->tensor()->RefCountIsOne() ||
           !variable->tensor()->shape().IsSameSize(output_shape)) {

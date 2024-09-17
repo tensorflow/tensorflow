@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef XLA_SERVICE_FLOAT8_FNUZ_IR_EMITTER_H_
 #define XLA_SERVICE_FLOAT8_FNUZ_IR_EMITTER_H_
 
+#include "absl/status/statusor.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
-#include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {

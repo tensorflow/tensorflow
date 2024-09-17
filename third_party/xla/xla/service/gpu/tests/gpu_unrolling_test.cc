@@ -136,58 +136,6 @@ TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedCosine) {
                      /*match_optimized_ir=*/true);
 }
 
-TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedPower) {
-  HloModuleConfig config;
-  auto debug_options = HloTestBase::GetDebugOptionsForTest();
-  config.set_debug_options(debug_options);
-
-  const char *const kUnfusedAddModule = R"(
-    HloModule test_module
-
-    ENTRY SineFunc {
-      p0 = f32[1600000]{0} parameter(0)
-      ROOT s = f32[1600000]{0} power(p0, p0)
-    })";
-  auto hlo_module =
-      ParseAndReturnVerifiedModule(kUnfusedAddModule, config).value();
-
-  // There is only 1 load, because we pass the `p0` parameter to the kernel only
-  // once.
-  CompileAndVerifyIr(std::move(hlo_module),
-                     R"(
-; CHECK: load float
-; CHECK-NOT: load float
-; CHECK: }
-      )",
-                     /*match_optimized_ir=*/true);
-}
-
-TEST_F(GpuUnrollingTest, DisabledUnrollUnfusedAtan2) {
-  HloModuleConfig config;
-  auto debug_options = HloTestBase::GetDebugOptionsForTest();
-  config.set_debug_options(debug_options);
-
-  const char *const kUnfusedAddModule = R"(
-    HloModule test_module
-
-    ENTRY SineFunc {
-      p0 = f32[16000000]{0} parameter(0)
-      ROOT s = f32[16000000]{0} atan2(p0, p0)
-    })";
-  auto hlo_module =
-      ParseAndReturnVerifiedModule(kUnfusedAddModule, config).value();
-
-  // There is only 1 load, because we pass the `p0` parameter to the kernel only
-  // once.
-  CompileAndVerifyIr(std::move(hlo_module),
-                     R"(
-; CHECK: load float
-; CHECK-NOT: load float
-; CHECK: }
-      )",
-                     /*match_optimized_ir=*/true);
-}
-
 TEST_F(GpuUnrollingTest, UnrollMultiOutputFusion) {
   HloModuleConfig config;
   auto debug_options = HloTestBase::GetDebugOptionsForTest();

@@ -12,8 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "absl/status/status.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
@@ -30,7 +31,7 @@ namespace toco {
   const auto* op = it->get();
   if (op->type != OperatorType::kMatrixDiagV2 &&
       op->type != OperatorType::kMatrixDiagV3) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   if (op->inputs.size() != 5) {
@@ -45,7 +46,7 @@ namespace toco {
 
   if (!input_k.buffer || !input_num_rows.buffer || !input_num_cols.buffer ||
       !input_padding_value.buffer) {
-    return ::tensorflow::OkStatus();
+    return absl::OkStatus();
   }
 
   if (input_k.GetBuffer<ArrayDataType::kInt32>().data.size() != 1 ||
@@ -98,7 +99,7 @@ namespace toco {
   DeleteOpAndArrays(model, op);
 
   *modified = true;
-  return ::tensorflow::OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace toco

@@ -37,12 +37,12 @@ class BlockBuilder {
 
   // REQUIRES: Finish() has not been called since the last call to Reset().
   // REQUIRES: key is larger than any previously added key
-  void Add(const StringPiece& key, const StringPiece& value);
+  void Add(const absl::string_view& key, const absl::string_view& value);
 
   // Finish building the block and return a slice that refers to the
   // block contents.  The returned slice will remain valid for the
   // lifetime of this builder or until Reset() is called.
-  StringPiece Finish();
+  absl::string_view Finish();
 
   // Returns an estimate of the current (uncompressed) size of the block
   // we are building.

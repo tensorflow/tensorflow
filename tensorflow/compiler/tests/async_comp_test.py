@@ -15,7 +15,6 @@
 """Tests for asynchronous compilation on the CPU and GPU devices."""
 
 import os
-import unittest
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as session_lib
@@ -52,7 +51,6 @@ class AsyncCompilationTest(test.TestCase):
 
   # Asynchrobnous compilation uses the existing fallback path and existing
   # compiler. This test only tests that asynchronous compilation is performed.
-  @unittest.skip("b/263146341 - flaky Kokoro build.")
   def testAsyncCompilationJit(self):
 
     @function.Defun(compiled=True)

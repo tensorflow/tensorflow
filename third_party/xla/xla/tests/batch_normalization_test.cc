@@ -17,6 +17,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
 #include "xla/array2d.h"
 #include "xla/array4d.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/reference_util.h"
 #include "xla/shape_util.h"
-#include "xla/statusor.h"
 #include "xla/test.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/client_library_test_base.h"

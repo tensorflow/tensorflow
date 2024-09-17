@@ -19,21 +19,22 @@ limitations under the License.
 #define XLA_TRANSLATE_MHLO_TO_HLO_LAYOUT_UTIL_H_
 
 #include <functional>
-#include <vector>
+#include <optional>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/client/xla_builder.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/shape.h"
-#include "xla/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace mlir {
 
 // XLA Layout preferences. Currently, when it comes to TPU, there are two
-// primary layout choices for any XLA argumetns (parameter or resource): (1)
+// primary layout choices for any XLA arguments (parameter or resource): (1)
 // CompactChunkPadded and (2) Linear. CompactChunkPadded is the native TPU
 // layout while Linear is native host (CPU) layout.
-// This enum allows the caller of XLA to progogate layout preference to the XLA
+// This enum allows the caller of XLA to propagate layout preference to the XLA
 // compiler.
 //   kNoPreference: the generic layout where the XLA compiler has the freedom
 //                  to assign any layout.
@@ -52,11 +53,11 @@ enum class XlaLayoutPreference {
 // The following defines the layout preference of an xla tensor.
 // The return value of LayoutPreferenceFn can be used in
 // ShapeRepresentationFn.
-typedef std::function<xla::StatusOr<XlaLayoutPreference>(
+typedef std::function<absl::StatusOr<XlaLayoutPreference>(
     const xla::Shape& shape)>
     LayoutPreferenceFn;
 
-typedef std::function<xla::StatusOr<xla::Shape>(
+typedef std::function<absl::StatusOr<xla::Shape>(
     const xla::Shape& shape, bool fast_mem,
     XlaLayoutPreference layout_preference)>
     ShapeRepresentationFn;
@@ -65,7 +66,7 @@ typedef std::function<xla::StatusOr<xla::Shape>(
 LayoutPreferenceFn UseNoPreferenceLayoutFn();
 
 // Rewrites the layout of xla_shape if there is tiled sharding.
-xla::Status RewriteLayoutWithShardedShape(
+absl::Status RewriteLayoutWithShardedShape(
     const std::optional<xla::HloSharding>& sharding, bool use_fast_memory,
     const LayoutPreferenceFn& layout_preference_fn,
     const ShapeRepresentationFn& shape_representation_fn,
@@ -73,7 +74,7 @@ xla::Status RewriteLayoutWithShardedShape(
 
 // Adds reshapes to fix the layout of an output, if a shape_representation_fn or
 // sharding is present.
-xla::StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
+absl::StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
     xla::XlaBuilder* builder, xla::XlaOp original, xla::Shape original_shape,
     const LayoutPreferenceFn& layout_preference_fn,
     const ShapeRepresentationFn& shape_representation_fn,

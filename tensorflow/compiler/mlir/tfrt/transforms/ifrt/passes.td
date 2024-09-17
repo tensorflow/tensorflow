@@ -15,6 +15,7 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
+
 def RewriteClusterToIfrtCallPass: Pass<"rewrite-cluster-to-ifrt-call", "mlir::ModuleOp"> {
   let summary = "Lowers tf_device.cluster_func to tf.ifrt_call";
 
@@ -43,6 +44,34 @@ def SinkVariableAsNamedArrayPass: Pass<"sink-variable-as-named-array", "mlir::Mo
 
   let constructor = "CreateSinkVariableAsNamedArrayPass()";
 }
+
+def LowerToIfrtRestoreVariablePass: Pass<"lower-to-ifrt-restore-variable", "mlir::ModuleOp"> {
+  let summary = "Lowers tf.RestoreV2 to tf.IfrtRestoreVariable";
+
+  let description = [{
+    This pass rewrites `RestoreV2Op` and `AssignVariableOp` to `IfrtRestoreVariableOp`.
+
+    This pass is ran so that the runtime may run restore operation asynchronously
+    such that the expensive resotre operation can be parallerized with other 
+    model compilation operation.
+  }];
+
+  let constructor = "CreateLowerToIfrtRestoreVariablePass()";
+ }
+
+def TfRestorePruningPass
+    : Pass<"tf-restore-pruning", "mlir::func::FuncOp"> {
+  let summary = "Prune unused`tf.RestoreV2` ops";
+
+  let description = [{
+    This pass prune unused `tf.RestoreV2` op. A typical use case is to combine
+    `TfRestoreSplittingPass`, this pass and `TfRestoreMergingPass` in sequence
+    so that the un-used restored tensors are not read into host memory.
+  }];
+
+  let constructor = "CreateTfRestorePruningPass()";
+}
+
 
 def TfRestoreSplittingPass
     : Pass<"tf-restore-splitting", "mlir::func::FuncOp"> {
@@ -75,3 +104,39 @@ def TfRestoreMergingPass : Pass<"tf-restore-merging", "mlir::func::FuncOp"> {
 
   let constructor = "CreateTfRestoreMergingPass()";
 }
+
+def TfIdentityPropagationPass
+    : Pass<"tf-identity-propagation", "mlir::func::FuncOp"> {
+  let summary = "Propagates inputs of no-op identity ops to their outputs";
+
+  let description = [{
+    This pass finds identity ops that are no-op and propagates their inputs
+    directly to outputs so that identity ops can be skipped.
+
+    One example of identity ops that are not no-op is identity ops with XLA
+    sharding annotation. Since some models use identity ops with `_XlaSharding`
+    attributes to change output sharding, this pass doesn't propagate the inputs
+    of such identity ops in order to preserve the sharding changes.
+
+    This pass is useful to make sure that ineffective identity ops don't affect
+    the graph partitioning. For example, in a pipelined model, if there is a CPU
+    identity op between two TPU computation stages (which sometimes happens
+    because TensorFlow inserts it), this will unnecessarily route the
+    intermediate tensors through the CPU device. By forwarding the inputs of the
+    identity op directly to its outputs, we can avoid such inefficiency.
+  }];
+
+  let constructor = "CreateTfIdentityPropagationPass()";
+}
+
+def TfDeviceCleanupPass : Pass<"tf-device-cleanup", "mlir::func::FuncOp"> {
+  let summary = "Cleans up device attributes from all ops";
+
+  let description = [{
+    This pass removes `device` attributes from all TF ops. Some Serving
+    doesn't rely on `device` attributes from SavedModel.
+  }];
+
+  let constructor = "CreateTfDeviceCleanupPass()";
+}
+

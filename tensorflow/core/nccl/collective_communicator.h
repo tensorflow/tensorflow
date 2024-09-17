@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_NCCL_COLLECTIVE_COMMUNICATOR_H_
 
 #include "tensorflow/core/framework/collective.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 

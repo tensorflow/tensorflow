@@ -31,12 +31,9 @@ add_mlir_library(MLIRBufferTransforms
   generic_host_to_llvm.cc
   lower_index_cast_pass.cc
   naive_copy_removal.cc
-  propagate_static_shapes_to_kernel.cc
-  test_hlo_transform_dialect_interpreter.cc
   tile_loops_pass.cc
   vectorize_copy.cc
   unbufferize_pass.cc
-  unroll_loops.cc
 
   DEPENDS
   LMHLOTransformsPassIncGen

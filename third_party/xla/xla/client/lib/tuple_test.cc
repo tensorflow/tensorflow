@@ -19,11 +19,11 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "xla/client/global_data.h"
 #include "xla/client/xla_builder.h"
 #include "xla/error_spec.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/service.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"

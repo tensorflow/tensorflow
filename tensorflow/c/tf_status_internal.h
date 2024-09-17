@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_C_TF_STATUS_INTERNAL_H_
 #define TENSORFLOW_C_TF_STATUS_INTERNAL_H_
 
-#include "tsl/c/tsl_status_internal.h"
+#include "xla/tsl/c/tsl_status_internal.h"
 
 typedef struct TSL_Status TF_Status;
 

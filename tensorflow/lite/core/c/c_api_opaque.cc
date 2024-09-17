@@ -402,8 +402,7 @@ TfLiteStatus TfLiteOpaqueContextGetExecutionPlan(
 
 TfLiteStatus TfLiteOpaqueContextGetNodeAndRegistration(
     struct TfLiteOpaqueContext* opaque_context, int node_index,
-    TfLiteOpaqueNode** node,
-    TfLiteRegistrationExternal** registration_external) {
+    TfLiteOpaqueNode** node, TfLiteOperator** registration_external) {
   // The following casts are safe only because this code is part of the
   // TF Lite runtime implementation.  Apps using TF Lite should not rely on
   // TfLiteOpaqueContext and TfLiteContext being equivalent, or on
@@ -427,10 +426,10 @@ TfLiteStatus TfLiteOpaqueContextGetNodeAndRegistration(
 
   // When the 'registration' object obtained via 'GetNodeAndRegistration'
   // does *not* have its 'registration_external' field set then we need to
-  // create a TfLiteRegistrationExternal on the fly, and set its field according
+  // create a TfLiteOperator on the fly, and set its field according
   // to the 'TfLiteRegistration' object.
   auto derived_registration =
-      tflite::internal::CommonOpaqueConversionUtil::ObtainRegistrationExternal(
+      tflite::internal::CommonOpaqueConversionUtil::ObtainOperator(
           context, registration, node_index);
 
   if (derived_registration == nullptr) return kTfLiteError;
@@ -441,7 +440,7 @@ TfLiteStatus TfLiteOpaqueContextGetNodeAndRegistration(
 
 TfLiteStatus TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
     struct TfLiteOpaqueContext* opaque_context,
-    TfLiteRegistrationExternal* registration_external,
+    TfLiteOperator* registration_external,
     const TfLiteIntArray* nodes_to_replace,
     TfLiteOpaqueDelegate* opaque_delegate) {
   // The following casts are safe only because this code is part of the
@@ -454,7 +453,7 @@ TfLiteStatus TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
 
   // Wrap the provided 'registration_external' as a regular 'TfLiteRegistration'
   // object to reduce the places in the TF Lite runtime that need to be aware
-  // of 'TfLiteRegistrationExternal's.  Note that it is important to
+  // of 'TfLiteOperator's.  Note that it is important to
   // brace-initialize the 'TfLiteRegistration' so that we pass a registration to
   // 'ReplaceNodeSubsetsWithDelegateKernels' that has all of its fields set to
   // null, except the 'registration_external' one.

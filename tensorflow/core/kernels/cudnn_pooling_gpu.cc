@@ -114,15 +114,15 @@ void DnnPooling3dImpl(OpKernelContext* context,
   );
 
   DnnScratchAllocator scratch_allocator(PoolingScratchSize, context);
-  OP_REQUIRES_OK(context,
-                 dnn->PoolForward(stream, pooling_desc, GetNumericOptions(),
-                                  input_desc, input_data, output_desc,
-                                  &output_data, &scratch_allocator));
+  OP_REQUIRES_OK(context, dnn->PoolForward(stream, pooling_desc,
+                                           GetNumericOptionsForCuDnn(),
+                                           input_desc, input_data, output_desc,
+                                           &output_data, &scratch_allocator));
 #else
   OP_REQUIRES_OK(
       context,
-      dnn->PoolForward(stream, pooling_desc, GetNumericOptions(), input_desc,
-                       input_data, output_desc, &output_data));
+      dnn->PoolForward(stream, pooling_desc, GetNumericOptionsForCuDnn(),
+                       input_desc, input_data, output_desc, &output_data));
 #endif
 
   if (data_format == FORMAT_NHWC) {
@@ -310,16 +310,16 @@ void DnnPooling3dGradImpl(
   DnnScratchAllocator scratch_allocator(PoolingScratchSize, context);
   OP_REQUIRES_OK(
       context,
-      dnn->PoolBackward(stream, pooling_desc, GetNumericOptions(),
+      dnn->PoolBackward(stream, pooling_desc, GetNumericOptionsForCuDnn(),
                         orig_input_desc, orig_input_data, orig_output_desc,
                         orig_output_data, output_backprop_data,
                         &input_backprop_data, &scratch_allocator));
 #else
-  OP_REQUIRES_OK(context,
-                 dnn->PoolBackward(stream, pooling_desc, GetNumericOptions(),
-                                   orig_input_desc, orig_input_data,
-                                   orig_output_desc, orig_output_data,
-                                   output_backprop_data, &input_backprop_data));
+  OP_REQUIRES_OK(context, dnn->PoolBackward(
+                              stream, pooling_desc, GetNumericOptionsForCuDnn(),
+                              orig_input_desc, orig_input_data,
+                              orig_output_desc, orig_output_data,
+                              output_backprop_data, &input_backprop_data));
 #endif
 
   if (data_format == FORMAT_NHWC) {

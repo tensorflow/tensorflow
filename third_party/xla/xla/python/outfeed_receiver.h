@@ -22,12 +22,13 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/xla_builder.h"
 #include "xla/literal.h"
-#include "xla/pjrt/pjrt_client.h"
-#include "xla/shape.h"
-#include "xla/statusor.h"
+#include "xla/python/pjrt_ifrt/pjrt_client.h"
+#include "xla/python/pjrt_ifrt/pjrt_device.h"
 
 namespace xla {
 
@@ -37,8 +38,8 @@ class OutfeedReceiverImpl;
 class OutfeedReceiver {
  public:
   // A callback takes: device, consumer id, received.
-  using Callback =
-      std::function<void(PjRtDevice*, uint32_t, std::shared_ptr<Literal>)>;
+  using Callback = std::function<void(ifrt::PjRtDevice*, uint32_t,
+                                      std::shared_ptr<Literal>)>;
 
   // Constructs the receiver for the given clients and callback function.
   //
@@ -50,7 +51,7 @@ class OutfeedReceiver {
   //     received outfeeds queued to be processed. When this limit is reached
   //     we pause receiving outfeeds from devices.
   OutfeedReceiver(
-      Callback callback, absl::Span<PjRtClient* const> clients,
+      Callback callback, absl::Span<ifrt::PjRtClient* const> clients,
       ssize_t max_callback_queue_size_bytes,
       const std::optional<ExecutableBuildOptions>& executable_build_options);
 

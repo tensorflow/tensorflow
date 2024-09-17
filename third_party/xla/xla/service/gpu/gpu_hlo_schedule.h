@@ -22,13 +22,11 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
-#include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
+#include "tsl/profiler/protobuf/profiled_instructions.pb.h"
 
 namespace xla {
 namespace gpu {
-
-int64_t GetSizeOfShape(const Shape& shape, int pointer_size);
 
 struct ScheduleMetadata {
   int64_t scheduler_mem_limit;

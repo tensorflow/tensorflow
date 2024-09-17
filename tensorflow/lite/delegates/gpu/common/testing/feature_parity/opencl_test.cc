@@ -23,7 +23,9 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/testing/feature_parity/feature_parity.h"
 #include "tensorflow/lite/delegates/gpu/common/testing/feature_parity/utils.h"
 #include "tensorflow/lite/delegates/gpu/delegate.h"
+#include "tensorflow/lite/delegates/gpu/delegate_options.h"
 #include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 

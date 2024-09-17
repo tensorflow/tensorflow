@@ -1,5 +1,5 @@
 load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
-load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
+load("//xla/tsl:tsl.default.bzl", "filegroup")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -11,11 +11,15 @@ lit_test_suite(
     srcs = enforce_glob(
         [
             "add.mlir",
+            "attributes.mlir",
             "case.mlir",
+            "composite.mlir",
             "dynamic.mlir",
             "export-with-layouts.mlir",
             "export.mlir",
+            "export_async.mlir",
             "export_and_check_layouts.mlir",
+            "export_entry_computation_layout.mlir",
             "export_large_constants.mlir",
             "export_replicas.mlir",
             "frontend_attributes.mlir",
@@ -27,6 +31,7 @@ lit_test_suite(
             "location_to_op_metadata.mlir",
             "location_to_stacktrace.mlir",
             "missing_main.mlir",
+            "module_config.mlir",
             "module_attributes.mlir",
             "multiple_return_tuple.mlir",
             "opaque_elements_attr.mlir",
@@ -35,6 +40,7 @@ lit_test_suite(
             "simple.mlir",
             "unsupported_type.mlir",
             "while.mlir",
+            "while_free_vars.mlir",
         ],
         include = [
             "*.mlir",

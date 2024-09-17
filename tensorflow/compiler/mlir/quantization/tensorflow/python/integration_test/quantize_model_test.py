@@ -66,7 +66,9 @@ from tensorflow.python.types import core
 
 # Type aliases for quantization method protobuf enums.
 _PresetMethod = quant_opts_pb2.QuantizationMethod.PresetMethod
-_CalibrationMethod = quant_opts_pb2.CalibrationOptions.CalibrationMethod
+_CalibrationMethod = (
+    stablehlo_quant_config_pb2.CalibrationOptions.CalibrationMethod
+)
 
 _QuantizationComponent = (
     quant_opts_pb2.QuantizationComponentSpec.QuantizationComponent
@@ -81,7 +83,6 @@ _PER_CHANNEL_QUANTIZED_OPS = (
     'UniformQuantizedDotHybrid',
 )
 
-_DebuggerOptions = quant_opts_pb2.DebuggerOptions
 _DebuggerConfig = stablehlo_quant_config_pb2.DebuggerConfig
 
 # Lists of ops whose channel dimension should be changed if per_channel
@@ -345,25 +346,10 @@ class QuantizationOptionsTest(quantize_model_test_base.QuantizedModelTest):
           self._input_saved_model_path, quantization_options=options
       )
 
-  @test_util.run_in_graph_and_eager_modes
   def test_force_graph_mode_calibration(self):
-    input_type = dtypes.int32
-    input_placeholder = self._create_and_save_tf1_gather_model(
-        self._input_saved_model_path,
-        signature_key=signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY,
-        tags={tag_constants.SERVING},
-        input_key='x',
-        output_key='output',
-        input_type=input_type,
-    )
+    model = self.SimpleModel()
 
-    data_gen = self._create_data_generator(
-        input_key='x',
-        shape=input_placeholder.shape,
-        minval=0,
-        maxval=10,
-        dtype=input_type,
-    )
+    saved_model_save.save(model, self._input_saved_model_path)
 
     options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
@@ -382,7 +368,7 @@ class QuantizationOptionsTest(quantize_model_test_base.QuantizedModelTest):
         quantize_model.quantize(
             self._input_saved_model_path,
             quantization_options=options,
-            representative_dataset=data_gen,
+            representative_dataset=self._simple_model_data_gen(),
         )
       finally:
         # Restore the logger verbosity.
@@ -1177,8 +1163,12 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         quantization_options,
     )
     self.assertIsNotNone(converted_model)
-    self.assertSizeRatioLessThan(
-        self._output_saved_model_path, self._input_saved_model_path, 0.5
+    # Due to other meta data, the compression is not exactly 1/4.
+    self.assertLess(
+        testing.get_size_ratio(
+            self._output_saved_model_path, self._input_saved_model_path
+        ),
+        0.5,
     )
 
   def test_qat_vocab_table_lookup_model(self):
@@ -2015,15 +2005,22 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
 
     if target_opset == quant_opts_pb2.UNIFORM_QUANTIZED:
-      self.assertSizeRatioGreaterThan(
-          self._output_saved_model_path, self._input_saved_model_path, 0.68
+      self.assertGreater(
+          testing.get_size_ratio(
+              self._output_saved_model_path, self._input_saved_model_path
+          ),
+          0.68,
       )
       self.assertTrue(
           self._contains_op(output_graphdef, 'UniformQuantizedConvolution')
       )
     else:
-      self.assertSizeRatioLessThan(
-          self._output_saved_model_path, self._input_saved_model_path, 1 / 3
+      # Due to other meta data, the compression is not exactly 1/4.
+      self.assertLess(
+          testing.get_size_ratio(
+              self._output_saved_model_path, self._input_saved_model_path
+          ),
+          1 / 3,
       )
       if target_opset == quant_opts_pb2.XLA:
         self.assertTrue(self._contains_op(output_graphdef, 'XlaConvV2'))
@@ -2713,6 +2710,116 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertAllClose(new_outputs, got_outputs, atol=0.097)
     self.assertAllClose(new_outputs, expected_outputs, atol=0.057)
 
+  def test_reuse_calibration_data(self):
+    model = self._create_simple_gather_and_conv_model(
+        dtypes.int32, filter_shape=(2, 3, 3, 1024)
+    )
+    saved_model_save.save(model, self._input_saved_model_path)
+
+    data_gen = self._create_data_generator(
+        input_key='input_tensor',
+        shape=[50],
+        minval=0,
+        maxval=64,
+        dtype=dtypes.int32,
+    )
+
+    tags = {tag_constants.SERVING}
+
+    calibration_data_dir = self.create_tempdir('calibration_data').full_path
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            preset_method=_PresetMethod.METHOD_STATIC_RANGE_INT8
+        ),
+        tags=tags,
+        signature_keys=['serving_default'],
+        op_set=quant_opts_pb2.XLA,
+        force_graph_mode_calibration=True,
+        calibration_options=stablehlo_quant_config_pb2.CalibrationOptions(
+            calibration_method=_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX,
+            calibration_data_dir=calibration_data_dir,
+        ),
+    )
+
+    # Run quantization the first time, calibration is expected to be run.
+    with self.assertLogs(level='INFO') as info_logs:
+      # Save the logger verbosity.
+      prev_log_level = logging.get_verbosity()
+      logging.set_verbosity(logging.INFO)
+      try:
+        converted_model1 = quantize_model.quantize(
+            self._input_saved_model_path,
+            self._output_saved_model_path,
+            quantization_options,
+            representative_dataset=data_gen,
+        )
+      finally:
+        # Restore the logger verbosity.
+        logging.set_verbosity(prev_log_level)
+
+      self.assertNotEmpty(info_logs.records)
+      self.assertTrue(
+          self._any_log_contains(
+              'Calibration step is executed in graph mode.',
+              info_logs.records,
+          )
+      )
+      self.assertIsNotNone(converted_model1)
+      self.assertCountEqual(
+          converted_model1.signatures._signatures.keys(), {'serving_default'}
+      )
+
+      output_loader = saved_model_loader.SavedModelLoader(
+          self._output_saved_model_path
+      )
+      output_graphdef = output_loader.get_meta_graph_def_from_tags(
+          tags
+      ).graph_def
+      self.assertTrue(self._contains_op(output_graphdef, 'XlaConvV2'))
+
+    # Run quantization the first time, calibration is expected to be skipped.
+    with self.assertLogs(level='INFO') as info_logs:
+      # Save the logger verbosity.
+      prev_log_level = logging.get_verbosity()
+      logging.set_verbosity(logging.INFO)
+      try:
+        converted_model2 = quantize_model.quantize(
+            self._input_saved_model_path,
+            self._output_saved_model_path,
+            quantization_options,
+            representative_dataset=data_gen,
+            overwrite_output_directory=True,
+        )
+      finally:
+        # Restore the logger verbosity.
+        logging.set_verbosity(prev_log_level)
+
+      self.assertNotEmpty(info_logs.records)
+      self.assertFalse(
+          self._any_log_contains(
+              'Calibration step is executed in graph mode.',
+              info_logs.records,
+          )
+      )
+      self.assertIsNotNone(converted_model2)
+      self.assertCountEqual(
+          converted_model2.signatures._signatures.keys(), {'serving_default'}
+      )
+
+      # Expect two models to produce the same results.
+      test_data = ops.convert_to_tensor(
+          np.random.uniform(low=0, high=64, size=(32)).astype(
+              dtypes.int32.as_numpy_dtype
+          )
+      )
+      new_outputs_1 = converted_model1.signatures['serving_default'](
+          input_tensor=test_data
+      )['output']
+      new_outputs_2 = converted_model2.signatures['serving_default'](
+          input_tensor=test_data
+      )['output']
+      self.assertAllClose(new_outputs_1, new_outputs_2)
+
   @test_util.run_in_graph_and_eager_modes
   def test_function_alias_preserved(self):
     model = self._create_conv2d_model(
@@ -2974,12 +3081,19 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     )
 
     if expect_quantized_gather:
-      self.assertSizeRatioLessThan(
-          self._output_saved_model_path, self._input_saved_model_path, 1 / 3
+      # Due to other meta data, the compression is not exactly 1/4.
+      self.assertLess(
+          testing.get_size_ratio(
+              self._output_saved_model_path, self._input_saved_model_path
+          ),
+          1 / 3,
       )
     else:
-      self.assertSizeRatioGreaterThan(
-          self._output_saved_model_path, self._input_saved_model_path, 2 / 3
+      self.assertGreater(
+          testing.get_size_ratio(
+              self._output_saved_model_path, self._input_saved_model_path
+          ),
+          2 / 3,
       )
 
   @test_util.run_in_graph_and_eager_modes
@@ -3576,7 +3690,9 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         for _ in range(8)
     ]
 
-    with self.assertRaisesRegex(ValueError, 'Invalid representative dataset.'):
+    with self.assertRaisesRegex(
+        Exception, 'Representative dataset is not a mapping'
+    ):
       quantize_model.quantize(
           self._input_saved_model_path,
           output_directory=self._output_saved_model_path,
@@ -3931,8 +4047,8 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     )
 
     with self.assertRaisesRegex(
-        ValueError,
-        'Failed to run graph for post-training quantization calibration',
+        Exception,
+        'Invalid input keys for representative sample.',
     ):
       quantize_model.quantize(
           self._input_saved_model_path,
@@ -4875,12 +4991,19 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     )
 
     if target_opset == quant_opts_pb2.UNIFORM_QUANTIZED:
-      self.assertSizeRatioGreaterThan(
-          self._output_saved_model_path, self._input_saved_model_path, 0.65
+      self.assertGreater(
+          testing.get_size_ratio(
+              self._output_saved_model_path, self._input_saved_model_path
+          ),
+          0.65,
       )
     else:
-      self.assertSizeRatioLessThan(
-          self._output_saved_model_path, self._input_saved_model_path, 1 / 3
+      # Due to other meta data, the compression is not exactly 1/4.
+      self.assertLess(
+          testing.get_size_ratio(
+              self._output_saved_model_path, self._input_saved_model_path
+          ),
+          1 / 3,
       )
 
   @parameterized.named_parameters(
@@ -4929,8 +5052,11 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
 
     if target_opset == quant_opts_pb2.UNIFORM_QUANTIZED:
-      self.assertSizeRatioGreaterThan(
-          self._output_saved_model_path, self._input_saved_model_path, 0.65
+      self.assertGreater(
+          testing.get_size_ratio(
+              self._output_saved_model_path, self._input_saved_model_path
+          ),
+          0.65,
       )
       self.assertTrue(
           self._contains_op(
@@ -4938,8 +5064,12 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           )
       )
     else:
-      self.assertSizeRatioLessThan(
-          self._output_saved_model_path, self._input_saved_model_path, 1 / 3
+      # Due to other meta data, the compression is not exactly 1/4.
+      self.assertLess(
+          testing.get_size_ratio(
+              self._output_saved_model_path, self._input_saved_model_path
+          ),
+          1 / 3,
       )
       if target_opset == quant_opts_pb2.XLA:
         self.assertTrue(self._contains_op(output_graphdef, 'XlaConvV2'))
@@ -5095,14 +5225,20 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     if target_opset == quant_opts_pb2.UNIFORM_QUANTIZED:
       threshold = 0.45 if use_variable else 0.7
-      self.assertSizeRatioGreaterThan(
-          self._output_saved_model_path, self._input_saved_model_path, threshold
+      self.assertGreater(
+          testing.get_size_ratio(
+              self._output_saved_model_path, self._input_saved_model_path
+          ),
+          threshold,
       )
 
     else:
       threshold = 0.19 if use_variable else 0.42
-      self.assertSizeRatioLessThan(
-          self._output_saved_model_path, self._input_saved_model_path, threshold
+      self.assertLess(
+          testing.get_size_ratio(
+              self._output_saved_model_path, self._input_saved_model_path
+          ),
+          threshold,
       )
 
   @test_util.run_in_graph_and_eager_modes
@@ -5356,14 +5492,16 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         )
     )
     # Due to other meta data, the compression is not exactly 1/4.
-    self.assertSizeRatioLessThan(
-        self._output_saved_model_path,
-        self._input_saved_model_path,
-        threshold=0.5,
+    self.assertLess(
+        testing.get_size_ratio(
+            self._output_saved_model_path, self._input_saved_model_path
+        ),
+        0.5,
     )
 
   @parameterized.named_parameters(
       ('to_xla_per_tensor', quant_opts_pb2.XLA, False),
+      ('stablehlo_per_channel', quant_opts_pb2.STABLEHLO, True),
   )
   @test_util.run_in_graph_and_eager_modes
   def test_matmul_model(
@@ -5405,16 +5543,24 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     )
     output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
 
+    if target_opset == quant_opts_pb2.XLA:
+      self.assertTrue(self._contains_op(output_graphdef, 'XlaDotV2'))
+    elif target_opset == quant_opts_pb2.STABLEHLO:
+      # This is to verify the invocation of StableHLO quantizer works. More
+      # thorough functional tests are in StableHLO quantizer directory.
+      self.assertTrue(self._contains_op(output_graphdef, 'XlaCallModule'))
+
     # Due to other meta data, the compression is not exactly 1/4.
-    self.assertTrue(self._contains_op(output_graphdef, 'XlaDotV2'))
-    self.assertSizeRatioLessThan(
-        self._output_saved_model_path,
-        self._input_saved_model_path,
-        threshold=0.3,
+    self.assertLess(
+        testing.get_size_ratio(
+            self._output_saved_model_path, self._input_saved_model_path
+        ),
+        0.3,
     )
 
   @parameterized.named_parameters(
       ('to_xla_per_tensor', quant_opts_pb2.XLA, False),
+      ('stablehlo_per_channel', quant_opts_pb2.STABLEHLO, True),
       # TODO: b/289761265 - [Converter Component][TF-Quantizer] Improve Weight-
       # only Quantization
       # Enable this back once new weight-only quantizer is supported for per-
@@ -5467,13 +5613,14 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
 
     # Due to other meta data, the compression is not exactly 1/4.
-    self.assertSizeRatioLessThan(
-        self._output_saved_model_path,
-        self._input_saved_model_path,
-        threshold=0.3,
+    self.assertLess(
+        testing.get_size_ratio(
+            self._output_saved_model_path, self._input_saved_model_path
+        ),
+        0.3,
     )
 
-    if enable_per_channel_quantization:
+    if enable_per_channel_quantization and target_opset == quant_opts_pb2.XLA:
       per_channel_size_attr = attr_value_pb2.AttrValue(
           list=attr_value_pb2.AttrValue.ListValue(
               shape=[
@@ -5492,6 +5639,12 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
               output_graphdef, 'Const', '_output_shapes', per_channel_size_attr
           )
       )
+    if target_opset == quant_opts_pb2.XLA:
+      self.assertTrue(self._contains_op(output_graphdef, 'XlaConvV2'))
+    elif target_opset == quant_opts_pb2.STABLEHLO:
+      # This is to verify the invocation of StableHLO quantizer works. More
+      # thorough functional tests are in StableHLO quantizer directory.
+      self.assertTrue(self._contains_op(output_graphdef, 'XlaCallModule'))
 
     input_tensor = array_ops.constant(
         np.random.uniform(low=0, high=0.1, size=input_shape),
@@ -5559,10 +5712,11 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
     # Due to other meta data, the compression is not exactly 1/4.
     size_threshold = 0.5 if enable_per_channel_quantization else 0.32
-    self.assertSizeRatioLessThan(
-        self._output_saved_model_path,
-        self._input_saved_model_path,
-        threshold=size_threshold,
+    self.assertLess(
+        testing.get_size_ratio(
+            self._output_saved_model_path, self._input_saved_model_path
+        ),
+        size_threshold,
     )
 
     if enable_per_channel_quantization:
@@ -5657,8 +5811,12 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertCountEqual(
         converted_model.signatures._signatures.keys(), {'serving_default'}
     )
-    self.assertSizeRatioLessThan(
-        self._output_saved_model_path, self._input_saved_model_path, 0.3
+    # Due to other meta data, the compression is not exactly 1/4.
+    self.assertLess(
+        testing.get_size_ratio(
+            self._output_saved_model_path, self._input_saved_model_path
+        ),
+        0.3,
     )
 
   @parameterized.named_parameters(
@@ -5718,8 +5876,12 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     )
     output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
     self.assertTrue(self._contains_op(output_graphdef, 'XlaConvV2'))
-    self.assertSizeRatioLessThan(
-        self._output_saved_model_path, self._input_saved_model_path, 1 / 3
+    # Due to other meta data, the compression is not exactly 1/4.
+    self.assertLess(
+        testing.get_size_ratio(
+            self._output_saved_model_path, self._input_saved_model_path
+        ),
+        1 / 3,
     )
 
   @test_util.run_in_graph_and_eager_modes
@@ -5924,7 +6086,7 @@ class DebuggerTest(quantize_model_test_base.QuantizedModelTest):
             preset_method=_PresetMethod.METHOD_STATIC_RANGE_INT8
         ),
         op_set=quant_opts_pb2.XLA,
-        debugger_options=_DebuggerOptions(
+        debugger_config=_DebuggerConfig(
             debugger_type=_DebuggerConfig.DebuggerType.DEBUGGER_TYPE_WHOLE_MODEL,
             unquantized_dump_model_path=unquantized_dump_model_path,
             log_dir_path=log_dir_path,
@@ -6037,7 +6199,7 @@ class DebuggerTest(quantize_model_test_base.QuantizedModelTest):
             preset_method=_PresetMethod.METHOD_STATIC_RANGE_INT8
         ),
         op_set=target_opset,
-        debugger_options=_DebuggerOptions(
+        debugger_config=_DebuggerConfig(
             debugger_type=debugger_type,
             log_dir_path=log_dir_path,
         ),
@@ -6149,34 +6311,34 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
               quant_opts_pb2.UNIFORM_QUANTIZED,
           ],
           'calibration_options': [
-              quant_opts_pb2.CalibrationOptions(
+              stablehlo_quant_config_pb2.CalibrationOptions(
                   calibration_method=_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX
               ),
-              quant_opts_pb2.CalibrationOptions(
+              stablehlo_quant_config_pb2.CalibrationOptions(
                   calibration_method=_CalibrationMethod.CALIBRATION_METHOD_AVERAGE_MIN_MAX
               ),
-              quant_opts_pb2.CalibrationOptions(
+              stablehlo_quant_config_pb2.CalibrationOptions(
                   calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE,
-                  calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
-                      initial_num_bins=10,
+                  calibration_parameters=stablehlo_quant_config_pb2.CalibrationOptions.CalibrationParameters(
+                      num_bins=32,
                   ),
               ),
-              quant_opts_pb2.CalibrationOptions(
+              stablehlo_quant_config_pb2.CalibrationOptions(
                   calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE,
-                  calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
-                      initial_num_bins=10,
+                  calibration_parameters=stablehlo_quant_config_pb2.CalibrationOptions.CalibrationParameters(
+                      num_bins=32,
                   ),
               ),
-              quant_opts_pb2.CalibrationOptions(
+              stablehlo_quant_config_pb2.CalibrationOptions(
                   calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY,
-                  calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
-                      initial_num_bins=10,
+                  calibration_parameters=stablehlo_quant_config_pb2.CalibrationOptions.CalibrationParameters(
+                      num_bins=32,
                   ),
               ),
-              quant_opts_pb2.CalibrationOptions(
+              stablehlo_quant_config_pb2.CalibrationOptions(
                   calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC,
-                  calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
-                      initial_num_bins=10,
+                  calibration_parameters=stablehlo_quant_config_pb2.CalibrationOptions.CalibrationParameters(
+                      num_bins=32,
                   ),
               ),
           ],
@@ -6186,7 +6348,7 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
   def test_conv_ptq_model_by_calibration_options(
       self,
       target_opset: quant_opts_pb2.OpSet,
-      calibration_options: quant_opts_pb2.CalibrationOptions,
+      calibration_options: stablehlo_quant_config_pb2.CalibrationOptions,
   ):
     has_bias = True
     has_batch_norm = True
@@ -6308,22 +6470,22 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
   @parameterized.named_parameters(
       {
           'testcase_name': 'with_calibration_method_unspecified',
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
+          'calibration_options': stablehlo_quant_config_pb2.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_UNSPECIFIED
           ),
-          'default_calibration_options': quant_opts_pb2.CalibrationOptions(
+          'default_calibration_options': stablehlo_quant_config_pb2.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX
           ),
       },
       {
           'testcase_name': 'with_histogram_percentile',
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
+          'calibration_options': stablehlo_quant_config_pb2.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE
           ),
-          'default_calibration_options': quant_opts_pb2.CalibrationOptions(
+          'default_calibration_options': stablehlo_quant_config_pb2.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_PERCENTILE,
-              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=256,
+              calibration_parameters=stablehlo_quant_config_pb2.CalibrationOptions.CalibrationParameters(
+                  num_bins=512,
                   min_percentile=0.001,
                   max_percentile=99.999,
               ),
@@ -6331,37 +6493,37 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
       },
       {
           'testcase_name': 'with_histogram_mse_bruteforce',
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
+          'calibration_options': stablehlo_quant_config_pb2.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE
           ),
-          'default_calibration_options': quant_opts_pb2.CalibrationOptions(
+          'default_calibration_options': stablehlo_quant_config_pb2.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE,
-              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=256
+              calibration_parameters=stablehlo_quant_config_pb2.CalibrationOptions.CalibrationParameters(
+                  num_bins=512
               ),
           ),
       },
       {
           'testcase_name': 'with_histogram_mse_max_frequency',
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
+          'calibration_options': stablehlo_quant_config_pb2.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY
           ),
-          'default_calibration_options': quant_opts_pb2.CalibrationOptions(
+          'default_calibration_options': stablehlo_quant_config_pb2.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY,
-              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=256
+              calibration_parameters=stablehlo_quant_config_pb2.CalibrationOptions.CalibrationParameters(
+                  num_bins=512
               ),
           ),
       },
       {
           'testcase_name': 'with_histogram_mse_symmetric',
-          'calibration_options': quant_opts_pb2.CalibrationOptions(
+          'calibration_options': stablehlo_quant_config_pb2.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC
           ),
-          'default_calibration_options': quant_opts_pb2.CalibrationOptions(
+          'default_calibration_options': stablehlo_quant_config_pb2.CalibrationOptions(
               calibration_method=_CalibrationMethod.CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC,
-              calibration_parameters=quant_opts_pb2.CalibrationOptions.CalibrationParameters(
-                  initial_num_bins=256
+              calibration_parameters=stablehlo_quant_config_pb2.CalibrationOptions.CalibrationParameters(
+                  num_bins=512
               ),
           ),
       },
@@ -6369,8 +6531,8 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
   @test_util.run_in_graph_and_eager_modes
   def test_default_calibration_options(
       self,
-      calibration_options: quant_opts_pb2.CalibrationOptions,
-      default_calibration_options: quant_opts_pb2.CalibrationOptions,
+      calibration_options: stablehlo_quant_config_pb2.CalibrationOptions,
+      default_calibration_options: stablehlo_quant_config_pb2.CalibrationOptions,
   ):
     quant_opts = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
@@ -6388,8 +6550,8 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
         default_calibration_options.calibration_method,
     )
     self.assertEqual(
-        quant_opts.calibration_options.calibration_parameters.initial_num_bins,
-        default_calibration_options.calibration_parameters.initial_num_bins,
+        quant_opts.calibration_options.calibration_parameters.num_bins,
+        default_calibration_options.calibration_parameters.num_bins,
     )
     self.assertEqual(
         quant_opts.calibration_options.calibration_parameters.min_percentile,
@@ -6499,7 +6661,7 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
         signature_keys=['serving_default'],
         op_set=target_opset,
         enable_per_channel_quantization=False,
-        calibration_options=quant_opts_pb2.CalibrationOptions(
+        calibration_options=stablehlo_quant_config_pb2.CalibrationOptions(
             calibration_method=_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX,
         ),
     )
@@ -6526,7 +6688,7 @@ class CalibrationOptionsTest(quantize_model_test_base.QuantizedModelTest):
         signature_keys=['serving_default'],
         op_set=target_opset,
         enable_per_channel_quantization=False,
-        calibration_options=quant_opts_pb2.CalibrationOptions(
+        calibration_options=stablehlo_quant_config_pb2.CalibrationOptions(
             calibration_method=_CalibrationMethod.CALIBRATION_METHOD_AVERAGE_MIN_MAX,
         ),
     )
@@ -6878,8 +7040,11 @@ class SelectiveQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     # The Conv2D op shouldn't be quantized as it has no FakeQuant on input.
     self.assertTrue(self._contains_op(graphdef, 'Conv2D'))
     # If the Gather op is quantized, input_model_size / output_model_size > 2.
-    self.assertSizeRatioLessThan(
-        self._input_saved_model_path, self._output_saved_model_path, 1.15
+    self.assertLess(
+        testing.get_size_ratio(
+            self._input_saved_model_path, self._output_saved_model_path
+        ),
+        1.15,
     )
 
 

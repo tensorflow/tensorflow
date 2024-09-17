@@ -161,7 +161,7 @@ class DeserializeSparseOp : public OpKernel {
 
     // Dimension 0 is the primary dimension.
     int rank = shape.dims();
-    gtl::InlinedVector<int64_t, 8> std_order(rank);
+    absl::InlinedVector<int64_t, 8UL> std_order(rank);
     std::iota(std_order.begin(), std_order.end(), 0);
 
     std::vector<SparseTensor> tensors;

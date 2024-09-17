@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/protobuf_util.h"
+#include "xla/service/dump.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/hlo_proto_util.h"
@@ -109,7 +110,8 @@ absl::StatusOr<ModuleWithInputs> GetModuleAndInputData(
   }
   LOG(INFO) << input_file << " is not HloProto. Trying HLO text.\n";
   std::string hlo_string;
-  Status to_string_status = tsl::ReadFileToString(env, input_file, &hlo_string);
+  absl::Status to_string_status =
+      tsl::ReadFileToString(env, input_file, &hlo_string);
   if (!to_string_status.ok()) {
     LOG(ERROR) << input_file << " problem in reading file to string: "
                << to_string_status.message();
@@ -130,13 +132,13 @@ absl::StatusOr<ModuleWithInputs> GetModuleAndInputData(
 }
 
 // Outputs the given HloModule as HloProto to the given file.
-Status DumpHloModule(HloModule* module, const std::string& file_name,
-                     absl::string_view dir_path,
-                     absl::string_view output_format) {
+absl::Status DumpHloModule(HloModule* module, const std::string& file_name,
+                           absl::string_view dir_path,
+                           absl::string_view output_format) {
   HloProto proto = MakeHloProto(*module);
   if (output_format == "hlo") {
     tsl::Env* env = tsl::Env::Default();
-    TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(std::string(dir_path)));
+    TF_RETURN_IF_ERROR(CreateDirIfNeeded(std::string(dir_path), env));
     std::string file_path =
         tsl::io::JoinPath(dir_path, SanitizeFileName(file_name)) + ".hlo";
     LOG(INFO) << "Dumped HLO text to " << file_path;
@@ -147,15 +149,15 @@ Status DumpHloModule(HloModule* module, const std::string& file_name,
                              .set_compact_operands(false))));
   } else if (output_format == "pb") {
     std::string path;
-    TF_RETURN_IF_ERROR(protobuf_util::DumpProtoToDirectory(
-        proto, std::string(dir_path), file_name, &path));
+    TF_RETURN_IF_ERROR(
+        DumpProtoToDirectory(proto, std::string(dir_path), file_name, &path));
     LOG(INFO) << "Dumped HLO module proto to " << path;
 
   } else {
     LOG(FATAL) << "Unexpected output format: " << output_format;
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -347,7 +349,7 @@ void RunBisect(std::unique_ptr<BisectRunner> runner, bool all_computations,
   CHECK(bisect_status.ok()) << bisect_status.status().message();
 
   std::unique_ptr<HloModule> new_module = std::move(bisect_status.value());
-  Status dump_status =
+  absl::Status dump_status =
       DumpHloModule(new_module.get(), new_module->name() + "_trimmed",
                     dump_path, output_format);
   CHECK(dump_status.ok()) << dump_status.message();
@@ -368,10 +370,10 @@ absl::StatusOr<ModuleWithInputs> GetVerifiedModuleAndInputData(
       }
     }
   }
-  Status verified_status = HloVerifier(/*layout_sensitive=*/false,
-                                       /*allow_mixed_precision=*/false)
-                               .Run(module.get())
-                               .status();
+  absl::Status verified_status = HloVerifier(/*layout_sensitive=*/false,
+                                             /*allow_mixed_precision=*/false)
+                                     .Run(module.get())
+                                     .status();
   if (!verified_status.ok()) {
     LOG(ERROR) << "Failed to verify hlo module " << verified_status.message();
     return verified_status;
