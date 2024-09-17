@@ -217,6 +217,12 @@ class NVPTXCompilationTests
     debug_options->set_xla_llvm_force_inline_before_split(false);
   }
 
+  DebugOptions GetDebugOptionsForTest() override {
+    auto debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_autotune_level(0);
+    return debug_options;
+  }
+
   void SetUp() override {
     HloTestBase::SetUp();
     std::string_view name = std::get<0>(GetParam());
@@ -283,10 +289,17 @@ TEST_P(NVPTXCompilationTests, CompareBinaryOutput) {
   absl::StatusOr<std::unique_ptr<Executable>> executable =
       compile(compilation_method, linking_method);
 
-  constexpr PtxLinkingMethod kReferenceLinkingMethod =
-      PtxLinkingMethod::kNvJitLink;
+  // Binaries produced in a separate linking step differ from binaries produced
+  // with combined compilation/linking. Therefore we only enable linking in the
+  // reference build when the build under test also uses a separate linking
+  // step.
+  const PtxLinkingMethod reference_linking_method =
+      (linking_method == PtxLinkingMethod::kNone)
+          ? PtxLinkingMethod::kNone
+          : PtxLinkingMethod::kNvJitLink;
+
   absl::StatusOr<std::unique_ptr<Executable>> reference =
-      compile(PtxCompilationMethod::kPtxas, kReferenceLinkingMethod);
+      compile(PtxCompilationMethod::kPtxas, reference_linking_method);
 
   EXPECT_THAT(executable, tsl::testing::IsOkAndHolds(::testing::NotNull()));
   EXPECT_THAT(reference, tsl::testing::IsOkAndHolds(::testing::NotNull()));
@@ -349,7 +362,7 @@ TEST_P(NVPTXCompilationTests, CompareBinaryOutput) {
   TF_ASSERT_OK_AND_ASSIGN(auto reference_text_sections,
                           get_text_sections(reference_binary));
 
-  if (linking_method == kReferenceLinkingMethod) {
+  if (linking_method == reference_linking_method) {
     EXPECT_THAT(executable_text_sections,
                 ::testing::Eq(reference_text_sections));
     return;
