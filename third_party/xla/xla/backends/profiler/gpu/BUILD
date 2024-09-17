@@ -368,6 +368,9 @@ xla_test(
     ],
     deps = [
         ":cupti_buffer_events",
+        ":cupti_collector",
+        ":cupti_tracer",
+        ":cupti_utils",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],
