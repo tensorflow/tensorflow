@@ -555,6 +555,7 @@ cc_library(
         ":constant_value",
         ":hlo_dce",
         ":hlo_parser",
+        ":hlo_pass",
         ":tuple_points_to_analysis",
         ":value_range",
         "//xla:comparison_util",

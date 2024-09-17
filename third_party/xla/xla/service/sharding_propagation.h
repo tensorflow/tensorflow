@@ -153,6 +153,27 @@ class ShardingPropagation : public HloModulePass {
       const CustomCallShardingHelper* sharding_helper,
       const CallGraph& call_graph);
 
+  absl::StatusOr<bool> RunToFixPoint(
+      int64_t aggressiveness, bool propagate_shard_group,
+      const ComputationMap& computation_map,
+      const absl::flat_hash_set<const HloInstruction*>& provided_shardings,
+      const CallGraph& call_graph, HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads,
+      absl::flat_hash_map<const HloInstruction*, std::vector<int64_t>>&
+          unspecified_dims,
+      absl::flat_hash_map<HloInstruction*, int64_t>&
+          instruction_to_shard_group_id,
+      absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>&
+          shard_group_id_to_shard_as_group,
+      absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>&
+          shard_group_id_to_shard_like_group,
+      int64_t& iterations);
+
+  // Gets instructions that are related through a computation and need to share
+  // the same sharding.
+  std::vector<HloInstruction*> GetRelatedInstructions(
+      HloInstruction* inst, const ComputationMap& computation_map);
+
   std::unique_ptr<CustomCallShardingHelper> sharding_helper_;
   bool is_spmd_;
   bool propagate_metadata_;
