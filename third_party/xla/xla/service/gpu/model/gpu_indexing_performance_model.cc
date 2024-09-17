@@ -367,14 +367,15 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledHloComputation(
 
     const HloInstruction* hlo = tiled_hlo->hlo();
 
-    if (hlo->opcode() == HloOpcode::kConcatenate) {
-      // TODO(b/351342921): Add propagation of the number of blocks that read or
-      // compute a tile. Concatenate is the only operation that may change that.
-      return absl::FailedPreconditionError(
-          "Concatenate is not supported by the indexing cost model.");
-    }
-
     if (fusion_adaptor.ContainsInstruction(hlo)) {
+      if (hlo->opcode() == HloOpcode::kConcatenate) {
+        // TODO(b/351342921): Add propagation of the number of blocks that read
+        // or compute a tile. Concatenate is the only operation that may change
+        // that.
+        return absl::FailedPreconditionError(
+            "Concatenate is not supported by the indexing cost model.");
+      }
+
       // Total number of elements computed for this tile across all blocks.
       //
       // Even if real `tile_size` is smaller than `padded_tile_size`, SM will

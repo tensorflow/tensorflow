@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 
@@ -383,6 +384,38 @@ ENTRY main {
   EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.read_time), 183, 1);
   EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.compute_time), 39, 1);
   EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.exec_time), 185, 1);
+}
+
+// TODO(b/351342921): Remove this test once there is no special filter for
+// concatenate in Cost Model.
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_ConcatenateOperandIsSupported) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+fusion {
+  param_0 = f32[32,64] parameter(0)
+  param_1 = f32[32,64] parameter(1)
+  ROOT subtract = f32[32,64] subtract(param_0, param_1)
+}
+
+ENTRY main {
+  param_0 = f32[32,16] parameter(0)
+  param_1 = f32[32,48] parameter(1)
+  param_2 = f32[32,64] parameter(2)
+  concatenate = f32[32,64] concatenate(param_0, param_1), dimensions={1}
+  ROOT fusion = f32[32,64] fusion(concatenate, param_2), kind=kCustom, calls=fusion
+})"));
+
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  LaunchDimensions launch_dimensions{8, WarpSize()};
+
+  auto result = indexing_cost_model_.EstimateRunTimeForTiledFusion(
+      *fusion_adaptor, launch_dimensions, /*output_tile_sizes=*/{16, 16});
+
+  TF_EXPECT_OK(result.status());
 }
 
 TEST_F(GpuIndexingPerformanceModelTest,
