@@ -870,19 +870,23 @@ double ComputeSortCommunicationCost(const int64_t sort_dim,
 }
 
 // Enumerate all 1d partition strategies.
-void EnumerateAll1DPartition(const HloInstruction* ins, const Shape& shape,
-                             const DeviceMesh& device_mesh,
-                             const ClusterEnvironment& cluster_env,
-                             const StrategyMap& strategy_map,
-                             const bool only_allow_divisible,
-                             const std::string& suffix,
-                             const CallGraph& call_graph,
-                             StrategyGroup& strategy_group) {
+void EnumerateAll1DPartition(
+    const HloInstruction* ins, const Shape& shape,
+    const DeviceMesh& device_mesh, const ClusterEnvironment& cluster_env,
+    const StrategyMap& strategy_map, const bool only_allow_divisible,
+    bool allow_shardings_small_dims_across_many_devices,
+    const std::string& suffix, const CallGraph& call_graph,
+    StrategyGroup& strategy_group) {
   for (int64_t i = 0; i < shape.rank(); ++i) {
     for (int64_t j = 0; j < device_mesh.num_dimensions(); ++j) {
-      if (device_mesh.dim(j) == 1 || shape.dimensions(i) < device_mesh.dim(j) ||
+      bool small_dims_sharding_check =
+          !allow_shardings_small_dims_across_many_devices &&
+          shape.dimensions(i) < device_mesh.dim(j);
+      bool divisibility_check =
           (only_allow_divisible &&
-           !IsDivisible(shape.dimensions(i), device_mesh.dim(j)))) {
+           !IsDivisible(shape.dimensions(i), device_mesh.dim(j)));
+      if (device_mesh.dim(j) == 1 || small_dims_sharding_check ||
+          divisibility_check) {
         continue;
       }
 
@@ -952,16 +956,14 @@ void BuildStrategyAndCostForOp(const HloInstruction* ins, const Shape& shape,
                                absl::Span<const int64_t> tensor_dims,
                                StrategyGroup& strategy_group);
 
-void EnumerateAllPartition(const HloInstruction* ins, const Shape& shape,
-                           const DeviceMesh& device_mesh,
-                           const ClusterEnvironment& cluster_env,
-                           const StrategyMap& strategy_map,
-                           const InstructionBatchDimMap& batch_dim_map,
-                           const bool only_allow_divisible,
-                           const CallGraph& call_graph,
-                           const int64_t partition_dimensions,
-                           const std::vector<int64_t>& tensor_dims,
-                           StrategyGroup& strategy_group) {
+void EnumerateAllPartition(
+    const HloInstruction* ins, const Shape& shape,
+    const DeviceMesh& device_mesh, const ClusterEnvironment& cluster_env,
+    const StrategyMap& strategy_map,
+    const InstructionBatchDimMap& batch_dim_map, bool only_allow_divisible,
+    bool allow_shardings_small_dims_across_many_devices,
+    const CallGraph& call_graph, const int64_t partition_dimensions,
+    const std::vector<int64_t>& tensor_dims, StrategyGroup& strategy_group) {
   const auto tensor_dims_size = tensor_dims.size();
   if (tensor_dims_size == partition_dimensions) {
     BuildStrategyAndCostForOp(ins, shape, device_mesh, cluster_env,
@@ -980,7 +982,8 @@ void EnumerateAllPartition(const HloInstruction* ins, const Shape& shape,
     if ((batch_dim != -1 && batch_dim != i) || tensor_it != tensor_dims.end()) {
       continue;
     }
-    if (shape.dimensions(i) < device_mesh.dim(tensor_dims_size)) {
+    if (!allow_shardings_small_dims_across_many_devices &&
+        shape.dimensions(i) < device_mesh.dim(tensor_dims_size)) {
       continue;
     }
     if (only_allow_divisible &&
@@ -989,10 +992,10 @@ void EnumerateAllPartition(const HloInstruction* ins, const Shape& shape,
     }
     std::vector<int64_t> next_tensor_dims = tensor_dims;
     next_tensor_dims.push_back(i);
-    EnumerateAllPartition(ins, shape, device_mesh, cluster_env, strategy_map,
-                          batch_dim_map, only_allow_divisible, call_graph,
-                          partition_dimensions, next_tensor_dims,
-                          strategy_group);
+    EnumerateAllPartition(
+        ins, shape, device_mesh, cluster_env, strategy_map, batch_dim_map,
+        only_allow_divisible, allow_shardings_small_dims_across_many_devices,
+        call_graph, partition_dimensions, next_tensor_dims, strategy_group);
   }
 }
 
@@ -1324,14 +1327,17 @@ void FillAllStrategiesForArray(
     const bool create_partially_replicated_strategies,
     StrategyGroup& strategy_group) {
   if (create_partially_replicated_strategies || cluster_env.IsDeviceMesh1D()) {
-    EnumerateAll1DPartition(ins, shape, cluster_env.device_mesh_, cluster_env,
-                            strategy_map, only_allow_divisible, "", call_graph,
-                            strategy_group);
+    EnumerateAll1DPartition(
+        ins, shape, cluster_env.device_mesh_, cluster_env, strategy_map,
+        only_allow_divisible,
+        option.allow_shardings_small_dims_across_many_devices, "", call_graph,
+        strategy_group);
   }
   // Split 2 dims
   if (cluster_env.IsDeviceMesh2D()) {
     EnumerateAllPartition(ins, shape, cluster_env.device_mesh_, cluster_env,
                           strategy_map, batch_dim_map, only_allow_divisible,
+                          option.allow_shardings_small_dims_across_many_devices,
                           call_graph, /*partitions*/ 2, /*tensor_dims*/ {},
                           strategy_group);
   }
@@ -1339,8 +1345,9 @@ void FillAllStrategiesForArray(
   if (cluster_env.IsDeviceMesh3D()) {
     EnumerateAllPartition(ins, shape, cluster_env.device_mesh_, cluster_env,
                           strategy_map, batch_dim_map, only_allow_divisible,
-                          call_graph, /*partitions*/ 3, /*tensor_dims*/ {},
-                          strategy_group);
+                          option.allow_shardings_small_dims_across_many_devices,
+                          call_graph,
+                          /*partitions*/ 3, /*tensor_dims*/ {}, strategy_group);
   }
 
   if (option.allow_mixed_mesh_shape && cluster_env.IsDeviceMesh2D()) {
@@ -1350,9 +1357,11 @@ void FillAllStrategiesForArray(
     }
 
     // Split 1 dim, but for 1d mesh
-    EnumerateAll1DPartition(ins, shape, cluster_env.device_mesh_1d_,
-                            cluster_env, strategy_map, only_allow_divisible,
-                            " 1d", call_graph, strategy_group);
+    EnumerateAll1DPartition(
+        ins, shape, cluster_env.device_mesh_1d_, cluster_env, strategy_map,
+        only_allow_divisible,
+        option.allow_shardings_small_dims_across_many_devices, " 1d",
+        call_graph, strategy_group);
   }
   if (create_replicated_strategies || strategy_group.GetStrategies().empty()) {
     AddReplicatedStrategy(ins, shape, cluster_env, strategy_map,
@@ -1394,7 +1403,6 @@ absl::StatusOr<std::unique_ptr<StrategyGroup>> CreateAllStrategiesGroup(
   } else if (shape.IsArray()) {
     strategy_group = CreateLeafStrategyGroup(instruction_id, ins, strategy_map,
                                              strategy_groups);
-
     FillAllStrategiesForArray(
         ins, shape, cluster_env, strategy_map, option, replicated_penalty,
         batch_dim_map, call_graph, only_allow_divisible,

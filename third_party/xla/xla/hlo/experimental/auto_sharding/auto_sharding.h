@@ -306,14 +306,13 @@ std::unique_ptr<StrategyGroup> CreateReshapeStrategies(
 std::unique_ptr<StrategyGroup> CreateTupleStrategyGroup(size_t instruction_id);
 
 // Enumerate all 1d partition strategies.
-void EnumerateAll1DPartition(const HloInstruction* ins, const Shape& shape,
-                             const DeviceMesh& device_mesh,
-                             const ClusterEnvironment& cluster_env,
-                             const StrategyMap& strategy_map,
-                             bool only_allow_divisible,
-                             const std::string& suffix,
-                             const CallGraph& call_graph,
-                             StrategyGroup& strategy_group);
+void EnumerateAll1DPartition(
+    const HloInstruction* ins, const Shape& shape,
+    const DeviceMesh& device_mesh, const ClusterEnvironment& cluster_env,
+    const StrategyMap& strategy_map, bool only_allow_divisible,
+    bool allow_shardings_small_dims_across_many_devices,
+    const std::string& suffix, const CallGraph& call_graph,
+    StrategyGroup& strategy_group);
 
 // Enumerate all partitions recursively.
 void EnumerateAllPartition(
@@ -321,6 +320,7 @@ void EnumerateAllPartition(
     const DeviceMesh& device_mesh, const ClusterEnvironment& cluster_env,
     const StrategyMap& strategy_map,
     const InstructionBatchDimMap& batch_dim_map, bool only_allow_divisible,
+    bool allow_shardings_small_dims_across_many_devices,
     const CallGraph& call_graph, int64_t partition_dimensions,
     const std::vector<int64_t>& tensor_dims, StrategyGroup& strategy_group);
 

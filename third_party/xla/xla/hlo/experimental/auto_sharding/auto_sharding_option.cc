@@ -151,9 +151,6 @@ std::string AutoShardingOption::ToString() const {
 // TODO(pratikf) The device mesh shape handling in this function currently does
 // not work when try_multiple_mesh_shapes is true. Fix it.
 absl::Status AutoShardingOption::CheckAndSetup() {
-  only_allow_divisible_input_output = true;
-  only_allow_divisible_intermediate = false;
-
   if (device_mesh_shape.empty()) {
     return absl::OutOfRangeError(
         "device_mesh_shape is empty and it needs to be specified.");

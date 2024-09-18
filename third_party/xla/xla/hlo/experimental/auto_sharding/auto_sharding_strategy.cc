@@ -271,8 +271,8 @@ BuildStrategyAndCost(
     bool is_follow_necessary_for_correctness = false;
     switch (opcode) {
       case HloOpcode::kParameter: {
-        auto it = while_body_args_to_input_tuple.find(ins);
-        if (it != while_body_args_to_input_tuple.end()) {
+        if (auto it = while_body_args_to_input_tuple.find(ins);
+            it != while_body_args_to_input_tuple.end()) {
           const HloInstruction* while_input_tuple = it->second;
           const StrategyGroup* while_input_tuple_strategy_group =
               strategy_map.at(while_input_tuple).get();
@@ -293,16 +293,16 @@ BuildStrategyAndCost(
             child_strategies->tuple_element_idx = i;
             strategy_group->AddChild(std::move(child_strategies));
           }
-        } else {
-          strategy_group =
-              CreateAllStrategiesGroup(
-                  ins, ins->shape(), instruction_id, strategy_groups,
-                  cluster_env, strategy_map, option, replicated_penalty,
-                  batch_dim_map, call_graph, only_allow_divisible,
-                  option.allow_replicated_parameters,
-                  /* create_partially_replicated_strategies */ true)
-                  .value();
+          break;
         }
+        strategy_group =
+            CreateAllStrategiesGroup(
+                ins, ins->shape(), instruction_id, strategy_groups, cluster_env,
+                strategy_map, option, replicated_penalty, batch_dim_map,
+                call_graph, only_allow_divisible,
+                option.allow_replicated_parameters,
+                /* create_partially_replicated_strategies */ true)
+                .value();
         break;
       }
       case HloOpcode::kRngBitGenerator:

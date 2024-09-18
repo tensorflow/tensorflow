@@ -835,7 +835,8 @@ ENTRY %elementwise {
   EXPECT_TRUE(changed);
 }
 
-TEST_F(AutoShardingTest, AllowShardingsSmallDimsAcrossManyDevicesTest) {
+TEST_F(AutoShardingTest,
+       AllowShardingsSmallDimsAcrossManyDevicesForFollowersTest) {
   constexpr absl::string_view kHloString = R"(
 HloModule module
 
@@ -854,7 +855,9 @@ ENTRY %elementwise {
               .enable = true,
               .preserve_shardings =
                   AutoShardingOption::PreserveShardingsType::kKeepAllShardings,
-              .device_mesh_shape = {128, 1},
+              .solve_nd_sharding_iteratively = false,
+              .only_allow_divisible_input_output = false,
+              .device_mesh_shape = {16, 16},
               .device_mesh_alpha = {1.0, 1.0},
               .device_mesh_beta = {0.01, 1.0},
               .allow_shardings_small_dims_across_many_devices = true})
@@ -873,7 +876,9 @@ ENTRY %elementwise {
               .enable = true,
               .preserve_shardings =
                   AutoShardingOption::PreserveShardingsType::kKeepAllShardings,
-              .device_mesh_shape = {128, 1},
+              .solve_nd_sharding_iteratively = false,
+              .only_allow_divisible_input_output = false,
+              .device_mesh_shape = {16, 16},
               .device_mesh_alpha = {1.0, 1.0},
               .device_mesh_beta = {0.01, 1.0},
               .allow_shardings_small_dims_across_many_devices = false})
@@ -882,6 +887,69 @@ ENTRY %elementwise {
   EXPECT_TRUE(changed);
   add1 = FindInstruction(module.get(), "add.1");
   EXPECT_THAT(add1, Not(op::Sharding("{devices=[16,16]<=[256]}")));
+}
+
+TEST_F(AutoShardingTest,
+       AllowShardingsSmallDimsAcrossManyDevicesForSourcesTest) {
+  constexpr absl::string_view kHloString = R"(
+HloModule module
+
+ENTRY %elementwise {
+  parameter.1 = bf16[8,1024]{1,0} parameter(0)
+  add.1 = bf16[8,1024]{1,0} add(parameter.1, parameter.1), sharding={devices=[16,1,16]<=[256] last_tile_dim_replicate}
+  ROOT copy.45 = bf16[8,1024]{1,0} copy(add.1)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      AutoSharding(
+          /* option */ AutoShardingOption{
+              .enable = true,
+              .preserve_shardings =
+                  AutoShardingOption::PreserveShardingsType::kKeepAllShardings,
+              .allow_replicated_parameters = false,
+              .allow_mixed_mesh_shape = false,
+              .solve_nd_sharding_iteratively = false,
+              .only_allow_divisible_input_output = false,
+              .device_mesh_shape = {16, 16},
+              .device_mesh_alpha = {1.0, 1.0},
+              .device_mesh_beta = {0.01, 1.0},
+              .allow_shardings_small_dims_across_many_devices = true})
+          .Run(module.get()));
+  VLOG(10) << module->ToString();
+  EXPECT_TRUE(changed);
+  const HloInstruction* parameter1 =
+      FindInstruction(module.get(), "parameter.1");
+  EXPECT_THAT(
+      parameter1,
+      op::Sharding("{devices=[16,1,16]<=[256] last_tile_dim_replicate}"));
+
+  // Test with allow_shardings_small_dims_across_many_devices = False
+  TF_ASSERT_OK_AND_ASSIGN(module, ParseAndReturnVerifiedModule(kHloString));
+  TF_ASSERT_OK_AND_ASSIGN(
+      changed,
+      AutoSharding(
+          /* option */ AutoShardingOption{
+              .enable = true,
+              .preserve_shardings =
+                  AutoShardingOption::PreserveShardingsType::kKeepAllShardings,
+              .allow_replicated_parameters = false,
+              .allow_mixed_mesh_shape = false,
+              .solve_nd_sharding_iteratively = false,
+              .only_allow_divisible_input_output = false,
+              .device_mesh_shape = {16, 16},
+              .device_mesh_alpha = {1.0, 1.0},
+              .device_mesh_beta = {0.01, 1.0},
+              .allow_shardings_small_dims_across_many_devices = false})
+          .Run(module.get()));
+  VLOG(10) << module->ToString();
+  EXPECT_TRUE(changed);
+  parameter1 = FindInstruction(module.get(), "parameter.1");
+  EXPECT_THAT(
+      parameter1,
+      Not(op::Sharding("{devices=[16,1,16]<=[256] last_tile_dim_replicate}")));
 }
 
 TEST_F(AutoShardingTest, RngBitGeneratorArrayInput) {
