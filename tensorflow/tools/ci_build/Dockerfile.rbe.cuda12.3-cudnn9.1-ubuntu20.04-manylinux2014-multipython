@@ -8,7 +8,7 @@
 #  --tag "gcr.io/tensorflow-testing/nosla-cuda12.3-cudnn9.1-ubuntu20.04-manylinux2014-multipython" .
 # $ docker push gcr.io/tensorflow-testing/nosla-cuda12.3-cudnn9.1-ubuntu20.04-manylinux2014-multipython
 
-FROM gcr.io/tensorflow-sigs/build@sha256:52420ff74ce5179fed76d72ac37dafeae3d111a3e7862950ce186c841876e254
+FROM gcr.io/tensorflow-sigs/build@sha256:b6f572a897a69fa3311773f949b9aa9e81bc393e4fbe2c0d56d8afb03a6de080
 
 ENV DEBIAN_FRONTEND=noninteractive
 
