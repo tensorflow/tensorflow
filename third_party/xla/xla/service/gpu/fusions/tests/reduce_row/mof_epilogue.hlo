@@ -28,16 +28,16 @@ fusion {
   ROOT tuple = (f32[8], f32[8], f32[8]) tuple(log, neg, abs)
 }
 
-// CHECK-DAG: shuffle_reduce @add_add
-// CHECK-DAG: shuffle_reduce @mul_mul
+// CHECK-DAG: shuffle_reduce(%{{.*}}) to 16 combiner=@add_add
+// CHECK-DAG: shuffle_reduce(%{{.*}}) to 16 combiner=@mul_mul
 // CHECK: allocate_shared
 // CHECK: allocate_shared
 // CHECK: sync_threads
-// CHECK-DAG: %[[ADDED:.*]] = xla_gpu.shuffle_reduce @add_add
-// CHECK-DAG: %[[MULTIPLIED:.*]] = xla_gpu.shuffle_reduce @mul_mul
-// CHECK-DAG: %[[LOG:.*]] = math.log %[[ADDED]]
-// CHECK-DAG: %[[ABS:.*]] = math.absf %[[ADDED]]
-// CHECK-DAG: %[[NEG:.*]] = arith.negf %[[MULTIPLIED]]
+// CHECK-DAG: %[[SUM:.*]] = xla_gpu.shuffle_reduce(%{{.*}}) to 16 combiner=@add_add
+// CHECK-DAG: %[[PROD:.*]] = xla_gpu.shuffle_reduce(%{{.*}}) to 16 combiner=@mul_mul
+// CHECK-DAG: %[[LOG:.*]] = math.log %[[SUM]]
+// CHECK-DAG: %[[ABS:.*]] = math.absf %[[SUM]]
+// CHECK-DAG: %[[NEG:.*]] = arith.negf %[[PROD]]
 // CHECK-DAG: xla_gpu.predicated_insert %[[LOG]]
 // CHECK-DAG: xla_gpu.predicated_insert %[[ABS]]
 // CHECK-DAG: xla_gpu.predicated_insert %[[NEG]]

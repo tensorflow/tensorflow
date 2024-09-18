@@ -13,4 +13,4 @@ fusion {
 }
 
 // CHECK: allocate_shared : tensor<32x9xf32>
-// CHECK: shuffle_reduce @add_add{{.*}} to 16 : f32
+// CHECK: shuffle_reduce(%{{.*}}) to 16 combiner=@add_add

@@ -261,3 +261,21 @@ func.func @reindex_pad(%in0: tensor<1022xf32>) -> tensor<16x64xf32> {
 // CHECK:         %[[C0:.*]] = arith.constant 0.00
 // CHECK:         xla_gpu.reindex %[[IN1]] at #[[$MAP]] default %[[C0]] :
 // CHECK-SAME:      tensor<1022xf32> -> tensor<16x64xf32>
+
+
+// -----
+
+func.func @do_nothing(%a: f32, %b: i32, %c: f32, %d: i32) -> (f32, i32) {
+  return %a, %b : f32, i32
+}
+func.func @shuffler(%a: f32, %b: i32) -> (f32, i32) {
+  %ret:2 = xla_gpu.shuffle_reduce(%a, %b) to 4 combiner=@do_nothing
+    {xla.range = [0 : index, 42 : index]} : f32, i32
+  return %ret#0, %ret#1 : f32, i32
+}
+// CHECK-LABEL: func.func @shuffler(
+// CHECK-SAME:    %[[IN1:.*]]: f32, %[[IN2:.*]]: i32)
+
+// CHECK:        xla_gpu.shuffle_reduce(%[[IN1]], %[[IN2]]) to 4
+// CHECK-SAME:    combiner=@do_nothing {xla.range = [0 : index, 42 : index]}
+// CHECK-SAME:    : f32, i32

@@ -1190,6 +1190,45 @@ LogicalResult ReduceOp::verify() {
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// ShuffleReduceOp
+//===----------------------------------------------------------------------===//
+
+ParseResult ShuffleReduceOp::parse(OpAsmParser& parser,
+                                   OperationState& result) {
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> inputs;
+  mlir::StringAttr combiner;
+  int64_t max_distance;
+  SmallVector<Type, 2> operand_types;
+  mlir::SMLoc loc = parser.getCurrentLocation();
+  if (parser.parseLParen() || parseOperands(parser, &inputs) ||
+      parser.parseRParen() || parser.parseKeyword("to") ||
+      parser.parseInteger(max_distance) || parser.parseKeyword("combiner") ||
+      parser.parseEqual() || parser.parseSymbolName(combiner) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
+      parser.parseColonTypeList(operand_types) ||
+      parser.resolveOperands(inputs, operand_types, loc, result.operands)) {
+    return failure();
+  }
+  auto ctx = result.getContext();
+  mlir::OperationName opname(ShuffleReduceOp::getOperationName(), ctx);
+  result.addAttribute(ShuffleReduceOp::getCombinerAttrName(opname),
+                      mlir::FlatSymbolRefAttr::get(ctx, combiner));
+  result.addAttribute(
+      ShuffleReduceOp::getMaxDistanceAttrName(opname),
+      mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 64), max_distance));
+  result.addTypes(operand_types);
+  return success();
+}
+
+void ShuffleReduceOp::print(OpAsmPrinter& p) {
+  p << '(' << getOperands() << ") to " << getMaxDistance() << " combiner=@"
+    << getCombiner();
+  p.printOptionalAttrDict((*this)->getAttrs(),
+                          {getCombinerAttrName(), getMaxDistanceAttrName()});
+  p << " : " << TypeRange(getResultTypes());
+}
+
 }  // namespace gpu
 }  // namespace xla
 
