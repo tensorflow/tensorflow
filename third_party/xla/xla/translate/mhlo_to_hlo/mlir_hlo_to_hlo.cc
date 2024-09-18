@@ -823,6 +823,14 @@ class ConvertToHloModule {
   // Lower a specific function to HLO.
   LogicalResult RunOnFunction(mlir::func::FuncOp f);
 
+  ::xla::HloModuleProto ConsumeMainProto() {
+    auto main = module_.lookupSymbol<mlir::func::FuncOp>(kMain);
+    // This is an invariant check as Run returns failure if there is no main
+    // function and so the main proto shouldn't be consumed in that case.
+    CHECK(main) << "requires module to have main function";  // Crash Ok.
+    return lowered_computation_[main].proto();
+  }
+
   // Lower a `mlir::Region` to a `XlaComputation`
   LogicalResult LowerRegionAsComputation(
       mlir::Region* region, xla::XlaComputation* func,
@@ -844,18 +852,45 @@ class ConvertToHloModule {
       llvm::ArrayRef<mlir::Value> implicit_operands = {},
       llvm::ArrayRef<mlir::Value> implicit_results = {});
 
-  ::xla::HloModuleProto ConsumeMainProto() {
-    auto main = module_.lookupSymbol<mlir::func::FuncOp>(kMain);
-    // This is an invariant check as Run returns failure if there is no main
-    // function and so the main proto shouldn't be consumed in that case.
-    CHECK(main) << "requires module to have main function";  // Crash Ok.
-    return lowered_computation_[main].proto();
-  }
+  // Lower cast to HLO cast instruction
+  LogicalResult LowerCast(mlir::Operation* inst,
+                          const MlirToHloConversionOptions& options,
+                          ConvertToHloModule::ValueLoweringMap* value_lowering);
+
+  // Lower composite to HLO composite call instruction
+  LogicalResult LowerCompositeCall(
+      mlir::Operation* inst, xla::XlaBuilder* module_builder,
+      xla::XlaBuilder* builder,
+      ConvertToHloModule::ValueLoweringMap* value_lowering,
+      xla::XlaOp* return_value);
+
+  // Lower constant to HLO constant instruction
+  LogicalResult LowerConstant(
+      mlir::Operation* inst, xla::XlaBuilder* builder,
+      ConvertToHloModule::ValueLoweringMap* value_lowering,
+      ElementsAttr const_attr);
 
   // Lower function call to HLO call instruction
   LogicalResult LowerFunctionCall(
       mlir::func::CallOp call_op, xla::XlaBuilder* builder,
       ConvertToHloModule::ValueLoweringMap* value_lowering);
+
+  // Lower infeed to HLO infeed instruction.
+  LogicalResult LowerInfeed(
+      mlir::Operation* inst, xla::XlaBuilder* builder,
+      ConvertToHloModule::ValueLoweringMap* value_lowering);
+
+  // Lower MHLO and Func return instructions to HLO return instruction
+  LogicalResult LowerReturn(
+      Operation* inst, bool is_entry_function,
+      llvm::ArrayRef<std::optional<xla::OpSharding>> ret_shardings,
+      llvm::ArrayRef<mlir::Value> implicit_results, xla::XlaBuilder* builder,
+      ConvertToHloModule::ValueLoweringMap* value_lowering,
+      xla::XlaOp* return_value, const MlirToHloConversionOptions& options);
+
+  // Extract shape from instruction and propagate layouts to the XLA op.
+  LogicalResult PropagateLayouts(const MlirToHloConversionOptions& options,
+                                 mlir::Operation* inst, xla::XlaOp xla_op);
 
   // Look up a symbol with the specified name, returning null if no such name
   // exists.
@@ -3155,6 +3190,270 @@ LogicalResult ExportXlaOperatorWrapped(mlir::Operation* inst,
   return ExportXlaOperator(inst, ctx);
 }
 
+LogicalResult ConvertToHloModule::PropagateLayouts(
+    const MlirToHloConversionOptions& options, mlir::Operation* inst,
+    xla::XlaOp xla_op) {
+  // See MlirToHloConversionOptions for more about layouts.
+  if (options.propagate_layouts) {
+    auto* shape = xla::internal::XlaBuilderFriend::GetInstruction(xla_op)
+                      ->mutable_shape();
+    // TODO(kramm): merge this with ConvertLayout.
+    mlir::FailureOr<xla::Shape> mlir_shape_or = ExtractXlaShape(inst);
+    if (failed(mlir_shape_or)) return failure();
+    *shape = mlir_shape_or->ToProto();
+  }
+
+  return success();
+}
+
+LogicalResult ConvertToHloModule::LowerCast(
+    mlir::Operation* inst, const MlirToHloConversionOptions& options,
+    ConvertToHloModule::ValueLoweringMap* value_lowering) {
+  auto cast_op = cast<mlir::tensor::CastOp>(inst);
+  Value operand = cast_op.getOperand();
+  auto ty = mlir::dyn_cast<ShapedType>(operand.getType());
+  // If this was a cast from a static or bounded tensors, then it is a noop
+  // for export to HLO and we can use the operand.
+  if (!ty || !IsBoundedOrStatic(ty)) {
+    inst->emitOpError()
+        << "requires static or bounded operand for HLO translation";
+    return failure();
+  }
+
+  xla::XlaOp xla_operand;
+  auto& value_map = *value_lowering;
+  if (failed(GetXlaOp(operand, value_map, &xla_operand, cast_op)))
+    return failure();
+  value_map[cast_op.getResult()] = xla_operand;
+  if (failed(PropagateLayouts(options, inst, xla_operand))) {
+    return failure();
+  }
+  return success();
+}
+
+LogicalResult ConvertToHloModule::LowerCompositeCall(
+    mlir::Operation* inst, xla::XlaBuilder* module_builder,
+    xla::XlaBuilder* builder,
+    ConvertToHloModule::ValueLoweringMap* value_lowering,
+    xla::XlaOp* return_value) {
+  auto& value_map = *value_lowering;
+  SmallVector<xla::XlaOp, 1> operands;
+  for (const Value& val : inst->getOperands()) {
+    xla::XlaOp operand;
+    if (failed(GetXlaOp(val, value_map, &operand, inst))) {
+      return failure();
+    }
+    operands.push_back(operand);
+  }
+
+  auto composite_op = cast<mhlo::CompositeOp>(inst);
+  xla::XlaComputation computation;
+  if (failed(LowerBasicBlockAsFunction(
+          /*block=*/&module_
+              .lookupSymbol<mlir::func::FuncOp>(composite_op.getDecomposition())
+              .getBody()
+              .front(),
+          /*builder=*/
+          module_builder_
+              .CreateSubBuilder(composite_op.getDecomposition().str())
+              .get(),
+          /*is_entry_function=*/false,
+          /*ensure_single_arg=*/false,
+          /*entry_args_same_across_replicas=*/{},
+          /*arg_shardings=*/{}, /*ret_shardings=*/{},
+          /*fe_attrs=*/{}, /*result=*/&computation,
+          /*implicit_operands=*/{}))) {
+    return failure();
+  }
+
+  std::string composite_attributes;
+  llvm::raw_string_ostream(composite_attributes)
+      << composite_op.getCompositeAttributes();
+
+  xla::XlaOp composite_call = xla::CompositeCall(
+      builder, computation, operands, composite_op.getName().str(),
+      composite_attributes, composite_op.getVersion());
+
+  // Use GetTupleElement for multiple outputs
+  unsigned num_results = composite_op.getNumResults();
+  if (num_results > 1) {
+    for (unsigned i = 0; i != num_results; ++i) {
+      value_map[composite_op.getResult(i)] =
+          xla::GetTupleElement(composite_call, i);
+    }
+  } else if (num_results == 1) {
+    value_map[composite_op.getResult(0)] = composite_call;
+  }
+  *return_value = composite_call;
+
+  return success();
+}
+
+LogicalResult ConvertToHloModule::LowerConstant(
+    mlir::Operation* inst, xla::XlaBuilder* builder,
+    ConvertToHloModule::ValueLoweringMap* value_lowering,
+    ElementsAttr const_attr) {
+  if (!mlir::isa<ShapedType>(inst->getResult(0).getType())) {
+    return inst->emitError(
+        "expected shaped type during constant mhlo -> hlo translation");
+  }
+
+  mlir::FailureOr<xla::Shape> shape_or = ExtractXlaShape(inst);
+  if (failed(shape_or)) return failure();
+
+  auto literal_or = CreateArrayLiteralFromAttr(const_attr, shape_or->layout());
+  if (!literal_or.ok()) return inst->emitError(literal_or.status().ToString());
+
+  xla::XlaScopedShardingAssignment scoped_sharding(
+      builder, CreateOpShardingFromAttribute(inst));
+  auto constant = xla::ConstantLiteral(builder, literal_or.value());
+  auto& value_map = *value_lowering;
+  value_map[inst->getResult(0)] = constant;
+
+  return success();
+}
+
+LogicalResult ConvertToHloModule::LowerInfeed(
+    mlir::Operation* inst, xla::XlaBuilder* builder,
+    ConvertToHloModule::ValueLoweringMap* value_lowering) {
+  mlir::ArrayAttr layout = inst->getAttrOfType<mlir::ArrayAttr>(kLayout);
+  if (!layout) return success();
+
+  // We propagate layout to the following three ops:
+  // L1: For each data-result of mhlo.InfeedOp, we find the exported
+  // xla::kGetTupleElement and propagate the layout.
+  //
+  // L2: For the token-result of mhlo.InfeedOp (result at last index),
+  // we extract the xla::kInfeed op using the corresponding
+  // xla::kGetTupleElement and propagate the layout to it.
+  //
+  // L3: In case there are non-zero data-results, there exists an
+  // additional xla::kGetTupleElement accessing a tuple of the
+  // data-results. We need to propagate the layout to that
+  // xla::kGetTupleElement as well.
+  auto num_results = inst->getNumResults();
+  bool propagate_layout_to_data_tuple = true;
+  for (unsigned i = 0; i < num_results; i++) {
+    auto iter = value_lowering->find(inst->getResult(i));
+    if (iter == value_lowering->end()) {
+      inst->emitOpError() << "inst's result value at index " << i
+                          << " has no match in value_lowering";
+      return failure();
+    }
+    auto xla_gte_op = iter->second;
+    xla::HloInstructionProto* get_tuple_element_proto =
+        xla::internal::XlaBuilderFriend::GetInstruction(xla_gte_op);
+
+    assert(xla::StringToHloOpcode(get_tuple_element_proto->opcode()).value() ==
+               xla::HloOpcode::kGetTupleElement &&
+           "The token-result of mhlo.InfeedOp should be mapped to a "
+           "xla::HloOpcode::kGetTupleElement");
+
+    if (i == num_results - 1) {
+      // L2
+      xla::HloInstructionProto* xla_infeed_op_proto =
+          xla::internal::XlaBuilderFriend::GetInstructionByHandle(
+              xla_gte_op.builder(), get_tuple_element_proto->operand_ids(0));
+
+      assert(xla::StringToHloOpcode(xla_infeed_op_proto->opcode()).value() ==
+                 xla::HloOpcode::kInfeed &&
+             "Expected xla::HloOpcode::kInfeed op");
+
+      auto* shape = xla_infeed_op_proto->mutable_shape();
+      if (failed(ConvertInfeedtLayout(inst, layout, shape))) return failure();
+      continue;
+    }
+    // L1
+    auto* shape = get_tuple_element_proto->mutable_shape();
+    if (failed(ConvertInfeedtLayout(inst, layout, shape, i))) return failure();
+
+    // L3
+    if (propagate_layout_to_data_tuple) {
+      xla::HloInstructionProto* data_tuple_proto =
+          xla::internal::XlaBuilderFriend::GetInstructionByHandle(
+              xla_gte_op.builder(), get_tuple_element_proto->operand_ids(0));
+      auto* data_tuple_shape = data_tuple_proto->mutable_shape();
+
+      assert(xla::StringToHloOpcode(data_tuple_proto->opcode()).value() ==
+                 xla::HloOpcode::kGetTupleElement &&
+             "Expected a xla:tupleOp for all the data results.");
+      if (failed(ConvertInfeedtLayout(inst, layout, data_tuple_shape)))
+        return failure();
+    }
+    propagate_layout_to_data_tuple = false;
+  }
+  return success();
+}
+
+LogicalResult ConvertToHloModule::LowerReturn(
+    Operation* inst, bool is_entry_function,
+    llvm::ArrayRef<std::optional<xla::OpSharding>> ret_shardings,
+    llvm::ArrayRef<mlir::Value> implicit_results, xla::XlaBuilder* builder,
+    ConvertToHloModule::ValueLoweringMap* value_lowering,
+    xla::XlaOp* return_value, const MlirToHloConversionOptions& options) {
+  // Construct the return value for the function. If there is a single value
+  // returned, then return it directly, else create a tuple and return.
+  unsigned num_return_values = inst->getNumOperands() + implicit_results.size();
+  std::optional<xla::OpSharding> ret_tuple_sharding =
+      CreateTupleSharding(ret_shardings);
+  auto& value_map = *value_lowering;
+  if ((options_.return_tuple && is_entry_function) || num_return_values != 1) {
+    std::vector<xla::XlaOp> returns;
+    returns.reserve(num_return_values);
+    // NOTE: we can't use operand_range in llvm::concat.
+    for (Value ret : inst->getOperands()) {
+      xla::XlaOp& operand = returns.emplace_back();
+      if (failed(GetXlaOp(ret, value_map, &operand, inst))) return failure();
+    }
+    for (Value ret : implicit_results) {
+      xla::XlaOp& operand = returns.emplace_back();
+      if (failed(GetXlaOp(ret, value_map, &operand, inst))) return failure();
+    }
+    if (is_entry_function && ret_tuple_sharding) {
+      assert(implicit_results.empty() &&
+             "entry functions shouldn't have implicit results");
+      for (OpOperand& ret : inst->getOpOperands()) {
+        unsigned index = ret.getOperandNumber();
+
+        xla::Shape return_shape = xla::TypeToShape(ret.get().getType());
+        absl::StatusOr<xla::XlaOp> reshape =
+            ReshapeWithCorrectRepresentationAndSharding(
+                builder, returns[index], return_shape,
+                options_.layout_preference_fn, options_.shape_representation_fn,
+                ret_shardings[index],
+                /*fast_mem=*/false);
+        if (!reshape.ok())
+          return inst->emitError() << reshape.status().message();
+
+        returns[index] = reshape.value();
+      }
+    }
+
+    xla::XlaScopedShardingAssignment scoped_sharding(builder,
+                                                     ret_tuple_sharding);
+    *return_value = xla::Tuple(builder, returns);
+    return success();
+  }
+
+  if (num_return_values == 1) {
+    Value ret = implicit_results.empty() ? inst->getOperand(0)
+                                         : implicit_results.front();
+    xla::XlaOp operand;
+    if (failed(GetXlaOp(ret, value_map, &operand, inst))) return failure();
+
+    if (ret_tuple_sharding) {
+      auto tuple = Tuple(builder, {operand});
+      builder->SetSharding(*ret_shardings[0]);
+      *return_value = GetTupleElement(tuple, 0);
+      builder->ClearSharding();
+    } else {
+      *return_value = operand;
+    }
+  }
+
+  return success();
+}
+
 LogicalResult ConvertToHloModule::Lower(
     mlir::Operation* inst, bool is_entry_function,
     llvm::ArrayRef<std::optional<xla::OpSharding>> ret_shardings,
@@ -3173,21 +3472,6 @@ LogicalResult ConvertToHloModule::Lower(
 
   *return_value = xla::XlaOp();
 
-  // See MlirToHloConversionOptions for more about layouts.
-  auto propagate_layouts = [this](mlir::Operation* inst,
-                                  xla::XlaOp xla_op) -> mlir::LogicalResult {
-    if (options_.propagate_layouts) {
-      auto* shape = xla::internal::XlaBuilderFriend::GetInstruction(xla_op)
-                        ->mutable_shape();
-      // TODO(kramm): merge this with ConvertLayout.
-      mlir::FailureOr<xla::Shape> mlir_shape_or = ExtractXlaShape(inst);
-      if (failed(mlir_shape_or)) return failure();
-      *shape = mlir_shape_or->ToProto();
-    }
-
-    return success();
-  };
-
   if (succeeded(ExportXlaOperatorWrapped(
           inst,
           {value_lowering, this, builder, &stack_frame_indexes_builder_}))) {
@@ -3198,252 +3482,39 @@ LogicalResult ConvertToHloModule::Lower(
             "inst has a result, but it's not found in value_lowering");
         return failure();
       }
-      if (failed(propagate_layouts(inst, iter->second))) {
+      if (failed(PropagateLayouts(options_, inst, iter->second))) {
         return failure();
       }
     }
     // For infeed ops stemming back to InfeedDequeueTuple, respect the
     // layout attribute, and create the corresponding layout in hlo.
     if (isa<mhlo::InfeedOp>(inst)) {
-      mlir::ArrayAttr layout = inst->getAttrOfType<mlir::ArrayAttr>(kLayout);
-
-      if (layout) {
-        // We propagate layout to the following three ops:
-        // L1: For each data-result of mhlo.InfeedOp, we find the exported
-        // xla::kGetTupleElement and propagate the layout.
-        //
-        // L2: For the token-result of mhlo.InfeedOp (result at last index),
-        // we extract the xla::kInfeed op using the corresponding
-        // xla::kGetTupleElement and propagate the layout to it.
-        //
-        // L3: In case there are non-zero data-results, there exists an
-        // additional xla::kGetTupleElement accessing a tuple of the
-        // data-results. We need to propagate the layout to that
-        // xla::kGetTupleElement as well.
-        auto num_results = inst->getNumResults();
-        bool propagate_layout_to_data_tuple = true;
-        for (unsigned i = 0; i < num_results; i++) {
-          auto iter = value_lowering->find(inst->getResult(i));
-          if (iter == value_lowering->end()) {
-            inst->emitOpError() << "inst's result value at index " << i
-                                << " has no match in value_lowering";
-            return failure();
-          }
-          auto xla_gte_op = iter->second;
-          xla::HloInstructionProto* get_tuple_element_proto =
-              xla::internal::XlaBuilderFriend::GetInstruction(xla_gte_op);
-
-          assert(xla::StringToHloOpcode(get_tuple_element_proto->opcode())
-                         .value() == xla::HloOpcode::kGetTupleElement &&
-                 "The token-result of mhlo.InfeedOp should be mapped to a "
-                 "xla::HloOpcode::kGetTupleElement");
-
-          if (i == num_results - 1) {
-            // L2
-            xla::HloInstructionProto* xla_infeed_op_proto =
-                xla::internal::XlaBuilderFriend::GetInstructionByHandle(
-                    xla_gte_op.builder(),
-                    get_tuple_element_proto->operand_ids(0));
-
-            assert(
-                xla::StringToHloOpcode(xla_infeed_op_proto->opcode()).value() ==
-                    xla::HloOpcode::kInfeed &&
-                "Expected xla::HloOpcode::kInfeed op");
-
-            auto* shape = xla_infeed_op_proto->mutable_shape();
-            if (failed(ConvertInfeedtLayout(inst, layout, shape)))
-              return failure();
-
-          } else {
-            // L1
-            auto* shape = get_tuple_element_proto->mutable_shape();
-            if (failed(ConvertInfeedtLayout(inst, layout, shape, i)))
-              return failure();
-
-            // L3
-            if (propagate_layout_to_data_tuple) {
-              xla::HloInstructionProto* data_tuple_proto =
-                  xla::internal::XlaBuilderFriend::GetInstructionByHandle(
-                      xla_gte_op.builder(),
-                      get_tuple_element_proto->operand_ids(0));
-              auto* data_tuple_shape = data_tuple_proto->mutable_shape();
-
-              assert(
-                  xla::StringToHloOpcode(data_tuple_proto->opcode()).value() ==
-                      xla::HloOpcode::kGetTupleElement &&
-                  "Expected a xla:tupleOp for all the data results.");
-              if (failed(ConvertInfeedtLayout(inst, layout, data_tuple_shape)))
-                return failure();
-            }
-            propagate_layout_to_data_tuple = false;
-          }
-        }
-      }
+      return LowerInfeed(inst, builder, value_lowering);
     }
     return success();
   }
-
-  auto& value_map = *value_lowering;
-  ElementsAttr const_attr;
 
   if (auto call_op = dyn_cast<mlir::func::CallOp>(inst)) {
-    return LowerFunctionCall(call_op, builder, &value_map);
+    return LowerFunctionCall(call_op, builder, value_lowering);
   }
 
-  if (auto op = dyn_cast<mlir::tensor::CastOp>(inst)) {
-    Value operand = op.getOperand();
-    auto ty = mlir::dyn_cast<ShapedType>(operand.getType());
-    // If this was a cast from a static or bounded tensors, then it is a noop
-    // for export to HLO and we can use the operand.
-    if (!ty || !IsBoundedOrStatic(ty)) {
-      inst->emitOpError()
-          << "requires static or bounded operand for HLO translation";
-      return failure();
-    }
-
-    xla::XlaOp xla_operand;
-    if (failed(GetXlaOp(operand, value_map, &xla_operand, op)))
-      return failure();
-    value_map[op.getResult()] = xla_operand;
-    if (failed(propagate_layouts(inst, xla_operand))) {
-      return failure();
-    }
-    return success();
-  }
-
-  if (matchPattern(inst, m_Constant(&const_attr))) {
-    if (!mlir::isa<ShapedType>(inst->getResult(0).getType())) {
-      return inst->emitError(
-          "expected shaped type during constant mhlo -> hlo translation");
-    }
-
-    mlir::FailureOr<xla::Shape> shape_or = ExtractXlaShape(inst);
-    if (failed(shape_or)) return failure();
-    auto literal_or =
-        CreateArrayLiteralFromAttr(const_attr, shape_or->layout());
-    if (!literal_or.ok())
-      return inst->emitError(literal_or.status().ToString());
-    xla::XlaScopedShardingAssignment scoped_sharding(
-        builder, CreateOpShardingFromAttribute(inst));
-    auto constant = xla::ConstantLiteral(builder, literal_or.value());
-    value_map[inst->getResult(0)] = constant;
-
-    return success();
-  }
-
-  if (isa<mhlo::ReturnOp, mlir::func::ReturnOp>(inst)) {
-    // Construct the return value for the function. If there is a single value
-    // returned, then return it directly, else create a tuple and return.
-    unsigned num_return_values =
-        inst->getNumOperands() + implicit_results.size();
-    std::optional<xla::OpSharding> ret_tuple_sharding =
-        CreateTupleSharding(ret_shardings);
-    if ((options_.return_tuple && is_entry_function) ||
-        num_return_values != 1) {
-      std::vector<xla::XlaOp> returns;
-      returns.reserve(num_return_values);
-      // NOTE: we can't use operand_range in llvm::concat.
-      for (Value ret : inst->getOperands()) {
-        xla::XlaOp& operand = returns.emplace_back();
-        if (failed(GetXlaOp(ret, value_map, &operand, inst))) return failure();
-      }
-      for (Value ret : implicit_results) {
-        xla::XlaOp& operand = returns.emplace_back();
-        if (failed(GetXlaOp(ret, value_map, &operand, inst))) return failure();
-      }
-      if (is_entry_function && ret_tuple_sharding) {
-        assert(implicit_results.empty() &&
-               "entry functions shouldn't have implicit results");
-        for (OpOperand& ret : inst->getOpOperands()) {
-          unsigned index = ret.getOperandNumber();
-
-          xla::Shape return_shape = xla::TypeToShape(ret.get().getType());
-          absl::StatusOr<xla::XlaOp> reshape =
-              ReshapeWithCorrectRepresentationAndSharding(
-                  builder, returns[index], return_shape,
-                  options_.layout_preference_fn,
-                  options_.shape_representation_fn, ret_shardings[index],
-                  /*fast_mem=*/false);
-          if (!reshape.ok())
-            return inst->emitError() << reshape.status().message();
-
-          returns[index] = reshape.value();
-        }
-      }
-
-      xla::XlaScopedShardingAssignment scoped_sharding(builder,
-                                                       ret_tuple_sharding);
-      *return_value = xla::Tuple(builder, returns);
-    } else if (num_return_values == 1) {
-      Value ret = implicit_results.empty() ? inst->getOperand(0)
-                                           : implicit_results.front();
-      xla::XlaOp operand;
-      if (failed(GetXlaOp(ret, value_map, &operand, inst))) return failure();
-
-      if (ret_tuple_sharding) {
-        auto tuple = Tuple(builder, {operand});
-        builder->SetSharding(*ret_shardings[0]);
-        *return_value = GetTupleElement(tuple, 0);
-        builder->ClearSharding();
-      } else {
-        *return_value = operand;
-      }
-    }
-
-    return success();
+  if (isa<mlir::tensor::CastOp>(inst)) {
+    return LowerCast(inst, options_, value_lowering);
   }
 
   if (auto composite_op = dyn_cast<mhlo::CompositeOp>(inst)) {
-    SmallVector<xla::XlaOp, 1> operands;
-    for (const Value& val : inst->getOperands()) {
-      xla::XlaOp operand;
-      if (failed(GetXlaOp(val, value_map, &operand, inst))) {
-        return failure();
-      }
-      operands.push_back(operand);
-    }
+    return LowerCompositeCall(inst, &module_builder_, builder, value_lowering,
+                              return_value);
+  }
 
-    xla::XlaComputation computation;
-    if (failed(LowerBasicBlockAsFunction(
-            /*block=*/&module_
-                .lookupSymbol<mlir::func::FuncOp>(
-                    composite_op.getDecomposition())
-                .getBody()
-                .front(),
-            /*builder=*/
-            module_builder_
-                .CreateSubBuilder(composite_op.getDecomposition().str())
-                .get(),
-            /*is_entry_function=*/false,
-            /*ensure_single_arg=*/false,
-            /*entry_args_same_across_replicas=*/{},
-            /*arg_shardings=*/{}, /*ret_shardings=*/{},
-            /*fe_attrs=*/{}, /*result=*/&computation,
-            /*implicit_operands=*/{}))) {
-      return failure();
-    }
+  ElementsAttr const_attr;
+  if (matchPattern(inst, m_Constant(&const_attr))) {
+    return LowerConstant(inst, builder, value_lowering, const_attr);
+  }
 
-    std::string composite_attributes;
-    llvm::raw_string_ostream(composite_attributes)
-        << composite_op.getCompositeAttributes();
-
-    xla::XlaOp composite_call = xla::CompositeCall(
-        builder, computation, operands, composite_op.getName().str(),
-        composite_attributes, composite_op.getVersion());
-
-    // Use GetTupleElement for multiple outputs
-    unsigned num_results = composite_op.getNumResults();
-    if (num_results > 1) {
-      for (unsigned i = 0; i != num_results; ++i) {
-        value_map[composite_op.getResult(i)] =
-            xla::GetTupleElement(composite_call, i);
-      }
-    } else if (num_results == 1) {
-      value_map[composite_op.getResult(0)] = composite_call;
-    }
-    *return_value = composite_call;
-
-    return success();
+  if (isa<mhlo::ReturnOp, mlir::func::ReturnOp>(inst)) {
+    return LowerReturn(inst, is_entry_function, ret_shardings, implicit_results,
+                       builder, value_lowering, return_value, options_);
   }
 
   inst->emitOpError() << "can't be translated to XLA HLO";
