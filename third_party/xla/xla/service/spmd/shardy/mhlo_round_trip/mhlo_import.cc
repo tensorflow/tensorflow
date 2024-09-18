@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -401,7 +402,7 @@ MeshAxesAndIds findMeshAxesAndIds(ModuleOp moduleOp) {
 
 // Convert the `hloSharding` into a `TensorShardingAttr` based on the
 // `globalMesh`.
-TensorShardingAttr convertToNewSharding(
+TensorShardingAttr convertToSdySharding(
     const xla::HloSharding& hloSharding, MeshAttr globalMesh,
     const SmallDenseMap<int64_t, StringRef>& deviceIdToMaximalMeshName,
     int64_t rank, bool openDims) {
@@ -510,7 +511,7 @@ LogicalResult importShardings(
             funcOp.getArgAttrOfType<StringAttr>(argNum, kXlaShardingAttr)) {
       funcOp.setArgAttr(
           argNum, kShardingAttr,
-          convertToNewSharding(parseShardingFromString(oldSharding), globalMesh,
+          convertToSdySharding(parseShardingFromString(oldSharding), globalMesh,
                                deviceIdToMaximalMeshName,
                                mlir::cast<ShapedType>(argType).getRank(),
                                shouldOpenDims(allowPropagationToArgs, argNum)));
@@ -523,7 +524,7 @@ LogicalResult importShardings(
             funcOp.getResultAttrOfType<StringAttr>(resNum, kXlaShardingAttr)) {
       funcOp.setResultAttr(
           resNum, kShardingAttr,
-          convertToNewSharding(
+          convertToSdySharding(
               parseShardingFromString(oldSharding), globalMesh,
               deviceIdToMaximalMeshName,
               mlir::cast<ShapedType>(resType).getRank(),
@@ -544,7 +545,7 @@ LogicalResult importShardings(
       newShardings.reserve(op->getNumResults());
       for (const auto& [resHloSharding, resType] :
            llvm::zip_equal(flatHloSharding, op->getResultTypes())) {
-        newShardings.push_back(convertToNewSharding(
+        newShardings.push_back(convertToSdySharding(
             resHloSharding, globalMesh, deviceIdToMaximalMeshName,
             mlir::cast<ShapedType>(resType).getRank(),
             /*openDims=*/false));
