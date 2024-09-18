@@ -327,7 +327,7 @@ tf_cc_test(
 cc_library(
     name = "graph_view_internal",
     hdrs = ["graph_view_internal.h"],
-    visibility = ["//visibility:private"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",

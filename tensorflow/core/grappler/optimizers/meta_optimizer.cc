@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/memory_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/model_pruner.h"
 #include "tensorflow/core/grappler/optimizers/pin_to_host_optimizer.h"
+#include "tensorflow/core/grappler/optimizers/real_time_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/remapper.h"
 #include "tensorflow/core/grappler/optimizers/scoped_allocator_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/shape_optimizer.h"
@@ -904,14 +905,30 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
                                     GraphDef* optimized_graph) {
   std::vector<std::unique_ptr<GraphOptimizer>> optimizers;
   std::set<std::string> device_types;
+
+  // Get the devices that are in the computation graph
   TF_RETURN_IF_ERROR(GetGraphDevice(item.graph, &device_types));
+
+  // Initialize optimizers based on configuration
   if (cfg_.optimizers().empty()) {
+    // Initialize default optimizers based on the detected device types
     TF_RETURN_IF_ERROR(InitializeOptimizers(device_types, &optimizers));
   } else {
+    // Initialize specific optimizers based on their names from configuration
     TF_RETURN_IF_ERROR(InitializeOptimizersByName(device_types, &optimizers));
   }
+
+  // Print configuration information
   PrintUserAndPluginConfigs(device_types);
 
+  // Conditionally add RealTimeOptimizer to the list of optimizers
+  if (cfg_.enable_real_time_optimizer()) {  // Check if the flag is enabled in the config
+    std::unique_ptr<CustomGraphOptimizer> real_time_optimizer =
+        absl::make_unique<RealTimeOptimizer>();
+    optimizers.push_back(std::move(real_time_optimizer));
+  }
+
+  // Optimize the graph using the list of optimizers
   return OptimizeGraph(std::move(optimizers), cluster, std::move(item),
                        optimized_graph);
 }

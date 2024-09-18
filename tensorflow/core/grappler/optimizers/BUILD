@@ -51,19 +51,50 @@ cc_library(
     ],
 )
 
-tf_cuda_cc_test(
-    name = "static_schedule_test",
-    srcs = ["static_schedule_test.cc"],
+cc_library(
+    name = "real_time_optimizer",
+    srcs = ["real_time_optimizer.cc"],  # Make sure this file exists
+    hdrs = ["real_time_optimizer.h"],  # Make sure this file exists
+    visibility = ["//visibility:public"],
     deps = [
-        ":static_schedule",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/costs:graph_properties",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
+        "//tensorflow/core/grappler/optimizers:arithmetic_optimizer",
+        "//tensorflow/core/grappler/optimizers:memory_optimizer",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "//tensorflow/core/grappler/utils:frame",
+        "//tensorflow/core/grappler/utils:graph_view",
+        "//tensorflow/core/grappler/utils:graph_view_internal",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "real_time_optimizer_test",
+    srcs = ["real_time_optimizer_test.cc"],  # Ensure this matches your test file
+    deps = [
+        ":real_time_optimizer",  # This should correctly reference your newly defined optimizer
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:virtual_cluster",
-        "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
+        "//tensorflow/core/grappler/utils:grappler_test",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -634,6 +665,7 @@ cc_library(
     deps = [
         ":arithmetic_optimizer",
         ":auto_mixed_precision",
+        ":real_time_optimizer",
         ":auto_parallel",
         ":common_subgraph_elimination",
         ":constant_folding",
@@ -1172,11 +1204,14 @@ tf_cuda_cc_test(
 cc_library(
     name = "generic_layout_optimizer",
     srcs = ["generic_layout_optimizer.cc"],
-    hdrs = ["generic_layout_optimizer.h"],
+    hdrs = [
+        "generic_layout_optimizer.h",
+        "generic_layout_optimizer_transposer.h",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         ":generic_layout_optimizer_transposer",
-        ":generic_layout_optimizer_transposer_factory",
+        ":generic_layout_optimizer_transposer_factory",  # Add this line
         ":graph_optimizer",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -1264,18 +1299,6 @@ tf_cuda_cc_test(
     ],
 )
 
-cc_library(
-    name = "generic_layout_optimizer_transposer_factory",
-    srcs = ["generic_layout_optimizer_transposer_factory.cc"],
-    hdrs = ["generic_layout_optimizer_transposer_factory.h"],
-    visibility = ["//visibility:private"],
-    deps = [
-        ":generic_layout_optimizer_transposer",
-        "//tensorflow/core/grappler:op_types",
-        "@com_google_absl//absl/container:flat_hash_map",
-    ],
-)
-
 tf_cc_test(
     name = "generic_layout_optimizer_transposer_factory_test",
     srcs = ["generic_layout_optimizer_transposer_factory_test.cc"],
@@ -1290,5 +1313,28 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "generic_layout_optimizer_transposer_factory",
+    srcs = [
+        "generic_layout_optimizer_transposer_factory.cc",
+    ],
+    hdrs = [
+        "generic_layout_optimizer_transposer_factory.h",
+    ],
+    visibility = ["//visibility:public"],  # Adjust if necessary
+    deps = [
+        ":generic_layout_optimizer_transposer",  # Ensure this target exists
+        "//tensorflow/core/grappler/costs:graph_properties",  # Correct dependency for graph_properties
+        "//tensorflow/core/grappler/clusters:cluster",  # Correct dependency for cluster
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )

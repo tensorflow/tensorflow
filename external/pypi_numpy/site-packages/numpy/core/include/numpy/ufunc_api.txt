@@ -1,0 +1,335 @@
+
+=================
+NumPy Ufunc C-API
+=================
+::
+
+  PyObject *
+  PyUFunc_FromFuncAndData(PyUFuncGenericFunction *func, void
+                          **data, char *types, int ntypes, int nin, int
+                          nout, int identity, const char *name, const
+                          char *doc, int unused)
+
+
+::
+
+  int
+  PyUFunc_RegisterLoopForType(PyUFuncObject *ufunc, int
+                              usertype, PyUFuncGenericFunction
+                              function, const int *arg_types, void
+                              *data)
+
+
+::
+
+  int
+  PyUFunc_GenericFunction(PyUFuncObject *NPY_UNUSED(ufunc) , PyObject
+                          *NPY_UNUSED(args) , PyObject *NPY_UNUSED(kwds)
+                          , PyArrayObject **NPY_UNUSED(op) )
+
+
+::
+
+  void
+  PyUFunc_f_f_As_d_d(char **args, npy_intp const *dimensions, npy_intp
+                     const *steps, void *func)
+
+
+::
+
+  void
+  PyUFunc_d_d(char **args, npy_intp const *dimensions, npy_intp const
+              *steps, void *func)
+
+
+::
+
+  void
+  PyUFunc_f_f(char **args, npy_intp const *dimensions, npy_intp const
+              *steps, void *func)
+
+
+::
+
+  void
+  PyUFunc_g_g(char **args, npy_intp const *dimensions, npy_intp const
+              *steps, void *func)
+
+
+::
+
+  void
+  PyUFunc_F_F_As_D_D(char **args, npy_intp const *dimensions, npy_intp
+                     const *steps, void *func)
+
+
+::
+
+  void
+  PyUFunc_F_F(char **args, npy_intp const *dimensions, npy_intp const
+              *steps, void *func)
+
+
+::
+
+  void
+  PyUFunc_D_D(char **args, npy_intp const *dimensions, npy_intp const
+              *steps, void *func)
+
+
+::
+
+  void
+  PyUFunc_G_G(char **args, npy_intp const *dimensions, npy_intp const
+              *steps, void *func)
+
+
+::
+
+  void
+  PyUFunc_O_O(char **args, npy_intp const *dimensions, npy_intp const
+              *steps, void *func)
+
+
+::
+
+  void
+  PyUFunc_ff_f_As_dd_d(char **args, npy_intp const *dimensions, npy_intp
+                       const *steps, void *func)
+
+
+::
+
+  void
+  PyUFunc_ff_f(char **args, npy_intp const *dimensions, npy_intp const
+               *steps, void *func)
+
+
+::
+
+  void
+  PyUFunc_dd_d(char **args, npy_intp const *dimensions, npy_intp const
+               *steps, void *func)
+
+
+::
+
+  void
+  PyUFunc_gg_g(char **args, npy_intp const *dimensions, npy_intp const
+               *steps, void *func)
+
+
+::
+
+  void
+  PyUFunc_FF_F_As_DD_D(char **args, npy_intp const *dimensions, npy_intp
+                       const *steps, void *func)
+
+
+::
+
+  void
+  PyUFunc_DD_D(char **args, npy_intp const *dimensions, npy_intp const
+               *steps, void *func)
+
+
+::
+
+  void
+  PyUFunc_FF_F(char **args, npy_intp const *dimensions, npy_intp const
+               *steps, void *func)
+
+
+::
+
+  void
+  PyUFunc_GG_G(char **args, npy_intp const *dimensions, npy_intp const
+               *steps, void *func)
+
+
+::
+
+  void
+  PyUFunc_OO_O(char **args, npy_intp const *dimensions, npy_intp const
+               *steps, void *func)
+
+
+::
+
+  void
+  PyUFunc_O_O_method(char **args, npy_intp const *dimensions, npy_intp
+                     const *steps, void *func)
+
+
+::
+
+  void
+  PyUFunc_OO_O_method(char **args, npy_intp const *dimensions, npy_intp
+                      const *steps, void *func)
+
+
+::
+
+  void
+  PyUFunc_On_Om(char **args, npy_intp const *dimensions, npy_intp const
+                *steps, void *func)
+
+
+::
+
+  int
+  PyUFunc_GetPyValues(char *name, int *bufsize, int *errmask, PyObject
+                      **errobj)
+
+
+On return, if errobj is populated with a non-NULL value, the caller
+owns a new reference to errobj.
+
+::
+
+  int
+  PyUFunc_checkfperr(int errmask, PyObject *errobj, int *first)
+
+
+::
+
+  void
+  PyUFunc_clearfperr()
+
+
+::
+
+  int
+  PyUFunc_getfperr(void )
+
+
+::
+
+  int
+  PyUFunc_handlefperr(int errmask, PyObject *errobj, int retstatus, int
+                      *first)
+
+
+::
+
+  int
+  PyUFunc_ReplaceLoopBySignature(PyUFuncObject
+                                 *func, PyUFuncGenericFunction
+                                 newfunc, const int
+                                 *signature, PyUFuncGenericFunction
+                                 *oldfunc)
+
+
+::
+
+  PyObject *
+  PyUFunc_FromFuncAndDataAndSignature(PyUFuncGenericFunction *func, void
+                                      **data, char *types, int
+                                      ntypes, int nin, int nout, int
+                                      identity, const char *name, const
+                                      char *doc, int unused, const char
+                                      *signature)
+
+
+::
+
+  int
+  PyUFunc_SetUsesArraysAsData(void **NPY_UNUSED(data) , size_t
+                              NPY_UNUSED(i) )
+
+
+::
+
+  void
+  PyUFunc_e_e(char **args, npy_intp const *dimensions, npy_intp const
+              *steps, void *func)
+
+
+::
+
+  void
+  PyUFunc_e_e_As_f_f(char **args, npy_intp const *dimensions, npy_intp
+                     const *steps, void *func)
+
+
+::
+
+  void
+  PyUFunc_e_e_As_d_d(char **args, npy_intp const *dimensions, npy_intp
+                     const *steps, void *func)
+
+
+::
+
+  void
+  PyUFunc_ee_e(char **args, npy_intp const *dimensions, npy_intp const
+               *steps, void *func)
+
+
+::
+
+  void
+  PyUFunc_ee_e_As_ff_f(char **args, npy_intp const *dimensions, npy_intp
+                       const *steps, void *func)
+
+
+::
+
+  void
+  PyUFunc_ee_e_As_dd_d(char **args, npy_intp const *dimensions, npy_intp
+                       const *steps, void *func)
+
+
+::
+
+  int
+  PyUFunc_DefaultTypeResolver(PyUFuncObject *ufunc, NPY_CASTING
+                              casting, PyArrayObject
+                              **operands, PyObject
+                              *type_tup, PyArray_Descr **out_dtypes)
+
+
+This function applies the default type resolution rules
+for the provided ufunc.
+
+Returns 0 on success, -1 on error.
+
+::
+
+  int
+  PyUFunc_ValidateCasting(PyUFuncObject *ufunc, NPY_CASTING
+                          casting, PyArrayObject
+                          **operands, PyArray_Descr **dtypes)
+
+
+Validates that the input operands can be cast to
+the input types, and the output types can be cast to
+the output operands where provided.
+
+Returns 0 on success, -1 (with exception raised) on validation failure.
+
+::
+
+  int
+  PyUFunc_RegisterLoopForDescr(PyUFuncObject *ufunc, PyArray_Descr
+                               *user_dtype, PyUFuncGenericFunction
+                               function, PyArray_Descr
+                               **arg_dtypes, void *data)
+
+
+::
+
+  PyObject *
+  PyUFunc_FromFuncAndDataAndSignatureAndIdentity(PyUFuncGenericFunction
+                                                 *func, void
+                                                 **data, char
+                                                 *types, int ntypes, int
+                                                 nin, int nout, int
+                                                 identity, const char
+                                                 *name, const char
+                                                 *doc, const int
+                                                 unused, const char
+                                                 *signature, PyObject
+                                                 *identity_value)
+
+

@@ -39,24 +39,43 @@ from tensorflow.tools.pip_package.utils.utils import is_windows
 from tensorflow.tools.pip_package.utils.utils import replace_inplace
 
 
+import argparse
+
 def parse_args() -> argparse.Namespace:
-  """Arguments parser."""
-  parser = argparse.ArgumentParser(
-      description="Helper for building pip package", fromfile_prefix_chars="@")
-  parser.add_argument(
-      "--output-name", required=True,
-      help="Output file for the wheel, mandatory")
-  parser.add_argument("--project-name", required=True,
-                      help="Project name to be passed to setup.py")
-  parser.add_argument(
-      "--headers", help="header files for the wheel", action="append")
-  parser.add_argument("--srcs", help="source files for the wheel",
-                      action="append")
-  parser.add_argument("--xla_aot", help="xla aot compiled sources",
-                      action="append")
-  parser.add_argument("--version", help="TF version")
-  parser.add_argument("--collab", help="True if collaborator build")
-  return parser.parse_args()
+    """Arguments parser for building the pip package."""
+    parser = argparse.ArgumentParser(
+        description="Helper for building pip package", fromfile_prefix_chars="@"
+    )
+    parser.add_argument(
+        "--output-name", required=True,
+        help="Output file for the wheel, mandatory."
+    )
+    parser.add_argument(
+        "--project-name", required=True,
+        help="Project name to be passed to setup.py, mandatory."
+    )
+    parser.add_argument(
+        "--headers", help="Header files for the wheel, provide multiple headers by using '--headers' multiple times.", 
+        action="append"
+    )
+    parser.add_argument(
+        "--srcs", help="Source files for the wheel, provide multiple sources by using '--srcs' multiple times.", 
+        action="append"
+    )
+    parser.add_argument(
+        "--xla_aot", help="XLA AOT compiled sources, provide multiple sources by using '--xla_aot' multiple times.", 
+        action="append", 
+        default=[]
+    )
+    parser.add_argument(
+        "--version", required=True,
+        help="TensorFlow version, mandatory."
+    )
+    parser.add_argument(
+        "--collab", help="Set to 'True' if this is a collaborator build.", 
+        action='store_true'
+    )
+    return parser.parse_args()
 
 
 def _copy_cuda_tree(
@@ -129,57 +148,70 @@ def prepare_headers(headers: list[str], srcs_dir: str) -> None:
     else:
       copy_file(file, srcs_dir)
 
-  create_local_config_python(os.path.join(srcs_dir,
-                                          "external/local_config_python"))
+  create_local_config_python(os.path.join(srcs_dir, "tensorflow/include"), os.path.join(srcs_dir, "tensorflow/external/local_config_python"))
 
-  shutil.copytree(os.path.join(srcs_dir, "external/local_config_cuda/cuda"),
-                  os.path.join(srcs_dir, "third_party/gpus"))
-  _copy_cuda_tree(srcs_dir, "external/cuda_cccl", "third_party/gpus/cuda")
-  _copy_cuda_tree(srcs_dir, "external/cuda_cublas", "third_party/gpus/cuda")
-  _copy_cuda_tree(srcs_dir, "external/cuda_cudart", "third_party/gpus/cuda")
-  _copy_cuda_tree(srcs_dir, "external/cuda_cudnn", "third_party/gpus/cudnn")
-  _copy_cuda_tree(srcs_dir, "external/cuda_cufft", "third_party/gpus/cuda")
-  _copy_cuda_tree(
-      srcs_dir, "external/cuda_cupti", "third_party/gpus/cuda/extras/CUPTI"
-  )
-  _copy_cuda_tree(srcs_dir, "external/cuda_curand", "third_party/gpus/cuda")
-  _copy_cuda_tree(srcs_dir, "external/cuda_cusolver", "third_party/gpus/cuda")
-  _copy_cuda_tree(srcs_dir, "external/cuda_cusparse", "third_party/gpus/cuda")
-  _copy_cuda_tree(srcs_dir, "external/cuda_nvcc", "third_party/gpus/cuda")
-  _copy_cuda_tree(srcs_dir, "external/cuda_nvjitlink", "third_party/gpus/cuda")
-  _copy_cuda_tree(srcs_dir, "external/cuda_nvml", "third_party/gpus/cuda/nvml")
-  _copy_cuda_tree(srcs_dir, "external/cuda_nvrtc", "third_party/gpus/cuda")
-  _copy_cuda_tree(srcs_dir, "external/cuda_nvtx", "third_party/gpus/cuda")
+  #shutil.copytree(os.path.join(srcs_dir, "external/local_config_cuda/cuda"),
+  #                os.path.join(srcs_dir, "third_party/gpus"))
+  #_copy_cuda_tree(srcs_dir, "external/cuda_cccl", "third_party/gpus/cuda")
+  #_copy_cuda_tree(srcs_dir, "external/cuda_cublas", "third_party/gpus/cuda")
+  #_copy_cuda_tree(srcs_dir, "external/cuda_cudart", "third_party/gpus/cuda")
+  #_copy_cuda_tree(srcs_dir, "external/cuda_cudnn", "third_party/gpus/cudnn")
+  #_copy_cuda_tree(srcs_dir, "external/cuda_cufft", "third_party/gpus/cuda")
+  #_copy_cuda_tree(
+      #srcs_dir, "external/cuda_cupti", "third_party/gpus/cuda/extras/CUPTI"
+  #)
+  #_copy_cuda_tree(srcs_dir, "external/cuda_curand", "third_party/gpus/cuda")
+  #_copy_cuda_tree(srcs_dir, "external/cuda_cusolver", "third_party/gpus/cuda")
+  #_copy_cuda_tree(srcs_dir, "external/cuda_cusparse", "third_party/gpus/cuda")
+  #_copy_cuda_tree(srcs_dir, "external/cuda_nvcc", "third_party/gpus/cuda")
+  #_copy_cuda_tree(srcs_dir, "external/cuda_nvjitlink", "third_party/gpus/cuda")
+  #_copy_cuda_tree(srcs_dir, "external/cuda_nvml", "third_party/gpus/cuda/nvml")
+  #_copy_cuda_tree(srcs_dir, "external/cuda_nvrtc", "third_party/gpus/cuda")
+  #_copy_cuda_tree(srcs_dir, "external/cuda_nvtx", "third_party/gpus/cuda")
 
-  shutil.copytree(os.path.join(srcs_dir, "tensorflow/compiler/xla"),
-                  os.path.join(srcs_dir, "xla"))
-  shutil.copytree(os.path.join(srcs_dir, "tensorflow/tsl"),
-                  os.path.join(srcs_dir, "tsl"))
+  # shutil.copytree(os.path.join(srcs_dir, "tensorflow/compiler/xla"),
+  #                os.path.join(srcs_dir, "xla"))
+  # shutil.copytree(os.path.join(srcs_dir, "tensorflow/tsl"),
+  #                os.path.join(srcs_dir, "tsl"))
 
 
 def prepare_srcs(deps: list[str], srcs_dir: str) -> None:
-  """Rearrange source files in target the target directory.
+    """Rearrange source files in the target directory.
 
-  Exclude `external` files and move vendored xla/tsl files accordingly.
+    Exclude `external` files and move vendored xla/tsl files accordingly.
 
-  Args:
-    deps: a list of paths to files.
-    srcs_dir: target directory where files are copied to.
-  """
-  path_to_replace = {
-      "external/local_xla/": "tensorflow/compiler",
-      "external/local_tsl/": "tensorflow",
-  }
+    Args:
+      deps: a list of paths to files or directories.
+      srcs_dir: target directory where files are copied to.
+    """
+    path_to_replace = {
+        "external/local_xla/": "tensorflow/compiler",
+        "external/local_tsl/": "tensorflow",
+    }
 
-  for file in deps:
-    for path, val in path_to_replace.items():
-      if path in file:
-        copy_file(file, os.path.join(srcs_dir, val), path)
-        break
-    else:
-      # exclude external py files
-      if "external" not in file:
-        copy_file(file, srcs_dir)
+    for file in deps:
+        for path, val in path_to_replace.items():
+            if path in file:
+                if os.path.isdir(file):
+                    # If it's a directory, use copytree
+                    destination_dir = os.path.join(srcs_dir, val)
+                    os.makedirs(destination_dir, exist_ok=True)
+                    shutil.copytree(file, os.path.join(destination_dir, os.path.basename(file)), dirs_exist_ok=True)
+                else:
+                    # If it's a file, use copy_file
+                    copy_file(file, os.path.join(srcs_dir, val), path)
+                break
+        else:
+            # Exclude external py files
+            if "external" not in file:
+                if os.path.isdir(file):
+                    # If it's a directory, use copytree
+                    destination_dir = srcs_dir
+                    os.makedirs(destination_dir, exist_ok=True)
+                    shutil.copytree(file, os.path.join(destination_dir, os.path.basename(file)), dirs_exist_ok=True)
+                else:
+                    # If it's a file, use copy_file
+                    copy_file(file, srcs_dir)
 
 
 def prepare_aot(aot: list[str], srcs_dir: str) -> None:
@@ -205,6 +237,8 @@ def prepare_aot(aot: list[str], srcs_dir: str) -> None:
   )
 
 
+import os
+
 def prepare_wheel_srcs(
     headers: list[str], srcs: list[str], aot: list[str], srcs_dir: str,
     version: str) -> None:
@@ -219,23 +253,25 @@ def prepare_wheel_srcs(
   """
   prepare_headers(headers, os.path.join(srcs_dir, "tensorflow/include"))
   prepare_srcs(srcs, srcs_dir)
-  prepare_aot(aot, os.path.join(srcs_dir, "tensorflow/xla_aot_runtime_src"))
+
+  # Only prepare AOT if aot list is not empty
+  if aot:
+    prepare_aot(aot, os.path.join(srcs_dir, "tensorflow/xla_aot_runtime_src"))
 
   # Every directory that contains a .py file gets an empty __init__.py file.
   create_init_files(os.path.join(srcs_dir, "tensorflow"))
 
-  # move MANIFEST and THIRD_PARTY_NOTICES to the root
-  shutil.move(
-      os.path.join(srcs_dir, "tensorflow/tools/pip_package/MANIFEST.in"),
-      os.path.join(srcs_dir, "MANIFEST.in"),
-  )
-  shutil.move(
-      os.path.join(srcs_dir,
-                   "tensorflow/tools/pip_package/THIRD_PARTY_NOTICES.txt"),
-      os.path.join(srcs_dir, "tensorflow/THIRD_PARTY_NOTICES.txt"),
-  )
+  # Check if MANIFEST and THIRD_PARTY_NOTICES exist before moving
+  manifest_path = os.path.join(srcs_dir, "tensorflow/tools/pip_package/MANIFEST.in")
+  if os.path.exists(manifest_path):
+      shutil.move(manifest_path, os.path.join(srcs_dir, "MANIFEST.in"))
+
+  third_party_notices_path = os.path.join(srcs_dir, "tensorflow/tools/pip_package/THIRD_PARTY_NOTICES.txt")
+  if os.path.exists(third_party_notices_path):
+      shutil.move(third_party_notices_path, os.path.join(srcs_dir, "tensorflow/THIRD_PARTY_NOTICES.txt"))
 
   update_xla_tsl_imports(os.path.join(srcs_dir, "tensorflow"))
+  
   if not is_windows():
     rename_libtensorflow(os.path.join(srcs_dir, "tensorflow"), version)
   if not is_macos() and not is_windows():
@@ -295,59 +331,48 @@ def patch_so(srcs_dir: str) -> None:
 
 
 def rename_libtensorflow(srcs_dir: str, version: str):
-  """Update libtensorflow_cc file name.
-  
-  Bazel sets full TF version in name but libtensorflow_cc must contain only 
-  major. Update accordingly to the platform:
-  e.g. libtensorflow_cc.so.2.15.0 -> libtensorflow_cc.2
-  
-  Args:
-    srcs_dir: target directory with files.
-    version: Major version to be set.
-  """
-  major_version = version.split(".")[0]
-  if is_macos():
-    shutil.move(
-        os.path.join(srcs_dir, "libtensorflow_cc.{}.dylib".format(version)),
-        os.path.join(
-            srcs_dir, "libtensorflow_cc.{}.dylib".format(major_version)
-        ),
-    )
-    shutil.move(
-        os.path.join(
-            srcs_dir, "libtensorflow_framework.{}.dylib".format(version)
-        ),
-        os.path.join(
-            srcs_dir, "libtensorflow_framework.{}.dylib".format(major_version)
-        ),
-    )
-  else:
-    shutil.move(
-        os.path.join(srcs_dir, "libtensorflow_cc.so.{}".format(version)),
-        os.path.join(srcs_dir, "libtensorflow_cc.so.{}".format(major_version)),
-    )
-    shutil.move(
-        os.path.join(srcs_dir, "libtensorflow_framework.so.{}".format(version)),
-        os.path.join(
-            srcs_dir, "libtensorflow_framework.so.{}".format(major_version)
-        ),
-    )
+    """Update libtensorflow_cc file name.
+
+    Bazel sets full TF version in name but libtensorflow_cc must contain only 
+    major. Update accordingly to the platform:
+    e.g. libtensorflow_cc.so.2.15.0 -> libtensorflow_cc.2
+
+    Args:
+      srcs_dir: target directory with files.
+      version: Major version to be set.
+    """
+    major_version = version.split(".")[0]
+    if is_macos():
+        # Safely rename if files exist
+        for lib in ["libtensorflow_cc", "libtensorflow_framework"]:
+            src = os.path.join(srcs_dir, f"{lib}.{version}.dylib")
+            dst = os.path.join(srcs_dir, f"{lib}.{major_version}.dylib")
+            if os.path.exists(src):
+                shutil.move(src, dst)
+    else:
+        # Safely rename if files exist
+        for lib in ["libtensorflow_cc.so", "libtensorflow_framework.so"]:
+            src = os.path.join(srcs_dir, f"{lib}.{version}")
+            dst = os.path.join(srcs_dir, f"{lib}.{major_version}")
+            if os.path.exists(src):
+                shutil.move(src, dst)
 
 
-def create_local_config_python(dst_dir: str) -> None:
-  """Copy python and numpy header files to the destination directory."""
-  numpy_include_dir = "external/pypi_numpy/site-packages/numpy/_core/include"
-  if not os.path.exists(numpy_include_dir):
-    numpy_include_dir = "external/pypi_numpy/site-packages/numpy/core/include"
-  shutil.copytree(
-      numpy_include_dir,
-      os.path.join(dst_dir, "numpy_include"),
-  )
-  if is_windows():
-    path = "external/python_*/include"
-  else:
-    path = "external/python_*/include/python*"
-  shutil.copytree(glob.glob(path)[0], os.path.join(dst_dir, "python_include"))
+def create_local_config_python(src_dir, dst_dir):
+    print(f"Copying from {src_dir} to {dst_dir}")  # Debug print
+    try:
+        # Ensure 'path' is the correct one
+        path = "external/pypi_numpy/site-packages/numpy/core/include/*"
+        matches = glob.glob(path)
+        print(f"Glob matches found: {matches}")  # Added print to debug glob results
+
+        if matches:
+            shutil.copytree(matches[0], os.path.join(dst_dir, "python_include"))
+        else:
+            raise FileNotFoundError(f"No matches found for {path}")
+    except Exception as e:
+        print(f"Error while copying: {e}")  # Error print
+        raise
 
 
 def build_wheel(dir_path: str, cwd: str, project_name: str,
