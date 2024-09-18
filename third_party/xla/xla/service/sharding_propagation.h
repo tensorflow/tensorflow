@@ -169,6 +169,15 @@ class ShardingPropagation : public HloModulePass {
           shard_group_id_to_shard_like_group,
       int64_t& iterations);
 
+  // If instruction is a while, or the root or a parameter of a while body,
+  // then propagate its sharding to the while instruction, to its body root,
+  // and to its condition parameter.
+  void MaybeComputationPropagation(
+      const ComputationMap& computation_map,
+      const absl::flat_hash_set<const HloInstruction*>& provided_shardings,
+      HloInstruction* instruction,
+      absl::flat_hash_set<HloInstruction*>* changed);
+
   // Gets instructions that are related through a computation and need to share
   // the same sharding.
   std::vector<HloInstruction*> GetRelatedInstructions(

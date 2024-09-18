@@ -2739,6 +2739,54 @@ bool ShardingPropagation::InferShardingFromUsers(
   return improved_sharding;
 }
 
+void ShardingPropagation::MaybeComputationPropagation(
+    const ComputationMap& computation_map,
+    const absl::flat_hash_set<const HloInstruction*>& provided_shardings,
+    HloInstruction* instruction,
+    absl::flat_hash_set<HloInstruction*>* changed) {
+  auto propagate_to_instruction = [&](HloInstruction* search_inst) {
+    auto related_instructions =
+        GetRelatedInstructions(search_inst, computation_map);
+    if (absl::c_count(related_instructions, instruction)) {
+      for (HloInstruction* inst : related_instructions) {
+        // Do not touch shardings that we are not allowed to change
+        if ((!inst->has_sharding() ||
+             inst->sharding() != instruction->sharding()) &&
+            !provided_shardings.contains(inst)) {
+          VLOG(2) << "Add computation sharding: " << inst->name() << " "
+                  << instruction->sharding().ToString();
+          inst->copy_sharding(instruction);
+          changed->insert(inst);
+          MaybeComputationPropagation(computation_map, provided_shardings, inst,
+                                      changed);
+        }
+      }
+    }
+  };
+
+  if (instruction->opcode() == HloOpcode::kConditional ||
+      instruction->opcode() == HloOpcode::kWhile ||
+      instruction->opcode() == HloOpcode::kCustomCall ||
+      instruction->opcode() == HloOpcode::kCall) {
+    propagate_to_instruction(instruction);
+  }
+
+  if (instruction->opcode() == HloOpcode::kParameter ||
+      instruction->parent()->root_instruction() == instruction) {
+    auto it = computation_map.find(instruction->parent());
+    if (it != computation_map.end()) {
+      propagate_to_instruction(it->second);
+      // Propagate parameter shardings back to conditional's and
+      // call's operands.
+      if (instruction->opcode() == HloOpcode::kParameter &&
+          (it->second->opcode() == HloOpcode::kConditional ||
+           it->second->opcode() == HloOpcode::kCall)) {
+        propagate_to_instruction(instruction);
+      }
+    }
+  }
+}
+
 absl::StatusOr<bool> ShardingPropagation::RunToFixPoint(
     int64_t aggressiveness, bool propagate_shard_group,
     const ComputationMap& computation_map,
@@ -2754,55 +2802,6 @@ absl::StatusOr<bool> ShardingPropagation::RunToFixPoint(
     absl::flat_hash_map<int64_t, absl::flat_hash_set<HloInstruction*>>&
         shard_group_id_to_shard_like_group,
     int64_t& iterations) {
-  // If instruction is a while, or the root or a parameter of a while body,
-  // then propagate its sharding to the while instruction, to its body root,
-  // and to its condition parameter.
-  std::function<void(HloInstruction*, absl::flat_hash_set<HloInstruction*>*)>
-      maybe_computation_propagation =
-          [&](HloInstruction* instruction,
-              absl::flat_hash_set<HloInstruction*>* changed) {
-            auto propagate_to_instruction = [&](HloInstruction* search_inst) {
-              auto related_instructions =
-                  GetRelatedInstructions(search_inst, computation_map);
-              if (absl::c_count(related_instructions, instruction)) {
-                for (HloInstruction* inst : related_instructions) {
-                  // Do not touch shardings that we are not allowed to change
-                  if ((!inst->has_sharding() ||
-                       inst->sharding() != instruction->sharding()) &&
-                      !provided_shardings.contains(inst)) {
-                    VLOG(2) << "Add computation sharding: " << inst->name()
-                            << " " << instruction->sharding().ToString();
-                    inst->copy_sharding(instruction);
-                    changed->insert(inst);
-                    maybe_computation_propagation(inst, changed);
-                  }
-                }
-              }
-            };
-
-            if (instruction->opcode() == HloOpcode::kConditional ||
-                instruction->opcode() == HloOpcode::kWhile ||
-                instruction->opcode() == HloOpcode::kCustomCall ||
-                instruction->opcode() == HloOpcode::kCall) {
-              propagate_to_instruction(instruction);
-            }
-
-            if (instruction->opcode() == HloOpcode::kParameter ||
-                instruction->parent()->root_instruction() == instruction) {
-              auto it = computation_map.find(instruction->parent());
-              if (it != computation_map.end()) {
-                propagate_to_instruction(it->second);
-                // Propagate parameter shardings back to conditional's and
-                // call's operands.
-                if (instruction->opcode() == HloOpcode::kParameter &&
-                    (it->second->opcode() == HloOpcode::kConditional ||
-                     it->second->opcode() == HloOpcode::kCall)) {
-                  propagate_to_instruction(instruction);
-                }
-              }
-            }
-          };
-
   bool changed = false;
   absl::flat_hash_set<const HloInstruction*> already_inferred_from_shard_group;
   absl::flat_hash_set<const HloInstruction*> already_inferred_from_operands;
@@ -2899,7 +2898,8 @@ absl::StatusOr<bool> ShardingPropagation::RunToFixPoint(
             VLOG(2) << "Add sharding (shard group): "
                     << instruction->ToString();
             absl::flat_hash_set<HloInstruction*> changed_in_comp_prop;
-            maybe_computation_propagation(instruction, &changed_in_comp_prop);
+            MaybeComputationPropagation(computation_map, provided_shardings,
+                                        instruction, &changed_in_comp_prop);
             clear_cache(instruction);
             for (auto hlo : changed_in_comp_prop) {
               clear_cache(hlo);
@@ -2940,7 +2940,8 @@ absl::StatusOr<bool> ShardingPropagation::RunToFixPoint(
           changed = true;
           VLOG(2) << "Add sharding (forward-pass): " << instruction->ToString();
           absl::flat_hash_set<HloInstruction*> changed_in_comp_prop;
-          maybe_computation_propagation(instruction, &changed_in_comp_prop);
+          MaybeComputationPropagation(computation_map, provided_shardings,
+                                      instruction, &changed_in_comp_prop);
           clear_cache(instruction);
           for (auto hlo : changed_in_comp_prop) {
             clear_cache(hlo);
@@ -2993,7 +2994,8 @@ absl::StatusOr<bool> ShardingPropagation::RunToFixPoint(
           changed = true;
           VLOG(2) << "Add sharding (backward-pass): " << (*it)->ToString();
           absl::flat_hash_set<HloInstruction*> changed_in_comp_prop;
-          maybe_computation_propagation(*it, &changed_in_comp_prop);
+          MaybeComputationPropagation(computation_map, provided_shardings, *it,
+                                      &changed_in_comp_prop);
           clear_cache(*it);
           for (auto hlo : changed_in_comp_prop) {
             clear_cache(hlo);
