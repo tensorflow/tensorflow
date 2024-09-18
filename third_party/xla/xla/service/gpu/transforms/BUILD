@@ -438,14 +438,19 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "command_buffer_scheduling_test",
     srcs = ["command_buffer_scheduling_test.cc"],
+    backends = [
+        "cpu",
+        "gpu",
+    ],
     deps = [
         ":command_buffer_scheduling",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_parser",
         "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/service/gpu:gpu_executable",
         "//xla/stream_executor:device_description",
         "//xla/tests:filecheck",
         "//xla/tests:hlo_test_base",

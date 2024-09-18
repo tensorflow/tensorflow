@@ -88,6 +88,78 @@ static bool IsNoOp(const HloInstruction* hlo) {
 };
 
 //===----------------------------------------------------------------------===//
+// Asynchronous HLO operations mapped to commands.
+//===----------------------------------------------------------------------===//
+
+// Asynchronous HLO operations can be wrapped into command buffers only when
+// both start and done operations can be put into the same command buffer.
+// Command buffer semantics implies that when command buffer execution
+// completes, all recorded commands are also completed, which means that if
+// done operation is not part of the same command buffer, we would change the
+// execution semantics and create additional synchronization point.
+
+static bool IsAsyncStartCommand(const HloInstruction* hlo,
+                                const CommandBufferConfig& config) {
+  if (hlo->opcode() == HloOpcode::kAllReduceStart ||
+      hlo->opcode() == HloOpcode::kAllGatherStart) {
+    return config.enabled_commands.contains(DebugOptions::COLLECTIVES);
+  }
+
+  if (hlo->opcode() == HloOpcode::kAsyncStart) {
+    if (IsCublasGemm(*hlo->async_wrapped_instruction())) {
+      return config.enabled_commands.contains(DebugOptions::CUBLAS);
+    }
+    if (hlo->async_wrapped_opcode() == HloOpcode::kFusion) {
+      return config.enabled_commands.contains(DebugOptions::FUSION);
+    }
+    if (hlo->async_wrapped_opcode() == HloOpcode::kReduceScatter) {
+      return config.enabled_commands.contains(DebugOptions::COLLECTIVES);
+    }
+  }
+
+  if (hlo->opcode() == HloOpcode::kReduceScatter) {
+    return config.enabled_commands.contains(DebugOptions::COLLECTIVES);
+  }
+
+  return false;
+}
+
+static bool IsAsyncDoneCommand(const HloInstruction* hlo,
+                               const CommandBufferConfig& config) {
+  if (hlo->opcode() == HloOpcode::kAllReduceDone ||
+      hlo->opcode() == HloOpcode::kAllGatherDone) {
+    return config.enabled_commands.contains(DebugOptions::COLLECTIVES);
+  }
+
+  if (hlo->opcode() == HloOpcode::kAsyncDone) {
+    if (IsCublasGemm(*hlo->async_wrapped_instruction())) {
+      return config.enabled_commands.contains(DebugOptions::CUBLAS);
+    }
+    if (hlo->async_wrapped_opcode() == HloOpcode::kFusion) {
+      return config.enabled_commands.contains(DebugOptions::FUSION);
+    }
+    if (hlo->async_wrapped_opcode() == HloOpcode::kReduceScatter) {
+      return config.enabled_commands.contains(DebugOptions::COLLECTIVES);
+    }
+  }
+
+  return false;
+}
+
+// Finds an async-done HLO operation corresponding on an async-start one.
+static HloInstruction* FindAsyncDoneCommand(const HloInstruction* start) {
+  if (start->opcode() == HloOpcode::kAllReduceStart ||
+      start->opcode() == HloOpcode::kAllGatherStart) {
+    CHECK(start->users().size() == 1);  // NOLINT, checked by HLO verifier
+    return start->users().front();
+  } else if (start->opcode() == HloOpcode::kAsyncStart) {
+    return start->async_chain_done();
+  }
+
+  return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
 // Synchronous HLO operations mapped to commands.
 //===----------------------------------------------------------------------===//
 
@@ -173,12 +245,13 @@ static bool IsCommand(const HloInstruction* hlo,
       auto fusion_analysis =
           HloFusionAnalysis::Create(*hlo, config.device_description);
       const HloFusionAdaptor& adaptor = fusion_analysis.fusion();
-      auto custom_call_adaptor = HloBfsFindIf(
-          adaptor.GetRoots(), adaptor,
-          [](auto node) { return node.opcode() == HloOpcode::kCustomCall; });
-      const auto* custom_call = static_cast<const HloCustomCallInstruction*>(
-          &custom_call_adaptor->instruction());
-      return IsCommand(custom_call, config);
+      auto hero_adaptor =
+          HloBfsFindIf(adaptor.GetRoots(), adaptor, [](auto node) {
+            return node.opcode() == HloOpcode::kCustomCall ||
+                   node.opcode() == HloOpcode::kReduceScatter;
+          });
+      const HloInstruction* hero = &hero_adaptor->instruction();
+      return IsCommand(hero, config) || IsAsyncStartCommand(hero, config);
     }
     if (custom_config.name() == "dynamic_address_computation") {
       return false;
@@ -204,74 +277,6 @@ static bool IsCommand(const HloInstruction* hlo,
     return IsCommand<HloOpcode::kConditional>(hlo, config);
 
   return false;
-}
-
-//===----------------------------------------------------------------------===//
-// Asynchronous HLO operations mapped to commands.
-//===----------------------------------------------------------------------===//
-
-// Asynchronous HLO operations can be wrapped into command buffers only when
-// both start and done operations can be put into the same command buffer.
-// Command buffer semantics implies that when command buffer execution
-// completes, all recorded commands are also completed, which means that if
-// done operation is not part of the same command buffer, we would change the
-// execution semantics and create additional synchronization point.
-
-static bool IsAsyncStartCommand(const HloInstruction* hlo,
-                                const CommandBufferConfig& config) {
-  if (hlo->opcode() == HloOpcode::kAllReduceStart ||
-      hlo->opcode() == HloOpcode::kAllGatherStart) {
-    return config.enabled_commands.contains(DebugOptions::COLLECTIVES);
-  }
-
-  if (hlo->opcode() == HloOpcode::kAsyncStart) {
-    if (IsCublasGemm(*hlo->async_wrapped_instruction())) {
-      return config.enabled_commands.contains(DebugOptions::CUBLAS);
-    }
-    if (hlo->async_wrapped_opcode() == HloOpcode::kFusion) {
-      return config.enabled_commands.contains(DebugOptions::FUSION);
-    }
-    if (hlo->async_wrapped_opcode() == HloOpcode::kReduceScatter) {
-      return config.enabled_commands.contains(DebugOptions::COLLECTIVES);
-    }
-  }
-
-  return false;
-}
-
-static bool IsAsyncDoneCommand(const HloInstruction* hlo,
-                               const CommandBufferConfig& config) {
-  if (hlo->opcode() == HloOpcode::kAllReduceDone ||
-      hlo->opcode() == HloOpcode::kAllGatherDone) {
-    return config.enabled_commands.contains(DebugOptions::COLLECTIVES);
-  }
-
-  if (hlo->opcode() == HloOpcode::kAsyncDone) {
-    if (IsCublasGemm(*hlo->async_wrapped_instruction())) {
-      return config.enabled_commands.contains(DebugOptions::CUBLAS);
-    }
-    if (hlo->async_wrapped_opcode() == HloOpcode::kFusion) {
-      return config.enabled_commands.contains(DebugOptions::FUSION);
-    }
-    if (hlo->async_wrapped_opcode() == HloOpcode::kReduceScatter) {
-      return config.enabled_commands.contains(DebugOptions::COLLECTIVES);
-    }
-  }
-
-  return false;
-}
-
-// Finds an async-done HLO operation corresponding on an async-start one.
-static HloInstruction* FindAsyncDoneCommand(const HloInstruction* start) {
-  if (start->opcode() == HloOpcode::kAllReduceStart ||
-      start->opcode() == HloOpcode::kAllGatherStart) {
-    CHECK(start->users().size() == 1);  // NOLINT, checked by HLO verifier
-    return start->users().front();
-  } else if (start->opcode() == HloOpcode::kAsyncStart) {
-    return start->async_chain_done();
-  }
-
-  return nullptr;
 }
 
 //===----------------------------------------------------------------------===//

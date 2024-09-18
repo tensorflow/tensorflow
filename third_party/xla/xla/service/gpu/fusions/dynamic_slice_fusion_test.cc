@@ -3496,6 +3496,160 @@ TEST_F(DynamicSliceFusionTest, ReduceScatterDegenerateCollective) {
       /*run_hlo_passes=*/false, /*use_threads=*/true, error));
 }
 
+TEST_F(DynamicSliceFusionTest, ReduceScatterSlice) {
+  const char* hlo_ref = R"(
+  HloModule jit_slice, replica_count=2
+
+  add {
+    a = s32[] parameter(0)
+    b = s32[] parameter(1)
+    ROOT add = add(a,b)
+  }
+
+  ENTRY %main.9 {
+    %p0 = s32[2,8,32]{2,1,0} parameter(0)
+    %slice = s32[1,8,32]{2,1,0} slice(%p0), slice={[1:2], [0:8], [0:32]}
+    %bc1 = s32[8,32]{1,0} reshape(%slice)
+    ROOT rs = s32[4,32] reduce-scatter(bc1), channel_id=64, replica_groups={{0,1}}, use_global_device_ids=true, dimensions={0}, to_apply=add
+  }
+  )";
+
+  HloModuleConfig config;
+  DebugOptions options;
+  options.set_xla_gpu_enable_dynamic_slice_fusion(false);
+  options.clear_xla_gpu_enable_command_buffer();
+  config.set_debug_options(options);
+  TF_ASSERT_OK_AND_ASSIGN(auto module_ref,
+                          ParseAndReturnVerifiedModule(hlo_ref, config));
+
+  options.set_xla_gpu_enable_dynamic_slice_fusion(true);
+  options.clear_xla_gpu_enable_command_buffer();
+  config.set_debug_options(options);
+  TF_ASSERT_OK_AND_ASSIGN(auto module_new,
+                          ParseAndReturnVerifiedModule(hlo_ref, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module_ref_opt,
+                          GetOptimizedModule(std::move(module_ref)));
+  TF_ASSERT_OK_AND_ASSIGN(auto module_new_opt,
+                          GetOptimizedModule(std::move(module_new)));
+
+  ASSERT_TRUE(GetDynamicSliceFusions(*module_ref_opt).empty());
+  ASSERT_FALSE(GetDynamicSliceFusions(*module_new_opt).empty());
+
+  auto module_new_opt_clone = module_new_opt->Clone();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto exec, CreateExecutable(std::move(module_new_opt_clone), false));
+  GpuExecutable* gpu_exec = dynamic_cast<GpuExecutable*>(exec.get());
+  ASSERT_EQ(gpu_exec->GetThunk().thunks().size(), 2ul);
+  auto& rs_start_thunk = gpu_exec->GetThunk().thunks()[0];
+  auto& rs_done_thunk = gpu_exec->GetThunk().thunks()[1];
+  ASSERT_EQ(rs_start_thunk->kind(), Thunk::kNcclReduceScatterStart);
+  ASSERT_EQ(rs_done_thunk->kind(), Thunk::kNcclReduceScatterDone);
+
+  ErrorSpec error{/*aabs=*/1e-3, /*arel=*/1e-3};
+  EXPECT_TRUE(RunAndCompareTwoModulesReplicated(std::move(module_ref_opt),
+                                                std::move(module_new_opt),
+                                                false, true, error));
+}
+
+TEST_F(DynamicSliceFusionTest, ReduceScatterDynamicSlice) {
+  const char* hlo_ref = R"(
+  HloModule jit_slice, replica_count=2
+
+  add {
+    a = s32[] parameter(0)
+    b = s32[] parameter(1)
+    ROOT add = add(a,b)
+  }
+
+  ENTRY %main.9 {
+    p0 = s32[2,8,32]{2,1,0} parameter(0)
+    c0 = s32[] constant(0)
+    c1 = s32[] constant(1)
+    slice = s32[1,8,32]{2,1,0} dynamic-slice(p0, c1, c0, c0), dynamic_slice_sizes={1,8,32}
+    bc1 = s32[8,32]{1,0} reshape(slice)
+    ROOT rs = s32[4,32] reduce-scatter(bc1), channel_id=64, replica_groups={{0,1}}, use_global_device_ids=true, dimensions={0}, to_apply=add
+  })";
+
+  HloModuleConfig config;
+  DebugOptions options;
+  options.set_xla_gpu_enable_dynamic_slice_fusion(false);
+  options.clear_xla_gpu_enable_command_buffer();
+  config.set_debug_options(options);
+  TF_ASSERT_OK_AND_ASSIGN(auto module_ref,
+                          ParseAndReturnVerifiedModule(hlo_ref, config));
+
+  options.set_xla_gpu_enable_dynamic_slice_fusion(true);
+  options.clear_xla_gpu_enable_command_buffer();
+  config.set_debug_options(options);
+  TF_ASSERT_OK_AND_ASSIGN(auto module_new,
+                          ParseAndReturnVerifiedModule(hlo_ref, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module_ref_opt,
+                          GetOptimizedModule(std::move(module_ref)));
+  TF_ASSERT_OK_AND_ASSIGN(auto module_new_opt,
+                          GetOptimizedModule(std::move(module_new)));
+
+  ASSERT_TRUE(GetDynamicSliceFusions(*module_ref_opt).empty());
+  ASSERT_FALSE(GetDynamicSliceFusions(*module_new_opt).empty());
+
+  ErrorSpec error{/*aabs=*/1e-3, /*arel=*/1e-3};
+  EXPECT_TRUE(RunAndCompareTwoModulesReplicated(std::move(module_ref_opt),
+                                                std::move(module_new_opt),
+                                                false, true, error));
+}
+
+TEST_F(DynamicSliceFusionTest, ReduceScatterDegenerateSlice) {
+  const char* hlo_ref = R"(
+    HloModule test_module, replica_count=2
+
+    add {
+      a = s32[] parameter(0)
+      b = s32[] parameter(1)
+      ROOT add = s32[] add(a, b)
+    }
+
+    ENTRY main {
+      p0 = s32[2,4,8] parameter(0)
+      slice = s32[1,4,8] slice(p0), slice={[1:2], [0:4], [0:8]}
+      bc = s32[4,8] reshape(slice)
+      ROOT rs = s32[4,8] reduce-scatter(bc), channel_id=64, replica_groups={{0},{1}}, use_global_device_ids=true, dimensions={0}, to_apply=add
+    }
+  )";
+  HloModuleConfig config;
+  DebugOptions options;
+  options.set_xla_gpu_enable_dynamic_slice_fusion(false);
+  options.clear_xla_gpu_enable_command_buffer();
+  config.set_debug_options(options);
+  TF_ASSERT_OK_AND_ASSIGN(auto module_ref,
+                          ParseAndReturnVerifiedModule(hlo_ref, config));
+
+  options.set_xla_gpu_enable_dynamic_slice_fusion(true);
+  options.clear_xla_gpu_enable_command_buffer();
+  config.set_debug_options(options);
+  TF_ASSERT_OK_AND_ASSIGN(auto module_new,
+                          ParseAndReturnVerifiedModule(hlo_ref, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module_ref_opt,
+                          GetOptimizedModule(std::move(module_ref)));
+  TF_ASSERT_OK_AND_ASSIGN(auto module_new_opt,
+                          GetOptimizedModule(std::move(module_new)));
+
+  ASSERT_TRUE(GetDynamicSliceFusions(*module_ref_opt).empty());
+  ASSERT_FALSE(GetDynamicSliceFusions(*module_new_opt).empty());
+
+  auto module_new_opt_clone = module_new_opt->Clone();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto exec, CreateExecutable(std::move(module_new_opt_clone), false));
+  GpuExecutable* gpu_exec = dynamic_cast<GpuExecutable*>(exec.get());
+  ASSERT_EQ(gpu_exec->GetThunk().thunks()[0]->kind(), Thunk::kCopy);
+
+  ErrorSpec error{/*aabs=*/1e-3, /*arel=*/1e-3};
+  EXPECT_TRUE(RunAndCompareTwoModulesReplicated(std::move(module_ref_opt),
+                                                std::move(module_new_opt),
+                                                false, true, error));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
