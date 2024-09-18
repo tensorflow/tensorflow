@@ -138,6 +138,28 @@ class TritonGemmTestWithoutTritonGemmAny : public TritonGemmTest {
   }
 };
 
+TEST_F(TritonGemmTest, RejectTritonFusionForInt4WithMinorBatchDim) {
+  const std::string kHloText = R"(
+    HloModule t
+
+    ENTRY main {
+      lhs = s4[32,64,16]{2,1,0} parameter(0)
+      lhs_converted = bf16[32,64,16]{2,1,0} convert(lhs)
+      rhs = bf16[16,64,16]{2,1,0} parameter(1)
+      ROOT dot = bf16[16,32,16]{2,1,0} dot(lhs_converted, rhs),
+          lhs_contracting_dims={1},
+          rhs_contracting_dims={1},
+          lhs_batch_dims={2},
+          rhs_batch_dims={0}
+    }
+  )";
+  const std::string pattern =
+      R"(CHECK-NOT: ""kind":"__triton_gemm","triton_gemm_config"")";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
+  TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), pattern));
+  EXPECT_TRUE(ok);
+}
+
 TEST_F(TritonGemmTest, LHSInt4WithMinorDimEqualTo1) {
   // We prove that triton can handle int4 dot with non contracting dim size
   // equal to 1.
@@ -163,7 +185,6 @@ TEST_F(TritonGemmTest, LHSInt4WithMinorDimEqualTo1) {
         backend_config={"fusion_backend_config": {"kind":"__triton_gemm"}}
     }
   )";
-
   EXPECT_TRUE(RunAndCompareNoHloPasses(
       kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }

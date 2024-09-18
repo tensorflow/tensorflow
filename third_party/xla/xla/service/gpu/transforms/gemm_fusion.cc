@@ -624,12 +624,43 @@ HlosAndRequirements FuseDotOutput(
                          context.requirements(), builder, fusion_params);
 }
 
+namespace {
+
+class Decision {
+ public:
+  // Returns true if the emitter capable of emitting the fusion (profitable or
+  // not).
+  bool CanFuse() const { return fusing_decision_.CanFuse() || able_to_fuse_; }
+
+  // Returns true if it's profitable to fuse.
+  bool WantToFuse() const { return fusing_decision_.CanFuse(); }
+
+  static Decision Accept() { return {FusionDecision(), true}; };
+
+  static Decision Decline(std::string_view value) {
+    return {FusionDecision(value), false};
+  }
+
+  static Decision NotProfitable(std::string_view value) {
+    return {FusionDecision(value), true};
+  }
+
+ private:
+  Decision(FusionDecision decision, bool able_to_fuse)
+      : fusing_decision_(std::move(decision)), able_to_fuse_(able_to_fuse) {}
+
+  FusionDecision fusing_decision_;
+  bool able_to_fuse_;
+};
+
+}  // namespace
+
 // Fuses dot and the compatible and profitable to fuse operations around it
 // into a new fusion computation constructed using the builder. fusion_inputs
 // get populated with the non-fused instructions that become operands of the
 // call to this fusion. fusion_output_ptr (if not nullptr) gets assigned the
 // original instruction that has to be replaced by the call to the fusion.
-absl::StatusOr<FusionDecision> CreateDotFusion(
+absl::StatusOr<Decision> CreateDotFusion(
     const HloDotInstruction& dot, const se::GpuComputeCapability gpu_version,
     HloComputation::Builder& builder,
     std::vector<HloInstruction*>& fusion_inputs,
@@ -639,7 +670,7 @@ absl::StatusOr<FusionDecision> CreateDotFusion(
           legacy_triton::IsTritonSupportedInstruction(dot, gpu_version);
       !is_supported) {
     VLOG(3) << is_supported.Explain();
-    return is_supported;
+    return Decision::Decline(is_supported.Explain());
   }
 
   // Verify sparse dot constraints.
@@ -698,7 +729,7 @@ absl::StatusOr<FusionDecision> CreateDotFusion(
               dot, TritonFusionAnalysis::Scope::LHS) ||
           !analysis.IsBatchDimMinorForInt4Parameter(
               dot, TritonFusionAnalysis::Scope::RHS)) {
-        return InvalidArgument(
+        return Decision::Decline(
             "Fusion is not possible because the parameter with the type S4 has "
             "minor batch dimension.");
       }
@@ -711,7 +742,7 @@ absl::StatusOr<FusionDecision> CreateDotFusion(
       algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3 ||
       dot.GetModule()->config().debug_options().xla_gpu_triton_gemm_any() ||
       dot.sparse_operands()) {
-    return FusionDecision{};
+    return Decision::Accept();
   }
 
   bool is_pure_matmul = true;
@@ -726,11 +757,10 @@ absl::StatusOr<FusionDecision> CreateDotFusion(
     }
     return absl::OkStatus();
   });
-  if (!is_pure_matmul) {
-    return FusionDecision{};
+  if (is_pure_matmul) {
+    return Decision::NotProfitable("Pure Matmul");
   }
-
-  return "No profitable operations to fuse.";
+  return Decision::Accept();
 }
 
 // Extracts into fused computations parts of HLO graph including dot()
@@ -762,10 +792,10 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
     std::vector<HloInstruction*> fusion_inputs;
     HloInstruction* fusion_output = nullptr;
     TF_ASSIGN_OR_RETURN(
-        const FusionDecision should_fuse,
+        const Decision decision,
         CreateDotFusion(*Cast<HloDotInstruction>(dot), gpu_version_, builder,
                         fusion_inputs, &fusion_output));
-    if (builder.last_added_instruction() == nullptr) {
+    if (!decision.CanFuse()) {
       return absl::OkStatus();
     }
     // If a GEMM requiring padding for cuBLAS is encountered here this
@@ -776,7 +806,7 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
       if (!CublasRequiresPadding(
               *Cast<HloDotInstruction>(dot),
               std::get<se::CudaComputeCapability>(gpu_version_)) &&
-          !should_fuse) {
+          !decision.WantToFuse()) {
         return absl::OkStatus();
       }
     }
@@ -832,7 +862,7 @@ bool ShouldTritonHandleGEMM(HloDotInstruction& dot,
   HloComputation::Builder builder("disposable");
   return CreateDotFusion(dot, gpu_version, builder, fusion_inputs,
                          /*fusion_output_ptr=*/nullptr)
-      ->CanFuse();
+      ->WantToFuse();
 }
 
 absl::StatusOr<bool> GemmFusion::Run(
