@@ -1075,8 +1075,8 @@ void ReindexOp::build(mlir::OpBuilder& builder, mlir::OperationState& result,
 // ReduceOp
 //===----------------------------------------------------------------------===//
 
-SmallVector<Type> inferReductionResultTypes(TypeRange input_types,
-                                            ArrayRef<int64_t> reduced_dims) {
+SmallVector<Type, 2> inferReductionResultTypes(TypeRange input_types,
+                                               ArrayRef<int64_t> reduced_dims) {
   auto input_shape =
       mlir::cast<RankedTensorType>(input_types.front()).getShape();
   auto num_reduced_dims = reduced_dims.size();
@@ -1100,7 +1100,7 @@ SmallVector<Type> inferReductionResultTypes(TypeRange input_types,
   return result_types;
 }
 
-SmallVector<Type> inferReductionInitTypes(TypeRange input_types) {
+SmallVector<Type, 2> inferReductionInitTypes(TypeRange input_types) {
   SmallVector<Type, 2> init_types;
   init_types.reserve(input_types.size());
   for (auto input_type : input_types) {
