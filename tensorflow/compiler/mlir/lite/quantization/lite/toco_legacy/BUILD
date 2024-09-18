@@ -129,11 +129,11 @@ tf_cc_test(
     ],
     deps = [
         ":quantize_weights",
+        "//tensorflow/compiler/mlir/lite/core:absl_error_model_builder",
         "//tensorflow/compiler/mlir/lite/quantization/lite:test_util",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/compiler/mlir/lite/schema:schema_utils",
         "//tensorflow/core:framework_internal",
-        "//tensorflow/lite/core:framework",  # to remove when mlir version is ready.
         "@com_google_googletest//:gtest",
         "@flatbuffers",
         "@local_tsl//tsl/platform:path",
