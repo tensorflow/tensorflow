@@ -16,3 +16,19 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/compiler/mlir/lite/experimental/lrt:__subpackages__"],
 )
+
+cc_binary(
+    name = "apply_plugin",
+    srcs = [
+        "apply_plugin.cc",
+        # TODO: b/366821557 - Support pre-compiled plugins as data dependencies.
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/examples:mul_op_plugin_so",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/core:algo",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/core:api_internal",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/core:lite_rt_model_init",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/core:model",
+        "@llvm-project//llvm:Support",
+    ],
+)

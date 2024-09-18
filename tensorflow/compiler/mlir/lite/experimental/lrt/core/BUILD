@@ -18,9 +18,20 @@ package(
 )
 
 cc_library(
-    name = "common_internal",
+    name = "api_internal",
     srcs = ["lite_rt_common.cc"],
-    deps = ["//tensorflow/compiler/mlir/lite/experimental/lrt/c:lite_rt_c_api"],
+    hdrs = [
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/c:lite_rt_common.h",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/c:lite_rt_compiler_plugin.h",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/c:lite_rt_model.h",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/c:lite_rt_op_code.h",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/c:lite_rt_support.h",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/cc:lite_rt_support.h",
+    ],
+    deps = [
+        "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite/core/c:c_api_types",
+    ],
 )
 
 cc_library(
@@ -30,10 +41,8 @@ cc_library(
         "model.h",
     ],
     deps = [
-        ":common_internal",
+        ":api_internal",
         "//tensorflow/compiler/mlir/lite/core:model_builder_base",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/c:lite_rt_c_api",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/cc:lite_rt_cc_api",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/schema:schema_fbs",
@@ -45,16 +54,15 @@ cc_library(
     srcs = ["lite_rt_model_init.cc"],
     hdrs = ["lite_rt_model_init.h"],
     deps = [
-        ":common_internal",
+        ":api_internal",
         ":model",
         "//tensorflow/compiler/mlir/lite:allocation",
         "//tensorflow/compiler/mlir/lite/core:model_builder_base",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/c:lite_rt_c_api",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/cc:lite_rt_cc_api",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/log:check",
         "@flatbuffers//:runtime_cc",
     ],
 )
@@ -64,11 +72,9 @@ cc_test(
     srcs = ["model_test.cc"],
     tags = ["no_oss"],
     deps = [
-        ":common_internal",
+        ":api_internal",
         ":graph_tools",
         ":lite_rt_model_init",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/c:lite_rt_c_api",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/cc:lite_rt_cc_api",
         "//tensorflow/compiler/mlir/lite/experimental/lrt/test_data:test_data_util",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
@@ -79,10 +85,11 @@ cc_library(
     name = "algo",
     hdrs = ["algo.h"],
     deps = [
-        ":common_internal",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/c:lite_rt_c_api",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/cc:lite_rt_cc_api",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/core:model",
+        ":api_internal",
+        ":model",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/log:check",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -92,10 +99,9 @@ cc_test(
     tags = ["no_oss"],
     deps = [
         ":algo",
-        ":common_internal",
+        ":api_internal",
         ":graph_tools",
         ":model",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/c:lite_rt_c_api",
         "//tensorflow/compiler/mlir/lite/experimental/lrt/test_data:test_data_util",
         "@com_google_googletest//:gtest_main",
     ],
@@ -107,10 +113,8 @@ cc_library(
         "graph_tools.h",
     ],
     deps = [
-        ":common_internal",
+        ":api_internal",
         "//tensorflow/compiler/mlir/lite/core:model_builder_base",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/c:lite_rt_c_api",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt/cc:lite_rt_cc_api",
         "//tensorflow/lite/c:c_api_types",
         "@llvm-project//llvm:Support",
     ],

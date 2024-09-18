@@ -82,13 +82,13 @@ LrtStatus PluginCompilePartition(LrtCompilerPlugin compiler_plugin,
   auto* result = new LrtCompiledPartitionT();
 
   char* byte_code;
-  asprintf(&byte_code, "partition_with_%d_muls", num_muls_in_partition);
+  (void)asprintf(&byte_code, "partition_with_%d_muls", num_muls_in_partition);
   result->byte_code.assign(byte_code);
   free(byte_code);
 
   char* name;
-  asprintf(&name, "partition_number_%d",
-           compiler_plugin->num_partitions_compiled);
+  (void)asprintf(&name, "partition_number_%d",
+                 compiler_plugin->num_partitions_compiled);
   result->name.assign(name);
   free(name);
 

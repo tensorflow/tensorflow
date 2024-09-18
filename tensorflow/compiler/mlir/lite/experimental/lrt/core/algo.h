@@ -15,40 +15,24 @@
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_CORE_ALGO_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_LRT_CORE_ALGO_H_
 
+#include <algorithm>
 #include <memory>
 #include <optional>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "llvm/ADT/MapVector.h"
 #include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_model.h"
 #include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_op_code.h"
+#include "tensorflow/compiler/mlir/lite/experimental/lrt/cc/lite_rt_support.h"
 #include "tensorflow/compiler/mlir/lite/experimental/lrt/core/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 // NOLINTBEGIN
 
 namespace algo {
-
-// TODO: b/365339578 - Put in graph tools.
-inline void EraseUse(LrtTensor tensor, lrt_param_index_t use_ind) {
-  if (use_ind < 0 || use_ind >= tensor->users.size()) {
-    return;
-  }
-  tensor->users[use_ind] = tensor->users.back();
-  tensor->users.pop_back();
-  tensor->user_arg_inds[use_ind] = tensor->user_arg_inds.back();
-  tensor->user_arg_inds.pop_back();
-}
-
-inline std::optional<lrt_param_index_t> FindUseInd(LrtTensor tensor,
-                                                   LrtOp user) {
-  for (lrt_param_index_t i = 0; i < tensor->users.size(); ++i) {
-    if (tensor->users[i] == user) {
-      return i;
-    }
-  }
-  return std::nullopt;
-}
 
 //
 // flatlist to partition(s)
@@ -63,7 +47,7 @@ class DisjointSets {
   void Insert(LrtOp op, LrtOp parent);
   std::vector<std::vector<LrtOp>> GetBuckets();
   LrtOp GetBucket(LrtOp op);
-  std::unordered_map<LrtOp, LrtOp> map_;
+  llvm::MapVector<LrtOp, LrtOp> map_;
 };
 
 inline std::vector<std::vector<LrtOp>> DisjointSets::GetPartitionsFromFlatList(
@@ -101,16 +85,21 @@ inline std::vector<std::vector<LrtOp>> DisjointSets::GetBuckets() {
   std::unordered_map<LrtOp, std::vector<LrtOp>> invert_map;
   for (const auto& entry : map_) {
     auto* bucket = GetBucket(entry.first);
-    if (!invert_map.contains(bucket)) {
+
+    if (invert_map.find(bucket) == invert_map.end()) {
       invert_map.insert_or_assign(bucket, std::vector<LrtOp>{});
     }
+
     invert_map[bucket].push_back(entry.first);
   }
+
   std::vector<std::vector<LrtOp>> res;
   res.reserve(invert_map.size());
+
   for (auto& entry : invert_map) {
     res.push_back(std::move(entry.second));
   }
+
   return res;
 }
 
@@ -129,121 +118,241 @@ inline LrtOp DisjointSets::GetBucket(LrtOp op) {
 // slice partitions out of a subgraph (into new subgraphs)
 //===----------------------------------------------------------------------===//
 
+// TODO: b/365339578 - Move helpers from algo.h to the internal model library.
+
+inline void CloneOpData(const LrtOpT& old_op, LrtOpT& new_op) {
+  // TODO: b/365339578 - Support options in op clone.
+  new_op.op_code = old_op.op_code;
+}
+
+inline void CloneTensorData(const LrtTensorT& old_tensor,
+                            LrtTensorT& new_tensor) {
+  new_tensor.type_id = old_tensor.type_id;
+  new_tensor.type_detail = old_tensor.type_detail;
+  new_tensor.buffer.fb_buffer = std::make_unique<tflite::BufferT>();
+}
+
+inline std::optional<lrt_param_index_t> FindUseInd(LrtTensor tensor,
+                                                   LrtOp user) {
+  for (lrt_param_index_t i = 0; i < tensor->users.size(); ++i) {
+    if (tensor->users[i] == user) {
+      return i;
+    }
+  }
+  return std::nullopt;
+}
+
+inline void EraseUse(LrtTensor tensor, lrt_param_index_t use_ind) {
+  if (use_ind < 0 || use_ind >= tensor->users.size()) {
+    return;
+  }
+  tensor->users[use_ind] = tensor->users.back();
+  tensor->users.pop_back();
+  tensor->user_arg_inds[use_ind] = tensor->user_arg_inds.back();
+  tensor->user_arg_inds.pop_back();
+}
+
+inline void EraseUse(LrtTensor tensor, LrtOp user) {
+  auto use_ind = FindUseInd(tensor, user);
+  if (!use_ind.has_value()) {
+    _LRT_D_MSG("Trying to erase from tensor that doesn't use.")
+    return;
+  }
+  EraseUse(tensor, use_ind.value());
+}
+
+// Push tensor to the end of ops arguments.
+inline void AddUse(LrtTensorT& tensor, LrtOpT& op) {
+  op.inputs.push_back(&tensor);
+  tensor.users.push_back(&op);
+  tensor.user_arg_inds.push_back(op.inputs.size() - 1);
+}
+
+inline void AddOutput(LrtOpT& op, LrtTensorT& tensor) {
+  DCHECK(tensor.defining_op == nullptr);
+  op.outputs.push_back(&tensor);
+  tensor.defining_op = &op;
+  tensor.defining_op_out_ind = op.outputs.size() - 1;
+}
+
+inline LrtTensor RequestNewTensor(LrtSubgraph subgraph,
+                                  const LrtTensorT& like) {
+  auto& new_tensor = subgraph->tensors_storage.emplace_back();
+  CloneTensorData(like, new_tensor);
+  return &new_tensor;
+}
+
+inline LrtTensor RequestNewInput(LrtSubgraph subgraph, const LrtTensorT& like) {
+  auto new_tensor = RequestNewTensor(subgraph, like);
+  subgraph->inputs.push_back(new_tensor);
+  return new_tensor;
+}
+
+inline LrtOp RequestNewOp(LrtSubgraph subgraph, const LrtOpT& like) {
+  auto& new_op = subgraph->ops_storage.emplace_back();
+  CloneOpData(like, new_op);
+  return &new_op;
+}
+
+inline void AddOutput(LrtSubgraph subgraph, LrtTensor tensor) {
+  subgraph->outputs.push_back(tensor);
+}
+
+inline bool IsOutput(const LrtSubgraphT& subgraph, LrtTensor tensor) {
+  return std::count(subgraph.outputs.begin(), subgraph.outputs.end(), tensor) >
+         0;
+}
+
+inline void UpdateReferences(LrtSubgraphT& subgraph) {
+  subgraph.tensors.clear();
+  subgraph.ops.clear();
+  for (auto& tensor : subgraph.tensors_storage) {
+    subgraph.tensors.push_back(&tensor);
+  }
+  for (auto& op : subgraph.ops_storage) {
+    subgraph.ops.push_back(&op);
+  }
+}
+
+inline void Drop(LrtOpT& op) {
+  for (auto tensor : op.inputs) {
+    EraseUse(tensor, &op);
+  }
+  op.inputs.clear();
+  for (auto tensor : op.outputs) {
+    tensor->defining_op = nullptr;
+  }
+  op.outputs.clear();
+}
+
+// TODO expand dead code elimination to work recursively. This is a very simple.
+inline void DCE(LrtSubgraphT& subgraph) {
+  auto& ops = subgraph.ops_storage;
+  for (auto it = ops.begin(); it != ops.end();) {
+    if (it->inputs.empty() && it->outputs.empty()) {
+      it = ops.erase(it);
+    } else {
+      ++it;
+    }
+  }
+
+  std::set<LrtTensor> inputs(subgraph.inputs.begin(), subgraph.inputs.end());
+  std::set<LrtTensor> outputs(subgraph.outputs.begin(), subgraph.outputs.end());
+
+  auto& tensors = subgraph.tensors_storage;
+  for (auto it = tensors.begin(); it != tensors.end();) {
+    auto* tensor = &*it;
+
+    const bool not_in = inputs.find(tensor) == inputs.end();
+    const bool not_out = outputs.find(tensor) == outputs.end();
+    const bool dead = tensor->defining_op == nullptr && tensor->users.empty();
+
+    if (not_in && not_out && dead) {
+      it = tensors.erase(it);
+    } else {
+      ++it;
+    }
+  }
+
+  UpdateReferences(subgraph);
+}
+
 class GraphSlicer {
  public:
-  static std::unique_ptr<LrtSubgraphT> SlicePartitionFromGraph(
-      LrtSubgraphT& graph, std::vector<LrtOp>& partition);
+  // Slices "partitions" from "root" into the empty subgraph "slice". Assumes
+  // the partition is a valid sub-DAG, and replaces it witha single
+  // tfl.custom_op in "root". A reference to that op is returned.
+  static LrtOp SlicePartitionFromGraph(LrtSubgraphT& root, LrtSubgraph slice,
+                                       std::vector<LrtOp>& partition);
 
  private:
-  void CloneInto(LrtOpT& op);
+  explicit GraphSlicer(LrtSubgraph slice) : slice_(slice) {}
 
+  void CloneInto(const LrtOpT& op);
+
+  void RerouteTensorsThroughCustomOp(const LrtSubgraphT& root);
+
+  LrtSubgraph slice_;
   // maps tensor in old subgraph to tensor in new subgraph.
-  std::unordered_map<LrtTensor, LrtTensor> tensor_map_;
-  std::unique_ptr<LrtSubgraphT> subgraph_ = std::make_unique<LrtSubgraphT>();
-  LrtOp hal_cal_op_;
+  llvm::MapVector<LrtTensor, LrtTensor> tensor_map_;
+  LrtOp hal_cal_op_ = nullptr;
 };
 
-inline std::unique_ptr<LrtSubgraphT> GraphSlicer::SlicePartitionFromGraph(
-    LrtSubgraphT& graph, std::vector<LrtOp>& partition) {
-  GraphSlicer slicer;
-
-  // Append new op to storage.
-  slicer.hal_cal_op_ = &graph.ops_storage.emplace_back();
-  slicer.hal_cal_op_->op_code = kLrtOpCodeTflCustom;
+inline LrtOp GraphSlicer::SlicePartitionFromGraph(
+    LrtSubgraphT& root, LrtSubgraph slice, std::vector<LrtOp>& partition) {
+  GraphSlicer slicer(slice);
 
   for (auto* op : partition) {
     slicer.CloneInto(*op);
   }
 
-  // Now fix up new subgraph outputs. If a tensor is in the map, it is either
-  // defined within the new subgraph or it is a subgraph input.
-  for (auto& [old_tensor, new_tensor] : slicer.tensor_map_) {
-    if (new_tensor->defining_op == nullptr) {
-      // Subgraph input, cannot be an output.
-      continue;
-    }
-    if (!old_tensor->users.empty()) {
-      // Subgraph output. We already popped all the users that were moved
-      // into the new subgraph.
-
-      slicer.subgraph_->outputs.push_back(new_tensor);
-
-      old_tensor->defining_op_out_ind = slicer.hal_cal_op_->outputs.size();
-      old_tensor->defining_op = slicer.hal_cal_op_;
-      slicer.hal_cal_op_->outputs.push_back(old_tensor);
-    }
+  for (auto* op : partition) {
+    Drop(*op);
   }
 
-  std::vector<LrtOp> new_op_refs;
-  auto cur_partition_op = partition.begin();
+  // Reuse the storage from the last op in partition to maintain
+  // toplogical order.
+  slicer.hal_cal_op_ = partition.back();
+  slicer.hal_cal_op_->op_code = kLrtOpCodeTflCustom;
 
-  for (auto& op_ref : graph.ops) {
-    if (cur_partition_op == partition.end() || op_ref != *cur_partition_op) {
-      new_op_refs.push_back(op_ref);
-      continue;
-    }
-    if (cur_partition_op == partition.end() - 1) {
-      new_op_refs.push_back(slicer.hal_cal_op_);
-    }
-    cur_partition_op++;
-  }
+  UpdateReferences(*slicer.slice_);
+  slicer.RerouteTensorsThroughCustomOp(root);
+  DCE(root);
 
-  graph.ops = new_op_refs;
-
-  for (auto& new_subgraph_op : slicer.subgraph_->ops_storage) {
-    slicer.subgraph_->ops.push_back(&new_subgraph_op);
-  }
-
-  return std::move(slicer.subgraph_);
+  return slicer.hal_cal_op_;
 }
 
-inline void GraphSlicer::CloneInto(LrtOpT& old_op) {
-  auto& new_op = subgraph_->ops_storage.emplace_back();
-  new_op.op_code = old_op.op_code;
-
-  for (int input_ind = 0; input_ind < old_op.inputs.size(); ++input_ind) {
-    auto* old_input_tensor = old_op.inputs.at(input_ind);
-    const auto old_input_tensor_use_ind =
-        FindUseInd(old_input_tensor, &old_op).value();
-    EraseUse(old_input_tensor, old_input_tensor_use_ind);
-
-    if (!tensor_map_.contains(old_input_tensor)) {
-      // Its a subgraph input.
-      auto& new_input_tensor = subgraph_->tensors_storage.emplace_back();
-      new_input_tensor.buffer = std::move(old_input_tensor->buffer);
-      new_input_tensor.type_id = old_input_tensor->type_id;
-      new_input_tensor.type_detail = old_input_tensor->type_detail;
-
-      new_input_tensor.defining_op = nullptr;
-
-      old_input_tensor->user_arg_inds.push_back(hal_cal_op_->inputs.size());
-      old_input_tensor->users.push_back(hal_cal_op_);
-      subgraph_->inputs.push_back(&new_input_tensor);
-      hal_cal_op_->inputs.push_back(old_input_tensor);
-
-      tensor_map_[old_input_tensor] = &new_input_tensor;
+// TODO replace this with iteration order sensitve one and fix the reversered
+// arg order issue
+inline void GraphSlicer::RerouteTensorsThroughCustomOp(
+    const LrtSubgraphT& root) {
+  for (auto& [old_tensor, new_tensor] : tensor_map_) {
+    // Reroute tensors which need to be passed into the scope of the new
+    // subgraph to inputs of the custom op.
+    if (new_tensor->defining_op == nullptr) {
+      AddUse(*old_tensor, *hal_cal_op_);
+      continue;
     }
 
-    auto new_input_tensor = tensor_map_.at(old_input_tensor);
+    // Reroute custom op as the definer of tensors within the removed partition
+    // and referenced latern in the root graph.
+    if (!old_tensor->users.empty() || IsOutput(root, old_tensor)) {
+      DCHECK(old_tensor->defining_op == nullptr)
+          << "Defining op should have been removed from the graph";
+      AddOutput(*hal_cal_op_, *old_tensor);
+      AddOutput(slice_, new_tensor);
+    }
+  }
+}
 
-    new_input_tensor->users.push_back(&new_op);
-    new_input_tensor->user_arg_inds.push_back(input_ind);
-    new_op.inputs.push_back(new_input_tensor);
+inline void GraphSlicer::CloneInto(const LrtOpT& old_op) {
+  auto& new_op = *RequestNewOp(slice_, old_op);
+
+  for (int i = 0; i < old_op.inputs.size(); ++i) {
+    auto old_input = old_op.inputs[i];
+    LrtTensor new_input;
+
+    if (tensor_map_.contains(old_input)) {
+      // If old_input is already in the map then map[input] is its cloned
+      // counterpart in the new graph.
+      new_input = tensor_map_[old_input];
+    } else {
+      // Otherwise, it must be a new subgraph input.
+      new_input = RequestNewInput(slice_, *old_input);
+      tensor_map_.insert({old_input, new_input});
+    }
+
+    AddUse(*new_input, new_op);
   }
 
-  for (int output_ind = 0; output_ind < old_op.outputs.size(); ++output_ind) {
-    auto* old_output_tensor = old_op.outputs.at(output_ind);
+  for (int i = 0; i < old_op.outputs.size(); ++i) {
+    auto old_output = old_op.outputs[i];
 
-    auto& new_output_tensor = subgraph_->tensors_storage.emplace_back();
-    new_output_tensor.buffer = std::move(old_output_tensor->buffer);
-    new_output_tensor.type_id = old_output_tensor->type_id;
-    new_output_tensor.type_detail = old_output_tensor->type_detail;
+    auto new_output = RequestNewTensor(slice_, *old_output);
+    AddOutput(new_op, *new_output);
 
-    new_op.outputs.push_back(&new_output_tensor);
-    new_output_tensor.defining_op = &new_op;
-    new_output_tensor.defining_op_out_ind = output_ind;
-
-    tensor_map_[old_output_tensor] = &new_output_tensor;
+    // Update the values defined in scope of the new subgraph.
+    tensor_map_.insert({old_output, new_output});
   }
 }
 

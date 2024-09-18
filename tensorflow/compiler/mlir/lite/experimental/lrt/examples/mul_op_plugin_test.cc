@@ -28,17 +28,6 @@
 
 namespace {
 
-struct LrtCompilerPluginDeleter {
-  void operator()(LrtCompilerPlugin plugin) {
-    if (plugin != nullptr) {
-      PluginDestroy(plugin);
-    }
-  }
-};
-
-using UniqueLrtCompilerPlugin =
-    std::unique_ptr<LrtCompilerPluginT, LrtCompilerPluginDeleter>;
-
 UniqueLrtCompilerPlugin GetDummyPlugin() {
   LrtCompilerPlugin dummy_plugin;
   LRT_CHECK_STATUS_OK(PluginInit(&dummy_plugin));

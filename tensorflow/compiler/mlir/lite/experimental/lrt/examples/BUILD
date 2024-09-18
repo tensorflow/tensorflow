@@ -14,7 +14,7 @@
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//tensorflow/compiler/mlir/lite/experimental/lrt:__subpackages__"],
+    default_visibility = ["//visibility:private"],
 )
 
 cc_library(
@@ -25,6 +25,13 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/experimental/lrt/cc:lite_rt_cc_api",
         "//tensorflow/compiler/mlir/lite/experimental/lrt/core:graph_tools",
     ],
+)
+
+cc_shared_library(
+    name = "mul_op_plugin_so",
+    shared_lib_name = "mul_op_plugin.so",
+    visibility = ["//tensorflow/compiler/mlir/lite/experimental/lrt:__subpackages__"],
+    deps = [":mul_op_plugin"],
 )
 
 cc_test(
