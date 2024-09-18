@@ -139,6 +139,10 @@ struct SchedulerConfig {
   bool enable_selective_resources = false;
   int64_t max_hops_to_closest_selective_overlap = 0;
   int64_t rerun = 0;
+  // If false, all SparseCore async ops are assumed to have a latency of
+  // `sparse_core_latency`.
+  bool enable_sparse_core_accurate_latency = false;
+  double sparse_core_latency = 5000000000;
 };
 
 // Class used estimate latency between instructions and cost of HLOs.
