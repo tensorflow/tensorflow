@@ -568,3 +568,27 @@ tsl_cc_test(
         "@com_google_absl//absl/synchronization",
     ],
 )
+
+cc_library(
+    name = "device_utils",
+    srcs = ["device_utils.cc"],
+    hdrs = ["device_utils.h"],
+    deps = [
+        ":xplane_schema",
+        "//tsl/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tsl_cc_test(
+    name = "device_utils_test",
+    srcs = ["device_utils_test.cc"],
+    deps = [
+        ":device_utils",
+        ":xplane_schema",
+        "//tsl/platform:test",
+        "//tsl/platform:test_main",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
