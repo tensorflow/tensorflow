@@ -349,12 +349,12 @@ xla_cc_test(
         ":pjrt_compiler",
         ":pjrt_device_description",
         "//xla/client:xla_computation",
+        "//xla/tsl/lib/monitoring:cell_reader",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/lib/monitoring:cell_reader",
         "@local_tsl//tsl/platform:status_matchers",
     ],
 )
@@ -435,10 +435,10 @@ cc_library(
     srcs = ["metrics.cc"],
     hdrs = ["metrics.h"],
     deps = [
+        "//xla/tsl/lib/monitoring:counter",
+        "//xla/tsl/lib/monitoring:gauge",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/lib/monitoring:counter",
-        "@local_tsl//tsl/lib/monitoring:gauge",
     ],
 )
 

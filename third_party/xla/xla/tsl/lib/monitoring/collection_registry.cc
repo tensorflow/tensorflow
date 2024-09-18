@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/lib/monitoring/collection_registry.h"
+#include "xla/tsl/lib/monitoring/collection_registry.h"
 
-#include "tsl/lib/monitoring/collected_metrics.h"
-#include "tsl/lib/monitoring/metric_def.h"
+#include "xla/tsl/lib/monitoring/collected_metrics.h"
+#include "xla/tsl/lib/monitoring/metric_def.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/stringpiece.h"

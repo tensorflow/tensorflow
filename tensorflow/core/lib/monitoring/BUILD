@@ -22,7 +22,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core/platform:types",
-        "@local_tsl//tsl/lib/monitoring:types",
+        "@local_xla//xla/tsl/lib/monitoring:types",
     ],
 )
 
@@ -34,7 +34,7 @@ cc_library(
     deps = [
         "//tensorflow/core/platform:env_time",
         "//tensorflow/core/platform:types",
-        "@local_tsl//tsl/lib/monitoring:timed",
+        "@local_xla//xla/tsl/lib/monitoring:timed",
     ],
 )
 
@@ -48,7 +48,7 @@ cc_library(
         ":collected_metrics",
         ":metric_def",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@local_tsl//tsl/lib/monitoring:cell_reader",
+        "@local_xla//xla/tsl/lib/monitoring:cell_reader",
     ],
 )
 
@@ -67,7 +67,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/lib/monitoring:cell_reader-inl",
+        "@local_xla//xla/tsl/lib/monitoring:cell_reader-inl",
     ],
 )
 
@@ -80,7 +80,7 @@ cc_library(
         ":metric_def",
         ":types",
         "//tensorflow/core/framework:summary_proto_cc",
-        "@local_tsl//tsl/lib/monitoring:collected_metrics",
+        "@local_xla//xla/tsl/lib/monitoring:collected_metrics",
     ],
 )
 
@@ -104,7 +104,7 @@ cc_library(
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/platform:types",
-        "@local_tsl//tsl/lib/monitoring:collection_registry",
+        "@local_xla//xla/tsl/lib/monitoring:collection_registry",
     ],
 )
 
@@ -121,7 +121,7 @@ cc_library(
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/platform:types",
-        "@local_tsl//tsl/lib/monitoring:counter",
+        "@local_xla//xla/tsl/lib/monitoring:counter",
     ],
 )
 
@@ -132,7 +132,7 @@ cc_library(
         ":collection_registry",
         ":metric_def",
         "//tensorflow/core/lib/core:status",
-        "@local_tsl//tsl/lib/monitoring:gauge",
+        "@local_xla//xla/tsl/lib/monitoring:gauge",
     ],
 )
 
@@ -145,7 +145,7 @@ cc_library(
         "//tensorflow/core/framework:summary_proto_cc",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:types",
-        "@local_tsl//tsl/lib/monitoring:metric_def",
+        "@local_xla//xla/tsl/lib/monitoring:metric_def",
     ],
 )
 
@@ -163,7 +163,7 @@ cc_library(
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/platform:types",
-        "@local_tsl//tsl/lib/monitoring:sampler",
+        "@local_xla//xla/tsl/lib/monitoring:sampler",
     ],
 )
 
@@ -179,7 +179,7 @@ cc_library(
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:thread_annotations",
-        "@local_tsl//tsl/lib/monitoring:percentile_sampler",
+        "@local_xla//xla/tsl/lib/monitoring:percentile_sampler",
     ],
 )
 
@@ -195,7 +195,7 @@ cc_library(
         "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/lib/monitoring:test_utils",
+        "@local_xla//xla/tsl/lib/monitoring:test_utils",
     ],
 )
 
@@ -213,7 +213,7 @@ filegroup(
         "test_utils.h",
         "timed.h",
         "types.h",
-        "@local_tsl//tsl/lib/monitoring:mobile_srcs_only_runtime",
+        "@local_xla//xla/tsl/lib/monitoring:mobile_srcs_only_runtime",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -232,7 +232,7 @@ filegroup(
         "test_utils.h",
         "timed.h",
         "types.h",
-        "@local_tsl//tsl/lib/monitoring:legacy_lib_monitoring_lib_headers",
+        "@local_xla//xla/tsl/lib/monitoring:legacy_lib_monitoring_lib_headers",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -250,7 +250,7 @@ filegroup(
         "sampler.h",
         "test_utils.h",
         "types.h",
-        "@local_tsl//tsl/lib/monitoring:legacy_lib_monitoring_all_headers",
+        "@local_xla//xla/tsl/lib/monitoring:legacy_lib_monitoring_all_headers",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

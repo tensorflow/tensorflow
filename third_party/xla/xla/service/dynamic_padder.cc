@@ -54,10 +54,10 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/lib/monitoring/gauge.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/monitoring/gauge.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 

@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_TSL_LIB_MONITORING_CELL_READER_H_
-#define TENSORFLOW_TSL_LIB_MONITORING_CELL_READER_H_
+#ifndef XLA_TSL_LIB_MONITORING_CELL_READER_H_
+#define XLA_TSL_LIB_MONITORING_CELL_READER_H_
 
 #include <memory>
 #include <string>
@@ -21,9 +21,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "tsl/lib/monitoring/cell_reader-inl.h"
-#include "tsl/lib/monitoring/collected_metrics.h"
-#include "tsl/lib/monitoring/metric_def.h"
+#include "xla/tsl/lib/monitoring/cell_reader-inl.h"
+#include "xla/tsl/lib/monitoring/collected_metrics.h"
+#include "xla/tsl/lib/monitoring/metric_def.h"
 
 namespace tsl {
 namespace monitoring {
@@ -163,4 +163,4 @@ ValueType CellReader<ValueType>::Delta(const LabelType&... labels) {
 }  // namespace monitoring
 }  // namespace tsl
 
-#endif  // TENSORFLOW_TSL_LIB_MONITORING_CELL_READER_H_
+#endif  // XLA_TSL_LIB_MONITORING_CELL_READER_H_

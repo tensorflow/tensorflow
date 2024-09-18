@@ -12,13 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_TSL_LIB_MONITORING_TEST_UTILS_H_
-#define TENSORFLOW_TSL_LIB_MONITORING_TEST_UTILS_H_
+#ifndef XLA_TSL_LIB_MONITORING_TEST_UTILS_H_
+#define XLA_TSL_LIB_MONITORING_TEST_UTILS_H_
 
 #include <cstdint>
 
 #include "absl/status/statusor.h"
-#include "tsl/lib/monitoring/types.h"
+#include "xla/tsl/lib/monitoring/types.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/protobuf/histogram.pb.h"
 
@@ -92,4 +92,4 @@ class Percentiles final {
 }  // namespace monitoring
 }  // namespace tsl
 
-#endif  // TENSORFLOW_TSL_LIB_MONITORING_TEST_UTILS_H_
+#endif  // XLA_TSL_LIB_MONITORING_TEST_UTILS_H_

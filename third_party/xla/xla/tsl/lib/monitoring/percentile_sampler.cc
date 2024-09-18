@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tsl/lib/monitoring/percentile_sampler.h"
+#include "xla/tsl/lib/monitoring/percentile_sampler.h"
 
 #include <algorithm>
 #include <cmath>
 #include <vector>
 
-#include "tsl/lib/monitoring/types.h"
+#include "xla/tsl/lib/monitoring/types.h"
 #include "tsl/platform/env_time.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/mutex.h"

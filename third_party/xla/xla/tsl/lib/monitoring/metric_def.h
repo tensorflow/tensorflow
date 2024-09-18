@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_LIB_MONITORING_METRIC_DEF_H_
-#define TENSORFLOW_TSL_LIB_MONITORING_METRIC_DEF_H_
+#ifndef XLA_TSL_LIB_MONITORING_METRIC_DEF_H_
+#define XLA_TSL_LIB_MONITORING_METRIC_DEF_H_
 
 #include <array>
 #include <functional>
 #include <string>
 #include <vector>
 
-#include "tsl/lib/monitoring/types.h"
+#include "xla/tsl/lib/monitoring/types.h"
 #include "tsl/platform/stringpiece.h"
 #include "tsl/platform/types.h"
 #include "tsl/protobuf/histogram.pb.h"
@@ -182,4 +182,4 @@ class MetricDef : public AbstractMetricDef {
 }  // namespace monitoring
 }  // namespace tsl
 
-#endif  // TENSORFLOW_TSL_LIB_MONITORING_METRIC_DEF_H_
+#endif  // XLA_TSL_LIB_MONITORING_METRIC_DEF_H_

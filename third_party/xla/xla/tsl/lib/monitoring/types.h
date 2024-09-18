@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_LIB_MONITORING_TYPES_H_
-#define TENSORFLOW_TSL_LIB_MONITORING_TYPES_H_
+#ifndef XLA_TSL_LIB_MONITORING_TYPES_H_
+#define XLA_TSL_LIB_MONITORING_TYPES_H_
 
 #include <cmath>
 #include <vector>
@@ -53,4 +53,4 @@ struct Percentiles {
 }  // namespace monitoring
 }  // namespace tsl
 
-#endif  // TENSORFLOW_TSL_LIB_MONITORING_TYPES_H_
+#endif  // XLA_TSL_LIB_MONITORING_TYPES_H_

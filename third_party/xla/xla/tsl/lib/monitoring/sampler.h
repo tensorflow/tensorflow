@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_LIB_MONITORING_SAMPLER_H_
-#define TENSORFLOW_TSL_LIB_MONITORING_SAMPLER_H_
+#ifndef XLA_TSL_LIB_MONITORING_SAMPLER_H_
+#define XLA_TSL_LIB_MONITORING_SAMPLER_H_
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
@@ -28,7 +28,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "tsl/lib/monitoring/metric_def.h"
+#include "xla/tsl/lib/monitoring/metric_def.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/types.h"
@@ -123,8 +123,8 @@ class Sampler {
 #include <vector>
 
 #include "xla/tsl/lib/histogram/histogram.h"
-#include "tsl/lib/monitoring/collection_registry.h"
-#include "tsl/lib/monitoring/metric_def.h"
+#include "xla/tsl/lib/monitoring/collection_registry.h"
+#include "xla/tsl/lib/monitoring/metric_def.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/status.h"
@@ -335,4 +335,4 @@ SamplerCell* Sampler<NumLabels>::GetCell(const Labels&... labels)
 }  // namespace tsl
 
 #endif  // IS_MOBILE_PLATFORM
-#endif  // TENSORFLOW_TSL_LIB_MONITORING_SAMPLER_H_
+#endif  // XLA_TSL_LIB_MONITORING_SAMPLER_H_

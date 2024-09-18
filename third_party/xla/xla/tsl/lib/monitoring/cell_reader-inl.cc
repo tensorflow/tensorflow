@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tsl/lib/monitoring/cell_reader-inl.h"
+#include "xla/tsl/lib/monitoring/cell_reader-inl.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -23,10 +23,10 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
-#include "tsl/lib/monitoring/collected_metrics.h"
-#include "tsl/lib/monitoring/collection_registry.h"
-#include "tsl/lib/monitoring/metric_def.h"
-#include "tsl/lib/monitoring/test_utils.h"
+#include "xla/tsl/lib/monitoring/collected_metrics.h"
+#include "xla/tsl/lib/monitoring/collection_registry.h"
+#include "xla/tsl/lib/monitoring/metric_def.h"
+#include "xla/tsl/lib/monitoring/test_utils.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/types.h"

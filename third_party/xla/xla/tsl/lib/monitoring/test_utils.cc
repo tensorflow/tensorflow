@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tsl/lib/monitoring/test_utils.h"
+#include "xla/tsl/lib/monitoring/test_utils.h"
 
 #include <cmath>
 #include <cstdint>
@@ -20,7 +20,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
-#include "tsl/lib/monitoring/types.h"
+#include "xla/tsl/lib/monitoring/types.h"
 #include "tsl/platform/errors.h"
 #include "tsl/protobuf/histogram.pb.h"
 

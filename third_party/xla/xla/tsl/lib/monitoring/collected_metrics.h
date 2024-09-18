@@ -17,16 +17,16 @@ limitations under the License.
 // These are to be used only by the CollectionRegistry and exporters which
 // collect metrics using the CollectionRegistry.
 
-#ifndef TENSORFLOW_TSL_LIB_MONITORING_COLLECTED_METRICS_H_
-#define TENSORFLOW_TSL_LIB_MONITORING_COLLECTED_METRICS_H_
+#ifndef XLA_TSL_LIB_MONITORING_COLLECTED_METRICS_H_
+#define XLA_TSL_LIB_MONITORING_COLLECTED_METRICS_H_
 
 #include <map>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "tsl/lib/monitoring/metric_def.h"
-#include "tsl/lib/monitoring/types.h"
+#include "xla/tsl/lib/monitoring/metric_def.h"
+#include "xla/tsl/lib/monitoring/types.h"
 #include "tsl/protobuf/histogram.pb.h"
 
 namespace tsl {
@@ -154,4 +154,4 @@ struct CollectedMetrics {
 }  // namespace monitoring
 }  // namespace tsl
 
-#endif  // TENSORFLOW_TSL_LIB_MONITORING_COLLECTED_METRICS_H_
+#endif  // XLA_TSL_LIB_MONITORING_COLLECTED_METRICS_H_

@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_TSL_LIB_MONITORING_CELL_READER_INL_H_
-#define TENSORFLOW_TSL_LIB_MONITORING_CELL_READER_INL_H_
+#ifndef XLA_TSL_LIB_MONITORING_CELL_READER_INL_H_
+#define XLA_TSL_LIB_MONITORING_CELL_READER_INL_H_
 
 #include <cstdint>
 #include <memory>
@@ -24,9 +24,9 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "tsl/lib/monitoring/collected_metrics.h"
-#include "tsl/lib/monitoring/metric_def.h"
-#include "tsl/lib/monitoring/test_utils.h"
+#include "xla/tsl/lib/monitoring/collected_metrics.h"
+#include "xla/tsl/lib/monitoring/metric_def.h"
+#include "xla/tsl/lib/monitoring/test_utils.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
@@ -135,4 +135,4 @@ bool GetDelta(const bool& a, const bool& b);
 }  // namespace monitoring
 }  // namespace tsl
 
-#endif  // TENSORFLOW_TSL_LIB_MONITORING_CELL_READER_INL_H_
+#endif  // XLA_TSL_LIB_MONITORING_CELL_READER_INL_H_

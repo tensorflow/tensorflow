@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TSL_LIB_MONITORING_COLLECTION_REGISTRY_H_
-#define TENSORFLOW_TSL_LIB_MONITORING_COLLECTION_REGISTRY_H_
+#ifndef XLA_TSL_LIB_MONITORING_COLLECTION_REGISTRY_H_
+#define XLA_TSL_LIB_MONITORING_COLLECTION_REGISTRY_H_
 namespace tensorflow {
 namespace monitoring {
 namespace test_util {
@@ -34,7 +34,7 @@ class CollectionRegistryTestAccess;
 #include <map>
 #include <memory>
 
-#include "tsl/lib/monitoring/metric_def.h"
+#include "xla/tsl/lib/monitoring/metric_def.h"
 #include "tsl/platform/macros.h"
 
 namespace tsl {
@@ -107,9 +107,9 @@ class CollectionRegistry {
 #include <memory>
 #include <utility>
 
-#include "tsl/lib/monitoring/collected_metrics.h"
-#include "tsl/lib/monitoring/metric_def.h"
-#include "tsl/lib/monitoring/types.h"
+#include "xla/tsl/lib/monitoring/collected_metrics.h"
+#include "xla/tsl/lib/monitoring/metric_def.h"
+#include "xla/tsl/lib/monitoring/types.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/macros.h"
@@ -516,4 +516,4 @@ class ExporterRegistration {
 
 #endif  // IS_MOBILE_PLATFORM
 
-#endif  // TENSORFLOW_TSL_LIB_MONITORING_COLLECTION_REGISTRY_H_
+#endif  // XLA_TSL_LIB_MONITORING_COLLECTION_REGISTRY_H_

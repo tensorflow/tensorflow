@@ -320,7 +320,7 @@ cc_library(
     srcs = ["metrics.cc"],
     hdrs = ["metrics.h"],
     compatible_with = get_compatible_with_libtpu_portable(),
-    deps = ["@local_tsl//tsl/lib/monitoring:counter"],
+    deps = ["//xla/tsl/lib/monitoring:counter"],
 )
 
 xla_cc_binary(
