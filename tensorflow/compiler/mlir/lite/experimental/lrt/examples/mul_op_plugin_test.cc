@@ -20,6 +20,7 @@
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_compiler_plugin.h"
+#include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_model.h"
 #include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_op_code.h"
 #include "tensorflow/compiler/mlir/lite/experimental/lrt/cc/lite_rt_support.h"
 #include "tensorflow/compiler/mlir/lite/experimental/lrt/core/graph_tools.h"
@@ -30,14 +31,22 @@ namespace {
 
 UniqueLrtCompilerPlugin GetDummyPlugin() {
   LrtCompilerPlugin dummy_plugin;
-  LRT_CHECK_STATUS_OK(PluginInit(&dummy_plugin));
+  LRT_CHECK_STATUS_OK(LrtPluginInit(&dummy_plugin));
   CHECK_NE(dummy_plugin, nullptr);
   return UniqueLrtCompilerPlugin(dummy_plugin);
 }
 
-TEST(TestDummyPlugin, ConstructAndDestroy) {
+TEST(TestDummyPlugin, GetConfigInfo) {
+  ASSERT_STREQ(LrtPluginSocManufacturer(), "ExamplePlugin");
+
   auto plugin = GetDummyPlugin();
-  ASSERT_STREQ(PluginGetNamespace(plugin.get()), "mul_op_plugin");
+
+  ASSERT_EQ(1, LrtPluginNumSupportedSocModels(plugin.get()));
+
+  const char* config_id;
+  ASSERT_STATUS_OK(
+      LrtPluginGetSupportedSocModelId(plugin.get(), 0, &config_id));
+  ASSERT_STREQ(config_id, "DummyMulOp");
 }
 
 TEST(TestCallDummyPlugin, PartitionSimpleMultiAdd) {
@@ -46,7 +55,7 @@ TEST(TestCallDummyPlugin, PartitionSimpleMultiAdd) {
 
   LrtOpListT selected_ops;
   ASSERT_STATUS_OK(
-      PluginPartitionModel(plugin.get(), model.get(), &selected_ops));
+      LrtPluginPartitionModel(plugin.get(), model.get(), &selected_ops));
 
   ASSERT_EQ(selected_ops.ops.size(), 2);
   ASSERT_EQ(selected_ops.ops[0]->op_code, kLrtOpCodeTflMul);
@@ -59,21 +68,30 @@ TEST(TestCallDummyPlugin, CompileMulSubgraph) {
 
   ASSERT_RESULT_OK_ASSIGN(auto subgraph, graph_tools::GetSubgraph(model.get()));
 
-  LrtCompiledPartition compiled;
-  ASSERT_STATUS_OK(PluginCompilePartition(plugin.get(), subgraph, &compiled));
+  LrtCompiledResult compiled;
+  ASSERT_STATUS_OK(LrtPluginCompile(plugin.get(), &subgraph, 1, &compiled));
 
   const void* byte_code;
   size_t byte_code_size;
 
-  ASSERT_STATUS_OK(PluginCompiledPartitionGetByteCode(compiled, &byte_code,
-                                                      &byte_code_size));
+  ASSERT_STATUS_OK(
+      LrtCompiledResultGetByteCode(compiled, &byte_code, &byte_code_size));
 
   std::string byte_code_string(reinterpret_cast<const char*>(byte_code),
                                byte_code_size);
+  ASSERT_EQ(byte_code_string, "Partition_0_with_2_muls:");
 
-  ASSERT_EQ(byte_code_string, "partition_with_2_muls");
+  const void* op_data;
+  size_t op_data_size;
 
-  PluginCompiledPartitionDestroy(compiled);
+  ASSERT_STATUS_OK(
+      LrtCompiledResultGetCallInfo(compiled, 0, &op_data, &op_data_size));
+
+  std::string op_data_string(reinterpret_cast<const char*>(op_data),
+                             op_data_size);
+  ASSERT_EQ(op_data_string, "Partition_0");
+
+  LrtCompiledResultDestroy(compiled);
 }
 
 }  // namespace

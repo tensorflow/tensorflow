@@ -55,7 +55,7 @@ inline UniqueLrtStatus UniqueStatusOk() {
 struct LrtCompilerPluginDeleter {
   void operator()(LrtCompilerPlugin plugin) {
     if (plugin != nullptr) {
-      PluginDestroy(plugin);
+      LrtPluginDestroy(plugin);
     }
   }
 };

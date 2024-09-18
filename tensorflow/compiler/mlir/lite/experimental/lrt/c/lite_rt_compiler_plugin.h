@@ -27,45 +27,66 @@ extern "C" {
 LITE_RT_DEFINE_HANDLE(LrtCompilerPlugin);
 
 // Artifact produced from compiling a selected partition of ops.
-LITE_RT_DEFINE_HANDLE(LrtCompiledPartition);
+LITE_RT_DEFINE_HANDLE(LrtCompiledResult);
 
 //
 // Plugin
 //
 
-LrtStatus PluginInit(LrtCompilerPlugin* compiler_plugin);
+LrtStatus LrtPluginInit(LrtCompilerPlugin* compiler_plugin);
 
-void PluginDestroy(LrtCompilerPlugin compiler_plugin);
+void LrtPluginDestroy(LrtCompilerPlugin compiler_plugin);
+
+// Name associated with the manufacturer this plugin relates to (darwinn, QCC).
+const char* LrtPluginSocManufacturer();
+
+// Number of soc models supported by this plugin.
+lrt_param_index_t LrtPluginNumSupportedSocModels(
+    LrtCompilerPlugin compiler_plugin);
+
+// Gets a string identifying the given config index.
+LrtStatus LrtPluginGetSupportedSocModelId(LrtCompilerPlugin compiler_plugin,
+                                          lrt_param_index_t config_idx,
+                                          const char** config_id);
 
 // Select desired ops for compilation. This will be called only once
 // during the plugin application flow, all ops should be selected during this
 // call.
-LrtStatus PluginPartitionModel(LrtCompilerPlugin compiler_plugin,
-                               LrtModel model, LrtOpList selected_ops);
+LrtStatus LrtPluginPartitionModel(LrtCompilerPlugin compiler_plugin,
+                                  LrtModel model, LrtOpList selected_ops);
 
-// Prepare artifact to pass to the runtime for given partition. The given
-// subgraph is a single valid sub-DAG within the ops selected in partition step.
-LrtStatus PluginCompilePartition(LrtCompilerPlugin compiler_plugin,
-                                 LrtSubgraph partition,
-                                 LrtCompiledPartition* compiled_partition);
-
-// Name associated with the plugin.
-const char* PluginGetNamespace(LrtCompilerPlugin compiler_plugin);
+// Prepare result to pass to the runtime for given partition. The given
+// subgraphs are valid sub-DAG within the ops selected in partition step.
+LrtStatus LrtPluginCompile(LrtCompilerPlugin compiler_plugin,
+                           LrtSubgraphArray partitions,
+                           lrt_param_index_t num_partitions,
+                           LrtCompiledResult* compiled_result);
 
 //
 // Compiled Partition
 //
 
-void PluginCompiledPartitionDestroy(LrtCompiledPartition compiled_partition);
+void LrtCompiledResultDestroy(LrtCompiledResult result);
 
-// Get serialized artifact to pass to the runtime for specific partition.
-LrtStatus PluginCompiledPartitionGetByteCode(
-    LrtCompiledPartition compiled_partition, const void** byte_code,
-    size_t* byte_code_size);
+// Get serialized result to compiled modules available to all custom ops.
+// This could be one module with multiple entry points or multiple modules
+// concat together.
+LrtStatus LrtCompiledResultGetByteCode(LrtCompiledResult compiled_result,
+                                       const void** byte_code,
+                                       size_t* byte_code_size);
 
-// Get a name for specific partition.
-LrtStatus PluginCompiledPartitionGetName(
-    LrtCompiledPartition compiled_partition, const char** partition_name);
+// Get info to embed in a particular custom op. This could be  any opaque data
+// parsed in the custom op.
+LrtStatus LrtCompiledResultGetCallInfo(LrtCompiledResult compiled_result,
+                                       lrt_param_index_t call_idx,
+                                       const void** call_info,
+                                       size_t* call_info_size);
+
+// Get the number of calls that will be made to the HAL for this graph.
+// This should equal the number of partitions given for compilation which
+// is equal to the number of custom ops in the final model.
+LrtStatus LrtCompiledResultGetNumCalls(LrtCompiledResult compiled_result,
+                                       lrt_param_index_t* num_calls);
 
 #ifdef __cplusplus
 }

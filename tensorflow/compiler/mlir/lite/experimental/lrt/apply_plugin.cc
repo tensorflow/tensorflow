@@ -36,15 +36,16 @@ static llvm::cl::opt<std::string> model_path(
 
 // TODO: b/366821557 - Support path to pre-compiled plugin in flags.
 // NOLINTNEXTLINE
-static llvm::cl::opt<std::string> soc_make(
-    "soc_make",
-    llvm::cl::desc("String identifier of SoC (pixel, qcc, darwinn)."),
-    llvm::cl::init("dummy"));
+static llvm::cl::opt<std::string> soc_manufacturer(
+    "soc_man",
+    llvm::cl::desc("String identifier of SoC backend (pixel, qcc, darwinn)."),
+    llvm::cl::init("Example"));
 
 // NOLINTNEXTLINE
-static llvm::cl::opt<std::string> soc_model("soc_model",
-                                            llvm::cl::desc("Chip type."),
-                                            llvm::cl::init("mul_op_plugin"));
+static llvm::cl::opt<std::string> soc_model(
+    "soc_model",
+    llvm::cl::desc("Compilation configuration identifier (chip type)."),
+    llvm::cl::init("DummyMulOp"));
 
 // NOLINTNEXTLINE
 static llvm::cl::opt<bool> dry_run(
@@ -73,16 +74,38 @@ void DumpSubgraph(const LrtSubgraphT& subgraph, std::string_view label) {
   }
 }
 
+bool IsSocModelSupported(LrtCompilerPlugin plugin,
+                         std::string_view requested_soc_model) {
+  const auto num_supported_configs = LrtPluginNumSupportedSocModels(plugin);
+  for (int i = 0; i < num_supported_configs; ++i) {
+    const char* config;
+    LRT_RETURN_VAL_IF_NOT_OK(
+        LrtPluginGetSupportedSocModelId(plugin, i, &config), false);
+    if (requested_soc_model == config) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 // TODO: b/366821557 - Replace loading pre-compiled plugin.
 UniqueLrtCompilerPlugin LoadPlugin() {
-  if (soc_make != "dummy" || soc_model != "mul_op_plugin") {
-    std::cerr << "Only dummy plugin currently supported";
+  if (soc_manufacturer != "Example") {
+    std::cerr << "Only Example currently supported";
     return nullptr;
   }
 
   LrtCompilerPlugin plugin;
-  LRT_RETURN_VAL_IF_NOT_OK(PluginInit(&plugin), nullptr);
-  return UniqueLrtCompilerPlugin(plugin);
+  LRT_RETURN_VAL_IF_NOT_OK(LrtPluginInit(&plugin), nullptr);
+  auto result = UniqueLrtCompilerPlugin(plugin);
+
+  if (!IsSocModelSupported(result.get(), soc_model)) {
+    std::cerr << "Only DummyMulOp currently supported\n";
+    return nullptr;
+  }
+
+  return result;
 }
 
 UniqueLrtModel LoadModel(std::string_view filename) {
@@ -94,7 +117,7 @@ UniqueLrtModel LoadModel(std::string_view filename) {
 LrtStatus ApplyPlugin(LrtModel model, LrtCompilerPlugin plugin) {
   LrtOpListT selected_ops;
   LRT_RETURN_STATUS_IF_NOT_OK(
-      PluginPartitionModel(plugin, model, &selected_ops));
+      LrtPluginPartitionModel(plugin, model, &selected_ops));
 
   auto partitions =
       algo::DisjointSets::GetPartitionsFromFlatList(selected_ops.ops);

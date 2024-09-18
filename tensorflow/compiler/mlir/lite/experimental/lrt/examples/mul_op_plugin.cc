@@ -17,6 +17,7 @@
 #include <cstddef>
 #include <cstdlib>
 #include <string>
+#include <vector>
 
 #include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_common.h"
 #include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_compiler_plugin.h"
@@ -25,29 +26,90 @@
 #include "tensorflow/compiler/mlir/lite/experimental/lrt/cc/lite_rt_support.h"
 #include "tensorflow/compiler/mlir/lite/experimental/lrt/core/graph_tools.h"
 
-constexpr char kPluginNamespace[] = "mul_op_plugin";
+//
+// Configurations
+//
 
-struct LrtCompiledPartitionT {
+constexpr char kPluginMan[] = "ExamplePlugin";
+constexpr char kPluginModel[] = "DummyMulOp";
+
+const char* LrtPluginSocManufacturer() { return kPluginMan; }
+
+lrt_param_index_t LrtPluginNumSupportedSocModels(
+    LrtCompilerPlugin compiler_plugin) {
+  return 1;
+}
+
+LrtStatus LrtPluginGetSupportedSocModelId(LrtCompilerPlugin compiler_plugin,
+                                          lrt_param_index_t config_idx,
+                                          const char** config_id) {
+  if (config_idx != 0) {
+    return StatusCreate(kLrtStatusErrorUnsupported);
+  }
+  *config_id = kPluginModel;
+  return StatusOk();
+}
+
+//
+// Compiled Result Definition
+//
+
+struct LrtCompiledResultT {
   std::string byte_code;
-  std::string name;
+  std::vector<std::string> per_op_data;
 };
 
+LrtStatus LrtCompiledResultGetByteCode(LrtCompiledResult compiled_result,
+                                       const void** byte_code,
+                                       size_t* byte_code_size) {
+  *byte_code = compiled_result->byte_code.data();
+  *byte_code_size = compiled_result->byte_code.size();
+  return StatusOk();
+}
+
+LrtStatus LrtCompiledResultGetCallInfo(LrtCompiledResult compiled_result,
+                                       lrt_param_index_t call_idx,
+                                       const void** call_info,
+                                       size_t* call_info_size) {
+  if (call_idx >= compiled_result->per_op_data.size()) {
+    return StatusCreate(kLrtParamIndexOOB);
+  }
+
+  *call_info = compiled_result->per_op_data.at(call_idx).data();
+  *call_info_size = compiled_result->per_op_data.at(call_idx).size();
+
+  return StatusOk();
+}
+
+LrtStatus LrtCompiledResultGetNumCalls(LrtCompiledResult compiled_result,
+                                       lrt_param_index_t* num_calls) {
+  *num_calls = compiled_result->per_op_data.size();
+  return StatusOk();
+}
+
+void LrtCompiledResultDestroy(LrtCompiledResult compiled_result) {
+  delete compiled_result;
+}
+
+//
+// Plugin Definition
+//
+
+// Plugins can hold state.
 struct LrtCompilerPluginT {
-  int num_partitions_compiled = 0;
 };
 
-LrtStatus PluginInit(LrtCompilerPlugin* compiler_plugin) {
+LrtStatus LrtPluginInit(LrtCompilerPlugin* compiler_plugin) {
   *compiler_plugin = new LrtCompilerPluginT;
   return StatusOk();
 }
 
-void PluginDestroy(LrtCompilerPlugin compiler_plugin) {
+void LrtPluginDestroy(LrtCompilerPlugin compiler_plugin) {
   delete compiler_plugin;
 }
 
-// Claims all mul ops.
-LrtStatus PluginPartitionModel(LrtCompilerPlugin compiler_plugin,
-                               LrtModel model, LrtOpList selected_ops) {
+LrtStatus LrtPluginPartitionModel(LrtCompilerPlugin compiler_plugin,
+                                  LrtModel model, LrtOpList selected_ops) {
   LRT_ASSIGN_OR_RETURN_STATUS(auto subgraph, graph_tools::GetSubgraph(model));
   LRT_ASSIGN_OR_RETURN_STATUS(auto ops, graph_tools::GetSubgraphOps(subgraph));
 
@@ -62,10 +124,10 @@ LrtStatus PluginPartitionModel(LrtCompilerPlugin compiler_plugin,
   return StatusOk();
 }
 
-LrtStatus PluginCompilePartition(LrtCompilerPlugin compiler_plugin,
-                                 LrtSubgraph partition,
-                                 LrtCompiledPartition* compiled_partition) {
-  LRT_ASSIGN_OR_RETURN_STATUS(auto ops, graph_tools::GetSubgraphOps(partition));
+LrtStatus CompileSinglePartition(lrt_param_index_t partition_index,
+                                 LrtSubgraph subgraph,
+                                 LrtCompiledResultT& result) {
+  LRT_ASSIGN_OR_RETURN_STATUS(auto ops, graph_tools::GetSubgraphOps(subgraph));
 
   int num_muls_in_partition = 0;
   for (auto op : ops) {
@@ -79,50 +141,37 @@ LrtStatus PluginCompilePartition(LrtCompilerPlugin compiler_plugin,
     ++num_muls_in_partition;
   }
 
-  auto* result = new LrtCompiledPartitionT();
+  {
+    char* byte_code_append;
+    (void)asprintf(&byte_code_append,
+                   "Partition_%lu_with_%d_muls:", partition_index,
+                   num_muls_in_partition);
+    result.byte_code.append(byte_code_append);
+    free(byte_code_append);
+  }
 
-  char* byte_code;
-  (void)asprintf(&byte_code, "partition_with_%d_muls", num_muls_in_partition);
-  result->byte_code.assign(byte_code);
-  free(byte_code);
-
-  char* name;
-  (void)asprintf(&name, "partition_number_%d",
-                 compiler_plugin->num_partitions_compiled);
-  result->name.assign(name);
-  free(name);
-
-  ++compiler_plugin->num_partitions_compiled;
-
-  *compiled_partition = result;
+  {
+    char* per_op_data;
+    (void)asprintf(&per_op_data, "Partition_%lu", partition_index);
+    result.per_op_data.push_back(per_op_data);
+    free(per_op_data);
+  }
 
   return StatusOk();
 }
 
-const char* PluginGetNamespace(LrtCompilerPlugin compiler_plugin) {
-  return kPluginNamespace;
-}
+LrtStatus LrtPluginCompile(LrtCompilerPlugin compiler_plugin,
+                           LrtSubgraphArray partitions,
+                           lrt_param_index_t num_partitions,
+                           LrtCompiledResult* compiled_result) {
+  LrtCompiledResult result = new LrtCompiledResultT;
 
-void PluginCompiledPartitionDestroy(LrtCompiledPartition compiled_partition) {
-  delete compiled_partition;
-}
+  for (auto i = 0; i < num_partitions; ++i) {
+    LRT_RETURN_STATUS_IF_NOT_OK(
+        CompileSinglePartition(i, partitions[i], *result));
+  }
 
-LrtStatus PluginCompiledPartitionInit(
-    LrtCompiledPartition* compiled_partition) {
-  *compiled_partition = new LrtCompiledPartitionT;
-  return StatusOk();
-}
+  *compiled_result = result;
 
-LrtStatus PluginCompiledPartitionGetByteCode(
-    LrtCompiledPartition compiled_partition, const void** byte_code,
-    size_t* byte_code_size) {
-  *byte_code = compiled_partition->byte_code.data();
-  *byte_code_size = compiled_partition->byte_code.size();
-  return StatusOk();
-}
-
-LrtStatus PluginCompiledPartitionGetName(
-    LrtCompiledPartition compiled_partition, const char** partition_name) {
-  *partition_name = compiled_partition->name.data();
   return StatusOk();
 }
