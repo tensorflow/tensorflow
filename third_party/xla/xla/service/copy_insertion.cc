@@ -115,7 +115,9 @@ bool ShouldCopyRootValue(const HloValue& value,
 // Deep copy the given instructions 'from' and 'to' at the ShapeIndexes given in
 // 'indices_to_copy'. Add control edges from the respective kCopy instructions
 // in deep copy of 'from' to the respective kCopy instruction in the deep copy
-// of 'to'.
+// of 'to'. These control edges are necessary to prevent live range interference
+// between the kCopy instructions in the deep copy of 'from' and the kCopy
+// instructions in the deep copy of 'to'.
 //
 // Requirements: 'from' and 'to' must have compatible shapes.
 //
@@ -123,11 +125,11 @@ bool ShouldCopyRootValue(const HloValue& value,
 // the only index to copy. Prior to deep-copying we have:
 //
 //
-//      'from'
-//         |
-//        ...
-//         |
-//       'to'
+//       'from'
+//          |
+//         ...
+//          |
+//        'to'
 //
 // DeepCopyAndAddControlEdges produces:
 //
@@ -911,7 +913,7 @@ class ComputeRelativeLocation {
             }
             VLOG(3) << "instr2 relation: " << instr2_relation.ToString();
           }
-          // Here instru2_relation is guaranteed to have at most a single entry,
+          // Here instr2_relation is guaranteed to have at most a single entry,
           // because it was initialized to be empty, and has been updated only
           // via instr2_relation.UnionRelationFromSameSource(rel), which
           // maintains that the updated result has only a single entry.
@@ -1018,7 +1020,8 @@ class ComputeRelativeLocation {
       }
     }
     for (const InstructionEntry& entry1 : unordered_ops) {
-      Save(entry2.first, entry1.first, desired_relation, true);
+      Save(entry2.first, entry1.first, desired_relation,
+           /*is_unordered_originally=*/true);
     }
     return true;
   }
@@ -1620,7 +1623,7 @@ class CopyRemover {
     //  totally ordered live ranges; otherwise the merged buffer would have
     //  live range interference.
     if (copy_node.src->next == copy_node.dest) {
-      // In the process of eliding copies, its possible for a copy to have the
+      // In the process of eliding copies, it's possible for a copy to have the
       // same source and destination buffer. In this case, the copy can be
       // safely removed.
       VLOG(2) << copy->name() << " source and destination buffers are same.";
@@ -1923,7 +1926,7 @@ class CopyRemover {
         StrAppend(&result, ", ", node->value->ToShortString());
       }
     };
-    VisitValueNode(element);
+    ForEachValueInRange(element, VisitValueNode);
     StrAppend(&result, "}");
     return result;
   }
