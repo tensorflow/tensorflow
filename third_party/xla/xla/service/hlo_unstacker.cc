@@ -110,7 +110,8 @@ struct UnstackerMetadata {
       VLOG(3) << "Prepared module: " << module->name() << " for unstacking.";
     }
     std::vector<std::pair<HloInstruction*, WhileLoopConfig>> loops =
-        WhileLoopUnroller::GetUnrollableLoops(module, {});
+        WhileLoopUnroller::GetUnrollableLoops(module, {},
+                                              /*unroll_config=*/std::nullopt);
     for (const auto& [instr, while_loop_config] : loops) {
       metadata.unrollable_loop_bodies[instr->while_body()] = while_loop_config;
       metadata.bodies[instr->while_body()] = instr;

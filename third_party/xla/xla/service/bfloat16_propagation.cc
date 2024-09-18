@@ -352,8 +352,10 @@ bool BFloat16Propagation::ShouldKeepPrecisionUnchanged(
   }
   // Do not change precision for side-effecting instructions, control flow, and
   // bitcast-convert, because this pass might break the interfaces or
-  // assumptions for them.
-  return inst->opcode() == HloOpcode::kCustomCall ||
+  // assumptions for them. It is safe to change precision for AllocateBuffer
+  // since it is merely a buffer allocation and does not have any side effects.
+  return (inst->opcode() == HloOpcode::kCustomCall &&
+          !inst->IsCustomCall("AllocateBuffer")) ||
          inst->opcode() == HloOpcode::kCall ||
          inst->opcode() == HloOpcode::kBitcastConvert ||
          inst->HasSideEffectNoRecurse();

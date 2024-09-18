@@ -495,8 +495,8 @@ TEST_F(WhileLoopUnrollerTest, GetUnrollableLoops) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  auto unrollable_loops =
-      WhileLoopUnroller::GetUnrollableLoops(module.get(), {});
+  auto unrollable_loops = WhileLoopUnroller::GetUnrollableLoops(
+      module.get(), {}, /*unroll_config=*/std::nullopt);
   // Only while1 and while2 are unrollable
   EXPECT_EQ(unrollable_loops.size(), 2);
 }
