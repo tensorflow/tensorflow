@@ -39,6 +39,7 @@ default_visibility = [
     #internal starburst clustering service,
     "//waymo/ml/deploy/benchmark:__subpackages__",
     # copybara:uncomment #internal tuning service,
+    # copybara:uncomment "//third_party/odml/experimental:__subpackages__",
 ]
 
 package(
