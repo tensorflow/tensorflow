@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 
 namespace mlir {

@@ -29,6 +29,7 @@ cc_library(
         "//xla/service:hlo_proto_cc",
         "//xla/stream_executor:dnn",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
@@ -47,6 +48,8 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -57,7 +60,6 @@ cc_library(
     deps = [
         ":stack_frame_index_builder",
         "//xla:xla_data_proto_cc",
-        "@com_google_absl//absl/log",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
@@ -71,6 +73,7 @@ cc_library(
     deps = [
         "//xla:xla_data_proto_cc",
         "//xla/service:hlo_module_config",
+        "//xla/service:hlo_proto_cc",
         "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -85,6 +88,7 @@ cc_library(
     deps = [
         "//xla/service:hlo_proto_cc",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -280,7 +284,10 @@ xla_cc_test(
         "//xla:shape_util",
         "//xla:test",
         "//xla:xla_data_proto_cc",
+        "//xla/mlir_hlo",
         "//xla/translate/hlo_to_mhlo:hlo_utils",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:test_main",
