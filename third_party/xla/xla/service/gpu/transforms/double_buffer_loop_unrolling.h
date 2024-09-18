@@ -45,8 +45,6 @@ namespace gpu {
 //
 // Note that this pass will flatten the call graph if any loop has been
 // unrolled.
-// TODO(olechwierowicz): Rename the loop unroller to something more generic like
-// 'DoubleBufferLoopUnrolling'.
 class DoubleBufferLoopUnrolling : public HloModulePass {
  public:
   enum class UnrollStrategy { kDoubleBuffer, kFullUnroll };

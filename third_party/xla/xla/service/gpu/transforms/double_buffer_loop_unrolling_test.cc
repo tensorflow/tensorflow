@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -38,23 +39,19 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using tsl::testing::IsOkAndHolds;
+using ::tsl::testing::IsOkAndHolds;
 
-int64_t CountInstructions(const HloComputation& computation, HloOpcode opcode) {
+int64_t CountInstructions(HloComputation& computation, HloOpcode opcode) {
   int64_t count = 0;
-  for (const auto& instruction : computation.instructions()) {
-    if (instruction->opcode() == opcode) {
-      count++;
-    }
-  }
+  hlo_query::ForEachInstructionWithOpcode(
+      computation, opcode, [&count](HloInstruction* instr) { count++; });
   return count;
 }
 
-int64_t CountInstructions(const HloModule& module, HloOpcode opcode) {
+int64_t CountInstructions(HloModule& module, HloOpcode opcode) {
   int64_t count = 0;
-  for (const auto& computation : module.computations()) {
-    count += CountInstructions((*computation), opcode);
-  }
+  hlo_query::ForEachInstructionWithOpcode(
+      module, opcode, [&count](HloInstruction* instr) { count++; });
   return count;
 }
 
