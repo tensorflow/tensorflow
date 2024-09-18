@@ -43,6 +43,13 @@ std::unique_ptr<mlir::Pass> Create(const mlir::detail::PassOptions& options) {
 // Registration Utilities
 ////////////////////////////////////////////////////////////////////////////////
 
+// Utility to register a pass without options.
+template <typename PassType>
+void Register() {
+  PassRegistration<PassType> pass([] { return Create<PassType>(); });
+}
+
+// Utility to register a pass with options.
 template <typename PassType, typename PassOptionsType>
 void Register() {
   auto pass_argument = PassType::GetArgument();

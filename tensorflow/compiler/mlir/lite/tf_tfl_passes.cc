@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/pass_registry_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/lite/transforms/unfreeze_global_constants.h"
 #include "tensorflow/compiler/mlir/lite/utils/fake_quant_utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -123,7 +124,8 @@ void AddVariableFreezingFromGlobalTensorsPasses(
   pass_manager->addPass(mlir::tf_saved_model::CreateFreezeGlobalTensorsPass(
       /*allow_mutable_tensors=*/pass_config.enable_tflite_variables));
 
-  pass_manager->addPass(mlir::TFL::CreateUnfreezeMutableGlobalTensorsPass());
+  pass_manager->addPass(
+      mlir::TFL::Create<mlir::TFL::UnfreezeMutableGlobalTensorsPass>());
 }
 
 void AddDynamicRangeQuantizationPasses(const mlir::TFL::PassConfig& pass_config,
