@@ -2172,10 +2172,8 @@ IndexingMap IndexingMap::ConvertSymbolsToDimensions() const {
   AffineMap canonical_map =
       affine_map_.replaceDimsAndSymbols({}, syms_replacements, num_vars, 0);
   IndexingMap new_indexing_map(canonical_map, new_dim_vars, /*range_vars=*/{},
-                               /*rt_vars=*/{}, new_constraints, is_simplified_);
-  if (is_simplified_) {
-    new_indexing_map.Simplify();
-  }
+                               /*rt_vars=*/{}, new_constraints,
+                               /*is_simplified=*/false);
   return new_indexing_map;
 }
 
