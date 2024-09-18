@@ -1,15 +1,169 @@
-diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 730590f..b4662d5 100644
---- a/third_party/llvm/workspace.bzl
-+++ b/third_party/llvm/workspace.bzl
-@@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
+diff --git a/shardy/dialect/sdy/ir/attrs.td b/shardy/dialect/sdy/ir/attrs.td
+index f1ac348..9a10951 100644
+--- a/shardy/dialect/sdy/ir/attrs.td
++++ b/shardy/dialect/sdy/ir/attrs.td
+@@ -66,12 +66,12 @@ def Sdy_Mesh : AttrDef<Sdy_Dialect, "Mesh"> {
+   Here are some examples of meshes:
  
- def repo(name):
-     """Imports LLVM."""
--    LLVM_COMMIT = "815b0046b8998e3b9e7a964608c725eec8e85d8a"
--    LLVM_SHA256 = "a192d9c643e502713f4a74c9492f880d073dda753a6447d84d9d917b2676cf59"
-+    LLVM_COMMIT = "6b6e2106f974286715bda1abf95d4ab08ac9946f"
-+    LLVM_SHA256 = "077073cb028d3aae4f62275485bbb1c3d4a5e3cda2f01b6f616427e1a3c382d2"
+     - An empty mesh represents a mesh with an unnamed axis of size 1 and device
+-      ID 0: <>
++      ID 0: <[]>
+     - A mesh with an unnamed axis and an explicit device ID, which is typically
+-      used to represent maximal sharding: <device_ids=[3]>
++      used to represent maximal sharding: <[], device_ids=[3]>
+     - A mesh with two axes and implicit device IDs iota(6): <["a"=2, "b"=3]>
+     - A mesh with two axes and explicit device IDs specifying the device
+-      ordering: <["a"=3, "b"=2] device_ids=[0, 2, 4, 1, 3, 5]>
++      ordering: <["a"=3, "b"=2], device_ids=[0, 2, 4, 1, 3, 5]>
+   }];
+   let parameters = (ins
+       OptionalArrayRefParameter<"MeshAxisAttr">:$axes,
+@@ -79,7 +79,8 @@ def Sdy_Mesh : AttrDef<Sdy_Dialect, "Mesh"> {
+   );
  
-     tf_http_archive(
-         name = name,
+   let assemblyFormat = [{
+-    `<` (`[` $axes^ `]`)? (`device_ids` `` `=` `` `[` $device_ids^ `]` )? `>`
++    `<` `[` (`]`):($axes^ `]`)?
++      (`,` `device_ids` `` `=` `` `[` $device_ids^ `]` )? `>`
+   }];
+ 
+   let genVerifyDecl = 1;
+diff --git a/shardy/dialect/sdy/ir/test/mesh_parse_print.mlir b/shardy/dialect/sdy/ir/test/mesh_parse_print.mlir
+index 3f7593c..eb79c27 100644
+--- a/shardy/dialect/sdy/ir/test/mesh_parse_print.mlir
++++ b/shardy/dialect/sdy/ir/test/mesh_parse_print.mlir
+@@ -1,22 +1,22 @@
+ // RUN: sdy_opt %s 2>&1 | FileCheck %s
+ 
+-// CHECK: sdy.mesh @empty_mesh = <>
+-sdy.mesh @empty_mesh = <>
++// CHECK: sdy.mesh @empty_mesh = <[]>
++sdy.mesh @empty_mesh = <[]>
+ 
+-// CHECK: sdy.mesh @maximal_mesh_1 = <device_ids=[0]>
+-sdy.mesh @maximal_mesh_1 = <device_ids=[0]>
++// CHECK: sdy.mesh @maximal_mesh_1 = <[], device_ids=[0]>
++sdy.mesh @maximal_mesh_1 = <[], device_ids=[0]>
+ 
+-// CHECK: sdy.mesh @maximal_mesh_2 = <device_ids=[3]>
+-sdy.mesh @maximal_mesh_2 = <device_ids=[3]>
++// CHECK: sdy.mesh @maximal_mesh_2 = <[], device_ids=[3]>
++sdy.mesh @maximal_mesh_2 = <[], device_ids=[3]>
+ 
+ // CHECK: sdy.mesh @single_axis = <["a"=2]>
+ sdy.mesh @single_axis = <["a"=2]>
+ 
+-// CHECK: sdy.mesh @single_axis_explicit_device_ids = <["a"=2]device_ids=[1, 0]>
+-sdy.mesh @single_axis_explicit_device_ids = <["a"=2] device_ids=[1, 0]>
++// CHECK: sdy.mesh @single_axis_explicit_device_ids = <["a"=2], device_ids=[1, 0]>
++sdy.mesh @single_axis_explicit_device_ids = <["a"=2], device_ids=[1, 0]>
+ 
+ // CHECK: sdy.mesh @two_axes = <["a"=2, "b"=1]>
+ sdy.mesh @two_axes = <["a"=2, "b"=1]>
+ 
+-// CHECK: sdy.mesh @two_axes_explicit_device_ids = <["a"=2, "b"=1]device_ids=[1, 0]>
+-sdy.mesh @two_axes_explicit_device_ids = <["a"=2, "b"=1] device_ids=[1, 0]>
++// CHECK: sdy.mesh @two_axes_explicit_device_ids = <["a"=2, "b"=1], device_ids=[1, 0]>
++sdy.mesh @two_axes_explicit_device_ids = <["a"=2, "b"=1], device_ids=[1, 0]>
+diff --git a/shardy/dialect/sdy/ir/test/mesh_verification.mlir b/shardy/dialect/sdy/ir/test/mesh_verification.mlir
+index 29d23f9..1d5ea6f 100644
+--- a/shardy/dialect/sdy/ir/test/mesh_verification.mlir
++++ b/shardy/dialect/sdy/ir/test/mesh_verification.mlir
+@@ -11,28 +11,28 @@ sdy.mesh @mesh = <["a"=2, "b"=2, "a"=4]>
+ 
+ // -----
+ // expected-error @+1 {{device id must be non-negative, got: -1}}
+-sdy.mesh @mesh = <device_ids=[-1]>
++sdy.mesh @mesh = <[], device_ids=[-1]>
+ 
+ // -----
+ // expected-error @+1 {{total product of axis sizes must match total number of device ids, got: 1 != 2}}
+-sdy.mesh @mesh = <device_ids=[1, 0]>
++sdy.mesh @mesh = <[], device_ids=[1, 0]>
+ 
+ // -----
+ // expected-error @+1 {{total product of axis sizes must match total number of device ids, got: 4 != 6}}
+-sdy.mesh @mesh = <["a"=2, "b"=2] device_ids=[0, 2, 1, 3, 4, 5]>
++sdy.mesh @mesh = <["a"=2, "b"=2], device_ids=[0, 2, 1, 3, 4, 5]>
+ 
+ // -----
+ // expected-error @+1 {{custom op 'sdy.mesh' total product of axis sizes must match total number of device ids, got: 2 != 1}}
+-sdy.mesh @mesh = <["a"=2] device_ids=[0]>
++sdy.mesh @mesh = <["a"=2], device_ids=[0]>
+ 
+ // -----
+ // expected-error @+1 {{custom op 'sdy.mesh' if the ordered device ids are the same as iota(product(axes)), no need to specify them for simplicity}}
+-sdy.mesh @mesh_iota_device_ids = <["a"=2] device_ids=[0, 1]>
++sdy.mesh @mesh_iota_device_ids = <["a"=2], device_ids=[0, 1]>
+ 
+ // -----
+ // expected-error @+1 {{custom op 'sdy.mesh' sorted device ids must be iota(product(axes)), got: 1, 1}}
+-sdy.mesh @mesh_duplicated_device_ids = <["a"=2] device_ids=[1, 1]>
++sdy.mesh @mesh_duplicated_device_ids = <["a"=2], device_ids=[1, 1]>
+ 
+ // -----
+ // expected-error @+1 {{custom op 'sdy.mesh' sorted device ids must be iota(product(axes)), got: 1, 2}}
+-sdy.mesh @mesh_out_if_bound_device_ids = <["a"=2] device_ids=[2, 1]>
++sdy.mesh @mesh_out_if_bound_device_ids = <["a"=2], device_ids=[2, 1]>
+diff --git a/shardy/dialect/sdy/transforms/import/test/import_maximal_sharding.mlir b/shardy/dialect/sdy/transforms/import/test/import_maximal_sharding.mlir
+index ab610a5..6eefbfb 100644
+--- a/shardy/dialect/sdy/transforms/import/test/import_maximal_sharding.mlir
++++ b/shardy/dialect/sdy/transforms/import/test/import_maximal_sharding.mlir
+@@ -1,6 +1,6 @@
+ // RUN: sdy_opt  -split-input-file %s -sdy-import-maximal-sharding | FileCheck %s
+ 
+-// CHECK: sdy.mesh @maximal_mesh_3 = <device_ids=[3]>
++// CHECK: sdy.mesh @maximal_mesh_3 = <[], device_ids=[3]>
+ // CHECK-LABEL: func @maximal_sharding_static_shaped_type_result
+ func.func @maximal_sharding_static_shaped_type_result(%arg0 : tensor<8x8xf32>) -> tensor<8x8xf32> {
+   // CHECK-NEXT: stablehlo.add
+@@ -12,7 +12,7 @@ func.func @maximal_sharding_static_shaped_type_result(%arg0 : tensor<8x8xf32>) -
+ 
+ // -----
+ 
+-// CHECK: sdy.mesh @maximal_mesh_3 = <device_ids=[3]>
++// CHECK: sdy.mesh @maximal_mesh_3 = <[], device_ids=[3]>
+ // CHECK-LABEL: func @maximal_sharding_non_shaped_type_result
+ func.func @maximal_sharding_non_shaped_type_result(%arg0 : tensor<8x8xf32>) -> tensor<8x8xf32> {
+   // CHECK-NEXT: stablehlo.custom_call
+@@ -24,7 +24,7 @@ func.func @maximal_sharding_non_shaped_type_result(%arg0 : tensor<8x8xf32>) -> t
+ 
+ // -----
+ 
+-// CHECK: sdy.mesh @maximal_mesh_3 = <device_ids=[3]>
++// CHECK: sdy.mesh @maximal_mesh_3 = <[], device_ids=[3]>
+ // CHECK-LABEL: func @maximal_sharding_multiple_results
+ func.func @maximal_sharding_multiple_results(%arg0 : tensor<8x8xf32>) -> tensor<8x8xf32> {
+   // CHECK-NEXT: stablehlo.custom_call
+@@ -36,9 +36,9 @@ func.func @maximal_sharding_multiple_results(%arg0 : tensor<8x8xf32>) -> tensor<
+ 
+ // -----
+ 
+-sdy.mesh @maximal_mesh_3 = <device_ids=[3]>
++sdy.mesh @maximal_mesh_3 = <[], device_ids=[3]>
+ 
+-// CHECK: sdy.mesh @maximal_mesh_3 = <device_ids=[3]>
++// CHECK: sdy.mesh @maximal_mesh_3 = <[], device_ids=[3]>
+ // CHECK-LABEL: func @maximal_sharding_maximal_mesh_exists
+ func.func @maximal_sharding_maximal_mesh_exists(%arg0 : tensor<8x8xf32>) -> tensor<8x8xf32> {
+   // CHECK-NEXT: stablehlo.add
+@@ -50,7 +50,7 @@ func.func @maximal_sharding_maximal_mesh_exists(%arg0 : tensor<8x8xf32>) -> tens
+ 
+ // -----
+ 
+-// CHECK: sdy.mesh @maximal_mesh_0 = <device_ids=[0]>
++// CHECK: sdy.mesh @maximal_mesh_0 = <[], device_ids=[0]>
+ // CHECK-LABEL: func @maximal_sharding_repeated_mesh
+ func.func @maximal_sharding_repeated_mesh(%arg0 : tensor<8x8xf32>) -> tensor<8x8xf32> {
+   // CHECK: stablehlo.custom_call
+@@ -65,8 +65,8 @@ func.func @maximal_sharding_repeated_mesh(%arg0 : tensor<8x8xf32>) -> tensor<8x8
+ 
+ // -----
+ 
+-// CHECK: sdy.mesh @maximal_mesh_5 = <device_ids=[5]>
+-// CHECK-NEXT: sdy.mesh @maximal_mesh_0 = <device_ids=[0]>
++// CHECK: sdy.mesh @maximal_mesh_5 = <[], device_ids=[5]>
++// CHECK-NEXT: sdy.mesh @maximal_mesh_0 = <[], device_ids=[0]>
+ // CHECK-LABEL: func @maximal_sharding_two_different_meshes
+ func.func @maximal_sharding_two_different_meshes(%arg0 : tensor<8x8xf32>) -> tensor<8x8xf32> {
+   // CHECK: stablehlo.custom_call
