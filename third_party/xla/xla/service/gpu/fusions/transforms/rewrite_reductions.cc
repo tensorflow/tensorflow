@@ -17,6 +17,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
@@ -150,9 +151,12 @@ struct RewriteRowReduction : mlir::OpRewritePattern<ReduceOp> {
           operand.getLoc(), new_input_ty, operand, init, reindex_map));
     }
 
-    auto first_reduction = rewriter.create<ReduceOp>(
-        op.getLoc(), new_operands, op.getInits(),
-        llvm::ArrayRef<int64_t>{per_thread_input_rank - 2}, op.getCombiner());
+    auto dims_for_first_reduction =
+        llvm::to_vector(op.getDimensions().drop_back(num_minor_dims));
+    dims_for_first_reduction.push_back(per_thread_input_rank - 2);
+    auto first_reduction =
+        rewriter.create<ReduceOp>(op.getLoc(), new_operands, op.getInits(),
+                                  dims_for_first_reduction, op.getCombiner());
 
     // Reshape the outputs: [..., 128] -> [..., 4, 32].
     auto per_thread_output = GetOutputType(first_reduction).getShape();

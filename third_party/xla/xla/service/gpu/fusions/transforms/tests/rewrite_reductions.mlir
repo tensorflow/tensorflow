@@ -31,3 +31,29 @@ func.func @row_reduction(%arg0: tensor<128x1027xf32>)
 // CHECK:         %[[R2:.*]] = xla_gpu.reduce(%[[RESHAPED]]) inits(%[[C0]]) dimensions=[2] combiner=@add
 // CHECK:         %[[R3:.*]] = xla_gpu.reduce(%[[R2]]) inits(%[[C0]]) dimensions=[1] combiner=@add
 // CHECK:         return %[[R3]] : tensor<128xf32>
+
+// -----
+
+func.func @add(%a: f32, %b: f32) -> f32 {
+  %0 = arith.addf %a, %b : f32
+  return %0 : f32
+}
+
+func.func @row_reduction_with_major_reduced_dim(%arg0: tensor<1x42x128x32x8xf32>)
+    -> tensor<1x128xf32> attributes {
+    xla_gpu.launch_grid = #xla_gpu.launch_grid<
+      block_counts = [42, 1, 1],
+      thread_counts = [128, 1, 1]
+    >
+  } {
+  %c0 = arith.constant 0.0 : f32
+  %0 = xla_gpu.reduce (%arg0) inits(%c0) dimensions=[1, 3, 4] combiner=@add
+    : tensor<1x42x128x32x8xf32>
+  return %0 : tensor<1x128xf32>
+}
+
+// CHECK:      %[[PADDED:.*]] = xla_gpu.reindex
+// CHECK-SAME:   : tensor<1x42x128x32x8xf32> -> tensor<1x42x128x2x128xf32>
+// CHECK:      xla_gpu.reduce(%[[PADDED]])
+// CHECK-SAME:   dimensions=[1, 3]
+// CHECK-SAME:   : tensor<1x42x128x2x128xf32>
