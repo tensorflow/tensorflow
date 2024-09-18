@@ -132,6 +132,9 @@ IndexingMap GetBitcastMap(const Shape& input_shape, const Shape& output_shape,
 IndexingMap GetBitcastMap(absl::Span<const int64_t> input_shape,
                           const Shape& output_shape,
                           mlir::MLIRContext* mlir_context);
+IndexingMap GetBitcastMap(absl::Span<const int64_t> input_shape,
+                          absl::Span<const int64_t> output_shape,
+                          mlir::MLIRContext* mlir_context);
 
 // Creates an indexing map from the physical layout of the tensor to its logical
 // layout.

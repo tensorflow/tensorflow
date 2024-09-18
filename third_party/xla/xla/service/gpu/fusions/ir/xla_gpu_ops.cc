@@ -1060,6 +1060,18 @@ LogicalResult InsertOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// ReindexOp
+//===----------------------------------------------------------------------===//
+
+void ReindexOp::build(mlir::OpBuilder& builder, mlir::OperationState& result,
+                      mlir::Type type, mlir::Value operand, mlir::Value padding,
+                      const xla::gpu::IndexingMap& indexing_map) {
+  IndexingMapAttr indexing_map_attr =
+      IndexingMapAttr::get(builder.getContext(), indexing_map);
+  build(builder, result, type, operand, padding, indexing_map_attr);
+}
+
+//===----------------------------------------------------------------------===//
 // ReduceOp
 //===----------------------------------------------------------------------===//
 

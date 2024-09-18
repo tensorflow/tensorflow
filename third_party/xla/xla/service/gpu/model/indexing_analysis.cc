@@ -1076,6 +1076,14 @@ IndexingMap GetBitcastMap(absl::Span<const int64_t> input_shape,
                            output_shape.element_type(), input_shape),
                        output_shape, mlir_context);
 }
+IndexingMap GetBitcastMap(absl::Span<const int64_t> input_shape,
+                          absl::Span<const int64_t> output_shape,
+                          mlir::MLIRContext* mlir_context) {
+  return GetBitcastMap(
+      ShapeUtil::MakeShapeWithDescendingLayout(PrimitiveType::S8, input_shape),
+      ShapeUtil::MakeShapeWithDescendingLayout(PrimitiveType::S8, output_shape),
+      mlir_context);
+}
 IndexingMap GetBitcastMap(const Shape& input_shape, const Shape& output_shape,
                           MLIRContext* mlir_context) {
   ShapeUtil::BitcastDecomposition decomposed_bitcast =

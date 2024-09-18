@@ -230,3 +230,34 @@ func.func @reduce_middle_dim(%in: tensor<16x8x4xf32>, %init: f32)
 // CHECK-SAME:    inits(%[[INIT]]) dimensions=[1]
 // CHECK-SAME:    combiner=@add
 // CHECK-SAME:    : tensor<16x8x4xf32>
+
+// -----
+
+#map = #xla_gpu.indexing_map<(d0, d1) -> (d0 * 64 + d1), domain: d0 in [0, 15], d1 in [0, 63], is_simplified: false>
+func.func @reindex(%in0: tensor<1024xf32>) -> tensor<16x64xf32> {
+  %0 = xla_gpu.reindex %in0 at #map : tensor<1024xf32> -> tensor<16x64xf32>
+  func.return %0 : tensor<16x64xf32>
+}
+
+// CHECK: #[[$MAP:.*]] = #xla_gpu.indexing_map<(d0, d1) -> (d0 * 64 + d1)
+// CHECK-LABEL: func.func @reindex(
+// CHECK-SAME:    %[[IN1:.*]]: tensor<1024xf32>
+// CHECK:         xla_gpu.reindex %[[IN1]] at #[[$MAP]] :
+// CHECK-SAME:      tensor<1024xf32> -> tensor<16x64xf32>
+
+// -----
+
+#map = #xla_gpu.indexing_map<(d0, d1) -> (d0 * 64 + d1), domain: d0 in [0, 15], d1 in [0, 63], is_simplified: false>
+func.func @reindex_pad(%in0: tensor<1022xf32>) -> tensor<16x64xf32> {
+  %c0 = arith.constant 0.0 : f32
+  %0 = xla_gpu.reindex %in0 at #map default %c0
+    : tensor<1022xf32> -> tensor<16x64xf32>
+  func.return %0 : tensor<16x64xf32>
+}
+
+// CHECK: #[[$MAP:.*]] = #xla_gpu.indexing_map<(d0, d1) -> (d0 * 64 + d1)
+// CHECK-LABEL: func.func @reindex_pad(
+// CHECK-SAME:    %[[IN1:.*]]: tensor<1022xf32>
+// CHECK:         %[[C0:.*]] = arith.constant 0.00
+// CHECK:         xla_gpu.reindex %[[IN1]] at #[[$MAP]] default %[[C0]] :
+// CHECK-SAME:      tensor<1022xf32> -> tensor<16x64xf32>

@@ -67,4 +67,18 @@ def XLAGPU_IndexingMapAttr : XLAGPU_Attr<"IndexingMap"> {
   }];
 }
 
+def XLAGPU_LaunchGridAttr : XLAGPU_Attr<"LaunchGrid"> {
+  let summary = "An attribute representing a launch grid.";
+  let mnemonic = "launch_grid";
+  let description = [{This attribute stores a launch grid.}];
+  let parameters = (ins ArrayRefParameter<"int64_t", "">:$block_counts,
+                        ArrayRefParameter<"int64_t", "">:$thread_counts);
+  let assemblyFormat = [{
+    `<`
+       `block_counts` `=` `[` $block_counts `]` `,`
+       `thread_counts` `=` `[` $thread_counts `]`
+    `>`
+  }];
+}
+
 #endif // XLA_SERVICE_GPU_FUSIONS_MLIR_ATTRS
