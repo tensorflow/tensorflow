@@ -1623,16 +1623,16 @@ ENTRY entry {
   config.set_block_k(32);
   TF_ASSERT_OK(triton_dot_fusion->set_backend_config(backend_config));
 
-  TF_CHECK_OK(TritonWrapper("test_fn", triton_dot_fusion, CudaAmpereOrRocm(),
-                            dev_info, block_level_parameters, &llvm_module,
-                            mlir_context)
-                  .status());
+  TF_ASSERT_OK(TritonWrapper("test_fn", triton_dot_fusion, CudaAmpereOrRocm(),
+                             dev_info, block_level_parameters, &llvm_module,
+                             mlir_context)
+                   .status());
 }
 
 // Triton compiler used to have an issue with reordering constants:
 // https://github.com/openai/triton/issues/1864
 TEST_F(TritonGemmTest, TritonCompilerDoesNotFailOnConstants) {
-  TF_CHECK_OK(GetOptimizedModule(R"(
+  TF_ASSERT_OK(GetOptimizedModule(R"(
 HloModule m
 
 triton_gemm___computation {
@@ -1653,7 +1653,7 @@ ENTRY e {
                                           "num_stages":"3","num_warps":"2",
                                           "num_ctas":"1"}}}
 })")
-                  .status());
+                   .status());
 }
 
 // Normally optimized HLO should contain `copy` instead of `transpose` but
@@ -2136,10 +2136,10 @@ ENTRY e  {
   block_level_parameters.num_warps = gemm_config.num_warps();
   block_level_parameters.num_stages = gemm_config.num_stages();
 
-  TF_CHECK_OK(TritonWrapper("test_fn", triton_dot_fusion, GpuComputeComp(),
-                            dev_info, block_level_parameters, &llvm_module,
-                            mlir_context)
-                  .status());
+  TF_ASSERT_OK(TritonWrapper("test_fn", triton_dot_fusion, GpuComputeComp(),
+                             dev_info, block_level_parameters, &llvm_module,
+                             mlir_context)
+                   .status());
 }
 
 class TritonGemmLevel2Test : public TritonGemmTest {
