@@ -383,7 +383,12 @@ Service::ExecuteParallelAndRegisterResult(
       options.set_allocator(backend->memory_allocator());
       options.set_intra_op_thread_pool(
           backend->eigen_intra_op_thread_pool_device());
-      options.set_device_assignment(&device_assignment);
+      const DeviceAssignment* device_assignment_ptr = &device_assignment;
+      if (executables[i]->module_config().has_static_device_assignment()) {
+        device_assignment_ptr =
+            &executables[i]->module_config().static_device_assignment();
+      }
+      options.set_device_assignment(device_assignment_ptr);
       // Use run-time profile information from execution_profile on the 0th
       // device.
       if (i == 0) {
@@ -439,7 +444,11 @@ absl::StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
   for (int64_t replica = 0; replica < replicas.size(); ++replica) {
     device_assignment(replica, 0) = replicas[replica]->device_ordinal();
   }
-
+  const DeviceAssignment* device_assignment_ptr = &device_assignment;
+  if (executable->module_config().has_static_device_assignment()) {
+    device_assignment_ptr =
+        &executable->module_config().static_device_assignment();
+  }
   // Set up run options.
   std::vector<ServiceExecutableRunOptions> run_options;
   run_options.reserve(streams.size());
@@ -451,7 +460,7 @@ absl::StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
     options.set_allocator(backend->memory_allocator());
     options.set_intra_op_thread_pool(
         backend->eigen_intra_op_thread_pool_device());
-    options.set_device_assignment(&device_assignment);
+    options.set_device_assignment(device_assignment_ptr);
     options.set_execution_profile(profile);
     run_options.emplace_back(options, backend->StreamBorrowerWithPriority());
   }
