@@ -153,7 +153,7 @@ func.func @loop_op(%input: tensor<1024x32xf32>, %init: f32,
 
 // -----
 
-func.func private @exp(%p0: tensor<32x64xf32>, %i: index, %j: index) -> f32 
+func.func private @exp(%p0: tensor<32x64xf32>, %i: index, %j: index) -> f32
 
 #map = #xla_gpu.indexing_map<(d0, d1)[s0, s1] -> (d0 + s0, d1 + s1),
   domain: d0 in [0, 32], d1 in [0, 2], s0 in [0, 1024], s1 in [0, 32],
@@ -209,3 +209,24 @@ func.func @reduce(%in0: tensor<16x8x4xf32>, %init0: f32,
 // CHECK-SAME:    inits(%[[INIT1]], %[[INIT2]]) dimensions=[0, 2]
 // CHECK-SAME:    combiner=@add {xla.range = [0 : index, 42 : index]}
 // CHECK-SAME:    : tensor<16x8x4xf32>, tensor<16x8x4xi32>
+
+// -----
+
+func.func @add(%a_acc: f32, %a: f32) -> (f32) {
+  %0 = arith.addf %a_acc, %a : f32
+  func.return %0 : f32
+}
+
+func.func @reduce_middle_dim(%in: tensor<16x8x4xf32>, %init: f32)
+    -> (tensor<16x4xf32>) {
+  %sum = xla_gpu.reduce (%in) inits(%init) dimensions=[1]
+    combiner=@add : tensor<16x8x4xf32>
+  func.return %sum : tensor<16x4xf32>
+}
+
+// CHECK-LABEL: func.func @reduce_middle_dim(
+// CHECK-SAME:    %[[IN:.*]]: tensor<16x8x4xf32>, %[[INIT:.*]]: f32)
+// CHECK:        xla_gpu.reduce(%[[IN]])
+// CHECK-SAME:    inits(%[[INIT]]) dimensions=[1]
+// CHECK-SAME:    combiner=@add
+// CHECK-SAME:    : tensor<16x8x4xf32>

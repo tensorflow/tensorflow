@@ -1072,7 +1072,7 @@ SmallVector<Type> inferReductionResultTypes(TypeRange input_types,
   output_shape.reserve(input_shape.size() - num_reduced_dims);
   int reduce_dim = 0;
   for (int64_t i = 0; i < input_shape.size(); ++i) {
-    if (reduce_dim >= num_reduced_dims || i == reduced_dims[reduce_dim]) {
+    if (reduce_dim < num_reduced_dims && i == reduced_dims[reduce_dim]) {
       ++reduce_dim;
       continue;
     }
