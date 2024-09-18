@@ -1757,13 +1757,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
-    visibility = [
-        "//tensorflow/compiler/mlir/lite/core:__pkg__",
-        "//tensorflow/compiler/mlir/lite/experimental/lrt:__subpackages__",
-        "//tensorflow/lite:__pkg__",
-        "//tensorflow/lite/core:__pkg__",
-        "//tensorflow/lite/tools/optimize/calibration:__pkg__",
-    ],
+    visibility = ["//visibility:public"],
     deps = ["//tensorflow/compiler/mlir/lite/core/api:error_reporter"],
 )
 

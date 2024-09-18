@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "llvm/ADT/DenseMap.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
@@ -36,7 +37,7 @@ xla::HloSharding parseShardingFromString(const mlir::StringAttr& sharding);
 //
 // If `hloSharding` is unknown, return fully open sharding. Otherwise, the
 // returned sharding is open iff `openDims` is true.
-mlir::sdy::TensorShardingAttr convertToNewSharding(
+mlir::sdy::TensorShardingAttr convertToSdySharding(
     const xla::HloSharding& hloSharding, mlir::sdy::MeshAttr globalMesh,
     const llvm::SmallDenseMap<int64_t, mlir::StringRef>&
         deviceIdToMaximalMeshName,
