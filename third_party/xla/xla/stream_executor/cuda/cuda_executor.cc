@@ -39,9 +39,9 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
-#include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/cuda/cuda_version_parser.h"
 #include "xla/stream_executor/cuda/delay_kernel.h"
 #include "xla/stream_executor/device_description.h"
@@ -53,7 +53,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/gpu/gpu_collectives.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
-#include "xla/stream_executor/gpu/gpu_diagnostics.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_kernel.h"
@@ -89,6 +88,13 @@ bool ShouldLaunchDelayKernel() {
     return !blocking || std::string_view{blocking} != "1";
   }();
   return value;
+}
+
+absl::Status FuncGetAttribute(CUfunction_attribute attribute, CUfunction func,
+                              int* attribute_value) {
+  return cuda::ToStatus(
+      cuFuncGetAttribute(attribute_value, attribute, func),
+      absl::StrCat("Failed to query kernel attribute: ", attribute));
 }
 
 }  // namespace
@@ -423,13 +429,12 @@ CudaExecutor::CreateOrShareConstant(Stream* stream,
 absl::Status CudaExecutor::GetKernelMetadata(GpuKernel* cuda_kernel,
                                              KernelMetadata* kernel_metadata) {
   int value;
-  TF_RETURN_IF_ERROR(GpuDriver::FuncGetAttribute(
-      CU_FUNC_ATTRIBUTE_NUM_REGS, cuda_kernel->gpu_function(), &value));
+  TF_RETURN_IF_ERROR(FuncGetAttribute(CU_FUNC_ATTRIBUTE_NUM_REGS,
+                                      cuda_kernel->gpu_function(), &value));
   kernel_metadata->set_registers_per_thread(value);
 
-  TF_RETURN_IF_ERROR(
-      GpuDriver::FuncGetAttribute(CU_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES,
-                                  cuda_kernel->gpu_function(), &value));
+  TF_RETURN_IF_ERROR(FuncGetAttribute(CU_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES,
+                                      cuda_kernel->gpu_function(), &value));
   kernel_metadata->set_shared_memory_bytes(value);
   return absl::OkStatus();
 }

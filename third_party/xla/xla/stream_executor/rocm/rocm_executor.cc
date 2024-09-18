@@ -71,6 +71,7 @@ limitations under the License.
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/rocm/rocm_diagnostics.h"
 #include "xla/stream_executor/rocm/rocm_driver.h"
+#include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_event.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/rocm/rocm_version_parser.h"
@@ -82,6 +83,19 @@ limitations under the License.
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
+
+#define RETURN_IF_ROCM_ERROR(expr, ...)                                  \
+  do {                                                                   \
+    hipError_t _res = (expr);                                            \
+    if (TF_PREDICT_FALSE(_res != hipSuccess)) {                          \
+      if (_res == hipErrorOutOfMemory)                                   \
+        return absl::ResourceExhaustedError(absl::StrCat(                \
+            __VA_ARGS__, ":", ::stream_executor::gpu::ToString(_res)));  \
+      else                                                               \
+        return absl::InternalError(absl::StrCat(                         \
+            __VA_ARGS__, ": ", ::stream_executor::gpu::ToString(_res))); \
+    }                                                                    \
+  } while (0)
 
 namespace stream_executor {
 namespace gpu {
@@ -134,6 +148,14 @@ int fpus_per_core(std::string gcn_arch_name) {
     n = 64;
   }
   return n;
+}
+
+absl::Status FuncGetAttribute(hipFunction_attribute attribute,
+                              hipFunction_t func, int* attribute_value) {
+  RETURN_IF_ROCM_ERROR(
+      wrap::hipFuncGetAttribute(attribute_value, attribute, func),
+      "Failed to query kernel attribute: ", attribute);
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -317,13 +339,12 @@ absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
 absl::Status RocmExecutor::GetKernelMetadata(GpuKernel* rocm_kernel,
                                              KernelMetadata* kernel_metadata) {
   int value = 0;
-  TF_RETURN_IF_ERROR(GpuDriver::FuncGetAttribute(
-      HIP_FUNC_ATTRIBUTE_NUM_REGS, rocm_kernel->gpu_function(), &value));
+  TF_RETURN_IF_ERROR(FuncGetAttribute(HIP_FUNC_ATTRIBUTE_NUM_REGS,
+                                      rocm_kernel->gpu_function(), &value));
   kernel_metadata->set_registers_per_thread(value);
 
-  TF_RETURN_IF_ERROR(
-      GpuDriver::FuncGetAttribute(HIP_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES,
-                                  rocm_kernel->gpu_function(), &value));
+  TF_RETURN_IF_ERROR(FuncGetAttribute(HIP_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES,
+                                      rocm_kernel->gpu_function(), &value));
   kernel_metadata->set_shared_memory_bytes(value);
   return absl::OkStatus();
 }
