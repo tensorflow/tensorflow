@@ -52,9 +52,9 @@ TensorShape TransposedShape(const TensorShape& in_shape,
 template <typename T>
 void Transpose(const Tensor& in, const absl::Span<const int32_t> perm,
                Tensor& out) {
-  gtl::InlinedVector<int64_t, 8> in_strides =
+  absl::InlinedVector<int64_t, 8UL> in_strides =
       ComputeStride<int64_t>(in.shape());
-  gtl::InlinedVector<int64_t, 8> out_strides =
+  absl::InlinedVector<int64_t, 8UL> out_strides =
       ComputeStride<int64_t>(out.shape());
   const T* in_data = in.flat<T>().data();
   T* out_data = out.flat<T>().data();
