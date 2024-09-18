@@ -158,6 +158,12 @@ LrtStatus SetDefaultOptions(tflite::BuiltinOptionsUnion& opts, LrtOpCode code) {
   return StatusOk();
 }
 
+void SetCustomOptions(tflite::OperatorT& op, std::string_view options_data) {
+  const uint8_t* data = reinterpret_cast<const uint8_t*>(options_data.data());
+  op.custom_options.assign(data, data + options_data.size());
+  op.custom_options_format = tflite::CustomOptionsFormat_FLEXBUFFERS;
+}
+
 //===----------------------------------------------------------------------===//
 //                               Load                                         //
 //===----------------------------------------------------------------------===//
@@ -287,6 +293,11 @@ LrtStatus ModelUnpacker::Unpack(LrtModel model) {
   return StatusOk();
 }
 
+LrtStatus RegisterCustomOpCode(LrtModel model, const char* new_op_code) {
+  model->custom_op_code.assign(new_op_code);
+  return StatusOk();
+}
+
 LrtStatus LoadModel(std::unique_ptr<tflite::ModelT> flatbuffer,
                     LrtModel* model) {
   auto lrt_model = std::make_unique<LrtModelT>();
@@ -296,6 +307,9 @@ LrtStatus LoadModel(std::unique_ptr<tflite::ModelT> flatbuffer,
   LRT_RETURN_STATUS_IF_NOT_OK(ModelUnpacker::Unpack(lrt_model.get()));
 
   lrt_model->flatbuffer_model->subgraphs.clear();
+
+  // Set as empty string in case its not set explictly.
+  LRT_RETURN_STATUS_IF_NOT_OK(RegisterCustomOpCode(lrt_model.get(), ""));
 
   *model = lrt_model.release();
 
@@ -357,16 +371,19 @@ class ModelRepacker {
 
 void ModelRepacker::BuildOpCodeMap(
     LrtModel model, std::unordered_map<LrtOpCode, uint32_t>& map) {
-  // TODO: b/365299994 - Also add partition/custom op to op code map.
+  // Add the user set custom code to the flatbuffers known codes.
+  auto& custom_code = model->flatbuffer_model->operator_codes.emplace_back(
+      std::make_unique<tflite::OperatorCodeT>());
+  custom_code->builtin_code = tflite::BuiltinOperator_CUSTOM;
+  custom_code->custom_code = model->custom_op_code;
+  custom_code->version = 1;
+
   auto& codes = model->flatbuffer_model->operator_codes;
+
   for (int i = 0; i < codes.size(); ++i) {
     const auto tfl_code = codes[i]->builtin_code;
     map.insert({static_cast<LrtOpCode>(tfl_code), i});
   }
-  auto& custom_op_code =
-      codes.emplace_back(std::make_unique<tflite::OperatorCodeT>());
-  custom_op_code->builtin_code = tflite::BuiltinOperator_CUSTOM;
-  map.insert({kLrtOpCodeTflCustom, codes.size() - 1});
 }
 
 LrtStatus ModelRepacker::SerializeTensor(LrtTensor tensor,
@@ -403,6 +420,10 @@ LrtStatus ModelRepacker::SerializeOp(
   LRT_RETURN_STATUS_IF_NOT_OK_MSG(
       SetDefaultOptions(target.builtin_options, op->op_code),
       "Failed serializing options");
+
+  if (!op->custom_options.empty()) {
+    SetCustomOptions(target, op->custom_options);
+  }
   // TODO: b/365299994 - Support exotic op fields in serialize.
 
   return StatusOk();
@@ -470,6 +491,24 @@ LrtStatus ModelRepacker::Repack(LrtModel model) {
     target.metadata_buffer.push_back(new_ind);
     target.buffers.emplace_back(std::move(buf));
   }
+
+  return StatusOk();
+}
+
+LrtStatus AppendMetadata(LrtModel model, const void* metadata,
+                         size_t metadata_size, const char* metadata_name) {
+  const auto metadata_buffer_ind = model->flatbuffer_model->buffers.size();
+
+  auto& metadata_buffer = model->flatbuffer_model->buffers.emplace_back(
+      std::make_unique<tflite::BufferT>());
+  auto raw_metadata = reinterpret_cast<const uint8_t*>(metadata);
+  metadata_buffer->data.assign(raw_metadata, raw_metadata + metadata_size);
+  model->flatbuffer_model->metadata_buffer.push_back(metadata_buffer_ind);
+
+  auto& fb_metadata = model->flatbuffer_model->metadata.emplace_back(
+      std::make_unique<tflite::MetadataT>());
+  fb_metadata->name.assign(metadata_name);
+  fb_metadata->buffer = metadata_buffer_ind;
 
   return StatusOk();
 }

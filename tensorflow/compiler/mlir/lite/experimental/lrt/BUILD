@@ -29,6 +29,7 @@ cc_binary(
         "//tensorflow/compiler/mlir/lite/experimental/lrt/core:api_internal",
         "//tensorflow/compiler/mlir/lite/experimental/lrt/core:lite_rt_model_init",
         "//tensorflow/compiler/mlir/lite/experimental/lrt/core:model",
+        "//tensorflow/lite/schema:schema_fbs",
         "@llvm-project//llvm:Support",
     ],
 )

@@ -70,13 +70,14 @@ cc_library(
 cc_test(
     name = "model_test",
     srcs = ["model_test.cc"],
-    tags = ["no_oss"],
     deps = [
         ":api_internal",
         ":graph_tools",
         ":lite_rt_model_init",
         "//tensorflow/compiler/mlir/lite/experimental/lrt/test_data:test_data_util",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
+        "@flatbuffers//:runtime_cc",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -96,7 +97,6 @@ cc_library(
 cc_test(
     name = "algo_test",
     srcs = ["algo_test.cc"],
-    tags = ["no_oss"],
     deps = [
         ":algo",
         ":api_internal",

@@ -23,6 +23,7 @@
 
 #include <gmock/gmock.h>  // IWYU pragma: keep
 #include <gtest/gtest.h>
+#include "flatbuffers/verifier.h"  // from @flatbuffers
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "tensorflow/compiler/mlir/lite/experimental/lrt/c/lite_rt_common.h"
@@ -32,8 +33,15 @@
 #include "tensorflow/compiler/mlir/lite/experimental/lrt/core/graph_tools.h"
 #include "tensorflow/compiler/mlir/lite/experimental/lrt/core/lite_rt_model_init.h"
 #include "tensorflow/compiler/mlir/lite/experimental/lrt/test_data/test_data_util.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace {
+
+inline bool VerifyFlatbuffer(const uint8_t* buf, size_t buf_size) {
+  flatbuffers::Verifier::Options options;
+  flatbuffers::Verifier verifier(buf, buf_size, options);
+  return tflite::VerifyModelBuffer(verifier);
+}
 
 inline UniqueLrtModel LoadModelThroughRoundTrip(std::string_view path) {
   auto model = LoadTestFileModel(path);
@@ -107,6 +115,79 @@ TEST(TestSerializeModel, TestAllocations) {
   size_t offset;
 
   ASSERT_STATUS_OK(SerializeModel(model.release(), &buf, &buf_size, &offset));
+
+  delete[] buf;
+}
+
+TEST(TestSerializeModel, TestMetadata) {
+  auto model = LoadTestFileModel("add_simple.tflite");
+
+  constexpr static std::string_view kMetadataName = "an_soc_manufacturer";
+  constexpr static std::string_view kMetadataData = "My_Meta_Data";
+
+  ASSERT_STATUS_OK(AppendMetadata(model.get(), kMetadataData.data(),
+                                  kMetadataData.size(), kMetadataName.data()));
+
+  uint8_t* buf = nullptr;
+  size_t buf_size;
+  size_t offset;
+
+  ASSERT_STATUS_OK(SerializeModel(model.release(), &buf, &buf_size, &offset));
+  EXPECT_TRUE(VerifyFlatbuffer(buf + offset, buf_size - offset));
+
+  auto new_model = tflite::UnPackModel(buf + offset);
+
+  ASSERT_NE(new_model, nullptr);
+  ASSERT_GT(new_model->metadata.size(), 0);
+
+  tflite::MetadataT* fb_metadata = nullptr;
+  for (auto& m : new_model->metadata) {
+    if (m->name == kMetadataName) {
+      fb_metadata = m.get();
+      break;
+    }
+  }
+  ASSERT_NE(fb_metadata, nullptr);
+  ASSERT_GE(fb_metadata->buffer, 0);
+  ASSERT_LT(fb_metadata->buffer, new_model->buffers.size());
+
+  tflite::BufferT* metadata_buffer =
+      new_model->buffers.at(fb_metadata->buffer).get();
+
+  std::string_view fb_metadata_data(
+      reinterpret_cast<const char*>(metadata_buffer->data.data()),
+      metadata_buffer->data.size());
+
+  EXPECT_EQ(fb_metadata_data, kMetadataData);
+
+  delete[] buf;
+}
+
+TEST(TestSerializeModel, TestCustomOpCode) {
+  auto model = LoadTestFileModel("add_simple.tflite");
+
+  constexpr static std::string_view kCustomCode = "MyCustomCode";
+  ASSERT_STATUS_OK(RegisterCustomOpCode(model.get(), kCustomCode.data()));
+
+  uint8_t* buf = nullptr;
+  size_t buf_size;
+  size_t offset;
+
+  ASSERT_STATUS_OK(SerializeModel(model.release(), &buf, &buf_size, &offset));
+  EXPECT_TRUE(VerifyFlatbuffer(buf + offset, buf_size - offset));
+
+  auto new_model = tflite::UnPackModel(buf + offset);
+
+  tflite::OperatorCodeT* custom_op_code = nullptr;
+  for (auto& c : new_model->operator_codes) {
+    if (c->custom_code == kCustomCode) {
+      custom_op_code = c.get();
+      break;
+    }
+  }
+  ASSERT_NE(custom_op_code, nullptr);
+  ASSERT_EQ(custom_op_code->custom_code, kCustomCode);
+  ASSERT_EQ(custom_op_code->builtin_code, tflite::BuiltinOperator_CUSTOM);
 
   delete[] buf;
 }

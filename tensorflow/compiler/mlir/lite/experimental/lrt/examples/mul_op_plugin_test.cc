@@ -37,7 +37,7 @@ UniqueLrtCompilerPlugin GetDummyPlugin() {
 }
 
 TEST(TestDummyPlugin, GetConfigInfo) {
-  ASSERT_STREQ(LrtPluginSocManufacturer(), "ExamplePlugin");
+  ASSERT_STREQ(LrtPluginSocManufacturer(), "ExampleSocManufacturer");
 
   auto plugin = GetDummyPlugin();
 

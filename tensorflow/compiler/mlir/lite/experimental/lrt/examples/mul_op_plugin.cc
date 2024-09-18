@@ -30,7 +30,7 @@
 // Configurations
 //
 
-constexpr char kPluginMan[] = "ExamplePlugin";
+constexpr char kPluginMan[] = "ExampleSocManufacturer";
 constexpr char kPluginModel[] = "DummyMulOp";
 
 const char* LrtPluginSocManufacturer() { return kPluginMan; }
