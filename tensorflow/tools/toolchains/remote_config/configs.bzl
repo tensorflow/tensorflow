@@ -87,20 +87,20 @@ def initialize_rbe_configs():
 
     sigbuild_tf_configs(
         name_container_map = {
-            "sigbuild-r2.17-clang": "docker://gcr.io/tensorflow-sigs/build@sha256:2d737fc9fe931507a89927eee792b1bb934215e6aaae58b1941586e3400e2645",
-            "sigbuild-r2.17-clang-python3.9": "docker://gcr.io/tensorflow-sigs/build@sha256:0e9cd35dafd2b91bc59cea377ad84a6089ba5e5542709c6e80ada3f366fd2338",
-            "sigbuild-r2.17-clang-python3.10": "docker://gcr.io/tensorflow-sigs/build@sha256:89730ded5c2268e53238bf8c5fb6d162b105baa31ab0480a94a7d0204203de66",
-            "sigbuild-r2.17-clang-python3.11": "docker://gcr.io/tensorflow-sigs/build@sha256:2d737fc9fe931507a89927eee792b1bb934215e6aaae58b1941586e3400e2645",
-            "sigbuild-r2.17-clang-python3.12": "docker://gcr.io/tensorflow-sigs/build@sha256:45ea78e79305f91cdae5a26094f80233bba54bbfbc612623381012f097035b9a",
+            "sigbuild-r2.17-clang": "docker://gcr.io/tensorflow-sigs/build@sha256:90ecf0f0d3d5b0e8dbe5b46960df49cb47f6cb4edba286fb32ec190fe7e32e39",
+            "sigbuild-r2.17-clang-python3.9": "docker://gcr.io/tensorflow-sigs/build@sha256:90ecf0f0d3d5b0e8dbe5b46960df49cb47f6cb4edba286fb32ec190fe7e32e39",
+            "sigbuild-r2.17-clang-python3.10": "docker://gcr.io/tensorflow-sigs/build@sha256:90ecf0f0d3d5b0e8dbe5b46960df49cb47f6cb4edba286fb32ec190fe7e32e39",
+            "sigbuild-r2.17-clang-python3.11": "docker://gcr.io/tensorflow-sigs/build@sha256:90ecf0f0d3d5b0e8dbe5b46960df49cb47f6cb4edba286fb32ec190fe7e32e39",
+            "sigbuild-r2.17-clang-python3.12": "docker://gcr.io/tensorflow-sigs/build@sha256:90ecf0f0d3d5b0e8dbe5b46960df49cb47f6cb4edba286fb32ec190fe7e32e39",
         },
     )
 
     sigbuild_tf_configs(
         name_container_map = {
-            "sigbuild-r2.17-clang-cudnn9": "docker://gcr.io/tensorflow-sigs/build@sha256:daa5bdd802fe3def188e2200ed707c73d278f6f1930bf26c933d6ba041b0e027",
-            "sigbuild-r2.17-clang-cudnn9-python3.9": "docker://gcr.io/tensorflow-sigs/build@sha256:1c4f06b98ab1ad092facf2d6fcac9f7496bd599a67ad998b82d80e98ef7defa8",
-            "sigbuild-r2.17-clang-cudnn9-python3.10": "docker://gcr.io/tensorflow-sigs/build@sha256:c3df6982305d70dfb44cbfbedee3465782d6cbf791f7920e6246de0140216da0",
-            "sigbuild-r2.17-clang-cudnn9-python3.11": "docker://gcr.io/tensorflow-sigs/build@sha256:daa5bdd802fe3def188e2200ed707c73d278f6f1930bf26c933d6ba041b0e027",
-            "sigbuild-r2.17-clang-cudnn9-python3.12": "docker://gcr.io/tensorflow-sigs/build@sha256:23e477895dd02e45df1056d4a0a9c4229dec3a20c23fb2f3fb5832ecbd0a29bc",
+            "sigbuild-r2.17-clang-cudnn9": "docker://gcr.io/tensorflow-sigs/build@sha256:90ecf0f0d3d5b0e8dbe5b46960df49cb47f6cb4edba286fb32ec190fe7e32e39",
+            "sigbuild-r2.17-clang-cudnn9-python3.9": "docker://gcr.io/tensorflow-sigs/build@sha256:90ecf0f0d3d5b0e8dbe5b46960df49cb47f6cb4edba286fb32ec190fe7e32e39",
+            "sigbuild-r2.17-clang-cudnn9-python3.10": "docker://gcr.io/tensorflow-sigs/build@sha256:90ecf0f0d3d5b0e8dbe5b46960df49cb47f6cb4edba286fb32ec190fe7e32e39",
+            "sigbuild-r2.17-clang-cudnn9-python3.11": "docker://gcr.io/tensorflow-sigs/build@sha256:90ecf0f0d3d5b0e8dbe5b46960df49cb47f6cb4edba286fb32ec190fe7e32e39",
+            "sigbuild-r2.17-clang-cudnn9-python3.12": "docker://gcr.io/tensorflow-sigs/build@sha256:90ecf0f0d3d5b0e8dbe5b46960df49cb47f6cb4edba286fb32ec190fe7e32e39",
         },
     )

@@ -22,6 +22,8 @@ else
   PROFILE_JSON_PATH="$TFCI_OUTPUT_DIR/profile.json.gz"
 fi
 
+tfrun bazel build --verbose_failures --repo_env=TF_PYTHON_VERSION=3.10 --config release_gpu_linux --config rbe_linux_cuda --config=cuda_wheel //tensorflow/tools/pip_package:wheel
+
 if [[ $TFCI_PYCPP_SWAP_TO_BUILD_ENABLE == 1 ]]; then
    tfrun bazel build $TFCI_BAZEL_COMMON_ARGS --profile "$PROFILE_JSON_PATH" --config="${TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX}_pycpp_test"
 else
