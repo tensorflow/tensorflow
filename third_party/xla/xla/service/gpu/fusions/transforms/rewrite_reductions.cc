@@ -123,12 +123,14 @@ struct RewriteRowReduction : mlir::OpRewritePattern<ReduceOp> {
     int64_t padded_size = RoundUpTo(reduced_size, num_threads);
     padded_projected_input_shape.back() = padded_size;
 
-    // Reshape the padded minor dimension so that we can reduce it per thread.
-    // [..., 56192] -> [..., 439, 128]
+    // Reshape the padded minor dimension so that we can reduce it per thread
+    // and then per warp.
+    // [..., 56192] -> [..., 439, 4, 32]
     llvm::SmallVector<int64_t, 4> per_thread_reduction_input_shape(
         input_shape.begin(), input_shape.end() - num_minor_dims);
     per_thread_reduction_input_shape.push_back(padded_size / num_threads);
-    per_thread_reduction_input_shape.push_back(num_threads);
+    per_thread_reduction_input_shape.push_back(num_threads / WarpSize());
+    per_thread_reduction_input_shape.push_back(WarpSize());
 
     int per_thread_input_rank = per_thread_reduction_input_shape.size();
 
@@ -151,43 +153,23 @@ struct RewriteRowReduction : mlir::OpRewritePattern<ReduceOp> {
           operand.getLoc(), new_input_ty, operand, init, reindex_map));
     }
 
+    // Reduce the non-minor dimensions and the third to last dimension.
     auto dims_for_first_reduction =
         llvm::to_vector(op.getDimensions().drop_back(num_minor_dims));
-    dims_for_first_reduction.push_back(per_thread_input_rank - 2);
+    dims_for_first_reduction.push_back(per_thread_input_rank - 3);
     auto first_reduction =
         rewriter.create<ReduceOp>(op.getLoc(), new_operands, op.getInits(),
                                   dims_for_first_reduction, op.getCombiner());
 
-    // Reshape the outputs: [..., 128] -> [..., 4, 32].
-    auto per_thread_output = GetOutputType(first_reduction).getShape();
-    llvm::SmallVector<int64_t, 4> reshaped_per_thread_output(per_thread_output);
-    reshaped_per_thread_output.back() = num_threads / WarpSize();
-    reshaped_per_thread_output.push_back(WarpSize());
-
-    auto result_reindex_map =
-        GetBitcastMap(per_thread_output, reshaped_per_thread_output, ctx);
-    llvm::SmallVector<mlir::Value, 2> reshaped_results;
-    for (auto [result, init] :
-         llvm::zip(first_reduction.getResults(), op.getInits())) {
-      auto new_output_ty = mlir::cast<mlir::ShapedType>(result.getType())
-                               .clone(reshaped_per_thread_output);
-      reshaped_results.push_back(rewriter.create<ReindexOp>(
-          result.getLoc(), new_output_ty, result, init, result_reindex_map));
-    }
-
-    // Produce one output element per warp.
+    // Reduce the last and the second-to-last dimensions. First to produce one
+    // output element per warp, then to produce one output element per block.
+    int rank = GetOutputType(first_reduction).getRank();
     auto second_reduction = rewriter.create<ReduceOp>(
-        op.getLoc(), reshaped_results, op.getInits(),
-        llvm::ArrayRef<int64_t>{
-            static_cast<int64_t>(reshaped_per_thread_output.size()) - 1},
-        op.getCombiner());
-
-    // Reduce the warps' output elements.
+        op.getLoc(), first_reduction.getResults(), op.getInits(),
+        llvm::ArrayRef<int64_t>{rank - 1}, op.getCombiner());
     rewriter.replaceOpWithNewOp<ReduceOp>(
         op, second_reduction.getResults(), op.getInits(),
-        llvm::ArrayRef<int64_t>{
-            static_cast<int64_t>(reshaped_per_thread_output.size()) - 2},
-        op.getCombiner());
+        llvm::ArrayRef<int64_t>{rank - 2}, op.getCombiner());
 
     return mlir::success();
   }
