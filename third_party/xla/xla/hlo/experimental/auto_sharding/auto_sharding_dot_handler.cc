@@ -70,7 +70,6 @@ class HandlerBase {
               const HloInstructionSequence& instruction_sequence,
               const HloCostAnalysis& hlo_cost_analysis,
               const ClusterEnvironment& cluster_env,
-              const InstructionBatchDimMap& batch_map,
               const AutoShardingOption& option, const CallGraph& call_graph)
       : strategy_group_(strategy_group),
         strategy_map_(strategy_map),
@@ -79,7 +78,6 @@ class HandlerBase {
         instruction_sequence_(instruction_sequence),
         hlo_cost_analysis_(hlo_cost_analysis),
         cluster_env_(cluster_env),
-        batch_map_(batch_map),
         option_(option),
         call_graph_(call_graph),
         device_mesh_(cluster_env.device_mesh_),
@@ -221,7 +219,6 @@ class HandlerBase {
   const HloInstructionSequence& instruction_sequence_;
   const HloCostAnalysis& hlo_cost_analysis_;
   const ClusterEnvironment& cluster_env_;
-  const InstructionBatchDimMap& batch_map_;
   const AutoShardingOption& option_;
   const CallGraph& call_graph_;
 
@@ -238,7 +235,6 @@ class DotHandler : public HandlerBase {
              const HloInstructionSequence& instruction_sequence,
              const HloCostAnalysis& hlo_cost_analysis,
              const ClusterEnvironment& cluster_env,
-             const InstructionBatchDimMap& batch_map,
              const AutoShardingOption& option, const CallGraph& call_graph);
 
   DotHandler(
@@ -247,8 +243,7 @@ class DotHandler : public HandlerBase {
       const HloInstructionSequence& instruction_sequence,
       const HloCostAnalysis& hlo_cost_analysis,
       const dot_as_convolution_util::DotConvolutionDimsInfo& conv_as_dot_dims,
-      const ClusterEnvironment& cluster_env,
-      const InstructionBatchDimMap& batch_map, const AutoShardingOption& option,
+      const ClusterEnvironment& cluster_env, const AutoShardingOption& option,
       const CallGraph& call_graph);
 
   ~DotHandler() override = default;
@@ -293,7 +288,6 @@ class ConvHandler : public HandlerBase {
               const HloInstructionSequence& instruction_sequence,
               const HloCostAnalysis& hlo_cost_analysis,
               const ClusterEnvironment& cluster_env,
-              const InstructionBatchDimMap& batch_map,
               const AutoShardingOption& option, const CallGraph& call_graph);
 
   ~ConvHandler() override = default;
@@ -492,12 +486,11 @@ DotHandler::DotHandler(std::unique_ptr<StrategyGroup>& strategy_group,
                        const HloInstructionSequence& instruction_sequence,
                        const HloCostAnalysis& hlo_cost_analysis,
                        const ClusterEnvironment& cluster_env,
-                       const InstructionBatchDimMap& batch_map,
                        const AutoShardingOption& option,
                        const CallGraph& call_graph)
     : HandlerBase(strategy_group, strategy_map, ins, instruction_id,
-                  instruction_sequence, hlo_cost_analysis, cluster_env,
-                  batch_map, option, call_graph),
+                  instruction_sequence, hlo_cost_analysis, cluster_env, option,
+                  call_graph),
       is_dot_(true),
       space_base_dim_(ins->dot_dimension_numbers().lhs_batch_dimensions_size()),
       lhs_con_dims_(ins->dot_dimension_numbers().lhs_contracting_dimensions()),
@@ -525,12 +518,11 @@ DotHandler::DotHandler(
     const HloInstructionSequence& instruction_sequence,
     const HloCostAnalysis& hlo_cost_analysis,
     const dot_as_convolution_util::DotConvolutionDimsInfo& conv_as_dot_dims,
-    const ClusterEnvironment& cluster_env,
-    const InstructionBatchDimMap& batch_map, const AutoShardingOption& option,
+    const ClusterEnvironment& cluster_env, const AutoShardingOption& option,
     const CallGraph& call_graph)
     : HandlerBase(strategy_group, strategy_map, ins, instruction_id,
-                  instruction_sequence, hlo_cost_analysis, cluster_env,
-                  batch_map, option, call_graph),
+                  instruction_sequence, hlo_cost_analysis, cluster_env, option,
+                  call_graph),
       is_dot_(false),
       space_base_dim_(-1) {
   CHECK(conv_as_dot_dims.conv_spatial_dims.empty());
@@ -858,12 +850,11 @@ ConvHandler::ConvHandler(std::unique_ptr<StrategyGroup>& strategy_group,
                          const HloInstructionSequence& instruction_sequence,
                          const HloCostAnalysis& hlo_cost_analysis,
                          const ClusterEnvironment& cluster_env,
-                         const InstructionBatchDimMap& batch_map,
                          const AutoShardingOption& option,
                          const CallGraph& call_graph)
     : HandlerBase(strategy_group, strategy_map, ins, instruction_id,
-                  instruction_sequence, hlo_cost_analysis, cluster_env,
-                  batch_map, option, call_graph),
+                  instruction_sequence, hlo_cost_analysis, cluster_env, option,
+                  call_graph),
       conv_dnums_(ins->convolution_dimension_numbers()) {
   lhs_batch_dim_ = conv_dnums_.input_batch_dimension();
   lhs_in_channel_dim_ = conv_dnums_.input_feature_dimension();
@@ -969,14 +960,6 @@ absl::Status ConvHandler::RegisterStrategies() {
       2, /*current_mesh_dim_idx=*/0, all_mesh_dims,
       /*current_dim_map=*/{});
 
-  // If force_batch_dim_to_mesh_dim is set, filter out invalid strategies
-  // and only keep the data parallel strategies.
-  if (option_.force_batch_dim_to_mesh_dim >= 0 &&
-      batch_map_.contains(GetBatchDimMapKey(ins_))) {
-    TF_RETURN_IF_ERROR(FilterStrategy(ins_, ins_->shape(), cluster_env_,
-                                      batch_map_, option_, *strategy_group_));
-  }
-
   SortStrategies();
   return absl::OkStatus();
 }
@@ -1027,7 +1010,6 @@ absl::Status HandleDot(std::unique_ptr<StrategyGroup>& strategy_group,
                        const HloInstructionSequence& instruction_sequence,
                        const HloCostAnalysis& hlo_cost_analysis,
                        const ClusterEnvironment& cluster_env,
-                       const InstructionBatchDimMap& batch_map,
                        const AutoShardingOption& option,
                        const CallGraph& call_graph) {
   strategy_group = CreateLeafStrategyGroup(instruction_id, ins, strategy_map,
@@ -1035,7 +1017,7 @@ absl::Status HandleDot(std::unique_ptr<StrategyGroup>& strategy_group,
 
   DotHandler handler(strategy_group, strategy_map, Cast<HloDotInstruction>(ins),
                      instruction_id, instruction_sequence, hlo_cost_analysis,
-                     cluster_env, batch_map, option, call_graph);
+                     cluster_env, option, call_graph);
   TF_RETURN_IF_ERROR(handler.RegisterStrategies());
   return absl::OkStatus();
 }
@@ -1048,7 +1030,6 @@ absl::Status HandleConv(std::unique_ptr<StrategyGroup>& strategy_group,
                         const HloInstructionSequence& instruction_sequence,
                         const HloCostAnalysis& hlo_cost_analysis,
                         const ClusterEnvironment& cluster_env,
-                        const InstructionBatchDimMap& batch_map,
                         const AutoShardingOption& option,
                         const CallGraph& call_graph) {
   strategy_group = CreateLeafStrategyGroup(instruction_id, ins, strategy_map,
@@ -1057,16 +1038,16 @@ absl::Status HandleConv(std::unique_ptr<StrategyGroup>& strategy_group,
   const dot_as_convolution_util::DotConvolutionDimsInfo& conv_as_dot_dims =
       dot_as_convolution_util::ParseConvolutionDimsInfo(ins);
   if (conv_as_dot_dims.conv_spatial_dims.empty()) {
-    DotHandler handler(
-        strategy_group, strategy_map, Cast<HloConvolutionInstruction>(ins),
-        instruction_id, instruction_sequence, hlo_cost_analysis,
-        conv_as_dot_dims, cluster_env, batch_map, option, call_graph);
+    DotHandler handler(strategy_group, strategy_map,
+                       Cast<HloConvolutionInstruction>(ins), instruction_id,
+                       instruction_sequence, hlo_cost_analysis,
+                       conv_as_dot_dims, cluster_env, option, call_graph);
     TF_RETURN_IF_ERROR(handler.RegisterStrategies());
 
   } else {
     ConvHandler handler(strategy_group, strategy_map, ins, instruction_id,
                         instruction_sequence, hlo_cost_analysis, cluster_env,
-                        batch_map, option, call_graph);
+                        option, call_graph);
     TF_RETURN_IF_ERROR(handler.RegisterStrategies());
   }
   return absl::OkStatus();

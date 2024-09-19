@@ -217,8 +217,7 @@ BuildStrategyAndCost(
     const absl::flat_hash_set<const HloInstruction*>& instructions_to_shard,
     const absl::flat_hash_map<const HloInstruction*, int64_t>&
         instruction_execution_counts,
-    const InstructionDepthMap& depth_map,
-    const InstructionBatchDimMap& batch_dim_map, const AliasMap& alias_map,
+    const InstructionDepthMap& depth_map, const AliasMap& alias_map,
     const ClusterEnvironment& cluster_env, AutoShardingOption& option,
     const CallGraph& call_graph, const HloCostAnalysis& hlo_cost_analysis,
     bool trying_multiple_mesh_shapes) {
@@ -310,9 +309,8 @@ BuildStrategyAndCost(
         strategy_group =
             CreateAllStrategiesGroup(
                 ins, ins->shape(), instruction_id, strategy_groups, cluster_env,
-                strategy_map, option, replicated_penalty, batch_dim_map,
-                call_graph, only_allow_divisible,
-                option.allow_replicated_parameters,
+                strategy_map, option, replicated_penalty, call_graph,
+                only_allow_divisible, option.allow_replicated_parameters,
                 /* create_partially_replicated_strategies */ true)
                 .value();
         break;
@@ -322,9 +320,8 @@ BuildStrategyAndCost(
         strategy_group =
             CreateAllStrategiesGroup(
                 ins, ins->shape(), instruction_id, strategy_groups, cluster_env,
-                strategy_map, option, replicated_penalty, batch_dim_map,
-                call_graph, only_allow_divisible,
-                option.allow_replicated_parameters,
+                strategy_map, option, replicated_penalty, call_graph,
+                only_allow_divisible, option.allow_replicated_parameters,
                 /* create_partially_replicated_strategies */ true)
                 .value();
         break;
@@ -520,8 +517,8 @@ BuildStrategyAndCost(
         strategy_group =
             CreateAllStrategiesGroup(
                 ins, ins->shape(), instruction_id, strategy_groups, cluster_env,
-                strategy_map, option, replicated_penalty, batch_dim_map,
-                call_graph, only_allow_divisible,
+                strategy_map, option, replicated_penalty, call_graph,
+                only_allow_divisible,
                 /* create_replicated_strategies */ true,
                 /* create_partially_replicated_strategies */ true)
                 .value();
@@ -530,8 +527,8 @@ BuildStrategyAndCost(
       case HloOpcode::kReshape: {
         strategy_group = CreateReshapeStrategies(
             instruction_id, ins, strategy_map, cluster_env,
-            only_allow_divisible, replicated_penalty, batch_dim_map, option,
-            strategy_groups, call_graph);
+            only_allow_divisible, replicated_penalty, option, strategy_groups,
+            call_graph);
         break;
       }
       case HloOpcode::kTranspose:
@@ -737,8 +734,8 @@ BuildStrategyAndCost(
         } else {
           strategy_group = CreateReshapeStrategies(
               instruction_id, ins, strategy_map, cluster_env,
-              only_allow_divisible, replicated_penalty, batch_dim_map, option,
-              strategy_groups, call_graph);
+              only_allow_divisible, replicated_penalty, option, strategy_groups,
+              call_graph);
         }
         break;
       }
@@ -812,10 +809,9 @@ BuildStrategyAndCost(
         break;
       }
       case HloOpcode::kDot: {
-        TF_RETURN_IF_ERROR(HandleDot(strategy_group, strategy_groups,
-                                     strategy_map, ins, instruction_id,
-                                     sequence, hlo_cost_analysis, cluster_env,
-                                     batch_dim_map, option, call_graph));
+        TF_RETURN_IF_ERROR(HandleDot(
+            strategy_group, strategy_groups, strategy_map, ins, instruction_id,
+            sequence, hlo_cost_analysis, cluster_env, option, call_graph));
 
         if (option.allow_recompute_heavy_op) {
           AddReplicatedStrategy(
@@ -827,10 +823,9 @@ BuildStrategyAndCost(
         break;
       }
       case HloOpcode::kConvolution: {
-        TF_RETURN_IF_ERROR(HandleConv(strategy_group, strategy_groups,
-                                      strategy_map, ins, instruction_id,
-                                      sequence, hlo_cost_analysis, cluster_env,
-                                      batch_dim_map, option, call_graph));
+        TF_RETURN_IF_ERROR(HandleConv(
+            strategy_group, strategy_groups, strategy_map, ins, instruction_id,
+            sequence, hlo_cost_analysis, cluster_env, option, call_graph));
         if (option.allow_recompute_heavy_op) {
           AddReplicatedStrategy(
               ins, ins->shape(), cluster_env, strategy_map,
@@ -851,8 +846,8 @@ BuildStrategyAndCost(
         strategy_group =
             CreateAllStrategiesGroup(
                 ins, ins->shape(), instruction_id, strategy_groups, cluster_env,
-                strategy_map, option, replicated_penalty, batch_dim_map,
-                call_graph, only_allow_divisible,
+                strategy_map, option, replicated_penalty, call_graph,
+                only_allow_divisible,
                 /* create_replicated_strategies */ true,
                 /* create_partially_replicated_strategies */ true)
                 .value();
@@ -923,7 +918,7 @@ BuildStrategyAndCost(
                   CreateAllStrategiesGroup(
                       ins, ins->shape(), instruction_id, strategy_groups,
                       cluster_env, strategy_map, option, replicated_penalty,
-                      batch_dim_map, call_graph, only_allow_divisible,
+                      call_graph, only_allow_divisible,
                       /* create_replicated_strategies */ true,
                       /* create_partially_replicated_strategies */ true)
                       .value();
@@ -987,8 +982,8 @@ BuildStrategyAndCost(
         strategy_group =
             CreateAllStrategiesGroup(
                 ins, ins->shape(), instruction_id, strategy_groups, cluster_env,
-                strategy_map, option, replicated_penalty, batch_dim_map,
-                call_graph, only_allow_divisible,
+                strategy_map, option, replicated_penalty, call_graph,
+                only_allow_divisible,
                 /* create_replicated_strategies */ true,
                 /* create_partially_replicated_strategies */ true)
                 .value();

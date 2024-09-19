@@ -959,8 +959,7 @@ void BuildStrategyAndCostForOp(const HloInstruction* ins, const Shape& shape,
 void EnumerateAllPartition(
     const HloInstruction* ins, const Shape& shape,
     const DeviceMesh& device_mesh, const ClusterEnvironment& cluster_env,
-    const StrategyMap& strategy_map,
-    const InstructionBatchDimMap& batch_dim_map, bool only_allow_divisible,
+    const StrategyMap& strategy_map, bool only_allow_divisible,
     bool allow_shardings_small_dims_across_many_devices,
     const CallGraph& call_graph, const int64_t partition_dimensions,
     const std::vector<int64_t>& tensor_dims, StrategyGroup& strategy_group) {
@@ -971,15 +970,10 @@ void EnumerateAllPartition(
                               strategy_group);
     return;
   }
-  auto iter = batch_dim_map.find(GetBatchDimMapKey(ins));
-  int64_t batch_dim = -1;
-  if (iter != batch_dim_map.end()) {
-    batch_dim = iter->second;
-  }
   // Fully tile the buffer to the mesh
   for (int64_t i = 0; i < shape.rank(); ++i) {
     auto tensor_it = std::find(tensor_dims.begin(), tensor_dims.end(), i);
-    if ((batch_dim != -1 && batch_dim != i) || tensor_it != tensor_dims.end()) {
+    if (tensor_it != tensor_dims.end()) {
       continue;
     }
     if (!allow_shardings_small_dims_across_many_devices &&
@@ -993,7 +987,7 @@ void EnumerateAllPartition(
     std::vector<int64_t> next_tensor_dims = tensor_dims;
     next_tensor_dims.push_back(i);
     EnumerateAllPartition(
-        ins, shape, device_mesh, cluster_env, strategy_map, batch_dim_map,
+        ins, shape, device_mesh, cluster_env, strategy_map,
         only_allow_divisible, allow_shardings_small_dims_across_many_devices,
         call_graph, partition_dimensions, next_tensor_dims, strategy_group);
   }
@@ -1127,7 +1121,6 @@ void BuildStrategyAndCostForReshape(const HloInstruction* ins,
 void EnumeratePartitionReshape(
     const HloInstruction* ins, const DeviceMesh& device_mesh,
     const ClusterEnvironment& cluster_env, const StrategyMap& strategy_map,
-    const InstructionBatchDimMap& batch_dim_map,
     const bool only_allow_divisible, const int64_t partition_dimensions,
     const std::vector<int64_t>& tensor_dims, StrategyGroup& strategy_group) {
   const auto tensor_dims_size = tensor_dims.size();
@@ -1136,16 +1129,10 @@ void EnumeratePartitionReshape(
                                    tensor_dims, strategy_group);
     return;
   }
-  auto iter = batch_dim_map.find(GetBatchDimMapKey(ins));
-  int64_t batch_dim = -1;
-  if (iter != batch_dim_map.end()) {
-    batch_dim = iter->second;
-  }
-
   // Split batch dim + another dim
   for (int64_t i = 0; i < ins->shape().rank(); ++i) {
     auto tensor_it = std::find(tensor_dims.begin(), tensor_dims.end(), i);
-    if ((batch_dim != -1 && batch_dim != i) || tensor_it != tensor_dims.end()) {
+    if (tensor_it != tensor_dims.end()) {
       continue;
     }
     if (ins->shape().dimensions(i) < device_mesh.dim(tensor_dims_size)) {
@@ -1160,9 +1147,8 @@ void EnumeratePartitionReshape(
     std::vector<int64_t> next_tensor_dims = tensor_dims;
     next_tensor_dims.push_back(i);
     EnumeratePartitionReshape(ins, device_mesh, cluster_env, strategy_map,
-                              batch_dim_map, only_allow_divisible,
-                              partition_dimensions, next_tensor_dims,
-                              strategy_group);
+                              only_allow_divisible, partition_dimensions,
+                              next_tensor_dims, strategy_group);
   }
 }
 
@@ -1290,40 +1276,12 @@ bool AllowTieFollowing(const HloInstruction* ins) {
   return true;
 }
 
-// 1. Disable mixed mesh shape if the batch dim is not divisible by the
-// number of devices.
-// 2. Disable force_batch_dim_to_mesh_dim if the batch dim is 1. In this case,
-// the batch dim analysis can be wrong because the batch dim might be dropped.
-void DisableIncompatibleMixedMeshShapeAndForceBatchDim(
-    const InstructionBatchDimMap& batch_dim_map,
-    const std::vector<HloInstruction*>& instructions, int num_devices,
-    AutoShardingOption& option) {
-  int64_t batch_size = INT_MAX;
-  for (const auto& iter : batch_dim_map) {
-    batch_size = std::min(batch_size, FindInstruction(instructions, iter.first)
-                                          ->shape()
-                                          .dimensions(iter.second));
-  }
-
-  if (IsDivisible(batch_size, num_devices)) {
-    if (option.allow_mixed_mesh_shape) {
-      option.allow_mixed_mesh_shape = false;
-      LOG(WARNING)
-          << "Mixed mesh shape is disabled due to indivisible batch size.";
-    }
-  }
-
-  if (batch_size == 1) {
-    option.force_batch_dim_to_mesh_dim = -1;
-  }
-}
-
 void FillAllStrategiesForArray(
     const HloInstruction* ins, const Shape& shape,
     const ClusterEnvironment& cluster_env, const StrategyMap& strategy_map,
     const AutoShardingOption& option, const double replicated_penalty,
-    const InstructionBatchDimMap& batch_dim_map, const CallGraph& call_graph,
-    const bool only_allow_divisible, const bool create_replicated_strategies,
+    const CallGraph& call_graph, const bool only_allow_divisible,
+    const bool create_replicated_strategies,
     const bool create_partially_replicated_strategies,
     StrategyGroup& strategy_group) {
   if (create_partially_replicated_strategies || cluster_env.IsDeviceMesh1D()) {
@@ -1336,7 +1294,7 @@ void FillAllStrategiesForArray(
   // Split 2 dims
   if (cluster_env.IsDeviceMesh2D()) {
     EnumerateAllPartition(ins, shape, cluster_env.device_mesh_, cluster_env,
-                          strategy_map, batch_dim_map, only_allow_divisible,
+                          strategy_map, only_allow_divisible,
                           option.allow_shardings_small_dims_across_many_devices,
                           call_graph, /*partitions*/ 2, /*tensor_dims*/ {},
                           strategy_group);
@@ -1344,7 +1302,7 @@ void FillAllStrategiesForArray(
   // Split 3 dims
   if (cluster_env.IsDeviceMesh3D()) {
     EnumerateAllPartition(ins, shape, cluster_env.device_mesh_, cluster_env,
-                          strategy_map, batch_dim_map, only_allow_divisible,
+                          strategy_map, only_allow_divisible,
                           option.allow_shardings_small_dims_across_many_devices,
                           call_graph,
                           /*partitions*/ 3, /*tensor_dims*/ {}, strategy_group);
@@ -1367,22 +1325,13 @@ void FillAllStrategiesForArray(
     AddReplicatedStrategy(ins, shape, cluster_env, strategy_map,
                           replicated_penalty, {}, strategy_group);
   }
-
-  // If force_batch_dim_to_mesh_dim is set, filter out invalid strategies
-  // and only keep the data parallel strategies.
-  if (option.force_batch_dim_to_mesh_dim >= 0 &&
-      batch_dim_map.contains(GetBatchDimMapKey(ins))) {
-    CHECK_OK(FilterStrategy(ins, shape, cluster_env, batch_dim_map, option,
-                            strategy_group));
-  }
 }
 
 absl::StatusOr<std::unique_ptr<StrategyGroup>> CreateAllStrategiesGroup(
     const HloInstruction* ins, const Shape& shape, const size_t instruction_id,
     StrategyGroups& strategy_groups, const ClusterEnvironment& cluster_env,
     const StrategyMap& strategy_map, const AutoShardingOption& option,
-    const double replicated_penalty,
-    const InstructionBatchDimMap& batch_dim_map, const CallGraph& call_graph,
+    const double replicated_penalty, const CallGraph& call_graph,
     const bool only_allow_divisible, const bool create_replicated_strategies,
     const bool create_partially_replicated_strategies) {
   std::unique_ptr<StrategyGroup> strategy_group;
@@ -1390,12 +1339,11 @@ absl::StatusOr<std::unique_ptr<StrategyGroup>> CreateAllStrategiesGroup(
     strategy_group = CreateTupleStrategyGroup(instruction_id);
     for (size_t i = 0; i < shape.tuple_shapes_size(); ++i) {
       auto child_strategies =
-          CreateAllStrategiesGroup(ins, shape.tuple_shapes(i), instruction_id,
-                                   strategy_groups, cluster_env, strategy_map,
-                                   option, replicated_penalty, batch_dim_map,
-                                   call_graph, only_allow_divisible,
-                                   create_replicated_strategies,
-                                   create_partially_replicated_strategies)
+          CreateAllStrategiesGroup(
+              ins, shape.tuple_shapes(i), instruction_id, strategy_groups,
+              cluster_env, strategy_map, option, replicated_penalty, call_graph,
+              only_allow_divisible, create_replicated_strategies,
+              create_partially_replicated_strategies)
               .value();
       child_strategies->tuple_element_idx = i;
       strategy_group->AddChild(std::move(child_strategies));
@@ -1405,9 +1353,8 @@ absl::StatusOr<std::unique_ptr<StrategyGroup>> CreateAllStrategiesGroup(
                                              strategy_groups);
     FillAllStrategiesForArray(
         ins, shape, cluster_env, strategy_map, option, replicated_penalty,
-        batch_dim_map, call_graph, only_allow_divisible,
-        create_replicated_strategies, create_partially_replicated_strategies,
-        *strategy_group);
+        call_graph, only_allow_divisible, create_replicated_strategies,
+        create_partially_replicated_strategies, *strategy_group);
   } else if (shape.IsToken()) {
     strategy_group = CreateLeafStrategyGroup(instruction_id, ins, strategy_map,
                                              strategy_groups);
@@ -1820,7 +1767,6 @@ std::unique_ptr<StrategyGroup> CreateReshapeStrategies(
     const size_t instruction_id, const HloInstruction* ins,
     const StrategyMap& strategy_map, const ClusterEnvironment& cluster_env,
     const bool only_allow_divisible, const double replicated_penalty,
-    const InstructionBatchDimMap& batch_dim_map,
     const AutoShardingOption& option, StrategyGroups& strategy_groups,
     const CallGraph& call_graph) {
   const DeviceMesh& device_mesh = cluster_env.device_mesh_;
@@ -1881,7 +1827,7 @@ std::unique_ptr<StrategyGroup> CreateReshapeStrategies(
     VLOG(2) << "Enumerating all strategies for reshape";
     FillAllStrategiesForArray(
         ins, ins->shape(), cluster_env, strategy_map, option,
-        replicated_penalty, batch_dim_map, call_graph, only_allow_divisible,
+        replicated_penalty, call_graph, only_allow_divisible,
         /* create_replicated_strategies */ true,
         /* create_partially_replicated_strategies */ true, *strategy_group);
   }
@@ -3235,58 +3181,6 @@ absl::Status GenerateReduceScatter(
   return absl::OkStatus();
 }
 
-// Filter strategies according to the option.force_batch_dim_to_mesh_dim.
-// This can be used to forcibly generate data-parallel strategies.
-absl::Status FilterStrategy(const HloInstruction* ins, const Shape& shape,
-                            const ClusterEnvironment& cluster_env,
-                            const InstructionBatchDimMap& batch_map,
-                            const AutoShardingOption& option,
-                            StrategyGroup& strategy_group) {
-  int mesh_dim = option.force_batch_dim_to_mesh_dim;
-  int batch_dim = batch_map.at(GetBatchDimMapKey(ins));
-  const DeviceMesh& device_mesh = cluster_env.device_mesh_;
-
-  if (shape.dimensions(batch_dim) % device_mesh.dim(mesh_dim) != 0) {
-    return absl::InvalidArgumentError(
-        "The length of batch dimension is "
-        "not divisible by the number of devices");
-  }
-
-  std::vector<std::pair<ShardingStrategy, InputShardings>> new_strategies;
-  const auto& strategy_input_shardings =
-      strategy_group.GetStrategyInputShardings();
-  for (size_t iid = 0; iid < strategy_input_shardings.size(); ++iid) {
-    const InputShardings& input_shardings = strategy_input_shardings[iid];
-    const ShardingStrategy& strategy =
-        strategy_group.GetStrategyForInputShardings(iid);
-    const HloSharding& output_sharding = strategy.output_sharding;
-    const std::vector<int64_t> tensor_dim_to_mesh_dim =
-        cluster_env.GetTensorDimToMeshDimWrapper(shape, output_sharding);
-
-    if (device_mesh.dim(mesh_dim) > 1) {
-      // If the mesh dim is not one, the output tensor must be
-      // tiled along the mesh dim.
-      if (tensor_dim_to_mesh_dim[batch_dim] == mesh_dim) {
-        new_strategies.push_back({strategy, input_shardings});
-      }
-    } else {
-      // If the mesh dim is one, the output tensor must be replicated
-      // on the mesh dim.
-      if (tensor_dim_to_mesh_dim[batch_dim] == -1) {
-        new_strategies.push_back({strategy, input_shardings});
-      }
-    }
-  }
-  CHECK(!new_strategies.empty())
-      << ins->ToString() << " does not have any valid strategies";
-  strategy_group.ClearStrategies();
-  for (const auto& [strategy, input_shardings] : new_strategies) {
-    strategy_group.AddStrategy(strategy, input_shardings);
-  }
-
-  return absl::OkStatus();
-}
-
 // Return the output sharding of the reduce-scatter variant of a given strategy.
 HloSharding GetReduceScatterOutput(const HloInstruction* ins,
                                    const ShardingStrategy& strategy,
@@ -3780,13 +3674,6 @@ absl::StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
       instruction_execution_counts = spmd::ComputeInstructionExecutionCounts(
           module, option_.loop_iteration_count_estimate);
 
-  // ----- Analyze the batch dim -----
-  spmd::InstructionBatchDimMap batch_dim_map;
-  // TODO(yuemmawang) Enable the batch_dim_map if it becomes helpful. This is
-  // supposed to make the solver faster, but it makes it much much slower for
-  // both 1D and 2D mesh shapes.
-  // batch_dim_map = spmd::BuildInstructionBatchDimMap(sequence);
-
   // ----- Read parameters of device mesh -----
   spmd::DeviceMesh original_device_mesh(option_.device_mesh_shape);
   original_device_mesh.SetValues(option_.device_mesh_ids);
@@ -3871,12 +3758,6 @@ absl::StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
                 << option_.memory_budget_per_device;
     }
 
-    if (option_.force_batch_dim_to_mesh_dim >= 0) {
-      spmd::DisableIncompatibleMixedMeshShapeAndForceBatchDim(
-          batch_dim_map, sequence.instructions(), device_mesh.num_elements(),
-          option_);
-    }
-
     // ----- Analyze depth -----
     spmd::InstructionDepthMap ins_depth_map;
     ins_depth_map = spmd::BuildInstructionDepthMap(sequence);
@@ -3889,8 +3770,8 @@ absl::StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
         std::tie(strategy_map, strategy_groups, associative_dot_pairs),
         BuildStrategyAndCost(sequence, module, instructions_to_shard,
                              instruction_execution_counts, ins_depth_map,
-                             batch_dim_map, alias_map, cluster_env, option_,
-                             *call_graph, hlo_cost_analysis,
+                             alias_map, cluster_env, option_, *call_graph,
+                             hlo_cost_analysis,
                              option_.try_multiple_mesh_shapes));
     spmd::AliasSet alias_set =
         spmd::BuildAliasSet(module, input_output_alias_config, strategy_map);
