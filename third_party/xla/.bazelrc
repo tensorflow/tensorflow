@@ -150,6 +150,8 @@ build:android_x86_64 --fat_apk_cpu=x86_64
 # Build everything statically for Android since all static libs are later
 # bundled together into a single .so for deployment.
 build:android --dynamic_mode=off
+# TODO(belitskiy): Remove once on Clang 20.
+build:android --define=xnn_enable_avxvnniint8=false
 
 # Sets the default Apple platform to macOS.
 build:macos --apple_platform_type=macos
