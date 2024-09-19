@@ -24,6 +24,8 @@ limitations under the License.
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/model/indexing_map.h"
+#include "xla/service/gpu/model/tiled_hlo_instruction.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -71,6 +73,14 @@ class CoalescingAnalysis {
 bool IsReadCoalescedHeuristic(HloFusionAnalysis::EmitterFusionKind fusion_kind,
                               const HloInstruction* producer,
                               const HloInstruction* consumer = nullptr);
+
+// Returns true if read of this tiled hlo operand is coalesced.
+//
+// We consider a read coalesced if the operand tile consist of contiguous chunk
+// of memory that saturate DRAM->L2 cache line. In case of Nvidia GPUs, that's
+// 64 bytes.
+bool IsTiledReadCoalescedHeuristic(const TiledHloInstruction& operand,
+                                   const se::DeviceDescription& device_info);
 
 }  // namespace gpu
 }  // namespace xla

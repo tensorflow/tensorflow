@@ -15,12 +15,14 @@ limitations under the License.
 
 #include "xla/service/gpu/model/coalescing_analysis.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -29,11 +31,15 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/hlo_traversal.h"
+#include "xla/service/gpu/model/symbolic_tile_analysis.h"
+#include "xla/service/gpu/model/tiled_hlo_computation.h"
+#include "xla/service/gpu/model/tiled_hlo_instruction.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -148,7 +154,7 @@ TEST_F(CoalescingTest, OutputAndLhsTransposedLayout) {
     fusion {
       p0 = f32[100, 200]{1, 0} parameter(0)
       p1 = f32[100, 200]{0, 1} parameter(1)
-      ROOT exp = f32[100, 200]{1, 0} add(p0, p1)
+      ROOT add = f32[100, 200]{1, 0} add(p0, p1)
     }
     ENTRY e {
       p0 = f32[100, 200]{1, 0} parameter(0)
@@ -508,6 +514,95 @@ TEST_F(CoalescingTest, Param) {
   })";
   // thread_x to linearized input mapping for thread_x in [0, 31]:
   EXPECT_THAT(IsReadCoalescedPerOperand(ir), ElementsAre(true, true, true));
+}
+
+class CoalescingForTiledHloTest : public CoalescingTest {
+ public:
+  std::vector<bool> IsTiledReadCoalescedPerOperand(
+      const HloInstruction* root, absl::Span<int64_t const> tile_sizes) {
+    auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+
+    SymbolicTileAnalysis symbolic_tile_analysis =
+        std::get<SymbolicTileAnalysis>(SymbolicTileAnalysis::AnalyzeFusion(
+            *fusion_adaptor, &mlir_context_));
+
+    TiledHloComputation tiled_hlo_computation =
+        *symbolic_tile_analysis.ComputeTiledHloInstructions(
+            tile_sizes, /*constraints_are_known_satisfied=*/true,
+            /*compute_all_tile_offset_indexing_maps=*/true);
+
+    const TiledHloInstruction* tiled_hlo_root = tiled_hlo_computation.GetRoot();
+    std::vector<bool> result;
+    for (const TiledHloInstruction* operand : tiled_hlo_root->operands()) {
+      result.push_back(IsTiledReadCoalescedHeuristic(*operand, device_info_));
+    }
+    return result;
+  }
+};
+
+TEST_F(CoalescingForTiledHloTest, TiledReadCoalescedHeuristic_Transpose) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY main {
+  p0 = f32[2048, 48] parameter(0)
+  ROOT transpose = f32[48, 2048] transpose(p0), dimensions={1, 0}
+})"));
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+
+  // The operand is not coalesced because the tile has stride 48.
+  EXPECT_THAT(IsTiledReadCoalescedPerOperand(root, {1, 2048}),
+              ElementsAre(false));
+
+  // The operand is coalesced because it reads 48 contiguous elements.
+  EXPECT_THAT(IsTiledReadCoalescedPerOperand(root, {48, 32}),
+              ElementsAre(true));
+}
+
+TEST_F(CoalescingForTiledHloTest, RhsTransposedLayout) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY main {
+  p0 = f32[256, 512]{1,0} parameter(0)
+  p1 = f32[256, 512]{0,1} parameter(1)
+  ROOT add = f32[256, 512]{1,0} add(p0, p1)
+})"));
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+
+  EXPECT_THAT(IsTiledReadCoalescedPerOperand(root, {1, 16}),
+              ElementsAre(true, false));
+  EXPECT_THAT(IsTiledReadCoalescedPerOperand(root, {16, 1}),
+              ElementsAre(false, true));
+  EXPECT_THAT(IsTiledReadCoalescedPerOperand(root, {16, 16}),
+              ElementsAre(true, true));
+  EXPECT_THAT(IsTiledReadCoalescedPerOperand(root, {8, 8}),
+              ElementsAre(false, false));
+}
+
+TEST_F(CoalescingForTiledHloTest, SmallDataTypes) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY main {
+  p0 = s8[256, 512] parameter(0)
+  p1 = s8[256, 512] parameter(1)
+  ROOT add = s8[256, 512] add(p0, p1)
+})"));
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+
+  // To be coalesced, contiguous chunk of memory should be at least 64 bytes.
+  EXPECT_THAT(IsTiledReadCoalescedPerOperand(root, {16, 16}),
+              ElementsAre(false, false));
+  EXPECT_THAT(IsTiledReadCoalescedPerOperand(root, {16, 32}),
+              ElementsAre(false, false));
+  EXPECT_THAT(IsTiledReadCoalescedPerOperand(root, {16, 64}),
+              ElementsAre(true, true));
+  EXPECT_THAT(IsTiledReadCoalescedPerOperand(root, {16, 128}),
+              ElementsAre(true, true));
 }
 
 }  // namespace
