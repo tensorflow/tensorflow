@@ -768,6 +768,11 @@ absl::StatusOr<bool> CommandBufferScheduling::Run(
                  device_description_.driver_version()) <
         se::SemanticVersion{12, 3, 0}) {
       erase(kRequireTracing);       // cuStreamBeginCaptureToGraph
+    }
+    if (std::min(device_description_.runtime_version(),
+                 device_description_.driver_version()) <
+        se::SemanticVersion{12, 4, 0}) {
+      // Conditionals With Memsets require cuda 12.4.1.
       erase(kRequireConditionals);  // on-device control flow
     }
   };
