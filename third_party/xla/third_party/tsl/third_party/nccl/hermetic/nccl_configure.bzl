@@ -60,6 +60,15 @@ alias(
   visibility = ["//visibility:public"],
 )
 
+alias(
+  name = "nccl_headers",
+  actual = select({
+      "@local_config_cuda//cuda:cuda_tools_and_libs": "@cuda_nccl//:headers",
+      "//conditions:default": "@nccl_archive//:nccl_headers",
+  }),
+  visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "hermetic_nccl_config",
     hdrs = ["nccl_config.h"],
