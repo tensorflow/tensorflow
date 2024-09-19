@@ -386,7 +386,8 @@ bool NVPTXCompiler::RequiresCollectiveScheduleLinearizer(
 }
 
 absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
-    HloPassPipeline* pipeline, HloModule* hlo_module,
+    HloPassPipeline* pipeline, const se::GpuComputeCapability& gpu_version,
+    const CompileOptions& options, HloModule* hlo_module,
     AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
   if (hlo_module->config()
           .debug_options()
@@ -396,7 +397,14 @@ absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
   if (GpuConvAlgorithmPicker::IsEnabled(hlo_module)) {
     pipeline->AddPass<GpuConvAlgorithmPicker>(autotune_config);
   }
-  pipeline->AddPass<GemmAlgorithmPicker>(autotune_config);
+  // On Ampere or later, GemmAlgorithmPicker just provides a way to "warmup" the
+  // execution. But we already do that during GemmFusionAutotuner pass. In that
+  // case, we do a recursive compilation call that has
+  // 'is_autotuning_compilation' set to true.
+  if (!std::get<se::CudaComputeCapability>(gpu_version).IsAtLeastAmpere() ||
+      options.is_autotuning_compilation) {
+    pipeline->AddPass<GemmAlgorithmPicker>(autotune_config);
+  }
   return absl::OkStatus();
 }
 

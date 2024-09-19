@@ -1558,8 +1558,9 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   pipeline.AddPass<HostOffloader>(
       static_cast<int64_t>(stream_executor::MemoryType::kHost));
 
-  TF_RETURN_IF_ERROR(AddConvAndGemmAutotuningPasses(
-      &pipeline, hlo_module, autotune_config, thread_pool));
+  TF_RETURN_IF_ERROR(
+      AddConvAndGemmAutotuningPasses(&pipeline, gpu_version, options,
+                                     hlo_module, autotune_config, thread_pool));
 
   // The GEMM fusion autotuner can insert new bf16 reductions that need to be
   // normalized again.

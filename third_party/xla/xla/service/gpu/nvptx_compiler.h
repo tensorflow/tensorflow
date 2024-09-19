@@ -71,7 +71,8 @@ class NVPTXCompiler : public GpuCompiler {
       const HloModule* module, se::StreamExecutor* stream_exec) override;
 
   absl::Status AddConvAndGemmAutotuningPasses(
-      HloPassPipeline* pipeline, HloModule* hlo_module,
+      HloPassPipeline* pipeline, const se::GpuComputeCapability& gpu_version,
+      const CompileOptions& options, HloModule* hlo_module,
       AutotuneConfig& autotune_config,
       tsl::thread::ThreadPool* thread_pool) override;
 

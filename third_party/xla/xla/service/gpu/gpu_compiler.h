@@ -152,7 +152,8 @@ class GpuCompiler : public LLVMCompiler {
 
   // Add autotuning passes for convolution and gemm (except triton).
   virtual absl::Status AddConvAndGemmAutotuningPasses(
-      HloPassPipeline* pipeline, HloModule* hlo_module,
+      HloPassPipeline* pipeline, const se::GpuComputeCapability& gpu_version,
+      const CompileOptions& options, HloModule* hlo_module,
       AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
     return absl::OkStatus();
   }
