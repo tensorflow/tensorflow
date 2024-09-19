@@ -812,7 +812,14 @@ template <typename T>
 class LiteralUtilTestTemplated : public ::testing::Test {};
 
 using TestedTypes = ::testing::Types<float, int32_t, uint32_t, complex64>;
-TYPED_TEST_SUITE(LiteralUtilTestTemplated, TestedTypes);
+class TestNamer {
+ public:
+  template <typename TypeParam>
+  static std::string GetName(int) {
+    return ::testing::internal::GetTypeName<TypeParam>();
+  }
+};
+TYPED_TEST_SUITE(LiteralUtilTestTemplated, TestedTypes, TestNamer);
 
 TYPED_TEST(LiteralUtilTestTemplated, Relayout2x2) {
   // Make a non-integer for floating point types.
