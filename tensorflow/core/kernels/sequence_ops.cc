@@ -93,8 +93,16 @@ class RangeOp : public OpKernel {
     }
     int64_t size;
     if constexpr (std::is_integral<T>::value) {
-      size = Eigen::divup(Eigen::numext::abs(limit - start),
-                          Eigen::numext::abs(delta));
+      uint64_t range;
+      if ((limit > 0 && start < 0) || (limit < 0 && start > 0)) {
+        range = static_cast<uint64_t>(Eigen::numext::abs(limit)) 
+                + static_cast<uint64_t>(Eigen::numext::abs(start));
+      } else {
+        range = static_cast<uint64_t>(Eigen::numext::abs(limit - start)); 
+      }
+
+      size = Eigen::divup(range,
+                          static_cast<uint64_t>(Eigen::numext::abs(delta)));
     } else {
       auto size_auto =
           Eigen::numext::ceil(Eigen::numext::abs((limit - start) / delta));

@@ -1513,8 +1513,16 @@ Status RangeSize(const Tensor* start_t, const Tensor* limit_t,
 
   int64_t size;
   if (std::is_integral<T>::value) {
-    size = Eigen::divup(static_cast<int64_t>(Eigen::numext::abs(limit - start)),
-                        static_cast<int64_t>(Eigen::numext::abs(delta)));
+    uint64_t range;
+    if ((limit > 0 && start < 0) || (limit < 0 && start > 0)) {
+      range = static_cast<uint64_t>(Eigen::numext::abs(limit))
+              + static_cast<uint64_t>(Eigen::numext::abs(start));
+    } else {
+      range = static_cast<uint64_t>(Eigen::numext::abs(limit - start));
+    }
+
+    size = Eigen::divup(range,
+                        static_cast<uint64_t>(Eigen::numext::abs(delta)));
   } else {
     auto size_auto =
         Eigen::numext::ceil(Eigen::numext::abs((limit - start) / delta));

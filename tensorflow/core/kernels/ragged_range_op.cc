@@ -87,8 +87,16 @@ class RaggedRangeOp : public OpKernel {
         size = 0;
       } else if constexpr (std::is_integral<T>::value) {
         // The following is copied from tensorflow::RangeOp::Compute().
-        size = Eigen::divup(Eigen::numext::abs(limit - start),
-                            Eigen::numext::abs(delta));
+        uint64_t range;
+        if ((limit > 0 && start < 0) || (limit < 0 && start > 0)) {
+          range = static_cast<uint64_t>(Eigen::numext::abs(limit))
+                  + static_cast<uint64_t>(Eigen::numext::abs(start));
+        } else {
+          range = static_cast<uint64_t>(Eigen::numext::abs(limit - start));
+        }
+
+        size = Eigen::divup(range,
+                            static_cast<uint64_t>(Eigen::numext::abs(delta)));
       } else {
         // The following is copied from tensorflow::RangeOp::Compute().
         auto size_auto =
