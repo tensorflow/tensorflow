@@ -27,8 +27,18 @@ LrtStatus LoadModelFromFile(const char* path, LrtModel* model);
 // Load model from flatbuffer memory.
 LrtStatus LoadModel(const uint8_t* buf, size_t buf_size, LrtModel* model);
 
+// Add a new custom code to the registry in this model. This will be associated
+// with all custom ops and should only can be set once.
+// TODO consider expanding this to allow for "custom op builder" hook.
+LrtStatus RegisterCustomOpCode(LrtModel model, const char* new_op_code);
+
 // Destroy model and any associated storage.
 void ModelDestroy(LrtModel model);
+
+// Adds given metadata buffer to be serialized with the flatbuffer. Buffer can
+// be retrieved at runtime under `metadata_name`.
+LrtStatus AppendMetadata(LrtModel model, const void* metadata,
+                         size_t metadata_size, const char* metadata_name);
 
 // Serializes model to bytes. NOTE this destroys the model before it returns.
 // NOTE: Caller takes ownership of `buf`. Flatbuffers are packed into their

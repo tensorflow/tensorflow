@@ -76,7 +76,9 @@ cc_test(
         ":graph_tools",
         ":lite_rt_model_init",
         "//tensorflow/compiler/mlir/lite/experimental/lrt/test_data:test_data_util",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
+        "@flatbuffers//:runtime_cc",
         "@llvm-project//llvm:Support",
     ],
 )

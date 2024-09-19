@@ -51,7 +51,7 @@ bool HasValidGeneralTopology(LrtSubgraph subgraph) {
   }
 
   for (auto tensor : subgraph->outputs) {
-    if (!implied_subgraph_outs.contains(tensor)) {
+    if (implied_subgraph_outs.find(tensor) == implied_subgraph_outs.end()) {
       _LRT_D_MSG("Mismatched subgraph outs");
       return false;
     }
@@ -71,7 +71,7 @@ bool HasValidGeneralTopology(LrtSubgraph subgraph) {
   }
 
   for (auto tensor : subgraph->inputs) {
-    if (!implied_subgraph_ins.contains(tensor)) {
+    if (implied_subgraph_ins.find(tensor) == implied_subgraph_ins.end()) {
       _LRT_D_MSG("Mismatched subgraph ins");
       return false;
     }
