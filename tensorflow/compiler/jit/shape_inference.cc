@@ -99,7 +99,7 @@ Status PropagateShapes(Graph* graph,
       // Use custom attribute (prefixed with `_`) `_index` for placeholders as
       // they come from user specifications.
       if (const auto s = GetNodeAttr(n->attrs(), "_index", &index); !s.ok()) {
-        LOG(WARNING) << "Failed to get node index for node " << n->name();
+        VLOG(1) << "Failed to get node index for node " << n->name();
       }
     }
     if (index >= 0) {
