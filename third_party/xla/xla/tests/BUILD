@@ -2374,6 +2374,7 @@ xla_test(
         "//xla/service:hlo_module_config",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/stream_executor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",

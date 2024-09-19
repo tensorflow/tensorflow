@@ -18,6 +18,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -54,6 +55,13 @@ DeviceAssignment MakeDeviceAssn(int64_t num_replicas) {
 
 class CollectiveOpsTestE2E : public HloTestBase {
  public:
+  CollectiveOpsTestE2E() {
+    replacements_[kF8E4M3DatatypePlaceholder] =
+        IsCuda() ? "f8e4m3fn" : "f8e4m3fnuz";
+    replacements_[kF8E5M2DatatypePlaceholder] =
+        IsCuda() ? "f8e5m2" : "f8e5m2fnuz";
+  }
+
   bool IsCuda() {
     return std::holds_alternative<se::CudaComputeCapability>(Capability());
   }
@@ -108,6 +116,13 @@ class CollectiveOpsTestE2E : public HloTestBase {
         /*argument_provider*/ [](int64_t, int64_t) { return nullptr; },
         num_replicas, /*run_hlo_passes=*/false, &device_assignment);
   }
+
+ protected:
+  absl::flat_hash_map<absl::string_view, absl::string_view> replacements_;
+
+ private:
+  static constexpr const char* kF8E4M3DatatypePlaceholder{"<<F8E4M3>>"};
+  static constexpr const char* kF8E5M2DatatypePlaceholder{"<<F8E5M2>>"};
 };
 
 // E2E tests for collective ops. These will generally verify some HLO transform
@@ -811,11 +826,11 @@ ENTRY main.12 {
 TEST_F(CollectiveOpsTestE2EWindowedNonWindowed,
        WindowedEinsumE2EAllGatherAndReduceScatterF8) {
   absl::string_view kModuleReplicatedStr = R"(
-HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(f8e4m3fn[2,16,48]{2,1,0}, f8e4m3fn[48,192]{1,0}, f8e4m3fn[192,48]{1,0}, bf16[], bf16[], bf16[], bf16[], bf16[])->bf16[2,16,48]{2,1,0}}, allow_spmd_sharding_propagation_to_parameters={false,false,false,false}, num_partitions=4
+HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(<<F8E4M3>>[2,16,48]{2,1,0}, <<F8E4M3>>[48,192]{1,0}, <<F8E4M3>>[192,48]{1,0}, bf16[], bf16[], bf16[], bf16[], bf16[])->bf16[2,16,48]{2,1,0}}, allow_spmd_sharding_propagation_to_parameters={false,false,false,false}, num_partitions=4
 
 ENTRY main.12 {
-  Arg_0.1 = f8e4m3fn[2,16,48]{2,1,0} parameter(0), sharding={devices=[1,4,1]<=[4]}
-  Arg_1.2 = f8e4m3fn[48,192]{1,0} parameter(1), sharding={devices=[1,4]<=[4]}
+  Arg_0.1 = <<F8E4M3>>[2,16,48]{2,1,0} parameter(0), sharding={devices=[1,4,1]<=[4]}
+  Arg_1.2 = <<F8E4M3>>[48,192]{1,0} parameter(1), sharding={devices=[1,4]<=[4]}
   Arg_2.3 = bf16[] parameter(3)
   Arg_3.4 = bf16[] parameter(4)
   broadcast = bf16[2,16,48]{2,1,0} broadcast(Arg_2.3), dimensions={}
@@ -834,12 +849,12 @@ ENTRY main.12 {
   constant.1 = bf16[] constant(448.)
   broadcast.4 = bf16[2,16,192]{2,1,0} broadcast(constant.1), dimensions={}
   clamp = bf16[2,16,192]{2,1,0} clamp(broadcast.3, divide, broadcast.4)
-  convert.2 = f8e4m3fn[2,16,192]{2,1,0} convert(clamp)
+  convert.2 = <<F8E4M3>>[2,16,192]{2,1,0} convert(clamp)
   Arg_5.6 = bf16[] parameter(6)
   broadcast.5 = bf16[2,16,192]{2,1,0} broadcast(Arg_5.6), dimensions={}
   convert.3 = bf16[2,16,192]{2,1,0} convert(convert.2)
   multiply.2 = bf16[2,16,192]{2,1,0} multiply(convert.3, broadcast.5)
-  Arg_6.7 = f8e4m3fn[192,48]{1,0} parameter(2), sharding={devices=[4,1]<=[4]}
+  Arg_6.7 = <<F8E4M3>>[192,48]{1,0} parameter(2), sharding={devices=[4,1]<=[4]}
   Arg_7.8 = bf16[] parameter(7)
   broadcast.6 = bf16[192,48]{1,0} broadcast(Arg_7.8), dimensions={}
   convert.4 = bf16[192,48]{1,0} convert(Arg_6.7)
@@ -852,8 +867,9 @@ ENTRY main.12 {
 
   // Disable the dot merger pass which can prevent the creation of FP8 GEMM
   // Custom Calls.
-  CollectiveOpsCompareWindowedNonWindowed(kModuleReplicatedStr,
-                                          /*disable_dot_merger=*/true);
+  CollectiveOpsCompareWindowedNonWindowed(
+      absl::StrReplaceAll(kModuleReplicatedStr, replacements_),
+      /*disable_dot_merger=*/true);
 
   // Verify the creation of FP8 GEMM Custom Calls on Hopper and newer
   // architectures.
@@ -863,7 +879,8 @@ ENTRY main.12 {
   opts.set_xla_gpu_graph_min_graph_size(200);
   opts.set_xla_gpu_enable_triton_gemm(false);
   opts.add_xla_disable_hlo_passes("dot-merger");
-  CollectiveOpsVerifyF8Matmul(kModuleReplicatedStr, opts);
+  CollectiveOpsVerifyF8Matmul(
+      absl::StrReplaceAll(kModuleReplicatedStr, replacements_), opts);
 }
 
 TEST_F(CollectiveOpsTestE2EWindowedNonWindowed,
@@ -1023,7 +1040,7 @@ while_body {
   r = bf16[32,128] bitcast(dynamic-slice.k)
   a = bf16[32,128] add(r, r), control-predecessors={constant.2559}
   // A fp8 pattern of quant-dequant before the collective AG.
-  qa = f8e4m3fn[32,128] convert(a)
+  qa = <<F8E4M3>>[32,128] convert(a)
   dqa = bf16[32,128] convert(qa)
   a_scale = bf16[] get-tuple-element(param), index=3
   a_scales = bf16[32,128] broadcast(a_scale), dimensions={}
@@ -1031,7 +1048,7 @@ while_body {
   mb = bf16[128,128] all-gather(dqa_unscaled), channel_id=1, use_global_device_ids=true, dimensions={0}, replica_groups={{0,1,2,3}}
   ma = bf16[128,128] dynamic-slice(get-tuple-element.395, select.1348, constant.2561), dynamic_slice_sizes={128,128}
 
-  qma = f8e4m3fn[128,128] convert(ma)
+  qma = <<F8E4M3>>[128,128] convert(ma)
   dqma = bf16[128,128] convert(qma)
   ma_scale = bf16[] get-tuple-element(param), index=4
   ma_scales = bf16[128,128] broadcast(ma_scale), dimensions={}
@@ -1061,7 +1078,8 @@ ENTRY entry {
   opts.set_xla_gpu_run_post_layout_collective_pipeliner(true);
   opts.set_xla_gpu_enable_pipelined_collectives(true);
   opts.set_xla_gpu_enable_triton_gemm(false);
-  CollectiveOpsVerifyF8Matmul(kModuleReplicatedStr, opts);
+  CollectiveOpsVerifyF8Matmul(
+      absl::StrReplaceAll(kModuleReplicatedStr, replacements_), opts);
 }
 
 TEST_F(CollectiveOpsTestE2E,
