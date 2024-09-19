@@ -37,17 +37,17 @@ void ImportEntryComputationLayoutAndTiles(const HloModule& hlo_module,
 void ImportFrontendAttributes(const HloModule& hlo_module,
                               mlir::ModuleOp module, mlir::Builder builder);
 
-void ImportNumPartitions(const HloModule& hlo_module, mlir::ModuleOp module,
-                         mlir::Builder builder);
-
-void ImportNumReplicas(const HloModule& hlo_module, mlir::ModuleOp module,
-                       mlir::Builder builder);
-
 void ImportInputOutputAlias(const HloModule& hlo_module, mlir::ModuleOp module,
                             mlir::Builder builder);
 
 void ImportIsDynamic(const HloModule& hlo_module, mlir::ModuleOp module,
                      mlir::Builder builder);
+
+void ImportNumPartitions(const HloModule& hlo_module, mlir::ModuleOp module,
+                         mlir::Builder builder);
+
+void ImportNumReplicas(const HloModule& hlo_module, mlir::ModuleOp module,
+                       mlir::Builder builder);
 
 void ImportSpmdOutputSharding(const HloModule& hlo_module,
                               mlir::ModuleOp module, mlir::Builder builder);

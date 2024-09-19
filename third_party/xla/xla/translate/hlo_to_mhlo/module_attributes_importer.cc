@@ -208,6 +208,19 @@ void ImportFrontendAttributes(const xla::HloModule& hlo_module,
   }
 }
 
+void ImportInputOutputAlias(const xla::HloModule& hlo_module,
+                            mlir::ModuleOp module, mlir::Builder builder) {
+  module->setAttr(kInputOutputAlias,
+                  ConvertInputOutputAlias(
+                      hlo_module.input_output_alias_config(), &builder));
+}
+
+void ImportIsDynamic(const xla::HloModule& hlo_module, mlir::ModuleOp module,
+                     mlir::Builder builder) {
+  module->setAttr(kIsDynamic, mlir::BoolAttr::get(builder.getContext(),
+                                                  hlo_module.is_dynamic()));
+}
+
 void ImportNumPartitions(const xla::HloModule& hlo_module,
                          mlir::ModuleOp module, mlir::Builder builder) {
   const auto& config = hlo_module.config();
@@ -224,19 +237,6 @@ void ImportNumReplicas(const xla::HloModule& hlo_module, mlir::ModuleOp module,
     module->setAttr(kNumReplicas,
                     builder.getI32IntegerAttr(config.replica_count()));
   }
-}
-
-void ImportInputOutputAlias(const xla::HloModule& hlo_module,
-                            mlir::ModuleOp module, mlir::Builder builder) {
-  module->setAttr(kInputOutputAlias,
-                  ConvertInputOutputAlias(
-                      hlo_module.input_output_alias_config(), &builder));
-}
-
-void ImportIsDynamic(const xla::HloModule& hlo_module, mlir::ModuleOp module,
-                     mlir::Builder builder) {
-  module->setAttr(kIsDynamic, mlir::BoolAttr::get(builder.getContext(),
-                                                  hlo_module.is_dynamic()));
 }
 
 void ImportSpmdOutputSharding(const xla::HloModule& hlo_module,
