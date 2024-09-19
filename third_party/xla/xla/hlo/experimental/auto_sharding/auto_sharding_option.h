@@ -125,10 +125,6 @@ struct AutoShardingOption {
   // strategies for N-D mesh shape.
   bool solve_nd_sharding_iteratively = true;
 
-  // If it is not empty, forcibly use simple heuristic strategies
-  // instead of the ILP solver. This is used for ablation study.
-  std::string force_simple_heuristic;
-
   // If true, forcibly set the strategy of some instructions.
   bool force_strategy = false;
   std::vector<int64_t> force_strategy_inst_indices;

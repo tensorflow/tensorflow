@@ -177,11 +177,6 @@ absl::Status HandleConv(std::unique_ptr<StrategyGroup>& strategy_group,
                         const AutoShardingOption& option,
                         const CallGraph& call_graph);
 
-void AnnotateShardingWithSimpleHeuristic(HloModule* module,
-                                         const std::string& heuristic,
-                                         const AliasMap& alias_map,
-                                         const ClusterEnvironment& cluster_env);
-
 // Handle alias: alias pairs must have the same HloSharding.
 // To deal with alias, we do special process both before and after
 // BuildStrategyAndCost. Because it is easier to handle elementwise
