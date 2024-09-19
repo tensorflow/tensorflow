@@ -1145,7 +1145,8 @@ ENTRY %entry {
   ASSERT_NE(dot, nullptr);
   EXPECT_THAT(param0, op::Sharding("{devices=[4,1]0,1,2,3}"));
   EXPECT_THAT(param1, op::Sharding("{replicated}"));
-  EXPECT_THAT(dot, op::Sharding("{devices=[4,1]0,1,2,3}"));
+  EXPECT_THAT(dot, AnyOf(op::Sharding("{devices=[4,1]0,1,2,3}"),
+                         op::Sharding("{devices=[2,2]<=[4]}")));
 }
 
 TEST_F(AutoShardingTest, DotInsertReshardingReshapes) {

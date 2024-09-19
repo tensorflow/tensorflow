@@ -840,14 +840,17 @@ void RemoveDuplicatedStrategy(StrategyGroup& strategy_group) {
       deduped_replicated_strategies;
   absl::flat_hash_set<std::string> added;
   size_t num_skipped_due_to_infinity_costs = 0;
-  for (size_t sid = 0; sid < strategy_group.GetStrategies().size(); ++sid) {
-    const ShardingStrategy& strategy = strategy_group.GetStrategy(sid);
+  const auto& strategy_input_shardings =
+      strategy_group.GetStrategyInputShardings();
+  for (size_t iid = 0; iid < strategy_input_shardings.size(); ++iid) {
+    const InputShardings& input_shardings = strategy_input_shardings[iid];
+    const ShardingStrategy& strategy =
+        strategy_group.GetStrategyForInputShardings(iid);
     if (AllInfinityCosts(strategy.communication_resharding_costs)) {
       num_skipped_due_to_infinity_costs++;
       continue;
     }
     std::string key = strategy.output_sharding.ToString();
-    const auto& input_shardings = strategy_group.GetInputShardings(sid);
     if (!input_shardings.empty()) {
       for (const auto& sharding : input_shardings) {
         key += "/" + (sharding.has_value() ? sharding->ToString() : "none");
@@ -863,8 +866,7 @@ void RemoveDuplicatedStrategy(StrategyGroup& strategy_group) {
       deduped_replicated_strategies.push_back({strategy, input_shardings});
     }
   }
-  CHECK_LT(num_skipped_due_to_infinity_costs,
-           strategy_group.GetStrategies().size())
+  CHECK_LT(num_skipped_due_to_infinity_costs, strategy_input_shardings.size())
       << "All strategies removed due to infinite resharding costs";
   // Keeps replicated strategies as the last ones.
   if (!deduped_replicated_strategies.empty()) {

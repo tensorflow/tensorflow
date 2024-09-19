@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_STRATEGY_H_
 #define XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_STRATEGY_H_
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -213,7 +215,32 @@ struct StrategyGroup {
       }
     } else {
       for (const auto& strategy : strategies) {
-        absl::StrAppend(&str, indent, "Strategy ", strategy.ToStringLong());
+        absl::StrAppend(&str, indent, "Strategy ", strategy.ToStringLong(),
+                        "\n");
+      }
+    }
+    if (!is_tuple) {
+      for (const auto& input_shardings : strategy_input_shardings) {
+        std::string input_sharding_str = "{";
+        for (const auto& s : input_shardings) {
+          if (!s.has_value()) {
+            input_sharding_str += "[*],";
+          } else if (s->IsReplicated()) {
+            input_sharding_str += "[R],";
+          } else {
+            if (s->ReplicateOnLastTileDim()) {
+              input_sharding_str +=
+                  "[" + absl::StrJoin(s->tile_assignment().dimensions(), ", ") +
+                  "]last_tile_dim_replicate,";
+            } else {
+              input_sharding_str +=
+                  "[" + absl::StrJoin(s->tile_assignment().dimensions(), ", ") +
+                  "],";
+            }
+          }
+        }
+        input_sharding_str += "}\n";
+        absl::StrAppend(&str, indent, "Input Sharding ", input_sharding_str);
       }
     }
     return str;
@@ -253,21 +280,49 @@ struct StrategyGroup {
 
   void AddStrategy(const ShardingStrategy& strategy,
                    const InputShardings& input_shardings = {}) {
-    strategies.push_back(strategy);
+    // Create a new strategy if needed (otherwise, reuse an existing one).
+    size_t strategy_idx = strategies.size();
+    const size_t input_sharding_idx = strategy_input_shardings.size();
+    const auto it = std::find(strategies.begin(), strategies.end(), strategy);
+    if (it == strategies.end()) {
+      strategies.push_back(strategy);
+      strategy_idx_to_input_sharding_idx.push_back(input_sharding_idx);
+    } else {
+      strategy_idx = std::distance(strategies.begin(), it);
+    }
+    input_sharding_idx_to_strategy_idx.push_back(strategy_idx);
     strategy_input_shardings.push_back(input_shardings);
   }
 
   void ClearStrategies() {
     strategies.clear();
     strategy_input_shardings.clear();
+    input_sharding_idx_to_strategy_idx.clear();
+    strategy_idx_to_input_sharding_idx.clear();
   }
 
   ShardingStrategy& GetStrategy(size_t strategy_idx) {
     return strategies[strategy_idx];
   }
 
-  const InputShardings& GetInputShardings(size_t strategy_idx) const {
-    return strategy_input_shardings[strategy_idx];
+  const ShardingStrategy& GetStrategyForInputShardings(
+      size_t input_sharding_idx) const {
+    const size_t strategy_idx =
+        input_sharding_idx_to_strategy_idx[input_sharding_idx];
+    CHECK_LT(strategy_idx, strategies.size());
+    return strategies[strategy_idx];
+  }
+
+  const InputShardings& GetInputShardings(size_t input_sharding_idx) const {
+    return strategy_input_shardings[input_sharding_idx];
+  }
+
+  const InputShardings& GetInputShardingsForStrategy(
+      size_t strategy_idx) const {
+    const size_t input_sharding_idx =
+        strategy_idx_to_input_sharding_idx[strategy_idx];
+    CHECK_LT(input_sharding_idx, strategy_input_shardings.size());
+    return strategy_input_shardings[input_sharding_idx];
   }
 
   const std::vector<ShardingStrategy>& GetStrategies() const {
@@ -297,6 +352,8 @@ struct StrategyGroup {
   // A vector of strategy choices for the non-tuple output.
   std::vector<ShardingStrategy> strategies;
   std::vector<InputShardings> strategy_input_shardings;
+  std::vector<size_t> input_sharding_idx_to_strategy_idx;
+  std::vector<size_t> strategy_idx_to_input_sharding_idx;
 
   // Used when is_tuple == True. A vector of pointers, each pointer is one
   // StrategyGroup for one value in the output Tuple

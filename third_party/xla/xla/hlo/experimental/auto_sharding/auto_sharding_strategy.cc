@@ -66,7 +66,13 @@ namespace spmd {
 
 bool LeafVectorsAreConsistent(const std::vector<ShardingStrategy>& one,
                               const std::vector<ShardingStrategy>& two) {
-  return one.size() == two.size();
+  if (one.size() != two.size()) return false;
+  for (size_t sid = 0; sid < one.size(); ++sid) {
+    const bool invalid_strategy_one = (one[sid].compute_cost >= kInfinityCost);
+    const bool invalid_strategy_two = (two[sid].compute_cost >= kInfinityCost);
+    if (invalid_strategy_one != invalid_strategy_two) return false;
+  }
+  return true;
 }
 
 std::optional<HloSharding> ConstructImprovedSharding(
@@ -1026,6 +1032,11 @@ BuildStrategyAndCost(
     }
     CHECK(strategy_group != nullptr);
     RemoveDuplicatedStrategy(*strategy_group);
+    if (!option.allow_shardings_small_dims_across_many_devices) {
+      RemoveShardingsWhereSmallDimsShardedAcrossManyDevices(
+          ins->shape(), /* instruction_has_user_sharding */ ins->has_sharding(),
+          *strategy_group);
+    }
     if (ins->has_sharding() && ins->opcode() != HloOpcode::kOutfeed) {
       // Finds the sharding strategy that aligns with the given sharding spec
       // Do not merge nodes if this one instruction has annotations.
@@ -1060,11 +1071,6 @@ BuildStrategyAndCost(
         }
       }
     }
-    if (!option.allow_shardings_small_dims_across_many_devices) {
-      RemoveShardingsWhereSmallDimsShardedAcrossManyDevices(
-          ins->shape(), /* instruction_has_user_sharding */ ins->has_sharding(),
-          *strategy_group);
-    }
 
     if (instruction_execution_counts.contains(ins)) {
       ScaleCostsWithExecutionCounts(instruction_execution_counts.at(ins),
@@ -1085,10 +1091,12 @@ BuildStrategyAndCost(
         CHECK(!strategy_group->is_tuple);
         std::vector<std::pair<ShardingStrategy, InputShardings>> new_strategies;
         int64_t idx = it - inst_indices.begin();
-        const auto& strategies = strategy_group->GetStrategies();
-        for (size_t sid = 0; sid < strategies.size(); ++sid) {
-          const ShardingStrategy& strategy = strategy_group->GetStrategy(sid);
-          const auto& input_shardings = strategy_group->GetInputShardings(sid);
+        const auto& strategy_input_shardings =
+            strategy_group->GetStrategyInputShardings();
+        for (size_t iid = 0; iid < strategy_input_shardings.size(); ++iid) {
+          const InputShardings& input_shardings = strategy_input_shardings[iid];
+          const ShardingStrategy& strategy =
+              strategy_group->GetStrategyForInputShardings(iid);
           if (strategy.name == stra_names[idx]) {
             new_strategies.push_back({strategy, input_shardings});
           }

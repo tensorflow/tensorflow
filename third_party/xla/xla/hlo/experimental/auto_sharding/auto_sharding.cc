@@ -1476,9 +1476,12 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
       // Sharding provided by XLA users, we need to keep them.
       strategy_group.following = nullptr;
       std::vector<std::pair<ShardingStrategy, InputShardings>> new_strategies;
-      for (size_t sid = 0; sid < strategy_group.GetStrategies().size(); ++sid) {
-        const ShardingStrategy& strategy = strategy_group.GetStrategy(sid);
-        const auto& input_shardings = strategy_group.GetInputShardings(sid);
+      const auto& strategy_input_shardings =
+          strategy_group.GetStrategyInputShardings();
+      for (size_t iid = 0; iid < strategy_input_shardings.size(); ++iid) {
+        const InputShardings& input_shardings = strategy_input_shardings[iid];
+        const ShardingStrategy& strategy =
+            strategy_group.GetStrategyForInputShardings(iid);
         if (strategy.output_sharding == existing_sharding) {
           VLOG(1) << "Keeping strategy: " << strategy.ToString();
           new_strategies.push_back({strategy, input_shardings});
@@ -1574,9 +1577,12 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
       // It is IMPORTANT that we do this only for instructions that do no follow
       // others, to keep the number of ILP variable small.
       std::vector<std::pair<ShardingStrategy, InputShardings>> new_vector;
-      for (size_t sid = 0; sid < strategy_group.GetStrategies().size(); ++sid) {
-        const ShardingStrategy& strategy = strategy_group.GetStrategy(sid);
-        const auto& input_shardings = strategy_group.GetInputShardings(sid);
+      const auto& strategy_input_shardings =
+          strategy_group.GetStrategyInputShardings();
+      for (size_t iid = 0; iid < strategy_input_shardings.size(); ++iid) {
+        const InputShardings& input_shardings = strategy_input_shardings[iid];
+        const ShardingStrategy& strategy =
+            strategy_group.GetStrategyForInputShardings(iid);
         if (strategy.output_sharding.IsReplicated() ||
             ShardingIsConsistent(existing_sharding, strategy.output_sharding,
                                  strict) ||
@@ -3247,9 +3253,12 @@ absl::Status FilterStrategy(const HloInstruction* ins, const Shape& shape,
   }
 
   std::vector<std::pair<ShardingStrategy, InputShardings>> new_strategies;
-  for (size_t sid = 0; sid < strategy_group.GetStrategies().size(); ++sid) {
-    const ShardingStrategy& strategy = strategy_group.GetStrategy(sid);
-    const auto& input_shardings = strategy_group.GetInputShardings(sid);
+  const auto& strategy_input_shardings =
+      strategy_group.GetStrategyInputShardings();
+  for (size_t iid = 0; iid < strategy_input_shardings.size(); ++iid) {
+    const InputShardings& input_shardings = strategy_input_shardings[iid];
+    const ShardingStrategy& strategy =
+        strategy_group.GetStrategyForInputShardings(iid);
     const HloSharding& output_sharding = strategy.output_sharding;
     const std::vector<int64_t> tensor_dim_to_mesh_dim =
         cluster_env.GetTensorDimToMeshDimWrapper(shape, output_sharding);

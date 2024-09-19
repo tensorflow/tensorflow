@@ -460,9 +460,12 @@ std::optional<HloSharding> HandlerBase::GetShardingFromUser(
 
 void HandlerBase::SortStrategies() {
   std::vector<std::pair<ShardingStrategy, InputShardings>> strategy_shardings;
-  for (size_t sid = 0; sid < strategy_group_->GetStrategies().size(); ++sid) {
-    const ShardingStrategy& strategy = strategy_group_->GetStrategy(sid);
-    const auto& input_shardings = strategy_group_->GetInputShardings(sid);
+  const auto strategy_input_shardings =
+      strategy_group_->GetStrategyInputShardings();
+  for (size_t iid = 0; iid < strategy_input_shardings.size(); ++iid) {
+    const InputShardings& input_shardings = strategy_input_shardings[iid];
+    const ShardingStrategy& strategy =
+        strategy_group_->GetStrategyForInputShardings(iid);
     strategy_shardings.push_back({strategy, input_shardings});
   }
   absl::c_stable_sort(
