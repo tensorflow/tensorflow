@@ -429,6 +429,7 @@ def XLAGPU_ReduceOp : XLAGPU_Op<"reduce", [
     }
     %sum:2 = xla_gpu.reduce (%in0, %in1) inits(%init0, %init1) dimensions=[0, 2]
       combiner=@add : tensor<16x8x4xf32>, tensor<16x8x4xi32>
+        to tensor<8xf32>, tensor<8xi32>
     ```
   }];
   let arguments = (ins

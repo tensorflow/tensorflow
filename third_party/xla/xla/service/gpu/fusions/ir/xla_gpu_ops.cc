@@ -1122,10 +1122,12 @@ LogicalResult ReduceOp::inferReturnTypes(
 }
 
 ParseResult ReduceOp::parse(OpAsmParser& parser, OperationState& result) {
-  SmallVector<OpAsmParser::UnresolvedOperand, 4> inputs, inits;
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> inputs;
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> inits;
   SmallVector<int64_t, 2> dimensions;
   mlir::StringAttr combiner;
   SmallVector<Type, 2> input_types;
+  SmallVector<Type, 2> result_types;
 
   if (parser.parseLParen() || parseOperands(parser, &inputs) ||
       parser.parseRParen() || parser.parseKeyword("inits") ||
@@ -1140,7 +1142,8 @@ ParseResult ReduceOp::parse(OpAsmParser& parser, OperationState& result) {
       parser.parseKeyword("combiner") || parser.parseEqual() ||
       parser.parseSymbolName(combiner) ||
       parser.parseOptionalAttrDict(result.attributes) ||
-      parser.parseColonTypeList(input_types)) {
+      parser.parseColonTypeList(input_types) || parser.parseKeyword("to") ||
+      parser.parseTypeList(result_types)) {
     return failure();
   }
   auto ctx = result.getContext();
@@ -1149,7 +1152,7 @@ ParseResult ReduceOp::parse(OpAsmParser& parser, OperationState& result) {
                       DenseI64ArrayAttr::get(ctx, dimensions));
   result.addAttribute(ReduceOp::getCombinerAttrName(opname),
                       mlir::FlatSymbolRefAttr::get(ctx, combiner));
-  result.addTypes(inferReductionResultTypes(input_types, dimensions));
+  result.addTypes(result_types);
 
   auto init_types = inferReductionInitTypes(input_types);
   mlir::SMLoc loc = parser.getCurrentLocation();
@@ -1165,17 +1168,26 @@ void ReduceOp::print(OpAsmPrinter& p) {
     << getDimensions() << "] combiner=@" << getCombiner();
   p.printOptionalAttrDict((*this)->getAttrs(),
                           {getCombinerAttrName(), getDimensionsAttrName()});
-  p << " : " << TypeRange(getInputs());
+  p << " : " << TypeRange(getInputs()) << " to " << TypeRange(getResults());
 }
 
 LogicalResult ReduceOp::verify() {
+  // Check init types.
+  auto inferred_init_types = inferReductionInitTypes(TypeRange(getInputs()));
+  for (auto [inferred_init_type, init_type] :
+       llvm::zip(inferred_init_types, TypeRange(getInits()))) {
+    if (inferred_init_type != init_type) {
+      return emitOpError() << "init type " << init_type
+                           << " does not match inferred type "
+                           << inferred_init_type;
+    }
+  }
+  // Check combiner.
   auto module = this->getOperation()->getParentOfType<mlir::ModuleOp>();
   auto combiner = module.lookupSymbol<mlir::func::FuncOp>(getCombinerAttr());
   if (!combiner) {
     return emitOpError() << "combiner `@" << getCombiner() << "` not found";
   }
-
-  auto inferred_init_types = inferReductionInitTypes(TypeRange(getInputs()));
   SmallVector<Type, 2> combiner_operand_types;
   combiner_operand_types.reserve(getNumOperands());
   combiner_operand_types.append(inferred_init_types);

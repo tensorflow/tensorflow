@@ -15,7 +15,7 @@ func.func @row_reduction(%arg0: tensor<128x1027xf32>)
   } {
   %c0 = arith.constant 0.0 : f32
   %0 = xla_gpu.reduce (%arg0) inits(%c0) dimensions=[1] combiner=@add
-    : tensor<128x1027xf32>
+    : tensor<128x1027xf32> to tensor<128xf32>
   return %0 : tensor<128xf32>
 }
 
@@ -48,7 +48,7 @@ func.func @row_reduction_with_major_reduced_dim(%arg0: tensor<1x42x128x32x8xf32>
   } {
   %c0 = arith.constant 0.0 : f32
   %0 = xla_gpu.reduce (%arg0) inits(%c0) dimensions=[1, 3, 4] combiner=@add
-    : tensor<1x42x128x32x8xf32>
+    : tensor<1x42x128x32x8xf32> to tensor<1x128xf32>
   return %0 : tensor<1x128xf32>
 }
 
