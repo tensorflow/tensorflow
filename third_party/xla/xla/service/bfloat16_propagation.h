@@ -80,6 +80,9 @@ class BFloat16Propagation : public HloModulePass {
   // instruction in the forward pass.
   virtual bool InstructionIsCandidateForBF16Output(HloInstruction* hlo);
 
+ protected:
+  const FloatSupport* bfloat16_support_;
+
  private:
   // ***************************
   // Function called and state produced by the forward analysis pass (from
@@ -220,7 +223,6 @@ class BFloat16Propagation : public HloModulePass {
   // Whether the last processed HLO module has been changed by this pass.
   bool changed_ = false;
 
-  const FloatSupport* bfloat16_support_;
   std::unique_ptr<HloDataflowAnalysis> dataflow_;
 };
 
