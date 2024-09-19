@@ -101,7 +101,7 @@ TEST_F(CutlassFusionTest, RowMajorGemm) {
   patterns.Emplace<CutlassGemmPattern>();
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  CustomKernelFusionRewriter pass(&device, &patterns);
+  CustomKernelFusionRewriter pass(&device, /*kernel_index=*/0, &patterns);
   RunAndFilecheckHloRewrite(hlo, std::move(pass), expected);
 }
 
@@ -141,7 +141,7 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithUpcast) {
   patterns.Emplace<CutlassGemmWithUpcastPattern>();
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  CustomKernelFusionRewriter pass(&device, &patterns);
+  CustomKernelFusionRewriter pass(&device, /*kernel_index=*/0, &patterns);
   RunAndFilecheckHloRewrite(hlo, std::move(pass), expected);
 }
 
@@ -183,7 +183,7 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithUpcastOfBothOperands) {
   patterns.Emplace<CutlassGemmWithUpcastPattern>();
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  CustomKernelFusionRewriter pass(&device, &patterns);
+  CustomKernelFusionRewriter pass(&device, /*kernel_index=*/0, &patterns);
   RunAndFilecheckHloRewrite(hlo, std::move(pass), expected);
 }
 
@@ -209,7 +209,7 @@ TEST_F(CutlassFusionTest, DoNotPatternMatchNotImplementedKernelTypes) {
       ParseAndReturnVerifiedModule(hlo);
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  CustomKernelFusionRewriter pass(&device, &patterns);
+  CustomKernelFusionRewriter pass(&device, /*kernel_index=*/0, &patterns);
 
   ASSERT_FALSE(pass.Run(hlo_module.value().get()).value());
 }
@@ -260,7 +260,7 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithDynamicUpdateSlice) {
   patterns.Emplace<CutlassGemmWithDynamicUpdateSlicePattern>();
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  CustomKernelFusionRewriter pass(&device, &patterns);
+  CustomKernelFusionRewriter pass(&device, /*kernel_index=*/0, &patterns);
   RunAndFilecheckHloRewrite(hlo, std::move(pass), expected);
 }
 
@@ -319,7 +319,7 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithDynamicUpdateSliceMultipleUses) {
   patterns.Emplace<CutlassGemmWithDynamicUpdateSlicePattern>();
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  CustomKernelFusionRewriter pass(&device, &patterns);
+  CustomKernelFusionRewriter pass(&device, /*kernel_index=*/0, &patterns);
   RunAndFilecheckHloRewrite(hlo, std::move(pass), expected);
 }
 
@@ -365,7 +365,7 @@ TEST_F(CutlassFusionTest, RowMajorGemmWithDynamicUpdateSliceWithoutBitcast) {
   patterns.Emplace<CutlassGemmWithDynamicUpdateSlicePattern>();
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  CustomKernelFusionRewriter pass(&device, &patterns);
+  CustomKernelFusionRewriter pass(&device, /*kernel_index=*/0, &patterns);
   RunAndFilecheckHloRewrite(hlo, std::move(pass), expected);
 }
 
@@ -654,7 +654,7 @@ TEST_F(CutlassFusionTest, GemmWithUpcastShouldBeFused) {
   patterns.Emplace<CutlassGemmWithUpcastPattern>();
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  CustomKernelFusionRewriter pass(&device, &patterns);
+  CustomKernelFusionRewriter pass(&device, /*kernel_index=*/0, &patterns);
   RunAndFilecheckHloRewrite(hlo, std::move(pass), expected);
   EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{1e-3, 1e-3}));
 }
@@ -674,7 +674,7 @@ TEST_F(CutlassFusionTest,
   patterns.Emplace<CutlassGemmWithUpcastPattern>();
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  CustomKernelFusionRewriter pass(&device, &patterns);
+  CustomKernelFusionRewriter pass(&device, /*kernel_index=*/0, &patterns);
   // Check that hlo is not rewritten after the pass, indicating that we don't
   // match the upcast pattern.
   RunAndFilecheckHloRewrite(hlo, std::move(pass), std::nullopt);
@@ -695,7 +695,7 @@ TEST_F(CutlassFusionTest,
   patterns.Emplace<CutlassGemmWithUpcastPattern>();
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  CustomKernelFusionRewriter pass(&device, &patterns);
+  CustomKernelFusionRewriter pass(&device, /*kernel_index=*/0, &patterns);
   // Check that hlo is not rewritten after the pass, indicating that we don't
   // match the upcast pattern.
   RunAndFilecheckHloRewrite(hlo, std::move(pass), std::nullopt);
@@ -716,7 +716,7 @@ TEST_F(CutlassFusionTest,
   patterns.Emplace<CutlassGemmWithUpcastPattern>();
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  CustomKernelFusionRewriter pass(&device, &patterns);
+  CustomKernelFusionRewriter pass(&device, /*kernel_index=*/0, &patterns);
   // Check that hlo is not rewritten after the pass, indicating that we don't
   // match the upcast pattern.
   RunAndFilecheckHloRewrite(hlo, std::move(pass), std::nullopt);
@@ -736,7 +736,7 @@ TEST_F(CutlassFusionTest,
   CustomKernelFusionPatternRegistry patterns;
   patterns.Emplace<CutlassGemmWithUpcastPattern>();
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  CustomKernelFusionRewriter pass(&device, &patterns);
+  CustomKernelFusionRewriter pass(&device, /*kernel_index=*/0, &patterns);
   // Check that hlo is not rewritten after the pass, indicating that we don't
   // match the upcast pattern.
   RunAndFilecheckHloRewrite(hlo, std::move(pass), std::nullopt);
@@ -756,7 +756,7 @@ TEST_F(CutlassFusionTest,
   CustomKernelFusionPatternRegistry patterns;
   patterns.Emplace<CutlassGemmWithUpcastPattern>();
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  CustomKernelFusionRewriter pass(&device, &patterns);
+  CustomKernelFusionRewriter pass(&device, /*kernel_index=*/0, &patterns);
   // Check that hlo is not rewritten after the pass, indicating that we don't
   // match the upcast pattern.
   RunAndFilecheckHloRewrite(hlo, std::move(pass), std::nullopt);
@@ -776,7 +776,7 @@ TEST_F(CutlassFusionTest, GemmWithUpcastWithBatchDimensionShouldNotBeFused) {
   CustomKernelFusionPatternRegistry patterns;
   patterns.Emplace<CutlassGemmWithUpcastPattern>();
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  CustomKernelFusionRewriter pass(&device, &patterns);
+  CustomKernelFusionRewriter pass(&device, /*kernel_index=*/0, &patterns);
   // Check that hlo is not rewritten after the pass, indicating that we don't
   // match the upcast pattern.
   RunAndFilecheckHloRewrite(hlo, std::move(pass), std::nullopt);
@@ -795,7 +795,7 @@ TEST_F(CutlassFusionTest, GemmWithUpcastAndColumnMajorOperandsShouldBeFused) {
   CustomKernelFusionPatternRegistry patterns;
   patterns.Emplace<CutlassGemmWithUpcastPattern>();
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo();
-  CustomKernelFusionRewriter pass(&device, &patterns);
+  CustomKernelFusionRewriter pass(&device, /*kernel_index=*/0, &patterns);
   std::string expected = "CHECK: cutlass_gemm";
   RunAndFilecheckHloRewrite(hlo, std::move(pass), expected);
   EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{1e-3, 1e-3}));

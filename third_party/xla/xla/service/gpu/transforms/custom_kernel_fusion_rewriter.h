@@ -63,7 +63,7 @@ namespace xla::gpu {
 class CustomKernelFusionRewriter : public HloModulePass {
  public:
   explicit CustomKernelFusionRewriter(
-      const se::DeviceDescription* device,
+      const se::DeviceDescription* device, int kernel_index = 0,
       const CustomKernelFusionPatternRegistry* patterns =
           CustomKernelFusionPatternRegistry::Default());
 
@@ -78,6 +78,7 @@ class CustomKernelFusionRewriter : public HloModulePass {
 
  private:
   const se::DeviceDescription* device_;
+  const int kernel_index_;
   const CustomKernelFusionPatternRegistry* patterns_;
 };
 
