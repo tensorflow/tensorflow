@@ -25,51 +25,83 @@ namespace xla {
 // Fuzzy matchers for HLOs.
 namespace fm {
 
-// TODO(b/355972677): Extend this to support opcodes other than convert
-template <typename Pattern>
-auto OptConvert(Pattern pattern) {
+// Expect that Ignorable is a function callable with Pattern
+template <typename Pattern, typename Ignorable>
+concept IsCallableWith =
+    requires(Pattern pattern, Ignorable ignorable) { ignorable(pattern); };
+
+// Return a pattern that matches either the pattern given or the pattern
+// composed with the ignorable wrapper
+template <typename Pattern, typename Ignorable>
+auto OptUnary(Pattern pattern, Ignorable ignorable)
+  requires IsCallableWith<Pattern, Ignorable>
+{
   auto shared = match::SharedSubpattern(pattern);
-  return match::AnyOf<HloInstruction>(match::Convert(shared), shared);
+
+  return match::AnyOf<HloInstruction>(ignorable(shared), shared);
 }
 
-#define XLA_FUZZY_UNOP_PATTERN(NAME)                                           \
-  template <typename HloInstructionType>                                       \
-  inline auto NAME(HloInstructionType** matched_inst) {                        \
-    return OptConvert(match::Op(matched_inst).WithOpcode(HloOpcode::k##NAME)); \
-  }                                                                            \
-                                                                               \
-  template <typename Arg>                                                      \
-  inline auto NAME(Arg&& arg) {                                                \
-    return OptConvert(match::Op()                                              \
-                          .WithOpcode(HloOpcode::k##NAME)                      \
-                          .WithOperand(0, std::forward<Arg>(arg)));            \
-  }                                                                            \
-                                                                               \
-  template <typename HloInstructionType, typename Arg>                         \
-  inline auto NAME(HloInstructionType** matched_inst, Arg&& arg) {             \
-    return OptConvert(match::Op(matched_inst)                                  \
-                          .WithOpcode(HloOpcode::k##NAME)                      \
-                          .WithOperand(0, std::forward<Arg>(arg)));            \
+#define XLA_FUZZY_NULLOP_PATTERN(NAME)                                       \
+  template <typename Ignorable>                                              \
+  inline auto NAME(Ignorable ignorable) {                                    \
+    return OptUnary(match::Op().WithOpcode(HloOpcode::k##NAME), ignorable);  \
+  }                                                                          \
+                                                                             \
+  template <typename HloInstructionType, typename Ignorable>                 \
+  inline auto NAME(Ignorable ignorable, HloInstructionType** matched_inst) { \
+    return OptUnary(match::Op(matched_inst).WithOpcode(HloOpcode::k##NAME),  \
+                    ignorable);                                              \
+  }
+XLA_FUZZY_NULLOP_PATTERN(Constant)
+XLA_FUZZY_NULLOP_PATTERN(Parameter)
+#undef XLA_FUZZY_NULLOP_PATTERN
+
+#define XLA_FUZZY_UNOP_PATTERN(NAME)                                         \
+  template <typename HloInstructionType, typename Ignorable>                 \
+  inline auto NAME(Ignorable ignorable, HloInstructionType** matched_inst) { \
+    return OptUnary(match::Op(matched_inst).WithOpcode(HloOpcode::k##NAME),  \
+                    ignorable);                                              \
+  }                                                                          \
+                                                                             \
+  template <typename Arg, typename Ignorable>                                \
+  inline auto NAME(Ignorable ignorable, Arg&& arg) {                         \
+    return OptUnary(match::Op()                                              \
+                        .WithOpcode(HloOpcode::k##NAME)                      \
+                        .WithOperand(0, std::forward<Arg>(arg)),             \
+                    ignorable);                                              \
+  }                                                                          \
+                                                                             \
+  template <typename HloInstructionType, typename Arg, typename Ignorable>   \
+  inline auto NAME(Ignorable ignorable, HloInstructionType** matched_inst,   \
+                   Arg&& arg) {                                              \
+    return OptUnary(match::Op(matched_inst)                                  \
+                        .WithOpcode(HloOpcode::k##NAME)                      \
+                        .WithOperand(0, std::forward<Arg>(arg)),             \
+                    ignorable);                                              \
   }
 XLA_FUZZY_UNOP_PATTERN(Tanh)
 XLA_FUZZY_UNOP_PATTERN(Exp)
 XLA_FUZZY_UNOP_PATTERN(Broadcast)
 #undef XLA_FUZZY_UNOP_PATTERN
 
-#define XLA_FUZZY_BINOP_PATTERN(NAME)                                         \
-  template <typename HloInstructionType, typename Lhs, typename Rhs>          \
-  inline auto NAME(HloInstructionType** matched_inst, Lhs&& lhs, Rhs&& rhs) { \
-    return OptConvert(match::Op(matched_inst)                                 \
-                          .WithOpcode(HloOpcode::k##NAME)                     \
-                          .WithOperand(0, std::forward<Lhs>(lhs))             \
-                          .WithOperand(1, std::forward<Rhs>(rhs)));           \
-  }                                                                           \
-  template <typename Lhs, typename Rhs>                                       \
-  inline auto NAME(Lhs&& lhs, Rhs&& rhs) {                                    \
-    return OptConvert(match::Op()                                             \
-                          .WithOpcode(HloOpcode::k##NAME)                     \
-                          .WithOperand(0, std::forward<Lhs>(lhs))             \
-                          .WithOperand(1, std::forward<Rhs>(rhs)));           \
+#define XLA_FUZZY_BINOP_PATTERN(NAME)                                      \
+  template <typename HloInstructionType, typename Lhs, typename Rhs,       \
+            typename Ignorable>                                            \
+  inline auto NAME(Ignorable ignorable, HloInstructionType** matched_inst, \
+                   Lhs&& lhs, Rhs&& rhs) {                                 \
+    return OptUnary(match::Op(matched_inst)                                \
+                        .WithOpcode(HloOpcode::k##NAME)                    \
+                        .WithOperand(0, std::forward<Lhs>(lhs))            \
+                        .WithOperand(1, std::forward<Rhs>(rhs)),           \
+                    ignorable);                                            \
+  }                                                                        \
+  template <typename Lhs, typename Rhs, typename Ignorable>                \
+  inline auto NAME(Ignorable ignorable, Lhs&& lhs, Rhs&& rhs) {            \
+    return OptUnary(match::Op()                                            \
+                        .WithOpcode(HloOpcode::k##NAME)                    \
+                        .WithOperand(0, std::forward<Lhs>(lhs))            \
+                        .WithOperand(1, std::forward<Rhs>(rhs)),           \
+                    ignorable);                                            \
   }
 XLA_FUZZY_BINOP_PATTERN(Dot)
 XLA_FUZZY_BINOP_PATTERN(Divide)
@@ -79,25 +111,28 @@ XLA_FUZZY_BINOP_PATTERN(Multiply)
 XLA_FUZZY_BINOP_PATTERN(Reduce)
 #undef XLA_FUZZY_BINOP_PATTERN
 
-#define XLA_FUZZY_TERNOP_PATTERN(NAME)                                 \
-  template <typename Arg0, typename Arg1, typename Arg2>               \
-  inline auto NAME(Arg0&& arg0, Arg1&& arg1, Arg2&& arg2) {            \
-    return OptConvert(match::Op()                                      \
-                          .WithOpcode(HloOpcode::k##NAME)              \
-                          .WithOperand(0, std::forward<Arg0>(arg0))    \
-                          .WithOperand(1, std::forward<Arg1>(arg1))    \
-                          .WithOperand(2, std::forward<Arg2>(arg2)));  \
-  }                                                                    \
-                                                                       \
-  template <typename HloInstructionType, typename Arg0, typename Arg1, \
-            typename Arg2>                                             \
-  inline auto NAME(HloInstructionType** matched_inst, Arg0&& arg0,     \
-                   Arg1&& arg1, Arg2&& arg2) {                         \
-    return OptConvert(match::Op(matched_inst)                          \
-                          .WithOpcode(HloOpcode::k##NAME)              \
-                          .WithOperand(0, std::forward<Arg0>(arg0))    \
-                          .WithOperand(1, std::forward<Arg1>(arg1))    \
-                          .WithOperand(2, std::forward<Arg2>(arg2)));  \
+#define XLA_FUZZY_TERNOP_PATTERN(NAME)                                       \
+  template <typename Arg0, typename Arg1, typename Arg2, typename Ignorable> \
+  inline auto NAME(Ignorable ignorable, Arg0&& arg0, Arg1&& arg1,            \
+                   Arg2&& arg2) {                                            \
+    return OptUnary(match::Op()                                              \
+                        .WithOpcode(HloOpcode::k##NAME)                      \
+                        .WithOperand(0, std::forward<Arg0>(arg0))            \
+                        .WithOperand(1, std::forward<Arg1>(arg1))            \
+                        .WithOperand(2, std::forward<Arg2>(arg2)),           \
+                    ignorable);                                              \
+  }                                                                          \
+                                                                             \
+  template <typename HloInstructionType, typename Arg0, typename Arg1,       \
+            typename Arg2, typename Ignorable>                               \
+  inline auto NAME(Ignorable ignorable, HloInstructionType** matched_inst,   \
+                   Arg0&& arg0, Arg1&& arg1, Arg2&& arg2) {                  \
+    return OptUnary(match::Op(matched_inst)                                  \
+                        .WithOpcode(HloOpcode::k##NAME)                      \
+                        .WithOperand(0, std::forward<Arg0>(arg0))            \
+                        .WithOperand(1, std::forward<Arg1>(arg1))            \
+                        .WithOperand(2, std::forward<Arg2>(arg2)),           \
+                    ignorable);                                              \
   }
 XLA_FUZZY_TERNOP_PATTERN(Select);
 #undef XLA_FUZZY_TERNOP_PATTERN
