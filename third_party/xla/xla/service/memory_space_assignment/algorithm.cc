@@ -954,13 +954,10 @@ absl::Status MsaAlgorithm::OptimizeMemoryBoundLoop(int loop_start_idx,
   const int iteration_start_idx = loop_start_idx + loop_size;
   const int iteration_end_idx = iteration_start_idx + loop_size;
 
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<MemoryBoundLoopOptimizer> optimizer,
-      MemoryBoundLoopOptimizer::Create(
-          iteration_start_idx, iteration_end_idx, options_.max_size_in_bytes,
-          options_.memory_bound_loop_optimizer_options, hlo_live_range_,
-          alias_analysis_, *options_.cost_analysis, options_.size_fn,
-          options_.reserved_scoped_memory_fn));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<MemoryBoundLoopOptimizer> optimizer,
+                      MemoryBoundLoopOptimizer::Create(
+                          iteration_start_idx, iteration_end_idx,
+                          hlo_live_range_, alias_analysis_, options_));
   optimizer->Optimize();
 
   const int loop_optimized_allocations_original_size =

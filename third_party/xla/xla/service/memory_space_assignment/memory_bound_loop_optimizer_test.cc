@@ -314,12 +314,17 @@ class MemoryBoundLoopOptimizerTest : public HloTestBase {
     optimizer_options.set_enabled(true);
     optimizer_options.set_desired_copy_ratio(0.7);
     optimizer_options.set_allow_unsatisfied_fully_pipelined_prefetch(false);
-    TF_ASSIGN_OR_RETURN(
-        optimizer_,
-        MemoryBoundLoopOptimizer::Create(
-            loop_start, loop_end, alternate_memory_size, optimizer_options,
-            *live_range_, *alias_analysis_, *cost_analysis_, SizeFunction,
-            reserved_scoped_memory_fn));
+    Options options;
+    options.max_size_in_bytes = alternate_memory_size;
+    options.alignment_in_bytes = 8;
+    options.alternate_memory_space = kAlternateMemorySpace;
+    options.cost_analysis = cost_analysis_.get();
+    options.size_fn = SizeFunction;
+    options.reserved_scoped_memory_fn = reserved_scoped_memory_fn;
+    options.memory_bound_loop_optimizer_options = optimizer_options;
+    TF_ASSIGN_OR_RETURN(optimizer_, MemoryBoundLoopOptimizer::Create(
+                                        loop_start, loop_end, *live_range_,
+                                        *alias_analysis_, options));
     return optimizer_.get();
   }
 
@@ -702,7 +707,10 @@ TEST_F(MemoryBoundLoopOptimizerTest, SimplePrefetch) {
   )";
   int loop_start_idx;
   MemoryBoundLoopOptimizer* optimizer;
-  int64_t alternate_memory_size = 64;
+  // Although alternate_memory_size=64 is minimum memory needed to fit the copy
+  // of param0 with desired copy ratio. alternate_memory_size=80 memory will
+  // ensure complete copy of param0 to alternate memory.
+  int64_t alternate_memory_size = 80;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndCreateOptimizer(hlo_loop_str, alternate_memory_size,
                                            loop_start_idx, &optimizer));
@@ -733,6 +741,55 @@ TEST_F(MemoryBoundLoopOptimizerTest, SimplePrefetch) {
     EXPECT_TRUE(seen_uses.contains(HloUse{inst, 1})) << inst_name;
   }
   EXPECT_EQ(optimizer->CalculateExecutionTime(), 1.875);
+  EXPECT_EQ(optimizer->MaxAlternateMemoryUsed(), alternate_memory_size);
+}
+
+TEST_F(MemoryBoundLoopOptimizerTest, SimplePrefetch2) {
+  absl::string_view hlo_loop_str = R"(
+    $op0 = f32[1,4] add(f32[1,4] $prev_op3, f32[1,4] $prev_op4)
+    $op1 = f32[1,4] add(f32[1,4] $prev_op4, f32[1,4] $op0)
+    $op2 = f32[1,4] add(f32[1,4] $op0, f32[1,4] $op1)
+    $op3 = f32[1,4] add(f32[1,4] $op1, f32[1,4] $op2)
+    $op4 = f32[1,4] add(f32[1,4] $param0, f32[1,4] $op3)
+    ROOT $root = tuple($op4, $param0)
+  )";
+  int loop_start_idx;
+  MemoryBoundLoopOptimizer* optimizer;
+  // alternate_memory_size=64 is minimum memory needed to fit the copy of param0
+  // with desired copy ratio.
+  int64_t alternate_memory_size = 64;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndCreateOptimizer(hlo_loop_str, alternate_memory_size,
+                                           loop_start_idx, &optimizer));
+
+  optimizer->Optimize();
+  absl::flat_hash_set<HloUse> seen_uses;
+  for (const MemoryBoundLoopOptimizer::LoopValue& loop_value :
+       optimizer->loop_values()) {
+    LOG(INFO) << loop_value.ToString();
+    if (loop_value.hlo_values.front()
+            ->defining_position()
+            .instruction->name() == "param0") {
+      EXPECT_TRUE(loop_value.allocations.back()->is_copy_allocation());
+    }
+    for (const auto& allocation : loop_value.allocations) {
+      for (const HloUse& use : allocation->uses()) {
+        EXPECT_FALSE(seen_uses.contains(use)) << use.ToString();
+        seen_uses.insert(use);
+      }
+    }
+  }
+
+  // Ensure all of the uses in the loop have an associated use.
+  for (absl::string_view inst_name : {"op0", "op1", "op2", "op3", "op4"}) {
+    HloInstruction* inst =
+        module->entry_computation()->GetInstructionWithName(inst_name);
+    EXPECT_TRUE(seen_uses.contains(HloUse{inst, 0})) << inst_name;
+    EXPECT_TRUE(seen_uses.contains(HloUse{inst, 1})) << inst_name;
+  }
+  // Check that execution time has increased to 2 since we will wait on copy
+  // done for param0.
+  EXPECT_EQ(optimizer->CalculateExecutionTime(), 2);
   EXPECT_EQ(optimizer->MaxAlternateMemoryUsed(), alternate_memory_size);
 }
 
@@ -773,10 +830,10 @@ TEST_F(MemoryBoundLoopOptimizerTest, ReservedScopedMemory) {
 
 // Check that a spurious GetTupleElement instruction in a later iteration of a
 // loop does not cause MSA to CHECK fail, when identifying loops. Prior to the
-// change instroduced with this test, IdentifyAndOptimizeMemoryBoundLoops()
+// change introduced with this test, IdentifyAndOptimizeMemoryBoundLoops()
 // would recognize 4 iterations to the loop thinking that gte is a repeat of
 // op2. Doing so triggers the CHECKs introduced by the change that added this
-// test to fail. So, the point of this test is to verfiy that we do not check
+// test to fail. So, the point of this test is to verify that we do not check
 // fail.
 TEST_F(MemoryBoundLoopOptimizerTest, GetTupleElement) {
   absl::string_view hlo_string = R"(
@@ -909,7 +966,7 @@ TEST_F(MemoryBoundLoopOptimizerTest, PrefetchFifoOrderWithOverlap) {
 
   int loop_start_idx;
   MemoryBoundLoopOptimizer* optimizer;
-  int64_t alternate_memory_size = 432;
+  int64_t alternate_memory_size = 464;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndCreateOptimizer(hlo_loop_str, alternate_memory_size,
                                            loop_start_idx, &optimizer));
@@ -985,7 +1042,7 @@ TEST_F(MemoryBoundLoopOptimizerTest, PrefetchFifoOrderWithOverlap) {
   EXPECT_EQ(optimizer->CalculateExecutionTime(), 12.5);
 
   // Check the memory used at each point of the loop.
-  const std::vector<int64_t>& remaining_memory = optimizer->remaining_memory();
+  std::vector<int64_t> remaining_memory = optimizer->RemainingMemory();
   // Time 0: 3 temporaries (16 B) + param0 (128 B) + param1 (128 B)
   EXPECT_EQ(remaining_memory.at(0),
             alternate_memory_size - (3 * 16 + 128 + 128));
@@ -1049,7 +1106,7 @@ TEST_F(MemoryBoundLoopOptimizerTest, PrefetchFifoOrderWithoutOverlap) {
 
   int loop_start_idx;
   MemoryBoundLoopOptimizer* optimizer;
-  int64_t alternate_memory_size = 192;
+  int64_t alternate_memory_size = 208;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndCreateOptimizer(hlo_loop_str, alternate_memory_size,
                                            loop_start_idx, &optimizer));
@@ -1133,7 +1190,7 @@ TEST_F(MemoryBoundLoopOptimizerTest, PrefetchFifoOrderWithOverlap2) {
 
   int loop_start_idx;
   MemoryBoundLoopOptimizer* optimizer;
-  int64_t alternate_memory_size = 432;
+  int64_t alternate_memory_size = 464;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndCreateOptimizer(hlo_loop_str, alternate_memory_size,
                                            loop_start_idx, &optimizer));
@@ -1302,13 +1359,13 @@ TEST_F(MemoryBoundLoopOptimizerTest, TempAndPinnedAllocations) {
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
-  int64_t alternate_memory_size = 64;
+  int64_t alternate_memory_size = 80;
   TF_ASSERT_OK_AND_ASSIGN(
       auto optimizer,
       CreateOptimizer(19, 24, module.get(), alternate_memory_size));
   optimizer->Optimize();
 
-  const std::vector<int64_t>& remaining_memory = optimizer->remaining_memory();
+  std::vector<int64_t> remaining_memory = optimizer->RemainingMemory();
   // Time 0: 3 temporaries (16 B) + 1 pinned (16 B)
   EXPECT_EQ(remaining_memory.at(0), alternate_memory_size - (3 * 16 + 16));
   // Time 1: 3 temporaries (16 B) + 1 pinned (16 B)
@@ -1373,12 +1430,12 @@ TEST_F(MemoryBoundLoopOptimizerTest, NegativeSavingNotPinned) {
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
-  int64_t alternate_memory_size = 52;
+  int64_t alternate_memory_size = 72;
   TF_ASSERT_OK_AND_ASSIGN(
       auto optimizer,
       CreateOptimizer(21, 27, module.get(), alternate_memory_size));
   optimizer->Optimize();
-  const std::vector<int64_t>& remaining_memory = optimizer->remaining_memory();
+  std::vector<int64_t> remaining_memory = optimizer->RemainingMemory();
   // We expect that pinned_prev_param0 would not get pinned due to negative
   // savings: 32(uses) -  28 * 16(size) = -416 Time 0: 3 temporaries (16 B) + 1
   // pinned (4 B)
