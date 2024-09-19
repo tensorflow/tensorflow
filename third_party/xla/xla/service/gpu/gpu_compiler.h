@@ -123,6 +123,9 @@ class GpuCompiler : public LLVMCompiler {
     return false;
   }
 
+  static AlgebraicSimplifierOptions GetAlgebraicSimplifierOptions(
+      const HloModuleConfig& config);
+
  protected:
   struct BackendCompileResult {
     std::string asm_text;
@@ -180,9 +183,6 @@ class GpuCompiler : public LLVMCompiler {
     return absl::OkStatus();
   }
 
-  AlgebraicSimplifierOptions GetAlgebraicSimplifierOptions(
-      const HloModuleConfig& config);
-
  private:
   struct CompileResultWithMetadata {
     BackendCompileResult backend_result;
@@ -213,6 +213,8 @@ class GpuCompiler : public LLVMCompiler {
 
   absl::Status RunPreSchedulingPasses(HloModule* module,
                                       se::StreamExecutor* stream_exec);
+  absl::Status RunCollectiveScheduleLinearizerPasses(
+      HloModule* hlo_module, se::StreamExecutor* stream_exec);
 
   // During compilation with device, stream_exec != null and autotune_results
   // == null. During deviceless AOT compilation, stream_exec == null and

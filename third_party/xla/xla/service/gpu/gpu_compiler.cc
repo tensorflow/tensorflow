@@ -1190,7 +1190,82 @@ absl::Status RunPostFusionVerificationPasses(
   return pipeline.Run(hlo_module).status();
 }
 
+absl::Status RunLayoutNormalizationPasses(
+    HloModule* hlo_module, const se::GpuComputeCapability& gpu_version) {
+  HloPassPipeline layout_normalization_pipeline("layout normalization");
+  const DebugOptions& debug_options = hlo_module->config().debug_options();
+  AlgebraicSimplifierOptions opts =
+      GpuCompiler::GetAlgebraicSimplifierOptions(hlo_module->config());
+  opts.set_supports_non_canonical_dots(false);
+  opts.set_is_layout_sensitive(true);
+  opts.set_enable_conv_operand_swap(false);
+  // "slow" minmax means we propagate nan.
+  opts.set_minmax_propagate_nan(!debug_options.xla_gpu_enable_fast_min_max());
+  opts.set_enable_unconditional_reduce_of_concat_replacement(false);
+
+  layout_normalization_pipeline.AddPass<ReshapeDecomposer>();
+  layout_normalization_pipeline.AddPass<HloPassFix<MoveCopyToUsers>>();
+  layout_normalization_pipeline.AddPass<LayoutNormalization>(
+      &NormalizeLayoutForGpuCustomCalls);
+  // The LayoutAssignment pass may leave behind kCopy instructions which are
+  // duplicate or NOPs, so remove them with algebraic simplification and CSE.
+  layout_normalization_pipeline.AddPass<HloPassFix<GpuAlgebraicSimplifier>>(
+      opts, gpu_version);
+  // Layout normalization will create broadcasts that are not canonical.
+  layout_normalization_pipeline.AddPass<BroadcastCanonicalizer>();
+  // Layout normalization will create scatters that are not simplified and
+  // also have unsorted update_window_dims.
+  layout_normalization_pipeline.AddPass<ScatterSimplifier>();
+  return layout_normalization_pipeline.Run(hlo_module).status();
+}
+
+absl::Status RunAsyncDotPasses(HloModule* hlo_module) {
+  HloPassPipeline pipeline("async-wrapper");
+  const DebugOptions& debug_options = hlo_module->config().debug_options();
+  if (debug_options.xla_gpu_async_dot()) {
+    pipeline.AddPass<AsyncWrapper>([](HloInstruction* instruction) {
+      // TODO(b/339654953): Use a better heuristic to determine whether a
+      // `dot` operation should be wrapped in an async computation.
+      if (IsCublasGemm(*instruction)) {
+        return true;
+      }
+      if (instruction->called_computations().size() == 1 &&
+          IsTritonFusedComputation(
+              *instruction->called_computations().front())) {
+        return true;
+      }
+      return false;
+    });
+  }
+  return pipeline.Run(hlo_module).status();
+}
+
+absl::Status RunDynamicSliceFusionPasses(HloModule* hlo_module,
+                                         se::Platform::Id platform_id) {
+  if (hlo_module->config()
+          .debug_options()
+          .xla_gpu_enable_dynamic_slice_fusion()) {
+    HloPassPipeline pipeline("dynamic-slice");
+    TF_ASSIGN_OR_RETURN(se::Platform * platform,
+                        se::PlatformManager::PlatformWithId(platform_id));
+    pipeline.AddPass<DynamicSliceFusionRewriter>(platform->Name());
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  }
+
+  return absl::OkStatus();
+}
+
 }  // namespace
+
+absl::Status GpuCompiler::RunCollectiveScheduleLinearizerPasses(
+    HloModule* hlo_module, se::StreamExecutor* stream_exec) {
+  HloPassPipeline pipeline("collective-schedule-linearizer");
+  pipeline.AddPass<CollectivesScheduleLinearizer>(
+      [this, stream_exec](const HloModule* module) {
+        return RequiresCollectiveScheduleLinearizer(module, stream_exec);
+      });
+  return pipeline.Run(hlo_module).status();
+}
 
 // Runs optimization passes on the given HLO module.
 absl::Status GpuCompiler::OptimizeHloModule(
@@ -1238,35 +1313,8 @@ absl::Status GpuCompiler::OptimizeHloModule(
   TF_RETURN_IF_ERROR(
       RunLayoutAssignmentPasses(hlo_module, gpu_version, dnn_version));
 
-  // TODO(b/328264715): Add tests to ensure that layout normalization pass is
-  // run before any fusion pass.
-  HloPassPipeline layout_normalization_pipeline("layout normalization");
-  const DebugOptions& debug_options = hlo_module->config().debug_options();
-  const AlgebraicSimplifierOptions simplifier_options = [&] {
-    AlgebraicSimplifierOptions opts =
-        GetAlgebraicSimplifierOptions(hlo_module->config());
-    opts.set_supports_non_canonical_dots(false);
-    opts.set_is_layout_sensitive(true);
-    opts.set_enable_conv_operand_swap(false);
-    // "slow" minmax means we propagate nan.
-    opts.set_minmax_propagate_nan(!debug_options.xla_gpu_enable_fast_min_max());
-    opts.set_enable_unconditional_reduce_of_concat_replacement(false);
-    return opts;
-  }();
-  layout_normalization_pipeline.AddPass<ReshapeDecomposer>();
-  layout_normalization_pipeline.AddPass<HloPassFix<MoveCopyToUsers>>();
-  layout_normalization_pipeline.AddPass<LayoutNormalization>(
-      &NormalizeLayoutForGpuCustomCalls);
-  // The LayoutAssignment pass may leave behind kCopy instructions which are
-  // duplicate or NOPs, so remove them with algebraic simplification and CSE.
-  layout_normalization_pipeline.AddPass<HloPassFix<GpuAlgebraicSimplifier>>(
-      simplifier_options, gpu_version);
-  // Layout normalization will create broadcasts that are not canonical.
-  layout_normalization_pipeline.AddPass<BroadcastCanonicalizer>();
-  // Layout normalization will create scatters that are not simplified and
-  // also have unsorted update_window_dims.
-  layout_normalization_pipeline.AddPass<ScatterSimplifier>();
-  TF_RETURN_IF_ERROR(layout_normalization_pipeline.Run(hlo_module).status());
+  TF_RETURN_IF_ERROR(RunLayoutNormalizationPasses(hlo_module, gpu_version));
+
   // Run target-specific HLO optimization passes after layout assignment.
   TF_RETURN_IF_ERROR(OptimizeHloPostLayoutAssignment(
       hlo_module, stream_exec, options, gpu_target_config,
@@ -1275,15 +1323,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
   TF_RETURN_IF_ERROR(RunPostLayoutCollectivePipelinerPasses(hlo_module));
 
   // This is a "low effort, high impact" fusion that should be run first.
-  if (hlo_module->config()
-          .debug_options()
-          .xla_gpu_enable_dynamic_slice_fusion()) {
-    HloPassPipeline pipeline("dynamic-slice");
-    TF_ASSIGN_OR_RETURN(se::Platform * platform,
-                        se::PlatformManager::PlatformWithId(PlatformId()));
-    pipeline.AddPass<DynamicSliceFusionRewriter>(platform->Name());
-    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
-  }
+  TF_RETURN_IF_ERROR(RunDynamicSliceFusionPasses(hlo_module, PlatformId()));
 
   TF_RETURN_IF_ERROR(RunFusionPasses(hlo_module, gpu_target_config,
                                      thread_pool.get_mutable(),
@@ -1300,34 +1340,10 @@ absl::Status GpuCompiler::OptimizeHloModule(
   TF_RETURN_IF_ERROR(RunPostFusionVerificationPasses(
       hlo_module, stream_exec, options, gpu_target_config));
 
-  {
-    HloPassPipeline pipeline("collective-schedule-linearizer");
-    pipeline.AddPass<CollectivesScheduleLinearizer>(
-        [this, stream_exec](const HloModule* module) {
-          return RequiresCollectiveScheduleLinearizer(module, stream_exec);
-        });
-    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
-  }
+  TF_RETURN_IF_ERROR(
+      RunCollectiveScheduleLinearizerPasses(hlo_module, stream_exec));
 
-  {
-    HloPassPipeline pipeline("async-wrapper");
-    if (debug_options.xla_gpu_async_dot()) {
-      pipeline.AddPass<AsyncWrapper>([](HloInstruction* instruction) {
-        // TODO(b/339654953): Use a better heuristic to determine whether a
-        // `dot` operation should be wrapped in an async computation.
-        if (IsCublasGemm(*instruction)) {
-          return true;
-        }
-        if (instruction->called_computations().size() == 1 &&
-            IsTritonFusedComputation(
-                *instruction->called_computations().front())) {
-          return true;
-        }
-        return false;
-      });
-    }
-    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
-  }
+  TF_RETURN_IF_ERROR(RunAsyncDotPasses(hlo_module));
 
   return absl::OkStatus();
 }  // NOLINT(readability/fn_size)
