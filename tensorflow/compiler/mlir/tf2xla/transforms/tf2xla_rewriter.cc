@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
@@ -94,6 +95,22 @@ using ::tensorflow::Tensor;
 using ::tsl::StatusOr;
 using ::xla::XlaComputation;
 
+// The OpOrArgLocNameMapper adds invalid characters to the name of the op when
+// concatenating locations. This version removes those characters to make the
+// name valid for NodeDef.
+class OpOrArgLocNameMapperWithoutInvalidCharacters
+    : public tensorflow::OpOrArgLocNameMapper {
+ public:
+  OpOrArgLocNameMapperWithoutInvalidCharacters() = default;
+  ~OpOrArgLocNameMapperWithoutInvalidCharacters() override = default;
+
+ protected:
+  std::string GetName(tensorflow::OpOrVal op_or_val) override {
+    std::string name = OpOrArgLocNameMapper::GetName(op_or_val);
+    return absl::StrReplaceAll(name, {{";", "."}});
+  }
+};
+
 static std::unique_ptr<tensorflow::StaticDeviceMgr> CreateDeviceMgr(
     const std::string& device_type) {
   // Register compilation kernels for all registered XLA backends.
@@ -125,6 +142,8 @@ Tf2XlaRewriter::Tf2XlaRewriter(Operation* op, PatternRewriter& rewriter,
     : op_(op),
       device_type_(device_type),
       rewriter_(rewriter),
+      name_mapper_(
+          std::make_unique<OpOrArgLocNameMapperWithoutInvalidCharacters>()),
       context_(nullptr),
       xla_builder_(op_->getName().getStringRef().str()) {}
 
@@ -319,7 +338,7 @@ LogicalResult Tf2XlaRewriter::LegalizeOp() {
   }
 
   auto nodedef_or = tensorflow::ConvertTFDialectOpToNodeDef(
-      op_, name_mapper_.GetUniqueName(op_),
+      op_, name_mapper_->GetUniqueName(op_),
       /*ignore_unregistered_attrs=*/true);
   if (!nodedef_or.ok()) {
     return op_->emitRemark() << "failed to convert op to NodeDef: "

@@ -106,7 +106,7 @@ class Tf2XlaRewriter {
   std::string device_type_;
 
   mlir::PatternRewriter& rewriter_;
-  tensorflow::OpOrArgLocNameMapper name_mapper_;
+  std::unique_ptr<tensorflow::OpOrArgLocNameMapper> name_mapper_;
 
   tensorflow::XlaContext* context_;  // Ref-counted.
 
