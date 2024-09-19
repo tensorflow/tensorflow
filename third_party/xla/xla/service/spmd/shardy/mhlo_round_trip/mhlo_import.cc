@@ -441,6 +441,9 @@ TensorShardingAttr convertToSdySharding(
     // break it when we find common mesh axes.
     while (product < localAxisSize) {
       MeshAxisAttr axisAttr = globalMesh.getAxes()[globalAxisIndex++];
+      if (axisAttr.getSize() == 1) {
+        continue;
+      }
       globalAxes.push_back(AxisRefAttr::get(ctx, axisAttr.getName()));
       product *= axisAttr.getSize();
     }
