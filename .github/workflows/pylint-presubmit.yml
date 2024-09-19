@@ -38,7 +38,7 @@ jobs:
       run: |
         echo Changed files: ${{ steps.get_file_changes.outputs.files }}
     - name: Set up Python 3.9
-      uses: actions/setup-python@39cd14951b08e74b54015e9e001cdefcf80e669f # v5.1.1
+      uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3 # v5.2.0
       with:
         python-version: "3.9"
     - name: Install Python dependencies

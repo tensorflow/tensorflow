@@ -29,14 +29,12 @@ package(
 tf_proto_library(
     name = "versions_proto",
     srcs = ["versions.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
 )
 
 tf_proto_library(
     name = "chunk_proto",
     srcs = ["chunk.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [":versions_proto"],
 )

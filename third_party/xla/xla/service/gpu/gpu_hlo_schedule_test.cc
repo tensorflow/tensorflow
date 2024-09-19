@@ -537,6 +537,12 @@ TEST_F(GpuHloScheduleTest, ProfileGuidedCostModelFailsWithIncompleteProfile) {
                                       /*enable_gpu_async_tracker=*/true,
                                       /*fdo_profile=*/kProfile)));
 
+  HloModuleConfig config(module->config());
+  DebugOptions dboptions(config.debug_options());
+  dboptions.set_xla_gpu_enable_pgle_accuracy_checker(true);
+  config.set_debug_options(dboptions);
+  module->set_config(config);
+
   // `dot1` and `ar-start1` are missing from the profile.
   EXPECT_THAT(ScheduleGpuModule(
                   module.get(), /*pointer_size=*/8,

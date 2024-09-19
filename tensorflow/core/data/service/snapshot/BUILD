@@ -506,11 +506,11 @@ tf_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/lib/monitoring:cell_reader",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/protobuf:protos_all_cc",
+        "@local_xla//xla/tsl/lib/monitoring:cell_reader",
     ],
 )
 

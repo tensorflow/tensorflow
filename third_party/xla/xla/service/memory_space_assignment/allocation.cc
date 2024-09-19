@@ -894,14 +894,6 @@ absl::Status WindowPrefetchedAllocation::InsertWindowPrefetchInstruction(
   layout.set_memory_space(options_.alternate_memory_space);
   *shape.mutable_layout() = layout;
 
-  // Insert a new parameter in the fused computation.
-  HloComputation* fused_computation =
-      use_instruction->fused_instructions_computation();
-  const int64_t num_parameters = fused_computation->num_parameters();
-  std::string name = absl::StrCat("window-buffer.", num_parameters);
-  HloInstruction* param = fused_computation->AddParameter(
-      HloInstruction::CreateParameter(num_parameters, shape, name));
-
   // Insert async WindowPrefetch instructions as operands to the fusion.
   HloInstruction* prefetch =
       computation->AddInstruction(HloInstruction::CreateCustomCall(
@@ -910,24 +902,6 @@ absl::Status WindowPrefetchedAllocation::InsertWindowPrefetchInstruction(
                       computation->CreateAsyncInstructions(prefetch, {}));
   use_instruction->AppendOperand(prefetch_instruction_);
 
-  // Insert instruction to consume the added operands and forwards the original
-  // fusion output.
-  auto get_or_create_consumer =
-      [](HloComputation* computation) -> HloInstruction* {
-    HloInstruction* root = computation->root_instruction();
-    // If the root is already a WindowPrefetchBuffer, we don't need to create
-    // a new one.
-    if (root->IsCustomCall("WindowPrefetchBuffer")) {
-      return root;
-    }
-    HloInstruction* new_root =
-        computation->AddInstruction(HloInstruction::CreateCustomCall(
-            root->shape(), {root}, "WindowPrefetchBuffer"));
-    computation->set_root_instruction(new_root);
-    return new_root;
-  };
-  HloInstruction* consumer = get_or_create_consumer(fused_computation);
-  consumer->AppendOperand(param);
   return absl::OkStatus();
 }
 

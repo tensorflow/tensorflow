@@ -2,9 +2,15 @@ load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
+
+# Placeholder: load py_proto_library
 load("//tensorflow:tensorflow.bzl", "if_google", "if_oss", "tf_cc_binary", "tf_cc_test", "tf_native_cc_binary")
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable")
 load("//tensorflow/compiler/mlir/lite:build_def.bzl", "tflite_copts_warnings")
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_proto_library",
+)
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -371,6 +377,57 @@ cc_library(
 )
 
 cc_library(
+    name = "pass_options",
+    hdrs = ["transforms/pass_options.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+cc_library(
+    name = "pass",
+    hdrs = ["transforms/pass.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pass_options",
+        ":pass_options_setter",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "pass_options_setter",
+    hdrs = ["transforms/pass_options_setter.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "converter_pass_options_setter",
+    srcs = ["transforms/converter_pass_options_setter.cc"],
+    hdrs = ["transforms/converter_pass_options_setter.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pass_options",
+        ":pass_options_setter",
+        "//tensorflow/compiler/mlir/lite:common",
+        "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc",
+        "//tensorflow/compiler/mlir/lite:optimize_pass_options",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
     name = "tensorflow_lite_ops",
     srcs = [
         "ir/tfl_ops.cc",
@@ -408,9 +465,9 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:status",
-        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
         "@llvm-project//llvm:Support",
@@ -431,14 +488,27 @@ cc_library(
 )
 
 cc_library(
+    name = "pass_registry_utils",
+    hdrs = ["transforms/pass_registry_utils.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pass",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+cc_library(
     name = "tensorflow_lite",
     srcs = [
         "ir/tfl_canonicalize.inc",
     ],
     hdrs = [
         "ir/tfl_ops.h",
-        "transforms/optimize.h",
+        "transforms/optimize_pass.h",
+        "transforms/pass_registry_utils.h",
         "transforms/passes.h",
+        "transforms/unfreeze_global_constants.h",
         "utils/attribute_utils.h",
         "utils/utils.h",
     ],
@@ -446,6 +516,9 @@ cc_library(
         ":attribute_utils",
         ":converter_inc",
         ":cost_estimators",
+        ":optimize_pass_options",
+        ":pass",
+        ":pass_registry_utils",
         ":size_utils",
         ":tensorflow_lite_canonicalize_inc_gen",
         ":tensorflow_lite_op_enums_inc_gen",
@@ -454,6 +527,7 @@ cc_library(
         ":tensorflow_lite_ops_inc_gen",
         ":tensorflow_lite_optimize",
         ":tensorflow_lite_passes_inc_gen",
+        ":tensorflow_lite_tf_unfreeze_global_tensors",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
@@ -742,6 +816,32 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "canonicalize_boundary_value",
+    srcs = [
+        "transforms/canonicalize_boundary_value_pass.cc",
+    ],
+    hdrs = [
+        "transforms/passes.h",
+    ],
+    deps = [
+        ":tensorflow_lite",
+        ":tensorflow_lite_passes_inc_gen",
+        "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:DialectUtils",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+cc_library(
     name = "tensorflow_lite_legalize_tf",
     srcs = [
         "transforms/analyze_variables.cc",
@@ -752,6 +852,7 @@ cc_library(
         "transforms/generated_lower_static_tensor_list.inc",
         "transforms/generated_prepare_tf.inc",
         "transforms/get_arithmetic_count.cc",
+        "transforms/if_outline.cc",
         "transforms/insert_call_once_op.cc",
         "transforms/legalize_hashtables.cc",
         "transforms/legalize_jax_random.cc",
@@ -780,6 +881,7 @@ cc_library(
         "transforms/passes.h",
     ],
     deps = [
+        ":attribute_utils",
         ":constant_utils",
         ":convert_type",
         ":cost_estimators",
@@ -860,18 +962,19 @@ cc_library(
     name = "tensorflow_lite_optimize",
     srcs = [
         "transforms/generated_optimize.inc",
-        "transforms/optimize.cc",
+        "transforms/optimize_pass.cc",
     ],
     hdrs = [
-        "transforms/optimize.h",
+        "transforms/optimize_pass.h",
     ],
     deps = [
         ":attribute_utils",
         ":constant_utils",
         ":convert_type",
+        ":optimize_pass_options",
+        ":pass",
         ":tensorflow_lite_ops",
         ":tensorflow_lite_optimize_inc_gen",
-        ":tensorflow_lite_passes_inc_gen",
         ":utils",
         ":validators",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
@@ -950,24 +1053,16 @@ cc_library(
         "transforms/unfreeze_global_constants.cc",
     ],
     hdrs = [
-        "transforms/passes.h",
+        "transforms/unfreeze_global_constants.h",
     ],
     deps = [
-        ":tensorflow_lite",
-        ":tensorflow_lite_passes_inc_gen",
-        "//tensorflow/compiler/mlir/lite/stablehlo:optimize_layout",
-        "//tensorflow/compiler/mlir/lite/stablehlo:prepare_hlo",
-        "//tensorflow/compiler/mlir/lite/stablehlo:tfl_legalize_chlo",
-        "//tensorflow/compiler/mlir/lite/stablehlo:tfl_legalize_hlo",
-        "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
+        ":pass",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
-        "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
     ],
 )
@@ -1213,7 +1308,9 @@ cc_library(
         "flatbuffer_export_flags.h",
     ],
     deps = [
+        ":control_edges",
         ":convert_type",
+        ":converter_flags_proto_cc",
         ":flatbuffer_tflite_operator_lib",
         ":lite_version",
         ":low_bit_utils",
@@ -1221,7 +1318,6 @@ cc_library(
         ":string_utils",
         ":tensorflow_lite",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
-        "//tensorflow/compiler/mlir/lite:control_edges",
         "//tensorflow/compiler/mlir/lite/core:macros",
         "//tensorflow/compiler/mlir/lite/core/c:tflite_common",
         "//tensorflow/compiler/mlir/lite/delegates/flex:allowlisted_flex_ops_lib",
@@ -1229,7 +1325,9 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/metrics:converter_error_data_proto_cc",
         "//tensorflow/compiler/mlir/lite/metrics:error_collector_inst",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
+        "//tensorflow/compiler/mlir/lite/schema:debug_metadata_fbs_with_mutable",
         "//tensorflow/compiler/mlir/lite/schema:schema_conversion_utils",
+        "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs_with_mutable",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
@@ -1239,13 +1337,12 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/lite/toco:toco_flags_proto_cc",
         "//tensorflow/lite/tools/versioning",
-        "//tensorflow/lite/tools/versioning:gpu_compatibility",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
@@ -1342,6 +1439,15 @@ cc_library(
 )
 
 cc_library(
+    name = "optimize_pass_options",
+    hdrs = ["transforms/optimize_pass_options.h"],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+cc_library(
     name = "flatbuffer_translate_lib",
     hdrs = [
         "flatbuffer_export.h",
@@ -1350,12 +1456,12 @@ cc_library(
         "utils/convert_type.h",
     ],
     deps = [
+        ":converter_flags_proto_cc",
         ":flatbuffer_export",
         ":flatbuffer_import",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/lite/toco:toco_flags_proto_cc",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:FuncDialect",
@@ -1415,8 +1521,8 @@ cc_library(
         "common/tfl_pass_config.h",
     ],
     deps = [
+        "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
-        "//tensorflow/lite/toco:toco_flags_proto_cc",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
     ],
@@ -1442,6 +1548,7 @@ tf_cc_binary(
         ":tf_tfl_translate_cl_options",
         ":tf_to_tfl_flatbuffer",
         "//tensorflow/compiler/mlir:init_mlir",
+        "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
@@ -1450,7 +1557,6 @@ tf_cc_binary(
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
-        "//tensorflow/lite/toco:toco_flags_proto_cc",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -1461,6 +1567,7 @@ tf_cc_binary(
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+        "@local_xla//xla/mlir_hlo",
         "@local_xla//xla/translate/hlo_to_mhlo:translate",
         "@stablehlo//:stablehlo_ops",
     ],
@@ -1474,18 +1581,24 @@ cc_library(
     ],
     deps = [
         ":common",
+        ":converter_flags_proto_cc",
+        ":converter_pass_options_setter",
         ":fake_quant_utils",
+        ":pass",
+        ":pass_registry_utils",
         ":tensorflow_lite_d2s",  # buildcleaner: keep
         ":tensorflow_lite_legalize_tf",  # buildcleaner: keep
         ":tensorflow_lite_optimize",  # buildcleaner: keep
         ":tensorflow_lite_optimize_batch_matmul",  # buildcleaner: keep
         ":tensorflow_lite_push_transpose_through_ewise",  # buildcleaner: keep
         ":tensorflow_lite_quantize",  # buildcleaner: keep
+        ":tensorflow_lite_tf_unfreeze_global_tensors",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_passes",
         "//tensorflow/compiler/mlir/lite/quantization/tensorflow:tf_quantization_passes",
         "//tensorflow/compiler/mlir/lite/stablehlo:build_stablehlo_composite",
         "//tensorflow/compiler/mlir/lite/stablehlo:compose_uniform_quantized_type_pass",
         "//tensorflow/compiler/mlir/lite/stablehlo:composite_lowering",
+        "//tensorflow/compiler/mlir/lite/stablehlo:fold_broadcast_to_pass",  # buildcleaner: keep
         "//tensorflow/compiler/mlir/lite/stablehlo:legalize_stablehlo_composite_to_tfl_custom",
         "//tensorflow/compiler/mlir/lite/stablehlo:legalize_tf_xla_call_module_to_stablehlo_pass",
         "//tensorflow/compiler/mlir/lite/stablehlo:lift_callsite_loc_caller",
@@ -1500,7 +1613,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_saved_model_passes",
         "//tensorflow/core:core_cpu_base",
-        "//tensorflow/lite/toco:toco_flags_proto_cc",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Pass",
@@ -1520,6 +1632,7 @@ cc_library(
     deps = [
         ":common",
         ":const_tensor_utils",
+        ":converter_flags_proto_cc",
         ":flatbuffer_translate_lib",
         ":tensorflow_lite",
         ":tf_tfl_passes",
@@ -1556,7 +1669,6 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/ir/types:Dialect",
         "//tensorflow/core/platform:status",
-        "//tensorflow/lite/toco:toco_flags_proto_cc",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -1574,7 +1686,6 @@ cc_library(
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:ReconcileUnrealizedCasts",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:statusor",
         "@stablehlo//:stablehlo_ops",
@@ -1640,10 +1751,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
-    visibility = [
-        "//tensorflow/compiler/mlir/lite/core:__pkg__",
-        "//tensorflow/lite:__pkg__",
-    ],
+    visibility = ["//visibility:public"],
     deps = ["//tensorflow/compiler/mlir/lite/core/api:error_reporter"],
 )
 
@@ -1735,3 +1843,60 @@ cc_library(
     copts = tflite_copts_warnings(),
 )
 # LINT.ThenChange(//tensorflow/lite:version)
+
+# OSS only: This target is header-only. Link `types_proto_cc_impl` only to
+# `libtensorflow_framework.so` via `lib_internal_impl`. Do NOT link `types_flags_proto_cc_impl`
+# directly unless the target does not link `libtensorflow_framework.so`.
+tf_proto_library(
+    name = "types_proto",
+    srcs = ["types.proto"],
+    make_default_target_header_only = True,
+    visibility = ["//visibility:public"],
+)
+
+# OSS only: This target is header-only. Link `converter_flags_proto_cc_impl` only to
+# `libtensorflow_framework.so` via `lib_internal_impl`. Do NOT link `converter_flags_proto_cc_impl`
+# directly unless the target does not link `libtensorflow_framework.so`.
+tf_proto_library(
+    name = "converter_flags_proto",
+    srcs = ["converter_flags.proto"],
+    make_default_target_header_only = True,
+    protodeps = [
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_options_proto",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto",
+        "//tensorflow/compiler/mlir/lite/debug:debug_options_proto",
+        ":types_proto",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+tf_proto_library(
+    name = "model_flags_proto",
+    srcs = ["model_flags.proto"],
+    make_default_target_header_only = True,
+    protodeps = [":types_proto"],
+    visibility = ["//visibility:public"],
+)
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "types_py_proto",
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":types_proto"],
+# )
+#
+# py_proto_library(
+#     name = "model_flags_py_proto",
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":model_flags_proto"],
+# )
+#
+# py_proto_library(
+#     name = "converter_flags_py_proto",
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":converter_flags_proto"],
+# )
+# copybara:uncomment_end

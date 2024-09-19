@@ -159,7 +159,7 @@ def unstack(value, num=None, axis=0, name="unstack"):
   ...   a,b,c = tf.unstack(t)
   ...   return a
   >>>
-  >>> good(t).numpy()
+  >>> print(good(t).numpy())
   1
 
   #### Unknown shapes

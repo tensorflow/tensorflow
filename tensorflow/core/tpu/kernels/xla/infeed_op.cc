@@ -16,6 +16,7 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"

@@ -611,7 +611,7 @@ class CheckpointManager(object):
         counter value, in case users want to save checkpoints every N steps.
       checkpoint_interval: An integer, indicates the minimum step interval
         between two checkpoints.
-      init_fn: Callable. A function to do customized intialization if no
+      init_fn: Callable. A function to do customized initialization if no
         checkpoints are in the directory.
 
     Raises:
@@ -866,7 +866,7 @@ class CheckpointManager(object):
     `tf.train.Checkpoint.restore()` method.
 
     Returns:
-      The restored checkpoint path if the lastest checkpoint is found and
+      The restored checkpoint path if the latest checkpoint is found and
       restored. Otherwise None.
     """
     # TODO(chienchunh): When AsyncCheckpoint is used, we may need to force to

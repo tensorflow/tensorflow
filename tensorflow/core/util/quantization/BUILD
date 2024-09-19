@@ -61,6 +61,5 @@ tf_cc_test(
 tf_proto_library(
     name = "uniform_quant_ops_attr_proto",
     srcs = ["uniform_quant_ops_attr.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
 )

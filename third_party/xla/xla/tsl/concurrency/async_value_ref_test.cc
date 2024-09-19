@@ -434,6 +434,17 @@ TEST(AsyncValueRefTest, MakeAsyncValueRef) {
     EXPECT_EQ(ref.get(), 42.0f);
   }
 
+  {  // Make AsyncValueRef with automatic type inference.
+    AsyncValueRef<float> ref =
+        MakeAsyncValueRef(executor, []() -> float { return 42.0f; });
+
+    EXPECT_FALSE(ref.IsAvailable());
+    EXPECT_EQ(executor.Quiesce(), 1);
+
+    EXPECT_TRUE(ref.IsAvailable());
+    EXPECT_EQ(ref.get(), 42.0f);
+  }
+
   {  // Make AsyncValueRef from a function that returns a StatusOr value.
     AsyncValueRef<float> ref = TryMakeAsyncValueRef<float>(
         executor, []() -> absl::StatusOr<float> { return 42.0f; });
@@ -445,8 +456,33 @@ TEST(AsyncValueRefTest, MakeAsyncValueRef) {
     EXPECT_EQ(ref.get(), 42.0f);
   }
 
+  {  // Make AsyncValueRef from a function that returns a StatusOr value with
+     // automatic type inference.
+    AsyncValueRef<float> ref = TryMakeAsyncValueRef(
+        executor, []() -> absl::StatusOr<float> { return 42.0f; });
+
+    EXPECT_FALSE(ref.IsAvailable());
+    EXPECT_EQ(executor.Quiesce(), 1);
+
+    EXPECT_TRUE(ref.IsAvailable());
+    EXPECT_EQ(ref.get(), 42.0f);
+  }
+
   {  // Make AsyncValueRef from a function that returns a StatusOr error.
     AsyncValueRef<float> ref = TryMakeAsyncValueRef<float>(
+        executor,
+        []() -> absl::StatusOr<float> { return absl::InternalError("test"); });
+
+    EXPECT_FALSE(ref.IsAvailable());
+    EXPECT_EQ(executor.Quiesce(), 1);
+
+    EXPECT_TRUE(ref.IsError());
+    EXPECT_EQ(ref.GetError(), absl::InternalError("test"));
+  }
+
+  {  // Make AsyncValueRef from a function that returns a StatusOr error with
+     // automatic type inference.
+    AsyncValueRef<float> ref = TryMakeAsyncValueRef(
         executor,
         []() -> absl::StatusOr<float> { return absl::InternalError("test"); });
 

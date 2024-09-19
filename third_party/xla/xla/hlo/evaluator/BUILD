@@ -63,6 +63,7 @@ cc_library(
         "//xla/service:shape_inference",
         "//xla/service:tuple_points_to_analysis",
         "//xla/service/cpu:runtime_single_threaded_matmul",
+        "//xla/tsl/lib/core:bitmap",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:endian",
@@ -81,7 +82,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/lib/core:bitmap",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
@@ -94,6 +94,7 @@ cc_library(
 
 xla_cc_test(
     name = "hlo_evaluator_slow_reduce_window_test",
+    timeout = "long",
     srcs = ["hlo_evaluator_slow_reduce_window_test.cc"],
     tags = [
         # Times out in asan/tsan/zapfhahn.
@@ -148,6 +149,7 @@ xla_cc_test(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:endian",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

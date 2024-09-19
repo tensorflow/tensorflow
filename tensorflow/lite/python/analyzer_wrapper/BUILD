@@ -33,7 +33,6 @@ cc_library(
         "//tensorflow/lite/core:model_builder",
         "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/tools/versioning:gpu_compatibility",
         "@com_google_absl//absl/strings",
         "@flatbuffers//:runtime_cc",
     ],

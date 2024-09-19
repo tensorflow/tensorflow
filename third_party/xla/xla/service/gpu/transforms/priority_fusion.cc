@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <iterator>
-#include <limits>
 #include <map>
 #include <memory>
 #include <string>
@@ -44,8 +43,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/dump.h"
-#include "xla/service/fusion_queue.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/fusion_deduplication_cache.h"
 #include "xla/service/gpu/fusion_process_dump.pb.h"
 #include "xla/service/gpu/fusions/triton/triton_support.h"
 #include "xla/service/gpu/gpu_fusible.h"
@@ -57,7 +56,6 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/gpu/model/gpu_performance_model.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
-#include "xla/service/gpu/model/symbolic_tile_analysis.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/hlo_graph_dumper.h"
@@ -77,10 +75,6 @@ namespace xla {
 namespace gpu {
 
 namespace {
-bool ElementIsF32OrF16(const Shape& shape) {
-  PrimitiveType type = shape.element_type();
-  return type == F32 || type == F16;
-}
 
 bool IsFusible(const HloInstruction& instr) {
   // Side-effecting operations are not fusible.
@@ -142,7 +136,7 @@ GpuBackendConfig GetTritonGpuBackendConfig(
 // max-benefit producer to fuse, and update the estimated benefits of the fused
 // nodes and their operands.
 class PriorityFusionQueue {
-  using Priority = int64_t;
+  using Priority = absl::Duration;
   using CanFuseCallback = std::function<FusionDecision(
       HloInstruction* /*producer*/, int64_t /*consumer operand_index*/)>;
 
@@ -154,6 +148,7 @@ class PriorityFusionQueue {
                       tsl::thread::ThreadPool* thread_pool,
                       mlir::MLIRContext* mlir_context,
                       HloFusionAnalysisCache& fusion_analysis_cache,
+                      FusionDeduplicationCache& fusion_deduplication_cache,
                       bool triton_softmax_priority_fusion_enabled)
       : computation_(computation),
         device_info_(device_info),
@@ -165,6 +160,7 @@ class PriorityFusionQueue {
         thread_pool_(thread_pool),
         mlir_context_(mlir_context),
         fusion_analysis_cache_(fusion_analysis_cache),
+        fusion_deduplication_cache_(fusion_deduplication_cache),
         triton_softmax_priority_fusion_enabled_(
             triton_softmax_priority_fusion_enabled) {
     VLOG(2) << "Running full HLO cost analysis for " << computation_->name();
@@ -211,7 +207,7 @@ class PriorityFusionQueue {
 
       // If the priority is negative, it's not helpful to perform fusion on this
       // instruction.
-      if (priority < 0) {
+      if (priority < absl::ZeroDuration()) {
         continue;
       }
 
@@ -312,6 +308,8 @@ class PriorityFusionQueue {
         to_update_priority_.begin(), to_update_priority_.end()});
 
     to_update_priority_.clear();
+    operands_to_new_consumers_.clear();
+    operands_to_removed_consumers_runtimes_.clear();
     return absl::OkStatus();
   }
 
@@ -325,7 +323,6 @@ class PriorityFusionQueue {
                        consumer->name(), "| inside PriorityFusion"),
           *consumer, producer);
     }
-    InvalidateCaches(consumer);
   }
 
   // Invalidates all cached value related to this instruction. Called before the
@@ -350,6 +347,47 @@ class PriorityFusionQueue {
     gpu_performance_model_cache_.Invalidate(*instruction);
     fusion_analysis_cache_.Invalidate(*instruction);
     fusion_info_cache_.Invalidate(instruction);
+  }
+
+  void UpdateRuntimes(
+      GpuPerformanceModel::RunTimes& runtimes, const HloInstruction* consumer,
+      const absl::flat_hash_map<const HloInstruction*, absl::Duration>&
+          original_consumers) {
+    auto it = original_consumers.find(consumer);
+    if (it != original_consumers.end()) {
+      runtimes.time_fused += it->second;
+      auto consumer_cache_result = gpu_performance_model_cache_.Get(*consumer);
+      CHECK(consumer_cache_result.has_value());
+      runtimes.time_unfused += (*consumer_cache_result).exec_time;
+    }
+  }
+
+  // Prepare for incremental updates
+  void ComputeRuntimesOfRemovedConsumers() {
+    for (const auto& pair : operands_to_new_consumers_) {
+      auto operand = pair.first;
+      // Checks if this producer's priority was calculated before. If so, we can
+      // do incremental update here.
+      if (!reverse_map_.contains(operand)) {
+        continue;
+      }
+      // Get all of this producer's original consumers. Bitcast/constant have
+      // priority calculated but they don't have cache entries.
+      if (!gpu_performance_model_cache_.ContainsConsumers(*operand)) {
+        continue;
+      }
+      const auto& original_consumers =
+          gpu_performance_model_cache_.GetAllConsumers(*operand);
+      GpuPerformanceModel::RunTimes runtimes;
+      for (auto consumer : current_consumers()) {
+        UpdateRuntimes(runtimes, consumer, original_consumers);
+      }
+      UpdateRuntimes(runtimes, current_producer(), original_consumers);
+      auto operand_cache_result = gpu_performance_model_cache_.Get(*operand);
+      runtimes.time_unfused += (*operand_cache_result).exec_time +
+                               GpuPerformanceModel::kKernelLaunchOverhead;
+      operands_to_removed_consumers_runtimes_.emplace(operand, runtimes);
+    }
   }
 
   // Updates data for the new fusion instruction and its users and operands.
@@ -382,15 +420,6 @@ class PriorityFusionQueue {
       RemoveInstruction(original_consumer);
     }
 
-    // Detach 'original_producer' from its operands if it has no users.
-    // This avoids having it appear as a "phantom" user in subsequent priority
-    // calculations on 'fusion.operands' below, before it is finally removed
-    // in 'RemoveInstruction'.
-    if (original_producer->user_count() == 0) {
-      InvalidateCaches(original_producer);
-      original_producer->DetachFromOperandsAndUsers();
-    }
-
     // Collect the instructions whose priorities need to be updated.
     for (HloInstruction* operand : fusion->operands()) {
       if (operand == original_producer ||
@@ -405,6 +434,9 @@ class PriorityFusionQueue {
       }
 
       to_update_priority_.insert(operand);
+      // update the consumers of this operand that we care about,
+      // so we can do incremental update of the operand
+      operands_to_new_consumers_[operand].push_back(fusion);
     }
     to_update_priority_.insert(fusion);
   }
@@ -445,13 +477,13 @@ class PriorityFusionQueue {
   Priority CalculateProducerPriority(HloInstruction* producer) {
     // Bitcasts should always be fused first, since they are no-ops.
     if (producer->opcode() == HloOpcode::kBitcast) {
-      return std::numeric_limits<Priority>::max();
+      return absl::InfiniteDuration();
     }
     // We always fuse constants, but the cost model doesn't handle them very
     // well: fusing constants changes costs significantly. Also, there's no
     // point recomputing priorities. Therefore, we fuse all of them at the end.
     if (producer->opcode() == HloOpcode::kConstant) {
-      return std::numeric_limits<Priority>::min();
+      return -absl::InfiniteDuration();
     }
 
     // Don't fuse if we can't fuse in all users.
@@ -464,15 +496,35 @@ class PriorityFusionQueue {
         step->set_producer_name(std::string(producer->name()));
         step->set_reason(fusion_decision.Explain());
       }
-      return std::numeric_limits<Priority>::min();
+      return -absl::InfiniteDuration();
     }
 
+    auto removed_consumers_runtime_it =
+        operands_to_removed_consumers_runtimes_.find(producer);
+    bool is_incremental_update = removed_consumers_runtime_it !=
+                                 operands_to_removed_consumers_runtimes_.end();
+    absl::Span<HloInstruction* const> fused_consumers =
+        is_incremental_update
+            ? operands_to_new_consumers_.find(producer)->second
+            : absl::MakeConstSpan(producer->users());
     GpuPerformanceModel::RunTimes run_times =
         GpuPerformanceModel::EstimateRunTimesForPriorityFusion(
             producer, *device_info_, &cost_analysis_,
             GpuPerformanceModelOptions::PriorityFusion(
                 &fusion_analysis_cache_, &gpu_performance_model_cache_),
-            producer->users());
+            fused_consumers);
+    Priority current_priority;
+    if (is_incremental_update) {
+      // subtract the runtimes of removed consumers
+      const GpuPerformanceModel::RunTimes& removed_consumers_runtime =
+          removed_consumers_runtime_it->second;
+      run_times.time_unfused -= removed_consumers_runtime.time_unfused;
+      run_times.time_fused -= removed_consumers_runtime.time_fused;
+      // get the original priority
+      const PriorityQueue::iterator& queue_it =
+          FindOrDie(reverse_map_, producer);
+      current_priority = queue_it->first.first;
+    }
 
     if (fusion_process_dump_) {
       absl::MutexLock lock(&fusion_process_dump_mutex_);
@@ -485,8 +537,7 @@ class PriorityFusionQueue {
       step->set_us_fused(absl::ToDoubleMicroseconds(run_times.time_fused));
       step->set_us_unfused(absl::ToDoubleMicroseconds(run_times.time_unfused));
     }
-    return absl::ToInt64Nanoseconds(run_times.time_unfused -
-                                    run_times.time_fused);
+    return current_priority + run_times.time_unfused - run_times.time_fused;
   }
 
   FusionDecision IsTritonSupported(const HloInstruction& instruction) {
@@ -505,6 +556,53 @@ class PriorityFusionQueue {
     }
 
     return {};
+  }
+
+  TiledRunTimeDataOrError GetTiledRunTimeDataCached(
+      const HloInstruction* producer, const HloInstruction* consumer) {
+    FusionDeduplicationCache::FusionId fusion_id = [&]() {
+      absl::MutexLock lock(&fusion_deduplication_cache_mutex_);
+      return fusion_deduplication_cache_.GetFusionId(*producer, *consumer);
+    }();
+
+    {
+      absl::MutexLock lock(&tiled_run_time_data_cache_mutex_);
+
+      auto it = tiled_run_time_data_cache_.find(fusion_id);
+      if (it != tiled_run_time_data_cache_.end()) {
+        return it->second;
+      }
+    }
+
+    auto fusion = HloFusionAdaptor::ForProducerConsumer(producer, consumer);
+
+    absl::StatusOr<TiledRunTimeDataOrError> result_or_status =
+        gpu_indexing_performance_model_.TryFindBestTilingForFusion(*fusion);
+
+    // Convert absl::Status into FusionDecision. We don't distinguish between
+    // status and FusionDecision here, because both indicate that tile analysis
+    // failed and we shouldn't fuse.
+    TiledRunTimeDataOrError tiled_run_time_data_or_error =
+        [&]() -> TiledRunTimeDataOrError {
+      if (result_or_status.ok()) {
+        return *result_or_status;
+      } else {
+        return FusionDecision{
+            absl::StrCat("TiledRunTimeDataOrError return status: ",
+                         result_or_status.status().message())};
+      }
+    }();
+
+    if (const auto* fusion_decision =
+            std::get_if<FusionDecision>(&tiled_run_time_data_or_error)) {
+      tiled_run_time_data_or_error = FusionDecision{
+          absl::StrCat("Fusion can not be tiled with SymbolicTileAnalysis: ",
+                       fusion_decision->Explain())};
+    }
+
+    absl::MutexLock lock(&tiled_run_time_data_cache_mutex_);
+    tiled_run_time_data_cache_.emplace(fusion_id, tiled_run_time_data_or_error);
+    return tiled_run_time_data_or_error;
   }
 
   FusionDecision CanFuseTriton(HloInstruction* producer,
@@ -533,26 +631,16 @@ class PriorityFusionQueue {
       }
     }
 
-    auto fusion = HloFusionAdaptor::ForProducerConsumer(producer, consumer);
-
-    absl::StatusOr<TiledRunTimeDataOrError> tiled_run_time_data_or_error =
-        gpu_indexing_performance_model_.TryFindBestTilingForFusion(*fusion);
-
-    if (!tiled_run_time_data_or_error.ok()) {
-      return FusionDecision{
-          absl::StrCat("TiledRunTimeDataOrError return status: ",
-                       tiled_run_time_data_or_error.status().message())};
-    }
+    TiledRunTimeDataOrError tiled_run_time_data_or_error =
+        GetTiledRunTimeDataCached(producer, consumer);
 
     if (const auto* fusion_decision =
-            std::get_if<FusionDecision>(&*tiled_run_time_data_or_error)) {
-      return {
-          absl::StrCat("Fusion can not be tiled with SymbolicTileAnalysis: ",
-                       fusion_decision->Explain())};
+            std::get_if<FusionDecision>(&tiled_run_time_data_or_error)) {
+      return *fusion_decision;
     }
 
     TiledRunTimeData tiled_run_time_data =
-        std::get<TiledRunTimeData>(*std::move(tiled_run_time_data_or_error));
+        std::get<TiledRunTimeData>(std::move(tiled_run_time_data_or_error));
 
     gpu_performance_model_cache_.Set(
         *producer, *consumer, tiled_run_time_data.runtime_data.exec_time);
@@ -739,7 +827,10 @@ class PriorityFusionQueue {
   // avoid recomputing priorities multiple times before we dequeue a new
   // producer.
   absl::flat_hash_set<HloInstruction*> to_update_priority_;
-
+  absl::flat_hash_map<HloInstruction*, std::vector<HloInstruction*>>
+      operands_to_new_consumers_;
+  absl::flat_hash_map<HloInstruction*, GpuPerformanceModel::RunTimes>
+      operands_to_removed_consumers_runtimes_;
   // Proto with structured logs of fusion decisions. Used only for debugging. If
   // null, logging is disabled.
   FusionProcessDumpProto* fusion_process_dump_;
@@ -750,6 +841,9 @@ class PriorityFusionQueue {
   mlir::MLIRContext* mlir_context_;
 
   HloFusionAnalysisCache& fusion_analysis_cache_;
+
+  FusionDeduplicationCache& fusion_deduplication_cache_;
+  absl::Mutex fusion_deduplication_cache_mutex_;
 
   // Caches result of can_fuse for a (producer, consumer) pair. A cache entry is
   // invalidated if producer or consumer is modified.
@@ -767,6 +861,11 @@ class PriorityFusionQueue {
       block_level_parameters_cache_;
   absl::Mutex block_level_parameters_cache_mutex_;
 
+  absl::flat_hash_map<FusionDeduplicationCache::FusionId,
+                      TiledRunTimeDataOrError>
+      tiled_run_time_data_cache_;
+  absl::Mutex tiled_run_time_data_cache_mutex_;
+
   GpuPerformanceModelCache gpu_performance_model_cache_;
 
   // Cache for `FusionFitsInBudget` to avoid recomputing expensive properties
@@ -779,26 +878,6 @@ class PriorityFusionQueue {
 };
 
 }  // namespace
-
-/*static*/ bool PriorityFusion::IsExpensive(const HloInstruction& instruction) {
-  // Some floating-point math ops are cheap on the GPU.
-  switch (instruction.opcode()) {
-    case HloOpcode::kDivide:
-    case HloOpcode::kSqrt:
-    case HloOpcode::kRsqrt:
-    case HloOpcode::kExp:
-      if (ElementIsF32OrF16(instruction.shape())) {
-        return false;
-      }
-      break;
-    // Loop fusions are cheap.
-    case HloOpcode::kFusion:
-      return false;
-    default:
-      break;
-  }
-  return InstructionFusion::IsExpensive(instruction);
-}
 
 // Return true, if instr is a small constant.
 //
@@ -861,7 +940,10 @@ absl::StatusOr<bool> PriorityFusion::Run(
   bool triton_softmax_priority_fusion_enabled =
       module->config()
           .debug_options()
-          .xla_gpu_enable_triton_softmax_priority_fusion();
+          .xla_gpu_experimental_enable_triton_softmax_priority_fusion();
+
+  FusionDeduplicationCache fusion_deduplication_cache =
+      FusionDeduplicationCache::Create(*module);
 
   int changed = false;
   for (auto* computation : fusible_computations) {
@@ -870,7 +952,8 @@ absl::StatusOr<bool> PriorityFusion::Run(
     auto fusion_queue = std::make_unique<PriorityFusionQueue>(
         computation, cost_analysis_options_, &device_info_,
         fusion_process_dump_.get(), thread_pool_, &mlir_context_,
-        fusion_analysis_cache_, triton_softmax_priority_fusion_enabled);
+        fusion_analysis_cache_, fusion_deduplication_cache,
+        triton_softmax_priority_fusion_enabled);
 
     while (fusion_queue->DequeueNextProducer()) {
       auto producer = fusion_queue->current_producer();
@@ -890,8 +973,12 @@ absl::StatusOr<bool> PriorityFusion::Run(
         VLOG(5) << "next: " << consumer->name() << "(" << consumer << ") + "
                 << producer->name() << "(" << producer << ")";
 
+        int64_t consumer_operand_index = consumer->operand_index(producer);
+
         fusion_queue->PreFusion(producer, consumer);
-        auto fusion_instruction = Fuse(producer, consumer, computation);
+        auto fusion_instruction = Fuse(producer, consumer);
+        fusion_deduplication_cache.UpdateFusedInstructionId(
+            *fusion_instruction, *producer, *consumer, consumer_operand_index);
         fusion_queue->OnFusingInstruction(fusion_instruction, producer,
                                           consumer);
 
@@ -904,12 +991,18 @@ absl::StatusOr<bool> PriorityFusion::Run(
         changed = true;
       }
 
+      fusion_queue->ComputeRuntimesOfRemovedConsumers();
       if (producer->user_count() == 0) {
+        fusion_queue->InvalidateCaches(producer);
+        producer->DetachFromOperandsAndUsers();
         fusion_queue->RemoveInstruction(producer);
         // Remove from computation.
         TF_RETURN_IF_ERROR(computation->RemoveInstruction(producer));
       }
 
+      for (auto* consumer : fusion_queue->current_consumers()) {
+        fusion_queue->InvalidateCaches(consumer);
+      }
       TF_RETURN_IF_ERROR(fusion_queue->UpdatePriorities());
     }
 
@@ -930,8 +1023,9 @@ absl::StatusOr<bool> PriorityFusion::Run(
     for (auto* constant : constants) {
       auto users = constant->users();
       for (auto* user : users) {
-        if (IsFusible(*user) && CanEmitInputFusedScatter(*constant, *user)) {
-          Fuse(constant, user, computation);
+        if ((IsFusible(*user) || IsGenericTritonFusion(*user)) &&
+            CanEmitInputFusedScatter(*constant, *user)) {
+          Fuse(constant, user);
           changed = true;
         }
       }
@@ -950,15 +1044,6 @@ absl::StatusOr<bool> PriorityFusion::Run(
   }
 
   return changed;
-}
-
-FusionDecision PriorityFusion::ShouldFuse(HloInstruction* consumer,
-                                          int64_t operand_index) {
-  // This method is called in `InstructionFusion::Run` right before fusion, but
-  // it will always return true. Fusion decision are fully controlled by the
-  // PriorityQueue. If the queue returns a producer that shouldn't be fused,
-  // it's a bug and should be fixed in the queue logic.
-  return {};
 }
 
 HloInstruction::FusionKind PriorityFusion::ChooseKind(
@@ -983,20 +1068,38 @@ HloInstruction::FusionKind PriorityFusion::ChooseKind(
   }
 }
 
-HloInstruction* PriorityFusion::FuseInstruction(
-    HloInstruction* fusion_instruction, HloInstruction* producer) {
-  HloInstruction* result = fusion_instruction;
+HloInstruction* PriorityFusion::Fuse(HloInstruction* producer,
+                                     HloInstruction* consumer) {
+  VLOG(2) << "Fusing " << producer->ToString() << " into "
+          << consumer->ToString();
+
+  HloComputation* computation = consumer->parent();
+  auto kind = ChooseKind(producer, consumer);
+  HloInstruction* fusion_instruction = consumer;
+
+  if (fusion_instruction->opcode() != HloOpcode::kFusion) {
+    fusion_instruction = computation->AddInstruction(
+        HloInstruction::CreateFusion(consumer->shape(), kind, consumer));
+    TF_CHECK_OK(computation->ReplaceInstruction(consumer, fusion_instruction));
+  } else if (kind != fusion_instruction->fusion_kind()) {
+    fusion_instruction->set_fusion_kind(kind);
+  }
+
+  fusion_instruction->set_called_computations_execution_thread(
+      computation->execution_thread(),
+      /*skip_async_execution_thread_overwrite=*/false);
+
   if (producer->opcode() == HloOpcode::kFusion) {
     fusion_instruction->MergeFusionInstruction(producer);
   } else {
-    result = InstructionFusion::FuseInstruction(fusion_instruction, producer);
+    fusion_instruction->FuseInstruction(producer);
   }
-  return result;
-}
 
-std::unique_ptr<FusionQueue> PriorityFusion::GetFusionQueue(
-    HloComputation* computation) {
-  return nullptr;
+  if (fusion_instruction != consumer) {
+    VLOG(2) << "       created new fusion: " << fusion_instruction->ToString();
+  }
+
+  return fusion_instruction;
 }
 
 }  // namespace gpu

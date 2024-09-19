@@ -12,7 +12,7 @@ load(
 )
 load(
     "//xla/tsl:tsl.bzl",
-    "if_hermetic_cuda_libs",
+    "if_cuda_libs",
 )
 load("//xla/tsl/cuda:stub.bzl", "cuda_stub")
 
@@ -50,7 +50,7 @@ cc_library(
 
 alias(
     name = "cublas",  # buildifier: disable=duplicated-name
-    actual = if_hermetic_cuda_libs("@cuda_cublas//:cublas", ":cublas_stub"),
+    actual = if_cuda_libs("@cuda_cublas//:cublas", ":cublas_stub"),
     visibility = ["//visibility:public"],
 )
 
@@ -80,7 +80,7 @@ cc_library(
 
 alias(
     name = "cublas_lt",
-    actual = if_hermetic_cuda_libs("@cuda_cublas//:cublasLt", ":cublas_lt_stub"),
+    actual = if_cuda_libs("@cuda_cublas//:cublasLt", ":cublas_lt_stub"),
     visibility = ["//visibility:public"],
 )
 
@@ -147,7 +147,7 @@ cc_library(
 
 alias(
     name = "cudart",  # buildifier: disable=duplicated-name
-    actual = if_hermetic_cuda_libs("@cuda_cudart//:cudart", ":cudart_stub"),
+    actual = if_cuda_libs("@cuda_cudart//:cudart", ":cudart_stub"),
     visibility = ["//visibility:public"],
 )
 
@@ -179,7 +179,7 @@ cc_library(
 
 alias(
     name = "cudnn",  # buildifier: disable=duplicated-name
-    actual = if_hermetic_cuda_libs("@cuda_cudnn//:cudnn", ":cudnn_stub"),
+    actual = if_cuda_libs("@cuda_cudnn//:cudnn", ":cudnn_stub"),
     visibility = ["//visibility:public"],
 )
 
@@ -191,7 +191,7 @@ cc_library(
 
 alias(
     name = "nccl_rpath",
-    actual = if_hermetic_cuda_libs("@cuda_nccl//:nccl", ":nccl_rpath_flags"),
+    actual = if_cuda_libs("@cuda_nccl//:nccl", ":nccl_rpath_flags"),
     visibility = ["//visibility:public"],
 )
 
@@ -228,7 +228,7 @@ cc_library(
 
 alias(
     name = "cufft",  # buildifier: disable=duplicated-name
-    actual = if_hermetic_cuda_libs("@cuda_cufft//:cufft", ":cufft_stub"),
+    actual = if_cuda_libs("@cuda_cufft//:cufft", ":cufft_stub"),
     visibility = ["//visibility:public"],
 )
 
@@ -261,7 +261,7 @@ cc_library(
 
 alias(
     name = "cupti",  # buildifier: disable=duplicated-name
-    actual = if_hermetic_cuda_libs("@cuda_cupti//:cupti", ":cupti_stub"),
+    actual = if_cuda_libs("@cuda_cupti//:cupti", ":cupti_stub"),
     visibility = ["//visibility:public"],
 )
 
@@ -292,7 +292,7 @@ cc_library(
 
 alias(
     name = "cusolver",  # buildifier: disable=duplicated-name
-    actual = if_hermetic_cuda_libs("@cuda_cusolver//:cusolver", ":cusolver_stub"),
+    actual = if_cuda_libs("@cuda_cusolver//:cusolver", ":cusolver_stub"),
     visibility = ["//visibility:public"],
 )
 
@@ -324,7 +324,7 @@ cc_library(
 
 alias(
     name = "cusparse",  # buildifier: disable=duplicated-name
-    actual = if_hermetic_cuda_libs("@cuda_cusparse//:cusparse", ":cusparse_stub"),
+    actual = if_cuda_libs("@cuda_cusparse//:cusparse", ":cusparse_stub"),
     visibility = ["//visibility:public"],
 )
 
@@ -357,6 +357,6 @@ cc_library(
 
 alias(
     name = "nccl_stub",  # buildifier: disable=duplicated-name
-    actual = if_hermetic_cuda_libs("@cuda_nccl//:nccl", ":nccl"),
+    actual = if_cuda_libs("@cuda_nccl//:nccl", ":nccl"),
     visibility = ["//visibility:public"],
 )

@@ -1,5 +1,5 @@
 Pod::Spec.new do |s|
-  s.name             = 'TensorFlowLiteSelectTfOps'
+  s.name             = '${POD_NAME}'
   s.version          = '${TFL_BUILD_VERSION}'
   s.authors          = 'Google Inc.'
   s.license          = { :type => 'Apache' }

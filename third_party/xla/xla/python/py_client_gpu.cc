@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
 #include "xla/service/custom_call_status.h"
 #include "tsl/platform/errors.h"
@@ -33,6 +34,8 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/python/callback.h"
 #include "xla/python/nb_numpy.h"
+#include "xla/service/custom_call_target_registry.h"
+#include "xla/service/platform_util.h"
 
 #if TENSORFLOW_USE_ROCM
 #define gpuSuccess hipSuccess
@@ -156,5 +159,13 @@ void XlaPythonGpuCallback(gpuStreamHandle stream, void** buffers,
     delete[] static_cast<char*>(temp_buffers[i]);
   }
 }
+
+// TODO(danfm): When compiled as part of a jaxlib plugin, this will register
+// the custom call target in the plugin's registry. This won't affect
+// registration via the Python API, but we should remove this once we have
+// fully migrated to the plugin interface.
+XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(
+    "xla_python_gpu_callback", &XlaPythonGpuCallback,
+    absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value()));
 
 }  // namespace xla

@@ -476,6 +476,14 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %arg0 : tensor<!tf_type.variant<tensor<16x1xf32>>>
   }
 
+  // CHECK-LABEL: zeros_like_constrained_result_shape
+  func.func @zeros_like_constrained_result_shape(%arg0: tensor<?x?xf32>) -> tensor<?x2xf32> {
+    // CHECK: %0 = "tf.ZerosLike"(%arg0) : (tensor<?x?xf32>) -> tensor<?x?xf32>
+    // CHECK: return %0 : tensor<?x?xf32>
+    %0 = "tf.ZerosLike"(%arg0) : (tensor<?x?xf32>) -> tensor<?x2xf32>
+    func.return %0 : tensor<?x2xf32>
+  }
+
   // Test propagation from called functions to the call site.
   // CHECK-LABEL: func @stateful_partitioned_call(
   // CHECK-SAME: -> tensor<20xi32>

@@ -75,6 +75,9 @@ typedef struct {
     struct {
       bool input_quantized;
     } add;
+    struct {
+      bool is_per_channel_quantized;
+    } embedding_lookup;
   } ext_options;
 } OpSignature;
 

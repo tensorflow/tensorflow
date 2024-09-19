@@ -85,4 +85,4 @@ When you're ready to send changes for review, create a
 [pull request](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/about-pull-requests).
 
 To learn about the XLA code review philosophy, see
-[Code reviews](code_reviews.md).
+[Review Process](contributing.md#review-process).

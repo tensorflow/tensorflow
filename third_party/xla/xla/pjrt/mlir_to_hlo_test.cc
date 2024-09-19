@@ -74,6 +74,23 @@ TEST(MlirToHloTest, ChloTest) {
   EXPECT_THAT(blob, IsVhloArtifact("1.0.0"));
 }
 
+TEST(MlirToHloTest, ChloTanOpTest) {
+  constexpr char kProgram[] =
+      R"(
+    func.func @add(%arg0: tensor<1x2xf32>) -> tensor<1x2xf32> {
+      %0 = chlo.tan %arg0 : tensor<1x2xf32> -> tensor<1x2xf32>
+      return %0 : tensor<1x2xf32>
+    }
+  )";
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                          ParseMlirModuleString(kProgram, context));
+  TF_ASSERT_OK_AND_ASSIGN(std::string blob, Serialize(*module, 47, "1.0.0"));
+
+  // CHLO decomposes to StableHLO, so uses VHLO serialization.
+  EXPECT_THAT(blob, IsVhloArtifact("1.0.0"));
+}
+
 TEST(MlirToHloTest, MhloTest) {
   constexpr char kProgram[] =
       R"(

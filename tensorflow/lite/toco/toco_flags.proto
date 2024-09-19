@@ -41,7 +41,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 65.
+// Next ID to use: 66.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -372,4 +372,8 @@ message TocoFlags {
 
   // The source model type.
   optional ModelOriginFramework model_origin_framework = 64 [default = UNSET];
+
+  // When set to true, convert +Inf/-Inf to MIN/MAX float value and output of
+  // convert only contains finite values.
+  optional bool canonicalizing_inf_as_min_max_float = 65 [default = false];
 }

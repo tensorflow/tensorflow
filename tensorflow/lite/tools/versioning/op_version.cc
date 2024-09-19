@@ -150,7 +150,8 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     }
 
     case BuiltinOperator_EMBEDDING_LOOKUP: {
-      if (op_sig.inputs.at(1).type == kTfLiteInt4) {
+      if (op_sig.inputs.at(1).type == kTfLiteInt4 ||
+          op_sig.ext_options.embedding_lookup.is_per_channel_quantized) {
         return 4;
       }
       return 1;

@@ -1075,8 +1075,10 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
                   absl::StrCat("/job:", coord_task.job_name(),
                                "/task:", coord_task.task_id()));
               if (!s.ok()) {
-                LOG(INFO) << "Preemption not exported to coordination service: "
-                          << s;
+                // Dev note: `ALREADY_EXISTS` errors are expected if multiple
+                // workers receive a SIGTERM.
+                VLOG(3) << "Preemption not exported to coordination service: "
+                        << s;
               }
             }
           });

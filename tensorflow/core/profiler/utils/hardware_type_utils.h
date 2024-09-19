@@ -27,6 +27,10 @@ namespace profiler {
 double GetFlopMaxThroughputPerSM(const DeviceCapabilities& device_cap);
 
 // Returns the GPU model name from the given DeviceCapabilities.
+// For nvidia GPUs, the name is like "Nvidia GPU (Kepler)" or "Nvidia GPU
+// (Turing)". For AMD GPUs, the name is like "AMD GPU - gfx-10XX series".
+// The model name here for Nvidia GPU in fact refers to its microarchitecture
+// name.
 absl::string_view GpuModelName(const DeviceCapabilities& device_cap);
 
 HardwareType ParseHardwareType(absl::string_view device_type);

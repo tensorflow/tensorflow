@@ -591,7 +591,7 @@ def distribute(
   >>> dataset = tf.data.Dataset.range(10)
   >>> dataset = dataset.apply(tf.data.experimental.service.distribute(
   ...     processing_mode="parallel_epochs", service=dispatcher.target))
-  >>> print(sorted(list(dataset.as_numpy_iterator())))
+  >>> sorted([a.item() for a in dataset.as_numpy_iterator()])
   [0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9]
 
   "distributed_epoch", on the other hand, will still produce each element once:
@@ -606,7 +606,7 @@ def distribute(
   >>> dataset = tf.data.Dataset.range(10)
   >>> dataset = dataset.apply(tf.data.experimental.service.distribute(
   ...     processing_mode="distributed_epoch", service=dispatcher.target))
-  >>> print(sorted(list(dataset.as_numpy_iterator())))
+  >>> sorted([a.item() for a in dataset.as_numpy_iterator()])
   [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
   When using `apply(tf.data.experimental.service.distribute(...))`, the dataset
@@ -626,7 +626,7 @@ def distribute(
   ...    tf.data.experimental.service.distribute("parallel_epochs",
   ...                                            dispatcher.target))
   >>> dataset = dataset.map(lambda x: x+1)
-  >>> print(sorted(list(dataset.as_numpy_iterator())))
+  >>> sorted([a.item() for a in dataset.as_numpy_iterator()])
   [1, 1, 2, 2, 5, 5, 10, 10, 17, 17]
 
   In the above example, the dataset operations (before applying the `distribute`
@@ -873,7 +873,7 @@ def register_dataset(
   ...     service=dispatcher.target,
   ...     dataset_id=dataset_id,
   ...     element_spec=dataset.element_spec)
-  >>> print(list(dataset.as_numpy_iterator()))
+  >>> [a.item() for a in dataset.as_numpy_iterator()]
   [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
   Args:
@@ -1100,7 +1100,7 @@ def from_dataset_id(processing_mode,
   ...     service=dispatcher.target,
   ...     dataset_id=dataset_id,
   ...     element_spec=dataset.element_spec)
-  >>> print(list(dataset.as_numpy_iterator()))
+  >>> [a.item() for a in dataset.as_numpy_iterator()]
   [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
   Args:

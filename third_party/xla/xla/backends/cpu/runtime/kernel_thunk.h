@@ -96,19 +96,17 @@ class KernelThunk : public Thunk {
   KernelThunk(Info info,
               absl::Span<const BufferAllocation::Slice> arguments_buffers,
               absl::Span<const BufferAllocation::Slice> results_buffers,
-              absl::flat_hash_set<BufferAllocation::Slice> invariant_buffers,
+              absl::flat_hash_set<int64_t> invariant_arguments,
               std::string kernel_name, se::ThreadDim thread_dim,
               std::optional<uint64_t> min_alignment);
 
-  absl::Status CheckInvariantBufferSlices() const;
-
-  absl::Status CheckInvariantBuffersMemory(
-      const BufferAllocations& buffer_allocations) const;
+  absl::Status CheckInvariantBuffersMemory(const KernelArgs& kernel_args) const;
 
   ArgumentsBuffers arguments_buffers_;
   ResultsBuffers results_buffers_;
 
-  absl::flat_hash_set<BufferAllocation::Slice> invariant_buffers_;
+  // A set of invariant arguments (their indices).
+  absl::flat_hash_set<int64_t> invariant_arguments_;
 
   size_t num_kernel_args_;
 
@@ -159,7 +157,7 @@ class KernelThunk final : public internal::KernelThunk<> {
       absl::Span<const BufferAllocation::Slice> arguments_buffers,
       absl::Span<const BufferAllocation::Slice> results_buffers,
       std::string kernel_name, se::ThreadDim thread_dim,
-      absl::flat_hash_set<BufferAllocation::Slice> invariant_buffers,
+      absl::flat_hash_set<int64_t> invariant_arguments,
       std::optional<uint64_t> min_alignment = std::nullopt);
 
   tsl::AsyncValueRef<Thunk::ExecuteEvent> Execute(

@@ -20,4 +20,4 @@
 
 set -euox pipefail -o history
 
-"$KOKORO_ARTIFACTS_DIR"/github/xla/build_tools/build.py
+"$KOKORO_ARTIFACTS_DIR"/github/xla/build_tools/ci/build.py

@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_wrapper.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/hlo_cost_analysis.h"
 
@@ -45,7 +46,7 @@ AutoShardingSolverResult Solve(
     const std::vector<absl::btree_set<int64_t>>& node_groups,
     const std::vector<absl::btree_set<int64_t>>& edge_groups,
     const AutoShardingOption& option, absl::string_view request_prefix,
-    const absl::flat_hash_map<std::string, const HloInstruction*>&
+    const absl::flat_hash_map<std::string, HloSharding>&
         sharding_propagation_solution) {
   return CallSolver(hlo_module, hlo_live_range, strategy_map, strategy_groups,
                     cost_graph, alias_set, node_intervals, edge_intervals,

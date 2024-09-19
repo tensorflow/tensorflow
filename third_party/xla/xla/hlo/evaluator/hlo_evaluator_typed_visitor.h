@@ -520,51 +520,51 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   absl::Status HandlePower(const HloInstruction* power) override {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[power],
-        ElementWiseBinaryOp(power, [](ElementwiseT lhs_el,
-                                      ElementwiseT rhs_el) {
-          // Case 0: 1^x = 1 and x^0 = 1, regardless of X, see
-          // Branch Cuts for Complex Elementary Functions or Much Ado About
-          // Nothing's Sign Bit, W. Kahan, Section 10.
-          if (lhs_el == ElementwiseT(1) || rhs_el == ElementwiseT(0)) {
-            return static_cast<ElementwiseT>(1);
-          }
-          // Case 1:
-          // 1. inf^(a + 0i) = inf, if a > 0.
-          // 2. inf^(a + 0i) = 0, if a < 0.
-          if constexpr (is_complex_v<ElementwiseT>) {
-            auto is_positive_infinity = [](ElementwiseT c) {
-              return c.imag() == 0 && c.real() > 0 && std::isinf(c.real());
-            };
-            auto is_positive_real = [](ElementwiseT c) {
-              return c.real() > 0 && c.imag() == 0;
-            };
-            auto is_negative_real = [](ElementwiseT c) {
-              return c.real() < 0 && c.imag() == 0;
-            };
-            if (is_positive_infinity(lhs_el) && is_positive_real(rhs_el)) {
-              return static_cast<ElementwiseT>(lhs_el);
-            }
-            if (is_positive_infinity(lhs_el) && is_negative_real(rhs_el)) {
-              return static_cast<ElementwiseT>(0);
-            }
-          }
-          // Case 2:
-          // Fallback to pow.
-          if constexpr (std::is_same_v<ElementwiseT, bool>) {
-            return lhs_el || !rhs_el;
-          } else if constexpr (std::is_integral_v<ElementwiseT>) {
-            if constexpr (std::is_signed_v<ElementwiseT>) {
-              if (rhs_el < static_cast<ElementwiseT>(0)) {
-                return static_cast<ElementwiseT>(
-                    lhs_el == static_cast<ElementwiseT>(1) ? 1 : 0);
+        ElementWiseBinaryOp(
+            power, [](ElementwiseT lhs_el, ElementwiseT rhs_el) {
+              // Case 0: 1^x = 1 and x^0 = 1, regardless of X, see
+              // Branch Cuts for Complex Elementary Functions or Much Ado About
+              // Nothing's Sign Bit, W. Kahan, Section 10.
+              if (lhs_el == ElementwiseT(1) || rhs_el == ElementwiseT(0)) {
+                return static_cast<ElementwiseT>(1);
               }
-            }
-            return static_cast<ElementwiseT>(
-                IPow<std::make_unsigned_t<ElementwiseT>>(lhs_el, rhs_el));
-          } else {
-            return static_cast<ElementwiseT>(std::pow(lhs_el, rhs_el));
-          }
-        }));
+              // Case 1:
+              // 1. inf^(a + 0i) = inf, if a > 0.
+              // 2. inf^(a + 0i) = 0, if a < 0.
+              if constexpr (is_complex_v<ElementwiseT>) {
+                auto is_positive_infinity = [](ElementwiseT c) {
+                  return c.imag() == 0 && c.real() > 0 && std::isinf(c.real());
+                };
+                auto is_positive_real = [](ElementwiseT c) {
+                  return c.real() > 0 && c.imag() == 0;
+                };
+                auto is_negative_real = [](ElementwiseT c) {
+                  return c.real() < 0 && c.imag() == 0;
+                };
+                if (is_positive_infinity(lhs_el) && is_positive_real(rhs_el)) {
+                  return static_cast<ElementwiseT>(lhs_el);
+                }
+                if (is_positive_infinity(lhs_el) && is_negative_real(rhs_el)) {
+                  return static_cast<ElementwiseT>(0);
+                }
+              }
+              // Case 2:
+              // Fallback to pow.
+              if constexpr (std::is_same_v<ElementwiseT, bool>) {
+                return lhs_el || !rhs_el;
+              } else if constexpr (std::is_integral_v<ElementwiseT>) {
+                if constexpr (std::is_signed_v<ElementwiseT>) {
+                  if (rhs_el < static_cast<ElementwiseT>(0)) {
+                    return static_cast<ElementwiseT>(
+                        lhs_el == static_cast<ElementwiseT>(1) ? 1 : 0);
+                  }
+                }
+                return static_cast<ElementwiseT>(
+                    IPow<std::make_unsigned_t<ElementwiseT>>(lhs_el, rhs_el));
+              } else {
+                return static_cast<ElementwiseT>(std::pow(lhs_el, rhs_el));
+              }
+            }));
     return absl::OkStatus();
   }
 
@@ -1278,14 +1278,28 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
                             /*operand_shape=*/pad->operand(0)->shape(),
                             /*padding_value_shape=*/pad->operand(1)->shape(),
                             /*padding_config=*/pad->padding_config()));
+    // Try to convert the element type if the inferred type is not compatible.
+    bool convert_element_type =
+        pad->shape().element_type() != inferred_return_shape.element_type();
+    if (convert_element_type) {
+      inferred_return_shape.set_element_type(pad->shape().element_type());
+    }
     CHECK(ShapeUtil::Compatible(pad->shape(), inferred_return_shape))
         << "return shape is set to: " << ShapeUtil::HumanString(pad->shape())
         << " but is inferred to be: "
         << ShapeUtil::HumanString(inferred_return_shape);
+    ReturnT scalar;
+    if (convert_element_type) {
+      TF_ASSIGN_OR_RETURN(auto literal,
+                          parent_->GetEvaluatedLiteralFor(pad->operand(1))
+                              .Convert(inferred_return_shape.element_type()));
+      scalar = literal.Get<ReturnT>({});
+    } else {
+      scalar =
+          parent_->GetEvaluatedLiteralFor(pad->operand(1)).Get<ReturnT>({});
+    }
 
     // Create new HLO of padded shape with padding value.
-    ReturnT scalar =
-        parent_->GetEvaluatedLiteralFor(pad->operand(1)).Get<ReturnT>({});
     Literal result(pad->shape());
     TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
         [&scalar](absl::Span<const int64_t> multi_index, int) {

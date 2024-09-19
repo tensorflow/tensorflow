@@ -34,7 +34,6 @@ limitations under the License.
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace interpreter {

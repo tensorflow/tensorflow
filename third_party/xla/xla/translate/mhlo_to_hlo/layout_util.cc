@@ -16,6 +16,14 @@ limitations under the License.
 #include "xla/translate/mhlo_to_hlo/layout_util.h"
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "xla/client/xla_builder.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace mlir {
 

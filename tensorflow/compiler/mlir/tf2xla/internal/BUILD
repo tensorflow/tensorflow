@@ -303,7 +303,6 @@ tf_cc_test(
 tf_proto_library(
     name = "reproducer_proto",
     srcs = ["reproducer.proto"],
-    cc_api_version = 2,
     protodeps = [
         "//tensorflow/core:protos_all",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto",

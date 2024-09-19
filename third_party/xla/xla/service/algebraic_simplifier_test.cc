@@ -42,13 +42,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/hlo_parser.h"
-#include "xla/service/hlo_pass_fix.h"
 #include "xla/service/host_memory_offload_annotations.h"
 #include "xla/service/layout_assignment.h"
 #include "xla/service/pattern_matcher.h"
@@ -11819,10 +11819,34 @@ TEST_F(AlgebraicSimplifierTest, ReduceOfConstantBroadcastS32) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
-  auto clone = m->Clone();
   HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
   EXPECT_TRUE(simplifier.Run(m.get()).value());
-  std::cout << m->ToString() << std::endl;
+  int64_t reduce_count =
+      absl::c_count_if(m->entry_computation()->instructions(),
+                       HloPredicateIsOp<HloOpcode::kReduce>);
+  // Expect no Reduce operation after simplification.
+  EXPECT_EQ(0, reduce_count);
+}
+
+TEST_F(AlgebraicSimplifierTest, TrivialReduce) {
+  const std::string hlo_string = R"(
+  HloModule test
+    add_s32 {
+      p0 = s32[] parameter(0)
+      p1 = s32[] parameter(1)
+      ROOT r = s32[] add(p0, p1)
+    }
+    ENTRY test.1 {
+      bcast = s32[1,7,7,1] parameter(0)
+      init = s32[] constant(0)
+      ROOT out = s32[1,7,7] reduce(bcast, init), dimensions={3}, to_apply=add_s32
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_is_layout_sensitive(false);
+  HloPassFix<AlgebraicSimplifier> simplifier(options);
+  EXPECT_TRUE(simplifier.Run(m.get()).value());
   int64_t reduce_count =
       absl::c_count_if(m->entry_computation()->instructions(),
                        HloPredicateIsOp<HloOpcode::kReduce>);
@@ -11846,7 +11870,6 @@ TEST_F(AlgebraicSimplifierTest, ReduceOfConstantBroadcastBF16) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
-  auto clone = m->Clone();
   HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
   EXPECT_TRUE(simplifier.Run(m.get()).value());
   int64_t reduce_count =

@@ -28,7 +28,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/statusor.h"
-#include "xla/stream_executor/gpu/gpu_driver.h"
+#include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/kernel.h"
@@ -52,12 +52,6 @@ class GpuKernel : public Kernel {
   void set_arity(unsigned arity) { arity_ = arity; }
   unsigned Arity() const override { return arity_; }
 
-  void set_name(std::string name) { name_ = std::move(name); }
-
-  // Returns the current kernel cache configuration preference as a
-  // GpuFuncCachePreference.
-  GpuFuncCachePreference GetGpuCacheConfig() const;
-
   absl::StatusOr<int32_t> GetMaxOccupiedBlocksPerCore(
       ThreadDim threads, size_t dynamic_shared_memory_bytes) const override;
 
@@ -69,8 +63,7 @@ class GpuKernel : public Kernel {
 
  private:
   GpuExecutor* gpu_executor_ = nullptr;
-  GpuContext* gpu_context_ = nullptr;  // context where kernel is loaded
-  std::string name_;                   // kernel name
+  Context* gpu_context_ = nullptr;  // context where kernel is loaded
 
   GpuFunctionHandle gpu_function_ = nullptr;  // wrapped CUDA kernel handle
   unsigned arity_ = 0;  // number of formal parameters the kernel takes

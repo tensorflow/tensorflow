@@ -439,12 +439,21 @@ GlooCollectives::~GlooCollectives() = default;
 absl::StatusOr<std::shared_ptr<CollectivesCommunicator>>
 GlooCollectives::GetCommunicator(
     absl::Span<GlobalDeviceId const> global_devices, int rank) {
-  absl::MutexLock lock(&mu_);
-  auto& context = contexts_[std::make_tuple(
-      std::vector<GlobalDeviceId>(global_devices.begin(), global_devices.end()),
-      rank)];
-  if (context) {
-    return context;
+  Context* context;
+  {
+    absl::MutexLock lock(&mu_);
+    auto& context_ref = contexts_[std::make_tuple(
+        std::vector<GlobalDeviceId>(global_devices.begin(),
+                                    global_devices.end()),
+        rank)];
+    if (!context_ref) {
+      context_ref = std::make_unique<Context>();
+    }
+    context = context_ref.get();
+  }
+  absl::MutexLock context_lock(&context->mu);
+  if (context->communicator) {
+    return context->communicator;
   }
   auto gloo_context =
       std::make_shared<gloo::rendezvous::Context>(rank, global_devices.size());
@@ -461,9 +470,9 @@ GlooCollectives::GetCommunicator(
     return absl::UnknownError(
         absl::StrCat("Gloo context initialization failed: ", e.what()));
   }
-  context =
+  context->communicator =
       std::make_shared<GlooCollectivesCommunicator>(std::move(gloo_context));
-  return context;
+  return context->communicator;
 }
 
 }  // namespace xla::cpu

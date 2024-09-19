@@ -57,16 +57,16 @@ TEST_F(GpuKernelTilingTest, UnnestedTransposeWithProperDimensionsTiled) {
     HloModule unnested_transpose_1
 
     ENTRY unnested_transpose_1 {
-      para0 = f16[32,3,64]{2,1,0} parameter(0)
-      ROOT copy1 = f16[32,3,64]{1,0,2} copy(para0)
+      para0 = f16[48,64]{1,0} parameter(0)
+      ROOT t = f16[64,48]{1,0} transpose(para0), dimensions={1,0}
     })";
 
   // Check that a call to llvm.nvvm.barrier0 is generated.
   //
   // We must enable layout assignment in order for this test to work correctly.
-  // AlgebraicSimplifier removes copy1; it's added back by layout assignment,
+  // AlgebraicSimplifier removes 't'; it's added back by layout assignment,
   // which respects the module's entry computation layout.  But if we don't run
-  // layout assignment...well, nobody else adds the copy back.
+  // layout assignment...well, nobody else adds the transpose back.
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithLayoutAssignment())
           .value();
@@ -87,8 +87,8 @@ TEST_F(GpuKernelTilingTest, UnnestedTransposeWithSmallDimensionsNotTiled) {
     HloModule unnested_transpose_2
 
     ENTRY unnested_transpose_2 {
-      para0 = f16[2,3,4]{2,1,0} parameter(0)
-      ROOT copy1 = f16[2,3,4]{1,0,2} copy(para0)
+      para0 = f16[6,4]{1,0} parameter(0)
+      ROOT t = f16[4,6]{1,0} transpose(para0), dimensions={1,0}
     })";
 
   // Check that a call to llvm.nvvm.barrier0 is not generated.  As in
@@ -111,13 +111,19 @@ TEST_F(GpuKernelTilingTest, UnnestedTransposeC128TypeRun) {
 
     ENTRY unnested_transpose_3 {
       para0 = c128[65,65]{1,0} parameter(0)
-      ROOT copy1 = c128[65,65]{0,1} copy(para0)
+      ROOT t = c128[65,65]{1,0} transpose(para0), dimensions={1,0}
     })";
 
-  // With the current implementation for the available hardwares, we bail out
-  // from the tiled transpose implementation at the last minute. Instead of
-  // checking the transpose is not tiled, we only check the module compiled and
-  // run in this test.
+  auto hlo_module =
+      ParseAndReturnVerifiedModule(kHloString, ConfigWithLayoutAssignment())
+          .value();
+  auto expected_ir = R"(
+; CHECK: call void BARRIER()
+)";
+  CompileAndVerifyIr(std::move(hlo_module),
+                     MakePlatformSpecificLlvm(expected_ir),
+                     /*match_optimized_ir=*/true);
+
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0.0}));
 }
 
@@ -125,14 +131,14 @@ TEST_F(GpuKernelTilingTest, SimpleFusionWithTransposeTiled) {
   const char *const kHloString = R"(
     HloModule multiple_output_fusion_1
     fused_computation.1 {
-      param0 = f32[4,5,6,7,8]{4,3,2,1,0} parameter(0)
-      convert = f16[4,5,6,7,8]{4,3,2,1,0} convert(param0)
-      ROOT copy = f16[4,5,6,7,8]{2,1,4,3,0} copy(convert)
+      param0 = f32[4,30,56]{2,1,0} parameter(0)
+      convert = f16[4,30,56]{2,1,0} convert(param0)
+      ROOT t = f16[4,56,30]{2,1,0} transpose(convert), dimensions={0,2,1}
     }
 
     ENTRY copy_in_fusion_run_without_hlo_passes {
-      para0 = f32[4,5,6,7,8]{4,3,2,1,0} parameter(0)
-      ROOT fusion.1 = f16[4,5,6,7,8]{2,1,4,3,0} fusion(para0), kind=kLoop,
+      para0 = f32[4,30,56]{2,1,0} parameter(0)
+      ROOT fusion.1 = f16[4,56,30]{2,1,0} fusion(para0), kind=kLoop,
         calls=fused_computation.1
     })";
 
@@ -157,19 +163,19 @@ TEST_F(GpuKernelTilingTest, MultipleOutputFusionWithOnePossibleTransposeTiled) {
   const char *const kHloString = R"(
     HloModule multiple_output_fusion_1
     fused_computation.1 {
-      param0 = f16[8,31,31,65]{3,2,1,0} parameter(0)
-      param1 = f16[8,31,31,65]{3,2,1,0} parameter(1)
-      copy0 = f16[8,31,31,65]{2,1,3,0} copy(param0)
-      copy1 = f16[8,31,31,65]{2,1,3,0} copy(param1)
-      ROOT tuple1 = (f16[8,31,31,65]{2,1,3,0}, f16[8,31,31,65]{2,1,3,0})
-        tuple(copy0, copy1)
+      param0 = f16[8,961,65]{2,1,0} parameter(0)
+      param1 = f16[8,961,65]{2,1,0} parameter(1)
+      t0 = f16[8,65,961]{2,1,0} transpose(param0),dimensions={0,2,1}
+      t1 = f16[8,65,961]{2,1,0} transpose(param1), dimensions={0,2,1}
+      ROOT tuple1 = (f16[8,65,961]{2,1,0}, f16[8,65,961]{2,1,0})
+        tuple(t0, t1)
     }
 
     ENTRY multiple_output_fusion_1 {
-      para0 = f16[8,31,31,65]{3,2,1,0} parameter(0)
-      para1 = f16[8,31,31,65]{3,2,1,0} parameter(1)
-      ROOT fusion.1 = (f16[8,31,31,65]{2,1,3,0}, f16[8,31,31,65]{2,1,3,0})
-        fusion(para0,para1), kind=kLoop, calls=fused_computation.1
+      para0 = f16[8,961,65]{2,1,0} parameter(0)
+      para1 = f16[8,961,65]{2,1,0} parameter(1)
+      ROOT fusion.1 = (f16[8,65,961]{2,1,0}, f16[8,65,961]{2,1,0})
+        fusion(para0,para1), kind=kInput, calls=fused_computation.1
     })";
 
   // Check that a call to llvm.nvvm.barrier0 is generated.
@@ -194,13 +200,13 @@ TEST_F(GpuKernelTilingTest, TransposedInputWithUserReverseNotTiled) {
     HloModule FusionTransposeWithReverseNotTiled
     fused_computation.1 {
       arg0 = f32[128,64]{1,0} parameter(0)
-      copy0 = f32[128,64]{0,1} copy(arg0)
-      ROOT reverse0 = f32[128,64]{0,1} reverse(copy0), dimensions={0}
+      t = f32[64,128]{1,0} transpose(arg0), dimensions={1,0}
+      ROOT reverse0 = f32[64,128]{1,0} reverse(t), dimensions={0}
     }
 
     ENTRY reverse_break_assumption {
       param0 = f32[128,64]{1,0} parameter(0)
-      ROOT fusion0 = f32[128,64]{0,1} fusion(param0), kind=kLoop,
+      ROOT fusion0 = f32[64,128]{1,0} fusion(param0), kind=kLoop,
         calls=fused_computation.1
     })";
 
@@ -258,14 +264,14 @@ TEST_F(GpuKernelTilingTest, TransposedInputWithoutUnsafeUseTiled) {
       param_0 = f32[16,16]{1,0} parameter(0)
       param_1 = f32[16,16]{1,0} parameter(1)
       s = f32[16,16]{1,0} exponential(param_0)
-      copy = f32[16,16]{0,1} copy(param_1)
-      ROOT tuple = (f32[16,16]{1,0}, f32[16,16]{0,1}) tuple(s, copy)
+      t = f32[16,16]{1,0} transpose(param_1), dimensions={1,0}
+      ROOT tuple = (f32[16,16]{1,0}, f32[16,16]{1,0}) tuple(s, t)
     }
 
     ENTRY kernel_entry {
       parameter.0 = f32[16,16]{1,0} parameter(0)
       parameter.1 = f32[16,16]{1,0} parameter(1)
-      ROOT fusion = (f32[16,16]{1,0}, f32[16,16]{0,1})
+      ROOT fusion = (f32[16,16]{1,0}, f32[16,16]{1,0})
         fusion(parameter.0, parameter.1),
         kind=kInput, calls=fused_computation
     })";
@@ -602,20 +608,20 @@ TEST_F(GpuKernelTilingTest, Hlo021CopyNoOobAccess) {
   const char *const kHloString = R"(
 HloModule primitive_computation_svd.38
 
-%fused_computation (param_0.7: f32[3,29,29], param_1.10: pred[3]) -> f32[3,29,29] {
+%fused_computation (param_0.7: f32[841,3], param_1.10: pred[3]) -> f32[3,841] {
   %param_1.10 = pred[3]{0} parameter(1)
-  %broadcast.7 = pred[3,29,29]{2,1,0} broadcast(pred[3]{0} %param_1.10), dimensions={0}
-  %param_0.7 = f32[3,29,29]{1,2,0} parameter(0)
-  %copy.6 = f32[3,29,29]{2,1,0} copy(f32[3,29,29]{1,2,0} %param_0.7)
+  %broadcast.7 = pred[3,841]{1,0} broadcast(pred[3]{0} %param_1.10), dimensions={0}
+  %param_0.7 = f32[841,3]{1,0} parameter(0)
+  %transpose = f32[3,841]{1,0} transpose(f32[841,3]{1,0} %param_0.7), dimensions={1,0}
   %constant_1 = f32[] constant(nan)
-  %broadcast.6 = f32[3,29,29]{2,1,0} broadcast(f32[] %constant_1), dimensions={}
-  ROOT %select.0 = f32[3,29,29]{2,1,0} select(pred[3,29,29]{2,1,0} %broadcast.7, f32[3,29,29]{2,1,0} %copy.6, f32[3,29,29]{2,1,0} %broadcast.6)
+  %broadcast.6 = f32[3,841]{1,0} broadcast(f32[] %constant_1), dimensions={}
+  ROOT %select.0 = f32[3,841]{1,0} select(pred[3,841]{1,0} %broadcast.7, f32[3,841]{1,0} %transpose, f32[3,841]{1,0} %broadcast.6)
 }
 
-ENTRY %primitive_computation_svd.38 (constant_5: f32[3,29,29], fusion.3: pred[3]) -> f32[3,29,29] {
-  %constant_5 = f32[3,29,29]{1,2,0} parameter(0)
+ENTRY %primitive_computation_svd.38 (constant_5: f32[841,3], fusion.3: pred[3]) -> f32[3,841] {
+  %constant_5 = f32[841,3]{1,0} parameter(0)
   %fusion.3 = pred[3]{0} parameter(1)
-  ROOT %fusion = f32[3,29,29]{2,1,0} fusion(f32[3,29,29]{1,2,0} %constant_5, pred[3]{0} %fusion.3), kind=kLoop, calls=%fused_computation
+  ROOT %fusion = f32[3,841]{1,0} fusion(f32[841,3]{1,0} %constant_5, pred[3]{0} %fusion.3), kind=kLoop, calls=%fused_computation
 }
   )";
 

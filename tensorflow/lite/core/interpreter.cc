@@ -27,14 +27,15 @@ limitations under the License.
 #include <vector>
 
 #include "ruy/denormal.h"  // from @ruy
+#include "tensorflow/compiler/mlir/lite/allocation.h"
 #include "tensorflow/compiler/mlir/lite/experimental/remat/metadata_util.h"
-#include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/signature_runner.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
+#include "tensorflow/lite/internal/signature_def.h"
 #include "tensorflow/lite/interpreter_options.h"
 #include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
@@ -520,7 +521,7 @@ void Interpreter::AddProfiler(std::unique_ptr<Profiler> profiler) {
 }
 
 impl::SignatureRunner* Interpreter::GetSignatureRunner(
-    const char* signature_key_) {
+    const char* signature_key_, bool apply_default_delegates) {
   auto [signature_key, empty_signature_fallback] =
       ReplaceWithPlaceholderSignatureKeyIfNeeded(signature_key_);
   if (!signature_key) {
@@ -532,11 +533,13 @@ impl::SignatureRunner* Interpreter::GetSignatureRunner(
     return &(iter->second);
   }
 
-  // Default delegates are applied once for all subgraphs. Only returns error
-  // when the status is kTfLiteError. For other statuses, it will fall back to
-  // the default implementation.
-  if (ApplyLazyDelegateProviders() == kTfLiteError) {
-    return nullptr;
+  if (apply_default_delegates) {
+    // Default delegates are applied once for all subgraphs. Only returns error
+    // when the status is kTfLiteError. For other statuses, it will fall back to
+    // the default implementation.
+    if (ApplyLazyDelegateProviders() == kTfLiteError) {
+      return nullptr;
+    }
   }
 
   if (empty_signature_fallback) {

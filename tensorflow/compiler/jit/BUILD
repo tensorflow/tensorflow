@@ -754,7 +754,6 @@ tf_cc_test(
 tf_proto_library(
     name = "xla_compilation_cache_proto",
     srcs = ["xla_compilation_cache.proto"],
-    cc_api_version = 2,
     protodeps = tf_additional_all_protos() + ["@local_xla//xla/service:hlo_proto"],
     visibility = ["//visibility:public"],
 )
@@ -1497,7 +1496,6 @@ cc_library(
 tf_proto_library(
     name = "xla_activity_proto",
     srcs = ["xla_activity.proto"],
-    cc_api_version = 2,
     protodeps = tf_additional_all_protos(),
 )
 
@@ -1585,18 +1583,21 @@ cc_library(
     srcs = ["device_executable_persistor.cc"],
     hdrs = ["device_executable_persistor.h"],
     deps = [
+        ":device_compiler_client",
         ":xla_compilation_cache_proto_cc",
         ":xla_device_compiler_client",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_headers_for_pybind",
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla:util",
         "@local_xla//xla/pjrt:pjrt_client",

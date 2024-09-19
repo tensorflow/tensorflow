@@ -111,6 +111,9 @@ class AutotuneConfig {
   }
   // Empty string means no cache is used.
   const std::string& autotune_cache_dir() const { return autotune_cache_dir_; }
+  const DebugOptions::AutotuneCacheMode& autotune_cache_mode() const {
+    return autotune_cache_mode_;
+  }
 
   AutotuneConfig(const AutotuneConfig& right)
       : config_(right.config_),
@@ -119,7 +122,8 @@ class AutotuneConfig {
         exhaustive_tiling_search_(right.exhaustive_tiling_search_),
         require_complete_aot_autotune_results_(
             right.require_complete_aot_autotune_results_),
-        autotune_cache_dir_(right.autotune_cache_dir_) {}
+        autotune_cache_dir_(right.autotune_cache_dir_),
+        autotune_cache_mode_(right.autotune_cache_mode_) {}
 
   AutotuneConfig(const std::variant<DeviceConfig, DevicelessConfig>& config,
                  const DebugOptions& debug_options)
@@ -132,7 +136,9 @@ class AutotuneConfig {
         require_complete_aot_autotune_results_(
             debug_options.xla_gpu_require_complete_aot_autotune_results()),
         autotune_cache_dir_(
-            debug_options.xla_gpu_per_fusion_autotune_cache_dir()) {}
+            debug_options.xla_gpu_per_fusion_autotune_cache_dir()),
+        autotune_cache_mode_(
+            debug_options.xla_gpu_experimental_autotune_cache_mode()) {}
 
   std::string GetModelStr() const {
     if (auto deviceless_config = std::get_if<DevicelessConfig>(&config_)) {
@@ -190,6 +196,7 @@ class AutotuneConfig {
   bool require_complete_aot_autotune_results_;
   mutable std::unique_ptr<se::DeviceMemoryAllocator> allocator_;
   std::string autotune_cache_dir_;
+  DebugOptions::AutotuneCacheMode autotune_cache_mode_;
 };
 
 using AutotuneNoCacheFn = std::function<absl::StatusOr<AutotuneResult>()>;
@@ -315,6 +322,26 @@ struct AutotunerUtil {
   // cache, you're responsible for checking whether the cache directory is
   // empty.
   static bool ResultCacheIsEmpty();
+
+  struct CacheStats {
+    int64_t cache_hits = 0;
+    int64_t cache_misses = 0;
+  };
+
+  // Returns Cache statistics since the last call to ClearCacheStats or since
+  // the program was started.
+  //
+  // This method counts both in-memory and on disk caches. Every time the
+  // Autotune() or IsInCache() methods are called, the key is looked up in the
+  // two caches, first in the in-memory cache, then in the on-disk cache. If the
+  // key is found in any of the two caches, the global cache_hits is
+  // incremented, otherwise cache_misses is incremented. Note that client code
+  // that first calls IsInCache() and then Autotune() in case of a miss, will
+  // actually cause cache_misses to be incremented twice.
+  static CacheStats GetCacheStats();
+
+  // Resets the global CacheStats that is returned by GetCacheStats().
+  static void ClearCacheStats();
 };
 
 absl::StatusOr<std::string> AutotuneResultsToString(

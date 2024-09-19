@@ -69,6 +69,7 @@ filegroup(
     name = "interpreter_test_data",
     srcs = [
         "pc_conv.bin",
+        "two_signatures.tflite",
         ":gather_string",
         ":gather_string_0d",
         ":permute_float",

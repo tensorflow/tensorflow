@@ -15,12 +15,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_IFRT_CHECKPOINT_LOADER_H_
 #define TENSORFLOW_CORE_TFRT_IFRT_CHECKPOINT_LOADER_H_
 
+#include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
@@ -53,10 +55,10 @@ class CheckpointLoader {
       const std::vector<tensorflow::tfrt_stub::FallbackTensor>& var_handles,
       const tensorflow::tfrt_stub::FallbackTensor& tensor_names,
       const tensorflow::tfrt_stub::FallbackTensor& shape_and_slices,
-      const mlrt::bc::Vector<tensorflow::DataType>& restored_dtypes,
-      const mlrt::bc::Vector<bool>& truncate_in_cast,
-      tf_mlrt::Context& context);
+      absl::Span<const tensorflow::DataType> restored_dtypes,
+      const std::vector<bool>& truncate_in_cast, tf_mlrt::Context& context);
 
+ protected:
   IfrtRestoreTensorRegistry* ifrt_restore_tensor_registry_;
   tfrt::ConcurrentWorkQueue* checkpoint_loader_work_queue_;
 };

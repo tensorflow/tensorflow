@@ -24,17 +24,44 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla::gpu {
 
 // This pass is targeting the windowed einsum optimization
-// in the SPMD pipeline. It rewrites all-gather+gemm or
-// gemm+reduce-scatter into sharded loops to achieve overlap
-// between sharded gemms and communication. This pass will
-// optimize it on GPU by annotating independent gemms with
-// stream ids in the backend config. By running them in different
-// streams, we can practically achieve overlap between gemms too.
+// in the SPMD pipeline. The SPMD partitioner's HandleDot
+// rewrites all-gather+gemm or gemm+reduce-scatter into sharded
+// loops with p2p communication to achieve overlap between sharded
+// gemms and communication.
+// This pass does the following transformations to further optimize
+// rewritten loops for GPU:
+//  1. it annotates independent gemms with stream ids in the backend config
+//     to achieve overlap between compute kernels in addition to
+//     compute-gemm overlap
+//  2. it removes all-gathers in ag+gemm patterns if the input to the ags is
+//     also an input to another windowed einsum ag loop, ie:
+//                       input
+//                       /    |
+//                      /     |
+//                     AG    windowed loop
+//                     /
+//                    /
+//                   dot
+// to:
+//                       input
+//                       |
+//                       |
+//                     windowed loop
+//                       |
+//                       |
+//                      dot
+//  3. it moves the fp8 dequantization outside of a rewritten windowed einsum
+//     loop inside of the loop so the dq+gemm can be fused into an fp8 gemm
+//     later in gemm rewriter.
+//  4. it shards a large all-to-all+gemm into smaller independent a2a+gemm
+//     shards to pipeline compute and communication so most of the
+//     communication overhead can be hidden.
+
 class WindowedEinsumHandler : public HloModulePass {
  public:
   absl::string_view name() const override { return "windowed-einsum-handler"; }

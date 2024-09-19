@@ -95,6 +95,12 @@ std::vector<InstructionAndShapeIndex> GetPredecessors(
 // middle of a pure memory offload path.
 bool IsValidDuringPureMemoryOffload(const HloInstruction* instruction);
 
+// Returns true if the instruction is an async-start with host thread.
+bool IsHostAsyncStart(const HloInstruction* instruction);
+
+// Returns true if the copy is from or to host memory space.
+bool IsSynchronousCopyFromOrToHost(const HloInstruction* instruction);
+
 }  // namespace host_offload_utils
 }  // namespace xla
 

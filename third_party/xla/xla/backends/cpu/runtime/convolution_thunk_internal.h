@@ -16,11 +16,15 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_RUNTIME_CONVOLUTION_THUNK_INTERNAL_H_
 #define XLA_BACKENDS_CPU_RUNTIME_CONVOLUTION_THUNK_INTERNAL_H_
 
-#define EIGEN_USE_THREADS
-
+#include <algorithm>
+#include <cstdint>
 #include <functional>
-#include <optional>
 
+#include "xla/backends/cpu/runtime/concurrency.h"
+#include "xla/tsl/framework/convolution/eigen_spatial_convolutions.h"  // IWYU pragma: keep
+#include "tsl/platform/logging.h"
+
+#define EIGEN_USE_THREADS
 #include "Eigen/Core"
 #include "unsupported/Eigen/CXX11/Tensor"
 
@@ -43,7 +47,7 @@ void EigenConv2D(const EigenDevice& device, ScalarType* out, ScalarType* lhs,
                  Eigen::Index padding_y_after, Eigen::Index lhs_x_dilation,
                  Eigen::Index lhs_y_dilation, Eigen::Index rhs_x_dilation,
                  Eigen::Index rhs_y_dilation, Eigen::Index feature_group_count,
-                 std::optional<std::function<void()>> done_callback) {
+                 std::function<void()> done_callback) {
   const Eigen::TensorMap<Eigen::Tensor<const ScalarType, 4, Eigen::RowMajor>,
                          Eigen::Aligned>
       input(lhs, input_batch, input_x, input_y, input_channels);
@@ -93,7 +97,8 @@ void EigenConv2D(const EigenDevice& device, ScalarType* out, ScalarType* lhs,
   kernel_dims[1] = feature_group_count;
   kernel_dims[2] = kernel_filters / feature_group_count;
 
-  for (Eigen::Index i = 0; i < feature_group_count; ++i) {
+  // Constructs convolution and output expressions for a given group index.
+  auto convolve_group = [=](int64_t i) {
     // The row and column dimensions must be flipped when passed to Eigen.
     auto convolved =
         input.reshape(input_reshaped_dims)
@@ -107,10 +112,37 @@ void EigenConv2D(const EigenDevice& device, ScalarType* out, ScalarType* lhs,
             .contract(kernel.reshape(kernel_dims).chip(i, 1), contract_dims)
             .reshape(post_contract_dims);
     auto output_reshaped = output.reshape(output_reshaped_dims).chip(i, 3);
-    if (done_callback.has_value()) {
-      output_reshaped.device(device, done_callback.value()) = convolved;
-    } else {
-      output_reshaped.device(device) = convolved;
+    return std::make_pair(output_reshaped, convolved);
+  };
+
+  // Use concurrent execution if we have a thread pool device.
+  constexpr bool use_thread_pool =
+      std::is_same_v<EigenDevice, Eigen::ThreadPoolDevice>;
+
+  // Done callback must be provided only if we use a thread pool device.
+  CHECK_EQ(use_thread_pool, static_cast<bool>(done_callback));  // Crash OK
+
+  if constexpr (use_thread_pool) {
+    // Although we schedule at most one tasks for each thread, individual
+    // convolution might also schedule more tasks into the same thread pool.
+    auto max_tasks = static_cast<Eigen::Index>(device.numThreads());
+    auto task_size = Eigen::numext::div_ceil(feature_group_count, max_tasks);
+    auto num_tasks = Eigen::numext::div_ceil(feature_group_count, task_size);
+
+    ScheduleAll(&device, num_tasks, [=, &device](Eigen::Index task_index) {
+      Eigen::Index start = task_index * task_size;
+      Eigen::Index end = std::min(start + task_size, feature_group_count);
+      for (Eigen::Index i = start; i < end; ++i) {
+        auto [output, convolved] = convolve_group(i);
+        output.device(device, done_callback) = convolved;
+      }
+    });
+
+  } else {
+    // Convolve all feature groups sequentially in the caller thread.
+    for (Eigen::Index i = 0; i < feature_group_count; ++i) {
+      auto [output, convolved] = convolve_group(i);
+      output.device(device) = convolved;
     }
   }
 }
@@ -132,7 +164,7 @@ void EigenConv3D(const EigenDevice& device, ScalarType* out, ScalarType* lhs,
                  Eigen::Index lhs_y_dilation, Eigen::Index lhs_z_dilation,
                  Eigen::Index rhs_x_dilation, Eigen::Index rhs_y_dilation,
                  Eigen::Index rhs_z_dilation, Eigen::Index feature_group_count,
-                 std::optional<std::function<void()>> done_callback) {
+                 std::function<void()> done_callback) {
   using ConstTType =
       Eigen::TensorMap<Eigen::Tensor<const ScalarType, 5, Eigen::RowMajor>,
                        Eigen::Aligned>;
@@ -204,8 +236,8 @@ void EigenConv3D(const EigenDevice& device, ScalarType* out, ScalarType* lhs,
             .reshape(post_contract_dims);
 
     auto output_reshaped = output.reshape(output_reshaped_dims).chip(i, 4);
-    if (done_callback.has_value()) {
-      output_reshaped.device(device, done_callback.value()) = convolved;
+    if (done_callback) {
+      output_reshaped.device(device, done_callback) = convolved;
     } else {
       output_reshaped.device(device) = convolved;
     }
@@ -226,7 +258,7 @@ void EigenConv3D(const EigenDevice& device, ScalarType* out, ScalarType* lhs,
       Eigen::Index padding_y_after, Eigen::Index lhs_x_dilation,           \
       Eigen::Index lhs_y_dilation, Eigen::Index rhs_x_dilation,            \
       Eigen::Index rhs_y_dilation, Eigen::Index feature_group_count,       \
-      std::optional<std::function<void()>> done_callback)
+      std::function<void()> done_callback)
 
 CONV2D_EXTERN_TEMPLATE(Eigen::DefaultDevice, Eigen::half);
 CONV2D_EXTERN_TEMPLATE(Eigen::DefaultDevice, float);
@@ -251,8 +283,7 @@ CONV2D_EXTERN_TEMPLATE(Eigen::ThreadPoolDevice, float);
       Eigen::Index lhs_x_dilation, Eigen::Index lhs_y_dilation,                \
       Eigen::Index lhs_z_dilation, Eigen::Index rhs_x_dilation,                \
       Eigen::Index rhs_y_dilation, Eigen::Index rhs_z_dilation,                \
-      Eigen::Index feature_group_count,                                        \
-      std::optional<std::function<void()>> done_callback)
+      Eigen::Index feature_group_count, std::function<void()> done_callback)
 
 CONV3D_EXTERN_TEMPLATE(Eigen::DefaultDevice, Eigen::half);
 CONV3D_EXTERN_TEMPLATE(Eigen::DefaultDevice, float);
@@ -276,7 +307,7 @@ CONV3D_EXTERN_TEMPLATE(Eigen::ThreadPoolDevice, float);
       Eigen::Index padding_y_after, Eigen::Index lhs_x_dilation,           \
       Eigen::Index lhs_y_dilation, Eigen::Index rhs_x_dilation,            \
       Eigen::Index rhs_y_dilation, Eigen::Index feature_group_count,       \
-      std::optional<std::function<void()>> done_callback)
+      std::function<void()> done_callback)
 
 #define CONV3D_INSTANTIATE_TEMPLATE(DEVICE, SCALAR_TYPE)                       \
   template void xla::cpu::internal::EigenConv3D<DEVICE, SCALAR_TYPE>(          \
@@ -293,7 +324,6 @@ CONV3D_EXTERN_TEMPLATE(Eigen::ThreadPoolDevice, float);
       Eigen::Index lhs_x_dilation, Eigen::Index lhs_y_dilation,                \
       Eigen::Index lhs_z_dilation, Eigen::Index rhs_x_dilation,                \
       Eigen::Index rhs_y_dilation, Eigen::Index rhs_z_dilation,                \
-      Eigen::Index feature_group_count,                                        \
-      std::optional<std::function<void()>> done_callback)
+      Eigen::Index feature_group_count, std::function<void()> done_callback)
 
 #endif  // XLA_BACKENDS_CPU_RUNTIME_CONVOLUTION_THUNK_INTERNAL_H_

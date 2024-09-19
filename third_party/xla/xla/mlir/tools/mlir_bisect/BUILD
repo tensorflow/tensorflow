@@ -22,6 +22,7 @@ xla_cc_binary(
         "//xla/mlir/tools/mlir_bisect/rewrites",
         "//xla/mlir/tools/mlir_interpreter/dialects",
         "//xla/mlir/tools/mlir_interpreter/framework",
+        "//xla/mlir/tools/mlir_replay/public:execution_trace_proto_cc",
         "//xla/mlir/tools/mlir_replay/public:execution_trace_utils",
         "//xla/mlir_hlo:hlo_dialect_registration",
         "//xla/mlir_hlo:mhlo_passes",

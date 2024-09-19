@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "xla/backends/cpu/runtime/convolution_thunk_internal.h"
-#include "xla/tsl/framework/convolution/eigen_spatial_convolutions.h"  // IWYU pragma: keep
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
 #include "xla/tsl/framework/contraction/eigen_contraction_kernel.h"  // IWYU pragma: keep

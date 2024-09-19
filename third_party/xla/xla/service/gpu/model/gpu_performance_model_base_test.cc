@@ -47,6 +47,7 @@ class GpuPerformanceModelBaseTest : public HloTestBase {
 
   GpuHloCostAnalysis::Options options_{ShapeSizeBytesFunction(),
                                        /*per_second_rates=*/{},
+                                       /*min_latencies_seconds=*/{},
                                        /*count_multiple_input_accesses=*/true};
   // The reference times in the test cases below are measured
   // on A6000 by profiling the execution of the HLOs.

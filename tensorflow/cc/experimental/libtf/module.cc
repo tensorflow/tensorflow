@@ -30,12 +30,12 @@ using tf::libtf::runtime::Runtime;
 // Builds a vector of runtime representations of `SavedObject`s from a
 // SavedModel. These are returned as a flat list.  The full hierarchy building
 // and initialization should be done in a later pass.
-tensorflow::StatusOr<std::vector<Handle>> BuildObjects(TFPackage& tf_package) {
+absl::StatusOr<std::vector<Handle>> BuildObjects(TFPackage& tf_package) {
   std::vector<Handle> objects;
   const tensorflow::SavedObjectGraph object_graph = tf_package.GetObjectGraph();
   for (auto& node : object_graph.nodes()) {
     if (node.kind_case() == tensorflow::SavedObject::kUserObject) {
-      tensorflow::StatusOr<Handle> result = BuildSavedUserObject(node);
+      absl::StatusOr<Handle> result = BuildSavedUserObject(node);
       if (result.ok()) {
         objects.push_back(*result);
       } else {
@@ -46,7 +46,7 @@ tensorflow::StatusOr<std::vector<Handle>> BuildObjects(TFPackage& tf_package) {
   return objects;
 }
 
-tensorflow::StatusOr<Handle> BuildSavedUserObject(
+absl::StatusOr<Handle> BuildSavedUserObject(
     tensorflow::SavedObject saved_object_proto) {
   if (saved_object_proto.kind_case() != tensorflow::SavedObject::kUserObject) {
     return tensorflow::errors::InvalidArgument("Not a UserObject.");
@@ -105,13 +105,12 @@ tensorflow::Status SetupFunctionCaptures(Runtime runtime, TFPackage tf_package,
 
 // Takes a flat list of Handles and builds them into the hierarchical
 // representation defined by the SavedModel.
-tensorflow::StatusOr<Handle> BuildObjectHierarchy(TFPackage tf_package,
-                                                  std::vector<Handle> objects) {
+absl::StatusOr<Handle> BuildObjectHierarchy(TFPackage tf_package,
+                                            std::vector<Handle> objects) {
   return tensorflow::errors::Unimplemented("Not implemented.");
 }
 
-tensorflow::StatusOr<Handle> BuildProgram(Runtime runtime,
-                                          TFPackage& tf_package) {
+absl::StatusOr<Handle> BuildProgram(Runtime runtime, TFPackage& tf_package) {
   return tensorflow::errors::Unimplemented("Not implemented.");
 }
 

@@ -20,7 +20,6 @@ import functools
 import weakref
 
 from absl import logging
-import numpy as np
 
 from tensorflow.compiler.tf2xla.ops import gen_xla_ops
 from tensorflow.core.framework import attr_value_pb2
@@ -61,6 +60,7 @@ from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.trackable import base as trackable
 from tensorflow.python.types import core
 from tensorflow.python.util import compat
+from tensorflow.python.util import numpy_compat
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 
@@ -569,7 +569,7 @@ class BaseResourceVariable(variables.Variable, core.Tensor):
     # Even `self.read_value().__array__()` and `self.read_value()._numpy()` give
     # the same error. The `EagerTensor` class must be doing something behind the
     # scenes to make `np.array(tf.constant(1))` work.
-    return np.asarray(self.numpy(), dtype=dtype)
+    return numpy_compat.np_asarray(self.numpy(), dtype=dtype)
 
   def __nonzero__(self):
     return self.__bool__()

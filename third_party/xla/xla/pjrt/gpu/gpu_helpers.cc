@@ -164,28 +164,52 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
 }
 
 // Returns a GPU pinned host memory allocator to use when staging host->GPU
-// transfers. We use a fixed 64GB pool of pinned memory.
+// transfers. We use a fixed pool of pinned memory.
+//
+// The pool size is controlled by XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB environment
+// variable, which defaults to 64GB.
+//
+// If XLA_PJRT_GPU_HOST_MEMORY_PREALLOCATE is set to true, the pool will be
+// preallocated, and the preallocated size is controlled by
+// XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB environment variable, which defaults to
+// 16GB in this case.
 std::unique_ptr<tsl::BFCAllocator> GetGpuHostAllocator(
     se::StreamExecutor* executor) {
   std::unique_ptr<tsl::SubAllocator> sub_allocator(
       new se::DeviceHostAllocator(executor, /*numa_node=*/0,
                                   /*alloc_visitors=*/{},
                                   /*free_visitors=*/{}));
+  bool xla_pjrt_gpu_host_memory_preallocate;
+  {
+    absl::Status status =
+        tsl::ReadBoolFromEnvVar("XLA_PJRT_GPU_HOST_MEMORY_PREALLOCATE", false,
+                                &xla_pjrt_gpu_host_memory_preallocate);
+    if (!status.ok()) {
+      LOG(ERROR) << "Unable to read XLA_PJRT_GPU_HOST_MEMORY_PREALLOCATE: "
+                 << status.message();
+    }
+  }
+
+  const int64_t default_xla_pjrt_gpu_host_memory_limit_gb =
+      xla_pjrt_gpu_host_memory_preallocate ? 16 : 64;
 
   int64_t xla_pjrt_gpu_host_memory_limit_gb;
-  absl::Status status =
-      tsl::ReadInt64FromEnvVar("XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB", 64,
-                               &xla_pjrt_gpu_host_memory_limit_gb);
-  if (!status.ok()) {
-    LOG(ERROR) << "Unable to read XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB: "
-               << status.message();
+  {
+    absl::Status status =
+        tsl::ReadInt64FromEnvVar("XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB",
+                                 default_xla_pjrt_gpu_host_memory_limit_gb,
+                                 &xla_pjrt_gpu_host_memory_limit_gb);
+    if (!status.ok()) {
+      LOG(ERROR) << "Unable to read XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB: "
+                 << status.message();
+    }
   }
 
   const int64_t kGpuHostMemoryLimitBytes =
       xla_pjrt_gpu_host_memory_limit_gb * (1LL << 30);
 
   tsl::BFCAllocator::Options opts;
-  opts.allow_growth = true;
+  opts.allow_growth = !xla_pjrt_gpu_host_memory_preallocate;
   return std::make_unique<tsl::BFCAllocator>(std::move(sub_allocator),
                                              kGpuHostMemoryLimitBytes,
                                              /*name=*/"xla_gpu_host_bfc", opts);

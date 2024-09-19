@@ -22,9 +22,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/rng_expander.h"
 #include "xla/service/sharding_propagation.h"
@@ -243,7 +243,7 @@ ENTRY %test {
       auto module,
       PartitionComputation(hlo_string, /*num_partitions=*/4, debug_options));
   const HloInstruction *whileOp =
-      module->entry_computation()->root_instruction();
+      module->entry_computation()->GetInstructionWithName("while.1");
   const HloInstruction *root =
       whileOp->while_body()->GetInstructionWithName("concatenate");
   auto rotate =
@@ -257,7 +257,7 @@ ENTRY %test {
   TF_ASSERT_OK_AND_ASSIGN(
       module,
       PartitionComputation(hlo_string, /*num_partitions=*/4, debug_options));
-  whileOp = module->entry_computation()->root_instruction();
+  whileOp = module->entry_computation()->GetInstructionWithName("while.1");
   root = whileOp->while_body()->GetInstructionWithName("concatenate");
   rotate = op::Concatenate(op::CollectivePermute(op::Slice()), op::Slice());
   EXPECT_THAT(root, AllOf(rotate, op::Shape("f32[3]")));

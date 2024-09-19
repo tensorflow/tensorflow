@@ -498,4 +498,13 @@ func.func @foldQuantWeightsIntoTposeConvf16NotFolded(%arg0: tensor<2x2x3x2048xf3
   // CHECK: "tfl.dequantize"
 }
 
+// CHECK-LABEL: foldQuantWeightsIntoEmbeddingLookup
+func.func @foldQuantWeightsIntoEmbeddingLookup(%arg0: tensor<3xi32>) -> tensor<3x512xf32> {
+  %q_weighs = "tfl.pseudo_qconst"() {qtype = tensor<3074x512x!quant.uniform<u8<1:255>:f32, 0.15:151>>, value = dense<-76> : tensor<3074x512xi8>} : () -> tensor<3074x512x!quant.uniform<u8<1:255>:f32, 0.15:151>>
+  %dq_weights = "tfl.dequantize"(%q_weighs) : (tensor<3074x512x!quant.uniform<u8<1:255>:f32, 0.15:151>>) -> tensor<3074x512xf32>
+  %out = "tfl.embedding_lookup"(%arg0, %dq_weights) : (tensor<3xi32>, tensor<3074x512xf32>) -> tensor<3x512xf32>
+  func.return %out : tensor<3x512xf32>
 
+  // CHECK-NOT: "tfl.dequantize"
+  // CHECK: "tfl.embedding_lookup"(%arg0, %0) : (tensor<3xi32>, tensor<3074x512x!quant.uniform<u8<1:255>:f32
+}

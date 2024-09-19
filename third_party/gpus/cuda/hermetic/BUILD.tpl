@@ -65,7 +65,8 @@ cc_library(
             ":cusparse_headers",
             ":curand_headers",
             ":cupti_headers",
-            ":nvml_headers"],
+            ":nvml_headers",
+            ":nvjitlink_headers"],
 )
 
 cc_library(
@@ -79,8 +80,11 @@ cc_library(
 )
 
 alias(
-  name = "cuda_driver",
-  actual = "@cuda_cudart//:cuda_driver",
+    name = "cuda_driver",
+    actual = select({
+        "@cuda_driver//:forward_compatibility": "@cuda_driver//:nvidia_driver",
+        "//conditions:default": "@cuda_cudart//:cuda_driver",
+    }),
 )
 
 alias(
@@ -136,6 +140,11 @@ alias(
 alias(
   name = "curand_headers",
   actual = "@cuda_curand//:headers",
+)
+
+alias(
+  name = "nvjitlink_headers",
+  actual = "@cuda_nvjitlink//:headers",
 )
 
 alias(
@@ -234,28 +243,48 @@ py_library(
     srcs = ["cuda/cuda_config.py"],
 )
 
-# Config setting whether TensorFlow is built with hermetic CUDA.
+# Config setting whether TensorFlow is built with CUDA.
 alias(
-    name = "hermetic_cuda_tools",
+    name = "cuda_tools",
     actual = "@local_config_cuda//:is_cuda_enabled",
 )
 
-# Flag indicating if we should include hermetic CUDA libs.
+# Flag indicating if we should include CUDA libs.
 bool_flag(
-    name = "include_hermetic_cuda_libs",
+    name = "include_cuda_libs",
     build_setting_default = False,
 )
 
 config_setting(
-    name = "hermetic_cuda_libs",
-    flag_values = {":include_hermetic_cuda_libs": "True"},
+    name = "cuda_libs",
+    flag_values = {":include_cuda_libs": "True"},
+)
+
+# This flag should be used only when someone wants to build the wheel with CUDA
+# dependencies.
+bool_flag(
+    name = "override_include_cuda_libs",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "overrided_cuda_libs",
+    flag_values = {":override_include_cuda_libs": "True"},
 )
 
 selects.config_setting_group(
-    name = "hermetic_cuda_tools_and_libs",
+    name = "any_cuda_libs",
+    match_any = [
+        ":cuda_libs",
+        ":overrided_cuda_libs"
+    ],
+)
+
+selects.config_setting_group(
+    name = "cuda_tools_and_libs",
     match_all = [
-        ":hermetic_cuda_libs",
-        ":hermetic_cuda_tools"
+        ":any_cuda_libs",
+        ":cuda_tools"
     ],
 )
 

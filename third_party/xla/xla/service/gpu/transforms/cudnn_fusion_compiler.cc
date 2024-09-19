@@ -216,6 +216,7 @@ class GemmDimensionAdapter {
   struct Result {
     std::vector<int64_t> sizes;
     std::vector<int64_t> strides;
+    std::optional<std::vector<std::pair<int64_t, int64_t>>> slices;
   };
 
   std::optional<Result> DimensionsAndStrides(
@@ -260,6 +261,9 @@ class GemmDimensionAdapter {
     Result result;
     result.sizes.reserve(dim_indices.size());
     result.strides.reserve(dim_indices.size());
+    result.slices = std::vector<std::pair<int64_t, int64_t>>{};
+    result.slices->reserve(dim_indices.size());
+    bool slicing_is_present = false;
 
     for (const int index : dim_indices) {
       const auto* spec = analysis_.IterSpec(scope, &hlo, index);
@@ -267,6 +271,7 @@ class GemmDimensionAdapter {
         result.sizes.push_back(1);
         result.strides.push_back(
             result.strides.empty() ? 1 : result.strides.back());
+        result.slices->push_back({0, 1});
         continue;
       } else {
         if (spec->size() == 1) {
@@ -310,6 +315,12 @@ class GemmDimensionAdapter {
         }
         result.sizes.push_back(spec->front().count);
         result.strides.push_back(spec->front().stride);
+        result.slices->push_back(
+            {spec->front().slice_start,
+             spec->front().slice_start + spec->front().sliced_count});
+        if (spec->front().count != spec->front().sliced_count) {
+          slicing_is_present = true;
+        }
       }
     }
     if (lhs_noncontracting_split_ > 1 &&
@@ -324,6 +335,23 @@ class GemmDimensionAdapter {
       result.strides[kBatchDimensionIndex] =
           result.strides[kOutputLHSNonContractingDimensionIndex] *
           result.sizes[kOutputLHSNonContractingDimensionIndex];
+    }
+
+    // 0 (kBatchDimensionIndex) is always the batch dimension;
+    // 1 and 2 are the non-batch ones. cuDNN relies on strides to determine
+    // layouts and gets confused when both strides of non-batch dimensions
+    // are equal to 1 - this is the case for tensors with 1-sized dimension
+    // like [A,1]. The stride of the 1-sized dimension does not matter for
+    // correctness because there is no iteration along this dimension, but
+    // setting it to A and representing the tensor as its equivalent [1,A]
+    // helps cuDNN.
+    if (result.strides[1] == 1 && result.strides[2] == 1) {
+      const int one_sized_dim_idx = (result.sizes[1] == 1) ? 1 : 2;
+      result.strides[one_sized_dim_idx] = result.sizes[1] * result.sizes[2];
+    }
+
+    if (!slicing_is_present) {
+      result.slices.reset();
     }
     return result;
   }
@@ -418,6 +446,11 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
             .set_data_type(*data_type)
             .set_name(std::string(parameter.name()))
             .set_uid(se::gpu::CuDnnTensorUID(parameter.parameter_number())));
+    if (dims.slices.has_value()) {
+      hlo_to_cudnn[&parameter] = graph.slice(
+          hlo_to_cudnn[&parameter],
+          graph::Slice_attributes().set_slices(dims.slices.value()));
+    }
     return true;
   };
   for (const TritonFusionAnalysis::Scope scope :
@@ -478,7 +511,8 @@ absl::StatusOr<std::optional<se::gpu::CudnnGraph>> HloFusionToCuDnnGraph(
                hlo->opcode() == HloOpcode::kTranspose ||
                hlo->opcode() == HloOpcode::kCopy ||
                (FusionLevel(fusion) >= 2 &&
-                hlo->opcode() == HloOpcode::kBroadcast)) {
+                (hlo->opcode() == HloOpcode::kBroadcast ||
+                 hlo->opcode() == HloOpcode::kSlice))) {
       // All these are accounted for separately as transformations of strides.
       hlo_to_cudnn[hlo] = operand(0);
     } else if (hlo->IsElementwise()) {

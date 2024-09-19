@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
@@ -75,7 +76,6 @@ limitations under the License.
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_parser.h"
-#include "xla/service/hlo_pass_interface.h"
 #include "xla/service/name_uniquer.h"
 #include "xla/service/tuple_simplifier.h"
 #include "xla/shape.h"
@@ -1199,6 +1199,20 @@ void BuildXlaCompilerSubmodule(nb::module_& m) {
                    &DebugOptions::xla_gpu_dump_autotune_logs_to,
                    [](DebugOptions* self, std::string value) {
                      self->set_xla_gpu_dump_autotune_logs_to(value);
+                   })
+      .def_prop_rw("xla_gpu_kernel_cache_file",
+                   &DebugOptions::xla_gpu_kernel_cache_file,
+                   [](DebugOptions* self, std::string value) {
+                     self->set_xla_gpu_kernel_cache_file(value);
+                   })
+      .def_prop_rw(
+          "xla_gpu_enable_llvm_module_compilation_parallelism",
+          &DebugOptions::xla_gpu_enable_llvm_module_compilation_parallelism,
+          &DebugOptions::set_xla_gpu_enable_llvm_module_compilation_parallelism)
+      .def_prop_rw("xla_gpu_per_fusion_autotune_cache_dir",
+                   &DebugOptions::xla_gpu_per_fusion_autotune_cache_dir,
+                   [](DebugOptions* self, std::string value) {
+                     self->set_xla_gpu_per_fusion_autotune_cache_dir(value);
                    });
 
   nb::class_<ExecutableBuildOptions>(m, "ExecutableBuildOptions")

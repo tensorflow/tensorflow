@@ -75,6 +75,7 @@ const absl::string_view kCudnnConvReorderFilterAndBiasCallTarget =
 const absl::string_view kCudnnNormCallTarget = "__cudnn$norm";
 
 // fMHA forward call targets.
+const absl::string_view kCudnnfMHASoftmaxF8CallTarget = "__cudnn$fmhaSoftmaxF8";
 const absl::string_view kCudnnfMHASoftmaxCallTarget = "__cudnn$fmhaSoftmax";
 const absl::string_view kCudnnfMHAScaleBiasSoftmaxDropoutCallTarget =
     "__cudnn$fmhaScaleBiasSoftmaxDropout";
@@ -84,6 +85,8 @@ const absl::string_view kCudnnfMHASoftmaxDropoutCallTarget =
     "__cudnn$fmhaSoftmaxDropout";
 
 // fMHA backward call targets.
+const absl::string_view kCudnnfMHASoftmaxBackwardF8CallTarget =
+    "__cudnn$fmhaSoftmaxBackwardF8";
 const absl::string_view kCudnnfMHASoftmaxBackwardCallTarget =
     "__cudnn$fmhaSoftmaxBackward";
 const absl::string_view kCudnnfMHAScaleBiasSoftmaxDropoutBackwardCallTarget =
@@ -124,6 +127,14 @@ bool IsCustomCallToDnnNorm(const HloInstruction& hlo) {
   return target == kCudnnNormCallTarget;
 }
 
+bool IsFwdCustomCallTofMHAF8(const HloInstruction& hlo) {
+  if (hlo.opcode() != HloOpcode::kCustomCall) {
+    return false;
+  }
+  const auto& target = hlo.custom_call_target();
+  return target == kCudnnfMHASoftmaxF8CallTarget;
+}
+
 bool IsFwdCustomCallTofMHA(const HloInstruction& hlo) {
   if (hlo.opcode() != HloOpcode::kCustomCall) {
     return false;
@@ -155,6 +166,10 @@ bool MHACallHasDropout(const absl::string_view fmha_call_name) {
 
 bool IsCustomCallTofMHA(const HloInstruction& hlo) {
   return (IsFwdCustomCallTofMHA(hlo) || IsBwdCustomCallTofMHA(hlo));
+}
+
+bool IsCustomCallTofMHAF8(const HloInstruction& hlo) {
+  return IsFwdCustomCallTofMHAF8(hlo);
 }
 
 bool IsCubDeviceRadixSort(const HloInstruction& hlo) {
@@ -208,9 +223,12 @@ absl::StatusOr<CudnnfMHAKind> GetCudnnfMHAKind(
     return CudnnfMHAKind::kScaleBiasSoftmax;
   if (target == kCudnnfMHAScaleBiasSoftmaxDropoutCallTarget)
     return CudnnfMHAKind::kScaleBiasSoftmaxDropout;
+  if (target == kCudnnfMHASoftmaxF8CallTarget) return CudnnfMHAKind::kSoftmaxF8;
   // backward
   if (target == kCudnnfMHASoftmaxDropoutBackwardCallTarget)
     return CudnnfMHAKind::kBackwardSoftmaxDropout;
+  if (target == kCudnnfMHASoftmaxBackwardF8CallTarget)
+    return CudnnfMHAKind::kBackwardSoftmaxF8;
   if (target == kCudnnfMHASoftmaxBackwardCallTarget)
     return CudnnfMHAKind::kBackwardSoftmax;
   if (target == kCudnnfMHAScaleBiasSoftmaxBackwardCallTarget)
@@ -222,6 +240,8 @@ absl::StatusOr<CudnnfMHAKind> GetCudnnfMHAKind(
 
 std::string CudnnfMHAKindToString(CudnnfMHAKind kind) {
   switch (kind) {
+    case CudnnfMHAKind::kSoftmaxF8:
+      return "fmha_softmax_f8";
     case CudnnfMHAKind::kSoftmax:
       return "fmha_softmax";
     case CudnnfMHAKind::kSoftmaxDropout:
@@ -231,6 +251,8 @@ std::string CudnnfMHAKindToString(CudnnfMHAKind kind) {
     case CudnnfMHAKind::kScaleBiasSoftmax:
       return "fmha_bias_softmax";
     // backward
+    case CudnnfMHAKind::kBackwardSoftmaxF8:
+      return "fmha_softmax_backward_f8";
     case CudnnfMHAKind::kBackwardSoftmax:
       return "fmha_softmax_backward";
     case CudnnfMHAKind::kBackwardSoftmaxDropout:

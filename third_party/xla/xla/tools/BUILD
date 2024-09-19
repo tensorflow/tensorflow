@@ -328,7 +328,7 @@ cc_library(
         ":hlo_module_loader",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
-        "//xla/service:hlo_pass_pipeline",
+        "//xla/hlo/pass:hlo_pass_pipeline",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -345,9 +345,9 @@ cc_library(
     hdrs = ["hlo_expand.h"],
     deps = [
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/pass:hlo_pass_pipeline",
         "//xla/service:batchnorm_expander",
         "//xla/service:cholesky_expander",
-        "//xla/service:hlo_pass_pipeline",
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_verifier",
         "//xla/service:rng_bit_generator_expander",
@@ -530,7 +530,6 @@ xla_cc_test(
 tf_proto_library(
     name = "run_hlo_module_proto",
     srcs = ["run_hlo_module.proto"],
-    cc_api_version = 2,
     protodeps = [
         "//xla:xla_data_proto",
     ],
@@ -685,10 +684,10 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
         "//xla/service:call_graph",
         "//xla/service:collective_ops_utils",
         "//xla/service:hlo_dce",
-        "//xla/service:hlo_pass",
         "//xla/service:tuple_util",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
@@ -723,7 +722,7 @@ xla_cc_test(
 cc_library(
     name = "driver",
     srcs = ["driver.cc"],
-    tags = ["nofixdeps"],
+    tags = if_google(["nofixdeps"]),
     deps = [],
 )
 
@@ -870,9 +869,6 @@ xla_test(
 xla_test(
     name = "xla_gpu_compile_lib_test",
     srcs = ["xla_gpu_compile_lib_test.cc"],
-    backend_tags = {
-        "gpu": ["requires-gpu-nvidia"] + if_google(["config-cuda-only"]),
-    },
     backends = [
         "gpu",
     ],
@@ -881,6 +877,10 @@ xla_test(
         ":data/add.hlo",
         "//xla/service:xla_aot_compile_test_gpu_target_config.prototxt",
         "//xla/service/gpu:gpu_compiler_test_autotune_db.textproto",
+    ],
+    tags = [
+        "config-cuda-only",
+        "no_rocm",
     ],
     deps = [
         ":xla_compile_lib",

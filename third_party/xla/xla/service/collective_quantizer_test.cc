@@ -89,7 +89,7 @@ TEST_F(CollectiveQuantizerTest, AllGatherQuantize) {
   ENTRY entry {
     param = bf16[8,4,8,128] parameter(0)
     all-gather = bf16[8,32,8,128] all-gather(param), dimensions={1}, replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1
-    scale = bf16[] parameter(1)
+    scale = bf16[] parameter(1), sharding={replicated}
     scale_bcast = bf16[8,32,8,128] broadcast(scale), dimensions={}
     divide = bf16[8,32,8,128] divide(all-gather, scale_bcast)
     clamp_lower = bf16[] constant(-448.0)
@@ -118,7 +118,7 @@ TEST_F(CollectiveQuantizerTest, AllToAllQuantize) {
   ENTRY entry {
     param = bf16[8,32,8,128] parameter(0)
     all-to-all = bf16[8,32,8,128] all-to-all(param), dimensions={1}, replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1
-    scale = bf16[] parameter(1)
+    scale = bf16[] parameter(1), sharding={replicated}
     scale_bcast = bf16[8,32,8,128] broadcast(scale), dimensions={}
     divide = bf16[8,32,8,128] divide(all-to-all, scale_bcast)
     clamp_lower = bf16[] constant(-448.0)
@@ -147,7 +147,7 @@ TEST_F(CollectiveQuantizerTest, CollectiveBroadcastQuantize) {
   ENTRY entry {
     param = bf16[8,32,8,128] parameter(0)
     collective-broadcast = bf16[8,32,8,128] collective-broadcast(param), replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1
-    scale = bf16[] parameter(1)
+    scale = bf16[] parameter(1), sharding={replicated}
     scale_bcast = bf16[8,32,8,128] broadcast(scale), dimensions={}
     divide = bf16[8,32,8,128] divide(collective-broadcast, scale_bcast)
     clamp_lower = bf16[] constant(-448.0)
@@ -177,7 +177,7 @@ TEST_F(CollectiveQuantizerTest, CollectivePermuteQuantize) {
   ENTRY entry {
     param = bf16[8,32,8,128] parameter(0)
     collective-permute = bf16[8,32,8,128] collective-permute(param), source_target_pairs={{0,1},{2,3},{4,5},{6,7}}, channel_id=1
-    scale = bf16[] parameter(1)
+    scale = bf16[] parameter(1), sharding={replicated}
     scale_bcast = bf16[8,32,8,128] broadcast(scale), dimensions={}
     divide = bf16[8,32,8,128] divide(collective-permute, scale_bcast)
     clamp_lower = bf16[] constant(-448.0)
@@ -209,7 +209,7 @@ TEST_F(CollectiveQuantizerTest, AllGatherQuantizeUnary) {
     all-gather = bf16[8,32,8,128] all-gather(param), dimensions={1}, replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1
     reshape = bf16[8,32,1024] reshape(all-gather)
     slice = bf16[8,32,512] slice(reshape), slice={[0:8], [0:32], [256:768]}
-    scale = bf16[] parameter(1)
+    scale = bf16[] parameter(1), sharding={replicated}
     scale_bcast = bf16[8,32,512] broadcast(scale), dimensions={}
     divide = bf16[8,32,512] divide(slice, scale_bcast)
     clamp_lower = bf16[] constant(-448.0)
@@ -238,7 +238,7 @@ TEST_F(CollectiveQuantizerTest, AllGatherQuantizeMultiUser) {
   ENTRY entry {
     param = bf16[8,4,8,128] parameter(0)
     all-gather = bf16[8,32,8,128] all-gather(param), dimensions={1}, replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1
-    scale = bf16[] parameter(1)
+    scale = bf16[] parameter(1), sharding={replicated}
     scale_bcast = bf16[8,32,8,128] broadcast(scale), dimensions={}
     divide = bf16[8,32,8,128] divide(all-gather, scale_bcast)
     clamp_lower = bf16[] constant(-448.0)
@@ -254,6 +254,199 @@ TEST_F(CollectiveQuantizerTest, AllGatherQuantizeMultiUser) {
                           ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
   EXPECT_FALSE(changed);
+}
+
+TEST_F(CollectiveQuantizerTest, AllGatherQuantizeNonReplicatedScale) {
+  absl::string_view hlo_string = R"(
+  HloModule module
+  ENTRY entry {
+    param = bf16[8,4,8,128] parameter(0)
+    all-gather = bf16[8,32,8,128] all-gather(param), dimensions={1}, replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1
+    scale = bf16[] parameter(1)
+    scale_bcast = bf16[8,32,8,128] broadcast(scale), dimensions={}
+    divide = bf16[8,32,8,128] divide(all-gather, scale_bcast)
+    clamp_lower = bf16[] constant(-448.0)
+    clamp_lower_bcast = bf16[8,32,8,128] broadcast(clamp_lower), dimensions={}
+    clamp_upper = bf16[] constant(448.0)
+    clamp_upper_bcast = bf16[8,32,8,128] broadcast(clamp_upper), dimensions={}
+    clamp = bf16[8,32,8,128] clamp(clamp_lower_bcast, divide, clamp_upper_bcast)
+    ROOT convert = f8e4m3fn[8,32,8,128] convert(clamp)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(CollectiveQuantizerTest, ConvertAllGather) {
+  absl::string_view hlo_string = R"(
+  HloModule module
+  ENTRY entry {
+    param = f8e4m3fn[8,4,8,128] parameter(0)
+    convert = bf16[8,4,8,128] convert(param)
+    ROOT all-gather = bf16[8,32,8,128] all-gather(convert), dimensions={1}, replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Convert(op::AllGather(op::Parameter())));
+  const HloInstruction* all_gather =
+      module->entry_computation()->root_instruction()->operand(0);
+  EXPECT_THAT(all_gather->shape().element_type(), F8E4M3FN);
+}
+
+TEST_F(CollectiveQuantizerTest, ConvertAllGatherUnary) {
+  absl::string_view hlo_string = R"(
+  HloModule module
+  ENTRY entry {
+    param = f8e4m3fn[8,4,8,128] parameter(0)
+    convert = bf16[8,4,8,128] convert(param)
+    reshape = bf16[8,4,1024] reshape(convert)
+    slice = bf16[8,4,512] slice(reshape), slice={[0:8], [0:4], [256:768]}
+    ROOT all-gather = bf16[8,32,512] all-gather(slice), dimensions={1}, replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Convert(op::AllGather(op::Slice(op::Reshape(op::Parameter())))));
+  const HloInstruction* all_gather =
+      module->entry_computation()->root_instruction()->operand(0);
+  EXPECT_THAT(all_gather->shape().element_type(), F8E4M3FN);
+}
+
+TEST_F(CollectiveQuantizerTest, DequantizeAllGather) {
+  absl::string_view hlo_string = R"(
+  HloModule module
+  ENTRY entry {
+    param = f8e4m3fn[8,4,8,128] parameter(0)
+    convert = bf16[8,4,8,128] convert(param)
+    scale = bf16[] parameter(1), sharding={replicated}
+    scale_bcast = bf16[8,4,8,128] broadcast(scale), dimensions={}
+    multiply = bf16[8,4,8,128] multiply(convert, scale_bcast)
+    ROOT all-gather = bf16[8,32,8,128] all-gather(multiply), dimensions={1}, replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Multiply(op::Convert(op::AllGather(op::Parameter())),
+                           op::Broadcast()));
+  const HloInstruction* all_gather =
+      module->entry_computation()->root_instruction()->operand(0)->operand(0);
+  EXPECT_THAT(all_gather->shape().element_type(), F8E4M3FN);
+}
+
+TEST_F(CollectiveQuantizerTest, DequantizeAllToAll) {
+  absl::string_view hlo_string = R"(
+  HloModule module
+  ENTRY entry {
+    param = f8e4m3fn[8,32,8,128] parameter(0)
+    convert = bf16[8,32,8,128] convert(param)
+    scale = bf16[] parameter(1), sharding={replicated}
+    scale_bcast = bf16[8,32,8,128] broadcast(scale), dimensions={}
+    multiply = bf16[8,32,8,128] multiply(convert, scale_bcast)
+    ROOT all-to-all = bf16[8,32,8,128] all-to-all(multiply), dimensions={1}, replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Multiply(op::Convert(op::AllToAll(op::Parameter())),
+                           op::Broadcast()));
+  const HloInstruction* all_to_all =
+      module->entry_computation()->root_instruction()->operand(0)->operand(0);
+  EXPECT_THAT(all_to_all->shape().element_type(), F8E4M3FN);
+}
+
+TEST_F(CollectiveQuantizerTest, DequantizeCollectiveBroadcast) {
+  absl::string_view hlo_string = R"(
+  HloModule module
+  ENTRY entry {
+    param = f8e4m3fn[8,32,8,128] parameter(0)
+    convert = bf16[8,32,8,128] convert(param)
+    scale = bf16[] parameter(1), sharding={replicated}
+    scale_bcast = bf16[8,32,8,128] broadcast(scale), dimensions={}
+    multiply = bf16[8,32,8,128] multiply(convert, scale_bcast)
+    ROOT collective-broadcast = bf16[8,32,8,128] collective-broadcast(multiply), replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Multiply(op::Convert(op::CollectiveBroadcast(op::Parameter())),
+                   op::Broadcast()));
+  const HloInstruction* collective_broadcast =
+      module->entry_computation()->root_instruction()->operand(0)->operand(0);
+  EXPECT_THAT(collective_broadcast->shape().element_type(), F8E4M3FN);
+}
+
+TEST_F(CollectiveQuantizerTest, DequantizeCollectivePermute) {
+  absl::string_view hlo_string = R"(
+  HloModule module
+  ENTRY entry {
+    param = f8e4m3fn[8,32,8,128] parameter(0)
+    convert = bf16[8,32,8,128] convert(param)
+    scale = bf16[] parameter(1), sharding={replicated}
+    scale_bcast = bf16[8,32,8,128] broadcast(scale), dimensions={}
+    multiply = bf16[8,32,8,128] multiply(convert, scale_bcast)
+    ROOT collective-permute = bf16[8,32,8,128] collective-permute(multiply), source_target_pairs={{0,1},{2,3},{4,5},{6,7}}, channel_id=1
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Multiply(op::Convert(op::CollectivePermute(op::Parameter())),
+                           op::Broadcast()));
+  const HloInstruction* collective_permute =
+      module->entry_computation()->root_instruction()->operand(0)->operand(0);
+  EXPECT_THAT(collective_permute->shape().element_type(), F8E4M3FN);
+}
+
+TEST_F(CollectiveQuantizerTest, DequantizeAllGatherUnary) {
+  absl::string_view hlo_string = R"(
+  HloModule module
+  ENTRY entry {
+    param = f8e4m3fn[8,4,8,128] parameter(0)
+    convert = bf16[8,4,8,128] convert(param)
+    scale = bf16[] parameter(1), sharding={replicated}
+    scale_bcast = bf16[8,4,8,128] broadcast(scale), dimensions={}
+    multiply = bf16[8,4,8,128] multiply(convert, scale_bcast)
+    reshape = bf16[8,4,1024] reshape(multiply)
+    slice = bf16[8,4,512] slice(reshape), slice={[0:8], [0:4], [256:768]}
+    ROOT all-gather = bf16[8,32,512] all-gather(slice), dimensions={1}, replica_groups={{0,1,2,3,4,5,6,7}}, channel_id=1
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunCollectiveQuantizer(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Multiply(
+          op::Convert(op::AllGather(op::Slice(op::Reshape(op::Parameter())))),
+          op::Broadcast()));
+  HloInstruction* all_gather = module->entry_computation()
+                                   ->root_instruction()
+                                   ->mutable_operand(0)
+                                   ->mutable_operand(0);
+  EXPECT_THAT(all_gather->shape().element_type(), F8E4M3FN);
 }
 
 }  // namespace

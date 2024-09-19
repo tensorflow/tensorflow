@@ -103,7 +103,14 @@ class DotDimensionsInfo {
       batch_dimensions_.sizes.push_back(type.getDimSize(dim));
     }
 
-    for (const int64_t dim : contracting_dimensions) {
+    // Create a sorted contracting dimensions array. This currently doesn't
+    // support dynamic tensors.
+    llvm::SmallVector<int64_t, 4> sorted_contracting_dimensions =
+        llvm::to_vector(contracting_dimensions);
+    if (type.hasStaticShape()) {
+      llvm::sort(sorted_contracting_dimensions);
+    }
+    for (const int64_t dim : sorted_contracting_dimensions) {
       contracting_dimensions_.axes.push_back(dim);
       contracting_dimensions_.sizes.push_back(type.getDimSize(dim));
     }

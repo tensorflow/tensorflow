@@ -66,11 +66,13 @@ limitations under the License.
 #include "xla/service/cpu/ir_emission_utils.h"
 #include "xla/service/cpu/ir_emitter2.h"
 #include "xla/service/cpu/target_machine_features.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -1099,7 +1101,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::MakeKernelThunkSequence(
     std::optional<uint64_t> min_alignment) {
   return ThunkSequence::Of<KernelThunk>(
       ThunkInfo(instruction), buffers.arguments, buffers.results, kernel.name,
-      kernel.thread_dims, kernel.invariant_buffers, min_alignment);
+      kernel.thread_dims, kernel.invariant_arguments, min_alignment);
 }
 
 }  // namespace xla::cpu

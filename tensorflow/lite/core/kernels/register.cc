@@ -379,9 +379,12 @@ BuiltinOpResolver::BuiltinOpResolver() {
              Register_STABLEHLO_REDUCE_WINDOW());
   AddBuiltin(BuiltinOperator_STABLEHLO_GATHER, Register_STABLEHLO_GATHER());
   AddBuiltin(BuiltinOperator_STABLEHLO_ADD, Register_STABLEHLO_ADD());
+  AddBuiltin(BuiltinOperator_STABLEHLO_AND, Register_STABLEHLO_AND());
   AddBuiltin(BuiltinOperator_STABLEHLO_MULTIPLY, Register_STABLEHLO_MULTIPLY());
   AddBuiltin(BuiltinOperator_STABLEHLO_MAXIMUM, Register_STABLEHLO_MAXIMUM());
   AddBuiltin(BuiltinOperator_STABLEHLO_MINIMUM, Register_STABLEHLO_MINIMUM());
+  AddBuiltin(BuiltinOperator_STABLEHLO_SHIFT_LEFT,
+             Register_STABLEHLO_SHIFT_LEFT());
   AddBuiltin(BuiltinOperator_STABLEHLO_PAD, Register_STABLEHLO_PAD());
   AddBuiltin(BuiltinOperator_STABLEHLO_COMPOSITE,
              Register_STABLEHLO_COMPOSITE());

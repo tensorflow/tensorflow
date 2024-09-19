@@ -59,6 +59,7 @@ class ServiceExecutableRunOptions {
   }
   int device_ordinal() const { return run_options_.device_ordinal(); }
 
+  int local_device_count() const { return run_options_.local_device_count(); };
   // Borrows a stream and returns a smart pointer which returns the stream on
   // destruction.
   absl::StatusOr<StreamPool::Ptr> BorrowStream(
@@ -90,6 +91,7 @@ class ServiceExecutableRunOptions {
  private:
   ExecutableRunOptions run_options_;
   StreamBorrower stream_borrower_;
+  int64_t local_device_count_;
 };
 
 }  // namespace xla

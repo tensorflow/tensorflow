@@ -1216,6 +1216,28 @@ ENTRY e {
       "foo");
 }
 
+TEST_F(GemmFusionTest, FusesBroadcastOfScalarEpilogues) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule m
+ENTRY e {
+  p0 = f16[2,18] parameter(0)
+  p1 = f16[256,2] parameter(1)
+  d = f16[18,256] dot(p0, p1),
+    lhs_contracting_dims={0}, rhs_contracting_dims={1}
+  p2 = f16[1] parameter(2)
+  p3 = f16[1] parameter(3)
+  m0 = f16[1] multiply(f16[1] p2, f16[1] p3)
+  bc = f16[] bitcast(m0)
+  b = f16[18,256] broadcast(f16[] bc)
+  ROOT m = f16[18,256] multiply(d, b)
+})")
+                    .value();
+  EXPECT_TRUE(GemmFusion(gpu_version_).Run(module.get()).value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch((m::Fusion(m::Parameter(), m::Parameter(),
+                                    m::Parameter(), m::Parameter()))));
+}
+
 // A test fixture class for testing the threshold for small matrices.
 class SmallDotGemmFusionTest : public GemmFusionTest {
  public:
@@ -1407,6 +1429,29 @@ CHECK:  %parameter_0 = s4[8,1024]{1,0} parameter(0)
 CHECK: ENTRY
 CHECK-DAG: ROOT {{.*}} = f32[8,4]{1,0} fusion(s4[8,1024]{1,0} %lhs, f32[1024,4]{1,0} %rhs)
 })");
+}
+
+TEST_F(SmallDotGemmFusionTest, Int4WithMinorBatchDimIsNotRewritten) {
+  const std::string kInt4Dot = R"(
+    ENTRY main {
+      lhs = s4[8,1024,16]{2,1,0} parameter(0)
+      lhs_converted = bf16[8,1024,16]{2,1,0} convert(lhs)
+      rhs = bf16[16,1024,64]{2,1,0} parameter(1)
+      ROOT dot = bf16[16,8,64]{2,1,0} dot(lhs_converted, rhs),
+        lhs_batch_dims={2},
+        lhs_contracting_dims={1},
+        rhs_batch_dims={0},
+        rhs_contracting_dims={1}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kInt4Dot));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_enable_triton_gemm_int4(true);
+  TF_ASSERT_OK_AND_ASSIGN(auto result,
+                          GemmFusion(gpu_version_).Run(module.get()));
+  EXPECT_FALSE(result);
 }
 
 }  // namespace

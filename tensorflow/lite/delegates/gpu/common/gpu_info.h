@@ -448,6 +448,8 @@ struct OpenClInfo {
   bool supports_fp32_rtn;
   bool supports_fp16_rtn;
 
+  bool supports_register_allocation_arm = false;
+
   struct SupportedImage2dTypes {
     absl::flat_hash_set<DataType> r_layout;
     absl::flat_hash_set<DataType> rg_layout;

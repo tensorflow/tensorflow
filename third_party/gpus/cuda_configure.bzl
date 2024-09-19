@@ -25,7 +25,9 @@ NB: DEPRECATED! Use `hermetic/cuda_configure` rule instead.
     `/usr/local/cuda`.
   * `TF_CUDA_COMPUTE_CAPABILITIES`: The CUDA compute capabilities. Default is
     `3.5,5.2`.
-  * `PYTHON_BIN_PATH`: The python binary path
+  * `PYTHON_BIN_PATH`: The python binary path.
+  * `TMPDIR`: specifies the directory to use for temporary files. This
+    environment variable is used by GCC compiler.
 """
 
 load(
@@ -73,6 +75,7 @@ _TF_CUDA_COMPUTE_CAPABILITIES = "TF_CUDA_COMPUTE_CAPABILITIES"
 _TF_CUDA_CONFIG_REPO = "TF_CUDA_CONFIG_REPO"
 _TF_DOWNLOAD_CLANG = "TF_DOWNLOAD_CLANG"
 _PYTHON_BIN_PATH = "PYTHON_BIN_PATH"
+_TMPDIR = "TMPDIR"
 
 def verify_build_defines(params):
     """Verify all variables that crosstool/BUILD.tpl expects are substituted.
@@ -1186,6 +1189,11 @@ def _create_local_cuda_repository(repository_ctx):
             "%{host_compiler_path}": str(cc),
             "%{use_clang_compiler}": str(is_nvcc_and_clang),
             "%{nvcc_tmp_dir}": _get_nvcc_tmp_dir_for_windows(repository_ctx),
+            "%{tmpdir}": get_host_environ(
+                repository_ctx,
+                _TMPDIR,
+                "",
+            ),
         }
         repository_ctx.template(
             "crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc",
@@ -1367,7 +1375,7 @@ _ENVIRONS = [
     "NVVMIR_LIBRARY_DIR",
     _PYTHON_BIN_PATH,
     "TMP",
-    "TMPDIR",
+    _TMPDIR,
     "TF_CUDA_PATHS",
 ] + _MSVC_ENVVARS
 

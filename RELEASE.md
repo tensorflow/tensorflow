@@ -40,6 +40,12 @@
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 *   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
 
+*   `tf.lite`:
+    *   The LiteRT [repo](https://github.com/google-ai-edge/LiteRT) is
+    live (see [announcement](https://developers.googleblog.com/en/tensorflow-lite-is-now-litert/)), which means that in the coming months there will be changes to the development experience 
+    for TFLite. The TF Lite Runtime source will be moved later this year,
+    and sometime after that we will start accepting contributions through that repo.
+
 ### Bug Fixes and Other Changes
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
@@ -56,11 +62,16 @@
       that is based on the number of cores on the machine. This can improve 
       throughput for map functions which perform IO or otherwise release the 
       CPU.
+    * Add [`tf.data.experimental.get_model_proto`](https://www.tensorflow.org/api_docs/python/tf/data/experimental/get_model_proto)
+      to allow users to peek into the analytical model inside of a dataset
+      iterator.
+
 * `tf.lite`
     * `Dequantize` op supports `TensorType_INT4`.
         * This change includes per-channel dequantization.
     * Add support for `stablehlo.composite`.
-    * `EmbeddingLookup` op supports `TensorType_INT4` values.
+    * `EmbeddingLookup` op supports per-channel
+      quantization and `TensorType_INT4` values.
     * `FullyConnected` op supports `TensorType_INT16` activation and
       `TensorType_Int4` weight per-channel quantization.
 

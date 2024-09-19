@@ -210,7 +210,9 @@ static std::pair<mlir::Attribute, mlir::ArrayAttr> GetLayoutAttribute(
       // users should be aware of this limitation which will use the default
       // layout for tuple subshapes.
       std::pair<mlir::Attribute, mlir::Attribute> inner =
-          GetLayoutAttribute(b, tuple_shape);
+          tuple_shape.has_layout()
+              ? GetLayoutAttribute(b, tuple_shape, tuple_shape.layout())
+              : GetLayoutAttribute(b, tuple_shape);
       element_attrs.push_back(inner.first);
       tile_attrs.push_back(inner.second);
     }

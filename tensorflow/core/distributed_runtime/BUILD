@@ -412,7 +412,6 @@ cc_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
-        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -624,7 +623,6 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/core/protobuf:worker_proto_cc",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
     ],
 )
@@ -648,7 +646,6 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
         "//tensorflow/core/protobuf:worker_proto_cc",
     ],
 )

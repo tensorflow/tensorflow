@@ -34,14 +34,15 @@ namespace xla {
 // Note: Tests derived from HloTestBase should use
 // ParseAndReturnVerifiedModule() instead!
 absl::StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
-    absl::string_view str, const HloModuleConfig& config);
+    absl::string_view str, const HloModuleConfig& config,
+    bool set_to_default_entry_computation_layout = true);
 
 // Given a string in the HloModule::ToString() format, parses the string and
 // creates a HloModule with default config.
 // Note: Tests derived from HloTestBase should use
 // ParseAndReturnVerifiedModule() instead!
 absl::StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
-    absl::string_view str);
+    absl::string_view str, bool set_to_default_entry_computation_layout = true);
 
 // Parses sharding from str. str is supposed to contain the body of the
 // sharding, i.e. just the rhs of the "sharding={...}" attribute string, e.g.,

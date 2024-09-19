@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -664,13 +665,13 @@ CaptureConvGraph(HloInstruction* instr, HloInstruction* convolution,
 absl::StatusOr<bool> F8GraphConv(HloComputation* comp,
                                  se::CudaComputeCapability cc,
                                  se::dnn::VersionInfo dnn_version,
-                                 int32_t toolkit_version) {
+                                 const se::SemanticVersion& toolkit_version) {
   bool changed = false;
 
   if (dnn_version < se::dnn::VersionInfo(8, 9, 0)) {
     return false;
   }
-  if (toolkit_version < 12000) {
+  if (toolkit_version < se::SemanticVersion{12, 0, 0}) {
     return false;
   }
   if (!cc.IsAtLeast(se::CudaComputeCapability::HOPPER)) {

@@ -28,6 +28,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/mlir/lite/allocation.h"
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/array.h"
 #include "tensorflow/lite/c/common_internal.h"

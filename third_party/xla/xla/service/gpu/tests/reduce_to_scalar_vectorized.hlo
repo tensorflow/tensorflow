@@ -1,0 +1,28 @@
+// RUN: hlo-opt %s --platform=gpu --xla_gpu_mlir_emitter_level=3 --stage=llvm-after-optimizations --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/%{GPU}.txtpb | FileCheck %s --check-prefixes=CHECK
+
+HloModule ReductionToScalarVectorized, is_scheduled=true
+
+region_0.7 {
+  Arg_1.9 = pred[] parameter(1)
+  Arg_0.8 = pred[] parameter(0)
+  ROOT and.1 = pred[] and(Arg_0.8, Arg_1.9)
+}
+
+fused_reduce {
+  param_1.8 = s8[2,3,4]{2,1,0} parameter(1)
+  convert.2.3 = s16[2,3,4]{2,1,0} convert(param_1.8)
+  param_0.5 = u8[2,3,4]{2,1,0} parameter(0)
+  convert.3.3 = s16[2,3,4]{2,1,0} convert(param_0.5)
+  compare.1.3 = pred[2,3,4]{2,1,0} compare(convert.2.3, convert.3.3), direction=EQ
+  bitcast.26.1 = pred[24]{0} bitcast(compare.1.3)
+  constant_3_1 = pred[] constant(true)
+  ROOT reduce.11.1 = pred[] reduce(bitcast.26.1, constant_3_1), dimensions={0}, to_apply=region_0.7
+} // fused_reduce
+
+ENTRY main.12 {
+  Arg_1.2.0 = u8[2,3,4]{2,1,0} parameter(1)
+  Arg_0.1.0 = s8[2,3,4]{2,1,0} parameter(0)
+  ROOT loop_reduce_fusion = pred[] fusion(Arg_1.2.0, Arg_0.1.0), kind=kLoop, calls=fused_reduce
+}
+
+// CHECK: load <16 x i8>, ptr addrspace(1) %{{.*}}, align 16, !invariant.load !4

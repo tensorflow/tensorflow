@@ -23,10 +23,12 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Type.h"
+#include "xla/cpu_function_runtime.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/ir_emitter.h"
@@ -138,7 +140,9 @@ TEST_F(IrEmitter2Test, BuildKernelPrototype) {
   EXPECT_NE(prototype.results[0].EmitReadArrayElement(index, &b), nullptr);
   EXPECT_NE(prototype.results[1].EmitReadArrayElement(index, &b), nullptr);
 
-  ASSERT_TRUE(*RunFileCheck(llvm_ir::DumpToString(module.get()), R"(
+  // clang-format off
+  ASSERT_TRUE(*RunFileCheck(llvm_ir::DumpToString(module.get()),
+                            absl::StrCat(R"(
     CHECK: define ptr @test(ptr %0) #0 {
 
     CHECK-NEXT: getelementptr inbounds nuw %SE_HOST_KernelCallFrame, {{.*}} i32 0
@@ -160,7 +164,7 @@ TEST_F(IrEmitter2Test, BuildKernelPrototype) {
     CHECK-NEXT: getelementptr inbounds nuw %SE_HOST_KernelCallFrame, {{.*}} i32 3
     CHECK:      load ptr
     CHECK:      getelementptr %SE_HOST_KernelArg, {{.*}} i32 0, i32 0
-    CHECK:      %[[ARG0:.+]] = load ptr, {{.*}}, !invariant.load ![[SCOPE0:.+]], !dereferenceable ![[DEREF_BYTES:.*]], !align ![[ALIGNMENT:.+]]
+    CHECK:      %[[ARG0:.+]] = load ptr, {{.*}}, !invariant.load ![[SCOPE0:.+]], !dereferenceable ![[DEREF_BYTES:.+]], !align ![[ALIGNMENT:.+]]
 
     CHECK-NEXT: getelementptr inbounds nuw %SE_HOST_KernelCallFrame, {{.*}} i32 3
     CHECK:      load ptr
@@ -199,8 +203,7 @@ TEST_F(IrEmitter2Test, BuildKernelPrototype) {
     CHECK: }
 
     #0 = { uwtable "frame-pointer"="all" "prefer-vector-width"="256" }
-    CHECK-DAG: ![[DEREF_BYTES]] = !{i64 32}
-    CHECK-DAG: ![[ALIGNMENT]] = !{i64 16}
+    CHECK-DAG: ![[ALIGNMENT]] = !{i64 )", cpu_function_runtime::MinAlign(), R"(}
     CHECK-DAG: ![[SCOPE0]] = !{}
     CHECK-DAG: ![[SCOPE1]] = !{![[RES0:.+]], ![[RES1:.+]]}
     CHECK-DAG: ![[SCOPE2]] = !{![[RES0]]}
@@ -208,6 +211,15 @@ TEST_F(IrEmitter2Test, BuildKernelPrototype) {
     CHECK-DAG: ![[RES0]] = !{!"{{.*}}, offset:512, {{.*}}", ![[DOMAIN:.+]]}
     CHECK-DAG: ![[RES1]] = !{!"{{.*}}, offset:768, {{.*}}", ![[DOMAIN]]}
     CHECK-DAG: ![[DOMAIN]] = !{!"XLA host kernel test AA domain"}
+  )")));
+  // clang-format on
+
+  // Match for dereferenceable metadata in separate check, because depending on
+  // the alignment value, it may be the same scope as align, and may be a
+  // separate one. It's impossible to match both these cases in one FileCheck.
+  ASSERT_TRUE(*RunFileCheck(llvm_ir::DumpToString(module.get()), R"(
+    CHECK:      {{.+}} = load ptr, {{.*}}, !dereferenceable ![[DEREF_BYTES:.+]],
+    CHECK: ![[DEREF_BYTES]] = !{i64 32}
   )"));
 }
 
@@ -278,6 +290,26 @@ TEST_F(IrEmitter2InvariantBuffersTest, AllInvariantBuffers) {
     HloModule m
     ENTRY main {
       p0 = f32[2,2] parameter(0)
+      p1 = f32[2,2] parameter(1)
+      ROOT add.0 = f32[2,2] add(p0, p1)
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
+  TF_ASSERT_OK_AND_ASSIGN(IrEmitter2 ir_emitter, MakeIrEmitter2(*module, *hlo));
+  TF_ASSERT_OK_AND_ASSIGN(IrEmitter2::KernelInfo kernel,
+                          EmitElementalHostKernel(ir_emitter, *hlo, "add.0"));
+
+  ASSERT_EQ(kernel.invariant_arguments.size(), 2);
+}
+
+TEST_F(IrEmitter2InvariantBuffersTest, InvariantBufferPassedTwice) {
+  llvm::LLVMContext context;
+  auto module = std::make_unique<llvm::Module>("test", context);
+
+  const char* hlo_text = R"(
+    HloModule m
+    ENTRY main {
+      p0 = f32[2,2] parameter(0)
       ROOT add.0 = f32[2,2] add(p0, p0)
     })";
 
@@ -286,7 +318,9 @@ TEST_F(IrEmitter2InvariantBuffersTest, AllInvariantBuffers) {
   TF_ASSERT_OK_AND_ASSIGN(IrEmitter2::KernelInfo kernel,
                           EmitElementalHostKernel(ir_emitter, *hlo, "add.0"));
 
-  ASSERT_EQ(kernel.invariant_buffers.size(), 1);
+  // Invariant buffers contains indices of both arguments, even though it is the
+  // same buffer slice.
+  ASSERT_EQ(kernel.invariant_arguments.size(), 2);
 }
 
 TEST_F(IrEmitter2InvariantBuffersTest, NoInvariantBuffers) {
@@ -305,7 +339,7 @@ TEST_F(IrEmitter2InvariantBuffersTest, NoInvariantBuffers) {
   TF_ASSERT_OK_AND_ASSIGN(IrEmitter2::KernelInfo kernel,
                           EmitElementalHostKernel(ir_emitter, *hlo, "add.0"));
 
-  ASSERT_EQ(kernel.invariant_buffers.size(), 0);
+  ASSERT_EQ(kernel.invariant_arguments.size(), 0);
 }
 
 TEST_F(IrEmitter2InvariantBuffersTest, MixedBuffers) {
@@ -325,8 +359,10 @@ TEST_F(IrEmitter2InvariantBuffersTest, MixedBuffers) {
   TF_ASSERT_OK_AND_ASSIGN(IrEmitter2::KernelInfo kernel,
                           EmitElementalHostKernel(ir_emitter, *hlo, "add.0"));
 
-  // TODO(abanas): Verify also which buffer is read-only, not only the count.
-  ASSERT_EQ(kernel.invariant_buffers.size(), 1);
+  // The first argument is invariant, the second is not because it's aliased to
+  // the output.
+  EXPECT_EQ(kernel.invariant_arguments.size(), 1);
+  EXPECT_TRUE(kernel.invariant_arguments.contains(0));
 }
 
 }  // namespace

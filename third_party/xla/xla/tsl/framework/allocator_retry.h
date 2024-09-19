@@ -16,9 +16,12 @@ limitations under the License.
 #ifndef XLA_TSL_FRAMEWORK_ALLOCATOR_RETRY_H_
 #define XLA_TSL_FRAMEWORK_ALLOCATOR_RETRY_H_
 
+#include <cstddef>
+#include <functional>
+
+#include "absl/base/thread_annotations.h"
+#include "absl/synchronization/mutex.h"
 #include "tsl/platform/env.h"
-#include "tsl/platform/mutex.h"
-#include "tsl/platform/types.h"
 
 namespace tsl {
 
@@ -26,6 +29,7 @@ namespace tsl {
 class AllocatorRetry {
  public:
   AllocatorRetry();
+  ~AllocatorRetry();
 
   // Call 'alloc_func' to obtain memory.  On first call,
   // 'verbose_failure' will be false.  If return value is nullptr,
@@ -45,14 +49,14 @@ class AllocatorRetry {
 
  private:
   Env* env_;
-  mutex mu_;
-  condition_variable memory_returned_;
+  absl::Mutex mu_;
+  absl::CondVar memory_returned_ ABSL_GUARDED_BY(mu_);
 };
 
 // Implementation details below
 inline void AllocatorRetry::NotifyDealloc() {
-  mutex_lock l(mu_);
-  memory_returned_.notify_all();
+  absl::MutexLock l(&mu_);
+  memory_returned_.SignalAll();
 }
 
 }  // namespace tsl

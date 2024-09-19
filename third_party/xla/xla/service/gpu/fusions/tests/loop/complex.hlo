@@ -1,7 +1,8 @@
-// RUN: fusion_to_mlir %s | FileCheck %s
+// RUN: fusion_to_mlir %s |\
+// RUN:   mlir_fusions_opt --xla-gpu-test-optimize | FileCheck %s
 // RUN: test_correctness %s
 
-%fused_computation {
+fusion {
   %p0 = f32[2]{0} parameter(0)
   %p1 = f32[2]{0} parameter(1)
   %p2 = c64[2]{0} parameter(2)
@@ -13,11 +14,12 @@
 
 // CHECK: func.func @main
 // CHECK-NEXT: gpu.thread_id
-// CHECK-NEXT: pure_call @fused_computation_mul
+// CHECK:      xla_gpu.loop
+// CHECK-NEXT: pure_call @fusion_mul
 // CHECK-NEXT: tensor.insert
-// CHECK-NEXT: return
+// CHECK:      return
 
-// CHECK: func.func private @fused_computation_mul
+// CHECK: func.func private @fusion_mul
 // CHECK-NEXT: arith.constant
 // CHECK-NEXT: tensor.extract
 // CHECK-NEXT: tensor.extract

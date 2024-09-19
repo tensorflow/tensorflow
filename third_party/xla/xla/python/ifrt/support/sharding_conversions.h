@@ -18,9 +18,10 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_sharding.h"
-#include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -46,7 +47,7 @@ absl::StatusOr<OpSharding> ToOpSharding(const Sharding& sharding);
 // `sharding_param`.
 absl::StatusOr<OpSharding> ToOpSharding(
     const ShardingParam& sharding_param,
-    const xla::ifrt::DeviceList& device_mapping);
+    const tsl::RCReference<xla::ifrt::DeviceList>& device_mapping);
 
 // Converts ShardingParam to HloSharding.
 //

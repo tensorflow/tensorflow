@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/client/client_library.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/monitoring/test_utils.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/lib/monitoring/test_utils.h"
 #include "tensorflow/core/platform/env.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
-#include "tsl/lib/monitoring/test_utils.h"
 #include "tsl/platform/statusor.h"
 
 namespace tensorflow {

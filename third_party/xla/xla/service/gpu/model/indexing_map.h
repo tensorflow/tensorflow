@@ -19,10 +19,10 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 #include <optional>
 #include <ostream>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -31,6 +31,7 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
@@ -40,6 +41,22 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+
+enum class VariableKind : char {
+  kDefault = 0,
+  // GPU Block IDs.
+  kBlockX,
+  kBlockY,
+  kBlockZ,
+  // GPU Thread IDs.
+  kThreadX,
+  kThreadY,
+  kThreadZ,
+};
+
+std::string_view ToString(VariableKind type);
+VariableKind ToVariableType(std::string_view type_name);
+std::ostream& operator<<(std::ostream& out, VariableKind var_type);
 
 // Interval represents a closed interval [lower_bound, upper_bound].
 struct Interval {
@@ -287,18 +304,25 @@ class IndexingMap {
   IndexingMap(
       mlir::AffineMap affine_map, std::vector<DimVar> dimensions,
       std::vector<RangeVar> range_vars, std::vector<RTVar> rt_vars,
-      absl::Span<std::pair<mlir::AffineExpr, Interval> const> constraints = {});
+      absl::Span<std::pair<mlir::AffineExpr, Interval> const> constraints = {},
+      bool is_simplified = false);
 
   IndexingMap(mlir::AffineMap affine_map, std::vector<DimVar> dimensions,
               std::vector<RangeVar> range_vars, std::vector<RTVar> rt_vars,
               const llvm::DenseMap<mlir::AffineExpr, Interval>& constraints);
+
+  IndexingMap(const IndexingMap&) = default;
+  IndexingMap(IndexingMap&&) = default;
+  IndexingMap& operator=(const IndexingMap&) = default;
+  IndexingMap& operator=(IndexingMap&&) = default;
 
   // Returns an undefined indexing map.
   static IndexingMap GetUndefined() { return IndexingMap(); }
 
   static IndexingMap FromTensorSizes(
       mlir::AffineMap affine_map, absl::Span<const int64_t> dim_upper_bounds,
-      absl::Span<const int64_t> symbol_upper_bounds);
+      absl::Span<const int64_t> symbol_upper_bounds,
+      bool is_simplified = false);
 
   std::string ToString(
       const AffineMapPrinter& printer = AffineMapPrinter()) const;
@@ -314,6 +338,9 @@ class IndexingMap {
   // Returns the affine map.
   mlir::AffineMap GetAffineMap() const { return affine_map_; }
   mlir::AffineMap& GetMutableAffineMap() { return affine_map_; }
+
+  // Returns the number of indexing map results.
+  int64_t GetNumResults() const { return affine_map_.getNumResults(); }
 
   // Returns the range evaluator for the indexing map's domain.
   RangeEvaluator GetRangeEvaluator() const;
@@ -379,6 +406,10 @@ class IndexingMap {
   // satisfies both constraints.
   bool IsKnownEmpty() const { return is_known_empty_; }
 
+  // Returns true if the indexing map is simplified.
+  void SetIsSimplified(bool is_simplified) { is_simplified_ = is_simplified; }
+  bool IsSimplified() const { return is_simplified_; }
+
   bool IsUndefined() const { return affine_map_ == mlir::AffineMap(); }
 
   // Removes unused symbols from the `affine_map_` and constraints.
@@ -405,6 +436,14 @@ class IndexingMap {
     return {affine_map_.getSubMap({result_index}), dim_vars_, range_vars_,
             rt_vars_, constraints_};
   }
+
+  // Returns a new indexing map with all RangeVars and RTVars converted to
+  // DimVars.
+  // For example,
+  // (d0, d1, d2)[s0, s1] -> (d0, d1, d2, s0, s1)
+  // will be converted to
+  // (d0, d1, d2, d3, d4) -> (d0, d1, d2, d3, d4)
+  IndexingMap ConvertSymbolsToDimensions() const;
 
  private:
   IndexingMap() = default;
@@ -444,6 +483,8 @@ class IndexingMap {
   llvm::DenseMap<mlir::AffineExpr, Interval> constraints_;
   // Flag to indicate that the domain is empty.
   bool is_known_empty_ = false;
+  // Flag to indicate that the indexing map is simplified.
+  bool is_simplified_ = false;
 };
 std::ostream& operator<<(std::ostream& out, const IndexingMap& indexing_map);
 bool operator==(const IndexingMap& lhs, const IndexingMap& rhs);

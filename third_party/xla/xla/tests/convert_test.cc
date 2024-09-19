@@ -686,9 +686,14 @@ XLA_TEST_F(ConvertTest, ConvertF32BF16) {
       floats[i] = absl::bit_cast<float>(val);
     }
   }
-  // Test NaN and -Nan.
+  // Test NaN and -NaN.
   floats.push_back(std::numeric_limits<float>::quiet_NaN());
   floats.push_back(-std::numeric_limits<float>::quiet_NaN());
+
+  // NaNs that have the LSB of the significand set.
+  // Just truncating the significand will result in an `inf` BF16 value.
+  floats.push_back(absl::bit_cast<float>(0x7F800001));
+  floats.push_back(absl::bit_cast<float>(0xFF800001));
 
   std::vector<bfloat16> expected(floats.size());
   for (int i = 0; i < expected.size(); ++i) {
@@ -764,7 +769,9 @@ XLA_TEST_F(ConvertTest, ConvertF16F8e5m2Roundtrip) {
       execution_options_.debug_options().xla_allow_excess_precision();
   execution_options_.mutable_debug_options()->set_xla_allow_excess_precision(
       false);
-  ComputeAndCompareR1<Eigen::half>(&builder, expected_roundtrip, {});
+  // Pass in ErrorSpec, as this causes all NaNs to be treated as equal.
+  ComputeAndCompareR1<Eigen::half>(&builder, expected_roundtrip, {},
+                                   ErrorSpec(0.));
   execution_options_.mutable_debug_options()->set_xla_allow_excess_precision(
       saved);
 }
@@ -787,6 +794,60 @@ XLA_TEST_F(ConvertTest, ConvertF8e5m2F16RoundtripExhaustive) {
   // Round-tripping a NaN will turn it into a quiet NaN and doesn't necessarily
   // preserve the payload.
   ComputeAndCompareR1<tsl::float8_e5m2>(&builder, all_f8, {}, ErrorSpec(0.));
+}
+
+XLA_TEST_F(ConvertTest, ConvertF8e5m2F32Exhaustive) {
+  // Convert from f8e5m2 to f32.
+  XlaBuilder builder(TestName());
+
+  std::vector<tsl::float8_e5m2> all_f8;
+  std::vector<float> all_f32;
+  for (int i = 0; i < 256; i++) {
+    all_f8.push_back(
+        Eigen::numext::bit_cast<tsl::float8_e5m2>(static_cast<uint8_t>(i)));
+    all_f32.push_back(tsl::float8_e5m2::ConvertTo<float>(all_f8.back()));
+  }
+
+  xla::XlaOp all_f8_as_f8 = ConstantR1<tsl::float8_e5m2>(&builder, all_f8);
+  ConvertElementType(all_f8_as_f8, F32);
+
+  ComputeAndCompareR1<float>(&builder, all_f32, {}, ErrorSpec(0.));
+}
+
+XLA_TEST_F(ConvertTest, ConvertF8e5m2fnuzF32Exhaustive) {
+  // Convert from f8e5m2fnuz to f32.
+  XlaBuilder builder(TestName());
+
+  std::vector<tsl::float8_e5m2fnuz> all_f8;
+  std::vector<float> all_f32;
+  for (int i = 0; i < 256; i++) {
+    all_f8.push_back(
+        Eigen::numext::bit_cast<tsl::float8_e5m2fnuz>(static_cast<uint8_t>(i)));
+    all_f32.push_back(tsl::float8_e5m2fnuz::ConvertTo<float>(all_f8.back()));
+  }
+
+  xla::XlaOp all_f8_as_f8 = ConstantR1<tsl::float8_e5m2fnuz>(&builder, all_f8);
+  ConvertElementType(all_f8_as_f8, F32);
+
+  ComputeAndCompareR1<float>(&builder, all_f32, {}, ErrorSpec(0.));
+}
+
+XLA_TEST_F(ConvertTest, ConvertF8e4m3F32Exhaustive) {
+  // Convert from f8e4m3 to f32.
+  XlaBuilder builder(TestName());
+
+  std::vector<tsl::float8_e4m3fn> all_f8;
+  std::vector<float> all_f32;
+  for (int i = 0; i < 256; i++) {
+    all_f8.push_back(
+        Eigen::numext::bit_cast<tsl::float8_e4m3fn>(static_cast<uint8_t>(i)));
+    all_f32.push_back(tsl::float8_e4m3fn::ConvertTo<float>(all_f8.back()));
+  }
+
+  xla::XlaOp all_f8_as_f8 = ConstantR1<tsl::float8_e4m3fn>(&builder, all_f8);
+  ConvertElementType(all_f8_as_f8, F32);
+
+  ComputeAndCompareR1<float>(&builder, all_f32, {}, ErrorSpec(0.));
 }
 
 XLA_TEST_F(ConvertTest, ConvertF8e5m2F16RoundtripExhaustive2) {
@@ -870,7 +931,9 @@ XLA_TEST_F(ConvertTest, ConvertF16F8e4m3fnRoundtrip) {
       execution_options_.debug_options().xla_allow_excess_precision();
   execution_options_.mutable_debug_options()->set_xla_allow_excess_precision(
       false);
-  ComputeAndCompareR1<Eigen::half>(&builder, expected_roundtrip, {});
+  // Pass in ErrorSpec, as this causes all NaNs to be treated as equal.
+  ComputeAndCompareR1<Eigen::half>(&builder, expected_roundtrip, {},
+                                   ErrorSpec(0.));
   execution_options_.mutable_debug_options()->set_xla_allow_excess_precision(
       saved);
 }

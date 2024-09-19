@@ -22,8 +22,8 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/shape_util.h"
-#include "xla/status_macros.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {

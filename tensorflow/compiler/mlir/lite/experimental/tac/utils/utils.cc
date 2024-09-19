@@ -97,13 +97,13 @@ absl::Status ExportFlatbufferOrMlir(const std::string& output_filename,
     os.flush();
   } else {
     tflite::FlatbufferExportOptions options;
-    options.toco_flags.set_force_select_tf_ops(false);
-    options.toco_flags.set_allow_custom_ops(true);
+    options.converter_flags.set_force_select_tf_ops(false);
+    options.converter_flags.set_allow_custom_ops(true);
     if (enable_select_tf_ops) {
-      options.toco_flags.set_enable_select_tf_ops(true);
-      options.toco_flags.set_allow_all_select_tf_ops(true);
+      options.converter_flags.set_enable_select_tf_ops(true);
+      options.converter_flags.set_allow_all_select_tf_ops(true);
     } else {
-      options.toco_flags.set_enable_select_tf_ops(false);
+      options.converter_flags.set_enable_select_tf_ops(false);
     }
     if (!tflite::MlirToFlatBufferTranslateFunction(module, options, &result)) {
       return absl::UnknownError("Failed to export tflite file.");

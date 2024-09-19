@@ -458,11 +458,9 @@ AllocateDestinationBuffer(
   // callback.
   auto memory_space_shape_fn = [is_pinned_host_memory,
                                 transfer_manager](const Shape& shape) {
-    Shape result = shape;
+    Shape result = transfer_manager->HostShapeToDeviceShape(shape);
     if (is_pinned_host_memory) {
       result.mutable_layout()->set_memory_space(Layout::kHostMemorySpace);
-    } else {
-      result = transfer_manager->HostShapeToDeviceShape(result);
     }
     return result;
   };
@@ -1508,14 +1506,8 @@ PjRtStreamExecutorBuffer::Release(bool wait_for_operations_to_complete) {
         // occur when a buffer was copied to a device and then never used there.
         // In that case we get a new stream and use it to hold onto a reference
         // to the buffer until the events are complete.
-        //
-        // It is also important that we check IsPredeterminedError before
-        // checking DefinedOn(compute_stream) because otherwise DefinedOn would
-        // indefinitely wait since the event is never recorded when the buffer
-        // is predetermined error.
-        if (!stream_and_event.event->IsPredeterminedError() &&
-            !stream_and_event.reference_held &&
-            !stream_and_event.event->DefinedOn(
+        if (!stream_and_event.reference_held &&
+            !stream_and_event.event->IsPredeterminedErrorOrDefinedOn(
                 local_device_state->compute_stream()) &&
             !stream_and_event.event->IsComplete()) {
           if (block_stream == nullptr) {
@@ -1538,22 +1530,16 @@ PjRtStreamExecutorBuffer::Release(bool wait_for_operations_to_complete) {
         // well, if they are not on the compute stream and not also recorded as
         // usage events.
         //
-        // It is also important that we check IsPredeterminedError before
-        // checking DefinedOn(compute_stream) because otherwise DefinedOn would
-        // indefinitely wait since the event is never recorded when the buffer
-        // is predetermined error.
-        //
         // Since it's possible that definition_event.SetSequencingEvent()
         // is called on a different host thread than this host thread, when in
         // future more conditions are added to this check, we should be careful
-        // about whether we put them before the DefinedOn check or after it.
-        // For example, we shouldn't add an IsDefined() check before the
-        // DefinedOn() check here because that could potentially cause a
-        // shortcut where we don't wait for
+        // about whether we put them before the IsPredeterminedErrorOrDefinedOn
+        // check or after it. For example, we shouldn't add an IsDefined() check
+        // before the IsPredeterminedErrorOrDefinedOn() check here because that
+        // could potentially cause a shortcut where we don't wait for
         // definition_event.SetSequencingEvent() on the other thread and
         // eventually cause memory corruption.
-        if (!definition_event->IsPredeterminedError() &&
-            !definition_event->DefinedOn(
+        if (!definition_event->IsPredeterminedErrorOrDefinedOn(
                 local_device_state->compute_stream()) &&
             !definition_event->IsComplete()) {
           if (block_stream == nullptr) {
@@ -2300,6 +2286,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> OutputBufferHelper(
       device->default_memory_space().value_or(nullptr);
   if (shape.has_layout()) {
     switch (shape.layout().memory_space()) {
+      case Layout::kGenericFastMemorySpace:
       case Layout::kDefaultMemorySpace:
         // Nothing to do, we have already set the default memory space.
         break;
@@ -2861,6 +2848,8 @@ PjRtStreamExecutorLoadedExecutable::EnqueueExecution(
   ExecutableRunOptions run_options;
   run_options.set_stream(device_state->compute_stream());
   run_options.set_device_ordinal(device_state->local_device_id().value());
+  run_options.set_local_device_count(client_->client()->device_count());
+
   run_options.set_physical_device_ordinal(
       device_state->local_hardware_id().value());
   run_options.set_host_to_device_stream(device_state->host_to_device_stream());
@@ -3334,6 +3323,7 @@ absl::StatusOr<absl::string_view> MemoryKindFromSimpleShape(
   switch (shape.layout().memory_space()) {
     case Layout::kHostMemorySpace:
       return PinnedHostMemorySpace::kKind;
+    case Layout::kGenericFastMemorySpace:
     case Layout::kDefaultMemorySpace:
       return default_memory_kind;
     default:
@@ -3468,8 +3458,11 @@ PjRtStreamExecutorClient::GetExecutableExtras(CompileOptions* options) {
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-PjRtStreamExecutorClient::Compile(const XlaComputation& computation,
-                                  CompileOptions options) {
+PjRtStreamExecutorClient::CompileInternal(
+    const XlaComputation& computation,
+    const std::vector<const Shape*>& argument_layout_pointers,
+    LayoutCanonicalizationCallback layout_canonicalization_callback,
+    CompileOptions options) {
   tsl::profiler::TraceMe traceme("PjRtStreamExecutorClient::Compile");
   VLOG(1) << "PjRtStreamExecutorClient::Compile";
   options.executable_build_options.set_process_index(process_index());
@@ -3488,16 +3481,13 @@ PjRtStreamExecutorClient::Compile(const XlaComputation& computation,
       addressable_device_logical_ids = extras.addressable_device_logical_ids;
   std::vector<PjRtDevice*>& addressable_devices = extras.addressable_devices;
 
-  std::vector<const Shape*> argument_layout_pointers;
-  TF_RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
-      computation,
-      [local_client = client()](Shape shape) {
-        return local_client->backend()
-            .transfer_manager()
-            ->ChooseCompactLayoutForShape(shape);
-      },
-      options.argument_layouts, &options.executable_build_options,
-      &argument_layout_pointers));
+  // It is important to set the canonicalization callback after creating
+  // a copy of the options so that the executable's options remain without
+  // the callback - the callback would break the executable's serializability.
+  if (layout_canonicalization_callback) {
+    options.executable_build_options.set_layout_canonicalization_callback(
+        layout_canonicalization_callback);
+  }
 
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<LocalExecutable>> local_executables,
@@ -3541,8 +3531,25 @@ PjRtStreamExecutorClient::Compile(mlir::ModuleOp module,
   TF_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> out_memory_spaces,
                       GetOutputMemoryKinds(module));
 
-  // This call will update result_layout in options.executable_build_options
-  // (in addition to returning the argument layouts).
+  // If auto-sharding modifies shapes of arguments and/or result,
+  // we get a callback to restore the layouts. Let us restore the layouts
+  // according to the attributes we parsed from MLIR.
+  auto layout_callback = [local_client = client(), &arg_layout_modes,
+                          &out_layout_modes, &arg_memory_spaces,
+                          &out_memory_spaces](const HloModule& module)
+      -> absl::StatusOr<std::pair<std::vector<Shape>, Shape>> {
+    XlaComputation xla_computation(XlaComputation(module.ToProto()));
+    return LayoutModesToXlaShapes(
+        xla_computation, arg_layout_modes, out_layout_modes, arg_memory_spaces,
+        out_memory_spaces,
+        [local_client](Shape shape) -> absl::StatusOr<Shape> {
+          return local_client->backend()
+              .transfer_manager()
+              ->ChooseCompactLayoutForShape(shape);
+        });
+  };
+
+  // This call will update result_layout in options.executable_build_options.
   TF_ASSIGN_OR_RETURN(auto arg_layouts_and_pointers,
                       LayoutModesToXla(
                           xla_computation, arg_layout_modes, out_layout_modes,
@@ -3555,8 +3562,26 @@ PjRtStreamExecutorClient::Compile(mlir::ModuleOp module,
                           },
                           options.executable_build_options));
 
-  options.argument_layouts = arg_layouts_and_pointers.first;
-  return Compile(xla_computation, options);
+  return CompileInternal(xla_computation, arg_layouts_and_pointers.second,
+                         layout_callback, options);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+PjRtStreamExecutorClient::Compile(const XlaComputation& computation,
+                                  CompileOptions options) {
+  std::vector<const Shape*> argument_layout_pointers;
+  TF_RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
+      computation,
+      [local_client = client()](Shape shape) {
+        return local_client->backend()
+            .transfer_manager()
+            ->ChooseCompactLayoutForShape(shape);
+      },
+      options.argument_layouts, &options.executable_build_options,
+      &argument_layout_pointers));
+  return CompileInternal(computation, argument_layout_pointers,
+                         /* layout_canonicalization_callback = */ nullptr,
+                         options);
 }
 
 absl::StatusOr<std::string> PjRtStreamExecutorClient::SerializeExecutable(

@@ -79,18 +79,19 @@ TEST_F(ReductionTest, ThreadIndexingRowReduction) {
           d3 floordiv 8,
           (d3 mod 8) * 8 + d0 floordiv 32,
           (d0 mod 32) * 2 + s2 * 64 + s3
-        )
+        ),
         domain:
-        d0 in [0, 255]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 799]
-        d4 in [0, 0]
-        d5 in [0, 0]
-        s0 in [0, 0]
-        s1 in [0, 0]
-        s2 in [0, 7]
-        s3 in [0, 1]
+        d0 in [0, 255],
+        d1 in [0, 0],
+        d2 in [0, 0],
+        d3 in [0, 799],
+        d4 in [0, 0],
+        d5 in [0, 0],
+        s0 in [0, 0],
+        s1 in [0, 0],
+        s2 in [0, 7],
+        s3 in [0, 1],
+        is_simplified: true
       )"));
   EXPECT_THAT(
       fusion.ComputeThreadIdToOutputIndexing(0, &mlir_context_)->ToString(),
@@ -98,15 +99,16 @@ TEST_F(ReductionTest, ThreadIndexingRowReduction) {
         (d0, d1, d2, d3, d4, d5) -> (
           d3 floordiv 8,
           (d3 mod 8) * 8 + d0 floordiv 32
-        )
+        ),
         domain:
-        d0 in [0, 224]
-        d1 in [0, 0]
-        d2 in [0, 0]
-        d3 in [0, 799]
-        d4 in [0, 0]
-        d5 in [0, 0]
-        d0 mod 32 in [0, 0]
+        d0 in [0, 224],
+        d1 in [0, 0],
+        d2 in [0, 0],
+        d3 in [0, 799],
+        d4 in [0, 0],
+        d5 in [0, 0],
+        d0 mod 32 in [0, 0],
+        is_simplified: true
       )"));
 }
 

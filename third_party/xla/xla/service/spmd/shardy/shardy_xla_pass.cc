@@ -322,6 +322,8 @@ absl::StatusOr<bool> ShardyXLA::Run(
 
   mlir::PassManager pm(mlirContext.get());
   pm.enableVerifier(enableVerifier);
+  pm.addPass(mlir::sdy::createSaveModuleOpPass(shardyDir,
+                                               "sdy_module_before_xla_import"));
   bool useTupleArgs = false;
   mlir::DictionaryAttr moduleFrontendAttrs = getFrontendAttrs(*mlirModule);
   if (moduleFrontendAttrs && moduleFrontendAttrs.get(kUseTupleArgs)) {
@@ -366,8 +368,6 @@ absl::StatusOr<bool> ShardyXLA::Run(
                                      originalParamIndexToFlattenedNum,
                                      useTupleArgs);
 
-  pm.addPass(
-      mlir::sdy::createSaveModuleOpPass(shardyDir, "sdy_module_after_import"));
   if (runSdyShardingPropagation) {
     // Shardy is currently operating on stablehlo, since this is what JAX
     // emits. Long term shardy will be fully dialect agnostic, and both mhlo
@@ -381,8 +381,8 @@ absl::StatusOr<bool> ShardyXLA::Run(
     pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   }
   addMhloExportPipeline(pm);
-  pm.addPass(
-      mlir::sdy::createSaveModuleOpPass(shardyDir, "sdy_module_after_export"));
+  pm.addPass(mlir::sdy::createSaveModuleOpPass(shardyDir,
+                                               "sdy_module_after_xla_export"));
   tsl::StatusScopedDiagnosticHandler diagnosticHandler(mlirContext.get());
   TF_RETURN_IF_ERROR(diagnosticHandler.consumeStatus(pm.run(*mlirModule)));
 

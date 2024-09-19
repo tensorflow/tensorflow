@@ -20,7 +20,14 @@ limitations under the License.
 #include "xla/client/lib/constants.h"
 #include "xla/client/lib/slicing.h"
 #include "xla/client/lib/svd.h"
+#include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/bits.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace {

@@ -33,23 +33,6 @@ cc_library(
     ],
 )
 
-xla_test(
-    name = "in_place_dynamic_update_slice_mlir_test",
-    srcs = ["in_place_dynamic_update_slice_mlir_test.cc"],
-    backends = ["gpu"],
-    deps = [
-        ":in_place_dynamic_update_slice_mlir",
-        ":mlir_emitter_test_base",
-        "//xla:error_spec",
-        "//xla/service/gpu:hlo_fusion_analysis",
-        "//xla/service/gpu/model:indexing_test_utils",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/lib/core:status_test_util",
-        "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
 cc_library(
     name = "copy",
     srcs = ["copy.cc"],
@@ -101,6 +84,7 @@ cc_library(
         "//xla/service/gpu:stream_executor_util",
         "//xla/service/gpu/kernels:custom_kernel",
         "//xla/service/gpu/kernels:custom_kernel_fusion",
+        "//xla/service/gpu/runtime:copy_thunk",
         "//xla/service/gpu/runtime:custom_call_thunk",
         "//xla/service/gpu/runtime:dynamic_slice_thunk",
         "//xla/service/gpu/runtime:gemm_thunk",
@@ -153,6 +137,10 @@ xla_test(
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
         "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:gpu_executable",
+        "//xla/service/gpu/runtime:dynamic_slice_thunk",
+        "//xla/service/gpu/runtime:sequential_thunk",
+        "//xla/service/gpu/runtime:thunk",
         "//xla/service/gpu/transforms:dynamic_slice_fusion_rewriter",
         "//xla/stream_executor",
         "//xla/stream_executor:device_description",
@@ -251,6 +239,7 @@ cc_library(
 )
 
 cc_library(
+<<<<<<< HEAD
     name = "mlir_emitter_test_base",
     testonly = True,
     srcs = ["mlir_emitter_test_base.cc"],
@@ -292,6 +281,8 @@ cc_library(
 )
 
 cc_library(
+=======
+>>>>>>> upstream/master
     name = "loop_mlir",
     srcs = ["loop_mlir.cc"],
     hdrs = ["loop_mlir.h"],
@@ -320,6 +311,7 @@ cc_library(
     ],
 )
 
+<<<<<<< HEAD
 xla_test(
     name = "loop_mlir_test",
     srcs = ["loop_mlir_test.cc"],
@@ -338,6 +330,8 @@ xla_test(
     ],
 )
 
+=======
+>>>>>>> upstream/master
 cc_library(
     name = "scatter_mlir",
     srcs = ["scatter_mlir.cc"],
@@ -367,23 +361,6 @@ cc_library(
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
-    ],
-)
-
-xla_test(
-    name = "scatter_mlir_test",
-    srcs = ["scatter_mlir_test.cc"],
-    backends = ["gpu"],
-    deps = [
-        ":mlir_emitter_test_base",
-        ":scatter_mlir",
-        "//xla:error_spec",
-        "//xla/service/gpu:hlo_fusion_analysis",
-        "//xla/service/gpu/model:indexing_test_utils",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/lib/core:status_test_util",
-        "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -421,6 +398,7 @@ cc_library(
     ],
 )
 
+<<<<<<< HEAD
 xla_test(
     name = "transpose_mlir_test",
     srcs = ["transpose_mlir_test.cc"],
@@ -440,6 +418,8 @@ xla_test(
     ],
 )
 
+=======
+>>>>>>> upstream/master
 cc_library(
     name = "triton",
     srcs = ["triton.cc"],
@@ -460,7 +440,7 @@ cc_library(
         "//xla/service/gpu:matmul_utils",
         "//xla/service/gpu:triton_fusion_analysis",
         "//xla/service/gpu/fusions/triton:triton_fusion_emitter",
-        "//xla/service/gpu/model:tiled_hlo_computation",
+        "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
         "//xla/service/gpu/runtime:kernel_thunk",
         "//xla/service/llvm_ir:ir_array",
         "//xla/service/llvm_ir:llvm_util",
@@ -525,11 +505,8 @@ cc_library(
 xla_test(
     name = "cudnn_test",
     srcs = if_cuda_is_configured(["cudnn_test.cc"]),
-    backend_tags = {"gpu": [
-        "requires-gpu-sm90",
-    ]},
     backends = [
-        "gpu",
+        "gpu_h100",
     ],
     deps = [
         "//xla:comparison_util",
@@ -657,23 +634,15 @@ cc_library(
     ],
 )
 
-xla_test(
-    name = "reduction_mlir_test",
-    srcs = ["reduction_mlir_test.cc"],
-    backends = ["gpu"],
-    shard_count = 5,
+xla_cc_test(
+    name = "reduction_base_test",
+    srcs = ["reduction_base_test.cc"],
     deps = [
-        ":mlir_emitter_test_base",
-        ":reduction_mlir",
-        "//xla:error_spec",
+        ":reduction_base",
+        "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:hlo_fusion_analysis",
-        "//xla/service/gpu/model:indexing_analysis",
-        "//xla/service/gpu/model:indexing_test_utils",
+        "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/lib/core:status_test_util",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -702,23 +671,6 @@ cc_library(
     ],
 )
 
-xla_test(
-    name = "concatenate_mlir_test",
-    srcs = ["concatenate_mlir_test.cc"],
-    backends = ["gpu"],
-    deps = [
-        ":concatenate_mlir",
-        ":mlir_emitter_test_base",
-        "//xla:error_spec",
-        "//xla/service/gpu:hlo_fusion_analysis",
-        "//xla/service/gpu/model:indexing_test_utils",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/lib/core:status_test_util",
-        "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
 cc_library(
     name = "input_slices_mlir",
     srcs = ["input_slices_mlir.cc"],
@@ -744,20 +696,5 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:TensorDialect",
-    ],
-)
-
-xla_test(
-    name = "input_slices_mlir_test",
-    srcs = ["input_slices_mlir_test.cc"],
-    backends = ["gpu"],
-    deps = [
-        ":input_slices_mlir",
-        ":mlir_emitter_test_base",
-        "//xla:error_spec",
-        "//xla/service/gpu:hlo_fusion_analysis",
-        "//xla/service/gpu/model:indexing_test_utils",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_googletest//:gtest",
     ],
 )

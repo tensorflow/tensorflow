@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/collective_ops_utils.h"
@@ -51,7 +52,6 @@ limitations under the License.
 #include "xla/service/gpu/transforms/schedule_postprocessing.h"
 #include "xla/service/gpu/transforms/scheduling_instruction_annotator.h"
 #include "xla/service/hlo_memory_scheduler.h"
-#include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/latency_hiding_scheduler.h"
 #include "xla/service/p2p_schedule_preparation.h"
 #include "xla/service/profile_guided_latency_estimator.h"
@@ -485,10 +485,13 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
     auto pg_latency_estimator = std::make_unique<ProfileGuidedLatencyEstimator>(
         config, std::move(gpu_latency_estimator), profile.value(),
         std::move(aggregator));
-    LOG(INFO)
-        << "Found profile, using profile guided latency estimator. Profile:\n"
-        << profile->DebugString();
-    pipeline.AddPass<PGLEAccuracyChecker>(*pg_latency_estimator);
+    LOG(INFO) << "Found profile, using profile guided latency estimator";
+    VLOG(1) << "Profile:\n" << profile->DebugString();
+    if (module->config()
+            .debug_options()
+            .xla_gpu_enable_pgle_accuracy_checker()) {
+      pipeline.AddPass<PGLEAccuracyChecker>(*pg_latency_estimator);
+    }
     latency_estimator = std::move(pg_latency_estimator);
   } else if (enable_analytical_latency_estimator) {
     latency_estimator = std::make_unique<AnalyticalLatencyEstimator>(

@@ -112,7 +112,6 @@ py_strict_library(
 tf_proto_library(
     name = "test_example_proto",
     srcs = ["test_example.proto"],
-    cc_api_version = 2,
     protodeps = tf_additional_all_protos(),
 )
 

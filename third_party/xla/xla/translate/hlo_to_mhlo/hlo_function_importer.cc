@@ -751,7 +751,13 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       attributes.push_back(builder_->getNamedAttr(
           "precision_config",
           ConvertPrecisionConfig(&instruction->precision_config(), builder_)));
-
+      if (instruction->precision_config().algorithm() !=
+          PrecisionConfig::ALG_UNSET) {
+        attributes.push_back(builder_->getNamedAttr(
+            "algorithm",
+            ConvertDotAlgorithm(instruction->precision_config().algorithm(),
+                                builder_)));
+      }
       // Consider consolidating DotOps together.
       if (DotIsDefault(instruction) && !dot->sparse_operands()) {
         return func_builder

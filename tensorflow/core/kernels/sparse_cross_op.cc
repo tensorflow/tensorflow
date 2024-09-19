@@ -599,7 +599,7 @@ void ExtractFeatureData(
     const OpInputList& indices_list_in, int64_t batch_size,
     std::vector<std::vector<int64_t>>* feature_counts,
     std::vector<std::vector<int64_t>>* feature_start_indices) {
-  gtl::InlinedVector<int64_t, 8> current_row(indices_list_in.size(), 0);
+  absl::InlinedVector<int64_t, 8UL> current_row(indices_list_in.size(), 0);
   for (int b = 0; b < batch_size; b++) {
     for (int i = 0; i < indices_list_in.size(); i++) {
       const auto indices = indices_list_in[i].matrix<int64_t>();

@@ -21,11 +21,11 @@ limitations under the License.
 #include <string>
 #include <unordered_set>
 
+#include "xla/tsl/protobuf/test_log.pb.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/types.h"
-#include "tsl/protobuf/test_log.pb.h"
 
 namespace tsl {
 

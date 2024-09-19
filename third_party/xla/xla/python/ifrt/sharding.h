@@ -27,12 +27,14 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/index_domain.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.pb.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
@@ -53,7 +55,7 @@ class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
   using DeserializeOptions = DeserializeShardingOptions;
 
   // All devices in this sharding. Devices may appear more than once.
-  const DeviceList& devices() const { return devices_; }
+  const tsl::RCReference<DeviceList>& devices() const { return devices_; }
 
   // Returns the memory kind for all shards in this sharding.
   MemoryKind memory_kind() const { return memory_kind_; }
@@ -85,7 +87,7 @@ class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
   // in this sharding. If `memory_kind` is provided, it must be a valid memory
   // kind for the devices used.
   virtual absl::StatusOr<std::unique_ptr<Sharding>> WithDeviceAssignment(
-      std::optional<DeviceList> devices,
+      std::optional<tsl::RCReference<DeviceList>> devices,
       std::optional<MemoryKind> memory_kind) const = 0;
 
   // Breaks a shape up into per-device shapes and shardings. See
@@ -125,10 +127,10 @@ class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
   static char ID;  // NOLINT
 
  protected:
-  Sharding(DeviceList devices, MemoryKind memory_kind,
+  Sharding(tsl::RCReference<DeviceList> devices, MemoryKind memory_kind,
            bool is_fully_replicated);
 
-  DeviceList devices_;
+  tsl::RCReference<DeviceList> devices_;
   MemoryKind memory_kind_;
   bool is_fully_replicated_;
 };
@@ -159,7 +161,7 @@ class SingleDeviceSharding final
   bool HasSamePartitioning(const Sharding& other) const override;
 
   absl::StatusOr<std::unique_ptr<Sharding>> WithDeviceAssignment(
-      std::optional<DeviceList> devices,
+      std::optional<tsl::RCReference<DeviceList>> devices,
       std::optional<MemoryKind> memory_kind) const override;
 
   absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
@@ -179,7 +181,8 @@ class SingleDeviceSharding final
  private:
   explicit SingleDeviceSharding(Device* device, MemoryKind memory_kind)
       : llvm::RTTIExtends<SingleDeviceSharding, Sharding>(
-            DeviceList({device}), memory_kind, /*is_fully_replicated=*/true) {}
+            BasicDeviceList::Create({device}), memory_kind,
+            /*is_fully_replicated=*/true) {}
 };
 
 // Opaque sharding that does not define a fixed semantics for conversion between
@@ -188,8 +191,8 @@ class OpaqueSharding : public llvm::RTTIExtends<OpaqueSharding, Sharding> {
  public:
   // Creates an opaque sharding. `Disassemble()` will fail.
   // REQUIRES: !devices.empty()
-  static std::unique_ptr<OpaqueSharding> Create(DeviceList devices,
-                                                MemoryKind memory_kind);
+  static std::unique_ptr<OpaqueSharding> Create(
+      tsl::RCReference<DeviceList> devices, MemoryKind memory_kind);
 
   // Sharding implementation.
 
@@ -200,7 +203,7 @@ class OpaqueSharding : public llvm::RTTIExtends<OpaqueSharding, Sharding> {
   bool HasSamePartitioning(const Sharding& other) const override;
 
   absl::StatusOr<std::unique_ptr<Sharding>> WithDeviceAssignment(
-      std::optional<DeviceList> devices,
+      std::optional<tsl::RCReference<DeviceList>> devices,
       std::optional<MemoryKind> memory_kind) const override;
 
   absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
@@ -218,7 +221,8 @@ class OpaqueSharding : public llvm::RTTIExtends<OpaqueSharding, Sharding> {
   static char ID;  // NOLINT
 
  private:
-  explicit OpaqueSharding(DeviceList devices, MemoryKind memory_kind);
+  explicit OpaqueSharding(tsl::RCReference<DeviceList> devices,
+                          MemoryKind memory_kind);
 };
 
 // Opaque sharding that does not define a fixed semantics for conversion between
@@ -231,7 +235,7 @@ class ConcreteSharding : public llvm::RTTIExtends<ConcreteSharding, Sharding> {
   // REQUIRES: `devices`.size() == `shard_shapes`.size()
   // REQUIRES: !devices.empty()
   static std::unique_ptr<ConcreteSharding> Create(
-      DeviceList devices, MemoryKind memory_kind, Shape shape,
+      tsl::RCReference<DeviceList> devices, MemoryKind memory_kind, Shape shape,
       std::vector<Shape> shard_shapes);
 
   // Creates a concrete sharding that may contain non-identical shard dynamic
@@ -239,7 +243,8 @@ class ConcreteSharding : public llvm::RTTIExtends<ConcreteSharding, Sharding> {
   // REQUIRES: `devices`.size() == `shard_dynamic_shapes`.size()
   // REQUIRES: !devices.empty()
   static std::unique_ptr<ConcreteSharding> Create(
-      DeviceList devices, MemoryKind memory_kind, DynamicShape dynamic_shape,
+      tsl::RCReference<DeviceList> devices, MemoryKind memory_kind,
+      DynamicShape dynamic_shape,
       std::vector<DynamicShape> shard_dynamic_shapes);
 
   bool has_dynamic_shape() const {
@@ -285,7 +290,7 @@ class ConcreteSharding : public llvm::RTTIExtends<ConcreteSharding, Sharding> {
   bool HasSamePartitioning(const Sharding& other) const override;
 
   absl::StatusOr<std::unique_ptr<Sharding>> WithDeviceAssignment(
-      std::optional<DeviceList> devices,
+      std::optional<tsl::RCReference<DeviceList>> devices,
       std::optional<MemoryKind> memory_kind) const override;
 
   absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
@@ -302,10 +307,10 @@ class ConcreteSharding : public llvm::RTTIExtends<ConcreteSharding, Sharding> {
   static char ID;  // NOLINT
 
  private:
-  ConcreteSharding(DeviceList devices, MemoryKind memory_kind, Shape shape,
-                   std::vector<Shape> shard_shapes);
+  ConcreteSharding(tsl::RCReference<DeviceList> devices, MemoryKind memory_kind,
+                   Shape shape, std::vector<Shape> shard_shapes);
 
-  ConcreteSharding(DeviceList devices, MemoryKind memory_kind,
+  ConcreteSharding(tsl::RCReference<DeviceList> devices, MemoryKind memory_kind,
                    DynamicShape dynamic_shape,
                    std::vector<DynamicShape> shard_dynamic_shapes);
 
@@ -324,7 +329,7 @@ class ConcreteEvenSharding
   // callers are updated to provide it explicitly.
   // REQUIRES: !devices.empty()
   static std::unique_ptr<ConcreteEvenSharding> Create(
-      DeviceList devices, MemoryKind memory_kind, Shape shape,
+      tsl::RCReference<DeviceList> devices, MemoryKind memory_kind, Shape shape,
       Shape shard_shape, bool is_fully_replicated = false);
 
   Shape shape() const {
@@ -345,7 +350,7 @@ class ConcreteEvenSharding
   bool HasSamePartitioning(const Sharding& other) const override;
 
   absl::StatusOr<std::unique_ptr<Sharding>> WithDeviceAssignment(
-      std::optional<DeviceList> devices,
+      std::optional<tsl::RCReference<DeviceList>> devices,
       std::optional<MemoryKind> memory_kind) const override;
 
   absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
@@ -362,8 +367,9 @@ class ConcreteEvenSharding
   static char ID;  // NOLINT
 
  private:
-  ConcreteEvenSharding(DeviceList devices, MemoryKind memory_kind, Shape shape,
-                       Shape shard_shape, bool is_fully_replicated);
+  ConcreteEvenSharding(tsl::RCReference<DeviceList> devices,
+                       MemoryKind memory_kind, Shape shape, Shape shard_shape,
+                       bool is_fully_replicated);
 
   Shape shape_;
   Shape shard_shape_;
@@ -375,7 +381,8 @@ class ShardingParamSharding
  public:
   // REQUIRES: !devices.empty()
   static absl::StatusOr<std::unique_ptr<ShardingParamSharding>> Create(
-      ShardingParam sharding_param, DeviceList devices, MemoryKind memory_kind);
+      ShardingParam sharding_param, tsl::RCReference<DeviceList> devices,
+      MemoryKind memory_kind);
 
   const ShardingParam& sharding_param() const { return sharding_param_; }
 
@@ -384,7 +391,7 @@ class ShardingParamSharding
   bool HasSamePartitioning(const Sharding& other) const override;
 
   absl::StatusOr<std::unique_ptr<Sharding>> WithDeviceAssignment(
-      std::optional<DeviceList> devices,
+      std::optional<tsl::RCReference<DeviceList>> devices,
       std::optional<MemoryKind> memory_kind) const override;
 
   absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
@@ -401,7 +408,8 @@ class ShardingParamSharding
   static char ID;  // NOLINT
 
  private:
-  ShardingParamSharding(ShardingParam sharding_param, DeviceList devices,
+  ShardingParamSharding(ShardingParam sharding_param,
+                        tsl::RCReference<DeviceList> devices,
                         MemoryKind memory_kind);
 
   ShardingParam sharding_param_;

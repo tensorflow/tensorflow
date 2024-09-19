@@ -50,7 +50,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/hlo_traversal.h"
-#include "xla/service/gpu/model/affine_map_evaluator.h"
 #include "xla/service/gpu/model/affine_map_printer.h"
 #include "xla/service/gpu/model/indexing_analysis.h"
 #include "xla/service/gpu/model/indexing_map.h"
@@ -218,6 +217,52 @@ class OrderedUniquePtrValueHashSet {
   std::vector<std::unique_ptr<T>> data_;
 };
 
+// Detects pathological cases on which symbolic tile derivation should bail out.
+// Note that this function bypasses temporary limitations of the infrastructure,
+// and not actual fundamental limitations.
+FusionDecision ShouldProceedWithSymbolicTileDerivation(
+    const SymbolicTiledHloInstruction& tiled_hlo_instruction) {
+  const HloInstruction* hlo = tiled_hlo_instruction.hlo();
+  const IndexingMap& indexing_map = tiled_hlo_instruction.indexing_map();
+
+  // Bail out on instructions that are known to cause problems down the
+  // line. This is not an inherent limitation of the approach, but simply
+  // issues to be resolved in the current implementation.
+  if (hlo->opcode() == HloOpcode::kDot ||
+      hlo->opcode() == HloOpcode::kConcatenate) {
+    return FusionDecision{} << "Bailing out on " << hlo->ToString();
+  }
+
+  // Due to the issue highlighted in b/365727080, and the related workaround
+  // deriving a standalone symbolic tile when constructing Triton-specific
+  // constraints, reshapes and bitcasts may cause problems down the line.
+  // The added check here allows us to bail out early when we reach such a
+  // a problematic.
+  //
+  // TODO(b/365727080): get rid of this filter once the issue is properly
+  // fixed.
+  if (hlo->opcode() == HloOpcode::kReshape ||
+      hlo->opcode() == HloOpcode::kBitcast) {
+    mlir::MLIRContext* ctx = indexing_map.GetMLIRContext();
+
+    IndexingMap reshape_indexing_map =
+        *ComputeOutputToInputIndexing(hlo, /*output_id=*/0, ctx)
+             .indexing_maps[0]
+             .begin();
+
+    std::optional<SymbolicTile> reshape_symbolic_tile =
+        SymbolicTile::FromIndexingMap(reshape_indexing_map);
+
+    if (!reshape_symbolic_tile.has_value()) {
+      return FusionDecision{} << "Bailing out on reshape " << hlo->ToString()
+                              << " with indexing map "
+                              << reshape_indexing_map.ToString();
+    }
+  }
+
+  return {};
+}
+
 // Sets a SymbolicTile for each tiled hlo instruction and computes their
 // combined constraints. Returns a FusionDecision if a SymbolicTile cannot be
 // computed for some instruction or if the constraints are unsatisfiable.
@@ -225,19 +270,24 @@ class OrderedUniquePtrValueHashSet {
 std::variant<ConstraintExpression, FusionDecision>
 SetSymbolicTilesAndComputeConstraints(
     std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>&
-        tiled_hlo_instructions) {
+        tiled_hlo_instructions,
+    const HloFusionAdaptor& fusion_adaptor) {
   ConstraintExpression constraints;
   for (const std::unique_ptr<SymbolicTiledHloInstruction>&
            tiled_hlo_instruction : tiled_hlo_instructions) {
     const HloInstruction* hlo = tiled_hlo_instruction->hlo();
     const IndexingMap& indexing_map = tiled_hlo_instruction->indexing_map();
 
-    // Bail out on instructions that are known to cause problems down the
-    // line. This is not an inherent limitation of the approach, but simply
-    // issues to be resolved in the current implementation.
-    if (hlo->opcode() == HloOpcode::kDot ||
-        hlo->opcode() == HloOpcode::kConcatenate) {
-      return FusionDecision{} << "Bailing out on " << hlo->ToString();
+    // We first verify some preconditions on the instructions we intend to
+    // codegen. We first check whether an instruction is part of the fusion
+    // adaptor, as `tiled_hlo_instructions` may contain instructions that won't
+    // be codegen'd (the operands to the fusion computation).
+    if (fusion_adaptor.ContainsInstruction(hlo)) {
+      FusionDecision should_proceed =
+          ShouldProceedWithSymbolicTileDerivation(*tiled_hlo_instruction);
+      if (!should_proceed) {
+        return should_proceed;
+      }
     }
 
     auto symbolic_tile = SymbolicTile::FromIndexingMap(indexing_map);
@@ -329,15 +379,6 @@ void SortTiledHloInstructionsInPostOrder(
   while (!worklist.empty()) {
     auto tiled_hlo_instruction = worklist.back();
     worklist.pop_back();
-    std::optional<HloInstructionIndexing> operands_indexing =
-        ComputeOutputToInputIndexing(tiled_hlo_instruction->hlo(),
-                                     /*output_id=*/0, ctx);
-
-    if (!operands_indexing.has_value()) {
-      return FusionDecision{} << "Failed to compute operands indexing for "
-                              << tiled_hlo_instruction->hlo()->ToString();
-    }
-
     HloInstructionAdaptor instruction_adaptor(*tiled_hlo_instruction->hlo(),
                                               &fusion);
 
@@ -345,9 +386,13 @@ void SortTiledHloInstructionsInPostOrder(
       continue;
     }
 
+    HloInstructionIndexing operands_indexing =
+        ComputeOutputToInputIndexing(tiled_hlo_instruction->hlo(),
+                                     /*output_id=*/0, ctx);
+
     for (auto [operand, operand_indexing_map_set] :
          llvm::zip(instruction_adaptor.GetOperands(),
-                   operands_indexing->indexing_maps)) {
+                   operands_indexing.indexing_maps)) {
       CHECK_EQ(operand_indexing_map_set.size(), 1);  // Crash OK
 
       IndexingMap operand_indexing_map =
@@ -378,10 +423,13 @@ void SortTiledHloInstructionsInPostOrder(
   std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>
       tiled_hlo_instructions = tiled_hlo_instructions_set.ExtractData();
 
+  // Order instructions in def-before-use order.
+  SortTiledHloInstructionsInPostOrder(tiled_hlo_instructions, root_tiled_hlo);
+
   // Set symbolic tiles for each tiled hlo instruction and compute combined
   // constraints.
   std::variant<ConstraintExpression, FusionDecision> constraints_or =
-      SetSymbolicTilesAndComputeConstraints(tiled_hlo_instructions);
+      SetSymbolicTilesAndComputeConstraints(tiled_hlo_instructions, fusion);
   if (std::holds_alternative<FusionDecision>(constraints_or)) {
     return std::get<FusionDecision>(constraints_or);
   }
@@ -390,11 +438,8 @@ void SortTiledHloInstructionsInPostOrder(
   std::unique_ptr<EmitterSpecificConstraints> emitter_specific_constraints;
   if (emitter_specific_constraints_builder != nullptr) {
     emitter_specific_constraints =
-        emitter_specific_constraints_builder(tiled_hlo_instructions);
+        emitter_specific_constraints_builder(tiled_hlo_instructions, fusion);
   }
-
-  // Order instructions in def-before-use order.
-  SortTiledHloInstructionsInPostOrder(tiled_hlo_instructions, root_tiled_hlo);
 
   return SymbolicTileAnalysis(
       std::move(tiled_hlo_instructions),
@@ -428,31 +473,7 @@ absl::StatusOr<bool> SymbolicTileAnalysis::ParametersSatisfyConstraints(
     }
   }
 
-  // Handle the unconstrained case.
-  if (constraints_.IsAlwaysSatisfied()) {
-    return true;
-  }
-
-  // TODO(bchetioui): replace with convenience methods in
-  // `ConstraintExpression`.
-  bool constraints_are_satisfied = false;
-  for (const ConstraintExpression::ConjointConstraints& conjunction :
-       constraints_.DisjointConjointConstraints()) {
-    bool conjunction_is_satisfied = true;
-    for (const auto& [constrained_expr, interval] : conjunction) {
-      int64_t constrained_value =
-          EvaluateAffineExpr(constrained_expr, /*dim_values=*/tile_parameters);
-
-      if (constrained_value < interval.lower ||
-          constrained_value > interval.upper) {
-        conjunction_is_satisfied = false;
-        break;
-      }
-    }
-    constraints_are_satisfied |= conjunction_is_satisfied;
-  }
-
-  return constraints_are_satisfied;
+  return constraints_.IsSatisfiedBy(tile_parameters);
 }
 
 absl::StatusOr<TiledHloComputation>

@@ -30,11 +30,11 @@ limitations under the License.
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_interface.h"
 #include "xla/backends/profiler/gpu/nvtx_utils.h"
+#include "xla/tsl/profiler/backends/cpu/annotation_stack.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/host_info.h"
 #include "tsl/platform/logging.h"
-#include "tsl/profiler/backends/cpu/annotation_stack.h"
 #include "tsl/profiler/utils/per_thread.h"
 
 namespace xla {

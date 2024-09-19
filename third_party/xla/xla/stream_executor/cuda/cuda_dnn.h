@@ -64,14 +64,24 @@ class CudnnGraph : public dnn::DnnGraph {
   // Builds single plan of the graph with given ID.
   absl::Status Build(dnn::DnnSupport&, std::optional<int64_t> plan_id) override;
   // Builds all the plans
-  absl::Status Execute(Stream& stream,
-                       absl::Span<DeviceMemoryBase> operands) const override;
+  absl::Status Execute(Stream& stream, absl::Span<DeviceMemoryBase> operands,
+                       int64_t local_device_ordinal) const override;
   const cudnn_frontend::graph::Graph& Graph() const { return graph_; }
+  void InitDropoutState(int64_t local_device_count, int64_t seed,
+                        int64_t increment) {
+    dropout_rng_seed_ = seed;
+    current_dropout_rng_offset_ = std::vector<int64_t>(local_device_count, 0);
+    dropout_rng_offset_increment_ = increment;
+  }
+  void UpdateDropoutState(int64_t local_device_ordinal) const {
+    current_dropout_rng_offset_[local_device_ordinal] +=
+        dropout_rng_offset_increment_;
+  }
 
  private:
   cudnn_frontend::graph::Graph graph_;
   int64_t dropout_rng_seed_;
-  mutable int64_t current_dropout_rng_offset_;
+  mutable std::vector<int64_t> current_dropout_rng_offset_;
   int64_t dropout_rng_offset_increment_ = 0;
 };
 #endif  // CUDNN_VERSION >= 8100
@@ -695,10 +705,18 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionOperationGraph(
     const dnn::MatmulTensorDescriptor& v_descriptor,
     const dnn::TensorDescriptor& o_descriptor,
     const std::optional<dnn::TensorDescriptor> bias_descriptor,
-    const std::optional<dnn::TensorDescriptor> stats_descriptor,
-    const float scale, const bool use_dropout,
-    const std::optional<double> dropout_rate,
-    const dnn::FMHAMaskKind mask_type);
+    const std::optional<dnn::TensorDescriptor> stats_descriptor, double scale,
+    const bool use_dropout, const std::optional<double> dropout_rate,
+    const dnn::FMHAMaskKind mask_type, const int sliding_window_length);
+
+absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionF8OperationGraph(
+    dnn::DnnSupport& dnn_support,
+    const dnn::MatmulTensorDescriptor& q_descriptor,
+    const dnn::MatmulTensorDescriptor& k_descriptor,
+    const dnn::MatmulTensorDescriptor& v_descriptor,
+    const dnn::TensorDescriptor& o_descriptor,
+    const std::optional<dnn::TensorDescriptor>& stats_descriptor, double scale,
+    dnn::FMHAMaskKind mask_type);
 
 absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
     dnn::DnnSupport& dnn_support, const dnn::MatmulTensorDescriptor& q_desc,
@@ -711,7 +729,8 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
     const std::optional<dnn::TensorDescriptor> bias_descriptor,
     std::optional<double> dropout_rate, std::optional<int64_t> seed,
     double scale, bool use_dropout, bool use_bias,
-    const dnn::FMHAMaskKind mask_type, bool force_deterministic);
+    const dnn::FMHAMaskKind mask_type, bool force_deterministic,
+    const int sliding_window_length);
 
 }  // namespace gpu
 }  // namespace stream_executor

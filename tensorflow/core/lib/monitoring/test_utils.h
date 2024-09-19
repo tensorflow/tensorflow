@@ -17,10 +17,10 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "xla/tsl/lib/monitoring/test_utils.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/lib/monitoring/types.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tsl/lib/monitoring/test_utils.h"
 // NOLINTBEGIN(misc-unused-using-decls)
 namespace tensorflow {
 namespace monitoring {

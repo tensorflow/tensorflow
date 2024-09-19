@@ -143,6 +143,31 @@ TEST_F(ExecutionStreamAssignmentTest, AsyncFusion) {
       ExecutionStreamId(2));
 }
 
+TEST_F(ExecutionStreamAssignmentTest, CopyStartStreamIdTest) {
+  const char* const hlo_copy_start_string = R"(
+  HloModule Module
+
+  ENTRY CopyStartAndCopyDone {
+    p0 = f32[2,3]{1,0:S(1)} parameter(0)
+    copy-start = (f32[2,3]{1,0:S(2)}, f32[2,3]{1,0:S(1)}, u32[]) copy-start(p0)
+    ROOT copy-done = f32[2,3]{1,0:S(2)} copy-done(copy-start)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_copy_start_string));
+
+  ExecutionStreamAssignment assignment(module.get());
+
+  for (std::string_view instruction : {"copy-start"}) {
+    EXPECT_THAT(
+        assignment.GetAsyncExecutionStreamIds(Cast<HloCopyStartInstruction>(
+            FindInstruction(module.get(), instruction))),
+        IsOkAndHolds(AsyncExecutionStreamIds{
+            /*source_stream_id=*/ExecutionStreamId(0),
+            /*destination_stream_id=*/ExecutionStreamId(1)}));
+  }
+}
+
 TEST_F(ExecutionStreamAssignmentTest, FusionComputations) {
   const char* kModuleStr = R"(
     HloModule m

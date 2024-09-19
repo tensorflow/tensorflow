@@ -101,7 +101,7 @@ int Run(int argc, char** argv) {
   }
 
   std::vector<Flag> flag_list = {
-      Flag("profile_path", &FLAGS_profile_path, "Profile binary file name."),
+      Flag("profile_path", &FLAGS_profile_path, "Profile binary file name"),
       Flag("graph_path", &FLAGS_graph_path, "GraphDef proto text file name"),
       Flag("run_meta_path", &FLAGS_run_meta_path,
            "Comma-separated list of RunMetadata proto binary "

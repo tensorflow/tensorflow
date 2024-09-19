@@ -9,7 +9,6 @@ package(
     default_visibility = [
         "//learning/pathways/serving/transforms:__pkg__",
         "//tensorflow/compiler/mlir:__pkg__",
-        "//tensorflow/compiler/mlir/tensorflow:__pkg__",
         "//tensorflow/compiler/mlir/tf2xla/api:__subpackages__",
         "//tensorflow/compiler/mlir/tf2xla/internal:__subpackages__",
     ],
@@ -416,6 +415,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tensorflow:tpu_rewrite_device_util",
         "//tensorflow/compiler/mlir/tensorflow:xla_rewrite_util",
+        "//tensorflow/compiler/mlir/tensorflow:xla_sharding_util",
         "//tensorflow/compiler/mlir/tensorflow/transforms:lower_tf_lib",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_pass_inc_gen",
         "//tensorflow/compiler/mlir/tensorflow/transforms:verify_no_outside_compilation_markers_pass",

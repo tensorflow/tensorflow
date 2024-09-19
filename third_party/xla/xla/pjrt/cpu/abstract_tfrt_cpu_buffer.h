@@ -358,6 +358,11 @@ class AbstractAsyncHostToHostMemoryTransferManager
       absl::InlinedVector<int64_t, 4>& buffer_transfers_in_flight,
       absl::InlinedVector<bool, 4>& last_transfer_finished);
 
+  absl::Status FillRawDataToSubBuffer(
+      int buffer_index,
+      absl::AnyInvocable<void(void* data, int64_t size)> fill_fn,
+      bool is_last_transfer, absl::AnyInvocable<void() &&> on_done);
+
   mutable absl::Mutex mu_;
   // The number of transfers that are currently in flight.
   int transfers_in_flight_ ABSL_GUARDED_BY(mu_);

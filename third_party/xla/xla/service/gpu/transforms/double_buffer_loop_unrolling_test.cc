@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -38,23 +39,19 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using tsl::testing::IsOkAndHolds;
+using ::tsl::testing::IsOkAndHolds;
 
-int64_t CountInstructions(const HloComputation& computation, HloOpcode opcode) {
+int64_t CountInstructions(HloComputation& computation, HloOpcode opcode) {
   int64_t count = 0;
-  for (const auto& instruction : computation.instructions()) {
-    if (instruction->opcode() == opcode) {
-      count++;
-    }
-  }
+  hlo_query::ForEachInstructionWithOpcode(
+      computation, opcode, [&count](HloInstruction* instr) { count++; });
   return count;
 }
 
-int64_t CountInstructions(const HloModule& module, HloOpcode opcode) {
+int64_t CountInstructions(HloModule& module, HloOpcode opcode) {
   int64_t count = 0;
-  for (const auto& computation : module.computations()) {
-    count += CountInstructions((*computation), opcode);
-  }
+  hlo_query::ForEachInstructionWithOpcode(
+      module, opcode, [&count](HloInstruction* instr) { count++; });
   return count;
 }
 
@@ -850,7 +847,7 @@ ENTRY main {
   DoubleBufferLoopUnrolling double_buffer(
       DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer);
   EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
-  VLOG(0) << module->ToString();
+  VLOG(1) << module->ToString();
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: %body {{.+}} {
     // CHECK:   %[[cp1:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{0,3},{1,3},{1,4},{2,4}{{[}]}}}
@@ -903,8 +900,7 @@ ENTRY main {
   DoubleBufferLoopUnrolling double_buffer(
       DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer);
   EXPECT_THAT(double_buffer.Run(module.get()), IsOkAndHolds(true));
-  VLOG(0) << module->ToString();
-
+  VLOG(1) << module->ToString();
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
     // CHECK: %body
     // CHECK:   %[[cp1:.+]] = {{.+}} collective-permute({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_validation={{[{]}}{0,3},{0,3},{1,4},{1,4},{2,5},{2,5},{3,6},{3,6}{{[}]}}}

@@ -251,8 +251,12 @@ UseDefDataflowPaths GetSlicedOperandPaths(const HloInstruction* instr) {
   // the matched instructions that we have seen so far.
   InstructionSet processed_instrs;
 
-  const auto& aliasing_pairs =
-      Cast<HloCustomCallInstruction>(instr)->output_to_operand_aliasing();
+  std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
+      aliasing_pairs;
+  if (instr->opcode() == HloOpcode::kCustomCall) {
+    aliasing_pairs =
+        Cast<HloCustomCallInstruction>(instr)->output_to_operand_aliasing();
+  }
   absl::flat_hash_set<int64_t> aliased_operands;
   for (const auto& pair : aliasing_pairs) {
     aliased_operands.insert(pair.second.first);
@@ -429,7 +433,7 @@ absl::Status CreateRootTuple(
 absl::StatusOr<HloComputation*> CreateFusionBody(
     HloModule* module, DataflowPathView sliced_operand_paths,
     DataflowPathsView sliced_user_paths, DataflowPathView captures) {
-  HloComputation::Builder builder("address-computation");
+  HloComputation::Builder builder("dynamic-slice-fusion");
 
   // A mapping from original instructions to instructions in the fusion body.
   absl::flat_hash_map<const HloInstruction*, HloInstruction*> instr_mapping;
@@ -519,14 +523,11 @@ absl::StatusOr<bool> DynamicSliceFusionRewriter::Run(
   for (HloComputation* computation : module->computations()) {
     if (computation->IsFusionComputation()) continue;
     for (HloInstruction* instr : computation->instructions()) {
-      UseDefDataflowPaths sliced_operand_paths = {instr};
-      bool has_sliced_operand_paths = false;
-      if (IsLegacyCublasMatmul(*instr) || IsCustomCall(instr, platform_name_)) {
-        sliced_operand_paths = GetSlicedOperandPaths(instr);
-        has_sliced_operand_paths = sliced_operand_paths.size() > 1;
-      }
-      if (instr->opcode() == HloOpcode::kReduceScatter ||
+      if ((instr->opcode() == HloOpcode::kReduceScatter &&
+           instr->shape().IsArray()) ||
           IsLegacyCublasMatmul(*instr) || IsCustomCall(instr, platform_name_)) {
+        UseDefDataflowPaths sliced_operand_paths = GetSlicedOperandPaths(instr);
+        bool has_sliced_operand_paths = sliced_operand_paths.size() > 1;
         DefUseDataflowPaths sliced_user_paths = GetSlicedUserPaths(instr);
         bool has_sliced_user_paths = absl::c_any_of(
             sliced_user_paths,

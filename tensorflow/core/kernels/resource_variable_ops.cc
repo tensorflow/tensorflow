@@ -325,7 +325,7 @@ REGISTER_KERNEL_BUILDER(
         .HostMemory("resources")
         .TypeConstraint("dtypes", {DT_INT64, DT_COMPLEX64, DT_COMPLEX128,
                                    DT_HALF, DT_FLOAT, DT_DOUBLE, DT_BOOL,
-                                   DT_VARIANT, DT_BFLOAT16}),
+                                   DT_VARIANT, DT_BFLOAT16, DT_INT8}),
     ResourceHandlesOp<Var>);
 
 REGISTER_KERNEL_BUILDER(

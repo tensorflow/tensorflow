@@ -19,6 +19,7 @@ limitations under the License.
 #include <ostream>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #if GOOGLE_CUDA
@@ -58,6 +59,7 @@ limitations under the License.
 #include "xla/test_helpers.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
 #if GOOGLE_CUDA
@@ -512,62 +514,54 @@ TEST_F(CustomCallTest, ExportedFfiOpaque) {
   TF_ASSERT_OK(Execute(&b, {}).status());
 }
 
-static absl::Status TokensChecker(std::vector<ffi::AnyBuffer> inputs,
-                                  const std::string* opaque) {
-  // TODO(penporn): Actually check the inputs when FFI handlers support tokens.
+static absl::Status CheckTokens(std::vector<PrimitiveType> args,
+                                std::string_view pattern) {
+  if (args.size() != pattern.size()) {
+    return absl::InternalError("Incorrect number of arguments");
+  }
+  for (auto i = 0; i < pattern.size(); ++i) {
+    char c = pattern[i];
+    bool is_token = args[i] == PrimitiveType::TOKEN;
+    if (c == 'T') {
+      if (!is_token) {
+        return absl::InvalidArgumentError(
+            absl::StrFormat("Expected token at position %d", i));
+      }
+    } else if (c == 'A') {
+      if (is_token) {
+        return absl::InvalidArgumentError(
+            absl::StrFormat("Unexpected token at position %d", i));
+      }
+    } else {
+      return absl::InternalError(
+          absl::StrFormat("Unexpected character %c at position %d", c, i));
+    }
+  }
   return absl::OkStatus();
 }
 
-static absl::Status Tokens1Input(ffi::AnyBuffer input1,
-                                 ffi::Result<ffi::AnyBuffer>,
-                                 const std::string* opaque) {
-  return TokensChecker({input1}, opaque);
+static absl::Status FfiTokens(ffi::RemainingArgs inputs,
+                              ffi::RemainingRets outputs,
+                              std::string_view pattern) {
+  std::vector<PrimitiveType> types;
+  for (auto i = 0; i < inputs.size(); ++i) {
+    types.push_back(inputs.get<ffi::AnyBuffer>(i).value().element_type());
+  }
+  for (auto i = 0; i < outputs.size(); ++i) {
+    types.push_back(outputs.get<ffi::AnyBuffer>(i).value()->element_type());
+  }
+  return CheckTokens(types, pattern);
 }
 
-static absl::Status Tokens2Inputs(ffi::AnyBuffer input1, ffi::AnyBuffer input2,
-                                  ffi::Result<ffi::AnyBuffer>,
-                                  const std::string* opaque) {
-  return TokensChecker({input1, input2}, opaque);
-}
+XLA_FFI_DEFINE_HANDLER(
+    kFfiTokens, FfiTokens,
+    ffi::Ffi::Bind().RemainingArgs().RemainingRets().Attr<std::string_view>(
+        "pattern"));
 
-static absl::Status Tokens3Inputs(ffi::AnyBuffer input1, ffi::AnyBuffer input2,
-                                  ffi::AnyBuffer input3,
-                                  ffi::Result<ffi::AnyBuffer>,
-                                  const std::string* opaque) {
-  return TokensChecker({input1, input2, input3}, opaque);
-}
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$tokens", PLATFORM,
+                         kFfiTokens);
 
-XLA_FFI_DEFINE_HANDLER(kTokens1Input, Tokens1Input,
-                       ffi::Ffi::Bind()
-                           .Arg<ffi::AnyBuffer>()  // 1 input buffer.
-                           .Ret<ffi::AnyBuffer>()  // Output buffer.
-                           .Attr<ffi::Pointer<std::string>>("opaque"));
-
-XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$tokens_1input",
-                         PLATFORM, kTokens1Input);
-
-XLA_FFI_DEFINE_HANDLER(kTokens2Inputs, Tokens2Inputs,
-                       ffi::Ffi::Bind()
-                           .Arg<ffi::AnyBuffer>()  // 1st input buffer.
-                           .Arg<ffi::AnyBuffer>()  // 2nd input buffer.
-                           .Ret<ffi::AnyBuffer>()  // Output buffer.
-                           .Attr<ffi::Pointer<std::string>>("opaque"));
-
-XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$tokens_2inputs",
-                         PLATFORM, kTokens2Inputs);
-
-XLA_FFI_DEFINE_HANDLER(kTokens3Inputs, Tokens3Inputs,
-                       ffi::Ffi::Bind()
-                           .Arg<ffi::AnyBuffer>()  // 1st input buffer.
-                           .Arg<ffi::AnyBuffer>()  // 2nd input buffer.
-                           .Arg<ffi::AnyBuffer>()  // 3rd input buffer.
-                           .Ret<ffi::AnyBuffer>()  // Output buffer.
-                           .Attr<ffi::Pointer<std::string>>("opaque"));
-
-XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$tokens_3inputs",
-                         PLATFORM, kTokens3Inputs);
-
-TEST_P(CustomCallTokensTest, ExportedFfiTokensTest) {
+TEST_P(CustomCallTokensTest, ExportedTokensTest) {
   const TokenTestCase& tc = GetParam();
   XlaBuilder b(TestName());
   std::istringstream input(tc.input);
@@ -578,11 +572,8 @@ TEST_P(CustomCallTokensTest, ExportedFfiTokensTest) {
   ASSERT_LE(call_inputs.size(), 3);
   ASSERT_EQ(call_output.size(), 1);
 
-  const std::string custom_call_name =
-      absl::StrFormat("__xla_test$$tokens_%dinput%s", call_inputs.size(),
-                      call_inputs.size() == 1 ? "" : "s");
-  const std::string opaque = absl::StrFormat(
-      "{opaque = %d : i64}", reinterpret_cast<uintptr_t>(&tc.opaque));
+  const std::string custom_call_name = "__xla_test$$tokens";
+  const std::string opaque = absl::StrFormat("{pattern = \"%s\"}", tc.opaque);
   CustomCall(&b, custom_call_name, /*operands=*/call_inputs,
              call_output.front(),
              /*opaque=*/opaque,
@@ -591,11 +582,7 @@ TEST_P(CustomCallTokensTest, ExportedFfiTokensTest) {
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
 
-  // TODO(penporn): Expect an OK status when FFI handlers support tokens.
-  auto status = Execute(&b, {}).status();
-  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
-  EXPECT_THAT(status.message(),
-              ::testing::HasSubstr("FFI handlers do not support tokens"));
+  TF_ASSERT_OK(Execute(&b, {}).status());
 }
 
 INSTANTIATE_TEST_SUITE_P(CustomCallTokensTest, CustomCallTokensTest,

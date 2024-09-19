@@ -109,6 +109,12 @@ class MakeErrorStream {
     return *this;
   }
 
+  // Disables logging this message.
+  MakeErrorStream& without_logging() {
+    impl_->should_log_ = false;
+    return *this;
+  }
+
   // Adds RET_CHECK failure text to error message.
   MakeErrorStreamWithOutput& add_ret_check_failure(const char* condition);
 

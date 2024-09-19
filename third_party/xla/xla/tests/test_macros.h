@@ -37,8 +37,10 @@ limitations under the License.
 #define DISABLED_ON_DEBUG(X) X
 #define DISABLED_ON_TPU(X) X
 #define DISABLED_ON_GRM(X) X
+#define DISABLED_ON_ISS(X) X
 
 #define OVERSIZE_ON_GRM(X) X
+#define OVERSIZE_ON_ISS(X) X
 
 // We need this macro instead of pasting directly to support nesting
 // the DISABLED_ON_FOO macros, as in the definition of DISABLED_ON_CPU.
@@ -98,14 +100,17 @@ limitations under the License.
 # define OVERSIZE_ON_GRM(X) XLA_TEST_PASTE(DISABLED_, X)
 #endif  // XLA_TEST_BACKEND_GRM
 
+#ifdef XLA_TEST_BACKEND_ISS
+# undef DISABLED_ON_ISS
+# define DISABLED_ON_ISS(X) XLA_TEST_PASTE(DISABLED_, X)
+
+#undef OVERSIZE_ON_ISS
+# define OVERSIZE_ON_ISS(X) XLA_TEST_PASTE(DISABLED_, X)
+#endif  // XLA_TEST_BACKEND_ISS
+
 // clang-format on
 
 namespace xla {
-
-inline const char** DisabledManifestPath() {
-  static const char* disabled_manifest_path = nullptr;
-  return &disabled_manifest_path;
-}
 
 inline const char** TestPlatform() {
   static const char* test_platform = nullptr;

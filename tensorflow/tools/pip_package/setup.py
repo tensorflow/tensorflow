@@ -81,12 +81,7 @@ REQUIRED_PACKAGES = [
     'flatbuffers >= 24.3.25',
     'gast >=0.2.1,!=0.5.0,!=0.5.1,!=0.5.2',
     'google_pasta >= 0.1.1',
-    'h5py >= 3.10.0',
     'libclang >= 13.0.0',
-    'ml_dtypes >= 0.3.1, < 0.5.0',
-    # TODO(b/304751256): Adjust the numpy pin to a single version, when ready
-    'numpy >= 1.23.5, < 2.0.0 ; python_version <= "3.11"',
-    'numpy >= 1.26.0, < 2.0.0 ; python_version >= "3.12"',
     'opt_einsum >= 2.3.2',
     'packaging',
     # pylint:disable=line-too-long
@@ -116,7 +111,13 @@ REQUIRED_PACKAGES = [
     # 'keras >= 2.14.0rc0, < 2.15' on the release branch after the branch cut.
     'tb-nightly ~= 2.18.0.a',
     'keras-nightly >= 3.2.0.dev',
+    # TODO(b/367877753): Update the upper bound to <2.2.0 once the compatibility
+    # issues with numpy 2.1.0 is fixed.
+    'numpy >= 1.26.0, < 2.1.0',
+    'h5py >= 3.11.0',
+    'ml_dtypes >= 0.4.0, < 0.5.0',
 ]
+
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
 
 FAKE_REQUIRED_PACKAGES = [
@@ -150,18 +151,18 @@ if collaborator_build:
 EXTRA_PACKAGES = {}
 EXTRA_PACKAGES['and-cuda'] = [
     # TODO(nluehr): set nvidia-* versions based on build components.
-    'nvidia-cublas-cu12 == 12.3.4.1',
-    'nvidia-cuda-cupti-cu12 == 12.3.101',
-    'nvidia-cuda-nvcc-cu12 == 12.3.107',
-    'nvidia-cuda-nvrtc-cu12 == 12.3.107',
-    'nvidia-cuda-runtime-cu12 == 12.3.101',
-    'nvidia-cudnn-cu12 == 8.9.7.29',
-    'nvidia-cufft-cu12 == 11.0.12.1',
-    'nvidia-curand-cu12 == 10.3.4.107',
-    'nvidia-cusolver-cu12 == 11.5.4.101',
-    'nvidia-cusparse-cu12 == 12.2.0.103',
+    'nvidia-cublas-cu12 == 12.5.3.2',
+    'nvidia-cuda-cupti-cu12 == 12.5.82',
+    'nvidia-cuda-nvcc-cu12 == 12.5.82',
+    'nvidia-cuda-nvrtc-cu12 == 12.5.82',
+    'nvidia-cuda-runtime-cu12 == 12.5.82',
+    'nvidia-cudnn-cu12 == 9.3.0.75',
+    'nvidia-cufft-cu12 == 11.2.3.61',
+    'nvidia-curand-cu12 == 10.3.6.82',
+    'nvidia-cusolver-cu12 == 11.6.3.83',
+    'nvidia-cusparse-cu12 == 12.5.1.3',
     'nvidia-nccl-cu12 == 2.21.5',
-    'nvidia-nvjitlink-cu12 == 12.3.101',
+    'nvidia-nvjitlink-cu12 == 12.5.82',
 ]
 
 DOCLINES = __doc__.split('\n')

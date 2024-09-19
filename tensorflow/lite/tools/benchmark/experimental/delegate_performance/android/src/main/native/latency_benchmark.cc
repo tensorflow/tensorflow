@@ -108,18 +108,18 @@ class DelegatePerformanceReportingListener : public BenchmarkListener {
               /*value=*/inference_us.std_deviation());
     AddMetric(/*name=*/"initialization_memory_max_rss_mebibyte",
               /*value=*/init_mem_usage.mem_footprint_kb / 1024.0);
-    AddMetric(/*name=*/"initialization_memory_total_allocated_mebibyte",
+    AddMetric(/*name=*/"initialization_memory_total_non_mmapped_heap_mebibyte",
               /*value=*/init_mem_usage.total_allocated_bytes / 1024.0 / 1024.0);
     AddMetric(
-        /*name=*/"initialization_memory_in_use_mebibyte",
+        /*name=*/"initialization_memory_in_use_heap_mebibyte",
         /*value=*/init_mem_usage.in_use_allocated_bytes / 1024.0 / 1024.0);
     AddMetric(/*name=*/"overall_memory_max_rss_mebibyte",
               /*value=*/overall_mem_usage.mem_footprint_kb / 1024.0);
     AddMetric(
-        /*name=*/"overall_memory_total_allocated_mebibyte",
+        /*name=*/"overall_memory_total_non_mmapped_heap_mebibyte",
         /*value=*/overall_mem_usage.total_allocated_bytes / 1024.0 / 1024.0);
     AddMetric(
-        /*name=*/"overall_memory_in_use_mebibyte",
+        /*name=*/"overall_memory_in_use_heap_mebibyte",
         /*value=*/overall_mem_usage.in_use_allocated_bytes / 1024.0 / 1024.0);
     results_proto_.set_event_type(proto::benchmark::BENCHMARK_EVENT_TYPE_END);
     TFLITE_LOG_PROD(TFLITE_LOG_INFO, "Benchmark finished.");

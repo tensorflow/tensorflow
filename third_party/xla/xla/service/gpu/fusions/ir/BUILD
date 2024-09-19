@@ -138,6 +138,7 @@ cc_library(
         "@llvm-project//mlir:InliningUtils",
         "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",
+        "@stablehlo//:stablehlo_type_inference",
     ],
 )
 

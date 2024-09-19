@@ -81,8 +81,9 @@ TEST(KernelThunkTest, AddF32) {
   BufferAllocation::Slice out_slice(&out_alloc, 0, size_in_bytes);
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto thunk, KernelThunk::Create({"add_f32"}, {in_slice}, {out_slice},
-                                      "add_f32", se::ThreadDim(4), {in_slice}));
+      auto thunk,
+      KernelThunk::Create({"add_f32"}, {in_slice}, {out_slice}, "add_f32",
+                          se::ThreadDim(4), /*invariant_arguments=*/{0}));
 
   AddF32HostKernel host_kernels;
   Thunk::ExecuteParams params = {&host_kernels, &allocations};
@@ -107,9 +108,9 @@ TEST(KernelThunkTest, AddF32Inline) {
   BufferAllocation::Slice in_out_slice(&in_out_alloc, 0, size_in_bytes);
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto thunk,
-      KernelThunk::Create({"add_f32"}, {in_out_slice}, {in_out_slice},
-                          "add_f32", se::ThreadDim(4), {}));
+      auto thunk, KernelThunk::Create(
+                      {"add_f32"}, {in_out_slice}, {in_out_slice}, "add_f32",
+                      se::ThreadDim(4), /*invariant_arguments=*/{}));
 
   AddF32HostKernel host_kernels;
   Thunk::ExecuteParams params = {&host_kernels, &allocations};
@@ -147,7 +148,7 @@ TEST(KernelThunkInvariantBuffersTest, MissingBufferSlice) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto thunk,
       KernelThunk::Create({"add_f32"}, {in_slice}, {out_slice}, "add_f32",
-                          se::ThreadDim(4), /*invariant_buffers=*/{}));
+                          se::ThreadDim(4), /*invariant_arguments=*/{}));
 
   AddF32HostKernel host_kernels;
   Thunk::ExecuteParams params = {&host_kernels, &allocations};
@@ -182,53 +183,7 @@ TEST(KernelThunkInvariantBuffersTest, ExtraInputOutputBufferSlice) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto thunk, KernelThunk::Create(
                       {"add_f32"}, {in_out_slice}, {in_out_slice}, "add_f32",
-                      se::ThreadDim(4), /*invariant_buffers=*/{in_out_slice}));
-
-  AddF32HostKernel host_kernels;
-  Thunk::ExecuteParams params = {&host_kernels, &allocations};
-
-  auto execute_event = thunk->Execute(params);
-  tsl::BlockUntilReady(execute_event);
-  ASSERT_TRUE(execute_event.IsError());
-
-  auto status = execute_event.GetError();
-  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
-  EXPECT_TRUE(absl::StrContains(status.message(),
-                                "Mismatch in invariant buffers metadata"));
-}
-
-TEST(KernelThunkInvariantBuffersTest, ExtraIncorrectBufferSlice) {
-#ifdef NDEBUG
-  GTEST_SKIP() << "Invariant buffers check is disabled in optimized build.";
-#endif
-
-  std::vector<MaybeOwningDeviceMemory> buffers;
-  std::vector<float> in = {1.0, 2.0, 3.0, 4.0};
-  std::vector<float> out(4, 0.0);
-  std::vector<float> unrelated(4, 0.0);
-
-  size_t size_in_bytes = in.size() * sizeof(float);
-  buffers.emplace_back(se::DeviceMemoryBase(in.data(), size_in_bytes));
-  buffers.emplace_back(se::DeviceMemoryBase(out.data(), size_in_bytes));
-  buffers.emplace_back(se::DeviceMemoryBase(unrelated.data(), size_in_bytes));
-
-  BufferAllocations allocations(buffers);
-
-  BufferAllocation in_alloc(0, size_in_bytes, 0);
-  BufferAllocation out_alloc(1, size_in_bytes, 0);
-  BufferAllocation unrelated_alloc(2, size_in_bytes, 0);
-
-  BufferAllocation::Slice in_slice(&in_alloc, 0, size_in_bytes);
-  BufferAllocation::Slice out_slice(&out_alloc, 0, size_in_bytes);
-  BufferAllocation::Slice unrelated_slice(&unrelated_alloc, 0, size_in_bytes);
-
-  // Invariant buffer set contains all invariant buffers, but still it is
-  // incorrect - it contains a buffer that's unrelated to the kernel.
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto thunk,
-      KernelThunk::Create({"add_f32"}, {in_slice}, {out_slice}, "add_f32",
-                          se::ThreadDim(4),
-                          /*invariant_buffers=*/{in_slice, unrelated_slice}));
+                      se::ThreadDim(4), /*invariant_arguments=*/{0}));
 
   AddF32HostKernel host_kernels;
   Thunk::ExecuteParams params = {&host_kernels, &allocations};
@@ -275,7 +230,7 @@ TEST(KernelThunkInvariantBuffersTest,
   TF_ASSERT_OK_AND_ASSIGN(
       auto thunk, KernelThunk::Create({"add_f32"}, {in_0_slice, in_1_slice},
                                       {in_0_slice}, "add_f32", se::ThreadDim(4),
-                                      /*invariant_buffers=*/{in_1_slice}));
+                                      /*invariant_arguments=*/{1}));
 
   AddF32HostKernel host_kernels;
   Thunk::ExecuteParams params = {&host_kernels, &allocations};

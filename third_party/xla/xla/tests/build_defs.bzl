@@ -97,6 +97,7 @@ def prepare_nvidia_gpu_backend_data(backends, disabled_backends, backend_tags, b
                 sm_tag += ":%d" % num_gpus
             new_backend_tags[gpu_backend] = [t for t in all_tags if t not in requires_gpu]
             new_backend_tags[gpu_backend].append(sm_tag)
+            new_backend_tags[gpu_backend].append("no_rocm")
 
     return new_backends, new_disabled_backends, new_backend_tags, new_backend_args
 

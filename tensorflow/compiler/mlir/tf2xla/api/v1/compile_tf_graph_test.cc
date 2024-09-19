@@ -30,11 +30,11 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/lib/monitoring/test_utils.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
-#include "tsl/lib/monitoring/test_utils.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 

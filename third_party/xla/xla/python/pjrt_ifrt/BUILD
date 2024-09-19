@@ -53,6 +53,7 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/python/ifrt",
         "//xla/python/ifrt:serdes",
+        "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -69,7 +70,6 @@ cc_library(
 tf_proto_library(
     name = "xla_host_callback_proto",
     srcs = ["xla_host_callback.proto"],
-    cc_api_version = 2,
     protodeps = [
         "//xla:xla_data_proto",
     ] + if_google(["@com_google_protobuf//:any"]),
@@ -176,6 +176,7 @@ xla_cc_test(
         "//xla/python/ifrt",
         "//xla/python/ifrt:device_test_util",
         "//xla/python/ifrt:tuple_impl_test_lib",
+        "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:errors",

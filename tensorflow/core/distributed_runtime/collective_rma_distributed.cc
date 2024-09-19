@@ -129,7 +129,6 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
   };
   State* state = new State;
 
-  DeviceAttributes server_attributes;
   Status s = dev_resolver_->GetDeviceAttributes(peer_device,
                                                 &state->server_attributes);
   if (!s.ok()) {
@@ -212,10 +211,10 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
         done(s);
       };
 
-  state->call.reset(new RecvBufCall(
+  state->call = std::make_unique<RecvBufCall>(
       step_id_, peer_device, peer_task, key, to_device, to_device_ctx,
       to_alloc_attr, dst_tensor, client_locality, state->server_attributes,
-      cancellation_manager, worker_cache_));
+      cancellation_manager, worker_cache_);
   CancellationToken abortion_token =
       abortion_cancel_mgr_.get_cancellation_token();
   bool already_aborted = !abortion_cancel_mgr_.RegisterCallback(

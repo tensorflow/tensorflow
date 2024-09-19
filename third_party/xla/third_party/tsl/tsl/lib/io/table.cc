@@ -47,7 +47,7 @@ absl::Status Table::Open(const Options& options, RandomAccessFile* file,
   }
 
   char footer_space[Footer::kEncodedLength];
-  StringPiece footer_input;
+  absl::string_view footer_input;
   absl::Status s =
       file->Read(size - Footer::kEncodedLength, Footer::kEncodedLength,
                  &footer_input, footer_space);
@@ -101,14 +101,14 @@ static void ReleaseBlock(void* arg, void* h) {
 
 // Convert an index iterator value (i.e., an encoded BlockHandle)
 // into an iterator over the contents of the corresponding block.
-Iterator* Table::BlockReader(void* arg, const StringPiece& index_value) {
+Iterator* Table::BlockReader(void* arg, const absl::string_view& index_value) {
   Table* table = reinterpret_cast<Table*>(arg);
   Cache* block_cache = table->rep_->options.block_cache;
   Block* block = nullptr;
   Cache::Handle* cache_handle = nullptr;
 
   BlockHandle handle;
-  StringPiece input = index_value;
+  absl::string_view input = index_value;
   absl::Status s = handle.DecodeFrom(&input);
   // We intentionally allow extra stuff in index_value so that we
   // can add more features in the future.
@@ -158,9 +158,9 @@ Iterator* Table::NewIterator() const {
                              &Table::BlockReader, const_cast<Table*>(this));
 }
 
-absl::Status Table::InternalGet(const StringPiece& k, void* arg,
-                                void (*saver)(void*, const StringPiece&,
-                                              const StringPiece&)) {
+absl::Status Table::InternalGet(const absl::string_view& k, void* arg,
+                                void (*saver)(void*, const absl::string_view&,
+                                              const absl::string_view&)) {
   absl::Status s;
   Iterator* iiter = rep_->index_block->NewIterator();
   iiter->Seek(k);
@@ -180,13 +180,13 @@ absl::Status Table::InternalGet(const StringPiece& k, void* arg,
   return s;
 }
 
-uint64 Table::ApproximateOffsetOf(const StringPiece& key) const {
+uint64 Table::ApproximateOffsetOf(const absl::string_view& key) const {
   Iterator* index_iter = rep_->index_block->NewIterator();
   index_iter->Seek(key);
   uint64 result;
   if (index_iter->Valid()) {
     BlockHandle handle;
-    StringPiece input = index_iter->value();
+    absl::string_view input = index_iter->value();
     absl::Status s = handle.DecodeFrom(&input);
     if (s.ok()) {
       result = handle.offset();

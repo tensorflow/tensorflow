@@ -158,13 +158,6 @@ TEST_F(GpuIrEmitterUnnestedTest,
 ; CHECK-DAG:  addrspacecast ptr %arg1 to ptr addrspace(1)
 ; CHECK-DAG:  addrspacecast ptr %arg2 to ptr addrspace(1)
 ; CHECK-DAG:  addrspacecast ptr %arg3 to ptr addrspace(1)
-; CHECK: tail call i32 asm sideeffect
-; CHECK: tail call i32 asm sideeffect
-; CHECK: fadd float
-; CHECK-SAME: 1.000000e+00
-; CHECK-DAG: tail call void asm sideeffect
-; CHECK-DAG: tail call void asm sideeffect
-; CHECK:    ret void
       )",
                      /*match_optimized_ir=*/false);
 }

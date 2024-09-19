@@ -100,6 +100,7 @@ cc_library(
         ":module_spec",
         ":numeric_options",
         ":platform",
+        ":semantic_version",
         ":stream_common",
         ":stream_executor_common",
         ":stream_executor_h",
@@ -144,7 +145,6 @@ cc_library(
 tf_proto_library(
     name = "device_description_proto",
     srcs = ["device_description.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = ["//xla:autotune_results_proto"],
 )
@@ -156,6 +156,7 @@ cc_library(
     deps = [
         ":device_description_proto_cc",
         ":launch_dim",
+        ":semantic_version",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/lib/math:math_util",
@@ -662,7 +663,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:platform_port",
     ],
     alwayslink = True,
 )
@@ -679,6 +679,37 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "semantic_version",
+    srcs = ["semantic_version.cc"],
+    hdrs = ["semantic_version.h"],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_test(
+    name = "semantic_version_test",
+    srcs = ["semantic_version_test.cc"],
+    deps = [
+        ":semantic_version",
+        "@com_google_absl//absl/hash:hash_testing",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -854,6 +885,7 @@ xla_cc_test(
     srcs = ["device_description_test.cc"],
     deps = [
         ":device_description",
+        ":semantic_version",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
     ],

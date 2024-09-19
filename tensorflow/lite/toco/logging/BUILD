@@ -20,7 +20,6 @@ package(
 tf_proto_library(
     name = "toco_conversion_log_proto",
     srcs = ["toco_conversion_log.proto"],
-    cc_api_version = 2,
     visibility = ["//visibility:public"],
 )
 

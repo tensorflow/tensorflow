@@ -2,8 +2,8 @@
 // RUN: test_correctness %s
 
 // We have two users of add and sub, but they use consistent indexing, so they
-// can be generated as a single function (fused_computation_atan2).
-%fused_computation {
+// can be generated as a single function (fusion_atan2).
+fusion {
   %p0 = f32[2] parameter(0)
   %p1 = f32[2] parameter(1)
   %add = f32[2] add(%p0, %p1)
@@ -15,11 +15,11 @@
 
 // CHECK: func.func @main
 // CHECK-NEXT: gpu.thread_id
-// CHECK-NEXT: pure_call @fused_computation_atan2
+// CHECK:      pure_call @fusion_atan2
 // CHECK-NEXT: tensor.insert
-// CHECK-NEXT: return
+// CHECK:      return
 
-// CHECK: func.func private @fused_computation_atan2
+// CHECK: func.func private @fusion_atan2
 // CHECK-NEXT: tensor.extract
 // CHECK-NEXT: tensor.extract
 // CHECK-NEXT: addf

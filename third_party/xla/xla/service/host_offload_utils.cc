@@ -239,5 +239,22 @@ std::string InstructionAndShapeIndex::ToString() const {
                          shape_index.ToString());
 }
 
+bool IsHostAsyncStart(const HloInstruction* instruction) {
+  return instruction->opcode() == HloOpcode::kAsyncStart &&
+         instruction->async_execution_thread() == HloInstruction::kHostThread;
+}
+
+bool IsSynchronousCopyFromOrToHost(const HloInstruction* instruction) {
+  if (instruction->opcode() != HloOpcode::kCopy) {
+    return false;
+  }
+  return (instruction->shape().has_layout() &&
+          instruction->shape().layout().memory_space() ==
+              Layout::kHostMemorySpace) ||
+         (instruction->operand(0)->shape().has_layout() &&
+          instruction->operand(0)->shape().layout().memory_space() ==
+              Layout::kHostMemorySpace);
+}
+
 }  // namespace host_offload_utils
 }  // namespace xla

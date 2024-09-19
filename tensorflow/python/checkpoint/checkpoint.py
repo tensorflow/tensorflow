@@ -2577,7 +2577,7 @@ class Checkpoint(autotrackable.AutoTrackable):
       self._checkpoint_options = options
     # Triggers TF2 async checkpoint handling if:
     # 1. async checkpoint is enabled in CheckpointOptions
-    # 2. there's a preceeding async save/write
+    # 2. there's a preceding async save/write
     # 3. running in eager mode
     if (self._checkpoint_options and
         self._checkpoint_options.experimental_enable_async_checkpoint):
@@ -2708,7 +2708,7 @@ class Checkpoint(autotrackable.AutoTrackable):
       self._checkpoint_options = options
     # Triggers TF2 async checkpoint handling if:
     # 1. async checkpoint is enabled in CheckpointOptions
-    # 2. there's a preceeding async save/write
+    # 2. there's a preceding async save/write
     # 3. running in eager mode
     if (self._checkpoint_options and
         self._checkpoint_options.experimental_enable_async_checkpoint):

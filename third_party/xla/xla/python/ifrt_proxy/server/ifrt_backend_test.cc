@@ -17,6 +17,7 @@
 #include <sys/types.h>
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -46,6 +47,7 @@
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/future.h"
@@ -706,6 +708,9 @@ TEST_P(IfrtBackendHandlerTest,
       StatusIs(absl::StatusCode::kUnknown, StrEq(kDisassembleErrorMessage)));
 }
 
+// Matcher for matching the `device_list` argument of `Client::CopyArrays()`.
+MATCHER_P(EqualsDeviceList, device_list, "") { return *arg == *device_list; }
+
 TEST_P(IfrtBackendHandlerTest, CopyArrays) {
   std::vector<tsl::RCReference<xla::ifrt::Array>> src_arrays;
   src_arrays.push_back(tsl::MakeRef<xla::ifrt::MockArray>());
@@ -713,16 +718,16 @@ TEST_P(IfrtBackendHandlerTest, CopyArrays) {
   std::vector<tsl::RCReference<xla::ifrt::Array>> copied_arrays;
   copied_arrays.push_back(tsl::MakeRef<xla::ifrt::MockArray>());
 
-  DeviceList::Devices ds;
+  BasicDeviceList::Devices ds;
   TF_ASSERT_OK_AND_ASSIGN(ds.emplace_back(),
                           mock_client_->LookupDevice(DeviceId(1)));
-  DeviceList devices(std::move(ds));
+  tsl::RCReference<DeviceList> devices = BasicDeviceList::Create(std::move(ds));
   MemoryKind memory_kind("device");
 
-  EXPECT_CALL(
-      *mock_client_,
-      CopyArrays(ElementsAreArray(src_arrays), Optional(devices),
-                 Optional(memory_kind), ArrayCopySemantics::kAlwaysCopy))
+  EXPECT_CALL(*mock_client_, CopyArrays(ElementsAreArray(src_arrays),
+                                        Optional(EqualsDeviceList(devices)),
+                                        Optional(memory_kind),
+                                        ArrayCopySemantics::kAlwaysCopy))
       .WillOnce(Return(
           std::vector<tsl::RCReference<xla::ifrt::Array>>(copied_arrays)));
 
@@ -732,7 +737,7 @@ TEST_P(IfrtBackendHandlerTest, CopyArrays) {
     TF_ASSERT_OK_AND_ASSIGN(auto src_array_handle, MakeTestArray(src_array));
     copy_arrays_request->add_array_handles(src_array_handle);
   }
-  for (const auto& device : devices.devices()) {
+  for (const auto& device : devices->devices()) {
     copy_arrays_request->add_device_ids(device->Id().value());
   }
   copy_arrays_request->set_memory_kind(std::string(*memory_kind.memory_kind()));
@@ -1175,7 +1180,7 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableExecute) {
       .WillOnce(
           Invoke([&](absl::Span<tsl::RCReference<Array>> args,
                      const xla::ifrt::LoadedExecutable::ExecuteOptions& options,
-                     std::optional<DeviceList> devices)
+                     std::optional<tsl::RCReference<DeviceList>> devices)
                      -> absl::StatusOr<LoadedExecutable::ExecuteResult> {
             return LoadedExecutable::ExecuteResult{
                 .status = Future<>(absl::InternalError("injected error")),

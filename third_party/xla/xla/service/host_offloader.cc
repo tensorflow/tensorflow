@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/host_offloader.h"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <iomanip>
 #include <memory>
@@ -26,15 +27,19 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal_util.h"
 #include "xla/service/call_graph.h"
@@ -46,6 +51,7 @@ limitations under the License.
 #include "xla/service/host_offload_utils.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
+#include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
@@ -57,8 +63,6 @@ namespace xla {
 
 namespace {
 
-using ::xla::host_memory_offload_annotations::kMoveToDeviceCustomCallTarget;
-using ::xla::host_memory_offload_annotations::kMoveToHostCustomCallTarget;
 using ::xla::host_offload_utils::InstructionAndShapeIndex;
 
 void SetMemorySpace(Shape* shape, int64_t memory_space_color) {
@@ -656,6 +660,12 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
       // The AllocateBuffer that we're about to create will suffice for every
       // DynamicUpdateSlice we pass through as we walk up the graph.
       dynamic_update_slices_already_allocated_.insert(instruction);
+    } else if (instruction->IsCustomCall("AllocateBuffer")) {
+      VLOG(2) << absl::StreamFormat(
+          "DynamicUpdateSlice \"%s\" already writes into an AllocateBuffer "
+          "\"%s\"",
+          dynamic_update_slice->name(), instruction->name());
+      return absl::OkStatus();
     }
     const std::vector<InstructionAndShapeIndex> predecessors =
         host_offload_utils::GetPredecessors(instruction_and_shape);
@@ -782,21 +792,257 @@ absl::StatusOr<bool> HostOffloader::ApplySchedulingFix(
   return changed;
 }
 
+namespace {
+
+absl::Status ValidateAsyncComputationStructure(HloComputation* computation) {
+  for (HloInstruction* instr : computation->instructions()) {
+    if (instr->opcode() == HloOpcode::kParameter || instr->IsRoot()) {
+      continue;
+    }
+
+    return absl::InternalError(
+        absl::StrCat("Unexpected instruction found in async computation: ",
+                     instr->ToString()));
+  }
+
+  return absl::OkStatus();
+}
+
+// Updates memory space for all outputs of the host offloaded computation
+// (associated with `call_start`) that are ONLY used on host. NOTE: We also
+// remove redundant copies to host, if any.
+absl::StatusOr<bool> UpdateMemorySpaceForHostOffloadedOutputs(
+    HloInstruction* call_start,
+    ShapeTree<std::vector<InstructionAndShapeIndex>> host_instrs_tree) {
+  // Keep track of MoveToHost instructions that need to be removed.
+  std::vector<InstructionAndShapeIndex> to_replace;
+
+  HloComputation* called_computation = call_start->async_wrapped_computation();
+  TF_RETURN_IF_ERROR(ValidateAsyncComputationStructure(called_computation));
+  HloInstruction* root = called_computation->root_instruction();
+  Shape* root_shape = root->mutable_shape();
+
+  host_instrs_tree.ForEachMutableElement([&](ShapeIndex output_index,
+                                             std::vector<
+                                                 InstructionAndShapeIndex>*
+                                                 instruction_and_shape_indexes)
+                                             -> void {
+    for (InstructionAndShapeIndex& instr_and_shape :
+         *instruction_and_shape_indexes) {
+      // If instruction is MoveToHost, we will replace usage.
+      if (instr_and_shape.instruction->IsCustomCall(
+              host_memory_offload_annotations::kMoveToHostCustomCallTarget)) {
+        to_replace.emplace_back(instr_and_shape);
+        continue;
+      }
+
+      SetMemorySpace(ShapeUtil::GetMutableSubshape(
+                         instr_and_shape.instruction->mutable_shape(),
+                         instr_and_shape.shape_index),
+                     Layout::kHostMemorySpace);
+    }
+
+    if (!instruction_and_shape_indexes->empty()) {
+      // Update the memory space for the output of the computation call
+      // itself.
+      SetMemorySpace(ShapeUtil::GetMutableSubshape(root_shape, output_index),
+                     Layout::kHostMemorySpace);
+    }
+  });
+  bool modified = false;
+  // Remove MoveToHost usage.
+  for (InstructionAndShapeIndex& instr_and_shape : to_replace) {
+    modified = true;
+    HloInstruction* pred = instr_and_shape.instruction->mutable_operand(0);
+    TF_RETURN_IF_ERROR(instr_and_shape.instruction->ReplaceAllUsesWith(pred));
+  }
+
+  return modified;
+}
+
+// Additional checks (does not run IsValidDuringPureMemoryOffload) to determine
+// if the respective tensor can be on host.
+bool ExtraCheckForValidUsageOnHostForHostOffloadedOutputs(
+    const Shape& entry_computation_shape,
+    InstructionAndShapeIndex& instruction_and_shape_index) {
+  HloInstruction* instruction = instruction_and_shape_index.instruction;
+  ShapeIndex& shape_index = instruction_and_shape_index.shape_index;
+
+  // We respect entry computation layout. So for the cases where the
+  // outputs are not expected on host, we bail.
+  if (instruction->IsRoot() && instruction->parent()->IsEntryComputation()) {
+    if (ShapeUtil::GetSubshape(entry_computation_shape, shape_index)
+            .layout()
+            .memory_space() != Layout::kHostMemorySpace) {
+      return false;
+    }
+  }
+
+  // For custom calls, we conservatively only accept MoveToHost.
+  // For MoveToDevice, this could be re-considered, or done as part of a
+  // generic redundant copies removal.
+  if (instruction->opcode() == HloOpcode::kCustomCall &&
+      instruction->custom_call_target() !=
+          host_memory_offload_annotations::kMoveToHostCustomCallTarget) {
+    return false;
+  }
+
+  // TODO(b/347101407): To also consider host async computations, as we
+  // extend GetSuccessors to properly treat it.
+  if (instruction->opcode() == HloOpcode::kAsyncStart ||
+      instruction->opcode() == HloOpcode::kAsyncDone) {
+    return false;
+  }
+
+  return true;
+}
+
+}  // namespace
+
+absl::StatusOr<bool> HostOffloader::HandleRedundantCopiesBackToHost(
+    const HloModule* module, HloInstruction* instruction) {
+  HloAsyncInstruction* call_start = Cast<HloAsyncInstruction>(instruction);
+
+  CHECK_EQ(call_start->users().size(), 1);
+  HloInstruction* call_done = call_start->users()[0];
+
+  const Shape& entry_computation_shape =
+      module->entry_computation_layout().result_layout().shape();
+
+  // We collect all usages per output index, stopping at any non host
+  // instruction.
+  Shape* done_shape = call_done->mutable_shape();
+  ShapeTree<std::vector<InstructionAndShapeIndex>> host_instrs_tree(done_shape);
+
+  TF_RETURN_IF_ERROR(ShapeUtil::ForEachMutableLeafShapeWithStatus(
+      done_shape, [&](Shape* subshape, const ShapeIndex& output_shape_index) {
+        std::queue<InstructionAndShapeIndex> queue;
+        queue.push(InstructionAndShapeIndex(call_done, output_shape_index));
+
+        // async-start packs the (inputs, outputs, context) in a tuple.
+        constexpr int64_t kShapeTupleOutputIndexInAsyncStart = 1;
+        std::vector<int32_t> start_shape_index_vec;
+        start_shape_index_vec.push_back(kShapeTupleOutputIndexInAsyncStart);
+        start_shape_index_vec.insert(start_shape_index_vec.end(),
+                                     output_shape_index.begin(),
+                                     output_shape_index.end());
+        ShapeIndex start_shape_index = {start_shape_index_vec.begin(),
+                                        start_shape_index_vec.end()};
+
+        // TODO(b/347101407): Start from async-start and trace through the
+        // computation as well in GetSuccessors instead of having to manually
+        // add async-done and update the async computation separately.
+        host_instrs_tree.mutable_element(output_shape_index)
+            ->push_back(
+                InstructionAndShapeIndex(call_start, start_shape_index));
+        host_instrs_tree.mutable_element(output_shape_index)
+            ->push_back(
+                InstructionAndShapeIndex(call_done, output_shape_index));
+
+        bool host_only = true;
+        // Keep track if the output of the host offloading computation is also
+        // an output of the entry computation. Temporaries are conservatively
+        // kept on HBM.
+        //
+        // TODO(b/347101407): Better use AliasAnalysis here to trace host
+        // compute outputs to entry compute outputs instead. NOTE: The current
+        // algorithm only tracks accepted host offloading operations which
+        // operate on the same tensor.
+        bool entry_compute_output = false;
+
+        while (!queue.empty() && host_only) {
+          InstructionAndShapeIndex instruction_and_shape_index = queue.front();
+          queue.pop();
+
+          // TODO(b/347101407): GetSuccessors only follows parameters that alias
+          // in async computations. In the cases where it does not, the async
+          // computation (start & done) are not returned as we stop before going
+          // through the host computation. For now, since we bail if outputs of
+          // host computations flow into another host computation, check outside
+          // of GetSuccessors and if we do have async-starts successors, bail.
+          for (HloInstruction* user :
+               instruction_and_shape_index.instruction->users()) {
+            if (user->opcode() == HloOpcode::kAsyncStart) {
+              host_only = false;
+              break;
+            }
+          }
+
+          TF_ASSIGN_OR_RETURN(
+              std::vector<InstructionAndShapeIndex> successors,
+              host_offload_utils::GetSuccessors(InstructionAndShapeIndex(
+                  instruction_and_shape_index.instruction,
+                  instruction_and_shape_index.shape_index)));
+
+          // Check if any of the successors needs to be on device.
+          for (InstructionAndShapeIndex& successor : successors) {
+            if (!host_offload_utils::IsValidDuringPureMemoryOffload(
+                    successor.instruction) ||
+                !ExtraCheckForValidUsageOnHostForHostOffloadedOutputs(
+                    entry_computation_shape, successor)) {
+              host_only = false;
+              break;
+            }
+
+            if (successor.instruction->IsRoot() &&
+                successor.instruction->parent()->IsEntryComputation()) {
+              entry_compute_output = true;
+            }
+
+            queue.push(successor);
+            host_instrs_tree.mutable_element(output_shape_index)
+                ->emplace_back(successor);
+          }
+        }
+
+        if (!host_only || !entry_compute_output) {
+          host_instrs_tree.mutable_element(output_shape_index)->clear();
+        }
+
+        return absl::OkStatus();
+      }));
+
+  // Update memory space for the host_offloading outputs that never get used on
+  // device.
+  return UpdateMemorySpaceForHostOffloadedOutputs(call_start, host_instrs_tree);
+}
+
 absl::StatusOr<bool> HostOffloader::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
+
+  // First remove redundant copies to and from host (conservatively) starting
+  // from the outputs of the host offloaded computations. Iterate over all
+  // instructions and look for XLA host offload annotations.
+  bool changed_in_loop;
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
+    for (HloInstruction* instruction : computation->instructions()) {
+      if (host_offload_utils::IsHostAsyncStart(instruction)) {
+        TF_ASSIGN_OR_RETURN(changed_in_loop, HandleRedundantCopiesBackToHost(
+                                                 module, instruction));
+        changed = changed || changed_in_loop;
+      }
+    }
+  }
+
   TF_ASSIGN_OR_RETURN(const bool input_streaming_changed_module,
                       HandleInputStreaming(module->entry_computation()));
   changed = changed || input_streaming_changed_module;
 
   // Since we're modifying the graph as we iterate over it, any time we change
   // it, we need to re-run the loop.
-  bool changed_in_loop;
   do {
     changed_in_loop = false;
-    for (HloComputation* computation :
-         module->MakeComputationPostOrder(execution_threads)) {
+    // Iterate over the computations in the order that they are executed. This
+    // ensures we process "MoveToHost" instructions that are at the beginning of
+    // a host memory offload instruction chain.
+    std::vector<HloComputation*> post_order_computations =
+        module->MakeComputationPostOrder(execution_threads);
+    for (auto it = post_order_computations.rbegin();
+         it != post_order_computations.rend(); ++it) {
+      HloComputation* computation = *it;
       for (HloInstruction* instruction :
            computation->MakeInstructionPostOrder()) {
         if (instruction->IsCustomCall(

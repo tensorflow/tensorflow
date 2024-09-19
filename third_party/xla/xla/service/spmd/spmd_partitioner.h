@@ -41,11 +41,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/literal.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/custom_call_sharding_helper.h"
 #include "xla/service/dot_as_convolution_util.h"
-#include "xla/service/hlo_pass_interface.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
 

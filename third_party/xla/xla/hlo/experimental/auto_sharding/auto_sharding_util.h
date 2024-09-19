@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -44,7 +45,7 @@ limitations under the License.
 #include "xla/service/call_graph.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace spmd {
@@ -299,8 +300,7 @@ std::optional<HloSharding> GetInputSharding(const HloInstruction* ins,
 // instruction. We also assign a much larger distance to heavy operators (e.g.,
 // dot, convolution).
 InstructionDepthMap BuildInstructionDepthMap(
-    const HloInstructionSequence& sequence,
-    const InstructionBatchDimMap& batch_dim_map);
+    const HloInstructionSequence& sequence);
 
 std::string GetBatchDimMapKey(const HloInstruction* ins, int64_t idx = -1);
 
@@ -345,6 +345,50 @@ inline void ForceOperandSharding(HloInstruction* inst, int operand_num,
 // Return whether the sharding is fully tiled.
 inline bool IsFullyTiled(const HloSharding& sharding) {
   return sharding.NumTiles() == sharding.tile_assignment().num_elements();
+}
+
+// The sharding is replicated or the total number of tiles is over or equal to
+// the total number of devices. If returns true, this sharding is likely
+// provided by users.
+inline bool ShardingIsComplete(const HloSharding& sharding,
+                               size_t total_num_devices) {
+  return sharding.TotalNumTiles() >= total_num_devices ||
+         sharding.IsReplicated();
+}
+
+// Checks if the argument instruction is a producer for a SPMDFullToShardShape
+// custom call.
+inline bool IsInstructionBeforeSPMDFullToShardShapeCustomCall(
+    const HloInstruction* ins) {
+  for (const HloInstruction* user : ins->users()) {
+    if (spmd::IsSPMDFullToShardShapeCustomCall(user)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Computes the cartesian product of N vectors
+template <typename T>
+void ForEachInCartesianProduct(
+    const std::vector<std::vector<T>>& sets,
+    absl::FunctionRef<void(const std::vector<T>&)> fn) {
+  std::vector<std::vector<T>> elements(1, std::vector<T>());
+  std::vector<std::vector<T>> temp_elements;
+  for (int i = 0; i < sets.size(); i++) {
+    temp_elements.clear();
+    for (const std::vector<T>& product : elements) {
+      for (const T& element : sets[i]) {
+        std::vector<T> product_copy = product;
+        product_copy.push_back(element);
+        temp_elements.push_back(product_copy);
+      }
+    }
+    std::swap(elements, temp_elements);
+  }
+  for (const std::vector<T>& element : elements) {
+    fn(element);
+  }
 }
 
 // Propagate sharding for dim-wise operations (e.g., slice, pad) which works
@@ -488,6 +532,9 @@ size_t VectorGreaterThanOneElementCount(absl::Span<const int64_t> span,
 std::vector<int64_t> VectorGreaterThanOneElementIndices(
     absl::Span<const int64_t> span, bool omit_last_dim = false);
 
+std::vector<int64_t> VectorGreaterThanOneElements(
+    absl::Span<const int64_t> span, bool omit_last_dim = false);
+
 // Computes bytes size of a shape recursively if it is sharded according to an
 // optionally provided sharding
 int64_t ByteSizeOfShapeWithSharding(const Shape& shape,
@@ -517,15 +564,17 @@ HloInstruction* FindInstruction(
 absl::StatusOr<bool> AdjustShardingsWithPartialMeshShape(
     const std::vector<HloInstruction*>& instructions,
     const absl::flat_hash_set<const HloInstruction*>& instructions_to_shard,
-    const std::vector<int64_t>& mesh_shape, int64_t total_num_devices,
-    bool crash_on_error);
+    const std::vector<int64_t>& mesh_shape,
+    const DeviceMesh& original_device_mesh, bool crash_on_error);
 
 inline bool AdjustShardingsWithPartialMeshShape(
     const std::vector<HloInstruction*>& instructions,
     const absl::flat_hash_set<const HloInstruction*>& instructions_to_shard,
-    const std::vector<int64_t>& mesh_shape, int64_t total_num_devices) {
+    const std::vector<int64_t>& mesh_shape,
+    const DeviceMesh& original_device_mesh) {
   absl::StatusOr<bool> result = AdjustShardingsWithPartialMeshShape(
-      instructions, instructions_to_shard, mesh_shape, total_num_devices, true);
+      instructions, instructions_to_shard, mesh_shape, original_device_mesh,
+      /*crash_on_error=*/true);
   CHECK_OK(result);
   return *result;
 }
@@ -577,6 +626,11 @@ absl::StatusOr<int64_t> GetPartialReduceReductionDim(const HloInstruction* ins);
 // Returns true if an HLO op flows to a SPMDShardToFullShape custom call without
 // encountering a SPMDFullToShardShape custom call on the call.
 bool OpEncountersShardToFull(const HloInstruction* op);
+
+// Ensures that the modules entry_computation_layout has input/output shapes
+// with layouts. If this is not the case, this function will add the layout
+// information by extracting it from the HLO ops.
+absl::Status EnsureEntryComputationLayoutHasShapeLayouts(HloModule* module);
 
 }  // namespace spmd
 }  // namespace xla

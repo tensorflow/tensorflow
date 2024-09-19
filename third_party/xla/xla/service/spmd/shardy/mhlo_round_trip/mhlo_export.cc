@@ -32,7 +32,7 @@ void addMhloExportPipeline(mlir::OpPassManager& pm) {
   // `mhlo.constant` (which is foldable), therefore greedy pattern rewriters
   // shouldn't be applied before converting to HLO as they apply folding.
   pm.addPass(createExportOpsPass());
-  pm.addPass(createShardMapExportPass());
+  pm.addPass(createMhloRoundTripShardMapExportPass());
   pm.addPass(createExportMhloShardingsPass());
 }
 

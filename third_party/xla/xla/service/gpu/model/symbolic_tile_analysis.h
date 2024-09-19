@@ -55,9 +55,12 @@ class EmitterSpecificConstraints {
       absl::Span<const int64_t> tile_parameters) const = 0;
 };
 
+// TODO(b/367306544): get rid of the HloFusionAdaptor parameter once the
+// abstraction exists.
 using EmitterSpecificConstraintsBuilder =
     std::function<std::unique_ptr<EmitterSpecificConstraints>(
-        const std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>&)>;
+        const std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>&,
+        const HloFusionAdaptor&)>;
 
 // Constructs and holds symbolic tiles for all the instructions within a
 // computation. We may hold several different symbolic tiles for the same

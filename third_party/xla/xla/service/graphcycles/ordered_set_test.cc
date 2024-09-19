@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tsl/platform/test.h"
 
-namespace tensorflow {
+namespace xla {
 namespace {
 TEST(OrderedSetTest, Insert) {
   OrderedSet<int> ordered_set;
@@ -111,4 +111,4 @@ TEST(OrderedSetTest, LargeInsertions) {
   }
 }
 }  // namespace
-}  // namespace tensorflow
+}  // namespace xla
