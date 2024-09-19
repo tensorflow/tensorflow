@@ -1392,8 +1392,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
                                    &predecessors};
 
   optional<std::shared_ptr<OriginalValue>> original_value;
-  attrs["original_value"] = {/*required=*/false, AttrTy::kOriginalValue,
-                             &original_value};
+  attrs["origin"] = {/*required=*/false, AttrTy::kOriginalValue,
+                     &original_value};
 
   optional<OpMetadata> metadata;
   attrs["metadata"] = {/*required=*/false, AttrTy::kMetadata, &metadata};

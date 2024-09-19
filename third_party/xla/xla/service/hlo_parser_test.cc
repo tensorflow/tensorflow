@@ -1530,11 +1530,11 @@ ENTRY %test (p: f32[100]) -> u32[100] {
 R"(HloModule test, entry_computation_layout={(f32[], f32[3]{0}, f32[2,3]{1,0})->((f32[], f32[3]{0}), f32[2,3]{1,0})}
 
 ENTRY %test (v1: f32[], v2: f32[3], v3: f32[2,3]) -> ((f32[], f32[3]), f32[2,3]) {
-  %v1 = f32[] parameter(0), original_value={{"v1"}}
-  %v2 = f32[3]{0} parameter(1), original_value={{"v2"}}
-  %tuple = (f32[], f32[3]{0}) tuple(f32[] %v1, f32[3]{0} %v2), original_value={({"v1"}, {"v2"})}
-  %v3 = f32[2,3]{1,0} parameter(2), original_value={{"v3"}}
-  ROOT %nested_tuple = ((f32[], f32[3]{0}), f32[2,3]{1,0}) tuple((f32[], f32[3]{0}) %tuple, f32[2,3]{1,0} %v3), original_value={(({"v1"}, {"v2"}), {"v3"})}
+  %v1 = f32[] parameter(0), origin={{"v1"}}
+  %v2 = f32[3]{0} parameter(1), origin={{"v2"}}
+  %tuple = (f32[], f32[3]{0}) tuple(f32[] %v1, f32[3]{0} %v2), origin={({"v1"}, {"v2"})}
+  %v3 = f32[2,3]{1,0} parameter(2), origin={{"v3"}}
+  ROOT %nested_tuple = ((f32[], f32[3]{0}), f32[2,3]{1,0}) tuple((f32[], f32[3]{0}) %tuple, f32[2,3]{1,0} %v3), origin={(({"v1"}, {"v2"}), {"v3"})}
 }
 
 )"
@@ -5537,8 +5537,8 @@ TEST_F(HloParserTest, OriginalValueWithoutShape) {
   const std::string hlo_string = R"(HloModule test
 
 ENTRY %test {
-  %a = f32[2,10]{1,0} parameter(0), original_value={{"a"}}
-  ROOT %v = abs(%a), original_value={{"v"}}
+  %a = f32[2,10]{1,0} parameter(0), origin={{"a"}}
+  ROOT %v = abs(%a), origin={{"v"}}
 }
 
 
