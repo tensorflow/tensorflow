@@ -25,4 +25,4 @@ ENTRY main.12 {
   ROOT loop_reduce_fusion = pred[] fusion(Arg_1.2.0, Arg_0.1.0), kind=kLoop, calls=fused_reduce
 }
 
-// CHECK: load <16 x i8>, ptr addrspace(1) %{{.*}}, align 8, !invariant.load !4
+// CHECK: load <16 x i8>, ptr addrspace(1) %{{.*}}, align 16, !invariant.load !4
