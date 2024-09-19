@@ -142,7 +142,6 @@ tf_gen_op_strict_wrapper_private_py(
         "//learning/brain/python/ops:__pkg__",
         "//smartass/brain/ops:__subpackages__",
         "//tensorflow/compiler/mlir/tfr:__pkg__",
-        "//tensorflow/compiler/mlir/tfr/python/experimental:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/contrib/opt:__pkg__",
         "//tensorflow/contrib/recurrent:__pkg__",
