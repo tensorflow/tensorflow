@@ -28,6 +28,20 @@ namespace {
 
 class TritonGemmTest : public GpuCodegenTest {
  public:
+  se::GpuComputeCapability GetGpuComputeCapability() {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .gpu_compute_capability();
+  }
+
+  void SetUp() override {
+    if (std::holds_alternative<se::RocmComputeCapability>(
+            GetGpuComputeCapability())) {
+      GTEST_SKIP() << "Not supported on ROCm until Triton is re-enabled.";
+    }
+  }
+
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_cublas_fallback(false);
