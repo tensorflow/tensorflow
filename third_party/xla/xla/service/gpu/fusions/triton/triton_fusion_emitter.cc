@@ -105,6 +105,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/map_mhlo_to_scalar_op.h"
+#include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
 #include "xla/service/dump.h"
@@ -927,11 +928,9 @@ Value EmitTiledBroadcast(
                    padded_output_tile_shape);
 }
 
-Value EmitTiledReshape(ImplicitLocOpBuilder& b,
-                       const TiledHloInstruction& tiled_reshape_or_bitcast,
+Value EmitTiledReshape(ImplicitLocOpBuilder& b, ArrayRef<int64_t> tile_sizes,
                        Value input) {
-  SmallVector<int64_t> padded_tile_sizes =
-      GetPaddedTileSizes(tiled_reshape_or_bitcast.tile_sizes());
+  SmallVector<int64_t> padded_tile_sizes = GetPaddedTileSizes(tile_sizes);
 
   Type input_element_type =
       mlir::cast<ShapedType>(input.getType()).getElementType();
@@ -945,23 +944,66 @@ Value EmitTiledReshape(ImplicitLocOpBuilder& b,
       .getResult();
 }
 
-Value EmitTiledTranspose(ImplicitLocOpBuilder& b,
-                         const TiledHloInstruction& tiled_transpose,
-                         Value input) {
-  SmallVector<int64_t> padded_tile_sizes =
-      GetPaddedTileSizes(tiled_transpose.tile_sizes());
+Value EmitTiledTranspose(ImplicitLocOpBuilder& b, ArrayRef<int64_t> tile_sizes,
+                         SmallVector<int64_t> dimensions, Value input) {
+  SmallVector<int64_t> padded_tile_sizes = GetPaddedTileSizes(tile_sizes);
 
   Type input_element_type =
       mlir::cast<ShapedType>(input.getType()).getElementType();
   Type output_tensor_type =
       mlir::RankedTensorType::get(padded_tile_sizes, input_element_type);
 
-  auto transpose =
-      ::xla::Cast<const HloTransposeInstruction>(tiled_transpose.hlo());
-  SmallVector<int32_t> order =
-      llvm::to_vector_of<int32_t>(transpose->dimensions());
+  SmallVector<int32_t> order = llvm::to_vector_of<int32_t>(dimensions);
 
   return b.create<mt::TransOp>(output_tensor_type, input, order);
+}
+
+Value EmitTiledBitcast(ImplicitLocOpBuilder& b,
+                       const TiledHloInstruction& tiled_bitcast, Value input) {
+  // Any Bitcast is decomposable to a transpose+reshape+transpose.
+  auto trt = ShapeUtil::DecomposeBitcastToTrt(
+      tiled_bitcast.hlo()->operand(0)->shape(), tiled_bitcast.hlo()->shape());
+
+  // When replacing the `bitcast` with `transpose` + `reshape` + `transpose` we
+  // need to provide the tile sizes at output of each op. We already have the
+  // tiling of the `input` (before the first transpose) and the tiling of the
+  // final output (after the second transpose), so what's missing are the two
+  // tilings in between - after the first transpose and after the reshape. In
+  // the case of arbitrary ops, we would need to run the tiling analysis to
+  // compute this, but in the case of bitcast we can trivially compute the
+  // needed tile sizes from the input and output.
+
+  // The tiles sizes we need to use for the output of the first transpose
+  // are the permuted tiles sizes of the input. Note that these are
+  // different, even in rank, compared to the tile sizes of the final shape of
+  // the bitcast, so it's not possible to easily propagate them from the output.
+  std::vector<int64_t> transpose1_tile_sizes =
+      Permute(tiled_bitcast.operand(0)->tile_sizes(), trt.transpose1_dims);
+  Value normalized_input =
+      trt.IsTranspose1Identity()
+          ? input
+          : EmitTiledTranspose(b, transpose1_tile_sizes,
+                               llvm::to_vector(trt.transpose1_dims), input);
+
+  // Like the first transpose above, the tile sizes after the second transpose
+  // are a permutation (according to transpose2_dims) of the tile sizes of
+  // the reshape. Since we know the tile sizes of the final transpose and need
+  // the tile sizes of the reshape, we compute the tile sizes backwards, taking
+  // the inreverse permutation.
+  std::vector<int64_t> reshape_tile_sizes =
+      PermuteInverse(tiled_bitcast.tile_sizes(), trt.transpose2_dims);
+  Value normalized_reshape =
+      ShapeUtil::Equal(trt.transpose1_shape, trt.reshape_shape)
+          ? normalized_input
+          : EmitTiledReshape(b, reshape_tile_sizes, normalized_input);
+
+  // The final transpose simply uses the tile sizes computed for the original
+  // bitcast by the tiling analysis.
+  return trt.IsTranspose2Identity()
+             ? normalized_reshape
+             : EmitTiledTranspose(b, tiled_bitcast.tile_sizes(),
+                                  llvm::to_vector(trt.transpose2_dims),
+                                  normalized_reshape);
 }
 
 absl::StatusOr<Value> EmitTiledHloInstruction(
@@ -1033,13 +1075,21 @@ absl::StatusOr<Value> EmitTiledHloInstruction(
     return EmitElementwise(b, libdevice_path, device_info, *hlo, operands);
   }
 
-  if (hlo->opcode() == HloOpcode::kReshape ||
-      hlo->opcode() == HloOpcode::kBitcast) {
-    return EmitTiledReshape(b, tiled_hlo, values[tiled_hlo.operand(0)]);
+  if (hlo->opcode() == HloOpcode::kReshape) {
+    return EmitTiledReshape(b, tiled_hlo.tile_sizes(),
+                            values[tiled_hlo.operand(0)]);
+  }
+
+  if (hlo->opcode() == HloOpcode::kBitcast) {
+    return EmitTiledBitcast(b, tiled_hlo, values[tiled_hlo.operand(0)]);
   }
 
   if (hlo->opcode() == HloOpcode::kTranspose) {
-    return EmitTiledTranspose(b, tiled_hlo, values[tiled_hlo.operand(0)]);
+    auto transpose =
+        ::xla::Cast<const HloTransposeInstruction>(tiled_hlo.hlo());
+    return EmitTiledTranspose(b, tiled_hlo.tile_sizes(),
+                              llvm::to_vector(transpose->dimensions()),
+                              values[tiled_hlo.operand(0)]);
   }
 
   // Slice is currently supported only as an operation on indices

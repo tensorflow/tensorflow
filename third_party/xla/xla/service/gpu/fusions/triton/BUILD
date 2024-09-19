@@ -39,6 +39,7 @@ cc_library(
         "//xla:comparison_util",
         "//xla:debug_options_flags",
         "//xla:literal",
+        "//xla:permutation_util",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
