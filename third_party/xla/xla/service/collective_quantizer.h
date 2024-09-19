@@ -26,15 +26,25 @@ namespace xla {
 
 // Reduces the amount of data transferred in all-gather, all-to-all,
 // collective-broadcast and collective-permute ops by exchanging the collectives
-// with subsequent quantizations or type conversions to a narrower type. When
+// with subsequent quantizations or type conversions to a narrower type as well
+// as preceding dequantizations or type conversions to a wider type. When
 // present, unary ops such as bitcasts, copies, reshapes and slices between
-// collective and quantization/type conversion are shifted, i.e. transforms
+// collective and quantization/dequantiation/type conversion are shifted, i.e.
+// transforms
 //
 //   collective --> unary --> quantization/type conversion
 //
 // into
 //
-//   quantization/type conversion --> collective --> unary.
+//   quantization/type conversion --> collective --> unary
+//
+// and
+//
+//   dequantization/type conversion --> unary --> collective
+//
+// into
+//
+//   unary --> collective --> dequantization/type conversion.
 class CollectiveQuantizer : public HloModulePass {
  public:
   absl::string_view name() const override { return "collective-quantizer"; }

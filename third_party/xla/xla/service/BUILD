@@ -614,6 +614,7 @@ cc_library(
     srcs = ["collective_quantizer.cc"],
     hdrs = ["collective_quantizer.h"],
     deps = [
+        ":hlo_replication_analysis",
         ":pattern_matcher",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",

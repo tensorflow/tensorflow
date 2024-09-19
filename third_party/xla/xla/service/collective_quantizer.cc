@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/collective_quantizer.h"
 
+#include "xla/service/hlo_replication_analysis.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
 
@@ -22,6 +23,20 @@ namespace xla {
 namespace {
 
 namespace m = match;
+
+// Holds the ops of a subgraph describing quantization (conversion to a narrower
+// type after scaling by a broadcasted scalar and clamping), dequantization
+// (scaling by a broadcasted scalar after type conversion to a wider type) or
+// plain type conversion.
+struct ConversionSubgraph {
+  HloInstruction* convert = nullptr;
+  HloInstruction* binary = nullptr;
+  HloInstruction* clamp = nullptr;
+  HloInstruction* scale_bcast = nullptr;
+  // Unary instructions following a dequantization or preceding a quantization
+  // in top-down order (operand-to-user).
+  std::vector<HloInstruction*> unaries;
+};
 
 // Matches a broadcast of a scalar operand.
 template <typename... Args>
@@ -50,14 +65,142 @@ auto ConvertToNarrowerType() {
   return m::Convert().WithPredicate(converts_to_narrower_type);
 }
 
-// Returns true iff instr describes a quantization, i.e. a multiplication or
-// division by a broadcasted scalar followed by a clamp and a type conversion,
-// or a plain type conversion to a narrower type. Unary bitcast, copy, reshape
-// or slice ops with one user may precede the quantization or type conversion.
-bool IsSupportedQuantization(HloInstruction* instr, HloInstruction** convert,
-                             HloInstruction** binary, HloInstruction** clamp,
-                             HloInstruction** scale_bcast,
-                             std::vector<HloInstruction*>& unary_ops) {
+// Matches a type conversion to a type with a larger byte size than that of the
+// operand.
+auto ConvertToWiderType() {
+  auto converts_to_wider_type = [](const HloInstruction* instr) -> bool {
+    return ShapeUtil::ByteSizeOfPrimitiveType(instr->shape().element_type()) >
+           ShapeUtil::ByteSizeOfPrimitiveType(
+               instr->operand(0)->shape().element_type());
+  };
+  return m::Convert().WithPredicate(converts_to_wider_type);
+}
+
+bool IsSupportedCollective(HloInstruction* instr) {
+  return instr->operand_count() == 1 &&
+         (instr->opcode() == HloOpcode::kAllGather ||
+          instr->opcode() == HloOpcode::kAllToAll ||
+          instr->opcode() == HloOpcode::kCollectiveBroadcast ||
+          instr->opcode() == HloOpcode::kCollectivePermute);
+}
+
+// Sequentially applies the ops in unaries to the output of instr.
+HloInstruction* ApplyUnaries(HloInstruction* instr,
+                             const std::vector<HloInstruction*>& unaries) {
+  for (HloInstruction* unary : unaries) {
+    instr = instr->AddInstruction(unary->CloneWithNewOperands(
+        ShapeUtil::MakeShapeWithDenseLayout(
+            instr->shape().element_type(), unary->shape().dimensions(),
+            unary->shape().layout().minor_to_major()),
+        {instr}));
+  }
+  return instr;
+}
+
+// Returns whether instr is replicated across all partitions associated with
+// module. Returns false when there are multiple replicas.
+absl::StatusOr<bool> InstrIsReplicated(HloModule* module,
+                                       HloInstruction* instr) {
+  // The replication analysis only verifies the replication of instr across
+  // partitions, not replicas. The replica count must be one to ensure instr is
+  // replicated across all devices.
+  if (module->config().replica_count() > 1) {
+    return false;
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      auto replication_analysis,
+      HloReplicationAnalysis::Run(module,
+                                  /*cross_partition_spmd=*/true));
+  return replication_analysis->HloInstructionIsReplicatedAt(instr, {});
+}
+
+// Recursively collects and returns unary, divide, or multiply operands of instr
+// until a conversion to a wider type is reached. Returns the collected ops in
+// bottom-up order (user-to-operand). Returns an empty vector when no conversion
+// is reached.
+std::vector<HloInstruction*> FindDequantizationSubgraphRecursive(
+    HloInstruction* instr, absl::flat_hash_set<int>& visited_instrs,
+    std::vector<HloInstruction*> subgraph) {
+  // Avoid visiting the same instruction more than once.
+  if (!visited_instrs.emplace(instr->unique_id()).second) {
+    return {};
+  }
+
+  subgraph.emplace_back(instr);
+  if (Match(instr, ConvertToWiderType())) {
+    return subgraph;
+  }
+  if (instr->operand_count() == 1 || instr->opcode() == HloOpcode::kDivide) {
+    return FindDequantizationSubgraphRecursive(instr->mutable_operand(0),
+                                               visited_instrs, subgraph);
+  } else if (instr->opcode() == HloOpcode::kMultiply) {
+    for (HloInstruction* operand : instr->unique_operands()) {
+      auto binary_subgraph = FindDequantizationSubgraphRecursive(
+          operand, visited_instrs, subgraph);
+      if (!binary_subgraph.empty()) {
+        return binary_subgraph;
+      }
+    }
+  }
+  return {};
+}
+
+// Returns non-nullopt if instr describes a dequantization, i.e. a
+// multiplication or division by a broadcasted scalar operating on a type
+// conversion, or a plain type conversion to a wider type. Also returns
+// non-nullopt if instr is the last instruction of a sequence of unary bitcast,
+// copy, reshape or slice ops preceded by a dequantization.
+std::optional<ConversionSubgraph> IsSupportedDequantization(
+    HloInstruction* instr) {
+  ConversionSubgraph subgraph;
+  absl::flat_hash_set<int> visited_instrs;
+  std::vector<HloInstruction*> candidate_subgraph =
+      FindDequantizationSubgraphRecursive(instr, visited_instrs,
+                                          std::vector<HloInstruction*>{});
+  std::reverse(candidate_subgraph.begin(), candidate_subgraph.end());
+
+  // In the dequantization case, the type conversion is followed by a
+  // multiplication or division by a broadcasted scalar.
+  if (candidate_subgraph.size() > 1 &&
+      (Match(
+           candidate_subgraph[1],
+           m::MultiplyAnyOrder(&subgraph.binary, m::Convert(&subgraph.convert),
+                               ScalarBroadcast(&subgraph.scale_bcast))) ||
+       Match(candidate_subgraph[1],
+             m::Divide(&subgraph.binary, m::Convert(&subgraph.convert),
+                       ScalarBroadcast(&subgraph.scale_bcast))))) {
+    subgraph.unaries = {candidate_subgraph.begin() + 2,
+                        candidate_subgraph.end()};
+  } else if (candidate_subgraph.size() > 0 &&
+             Match(candidate_subgraph[0], m::Convert(&subgraph.convert))) {
+    subgraph.unaries = {candidate_subgraph.begin() + 1,
+                        candidate_subgraph.end()};
+  } else {
+    VLOG(5) << "Did not find type conversion or dequantization pattern.";
+    return std::nullopt;
+  }
+
+  // The collected unary ops between dequantization/type conversion and
+  // collective may only include bitcast, copy, reshape and slice instructions.
+  for (HloInstruction* unary : subgraph.unaries) {
+    if (!Match(unary, m::AnyOf<HloInstruction>(m::Bitcast(), m::Copy(),
+                                               m::Reshape(), m::Slice()))) {
+      VLOG(5) << "Unexpected instruction in unary ops.";
+      return std::nullopt;
+    }
+  }
+  return std::make_optional<ConversionSubgraph>(std::move(subgraph));
+}
+
+// Returns non-nullopt if instr describes a quantization, i.e. a multiplication
+// or division by a broadcasted scalar followed by a clamp and a type
+// conversion, or a plain type conversion to a narrower type. Also returns
+// non-nullopt if instr is the first instruction of a sequence of unary bitcast,
+// copy, reshape or slice ops followed by a quantization.
+std::optional<ConversionSubgraph> IsSupportedQuantization(
+    HloInstruction* instr) {
+  ConversionSubgraph subgraph;
   std::vector<HloInstruction*> ops;
   while (instr->user_count() <= 1) {
     if (Match(instr, m::AnyOf<HloInstruction>(
@@ -76,49 +219,156 @@ bool IsSupportedQuantization(HloInstruction* instr, HloInstruction** convert,
       break;
     }
     VLOG(5) << "Unsupported instruction.";
-    return false;
+    return std::nullopt;
   }
 
   // In the quantization case, the type conversion is preceded by a
   // multiplication or division by a broadcasted scalar and a clamp instruction.
   if (ops.size() > 2 &&
-      (Match(ops.back(),
-             m::Convert(convert, m::Clamp(clamp, ScalarBroadcast(),
-                                          m::MultiplyAnyOrder(
-                                              binary, m::Op(),
-                                              ScalarBroadcast(scale_bcast)),
-                                          ScalarBroadcast()))) ||
-       Match(
+      (Match(
            ops.back(),
-           m::Convert(convert, m::Clamp(clamp, ScalarBroadcast(),
-                                        m::Divide(binary, m::Op(),
-                                                  ScalarBroadcast(scale_bcast)),
-                                        ScalarBroadcast()))))) {
-    unary_ops = {ops.begin(), ops.end() - 3};
-  } else if (ops.size() > 0 && Match(ops.back(), m::Convert(convert))) {
-    unary_ops = {ops.begin(), ops.end() - 1};
+           m::Convert(&subgraph.convert,
+                      m::Clamp(&subgraph.clamp, ScalarBroadcast(m::Constant()),
+                               m::MultiplyAnyOrder(
+                                   &subgraph.binary, m::Op(),
+                                   ScalarBroadcast(&subgraph.scale_bcast)),
+                               ScalarBroadcast(m::Constant())))) ||
+       Match(ops.back(),
+             m::Convert(
+                 &subgraph.convert,
+                 m::Clamp(&subgraph.clamp, ScalarBroadcast(m::Constant()),
+                          m::Divide(&subgraph.binary, m::Op(),
+                                    ScalarBroadcast(&subgraph.scale_bcast)),
+                          ScalarBroadcast(m::Constant())))))) {
+    subgraph.unaries = {ops.begin(), ops.end() - 3};
+  } else if (ops.size() > 0 &&
+             Match(ops.back(), m::Convert(&subgraph.convert))) {
+    subgraph.unaries = {ops.begin(), ops.end() - 1};
   } else {
     VLOG(5) << "Did not find type conversion or quantization pattern.";
-    return false;
+    return std::nullopt;
   }
 
   // The collected unary ops between collective and quantization/type conversion
   // may only include bitcast, copy, reshape and slice instructions.
-  for (HloInstruction* unary_op : unary_ops) {
-    if (!Match(unary_op, m::AnyOf<HloInstruction>(m::Bitcast(), m::Copy(),
-                                                  m::Reshape(), m::Slice()))) {
+  for (HloInstruction* unary : subgraph.unaries) {
+    if (!Match(unary, m::AnyOf<HloInstruction>(m::Bitcast(), m::Copy(),
+                                               m::Reshape(), m::Slice()))) {
       VLOG(5) << "Unexpected instruction in unary ops.";
-      return false;
+      return std::nullopt;
     }
   }
-  return true;
+  return std::make_optional<ConversionSubgraph>(std::move(subgraph));
 }
 
-bool IsSupportedCollective(HloInstruction* instr) {
-  return instr->opcode() == HloOpcode::kAllGather ||
-         instr->opcode() == HloOpcode::kAllToAll ||
-         instr->opcode() == HloOpcode::kCollectiveBroadcast ||
-         instr->opcode() == HloOpcode::kCollectivePermute;
+absl::Status MatchDequantization(HloInstruction* instr, bool* changed) {
+  std::optional<ConversionSubgraph> subgraph =
+      IsSupportedDequantization(instr->mutable_operand(0));
+
+  if (!subgraph.has_value()) {
+    return absl::OkStatus();
+  }
+
+  if (subgraph->scale_bcast) {
+    // The scale must be replicated across all devices.
+    TF_ASSIGN_OR_RETURN(
+        bool scale_is_replicated,
+        InstrIsReplicated(instr->parent()->parent(), subgraph->scale_bcast));
+    if (!scale_is_replicated) {
+      return absl::OkStatus();
+    }
+  }
+
+  HloInstruction* new_coll_operand = subgraph->convert->mutable_operand(0);
+
+  // Insert the collected unary ops ahead of the new collective.
+  new_coll_operand = ApplyUnaries(new_coll_operand, subgraph->unaries);
+
+  // Move the collective before the conversion to the wider type.
+  Shape new_coll_shape = ShapeUtil::ChangeElementType(
+      instr->shape(), new_coll_operand->shape().element_type());
+  HloInstruction* new_collective = instr->AddInstruction(
+      instr->CloneWithNewOperands(new_coll_shape, {new_coll_operand}));
+  Shape new_convert_shape = ShapeUtil::ChangeElementType(
+      new_collective->shape(), subgraph->convert->shape().element_type());
+  HloInstruction* new_convert =
+      instr->AddInstruction(subgraph->convert->CloneWithNewOperands(
+          new_convert_shape, {new_collective}));
+
+  HloInstruction* new_binary;
+  // When there is a dequantization, insert the scale ops.
+  if (subgraph->binary) {
+    HloInstruction* new_scale_bcast = instr->AddInstruction(
+        subgraph->scale_bcast->CloneWithNewShape(new_convert->shape()));
+    new_binary = instr->AddInstruction(subgraph->binary->CloneWithNewOperands(
+        new_convert->shape(), {new_convert, new_scale_bcast}));
+  }
+
+  TF_RETURN_IF_ERROR(
+      instr->ReplaceAllUsesWith(subgraph->binary ? new_binary : new_convert));
+
+  *changed = true;
+  VLOG(5) << "Quantized collective " << new_collective->ToShortString();
+
+  return absl::OkStatus();
+}
+
+absl::Status MatchQuantization(HloInstruction* instr, bool* changed) {
+  std::optional<ConversionSubgraph> subgraph;
+  if (instr->user_count() == 1) {
+    subgraph = IsSupportedQuantization(instr->users()[0]);
+  }
+
+  if (!subgraph.has_value()) {
+    return absl::OkStatus();
+  }
+
+  if (subgraph->scale_bcast) {
+    // The scale must be replicated across all devices.
+    TF_ASSIGN_OR_RETURN(
+        bool scale_is_replicated,
+        InstrIsReplicated(instr->parent()->parent(), subgraph->scale_bcast));
+    if (!scale_is_replicated) {
+      return absl::OkStatus();
+    }
+  }
+
+  HloInstruction* coll_operand = instr->mutable_operand(0);
+
+  HloInstruction *new_binary, *new_clamp;
+  // When there is a quantization, insert the scale and clamp ops.
+  if (subgraph->binary) {
+    HloInstruction* new_scale_bcast = instr->AddInstruction(
+        subgraph->scale_bcast->CloneWithNewShape(coll_operand->shape()));
+    new_binary = instr->AddInstruction(subgraph->binary->CloneWithNewOperands(
+        coll_operand->shape(), {coll_operand, new_scale_bcast}));
+    HloInstruction* new_clamp_lower = instr->AddInstruction(
+        subgraph->clamp->operand(0)->CloneWithNewShape(coll_operand->shape()));
+    HloInstruction* new_clamp_upper = instr->AddInstruction(
+        subgraph->clamp->operand(2)->CloneWithNewShape(coll_operand->shape()));
+    new_clamp = instr->AddInstruction(subgraph->clamp->CloneWithNewOperands(
+        coll_operand->shape(), {new_clamp_lower, new_binary, new_clamp_upper}));
+  }
+
+  // Move the collective past the conversion to the narrow type.
+  Shape new_convert_shape = ShapeUtil::ChangeElementType(
+      coll_operand->shape(), subgraph->convert->shape().element_type());
+  HloInstruction* new_convert =
+      instr->AddInstruction(subgraph->convert->CloneWithNewOperands(
+          new_convert_shape, {subgraph->binary ? new_clamp : coll_operand}));
+  Shape new_collective_shape = ShapeUtil::ChangeElementType(
+      instr->shape(), subgraph->convert->shape().element_type());
+  HloInstruction* new_collective = instr->AddInstruction(
+      instr->CloneWithNewOperands(new_collective_shape, {new_convert}));
+
+  // Insert the collected unary ops after the new collective.
+  new_collective = ApplyUnaries(new_collective, subgraph->unaries);
+  TF_RETURN_IF_ERROR(subgraph->convert->ReplaceAllUsesWith(new_collective));
+
+  *changed = true;
+  VLOG(5) << "Quantized collective " << new_collective->ToShortString();
+
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -130,57 +380,9 @@ absl::StatusOr<bool> CollectiveQuantizer::Run(
 
   for (HloComputation* comp : module->MakeComputationPostOrder()) {
     for (HloInstruction* instr : comp->MakeInstructionPostOrder()) {
-      HloInstruction *binary = nullptr, *clamp, *convert, *scale_bcast;
-      std::vector<HloInstruction*> unary_ops;
-      if (instr->user_count() == 1 && IsSupportedCollective(instr) &&
-          IsSupportedQuantization(instr->users()[0], &convert, &binary, &clamp,
-                                  &scale_bcast, unary_ops)) {
-        HloInstruction* coll_operand = instr->mutable_operand(0);
-        HloInstruction *new_binary, *new_clamp;
-        // When there is a quantization, insert the scale and clamp ops.
-        if (binary) {
-          HloInstruction* new_scale_bcast = comp->AddInstruction(
-              scale_bcast->CloneWithNewShape(coll_operand->shape()));
-          new_binary = comp->AddInstruction(binary->CloneWithNewOperands(
-              coll_operand->shape(), {coll_operand, new_scale_bcast}));
-          HloInstruction* new_clamp_lower = comp->AddInstruction(
-              clamp->operand(0)->CloneWithNewShape(coll_operand->shape()));
-          HloInstruction* new_clamp_upper = comp->AddInstruction(
-              clamp->operand(2)->CloneWithNewShape(coll_operand->shape()));
-          new_clamp = comp->AddInstruction(clamp->CloneWithNewOperands(
-              coll_operand->shape(),
-              {new_clamp_lower, new_binary, new_clamp_upper}));
-        }
-
-        // Move the collective past the conversion to the narrow type.
-        Shape new_convert_shape = ShapeUtil::ChangeElementType(
-            instr->operand(0)->shape(), convert->shape().element_type());
-        HloInstruction* new_convert =
-            comp->AddInstruction(convert->CloneWithNewOperands(
-                new_convert_shape, {binary ? new_clamp : coll_operand}));
-        Shape new_collective_shape = ShapeUtil::ChangeElementType(
-            instr->shape(), convert->shape().element_type());
-        HloInstruction* new_collective = comp->AddInstruction(
-            instr->CloneWithNewOperands(new_collective_shape, {new_convert}));
-
-        // Sequentially apply the collected unary ops to the output of the
-        // quantized collective.
-        auto shift_unary_ops = [comp, &unary_ops](HloInstruction** x) -> void {
-          for (HloInstruction* unary_op : unary_ops) {
-            *x = comp->AddInstruction(unary_op->CloneWithNewOperands(
-                ShapeUtil::MakeShapeWithDenseLayout(
-                    (*x)->shape().element_type(),
-                    unary_op->shape().dimensions(),
-                    unary_op->shape().layout().minor_to_major()),
-                {*x}));
-          }
-        };
-
-        shift_unary_ops(&new_collective);
-        TF_RETURN_IF_ERROR(convert->ReplaceAllUsesWith(new_collective));
-
-        changed = true;
-        VLOG(5) << "Quantized collective " << new_collective->ToShortString();
+      if (IsSupportedCollective(instr)) {
+        TF_RETURN_IF_ERROR(MatchDequantization(instr, &changed));
+        TF_RETURN_IF_ERROR(MatchQuantization(instr, &changed));
       }
     }
   }
