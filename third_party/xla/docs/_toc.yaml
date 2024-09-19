@@ -10,8 +10,16 @@ toc:
       path: /xla/operation_semantics
 - title: Developer details
   section:
+    - title: Async HLO instructions
+      path: /xla/async_ops
     - title: Broadcasting
       path: /xla/broadcasting
+    - title: Copybara quirks
+      path: /xla/copybara
+    - title: Hermetic CUDA overview
+      path: /xla/hermetic_cuda
+    - title: Multi-host HLO runner
+      path: /xla/tools_multi_host_hlo_runner
     - title: Shapes and layout
       path: /xla/shapes
     - title: Aliasing
@@ -52,4 +60,3 @@ toc:
       path: /xla/tf2xla/tutorials/autoclustering_xla
     - title: Use XLA with tf.function
       path: /xla/tf2xla/tutorials/jit_compile
-

@@ -30,6 +30,7 @@ lit_test_suite(
             "module_config.hlo",
             "simple.hlo",
             "spmd_module_sharding.hlo",
+            "stablehlo.hlo",
             "stacktrace_to_location.hlo",
             "types.hlo",
             "while.hlo",
