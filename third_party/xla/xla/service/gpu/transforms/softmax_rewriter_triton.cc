@@ -157,6 +157,10 @@ inline bool HasOneUse(const HloInstruction* instr) {
 // Unsupported case #4:
 // p = f32[a,b] parameter(0)
 // b = f32[a,x,b] broadcast(p), dimensions={0,2}
+//
+// Unsupported case #5:
+// p = f32[] parameter(0)
+// b = f32[x] broadcast(p), dimensions={}
 bool IsBatchOrReductionDimBroadcast(const HloInstruction& hlo) {
   CHECK_EQ(hlo.opcode(), HloOpcode::kBroadcast)
       << "Expected broadcast " << hlo.ToShortString();
@@ -169,9 +173,10 @@ bool IsBatchOrReductionDimBroadcast(const HloInstruction& hlo) {
   const HloParameterInstruction* parameter =
       Cast<HloParameterInstruction>(hlo.operand(0));
 
-  // Support only one dim broadcast.
-  if (parameter->shape().dimensions_size() + 1 !=
-      broadcast->shape().dimensions_size()) {
+  // Support only one dim broadcast. Scalar parameters are handled elsewhere.
+  if (broadcast->dimensions().empty() ||
+      parameter->shape().dimensions_size() + 1 !=
+          broadcast->shape().dimensions_size()) {
     return false;
   }
 
