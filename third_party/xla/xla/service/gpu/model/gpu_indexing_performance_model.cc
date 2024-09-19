@@ -77,6 +77,21 @@ int64_t GetPaddedTileSize(absl::Span<int64_t const> tile_sizes) {
 // heuristic tries to be safe and increase recall at the cost of precision.
 bool DoesTileFitsInRegisters(int64_t tile_size,
                              const se::DeviceDescription& device_info) {
+  // This is a conservative estimate to make sure that we don't get a tile that
+  // is too big and results in register spills.
+  //
+  // We had the following reasoning for the value of this constant:
+  //  * Kernels that have some reuse of tiles, for example reduction in
+  //    normalization diamond, need to have at least two tiles live in registers
+  //    at the same time.
+  //  * Kernels that don't have reuse, should benefit from smaller tile sizes
+  //    anyway.
+  //  * We allocate round 20% of the registers for scratch memory for indexing
+  //    computation and expensive instructions like exponential or cosine.
+  //
+  // This value was empirically determined in Sep 2024 and can change in future.
+  constexpr double kFractionOfRegistersAvailableToStoreTile = 0.4;
+
   // Register allocation happens at PTX->SASS level, so we can't know the exact
   // number of registers used by a kernel. We make a few assumptions about the
   // kernel we will generate (this may not hold in the future):
@@ -95,7 +110,8 @@ bool DoesTileFitsInRegisters(int64_t tile_size,
   // data type. `registers_per_block_limit()` returns the number of 32-bit
   // registers. Check if 64-bit types need twice as many registers. Check if
   // smaller types can fit into one register.
-  return tile_size <= device_info.registers_per_block_limit();
+  return tile_size <= kFractionOfRegistersAvailableToStoreTile *
+                          device_info.registers_per_block_limit();
 }
 
 // Returns the number of warps to use based on the tile size. The numbers were

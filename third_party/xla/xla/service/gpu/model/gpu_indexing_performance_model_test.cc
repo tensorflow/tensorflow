@@ -463,16 +463,16 @@ add {
 }
 
 triton_softmax_computation {
-  param_0 = f32[16,40000] parameter(0)
+  param_0 = f32[16,16000] parameter(0)
   constant_0 = f32[] constant(0)
   reduce_0 = f32[16] reduce(param_0, constant_0), dimensions={1}, to_apply=add
-  broadcast = f32[16,40000] broadcast(reduce_0), dimensions={0}
-  ROOT multiply = f32[16,40000] multiply(param_0, broadcast)
+  broadcast = f32[16,16000] broadcast(reduce_0), dimensions={0}
+  ROOT multiply = f32[16,16000] multiply(param_0, broadcast)
 }
 
 ENTRY main {
-  param_0 = f32[16,40000] parameter(0)
-  ROOT triton_softmax = f32[16,40000] fusion(param_0), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
+  param_0 = f32[16,16000] parameter(0)
+  ROOT triton_softmax = f32[16,16000] fusion(param_0), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
 }
 )"));
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
@@ -485,13 +485,13 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(auto res1,
                           indexing_cost_model_.EstimateRunTimeForTiledFusion(
                               *fusion_adaptor, /*launch_dimensions=*/{16, 32},
-                              /*output_tile_sizes=*/{1, 40000}));
-  EXPECT_NEAR(absl::ToDoubleMicroseconds(res1.exec_time), 7, 1);
+                              /*output_tile_sizes=*/{1, 16000}));
+  EXPECT_NEAR(absl::ToDoubleMicroseconds(res1.exec_time), 3, 1);
 
   TF_ASSERT_OK_AND_ASSIGN(auto res2,
                           indexing_cost_model_.EstimateRunTimeForTiledFusion(
                               *fusion_adaptor, /*launch_dimensions=*/{8, 32},
-                              /*output_tile_sizes=*/{2, 40000}));
+                              /*output_tile_sizes=*/{2, 16000}));
   EXPECT_TRUE(res2.IsInfinite());
 }
 
