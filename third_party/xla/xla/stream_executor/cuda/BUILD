@@ -537,6 +537,10 @@ cc_library(
             "LIBNVPTXCOMPILER_SUPPORT=false",
         ],
     }),
+    deps = [
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
 )
 
 cc_library(
@@ -561,6 +565,7 @@ cc_library(
     ],
     tags = ["manual"],
     deps = [
+        ":ptx_compiler_support",
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor/gpu:gpu_asm_opts",
         "@com_google_absl//absl/algorithm:container",
@@ -670,6 +675,7 @@ cc_library(
     ],
     tags = ["manual"],
     deps = [
+        ":ptx_compiler_support",
         "//xla/stream_executor/gpu:gpu_asm_opts",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",

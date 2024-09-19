@@ -486,10 +486,11 @@ ENTRY %e {
                       "Compilation result discarded due to register spilling"),
                   // Hopper can't spill registers since wgmma instructions are
                   // asynchronous, instead it just runs out of them.
-                  tsl::testing::StatusIs(tsl::error::RESOURCE_EXHAUSTED,
-                                         "Register allocation failed"),
                   tsl::testing::StatusIs(
-                      tsl::error::INTERNAL,
+                      tsl::error::RESOURCE_EXHAUSTED,
+                      ::testing::HasSubstr("Register allocation failed")),
+                  tsl::testing::StatusIs(
+                      tsl::error::RESOURCE_EXHAUSTED,
                       ::testing::HasSubstr("Insufficient registers"))));
 }
 
