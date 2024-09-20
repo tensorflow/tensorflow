@@ -635,14 +635,14 @@ class Decision {
   // Returns true if it's profitable to fuse.
   bool WantToFuse() const { return fusing_decision_.CanFuse(); }
 
-  static Decision Accept() { return {FusionDecision(), true}; };
+  static Decision Allow() { return {FusionDecision::Allow(), true}; };
 
-  static Decision Decline(std::string_view value) {
-    return {FusionDecision(value), false};
+  static Decision Deny(std::string_view value) {
+    return {FusionDecision::Forbid(value), false};
   }
 
   static Decision NotProfitable(std::string_view value) {
-    return {FusionDecision(value), true};
+    return {FusionDecision::Forbid(value), true};
   }
 
  private:
@@ -670,7 +670,7 @@ absl::StatusOr<Decision> CreateDotFusion(
           legacy_triton::IsTritonSupportedInstruction(dot, gpu_version);
       !is_supported) {
     VLOG(3) << is_supported.Explain();
-    return Decision::Decline(is_supported.Explain());
+    return Decision::Deny(is_supported.Explain());
   }
 
   // Verify sparse dot constraints.
@@ -729,7 +729,7 @@ absl::StatusOr<Decision> CreateDotFusion(
               dot, TritonFusionAnalysis::Scope::LHS) ||
           !analysis.IsBatchDimMinorForInt4Parameter(
               dot, TritonFusionAnalysis::Scope::RHS)) {
-        return Decision::Decline(
+        return Decision::Deny(
             "Fusion is not possible because the parameter with the type S4 has "
             "minor batch dimension.");
       }
@@ -742,7 +742,7 @@ absl::StatusOr<Decision> CreateDotFusion(
       algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3 ||
       dot.GetModule()->config().debug_options().xla_gpu_triton_gemm_any() ||
       dot.sparse_operands()) {
-    return Decision::Accept();
+    return Decision::Allow();
   }
 
   bool is_pure_matmul = true;
@@ -760,7 +760,7 @@ absl::StatusOr<Decision> CreateDotFusion(
   if (is_pure_matmul) {
     return Decision::NotProfitable("Pure Matmul");
   }
-  return Decision::Accept();
+  return Decision::Allow();
 }
 
 // Extracts into fused computations parts of HLO graph including dot()
