@@ -1218,15 +1218,15 @@ bool MemoryBoundLoopOptimizer::AllocatePrefetch(
   // limiting it till last_use_idx_sentinel - loop_size. This will allow a
   // prefetch to use all the idle bandwidth available during one full loop
   // iteration.
-  for (int i = first_use_idx - 1; i >= last_use_idx_sentinel - loop_size_;
-       --i) {
-    int loop_idx = (i + loop_size_) % loop_size_;
+  for (int current_idx = first_use_idx - 1;
+       current_idx >= last_use_idx_sentinel - loop_size_; --current_idx) {
+    int loop_idx = (current_idx + loop_size_) % loop_size_;
     // Check if this prefetch rolls over to the previous iteration, check if any
     // already-scheduled prefetches would violate the FIFO order, and if so,
     // "early-force" them to be co-scheduled with this prefetch to maintain the
     // FIFO order. This of course increases the required memory, so also keep
     // track of additional memory that would be consumed.
-    if (i < 0) {
+    if (current_idx < 0) {
       for (; context.value_indices[early_forced_prefetch_value_search_index] !=
              value_index;
            ++early_forced_prefetch_value_search_index) {
@@ -1301,7 +1301,7 @@ bool MemoryBoundLoopOptimizer::AllocatePrefetch(
 
     if (pending_chunk_intervals.size() ==
         early_forced_prefetch_value_indices.size()) {
-      int64_t begin_idx_in_loop = i;
+      int64_t begin_idx_in_loop = current_idx;
       int64_t end_idx_in_loop = last_use_idx_sentinel;
       EvenOddChunkPair chunks = heap_.AllocateEvenAndOddBetween(
           begin_idx_in_loop, end_idx_in_loop, value->size);
@@ -1355,7 +1355,7 @@ bool MemoryBoundLoopOptimizer::AllocatePrefetch(
                 (copy_resource - accumulated_copy_resource));
     if (bandwidth_idle_time >= copy_resource - accumulated_copy_resource) {
       accumulated_copy_resource = copy_resource;
-      copy_start_loop_idx = i;
+      copy_start_loop_idx = current_idx;
       VLOG(3) << "Found the complete copy ratio and updated accumulated copy "
                  "resource: "
               << accumulated_copy_resource;
@@ -1364,7 +1364,7 @@ bool MemoryBoundLoopOptimizer::AllocatePrefetch(
                accumulated_copy_resource + bandwidth_idle_time >=
                    copy_resource * options_.desired_copy_ratio()) {
       accumulated_copy_resource += bandwidth_idle_time;
-      copy_start_loop_idx = i;
+      copy_start_loop_idx = current_idx;
       VLOG(3) << "Found the desired copy ratio and updated accumulated copy "
                  "resource: "
               << accumulated_copy_resource;
@@ -1373,7 +1373,7 @@ bool MemoryBoundLoopOptimizer::AllocatePrefetch(
       // Even if desired resource isn't reached, and if the options allow it,
       // allow a fully pipelined prefetch.
       accumulated_copy_resource += bandwidth_idle_time;
-      copy_start_loop_idx = i;
+      copy_start_loop_idx = current_idx;
       VLOG(3) << "Could not reach the desired copy ratio but scheduling "
                  "fully pipelined prefetch anyway: "
               << accumulated_copy_resource;
