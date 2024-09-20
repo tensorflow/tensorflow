@@ -650,6 +650,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:name_uniquer",
         "//xla/service/gpu:backend_configs_cc",
+        "//xla/tsl/lib/gtl:iterator_range",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log:check",
@@ -660,7 +661,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
-        "@local_tsl//tsl/lib/gtl:iterator_range",
         "@local_tsl//tsl/platform:errors",
     ],
 )

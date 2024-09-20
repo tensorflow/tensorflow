@@ -51,9 +51,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "xla/service/hlo_parser.h"
+#include "xla/tsl/lib/math/math_util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tsl/lib/math/math_util.h"
 
 namespace tensorflow {
 namespace {

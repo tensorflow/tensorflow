@@ -46,8 +46,8 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/name_uniquer.h"
+#include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/xla.pb.h"
-#include "tsl/lib/gtl/iterator_range.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {

@@ -56,11 +56,11 @@ xla_cc_binary(
     name = "hex_floats_to_packed_literal",
     srcs = ["hex_floats_to_packed_literal.cc"],
     deps = [
+        "//xla/tsl/lib/io:buffered_inputstream",
+        "//xla/tsl/lib/io:random_inputstream",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/lib/io:buffered_inputstream",
-        "@local_tsl//tsl/lib/io:random_inputstream",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:platform_port",

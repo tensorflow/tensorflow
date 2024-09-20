@@ -207,7 +207,6 @@ cc_library(
     copts = tsl_copts(),
     deps = [
         ":http_request",
-        "//tsl/lib/gtl:map_util",
         "//tsl/platform:env",
         "//tsl/platform:errors",
         "//tsl/platform:macros",
@@ -218,6 +217,7 @@ cc_library(
         "//tsl/platform:stringpiece",
         "//tsl/platform:types",
         "@curl",
+        "@local_xla//xla/tsl/lib/gtl:map_util",
         "@local_xla//xla/tsl/util:env_var",
     ],
 )

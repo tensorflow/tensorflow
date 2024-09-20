@@ -125,9 +125,9 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
-        "@local_tsl//tsl/lib/io:iterator",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/profiler/lib:context_types_hdrs",
         "@local_tsl//tsl/profiler/utils:timespan",
+        "@local_xla//xla/tsl/lib/io:iterator",
     ],
 )

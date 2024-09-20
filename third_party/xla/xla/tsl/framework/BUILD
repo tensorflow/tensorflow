@@ -118,7 +118,7 @@ cc_library(
     ] + if_static(
         extra_deps = [
             ":allocator_registry_impl",
-            "@local_tsl//tsl/lib/gtl:inlined_vector",
+            "//xla/tsl/lib/gtl:inlined_vector",
             "@local_tsl//tsl/platform:strcat",
             "@local_tsl//tsl/platform:stringprintf",
             "@local_tsl//tsl/platform:env",
@@ -131,7 +131,7 @@ cc_library(
             "@local_tsl//tsl/platform:types",
         ],
         otherwise = [
-            "@local_tsl//tsl/lib/gtl:inlined_vector",
+            "//xla/tsl/lib/gtl:inlined_vector",
             "@local_tsl//tsl/platform:logging",
             "@local_tsl//tsl/platform:platform_port",
             "@local_tsl//tsl/platform:strcat",
@@ -162,10 +162,10 @@ cc_library(
     deps = [
         ":numeric_types",
         ":type_traits",
+        "//xla/tsl/lib/gtl:inlined_vector",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
-        "@local_tsl//tsl/lib/gtl:inlined_vector",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:macros",
         "@local_tsl//tsl/platform:mutex",
@@ -233,7 +233,7 @@ cc_library(
         "device_id_manager.h",
     ],
     deps = [
-        "@local_tsl//tsl/lib/gtl:int_type",
+        "//xla/tsl/lib/gtl:int_type",
     ] + if_static([
         ":device_id_impl",
     ]),
@@ -248,9 +248,9 @@ cc_library(
     ],
     deps = [
         ":device_type",
+        "//xla/tsl/lib/gtl:int_type",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/lib/gtl:int_type",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:macros",
@@ -365,8 +365,8 @@ cc_library(
     ),
     visibility = ["//visibility:public"],
     deps = [
+        "//xla/tsl/lib/gtl:flatmap",
         "@com_google_absl//absl/memory",
-        "@local_tsl//tsl/lib/gtl:flatmap",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:hash",
         "@local_tsl//tsl/platform:logging",

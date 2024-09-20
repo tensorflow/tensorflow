@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "xla/tsl/lib/gtl/map_util.h"
 #include "xla/tsl/util/env_var.h"
-#include "tsl/lib/gtl/map_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/macros.h"
 #include "tsl/platform/scanner.h"

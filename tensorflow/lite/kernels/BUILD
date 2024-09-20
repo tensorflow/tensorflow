@@ -885,8 +885,8 @@ cc_library(
         "//tensorflow/lite:array",
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:cc_api_stable",
-        "@local_tsl//tsl/lib/random:philox_random",
-        "@local_tsl//tsl/lib/random:random_distributions_utils",
+        "@local_xla//xla/tsl/lib/random:philox_random",
+        "@local_xla//xla/tsl/lib/random:random_distributions_utils",
         "//tensorflow/lite/core/c:c_api_types",
         # TODO(b/179298174): Move out from the experimental directory.
         "//tensorflow/lite/experimental/resource",

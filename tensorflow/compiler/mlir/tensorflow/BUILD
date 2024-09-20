@@ -1217,7 +1217,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@local_tsl//tsl/lib/io:buffered_file",
+        "@local_xla//xla/tsl/lib/io:buffered_file",
     ],
 )
 
@@ -1395,9 +1395,9 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/lib/math:math_util",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/service:hlo_parser",
+        "@local_xla//xla/tsl/lib/math:math_util",
     ],
 )
 

@@ -364,7 +364,7 @@ cc_library(
     hdrs = ["pjrt_common.h"],
     visibility = internal_visibility([":friends"]),
     deps = [
-        "@local_tsl//tsl/lib/gtl:int_type",
+        "//xla/tsl/lib/gtl:int_type",
     ],
 )
 

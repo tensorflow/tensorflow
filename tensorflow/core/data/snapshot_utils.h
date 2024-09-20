@@ -251,7 +251,7 @@ class TFRecordReaderImpl {
   // Constructs a `TFRecordReaderImpl`.
   // `filename` is the file to read from.
   // `compression_type` is the compression method, as defined in
-  // tensorflow/tsl/lib/io/compression.h.
+  // tensorflow/compiler/xla/tsl/lib/io/compression.h.
   // `output_buffer_size` specifies the buffer size required by Snappy/Zlib
   // compression algorithms. Ignored if compression is not enabled.
   TFRecordReaderImpl(const std::string& filename, const string& compression,

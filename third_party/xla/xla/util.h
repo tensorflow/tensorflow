@@ -47,9 +47,9 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "Eigen/Core"
 #include "xla/status_macros.h"
+#include "xla/tsl/lib/math/math_util.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/math/math_util.h"
 #include "tsl/platform/bfloat16.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"  // IWYU pragma: keep

@@ -31,7 +31,7 @@ default_visibility = [
     "//tensorflow/core:__subpackages__",
     "//tensorflow/security/fuzzing:__subpackages__",
     # TODO(pedaveeraiah): to be removed when summary.proto.h deps moves to TSL
-    "@local_tsl//tsl/lib:__subpackages__",
+    "@local_xla//xla/tsl/lib:__subpackages__",
     # copybara:uncomment "//learning/brain/tfrt/aot:__subpackages__",
     # copybara:uncomment "//platforms/xla/megascale/tensorflow:__subpackages__",
     # copybara:uncomment "//learning/brain/experimental/tfrt/native_lowering/graph_executor:__subpackages__",

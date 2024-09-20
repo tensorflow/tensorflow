@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
-#include "tsl/lib/gtl/map_util.h"
+#include "xla/tsl/lib/gtl/map_util.h"
 #include "tsl/profiler/utils/tf_op_utils.h"
 
 namespace tsl {

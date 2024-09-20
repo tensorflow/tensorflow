@@ -119,7 +119,6 @@ cc_library(
     visibility = internal_visibility([":friends"]),
     deps = [
         ":tf_op_utils",
-        "//tsl/lib/gtl:map_util",
         "//tsl/platform:logging",
         "//tsl/platform:macros",
         "//tsl/platform:types",
@@ -128,6 +127,7 @@ cc_library(
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+        "@local_xla//xla/tsl/lib/gtl:map_util",
     ],
 )
 
@@ -289,7 +289,6 @@ cc_library(
         ":xplane_schema",
         ":xplane_utils",
         ":xplane_visitor",
-        "//tsl/lib/gtl:map_util",
         "//tsl/platform:dso_loader",
         "//tsl/platform:env",
         "//tsl/platform:logging",
@@ -301,6 +300,7 @@ cc_library(
         "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+        "@local_xla//xla/tsl/lib/gtl:map_util",
     ],
 )
 
