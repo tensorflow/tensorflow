@@ -1156,7 +1156,8 @@ absl::StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
     HloInstruction* root = builder.AddInstruction(
         instruction->CloneWithNewOperands(instruction->shape(), parameters));
     if (override_names) {
-      root->SetAndSanitizeName(absl::StrCat(instruction->name(), ".cloned"));
+      parent()->SetAndUniquifyInstrName(
+          root, absl::StrCat(instruction->name(), ".cloned"));
     }
     HloComputation* async_computation =
         parent_->AddEmbeddedComputation(builder.Build(root));
@@ -1171,9 +1172,10 @@ absl::StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
     async_done = AddInstruction(
         HloInstruction::CreateAsyncDone(root->shape(), async_start));
     if (override_names) {
-      async_start->SetAndSanitizeName(
-          absl::StrCat(root->name(), ".call-start"));
-      async_done->SetAndSanitizeName(absl::StrCat(root->name(), ".call-done"));
+      parent()->SetAndUniquifyInstrName(
+          async_start, absl::StrCat(root->name(), ".call-start"));
+      parent()->SetAndUniquifyInstrName(
+          async_done, absl::StrCat(root->name(), ".call-done"));
     }
   }
   async_start->set_metadata(instruction->metadata());

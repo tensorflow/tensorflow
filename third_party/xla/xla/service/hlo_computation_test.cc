@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/test.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
@@ -970,6 +971,41 @@ TEST_F(HloComputationTest, CompositeCall) {
   EXPECT_EQ(composite_call->opcode(), HloOpcode::kCall);
   EXPECT_TRUE(composite_call->is_composite());
   EXPECT_EQ(composite_call->frontend_attributes().map().size(), 3);
+}
+
+TEST_F(HloComputationTest, CloneComputationWithAsyncInstructions) {
+  constexpr std::string_view hlo = R"(
+HloModule main
+
+comp.0 {
+  ROOT custom-call.0 = () custom-call(), custom_call_target="foo"
+}
+
+ENTRY main {
+  in.0 = () parameter(0)
+  call.0 = () call(), to_apply=comp.0
+  ROOT out.0 = () tuple()
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  HloComputation* comp0 = FindComputation(module.get(), "comp.0");
+  HloInstruction* custom_call = FindInstruction(module.get(), "custom-call.0");
+  TF_ASSERT_OK(comp0->CreateAsyncInstructions(
+      custom_call, /*context_shapes=*/{ShapeUtil::MakeScalarShape(U32)},
+      /*async_execution_thread=*/HloInstruction::kMainExecutionThread,
+      /*replace=*/true,
+      /*override_names=*/true));
+
+  HloComputation* comp1 = module->AddEmbeddedComputation(comp0->Clone());
+  HloComputation* comp2 = module->AddEmbeddedComputation(comp0->Clone());
+  EXPECT_NE(comp0->root_instruction()->name(),
+            comp1->root_instruction()->name());
+  EXPECT_NE(comp0->root_instruction()->operand(0)->name(),
+            comp1->root_instruction()->operand(0)->name());
+  EXPECT_NE(comp1->root_instruction()->name(),
+            comp2->root_instruction()->name());
+  EXPECT_NE(comp1->root_instruction()->operand(0)->name(),
+            comp2->root_instruction()->operand(0)->name());
 }
 
 }  // namespace
