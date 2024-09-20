@@ -1,3 +1,4 @@
+load("@flatbuffers//:build_defs.bzl", "flatbuffer_py_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
@@ -9,6 +10,8 @@ package(
     default_visibility = [
         ":friends",
         "//tensorflow:__pkg__",
+        "//tensorflow/compiler/mlir/lite:__subpackages__",
+        "//third_party/odml/model_customization/quantization:__subpackages__",
     ],
 )
 
@@ -244,5 +247,22 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
+    ],
+)
+
+flatbuffer_py_library(
+    name = "schema_py",
+    srcs = ["//tensorflow/compiler/mlir/lite/schema:schema.fbs"],
+)
+
+py_strict_library(
+    name = "schema_util",
+    srcs = ["schema_util.py"],
+    srcs_version = "PY3",
+    visibility = [
+        "//tensorflow/lite/schema:utils_friends",
+    ],
+    deps = [
+        "//tensorflow/python/util:all_util",
     ],
 )

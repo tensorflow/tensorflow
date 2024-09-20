@@ -18,7 +18,7 @@ All functions that can be commonly used by various tests.
 """
 
 import flatbuffers
-from tensorflow.lite.python import schema_py_generated as schema_fb
+from tensorflow.compiler.mlir.lite.python import schema_py_generated as schema_fb
 
 TFLITE_SCHEMA_VERSION = 3
 
