@@ -427,8 +427,7 @@ bool InferGatherParallelShardingFromOperands(
     bool may_combine_partial_sharding) {
   CHECK(DynCast<HloGatherInstruction>(instruction));
   bool changed = false;
-  auto aligned_operand_parallel_dims =
-      hlo_sharding_util::IndexAlignedOperandParallelDims(parallel_dims);
+  auto aligned_operand_parallel_dims = parallel_dims.operand_parallel_dims;
   auto output_parallel_dims = hlo_sharding_util::GetGatherParallelOutputDims(
       *instruction, parallel_dims);
   // Infer output sharding from scatter operand sharding.
@@ -469,8 +468,7 @@ bool InferScatterParallelShardingFromOperands(
   auto scatter_indices = scatter->scatter_indices();
   auto scatter_updates = scatter->scatter_updates();
   bool changed = false;
-  auto aligned_operand_parallel_dims =
-      hlo_sharding_util::IndexAlignedOperandParallelDims(parallel_dims);
+  auto aligned_operand_parallel_dims = parallel_dims.operand_parallel_dims;
   auto update_parallel_dims = hlo_sharding_util::GetScatterParallelUpdateDims(
       *instruction, parallel_dims);
   auto output_parallel_dims = aligned_operand_parallel_dims;

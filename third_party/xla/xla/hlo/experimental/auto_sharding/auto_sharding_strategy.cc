@@ -174,8 +174,7 @@ void GenerateScatterShardingFromOperands(
   }
 
   absl::InlinedVector<int64_t, 1> aligned_operand_parallel_dims =
-      hlo_sharding_util::IndexAlignedOperandParallelDims(
-          *scatter_parallel_dims);
+      scatter_parallel_dims->operand_parallel_dims;
   absl::InlinedVector<int64_t, 1> update_parallel_dims =
       hlo_sharding_util::GetScatterParallelUpdateDims(*scatter,
                                                       *scatter_parallel_dims);
@@ -436,8 +435,7 @@ BuildStrategyAndCost(
             HloSharding output_spec = indices_to_combine_spec;
             if (gather_parallel_dims) {
               auto aligned_operand_parallel_dims =
-                  hlo_sharding_util::IndexAlignedOperandParallelDims(
-                      *gather_parallel_dims);
+                  gather_parallel_dims->operand_parallel_dims;
               auto output_parallel_dims =
                   hlo_sharding_util::GetGatherParallelOutputDims(
                       *ins, *gather_parallel_dims);
