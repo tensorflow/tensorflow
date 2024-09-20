@@ -1707,6 +1707,7 @@ xla_test(
     name = "gemm_rewriter_test",
     srcs = ["gemm_rewriter_test.cc"],
     backends = ["gpu"],
+    shard_count = 5,
     deps = [
         ":gemm_rewriter",
         "//xla:error_spec",
