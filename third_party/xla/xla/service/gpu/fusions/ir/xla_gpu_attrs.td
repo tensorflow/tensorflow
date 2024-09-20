@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_FUSIONS_MLIR_ATTRS
 
 include "mlir/IR/AttrTypeBase.td"
+include "mlir/IR/EnumAttr.td"
 include "xla/service/gpu/fusions/ir/xla_gpu_dialect.td"
 
 class XLAGPU_Attr<string name, list<Trait> traits = []> :
@@ -80,5 +81,24 @@ def XLAGPU_LaunchGridAttr : XLAGPU_Attr<"LaunchGrid"> {
     `>`
   }];
 }
+
+//===----------------------------------------------------------------------===//
+// Tensor layout attribute
+//===----------------------------------------------------------------------===//
+
+def XLAGPU_MemorySpace : I32EnumAttr<"MemorySpace",
+    "element-wise op type", [
+    I32EnumAttrCase<"kRegisters", 0, "registers">,
+    I32EnumAttrCase<"kSharedMemory", 1, "shmem">
+  ]> {
+  let cppNamespace = "::xla::gpu";
+  let genSpecializedAttr = 0;
+}
+
+def XLAGPU_MemorySpaceAttr : EnumAttr<
+  XlaGpuDialect, XLAGPU_MemorySpace, "memory_space"> {
+  let assemblyFormat = "`<` $value `>`";
+}
+
 
 #endif // XLA_SERVICE_GPU_FUSIONS_MLIR_ATTRS

@@ -18,8 +18,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/str_format.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: keep
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
@@ -28,11 +28,8 @@ limitations under the License.
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/model/indexing_map.h"
-
-#define GET_ATTRDEF_LIST
-#define GET_ATTRDEF_CLASSES
-#include "xla/service/gpu/fusions/ir/xla_gpu_attrs.h.inc"
 
 namespace xla {
 namespace gpu {

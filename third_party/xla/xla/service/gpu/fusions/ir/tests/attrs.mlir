@@ -146,3 +146,10 @@ func.func private @no_symbols(!xla_gpu.indexed_vector<100xf64, #map>)
 func.func private @empty(!xla_gpu.indexed_vector<100xf64, #map>)
 // CHECK-LABEL: @empty
 // CHECK: !xla_gpu.indexed_vector<100xf64, #[[$INDEX_MAP]]>
+
+// -----
+
+func.func private @memory_space(
+  %in0: tensor<42xf32> {xla_gpu.memspace = #xla_gpu.memory_space<shmem>},
+  %in1: tensor<42xf32> {xla_gpu.memspace = #xla_gpu.memory_space<registers>})
+
