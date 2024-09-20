@@ -239,50 +239,6 @@ cc_library(
 )
 
 cc_library(
-<<<<<<< HEAD
-    name = "mlir_emitter_test_base",
-    testonly = True,
-    srcs = ["mlir_emitter_test_base.cc"],
-    hdrs = ["mlir_emitter_test_base.h"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
-    deps = [
-        "//xla:xla_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/mlir_hlo",
-        "//xla/service:gpu_plugin",
-        "//xla/service/gpu:gpu_device_info_for_tests",
-        "//xla/service/gpu:hlo_fusion_analysis",
-        "//xla/service/gpu/fusions/ir:xla_gpu",
-        "//xla/service/gpu/fusions/mlir:mlir_fusion_emitter",
-        "//xla/service/gpu/model:affine_map_printer",
-        "//xla/stream_executor:device_description",
-        "//xla/tests:filecheck",
-        "//xla/tests:hlo_test_base",
-        "//xla/tests:verified_hlo_module",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:AffineDialect",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:ComplexDialect",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:FuncExtensions",
-        "@llvm-project//mlir:GPUDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:MathDialect",
-        "@llvm-project//mlir:MemRefTransforms",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:TensorDialect",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
-cc_library(
-=======
->>>>>>> upstream/master
     name = "loop_mlir",
     srcs = ["loop_mlir.cc"],
     hdrs = ["loop_mlir.h"],
@@ -311,27 +267,6 @@ cc_library(
     ],
 )
 
-<<<<<<< HEAD
-xla_test(
-    name = "loop_mlir_test",
-    srcs = ["loop_mlir_test.cc"],
-    tags = ["no_rocm"],
-    backends = ["gpu"],
-    deps = [
-        ":loop_mlir",
-        ":mlir_emitter_test_base",
-        "//xla:error_spec",
-        "//xla/service/gpu:hlo_fusion_analysis",
-        "//xla/service/gpu/model:indexing_test_utils",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/lib/core:status_test_util",
-        "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
-=======
->>>>>>> upstream/master
 cc_library(
     name = "scatter_mlir",
     srcs = ["scatter_mlir.cc"],
@@ -398,28 +333,6 @@ cc_library(
     ],
 )
 
-<<<<<<< HEAD
-xla_test(
-    name = "transpose_mlir_test",
-    srcs = ["transpose_mlir_test.cc"],
-    backends = ["gpu"],
-    tags = ["no_rocm"], # TODO(rocm): weekly sync 24-08-20
-    deps = [
-        ":mlir_emitter_test_base",
-        ":transpose_mlir",
-        "//xla:error_spec",
-        "//xla/service/gpu:hlo_fusion_analysis",
-        "//xla/service/gpu/model:indexing_test_utils",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/lib/core:status_test_util",
-        "@com_google_googletest//:gtest",
-        "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
-=======
->>>>>>> upstream/master
 cc_library(
     name = "triton",
     srcs = ["triton.cc"],

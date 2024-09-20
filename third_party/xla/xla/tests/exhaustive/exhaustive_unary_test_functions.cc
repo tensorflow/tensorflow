@@ -258,13 +258,8 @@ UNARY_TEST(Logistic, {
 // It feels a little overkill to exhaustively test sqrt and pow(x, 0.5), but
 // this *did* find a bug, namely that some backends were assuming sqrt(x) ==
 // pow(x, 0.5), but this is not true for x == -inf.
-<<<<<<< HEAD:third_party/xla/xla/tests/exhaustive/exhaustive_unary_f32_or_smaller_test.cc
-UNARY_TEST_FLOAT_32_BITS_OR_LESS(DISABLED_ON_GPU_ROCM(PowOneHalf), {
-  EvaluateOp fn = +[](float x) { return std::pow(x, 0.5f); };
-=======
 UNARY_TEST(PowOneHalf, {
   EvaluateOp fn = +[](NativeRefT x) { return std::pow(x, 0.5f); };
->>>>>>> upstream/master:third_party/xla/xla/tests/exhaustive/exhaustive_unary_test_functions.cc
   Run([](XlaOp x) { return Pow(x, ScalarLike(x, 0.5)); }, fn);
 })
 

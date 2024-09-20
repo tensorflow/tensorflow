@@ -28,7 +28,6 @@ limitations under the License.
 
 #ifdef GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
-<<<<<<< HEAD
 #include "xla/stream_executor/cuda/cuda_activation.h"
 #endif  // GOOGLE_CUDA
 
@@ -36,11 +35,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "xla/stream_executor/gpu/gpu_init.h"  // IWYU pragma: keep
 #include "xla/stream_executor/stream_executor.h"  // IWYU pragma: keep
-=======
-#include "xla/stream_executor/cuda/cuda_status.h"
-#include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/gpu/scoped_activate_context.h"
->>>>>>> upstream/master
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/framework/device_id.h"
 #include "xla/tsl/util/env_var.h"  // IWYU pragma: keep

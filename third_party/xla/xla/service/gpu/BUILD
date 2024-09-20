@@ -2529,13 +2529,9 @@ xla_cc_test(
 xla_test(
     name = "float_support_test",
     srcs = ["float_support_test.cc"],
-<<<<<<< HEAD
     backend_tags = {"gpu": [
-        "requires-gpu-sm80",
         "no_rocm"
     ]},
-=======
->>>>>>> upstream/master
     backends = [
         "gpu_a100",
         "gpu_h100",
@@ -2874,32 +2870,9 @@ xla_test(
         "gpu_a100",
         "gpu_amd_any",
     ],
-<<<<<<< HEAD
     tags = [
         "no_rocm", #TODO(rocm): TEMP, weekly sync 
     ],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
-        "TENSORFLOW_USE_ROCM=1",
-    ]),
-    deps = if_gpu_is_configured(
-        [
-            "//xla/service/gpu/autotuning:autotuner_util",
-            "@com_google_googletest//:gtest_main",
-            "@com_google_absl//absl/strings",
-            "//xla:literal",
-            "//xla:xla_proto_cc",
-            "//xla/hlo/ir:hlo",
-            "//xla/service/gpu/tests:gpu_codegen_test",
-            "//xla/stream_executor:device_description",
-            "//xla/tests:hlo_test_base",
-            "//xla/tests:literal_test_util",
-            "//xla/stream_executor/gpu:gpu_timer",
-            "//xla/tests:test_utils",
-            "@local_tsl//tsl/platform:statusor",
-        ],
-        ["@local_tsl//tsl/platform:test_main"],  # b/317293391
-    ),
-=======
     deps = [
         "//xla:literal",
         "//xla:xla_proto_cc",
@@ -2915,7 +2888,6 @@ xla_test(
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
     ],
->>>>>>> upstream/master
 )
 
 cc_library(

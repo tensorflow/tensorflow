@@ -204,11 +204,7 @@ xla_test(
     ],
     shard_count = 20,
     tags = [
-<<<<<<< HEAD
-        "nomac",
-=======
         "no_mac",
->>>>>>> upstream/master
     ],
     deps = [
         ":triton_fusion_emitter",
@@ -258,11 +254,7 @@ xla_test(
         "gpu_amd_any",
     ],
     tags = [
-<<<<<<< HEAD
-        "nomac",
-=======
         "no_mac",
->>>>>>> upstream/master
     ],
     deps = [
         ":triton_fusion_emitter",
@@ -397,12 +389,8 @@ xla_test(
         "gpu_amd_any",
     ],
     shard_count = 10,
-<<<<<<< HEAD
-    tags = ["nomac",
+    tags = ["no_mac",
             "no_rocm"],  # TODO(rocm) 240729
-=======
-    tags = ["no_mac"],
->>>>>>> upstream/master
     deps = [
         ":triton_support",
         ":triton_test_utils",
@@ -489,12 +477,8 @@ xla_test(
         "gpu_h100",
         "gpu_amd_any",
     ],
-<<<<<<< HEAD
-    tags = ["nomac",
+    tags = ["no_mac",
             "no_rocm"], # TODO(rocm) 240729
-=======
-    tags = ["no_mac"],
->>>>>>> upstream/master
     deps = [
         ":triton_fusion_emitter",
         ":triton_support",

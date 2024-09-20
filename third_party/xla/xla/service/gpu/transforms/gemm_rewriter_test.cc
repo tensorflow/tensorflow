@@ -82,11 +82,7 @@ class GemmRewriteTest : public GpuCodegenTest {
     return std::holds_alternative<se::CudaComputeCapability>(Capability());
   }
 
-<<<<<<< HEAD
-  bool IsRocm() {
-=======
   bool IsRocm() const {
->>>>>>> upstream/master
     return std::holds_alternative<se::RocmComputeCapability>(Capability());
   }
 
@@ -4934,17 +4930,6 @@ TEST_P(ParameterizedFp8GemmRewriteTest, UnsupportedTypesF8) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, UnscaledABUnscaledDF8) {
-<<<<<<< HEAD
-#if GOOGLE_CUDA && CUDA_VERSION < 12000
-  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
-#endif  // CUDA_VERSION < 12000
-
-#if TENSORFLOW_USE_ROCM 
-  GTEST_SKIP() << "skip UnscaledABUnscaledDF8 on ROCm.";
-#endif  // TF_ROCM_VERSION < 60000
-
-=======
->>>>>>> upstream/master
   const char* hlo_text = R"(
     HloModule test
 
@@ -5001,19 +4986,6 @@ TEST_P(ParameterizedFp8GemmRewriteTest, UnscaledABUnscaledDF8) {
 
 // Do not fuse FP8 matrix bias.
 TEST_P(ParameterizedFp8GemmRewriteTest, UnscaledABUnscaledDMatrixBiasF8) {
-<<<<<<< HEAD
-
-#if GOOGLE_CUDA && CUDA_VERSION < 12000
-  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
-#endif  // CUDA_VERSION < 12000
-
-#if TENSORFLOW_USE_ROCM && TF_ROCM_VERSION < 60200
-  GTEST_SKIP() << "F8 gemm rewrite for D to be fp8 with Matrix Bias is only "
-                  "supported in ROCm 6.2 and above.";
-#endif  // TF_ROCM_VERSION < 60200
-
-=======
->>>>>>> upstream/master
   const char* hlo_text = R"(
     HloModule test
 
@@ -5708,17 +5680,6 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDReluActivationF8) {
 
 TEST_P(ParameterizedFp8GemmRewriteTest,
        ScaledABUnscaledDVectorBiasThenApproxGeluActivationF8) {
-<<<<<<< HEAD
-#if GOOGLE_CUDA && CUDA_VERSION < 12000
-  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
-#endif  // CUDA_VERSION < 12000
-
-#if TENSORFLOW_USE_ROCM
-  GTEST_SKIP() << "skip ParameterizedFp8GemmRewriteTest on ROCm.";
-#endif  // TF_ROCM_VERSION < 60000
-
-=======
->>>>>>> upstream/master
   const char* hlo_text = R"(
     HloModule test
     ENTRY test {
@@ -5819,17 +5780,6 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 
 TEST_P(ParameterizedFp8GemmRewriteTest,
        ScaledABUnscaledDApproxGeluActivationF8) {
-<<<<<<< HEAD
-#if GOOGLE_CUDA && CUDA_VERSION < 12000
-  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
-#endif  // CUDA_VERSION < 12000
-
-#if TENSORFLOW_USE_ROCM 
-  GTEST_SKIP() << "skip ScaledABUnscaledDApproxGeluActivationF8 on ROCm.";
-#endif  // TF_ROCM_VERSION < 60000
-
-=======
->>>>>>> upstream/master
   const char* hlo_text = R"(
     HloModule test
     ENTRY test {
@@ -6084,17 +6034,6 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDMatrixBiasPaddedF8) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, UnscaledABScaledDF8) {
-<<<<<<< HEAD
-#if GOOGLE_CUDA && CUDA_VERSION < 12000
-  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
-#endif  // CUDA_VERSION < 12000
-
-#if TENSORFLOW_USE_ROCM
-  GTEST_SKIP() << "skip UnscaledABScaledDF8 on ROCm.";
-#endif  // TF_ROCM_VERSION < 60000
-
-=======
->>>>>>> upstream/master
   const char* hlo_text = R"(
     HloModule test
 
@@ -6151,17 +6090,6 @@ TEST_P(ParameterizedFp8GemmRewriteTest, UnscaledABScaledDF8) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, UnscaledABScaledF32DF8) {
-<<<<<<< HEAD
-#if GOOGLE_CUDA && CUDA_VERSION < 12000
-  GTEST_SKIP() << "F8 GEMM rewrite requires CUDA 12 and above.";
-#endif  // CUDA_VERSION < 12000
-
-#if TENSORFLOW_USE_ROCM  
-  GTEST_SKIP() << "skip UnscaledABScaledF32DF8 on ROCm.";
-#endif  // TF_ROCM_VERSION < 60000
-
-=======
->>>>>>> upstream/master
   const char* hlo_text = R"(
     HloModule test
 
@@ -6211,17 +6139,6 @@ TEST_P(ParameterizedFp8GemmRewriteTest, UnscaledABScaledF32DF8) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, UnscaledABInvScaledF32DF8) {
-<<<<<<< HEAD
-#if GOOGLE_CUDA && CUDA_VERSION < 12000
-  GTEST_SKIP() << "F8 GEMM rewrite requires CUDA 12 and above.";
-#endif  // CUDA_VERSION < 12000
-
-#if TENSORFLOW_USE_ROCM 
-  GTEST_SKIP() << "skip UnscaledABInvScaledF32DF8 on ROCm.";
-#endif  // TF_ROCM_VERSION < 60000
-
-=======
->>>>>>> upstream/master
   const char* hlo_text = R"(
     HloModule test
 
@@ -6271,17 +6188,6 @@ TEST_P(ParameterizedFp8GemmRewriteTest, UnscaledABInvScaledF32DF8) {
 // Do not fuse output scaling without type conversion when a matrix bias was
 // fused.
 TEST_P(ParameterizedFp8GemmRewriteTest, UnscaledABScaledF32DMatrixBiasF8) {
-<<<<<<< HEAD
-#if GOOGLE_CUDA && CUDA_VERSION < 12000
-  GTEST_SKIP() << "F8 GEMM rewrite requires CUDA 12 and above.";
-#endif  // CUDA_VERSION < 12000
-
-#if TENSORFLOW_USE_ROCM
-  GTEST_SKIP() << "Skip UnscaledABScaledF32DMatrixBiasF8 on ROCm.";
-#endif  // TF_ROCM_VERSION < 60000
-
-=======
->>>>>>> upstream/master
   const char* hlo_text = R"(
     HloModule test
 
@@ -6335,17 +6241,6 @@ TEST_P(ParameterizedFp8GemmRewriteTest, UnscaledABScaledF32DMatrixBiasF8) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDF8) {
-<<<<<<< HEAD
-#if GOOGLE_CUDA && CUDA_VERSION < 12000
-  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
-#endif  // CUDA_VERSION < 12000
-
-#if TENSORFLOW_USE_ROCM 
-  GTEST_SKIP() << "skip ScaledABScaledDF8 on ROCm.";
-#endif  // TF_ROCM_VERSION < 60000
-
-=======
->>>>>>> upstream/master
   const char* hlo_text = R"(
     HloModule test
 
@@ -6455,17 +6350,6 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABInvScaledDF8) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDReluActivationF8) {
-<<<<<<< HEAD
-#if GOOGLE_CUDA && CUDA_VERSION < 12000
-  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
-#endif  // CUDA_VERSION < 12000
-
-#if TENSORFLOW_USE_ROCM
-  GTEST_SKIP() << "Skip ScaledABScaledDReluActivationF8 on ROCm.";
-#endif  // TF_ROCM_VERSION < 60000
-
-=======
->>>>>>> upstream/master
   const char* hlo_text = R"(
     HloModule test
     ENTRY test {
@@ -6533,17 +6417,6 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDReluActivationF8) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDMatrixBiasWithDAmaxF8) {
-<<<<<<< HEAD
-#if GOOGLE_CUDA && CUDA_VERSION < 12000
-  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
-#endif  // CUDA_VERSION < 12000
-
-#if TENSORFLOW_USE_ROCM 
-  GTEST_SKIP() << "skip ScaledABScaledDMatrixBiasF8 on ROCm.";
-#endif  // TF_ROCM_VERSION < 60000
-
-=======
->>>>>>> upstream/master
   const char* hlo_text = R"(
     HloModule test
 
@@ -6625,17 +6498,6 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDMatrixBiasWithDAmaxF8) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDVectorBiasF8) {
-<<<<<<< HEAD
-#if GOOGLE_CUDA && CUDA_VERSION < 12000
-  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
-#endif  // CUDA_VERSION < 12000
-
-#if TENSORFLOW_USE_ROCM
-  GTEST_SKIP() << "skip ScaledABScaledDVectorBiasF8 on ROCm.";
-#endif  // TF_ROCM_VERSION < 60000
-
-=======
->>>>>>> upstream/master
   const char* hlo_text = R"(
     HloModule test
 
@@ -7461,17 +7323,6 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDWithDAmaxF8) {
-<<<<<<< HEAD
-#if GOOGLE_CUDA && CUDA_VERSION < 12000
-  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
-#endif
-
-#if TENSORFLOW_USE_ROCM
-  GTEST_SKIP() << "skip ScaledABScaledDWithDAmaxF8 on ROCm.";
-#endif  // TF_ROCM_VERSION < 60000
-
-=======
->>>>>>> upstream/master
   const char* hlo_text = R"(
     HloModule test
 
@@ -7549,17 +7400,6 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDWithDAmaxF8) {
 
 TEST_P(ParameterizedFp8GemmRewriteTest,
        ScaledABScaledDWithDAmaxF8WithF16Intermediates) {
-<<<<<<< HEAD
-#if GOOGLE_CUDA && CUDA_VERSION < 12000
-  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
-#endif
-
-#if TENSORFLOW_USE_ROCM 
-  GTEST_SKIP() << "skip ScaledABScaledDWithDAmaxF8WithF16Intermediates on ROCm.";
-#endif  // TF_ROCM_VERSION < 60000
-
-=======
->>>>>>> upstream/master
   // This is the same as ScaledABScaledDWithDAmaxF8, but uses F16 intermediate
   // values instead of F32 intermediate values.
   const char* hlo_text = R"(
@@ -7642,17 +7482,6 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 
 TEST_P(ParameterizedFp8GemmRewriteTest,
        ScaledABScaledDReluActivationWithDAmaxF8) {
-<<<<<<< HEAD
-#if GOOGLE_CUDA && CUDA_VERSION < 12000
-  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
-#endif
-
-#if TENSORFLOW_USE_ROCM
-  GTEST_SKIP() << "skip ScaledABScaledDReluActivationWithDAmaxF8 on ROCm.";
-#endif  // TF_ROCM_VERSION < 60000
-
-=======
->>>>>>> upstream/master
   const char* hlo_text = R"(
     HloModule test
 

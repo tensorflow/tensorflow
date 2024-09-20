@@ -23,12 +23,8 @@ Should be set via --repo_env=WHEEL_NAME=tensorflow_cpu.
 6) `--xla_aot` - paths to files that should be in xla_aot directory. 
 """
 
-<<<<<<< HEAD
 load("@python_version_repo//:py_version.bzl", "WHEEL_COLLAB", "WHEEL_NAME", "OUTPUT_PATH")
-=======
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
-load("@python_version_repo//:py_version.bzl", "WHEEL_COLLAB", "WHEEL_NAME")
->>>>>>> upstream/master
 load("//tensorflow:tensorflow.bzl", "VERSION")
 
 def _tf_wheel_impl(ctx):

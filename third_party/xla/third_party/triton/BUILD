@@ -1,6 +1,3 @@
-<<<<<<< HEAD
-# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
-=======
 load("//tools/build_defs/testing:bzl_library.bzl", "bzl_library")
 
 # copybara:uncomment_begin
@@ -32,4 +29,3 @@ bzl_library(
     parse_tests = False,
     visibility = ["//visibility:private"],
 )
->>>>>>> upstream/master

@@ -68,13 +68,9 @@ inline bool CopyHostToDevice(OpKernelContext* context, void* dst,
 }
 
 struct GpuSolverHandles {
-<<<<<<< HEAD
-  explicit GpuSolverHandles(hipStream_t stream) {
-=======
   explicit GpuSolverHandles(GpuExecutor* parent, hipStream_t stream) {
     parent_ = parent;
     ScopedActivateContext sac{parent_};
->>>>>>> upstream/master
 #if TF_ROCM_VERSION >= 40500
     CHECK(se::wrap::hipsolverCreate(&hipsolver_handle) ==
           rocblas_status_success)
@@ -89,10 +85,7 @@ struct GpuSolverHandles {
   }
 
   ~GpuSolverHandles() {
-<<<<<<< HEAD
-=======
     ScopedActivateContext sac{parent_};
->>>>>>> upstream/master
     CHECK(se::wrap::rocblas_destroy_handle(rocm_blas_handle) ==
           rocblas_status_success)
         << "Failed to destroy rocBlas instance.";
@@ -792,10 +785,7 @@ static inline Status TrsmImpl(SolverFnT solver,
   mutex_lock lock(handle_map_mutex);
   using ROCmScalar = typename ROCmComplexT<Scalar>::type;
 
-<<<<<<< HEAD
-=======
   ScopedActivateContext sac{gpu_executor};
->>>>>>> upstream/master
   TF_RETURN_IF_ROCBLAS_ERROR(solver(rocm_blas_handle, side, uplo, trans, diag,
                                     m, n,
                                     reinterpret_cast<const ROCmScalar*>(alpha),
@@ -819,8 +809,6 @@ static inline Status TrsmImpl(SolverFnT solver,
 
 TF_CALL_LAPACK_TYPES_NO_COMPLEX(TRSM_INSTANCE);
 
-<<<<<<< HEAD
-=======
 template <typename Scalar, typename SolverFnT>
 Status MatInvBatchedImpl(GpuExecutor* gpu_executor, SolverFnT solver,
                          rocblas_handle rocm_blas_handle, int n,
@@ -861,7 +849,6 @@ Status MatInvBatchedImpl(GpuExecutor* gpu_executor, SolverFnT solver,
         host_a_inverse_dev_ptrs, ldainv, dev_lapack_info, batch_size);        \
   }
 
->>>>>>> upstream/master
 #define TRSM_BATCHED_INSTANCE(Scalar, type_prefix)                            \
   template <>                                                                 \
   Status GpuSolver::TrsmBatched<Scalar>(                                      \
@@ -906,10 +893,7 @@ Status GeamImpl(SolverFnT solver,
   mutex_lock lock(handle_map_mutex);
   using ROCmScalar = typename ROCmComplexT<Scalar>::type;
 
-<<<<<<< HEAD
-=======
   ScopedActivateContext sac{gpu_executor};
->>>>>>> upstream/master
   TF_RETURN_IF_ROCBLAS_ERROR(solver(rocm_blas_handle, transa, transb, m, n,
                                     reinterpret_cast<const ROCmScalar*>(alpha),
                                     reinterpret_cast<const ROCmScalar*>(A), lda,

@@ -2977,18 +2977,10 @@ cc_library(
 xla_test(
     name = "triton_fusion_numerics_verifier_test",
     srcs = ["triton_fusion_numerics_verifier_test.cc"],
-<<<<<<< HEAD
-    backend_tags = {"gpu": [
-        "requires-gpu-sm80",
-    ]},
-    tags = ["no_rocm"],
-    backends = ["gpu"],
-=======
     backends = [
         "gpu_a100",
         "gpu_h100",
     ],
->>>>>>> upstream/master
     deps = [
         ":triton_fusion_numerics_verifier",
         "//xla:shape_util",
