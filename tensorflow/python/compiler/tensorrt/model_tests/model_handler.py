@@ -664,7 +664,7 @@ class ModelHandlerManagerV1(_ModelHandlerManagerBase):
 
 
 class ModelHandlerManagerV2(_ModelHandlerManagerBase):
-  """Manages a series of ModelHandlers for aggregrated testing/benchmarking in TF2."""
+  """Manages a series of ModelHandlers for aggregated testing/benchmarking in TF2."""
 
   model_handler_cls = ModelHandlerV2
   trt_model_handler_cls = TrtModelHandlerV2
