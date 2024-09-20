@@ -853,17 +853,6 @@ BUILTIN_KERNEL_DEPS = [
         "//tensorflow/lite/kernels/internal:optimized_eigen",
     ],
 }) + select({
-    "//tensorflow/lite:tflite_with_xnnpack_explicit_false": [],
-    "//conditions:default": [
-        "@pthreadpool",
-    ],
-}) + select({
-    "//tensorflow/lite:tflite_with_xnnpack_explicit_false": [],
-    "//tensorflow/lite:tflite_kernel_use_xnnpack_false": [],
-    "//conditions:default": [
-        "@XNNPACK",
-    ],
-}) + select({
     # This select must match the similar select in `copts`
     "//tensorflow:linux_ppc64le": [],
     "//tensorflow:linux_s390x": [],
