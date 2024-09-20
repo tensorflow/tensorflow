@@ -41,7 +41,7 @@ The input file can be obtained from XProf graph viewer by clicking
 
 Usage:
 
-  bazel run compute_cost -- -input=path/to/hlo_module -format=[hlo|pb|pbtxt]
+  bazel run compute_cost -- --input=path/to/hlo_module --format=[hlo|pb|pbtxt]
 )";
 }  // namespace
 
@@ -71,6 +71,6 @@ int main(int argc, char** argv) {
 
   std::cout << std::setw(5) << std::setprecision(4)
             << analysis.flop_count() / (1e9) << " GFLOPS. "
-            << analysis.bytes_accessed() / (1e6) << " MiB." << std::endl;
+            << analysis.bytes_accessed() / (1e6) << " MB." << std::endl;
   return 0;
 }
