@@ -1279,5 +1279,37 @@ ENTRY entry {
   LiteralTestUtil::ExpectR1Equal<float>({8., 8.}, results[1]);
 }
 
+TEST_F(CollectiveOpsTestE2E, NoErrorOnDuplicateChannelId) {
+  absl::string_view kModuleReplicatedStr = R"(
+HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(f32[4,32,128]{2,1,0})->(f32[4,32,128]{2,1,0}, f32[4,32,128]{2,1,0})}, num_partitions=4
+ENTRY entry {
+  param = f32[4,32,128]{2,1,0} parameter(0)
+  all-to-all = f32[4,32,128]{2,1,0} all-to-all(param), channel_id=1, replica_groups={{0,1,2,3}}, dimensions={1}
+  all-to-all.1 = f32[4,32,128]{2,1,0} all-to-all(param), channel_id=1, replica_groups={{0,1,2,3}}, dimensions={0}
+  ROOT tuple = (f32[4,32,128]{2,1,0}, f32[4,32,128]{2,1,0}) tuple(all-to-all, all-to-all.1)
+}
+)";
+
+  const int64_t kNumReplicas = 1;
+  SKIP_TEST_IF_NUM_DEVICES_LESS_THAN(kNumReplicas);
+  const int64_t kNumPartitions = 4;
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+
+  auto opts = GetDebugOptionsForTest();
+  opts.set_xla_experimental_ignore_channel_id(true);
+  config.set_debug_options(opts);
+
+  config.set_num_partitions(kNumPartitions);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CreateExecutable(std::move(module),
+                                           /*run_hlo_passes=*/true));
+  EXPECT_TRUE(executable->has_module());
+}
+
 }  // namespace
 }  // namespace xla

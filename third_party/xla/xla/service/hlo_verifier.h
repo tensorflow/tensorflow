@@ -149,6 +149,9 @@ struct HloVerifierOpts {
   // cloned (".clone" suffix) or rematted (".remat");
   bool verify_instruction_name_unchanged = false;
 
+  // Check if channel instructions all have unique channel ids.
+  bool verify_unique_channel_ids = true;
+
   HloPredicate instruction_can_change_layout;
 
   // Returns a target-specific shape size.

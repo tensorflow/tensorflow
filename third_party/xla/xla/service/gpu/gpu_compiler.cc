@@ -473,8 +473,10 @@ GpuCompiler::GpuCompiler(se::Platform::Id platform_id,
 
 namespace {
 // Adds the HloVerifier for GPU to the given pipeline.
-void AddHloVerifier(HloPassPipeline* pipeline, HloVerifierOpts&& opts = {},
-                    bool debug_only = false) {
+void AddHloVerifier(HloPassPipeline* pipeline,
+                    bool verify_unique_channel_ids = false,
+                    HloVerifierOpts&& opts = {}, bool debug_only = false) {
+  opts.verify_unique_channel_ids = verify_unique_channel_ids;
   std::unique_ptr<TargetVerifierMetadata> verifier_metadata =
       std::make_unique<CpuGpuVerifierMetadata>(std::move(opts));
   if (debug_only) {
@@ -647,7 +649,8 @@ absl::Status RunOptimizationPasses(
   const DebugOptions& debug_options = hlo_module->config().debug_options();
 
   HloPassPipeline pipeline("optimization");
-  AddHloVerifier(&pipeline);
+  AddHloVerifier(&pipeline,
+                 !debug_options.xla_experimental_ignore_channel_id());
   if (debug_options.xla_gpu_multi_streamed_windowed_einsum()) {
     pipeline.AddPass<WindowedEinsumHandler>();
   }
@@ -767,7 +770,9 @@ absl::Status RunOptimizationPasses(
   // point.
   [&, &pipeline =
           pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification")] {
-    AddHloVerifier(&pipeline, HloVerifierOpts{}, /*debug_only=*/true);
+    AddHloVerifier(&pipeline,
+                   !debug_options.xla_experimental_ignore_channel_id(),
+                   HloVerifierOpts{}, /*debug_only=*/true);
 
     // BatchNormExpander can create zero-sized ops, so zero-sized HLO
     // elimination has to come after that pass.
@@ -1538,7 +1543,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   }
 
   HloPassPipeline pipeline("post-layout_assignment");
-  AddHloVerifier(&pipeline,
+  AddHloVerifier(&pipeline, !debug_options.xla_experimental_ignore_channel_id(),
                  HloVerifierOpts{}
                      .MakeLayoutSensitive()
                      .WithInstructionCanChangeLayout(
@@ -1603,14 +1608,16 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 #ifdef NDEBUG
   // Verify the module in non-debug builds. For debug builds, the verifier
   // already runs after every pass.
+  HloVerifierOpts opts = HloVerifierOpts{}
+                             .MakeLayoutSensitive()
+                             .WithInstructionCanChangeLayout(
+                                 LayoutAssignment::InstructionCanChangeLayout)
+                             .VerifyBroadcastDimensionsOrder()
+                             .VerifyReshapeIsBitcast();
+  opts.verify_unique_channel_ids =
+      !debug_options.xla_experimental_ignore_channel_id();
   pipeline.AddPass<HloVerifier>(
-      std::make_unique<DefaultVerifierMetadata>(
-          HloVerifierOpts{}
-              .MakeLayoutSensitive()
-              .WithInstructionCanChangeLayout(
-                  LayoutAssignment::InstructionCanChangeLayout)
-              .VerifyBroadcastDimensionsOrder()
-              .VerifyReshapeIsBitcast()),
+      std::make_unique<DefaultVerifierMetadata>(std::move(opts)),
       "end-of-post-layout_assignment");
 #endif  // NDEBUG
 
@@ -2574,8 +2581,10 @@ absl::Status GpuCompiler::RunPostSchedulingPipelines(
   }
 
   if (module->config().debug_options().xla_gpu_enable_pgle_accuracy_checker()) {
-    AddHloVerifier(&main_pipeline,
-                   HloVerifierOpts{}.VerifyInstructionNameUnchanged());
+    AddHloVerifier(
+        &main_pipeline,
+        module->config().debug_options().xla_experimental_ignore_channel_id(),
+        HloVerifierOpts{}.VerifyInstructionNameUnchanged());
   }
   return main_pipeline.Run(module).status();
 }

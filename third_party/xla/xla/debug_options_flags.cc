@@ -292,6 +292,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_executable_warn_stuck_timeout_seconds(10);
   opts.set_xla_gpu_executable_terminate_timeout_seconds(30);
   opts.set_xla_gpu_experimental_disable_binary_libraries(false);
+  opts.set_xla_experimental_ignore_channel_id(false);
   return opts;
 }
 
@@ -1945,6 +1946,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_experimental_disable_binary_libraries(),
       "Disable XLA GPU passes that depend on non-open source binary "
       "libraries"));
+  flag_list->push_back(tsl::Flag(
+      "xla_experimental_ignore_channel_id",
+      bool_setter_for(&DebugOptions::set_xla_experimental_ignore_channel_id),
+      debug_options->xla_experimental_ignore_channel_id(),
+      "Experimental: ignore channel ids for collective operations."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more
