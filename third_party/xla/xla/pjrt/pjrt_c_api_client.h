@@ -134,13 +134,13 @@ class PjRtCApiDevice : public PjRtDevice {
   absl::Status TransferToInfeed(const LiteralSlice& literal) override {
     return Unimplemented(
         "PJRT C API does not support TransferToInfeed. Please report an issue "
-        "at https://github.com/google/jax/issues if you need this feature.");
+        "at https://github.com/jax-ml/jax/issues if you need this feature.");
   }
 
   absl::Status TransferFromOutfeed(MutableBorrowingLiteral literal) override {
     return Unimplemented(
         "PJRT C API does not support TransferFromOutfeed. Please report an "
-        "issue at https://github.com/google/jax/issues if you need this "
+        "issue at https://github.com/jax-ml/jax/issues if you need this "
         "feature.");
   }
 
@@ -154,7 +154,7 @@ class PjRtCApiDevice : public PjRtDevice {
       absl::string_view description) const override {
     LOG(FATAL)
         << "PJRT C API does not support CreateAsyncTrackingEvent. Please "
-           "report an issue at https://github.com/google/jax/issues if you "
+           "report an issue at https://github.com/jax-ml/jax/issues if you "
            "need this feature.";
     return nullptr;
   }
@@ -294,7 +294,7 @@ class PjRtCApiClient : public PjRtClient {
       const override {
     return Unimplemented(
         "PJRT C API does not support GetHloCostAnalysis. Please report an "
-        "issue at https://github.com/google/jax/issues if you need this "
+        "issue at https://github.com/jax-ml/jax/issues if you need this "
         "feature.");
   }
 
@@ -316,7 +316,7 @@ class PjRtCApiClient : public PjRtClient {
       const Shape& shape, PjRtDevice* device) override {
     return Unimplemented(
         "PJRT C API does not support CreateUninitializedBuffer. Please report "
-        "an issue at https://github.com/google/jax/issues if you need this "
+        "an issue at https://github.com/jax-ml/jax/issues if you need this "
         "feature.");
   }
 
@@ -328,7 +328,7 @@ class PjRtCApiClient : public PjRtClient {
                                     PjRtDevice* device) override {
     return Unimplemented(
         "PJRT C API does not support CreateBuffersForAsyncHostToDevice. Please "
-        "report an issue at https://github.com/google/jax/issues if you need "
+        "report an issue at https://github.com/jax-ml/jax/issues if you need "
         "this feature.");
   }
 
@@ -337,7 +337,7 @@ class PjRtCApiClient : public PjRtClient {
                                     PjRtMemorySpace* memory_space) override {
     return Unimplemented(
         "PJRT C API does not support CreateBuffersForAsyncHostToDevice. Please "
-        "report an issue at https://github.com/google/jax/issues if you need "
+        "report an issue at https://github.com/jax-ml/jax/issues if you need "
         "this feature.");
   }
 
@@ -366,7 +366,7 @@ class PjRtCApiClient : public PjRtClient {
       const LiteralSlice& literal, PjRtDevice* device) override {
     return Unimplemented(
         "PJRT C API does not support BufferFromHostLiteral. Please report an "
-        "issue at https://github.com/google/jax/issues if you need this "
+        "issue at https://github.com/jax-ml/jax/issues if you need this "
         "feature.");
   }
 
@@ -384,7 +384,7 @@ class PjRtCApiClient : public PjRtClient {
                               PjRtCrossHostRecvNotifier notifier) override {
     return Unimplemented(
         "PJRT C API does not support MakeCrossHostReceiveBuffers. Please "
-        "report an issue at https://github.com/google/jax/issues if you need "
+        "report an issue at https://github.com/jax-ml/jax/issues if you need "
         "this feature.");
   }
 
@@ -394,28 +394,28 @@ class PjRtCApiClient : public PjRtClient {
       PjRtDevice* device, PjRtCrossHostRecvNotifier notifier) override {
     return Unimplemented(
         "PJRT C API does not support MakeCrossHostReceiveBuffers. Please "
-        "report an issue at https://github.com/google/jax/issues if you need "
+        "report an issue at https://github.com/jax-ml/jax/issues if you need "
         "this feature.");
   }
 
   absl::StatusOr<ChannelHandle> CreateChannelHandle() override {
     return Unimplemented(
         "PJRT C API does not support CreateChannelHandle. Please report an "
-        "issue at https://github.com/google/jax/issues if you need this "
+        "issue at https://github.com/jax-ml/jax/issues if you need this "
         "feature.");
   }
 
   absl::StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() override {
     return Unimplemented(
         "PJRT C API does not support CreateDeviceToHostChannelHandle. Please "
-        "report an issue at https://github.com/google/jax/issues if you need "
+        "report an issue at https://github.com/jax-ml/jax/issues if you need "
         "this feature.");
   }
 
   absl::Status Defragment() override {
     return Unimplemented(
         "PJRT C API does not support Defragment. Please report an issue at "
-        "https://github.com/google/jax/issues if you need this feature.");
+        "https://github.com/jax-ml/jax/issues if you need this feature.");
   }
 
   bool SupportsSendRecvCallbacks() const override { return true; }
@@ -524,7 +524,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
                              int64_t transfer_size) override {
     return PjRtFuture<>(Unimplemented(
         "PJRT C API does not support CopyRawToHost. Please report an issue at "
-        "https://github.com/google/jax/issues if you need this feature."));
+        "https://github.com/jax-ml/jax/issues if you need this feature."));
   }
 
   void Delete() override;
@@ -546,7 +546,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
   void CopyToRemoteDevice(PjRtFuture<std::string> serialized_descriptor,
                           RemoteSendCallback on_done) override {
     LOG(ERROR) << "PJRT C API does not support CopyToRemoteDevice. Please "
-                  "report an issue at https://github.com/google/jax/issues if "
+                  "report an issue at https://github.com/jax-ml/jax/issues if "
                   "you need this feature.";
   }
 
@@ -556,7 +556,7 @@ class PjRtCApiBuffer : public PjRtBuffer {
       const ScatterDetails& scatter_details) override {
     LOG(ERROR)
         << "PJRT C API does not support CopyToRemoteDeviceScattered. Please "
-           "report an issue at https://github.com/google/jax/issues if you "
+           "report an issue at https://github.com/jax-ml/jax/issues if you "
            "need this feature.";
   }
 

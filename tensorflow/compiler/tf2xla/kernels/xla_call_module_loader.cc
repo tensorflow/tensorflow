@@ -77,7 +77,7 @@ namespace {
 // When adding a new version, write when it was added. Also change the default
 // version in the constructor in xla.py.
 // See
-// https://github.com/google/jax/blob/main/jax/experimental/jax2tf/README.md#native-serialization-versions
+// https://github.com/jax-ml/jax/blob/main/jax/experimental/jax2tf/README.md#native-serialization-versions
 // for a description of the different versions.
 
 constexpr int kVersionStartStableHloCompatibility = 4;

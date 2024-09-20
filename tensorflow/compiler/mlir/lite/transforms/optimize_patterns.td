@@ -1041,7 +1041,7 @@ def FoldNormalizationIntoSoftmax : Pat<
    (HasOneUse $max)]>;
 
 // Convert softmax(x-reshape(maximum(max(x), -inf))) into softmax(x) as the softmax op already deals
-// with the max normalization. This comes from upstream Jax (https://github.com/google/jax/pull/15677)
+// with the max normalization. This comes from upstream Jax (https://github.com/jax-ml/jax/pull/15677)
 def FoldNormalizationIntoSoftmaxJaxWithAxisMinus1 : Pat<
   (TFL_SoftmaxOp
     (TFL_SubOp:$sub $input,

@@ -86,7 +86,7 @@ class EinsumTest(tntu.TestCase):
     self._check(s, x, y)
 
   def test_two_operands_6(self):
-    # based on https://github.com/google/jax/issues/37#issuecomment-448572187
+    # based on https://github.com/jax-ml/jax/issues/37#issuecomment-448572187
     r = self.rng()
     x = r.randn(2, 1)
     y = r.randn(2, 3, 4)

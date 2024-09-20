@@ -94,7 +94,7 @@ absl::StatusOr<DevicePutResultFn> HandlePythonScalar(
     type = primitive_util::NativeToPrimitiveType<T>();
   } else {
     // TODO(phawkins): we should check for overflow here, e.g., because of bugs
-    // like https://github.com/google/jax/issues/2006
+    // like https://github.com/jax-ml/jax/issues/2006
     data.template emplace<1>(static_cast<SquashedT>(value));
     type = primitive_util::NativeToPrimitiveType<SquashedT>();
   }

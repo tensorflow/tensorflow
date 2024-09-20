@@ -118,7 +118,7 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
     """Tests ThreeFry2x32 conforms to known results.
     """
     # Based on
-    # https://github.com/google/jax/blob/8565a3486adf16beb388b2364c9cd930d7a0d92d/tests/random_test.py#L65-L85
+    # https://github.com/jax-ml/jax/blob/8565a3486adf16beb388b2364c9cd930d7a0d92d/tests/random_test.py#L65-L85
     # which is in turn based on
     # https://github.com/DEShawResearch/Random123-Boost/blob/65e3d874b67aa7b3e02d5ad8306462f52d2079c0/libs/random/test/test_threefry.cpp#L30-L32
 

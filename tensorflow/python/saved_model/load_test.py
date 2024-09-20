@@ -2698,7 +2698,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     # TODO(b/264869228) Fix LoadTest
     if use_cpp_bindings:
       self.skipTest("Not implemented for cpp.")
-    # https://github.com/google/jax/issues/7123
+    # https://github.com/jax-ml/jax/issues/7123
 
     @custom_gradient.custom_gradient
     def f(params, state):
@@ -2748,7 +2748,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     # TODO(b/264869228) Fix LoadTest
     if use_cpp_bindings:
       self.skipTest("Not implemented for cpp.")
-    # https://github.com/google/jax/issues/7123
+    # https://github.com/jax-ml/jax/issues/7123
 
     @custom_gradient.custom_gradient
     def f(params, state):

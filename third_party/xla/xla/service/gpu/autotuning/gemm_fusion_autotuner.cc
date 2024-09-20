@@ -1380,7 +1380,7 @@ absl::Status ExchangeResults(KeyValueStoreInterface& key_value_store,
             absl::StrFormat("%s_%d_%d", kKeyPrefix, module_id, i),
             // TODO(b/361009609): reset to infinite duration once solved.
             // Using an infinite duration here leads to issues with MPI, see
-            // https://github.com/google/jax/issues/22995.
+            // https://github.com/jax-ml/jax/issues/22995.
             absl::Hours(24)));
     TF_RETURN_IF_ERROR(
         AutotunerUtil::LoadAutotuneResults(autotune_results_str, true));

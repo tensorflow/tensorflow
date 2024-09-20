@@ -102,7 +102,7 @@ class EinsumOpTest(test.TestCase):
     self._check('ab,bc->ac', (3, 4), (4, 5))
     self._check('nij,jk->nik', (5, 2, 3), (3, 4))
     self._check('abc,bad->abcd', (1, 2, 3), (2, 1, 4))
-    # Based on https://github.com/google/jax/issues/37#issuecomment-448572187
+    # Based on https://github.com/jax-ml/jax/issues/37#issuecomment-448572187
     self._check('sa,shb->shab', (2, 1), (2, 3, 4))
 
   def testReducedIndices(self):
@@ -345,7 +345,7 @@ class EinsumGradTest(test.TestCase):
     self._check_gradient('ab,bc->ac', (3, 4), (4, 5))
     self._check_gradient('nij,jk->nik', (5, 2, 3), (3, 4))
     self._check_gradient('abc,bad->abcd', (1, 2, 3), (2, 1, 4))
-    # Based on https://github.com/google/jax/issues/37#issuecomment-448572187
+    # Based on https://github.com/jax-ml/jax/issues/37#issuecomment-448572187
     self._check_gradient('sa,shb->shab', (2, 1), (2, 3, 4))
 
   def testEmpty(self):

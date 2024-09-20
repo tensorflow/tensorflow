@@ -85,7 +85,7 @@ class UniformQuantizedConvolutionParams {
   // NOTE: this method can be used only after calling both LoadFromAttrs() and
   // ValidateOrFillParamsAndValidateShape().
   // Reference:
-  // https://github.com/google/jax/blob/0584c6a1c405b23317deb1596c2c161eb5709c84/jax/_src/lax/convolution.py#L349
+  // https://github.com/jax-ml/jax/blob/0584c6a1c405b23317deb1596c2c161eb5709c84/jax/_src/lax/convolution.py#L349
   absl::StatusOr<TensorShape> CalculateOutputShape(
       const TensorShape& lhs_shape, const TensorShape& rhs_shape) const;
 
