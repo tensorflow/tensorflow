@@ -49,8 +49,14 @@ namespace xla {
 namespace memory_space_assignment {
 
 // Pair of chunks for even and odd loop iterations.
-using EvenOddChunkPair = std::pair<std::optional<HeapSimulator::Chunk>,
-                                   std::optional<HeapSimulator::Chunk>>;
+struct EvenOddChunkPair {
+  std::optional<HeapSimulator::Chunk> even_chunk;
+  std::optional<HeapSimulator::Chunk> odd_chunk;
+
+  bool HasValues() const {
+    return even_chunk.has_value() && odd_chunk.has_value();
+  }
+};
 
 // LoopOptimizerBestFitHeap extends GlobalDecreasingSizeBestFitHeap to track
 // allocated buffers and their live intervals for the MemoryBoundLoopOptimizer.
@@ -269,10 +275,6 @@ class MemoryBoundLoopOptimizer {
     // ToString methods for logging/debugging.
     static std::string AllocationTypeToString(AllocationType allocation_type);
     std::string ToString() const;
-
-    // Returns true if the LoopValue has chunks for even and odd loop
-    // iterations.
-    bool HasEvenAndOddChunks() const;
 
     // Returns true if memory-bound loop optimizer supports allocating this type
     // of a loop value.

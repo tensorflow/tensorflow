@@ -69,12 +69,12 @@ struct LoopOptimizerChunkInterval {
   EvenOddChunkPair chunks;
 
   std::string ToString() const {
-    CHECK(chunks.first.has_value() && chunks.second.has_value());
+    CHECK(chunks.HasValues());
     return absl::StrFormat(
         "begin_idx_in_loop: %d, end_idx_in_loop: %d, even chunk: %s, odd "
         "chunk: %s",
-        begin_idx_in_loop, end_idx_in_loop, chunks.first->ToString(),
-        chunks.second->ToString());
+        begin_idx_in_loop, end_idx_in_loop, chunks.even_chunk->ToString(),
+        chunks.odd_chunk->ToString());
   }
 };
 
@@ -417,10 +417,9 @@ absl::Status MemoryBoundLoopOptimizer::Initialize() {
     // Chunks for reserved scoped memory should always be found at offset 0.
     EvenOddChunkPair chunks = heap_.AllocateEvenAndOddBetween(
         i, i, reserved_memory, /*preferred_offsets=*/{0, 0});
-    CHECK(chunks.first.has_value());
-    CHECK(chunks.second.has_value());
-    CHECK(chunks.first->size == reserved_memory);
-    VLOG(3) << "Reserved chunk: " << chunks.first->ToString()
+    CHECK(chunks.HasValues());
+    CHECK(chunks.even_chunk->size == reserved_memory);
+    VLOG(3) << "Reserved chunk: " << chunks.even_chunk->ToString()
             << " loop index: " << i;
   }
 
@@ -840,9 +839,11 @@ std::string MemoryBoundLoopOptimizer::LoopValue::ToString() const {
     absl::StrAppend(&allocations_str, "\n  - ", allocation->ToString());
   }
   std::string chunk_str;
-  if (HasEvenAndOddChunks()) {
-    absl::StrAppend(&chunk_str, "\n", "even chunk: ", chunks.first->ToString());
-    absl::StrAppend(&chunk_str, "\n", "odd chunk: ", chunks.second->ToString());
+  if (chunks.HasValues()) {
+    absl::StrAppend(&chunk_str, "\n",
+                    "even chunk: ", chunks.even_chunk->ToString());
+    absl::StrAppend(&chunk_str, "\n",
+                    "odd chunk: ", chunks.odd_chunk->ToString());
     absl::StrAppend(&chunk_str, "\n", "alternate memory begin idx in loop: ",
                     alternate_memory_begin_idx_in_loop.value());
     absl::StrAppend(&chunk_str, "\n", "alternate memory end idx in loop: ",
@@ -859,10 +860,6 @@ bool MemoryBoundLoopOptimizer::LoopValue::IsAllocationTypeSupported() const {
   return allocation_type == AllocationType::kTemporary ||
          allocation_type == AllocationType::kPinned ||
          allocation_type == AllocationType::kPrefetch;
-}
-
-bool MemoryBoundLoopOptimizer::LoopValue::HasEvenAndOddChunks() const {
-  return chunks.first.has_value() && chunks.second.has_value();
 }
 
 void MemoryBoundLoopOptimizer::LoopValue::SetChunkPairAndInterval(
@@ -978,7 +975,7 @@ bool MemoryBoundLoopOptimizer::AllocateTemporary(LoopValue& value) {
   }
   EvenOddChunkPair chunks = heap_.AllocateSameEvenAndOddBetween(
       begin_idx_in_loop, end_idx_in_loop, value.size);
-  if (!chunks.first.has_value() || !chunks.second.has_value()) {
+  if (!chunks.HasValues()) {
     VLOG(3) << "Could not find Allocation for temporary value: "
             << value.ToString();
     return false;
@@ -1001,7 +998,7 @@ bool MemoryBoundLoopOptimizer::AllocatePinned(LoopValue& value) {
   int64_t end_idx_in_loop = loop_size_ - 1;
   EvenOddChunkPair chunks = heap_.AllocateSameEvenAndOddBetween(
       begin_idx_in_loop, end_idx_in_loop, value.size);
-  if (!chunks.first.has_value() || !chunks.second.has_value()) {
+  if (!chunks.HasValues()) {
     VLOG(3) << "Could not find Allocation for pinned value: "
             << value.ToString();
     return false;
@@ -1287,7 +1284,7 @@ bool MemoryBoundLoopOptimizer::AllocatePrefetch(
           early_forced_value->alternate_memory_end_idx_in_loop.value();
       EvenOddChunkPair chunks = heap_.AllocateEvenAndOddBetween(
           begin_idx_in_loop, end_idx_in_loop, early_forced_value->size);
-      if (!chunks.first.has_value() || !chunks.second.has_value()) {
+      if (!chunks.HasValues()) {
         VLOG(3) << "Could not allocate between " << begin_idx_in_loop << " and "
                 << end_idx_in_loop << " for early forced value: "
                 << early_forced_value->ToString();
@@ -1308,7 +1305,7 @@ bool MemoryBoundLoopOptimizer::AllocatePrefetch(
       int64_t end_idx_in_loop = last_use_idx_sentinel;
       EvenOddChunkPair chunks = heap_.AllocateEvenAndOddBetween(
           begin_idx_in_loop, end_idx_in_loop, value->size);
-      if (chunks.first.has_value() && chunks.second.has_value()) {
+      if (chunks.HasValues()) {
         pending_chunk_intervals.push_back(
             {begin_idx_in_loop, end_idx_in_loop, chunks});
         VLOG(3) << "Added pending chunk: "
@@ -1405,14 +1402,15 @@ bool MemoryBoundLoopOptimizer::AllocatePrefetch(
           early_forced_value->alternate_memory_begin_idx_in_loop.value(),
           early_forced_value->alternate_memory_end_idx_in_loop.value(),
           early_forced_value->size,
-          {early_forced_value->chunks.first->offset,
-           early_forced_value->chunks.second->offset});
+          {early_forced_value->chunks.even_chunk->offset,
+           early_forced_value->chunks.odd_chunk->offset});
       // The chunk should always be present as we are allocating at the same
       // offset.
-      CHECK(chunks.first.has_value() && chunks.second.has_value());
-      CHECK_EQ(chunks.first->offset, early_forced_value->chunks.first->offset);
-      CHECK_EQ(chunks.second->offset,
-               early_forced_value->chunks.second->offset);
+      CHECK(chunks.HasValues());
+      CHECK_EQ(chunks.even_chunk->offset,
+               early_forced_value->chunks.even_chunk->offset);
+      CHECK_EQ(chunks.odd_chunk->offset,
+               early_forced_value->chunks.odd_chunk->offset);
     }
     VLOG(3) << "Memory usage after restoring original state: "
             << heap_.MemoryUsageToAsciiArt();
@@ -1473,7 +1471,7 @@ bool MemoryBoundLoopOptimizer::AllocatePrefetch(
         begin_idx_in_loop, end_idx_in_loop, early_forced_value->size);
     // The chunk should always be present as we reproducing the same allocation
     // pattern as the out-of-memory check.
-    CHECK(chunks.first.has_value() && chunks.second.has_value());
+    CHECK(chunks.HasValues());
     CHECK_LT(begin_idx_in_loop,
              early_forced_value->alternate_memory_begin_idx_in_loop.value());
     early_forced_value->SetChunkPairAndInterval(chunks, begin_idx_in_loop,
@@ -1496,7 +1494,7 @@ bool MemoryBoundLoopOptimizer::AllocatePrefetch(
   // pattern as the out-of-memory check.
   EvenOddChunkPair chunks = heap_.AllocateEvenAndOddBetween(
       begin_idx_in_loop, end_idx_in_loop, value->size);
-  CHECK(chunks.first.has_value() && chunks.second.has_value());
+  CHECK(chunks.HasValues());
   value->SetChunkPairAndInterval(chunks, begin_idx_in_loop, end_idx_in_loop);
   value->allocations.push_back(std::make_unique<CopyAllocation>(
       *value->allocations.back(), MemorySpace::kAlternate, std::nullopt,

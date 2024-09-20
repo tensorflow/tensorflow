@@ -97,7 +97,7 @@ class LoopOptimizerBestFitHeapTest : public ::testing::Test {
                                                  int64_t size) {
     EvenOddChunkPair chunks = heap_.AllocateSameEvenAndOddBetween(
         begin_idx_in_loop, end_idx_in_loop, size);
-    return chunks.first.has_value() && chunks.second.has_value();
+    return chunks.HasValues();
   }
 
   bool CanFindSameEvenAndOddAllocationBetween(int64_t begin_idx_in_loop,
@@ -105,7 +105,7 @@ class LoopOptimizerBestFitHeapTest : public ::testing::Test {
                                               int64_t size) {
     EvenOddChunkPair chunks = heap_.FindSameEvenAndOddAllocationBetween(
         begin_idx_in_loop, end_idx_in_loop, size);
-    return chunks.first.has_value() && chunks.second.has_value();
+    return chunks.HasValues();
   }
 
   bool IsAllocateEvenAndOddBetweenSuccessful(int64_t begin_idx_in_loop,
@@ -113,7 +113,7 @@ class LoopOptimizerBestFitHeapTest : public ::testing::Test {
                                              int64_t size) {
     EvenOddChunkPair chunks = heap_.AllocateEvenAndOddBetween(
         begin_idx_in_loop, end_idx_in_loop, size);
-    return chunks.first.has_value() && chunks.second.has_value();
+    return chunks.HasValues();
   }
 
   bool CanFindEvenAndOddAllocationBetween(int64_t begin_idx_in_loop,
@@ -121,7 +121,7 @@ class LoopOptimizerBestFitHeapTest : public ::testing::Test {
                                           int64_t size) {
     EvenOddChunkPair chunks = heap_.FindEvenAndOddAllocationBetween(
         begin_idx_in_loop, end_idx_in_loop, size);
-    return chunks.first.has_value() && chunks.second.has_value();
+    return chunks.HasValues();
   }
 
   std::string GetMemoryUsageAsciiArt() { return heap_.MemoryUsageToAsciiArt(); }
@@ -193,10 +193,9 @@ TEST_F(LoopOptimizerBestFitHeapTest, TestAllocateEvenAndOddBetween) {
 
 TEST_F(LoopOptimizerBestFitHeapTest, TestRemoveChunk) {
   EvenOddChunkPair chunks = heap_.AllocateEvenAndOddBetween(3, 11, 16);
-  EXPECT_TRUE(chunks.first.has_value() && chunks.second.has_value());
+  EXPECT_TRUE(chunks.HasValues());
   EvenOddChunkPair second_chunks = heap_.AllocateEvenAndOddBetween(-3, 8, 16);
-  EXPECT_TRUE(second_chunks.first.has_value() &&
-              second_chunks.second.has_value());
+  EXPECT_TRUE(second_chunks.HasValues());
   EXPECT_THAT(heap_.RemainingMemoryByTime(),
               ContainerEq(std::vector<int64_t>{16, 16, 16, 0, 0, 0}));
   EXPECT_EQ(heap_.LastMemoryOffsetOccupied(), 64);
