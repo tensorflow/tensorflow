@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <cstdint>
 #include <map>
+#include <optional>
 
+#include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
@@ -289,6 +291,64 @@ TEST(DerivedTimelineTest, TfOpNameScopeShrinkTest) {
       }
     });
   }
+}
+
+// Checks that XLA Ops mapping to CudaGraph launch has extra stats.
+TEST(DerivedTimelineTest, XloOpHasCudaGraphStats) {
+  constexpr absl::string_view kModuleName = "module";
+  constexpr absl::string_view kHloOpName = "op_level_2";
+  constexpr absl::string_view kKernelDetails = "kernel_details";
+  constexpr int64_t kGroupIdValue = 1;
+  constexpr int64_t kCorrelationIdValue = 10000;
+  const uint64_t kCudaGraphIdValue = 20;
+  XSpace space;
+  tsl::profiler::GroupMetadataMap group_metadata_map;
+
+  // Build Input Plane/Line/Events and derive events from them.
+  XPlane& plane = *GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0);
+  XPlaneBuilder plane_builder(&plane);
+  auto line_builder = plane_builder.GetOrCreateLine(0);
+  CreateXEvent(&plane_builder, &line_builder, "op1", 0, 100,
+               {{StatType::kKernelDetails, kKernelDetails},
+                {StatType::kGroupId, kGroupIdValue},
+                {StatType::kHloModule, kModuleName},
+                {StatType::kHloOp, kHloOpName},
+                {StatType::kCorrelationId, kCorrelationIdValue},
+                {StatType::kCudaGraphId, kCudaGraphIdValue}});
+  CreateXEvent(&plane_builder, &line_builder, "op2", 200, 300,
+               {{StatType::kKernelDetails, kKernelDetails},
+                {StatType::kGroupId, kGroupIdValue},
+                {StatType::kHloModule, kModuleName},
+                {StatType::kHloOp, kHloOpName},
+                {StatType::kCorrelationId, kCorrelationIdValue},
+                {StatType::kCudaGraphId, kCudaGraphIdValue}});
+  GenerateDerivedTimeLines(group_metadata_map, &space);
+
+  // Check that the HLO op line is added and has the extra stats for the first
+  // derived event.
+  size_t num_hlo_op_line = 0;
+  size_t num_events = 0;
+  std::optional<XStatVisitor> correlation_id;
+  std::optional<XStatVisitor> cuda_graph_id;
+  XPlaneVisitor plane_visitor = tsl::profiler::CreateTfXPlaneVisitor(&plane);
+  plane_visitor.ForEachLine([&](const XLineVisitor& line_visitor) {
+    if (line_visitor.Id() == kThreadIdHloOp) {
+      num_hlo_op_line++;
+      if (num_hlo_op_line == 1) {
+        num_events = line_visitor.NumEvents();
+        line_visitor.ForEachEvent([&](const XEventVisitor& event_visitor) {
+          correlation_id = event_visitor.GetStat(StatType::kCorrelationId);
+          cuda_graph_id = event_visitor.GetStat(StatType::kCudaGraphId);
+        });
+      }
+    }
+  });
+  EXPECT_EQ(num_hlo_op_line, 1);
+  EXPECT_EQ(num_events, 1);
+  ASSERT_TRUE(correlation_id.has_value());
+  EXPECT_EQ(correlation_id->IntValue(), kCorrelationIdValue);
+  ASSERT_TRUE(cuda_graph_id.has_value());
+  EXPECT_EQ(cuda_graph_id->UintValue(), kCudaGraphIdValue);
 }
 
 TEST(DerivedTimelineTest, DeriveLinesForXlaCpuOps) {
