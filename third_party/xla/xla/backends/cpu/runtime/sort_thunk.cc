@@ -471,6 +471,27 @@ static absl::Status SortInplace(absl::Span<se::DeviceMemoryBase> data,
       case 17:
         sort(std::integral_constant<size_t, 17>{});
         break;
+      case 18:
+        sort(std::integral_constant<size_t, 18>{});
+        break;
+      case 19:
+        sort(std::integral_constant<size_t, 19>{});
+        break;
+      case 20:
+        sort(std::integral_constant<size_t, 20>{});
+        break;
+      case 21:
+        sort(std::integral_constant<size_t, 21>{});
+        break;
+      case 22:
+        sort(std::integral_constant<size_t, 22>{});
+        break;
+      case 23:
+        sort(std::integral_constant<size_t, 23>{});
+        break;
+      case 24:
+        sort(std::integral_constant<size_t, 24>{});
+        break;
       case 25:
         sort(std::integral_constant<size_t, 25>{});
         break;

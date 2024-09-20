@@ -91,10 +91,17 @@ XLA_TEST_F(SortTest, SortTwiceWithSameComparator) {
   EXPECT_TRUE(RunAndCompare(hlo_text_module, ErrorSpec{0.0, 0.0}));
 }
 
-// TODO(penporn): Parameterize `num_inputs` and test several numbers when we
-// have a generic fallback sort kernel.
-XLA_TEST_F(SortTest, SortManyInputs) {
-  constexpr int num_inputs = 17;
+class SortManyInputsTest : public SortTest,
+                           public ::testing::WithParamInterface<int> {
+ public:
+  static std::string Name(const ::testing::TestParamInfo<int>& info) {
+    auto num_inputs = info.param;
+    return absl::StrFormat("Sort%dInputs", num_inputs);
+  }
+};
+
+XLA_TEST_P(SortManyInputsTest, SortManyInputs) {
+  int num_inputs = GetParam();
   std::string_view hlo_text_module_template = R"(
     HloModule sort
 
@@ -133,9 +140,11 @@ XLA_TEST_F(SortTest, SortManyInputs) {
                                  {"${SORT_SHAPE}", sort_shape},
                                  {"${SORT_PARAMS}", sort_params},
                                  {"${COMPARE_DECLARATIONS}", compare_decls}});
-
   EXPECT_TRUE(RunAndCompare(hlo_text_module, ErrorSpec{0.0, 0.0}));
 }
+
+INSTANTIATE_TEST_SUITE_P(ManyInputs, SortManyInputsTest,
+                         ::testing::Values(17, 20), SortManyInputsTest::Name);
 
 }  // namespace
 }  // namespace xla
