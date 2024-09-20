@@ -39,7 +39,6 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
-#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -954,11 +953,22 @@ absl::Status MsaAlgorithm::OptimizeMemoryBoundLoop(int loop_start_idx,
   const int iteration_start_idx = loop_start_idx + loop_size;
   const int iteration_end_idx = iteration_start_idx + loop_size;
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<MemoryBoundLoopOptimizer> optimizer,
-                      MemoryBoundLoopOptimizer::Create(
-                          iteration_start_idx, iteration_end_idx,
-                          hlo_live_range_, alias_analysis_, options_));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<MemoryBoundLoopOptimizer> optimizer,
+      MemoryBoundLoopOptimizer::Create(
+          iteration_start_idx, iteration_end_idx, options_.max_size_in_bytes,
+          options_.memory_bound_loop_optimizer_options, hlo_live_range_,
+          alias_analysis_, *options_.cost_analysis, options_.size_fn,
+          options_.reserved_scoped_memory_fn));
   optimizer->Optimize();
+
+  const int loop_optimized_allocations_original_size =
+      loop_optimized_allocations_.size();
+  for (MemoryBoundLoopOptimizer::LoopValue& value : optimizer->loop_values()) {
+    if (!value.allocations.empty() && value.IsAllocationTypeSupported()) {
+      loop_optimized_allocations_.push_back(std::move(value.allocations));
+    }
+  }
 
   // Check if this unrolled loop is in a while loop.
   const auto& instruction_sequence =
@@ -970,12 +980,9 @@ absl::Status MsaAlgorithm::OptimizeMemoryBoundLoop(int loop_start_idx,
 
   // Update the loop_optimized_allocations_map_ with the output of the
   // optimizer.
-  for (MemoryBoundLoopOptimizer::LoopValue& value : optimizer->loop_values()) {
-    if (value.allocations.empty() || !value.IsAllocationTypeSupported()) {
-      continue;
-    }
-    loop_optimized_allocations_.push_back(std::move(value.allocations));
-    const AllocationSequence& sequence = loop_optimized_allocations_.back();
+  for (int i = loop_optimized_allocations_original_size;
+       i < loop_optimized_allocations_.size(); ++i) {
+    const AllocationSequence& sequence = loop_optimized_allocations_.at(i);
     CHECK(!sequence.empty());
     VLOG(3) << "  alloc: " << sequence.back()->ToString();
     for (const auto& allocation : sequence) {
