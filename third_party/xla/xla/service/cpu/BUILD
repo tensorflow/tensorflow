@@ -81,6 +81,7 @@ filegroup(
         "runtime_single_threaded_matmul_c128.cc",
         "runtime_single_threaded_matmul_c64.cc",
         "runtime_single_threaded_matmul_common.h",
+        "runtime_single_threaded_matmul_f8.cc",
         "runtime_single_threaded_matmul_f16.cc",
         "runtime_single_threaded_matmul_f32.cc",
         "runtime_single_threaded_matmul_f64.cc",
@@ -1281,6 +1282,7 @@ cc_library(
         "runtime_single_threaded_matmul_f16.cc",
         "runtime_single_threaded_matmul_f32.cc",
         "runtime_single_threaded_matmul_f64.cc",
+        "runtime_single_threaded_matmul_f8.cc",
         "runtime_single_threaded_matmul_s32.cc",
         "runtime_single_threaded_matmul_u8.cc",
     ],
@@ -1293,6 +1295,7 @@ cc_library(
         "//xla/tsl/framework/contraction:eigen_contraction_kernel_no_mkl",
         "@com_google_absl//absl/base:core_headers",
         "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:ml_dtypes",
     ],
 )
 
@@ -1305,6 +1308,7 @@ cc_library(
     deps = [
         ":runtime_single_threaded_matmul_impl",
         "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:ml_dtypes",
     ],
 )
 
