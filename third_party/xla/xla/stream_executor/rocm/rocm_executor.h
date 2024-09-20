@@ -75,7 +75,7 @@ class RocmExecutor : public GpuExecutor {
       CommandBuffer::Mode mode) override;
   absl::StatusOr<std::unique_ptr<Kernel>> LoadKernel(
       const MultiKernelLoaderSpec& spec) override;
-  void UnloadKernel(const Kernel* kernel);
+  void UnloadKernel(const Kernel* kernel) override;
   absl::Status LoadModule(const MultiModuleLoaderSpec& spec,
                           ModuleHandle* module_handle) override;
   bool UnloadModule(ModuleHandle module_handle) override;
