@@ -2956,6 +2956,7 @@ cc_test(
     name = "weight_cache_test",
     srcs = ["weight_cache_test.cc"],
     deps = [
+        ":file_util",
         ":test_main",
         ":weight_cache",
         ":weight_cache_schema",
