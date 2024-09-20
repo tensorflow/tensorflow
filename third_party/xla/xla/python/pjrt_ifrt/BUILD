@@ -215,6 +215,7 @@ cc_library(
     deps = [
         ":basic_string_array",
         ":pjrt_attribute_map_util",
+        ":pjrt_dtype",
         ":xla_ifrt",
         "//xla:literal",
         "//xla:shape_util",
@@ -297,6 +298,19 @@ xla_cc_test(
         "//xla/python/ifrt:attribute_map",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "pjrt_dtype",
+    srcs = ["pjrt_dtype.cc"],
+    hdrs = ["pjrt_dtype.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/python/ifrt",
+        "@com_google_absl//absl/status:statusor",
     ],
 )
 

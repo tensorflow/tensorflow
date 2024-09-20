@@ -46,7 +46,7 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/nb_helpers.h"
 #include "xla/python/nb_numpy.h"
-#include "xla/python/pjrt_ifrt/pjrt_array.h"
+#include "xla/python/pjrt_ifrt/pjrt_dtype.h"
 #include "xla/python/py_array.h"
 #include "xla/python/python_ref_manager.h"
 #include "xla/python/sharding.h"
