@@ -640,7 +640,6 @@ tsl_gpu_library(
         "TENSORFLOW_USE_ROCM=1",
     ]),
     cuda_deps = [
-        "//xla/stream_executor/cuda:cuda_activation",
         "//xla/stream_executor/cuda:cuda_executor",
     ],
     deps = [
