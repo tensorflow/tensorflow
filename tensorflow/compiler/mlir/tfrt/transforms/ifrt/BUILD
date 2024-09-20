@@ -156,11 +156,11 @@ cc_library(
         "@local_xla//xla:shape_util",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/client:client_library",
+        "@local_xla//xla/hlo/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
         "@local_xla//xla/python/ifrt",
         "@local_xla//xla/service:computation_placer_hdr",
         "@local_xla//xla/service/llvm_ir:llvm_util",
         "@local_xla//xla/stream_executor",
-        "@local_xla//xla/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
     ],
 )
 

@@ -540,9 +540,9 @@ cc_library(
         "@local_xla//xla/client:xla_builder",
         "@local_xla//xla/client:xla_computation",
         "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/hlo/translate/mhlo_to_hlo:layout_util",
         "@local_xla//xla/service:computation_placer_hdr",
         "@local_xla//xla/service:hlo_proto_cc",
-        "@local_xla//xla/translate/mhlo_to_hlo:layout_util",
     ] + if_libtpu([
         ":xla_tpu_backend_registration",
     ]) + if_static(["@local_tsl//tsl/platform:tensor_float_32_utils"]),
@@ -715,11 +715,11 @@ cc_library(
         "@local_xla//xla/client/lib:arithmetic",
         "@local_xla//xla/client/lib:constants",
         "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/hlo/translate/mhlo_to_hlo:layout_util",
         "@local_xla//xla/service:computation_placer_hdr",
         "@local_xla//xla/service/gpu:gpu_executable_run_options",
         "@local_xla//xla/service/gpu/runtime:nccl_clique_key",
         "@local_xla//xla/stream_executor",
-        "@local_xla//xla/translate/mhlo_to_hlo:layout_util",
     ],
     alwayslink = 1,
 )
