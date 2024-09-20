@@ -1,4 +1,4 @@
-/* Copyright 2019 The OpenXLA Authors.
+/* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,19 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_TRANSLATE_MHLO_TO_HLO_TYPE_TO_SHAPE_H_
-#define XLA_TRANSLATE_MHLO_TO_HLO_TYPE_TO_SHAPE_H_
+#ifndef XLA_TRANSLATE_HLO_TO_MHLO_LOCATION_IMPORTER_H_
+#define XLA_TRANSLATE_HLO_TO_MHLO_LOCATION_IMPORTER_H_
 
-#include "llvm/ADT/STLExtras.h"
-#include "mlir/IR/Types.h"
-#include "xla/shape.h"
-#include "xla/xla_data.pb.h"
+#include "mlir/IR/Location.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 
-namespace xla {
+namespace mlir {
+namespace mhlo {
 
-// Returns a XLA Shape equivalent of a MLIR Type, else returns empty shape.
-Shape TypeToShape(mlir::Type type);
+// Returns an MLIR Location generated from HLO Instruction. Uses instruction
+// metadata if present or instruction name.
+mlir::Location GenerateInstructionLocation(
+    const xla::HloInstruction* instruction, mlir::MLIRContext* context);
 
-}  // namespace xla
+}  // namespace mhlo
+}  // namespace mlir
 
-#endif  // XLA_TRANSLATE_MHLO_TO_HLO_TYPE_TO_SHAPE_H_
+#endif  // XLA_TRANSLATE_HLO_TO_MHLO_LOCATION_IMPORTER_H_

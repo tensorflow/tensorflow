@@ -10,12 +10,37 @@ package(
     licenses = ["notice"],
 )
 
-# Deprecated, use //third_party/tensorflow/compiler/xla/hlo/translate/stablehlo_to_hlo:translate #
-# instead.
 cc_library(
     name = "translate",
+    srcs = ["translate.cc"],
     hdrs = ["translate.h"],
     deps = [
-        "//xla/hlo/translate/stablehlo_to_hlo:translate",
+        "//xla/mlir_hlo:mhlo_passes",
+        "//xla/translate/mhlo_to_hlo:translate",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:register",
     ],
+)
+
+cc_library(
+    name = "translate_registration",
+    testonly = True,
+    srcs = ["translate_registration.cc"],
+    deps = [
+        ":translate",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:TranslateLib",
+        "@stablehlo//:register",
+    ],
+    alwayslink = 1,
 )
