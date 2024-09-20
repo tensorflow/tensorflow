@@ -3580,3 +3580,10 @@ def tf_python_framework_friends():
 
 def if_cuda_tools(if_true, if_false = []):
     return _if_cuda_tools(if_true, if_false)
+
+# The config is used to determine if we need dependency on pre-built wheels.
+def if_wheel_dependency(if_true, if_false = []):
+    return select({
+        "@local_xla//xla/tsl:enable_wheel_dependency": if_true,
+        "//conditions:default": if_false,
+    })

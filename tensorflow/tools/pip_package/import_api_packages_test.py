@@ -15,19 +15,33 @@
 
 """Import API packages test.
 
-This is a Python test that verifies whether API v2 packages can be imported
-from the current build or not.
+This Python test verifies whether the API v2 packages can be imported from the
+current build. It utilizes the `_api/v2/api_packages.txt` list of packages from
+the local wheel file specified in the `requirements_lock_<python_version>.txt`.
 
-It uses the `_api/v2/api_packages.txt` file from the local wheel file.
-The `_api/v2/api_packages.txt` file is created during the process of generating
-TensorFlow API v2 init files and is stored in the wheel file after the build.
+Packages are imported one by one in alphabetical order during runtime.
 
-See README.md file for "how to run" instruction.
+The test doesn't identify package's order-dependent issues; for instance,
+importing "tf.foo" followed by "tf.bar" won't reveal that "tf.bar" depends on
+"tf.foo" being imported first.
+
+The `_api/v2/api_packages.txt` file is generated during the TensorFlow API v2
+init files creation process and is subsequently stored in the wheel file after
+the build. It also contains a few paths that cannot be directly imported. These
+paths point to attributes or sub-modules within a module's namespace, but they
+don't correspond to an actual file or directory on the filesystem. The list of
+such paths is stored in the packages_for_skip variable and will be skipped
+during the test.
 """
 
 import logging
+import os
 import unittest
-import pkg_resources
+
+try:
+  import importlib.resources as pkg_resources  # pylint: disable=g-import-not-at-top
+except ImportError:
+  import importlib_resources as pkg_resources  # pylint: disable=g-import-not-at-top
 
 logging.basicConfig(level=logging.INFO)
 
@@ -37,13 +51,14 @@ class ImportApiPackagesTest(unittest.TestCase):
 
   def setUp(self):
     def _get_api_packages_v2():
-      api_packages_path = pkg_resources.resource_filename(
-          "tensorflow", "_api/v2/api_packages.txt"
-      )
-
+      api_packages_path = os.path.join("_api", "v2", "api_packages.txt")
       logging.info("Load api packages file: %s", api_packages_path)
-      with open(api_packages_path) as file:
-        return set(file.read().splitlines())
+      return set(
+          pkg_resources.files("tensorflow")
+          .joinpath(api_packages_path)
+          .read_text()
+          .splitlines()
+      )
 
     super().setUp()
     self.api_packages_v2 = _get_api_packages_v2()
