@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <memory>
 
-#ifdef TFLITE_KERNEL_USE_XNNPACK
+#ifdef KERNEL_USE_XNNPACK
 #include "pthreadpool.h"  // from @pthreadpool
 #endif
 
@@ -151,7 +151,7 @@ void CpuBackendContext::SetMaxNumThreads(int max_num_threads) {
 
 void CpuBackendContext::SetUseCaching(bool flag) { use_caching_ = flag; }
 
-#ifdef TFLITE_KERNEL_USE_XNNPACK
+#ifdef TFLITE_USE_XNNPACK
 pthreadpool_t CpuBackendContext::get_xnnpack_threadpool() {
   if (!xnnpack_threadpool_ && max_num_threads_ > 1) {
     xnnpack_threadpool_.reset(
