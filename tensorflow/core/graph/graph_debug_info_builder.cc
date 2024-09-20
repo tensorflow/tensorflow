@@ -21,15 +21,18 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/hash/hash.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
-#include "tensorflow/core/framework/logging.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/stack_frame.h"
+#include "tensorflow/core/util/managed_stack_trace.h"
 #include "tsl/platform/path.h"
 
 namespace tensorflow {

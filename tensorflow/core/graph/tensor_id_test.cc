@@ -14,11 +14,16 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/graph/tensor_id.h"
+
 #include <vector>
+
+#include "benchmark/benchmark.h"  // from @com_google_benchmark
+#include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
+#include "tsl/platform/test_benchmark.h"
 
 namespace tensorflow {
 namespace {
