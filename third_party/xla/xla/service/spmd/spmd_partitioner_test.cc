@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <memory>
-#include <new>
 #include <optional>
 #include <string>
 #include <utility>
@@ -7728,6 +7727,72 @@ ENTRY entry {
   auto gather = AllOf(op::Shape("f32[8,2,2]"), op::Gather(operand, indices));
   VLOG(1) << module->ToString();
   EXPECT_THAT(root, op::CollectivePermute(gather));
+}
+
+TEST_P(SpmdPartitioningTest, GatherExplicitBatchDims) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = f32[10,3,14,4] parameter(0), sharding={devices=[2,1,2,1]<=[2,2]T(1,0)}
+  %indices = s32[14,10,6,2] parameter(1), sharding={devices=[2,2,1,1]<=[4]}
+  ROOT %gather = f32[14,10,6,2] gather(%input, %indices), offset_dims={3},
+    collapsed_slice_dims={1}, operand_batching_dims={0,2},
+    start_indices_batching_dims={1,0}, start_index_map={1,3},
+    index_vector_dim=3, slice_sizes={1,1,1,2}, sharding={devices=[2,2,1,1]<=[4]}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  auto input = AllOf(op::Shape("f32[5,3,7,4]"), op::Parameter(0));
+  auto indices = AllOf(op::Shape("s32[7,5,6,2]"), op::Parameter(1));
+  auto gather = AllOf(op::Shape("f32[7,5,6,2]"), op::Gather(input, indices));
+  EXPECT_THAT(module->entry_computation()->root_instruction(), gather);
+}
+
+TEST_P(SpmdPartitioningTest, GatherExplicitBatchAndOperandPassthroughDims) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = f32[10,3,14,4] parameter(0), sharding={devices=[2,1,1,2]<=[4]}
+  %indices = s32[14,10,6,2] parameter(1), sharding={devices=[1,2,1,1,2]<=[4] last_tile_dim_replicate}
+  ROOT %gather = f32[14,10,6,4] gather(%input, %indices), offset_dims={3},
+    collapsed_slice_dims={1}, operand_batching_dims={0,2},
+    start_indices_batching_dims={1,0}, start_index_map={1,3},
+    index_vector_dim=3, slice_sizes={1,1,1,4}, sharding={devices=[1,2,1,2]<=[4]}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  auto input = AllOf(op::Shape("f32[5,3,14,2]"), op::Parameter(0));
+  auto indices = AllOf(op::Shape("s32[14,5,6,2]"), op::Parameter(1));
+  auto gather = AllOf(op::Shape("f32[14,5,6,2]"), op::Gather(input, indices));
+  EXPECT_THAT(module->entry_computation()->root_instruction(), gather);
+}
+
+TEST_P(SpmdPartitioningTest, GatherExplicitBatchAndIndexPassthroughDims) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = f32[10,3,14,4] parameter(0), sharding={devices=[1,1,2,1,2]<=[4] last_tile_dim_replicate}
+  %indices = s32[14,10,6,2] parameter(1), sharding={devices=[2,1,2,1]<=[4]}
+  ROOT %gather = f32[14,10,6,2] gather(%input, %indices), offset_dims={3},
+    collapsed_slice_dims={1}, operand_batching_dims={0,2},
+    start_indices_batching_dims={1,0}, start_index_map={1,3},
+    index_vector_dim=3, slice_sizes={1,1,1,2}, sharding={devices=[2,1,2,1]<=[4]}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  auto input = AllOf(op::Shape("f32[10,3,7,4]"), op::Parameter(0));
+  auto indices = AllOf(op::Shape("s32[7,10,3,2]"), op::Parameter(1));
+  auto gather = AllOf(op::Shape("f32[7,10,3,2]"), op::Gather(input, indices));
+  EXPECT_THAT(module->entry_computation()->root_instruction(), gather);
 }
 
 TEST_P(SpmdPartitioningTest, GatherPartitionedOnTrivialSliceDims) {
