@@ -45,7 +45,7 @@ class Runtime : public Object {
   /// @param name The name of the module / file path to load
   /// @return An `Object` representing the module, if successful.  Otherwise, a
   /// non-ok `absl::Status`.
-  tensorflow::StatusOr<Object> Load(const String& name);
+  absl::StatusOr<Object> Load(const String& name);
   // TODO(b/186787000): Loading a module with identically-named functions as
   // a previously loaded module results in undefined behavior. This
   // functionality will be supported in the future.
@@ -59,13 +59,12 @@ class Runtime : public Object {
   // device tensors b/187222691 and enable buffer re-use b/187223179.
   // TODO(b/190715501): Make this available via a soft API as well.
   template <class T>
-  tensorflow::StatusOr<Tensor> CreateHostTensor(absl::Span<const int64_t> shape,
-                                                int dtype,
-                                                absl::Span<const T> data);
+  absl::StatusOr<Tensor> CreateHostTensor(absl::Span<const int64_t> shape,
+                                          int dtype, absl::Span<const T> data);
 };
 
 template <class T>
-tensorflow::StatusOr<Tensor> Runtime::CreateHostTensor(
+absl::StatusOr<Tensor> Runtime::CreateHostTensor(
     absl::Span<const int64_t> shape, int dtype, absl::Span<const T> data) {
   size_t num_elements = 1;
   for (int dim = 0; dim < shape.size(); dim++) {

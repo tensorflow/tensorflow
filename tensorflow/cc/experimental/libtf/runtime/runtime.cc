@@ -59,7 +59,7 @@ TaggedValue MakeCallable(const std::string& fn_name, Function fn,
   auto CallFn = [fn_name, fn, ctx](TaggedValue args_,
                                    TaggedValue kwargs_) -> TaggedValue {
     std::cout << "Calling " << fn_name << std::endl;
-    tensorflow::StatusOr<TaggedValue> v = fn.Execute(ctx, args_);
+    absl::StatusOr<TaggedValue> v = fn.Execute(ctx, args_);
     return v.value();
   };
   return TaggedValue(CallFn);
@@ -73,10 +73,10 @@ TaggedValue MakeCallable(const std::string& fn_name, Function fn,
 // `name` specifies the full path to the saved model.
 //
 // `ctx` should outlive the lifetime of the module.
-static tensorflow::StatusOr<TaggedValue> ImportModule(String name,
-                                                      AbstractContext* ctx) {
+static absl::StatusOr<TaggedValue> ImportModule(String name,
+                                                AbstractContext* ctx) {
   // Load the serialized model.
-  tensorflow::StatusOr<TFPackage> tf_package = TFPackage::Load(name.get());
+  absl::StatusOr<TFPackage> tf_package = TFPackage::Load(name.get());
   if (!tf_package.status().ok()) {
     return tf_package.status();
   }
@@ -176,7 +176,7 @@ Runtime::Runtime(AbstractContext* ctx) {
   Set(String("Load"), Callable(TFLIB_CALLABLE_ADAPTOR(Load)));
 }
 
-tensorflow::StatusOr<Object> Runtime::Load(const String& name) {
+absl::StatusOr<Object> Runtime::Load(const String& name) {
   return Get<Callable>(String("Load"))->Call<Object>(*this, name);
 }
 
