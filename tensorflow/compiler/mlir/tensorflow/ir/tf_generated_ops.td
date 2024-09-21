@@ -1137,7 +1137,7 @@ to be batched.}]>:$captured_tensors,
     DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$low_priority_allowed_batch_sizes,
     DefaultValuedOptionalAttr<I64Attr, "0">:$low_priority_max_enqueued_batches,
     DefaultValuedOptionalAttr<TF_AnyStrAttrOf<["low_priority_padding_with_max_batch_size", "low_priority_padding_with_next_allowed_batch_size", "priority_isolation"]>, "\"low_priority_padding_with_max_batch_size\"">:$mixed_priority_policy,
-    DefaultValuedOptionalAttr<TF_AnyStrAttrOf<["PAD_UP", "BATCH_DOWN", "MINIMIZE_TPU_COST_PER_REQUEST"]>, "\"PAD_UP\"">:$batch_padding_policy,
+    DefaultValuedOptionalAttr<TF_AnyStrAttrOf<["PAD_UP"]>, "\"PAD_UP\"">:$batch_padding_policy,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$enable_large_batch_splitting
   );
 
@@ -2541,7 +2541,7 @@ For example:
 >>> y = [2, 3, 7]
 >>> z = [2, 9, 7]
 >>> offsets = concat_offset(1, [x, y, z])
->>> [[a.item() for a in list(off.numpy())] for off in offsets]
+>>> [list(off.numpy()) for off in offsets]
 [[0, 0, 0], [0, 2, 0], [0, 5, 0]]
 
 This is typically used by gradient computations for a concat operation.
@@ -11293,7 +11293,6 @@ elements from `input_dataset` in parallel.}]>:$num_parallel_calls,
     DefaultValuedOptionalAttr<BoolAttr, "true">:$use_inter_op_parallelism,
     DefaultValuedOptionalAttr<StrAttr, "\"default\"">:$deterministic,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$preserve_cardinality,
-    DefaultValuedOptionalAttr<BoolAttr, "false">:$use_unbounded_threadpool,
     DefaultValuedOptionalAttr<StrAttr, "\"\"">:$metadata
   );
 
@@ -20365,66 +20364,6 @@ def TF_UncompressElementOp : TF_Op<"UncompressElement", [Pure]> {
 
   TF_DerivedResultShapeListAttr output_shapes = TF_DerivedResultShapeListAttr<0>;
   TF_DerivedResultTypeListAttr output_types = TF_DerivedResultTypeListAttr<0>;
-}
-
-def TF_UniformDequantizeOp : TF_Op<"UniformDequantize", [Pure]> {
-  let summary = "Perform dequantization on the quantized Tensor `input`.";
-
-  let description = [{
-Given quantized `input` which was quantized using `scales` and `zero_points`, performs dequantization using the formula:
-dequantized_data = (quantized_data - zero_point) * scale.
-  }];
-
-  let arguments = (ins
-    Arg<TensorOf<[TF_Qint32, TF_Qint8]>, [{Must be a Tensor of Tin.}]>:$input,
-    Arg<TF_Float32Tensor, [{The float value(s) used as scale(s) when quantizing original data that input represents.
-Must be a scalar Tensor if quantization_axis is -1 (per-tensor quantization), otherwise 1D Tensor of size (input.dim_size(quantization_axis),) (per-axis quantization).}]>:$scales,
-    Arg<TF_Int32Tensor, [{The int32 value(s) used as zero_point(s) when quantizing original data that input represents.
-Same shape condition as scales.}]>:$zero_points,
-
-    DefaultValuedOptionalAttr<I64Attr, "-1">:$quantization_axis,
-    I64Attr:$quantization_min_val,
-    I64Attr:$quantization_max_val
-  );
-
-  let results = (outs
-    Res<TF_Float32Tensor, [{The output dequantized Tensor of Tout, whose shape is same as input.}]>:$output
-  );
-
-  TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<0>;
-  TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
-
-  let hasVerifier = 1;
-}
-
-def TF_UniformQuantizeOp : TF_Op<"UniformQuantize", [Pure]> {
-  let summary = "Perform quantization on Tensor `input`.";
-
-  let description = [{
-Given `input`, `scales` and `zero_points`, performs quantization using the formula:
-quantized_data = floor(input_data * (1.0f / scale) + 0.5f) + zero_point
-  }];
-
-  let arguments = (ins
-    Arg<TF_Float32Tensor, [{Must be a Tensor of Tin.}]>:$input,
-    Arg<TF_Float32Tensor, [{The float value(s) to use as scale(s) to quantize `input`.
-Must be a scalar Tensor if quantization_axis is -1 (per-tensor quantization), otherwise 1D Tensor of size (input.dim_size(quantization_axis),) (per-axis quantization).}]>:$scales,
-    Arg<TF_Int32Tensor, [{The int32 value(s) to use as zero_point(s) to quantize `input`.
-Same shape condition as scales.}]>:$zero_points,
-
-    DefaultValuedOptionalAttr<I64Attr, "-1">:$quantization_axis,
-    I64Attr:$quantization_min_val,
-    I64Attr:$quantization_max_val
-  );
-
-  let results = (outs
-    Res<TensorOf<[TF_Qint32, TF_Qint8]>, [{The output quantized Tensor of Tout, whose shape is same as input.}]>:$output
-  );
-
-  TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<0>;
-  TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
-
-  let hasVerifier = 1;
 }
 
 def TF_UniformQuantizedAddOp : TF_Op<"UniformQuantizedAdd", [Pure]> {

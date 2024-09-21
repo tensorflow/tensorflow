@@ -88,13 +88,16 @@ FailureOr<TensorType> GetUniformQuantizedType(
   }
 
   auto original_element_type = getElementTypeOrSelf(original_type);
-  if (!mlir::isa<TF::Qint8Type, TF::Qint32Type>(original_element_type)) {
+  if (!mlir::isa<TF::Qint8Type, TF::Quint8Type, TF::Qint32Type>(
+          original_element_type)) {
     return rewriter.notifyMatchFailure(
-        op, "Quantized type must be qint8 or qint32.");
+        op, "Quantized type must be qint8, quint8 or qint32.");
   }
   auto storage_type = GetIntTypeFromTFQint(original_element_type);
 
-  const unsigned flags = quant::QuantizationFlags::Signed;
+  const unsigned flags = mlir::isa<TF::Quint8Type>(original_element_type)
+                             ? 0
+                             : quant::QuantizationFlags::Signed;
   Type elem_ty;
   if (quantized_dimension == -1) {
     elem_ty = quant::UniformQuantizedType::get(
