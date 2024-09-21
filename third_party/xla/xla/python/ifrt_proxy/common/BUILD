@@ -180,6 +180,17 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "test_utils",
+    hdrs = ["test_utils.h"],
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+    ],
+)
+
 # copybara:uncomment_begin
 # bzl_library(
 #     name = "ifrt_proxy_bzl",

@@ -23,8 +23,6 @@
 
 #include "absl/base/thread_annotations.h"
 #include "absl/log/check.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt_proxy/client/client_session.h"
@@ -137,8 +135,6 @@ class RpcHelper {
   Future<> CheckFuture(uint64_t handle);
 
  private:
-  RequestMetadata ManufactureRequestMetadata() ABSL_LOCKS_EXCLUDED(mu_);
-
   const IfrtProxyVersion version_;
   const std::shared_ptr<ClientSession> session_;
   std::shared_ptr<ClientHostBufferStore> host_buffer_store_;
