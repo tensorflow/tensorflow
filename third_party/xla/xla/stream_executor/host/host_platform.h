@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/statusor.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/executor_cache.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
