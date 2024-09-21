@@ -1137,7 +1137,7 @@ to be batched.}]>:$captured_tensors,
     DefaultValuedOptionalAttr<I64ArrayAttr, "{}">:$low_priority_allowed_batch_sizes,
     DefaultValuedOptionalAttr<I64Attr, "0">:$low_priority_max_enqueued_batches,
     DefaultValuedOptionalAttr<TF_AnyStrAttrOf<["low_priority_padding_with_max_batch_size", "low_priority_padding_with_next_allowed_batch_size", "priority_isolation"]>, "\"low_priority_padding_with_max_batch_size\"">:$mixed_priority_policy,
-    DefaultValuedOptionalAttr<TF_AnyStrAttrOf<["PAD_UP"]>, "\"PAD_UP\"">:$batch_padding_policy,
+    DefaultValuedOptionalAttr<TF_AnyStrAttrOf<["PAD_UP", "BATCH_DOWN", "MINIMIZE_TPU_COST_PER_REQUEST"]>, "\"PAD_UP\"">:$batch_padding_policy,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$enable_large_batch_splitting
   );
 
@@ -2541,7 +2541,7 @@ For example:
 >>> y = [2, 3, 7]
 >>> z = [2, 9, 7]
 >>> offsets = concat_offset(1, [x, y, z])
->>> [list(off.numpy()) for off in offsets]
+>>> [[a.item() for a in list(off.numpy())] for off in offsets]
 [[0, 0, 0], [0, 2, 0], [0, 5, 0]]
 
 This is typically used by gradient computations for a concat operation.
@@ -11293,6 +11293,7 @@ elements from `input_dataset` in parallel.}]>:$num_parallel_calls,
     DefaultValuedOptionalAttr<BoolAttr, "true">:$use_inter_op_parallelism,
     DefaultValuedOptionalAttr<StrAttr, "\"default\"">:$deterministic,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$preserve_cardinality,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$use_unbounded_threadpool,
     DefaultValuedOptionalAttr<StrAttr, "\"\"">:$metadata
   );
 
