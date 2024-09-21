@@ -36,7 +36,7 @@ using ::tf::libtf::runtime::Runtime;
 TEST(ModuleTest, TestStubbedFunctions) {
   Runtime runtime = runtime::core::Runtime();
   TFPackage tf_package;
-  tensorflow::StatusOr<Handle> result = BuildProgram(runtime, tf_package);
+  absl::StatusOr<Handle> result = BuildProgram(runtime, tf_package);
   ASSERT_FALSE(result.status().ok());
 }
 
