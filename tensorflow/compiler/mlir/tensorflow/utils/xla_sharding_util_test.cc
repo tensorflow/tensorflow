@@ -139,7 +139,6 @@ TEST(XLAShardingUtilTest, NotDivisibleShardingSplitOpTest) {
   module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0", "/job:localhost/replica:0/task:1/device:CPU:0", "/job:localhost/replica:0/task:1/device:TPU:0", "/job:localhost/replica:0/task:1/device:TPU:1", "/job:localhost/replica:0/task:1/device:TPU_SYSTEM:0"]} {
   func.func @uneven_input_sharding_disallowed(%arg0: tensor<128x10xf32>, %arg1: tensor<128x10xf32>, %arg2: tensor<*xi32>, %arg3: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>) {
     %0:2, %1:2 = tf_device.replicate([%arg0, %arg1] as %ri_1: tensor<128x10xf32>, [%arg2, %arg3] as %ri_2: tensor<*xi32>) {n = 2 : i32} {
-    // expected-error@+1 {{incorrect input sharding configuration received. 1-th dimension of the input must be evenly divisible by 4}}
     %1, %2 = "tf_device.cluster_func"(%ri_1, %ri_2) {_xla_compile_device_type = "TPU", _replication_info = "cluster0", func = @tpu0_func, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "\0A\04\01\02\01\02\10\02\18\02\22\10\00\00\00\00\00\00\00\01\00\01\00\00\00\01\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0], input_sharding_configuration = ["\08\03\12\12\10\0b\1a\02\01\04\2a\06\0a\02\01\00\20\01\32\02\00\00\1a\02\01\04\22\04\00\01\02\03", "\08\01\1A\01\01\22\01\01"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00", ""], use_spmd_for_xla_partitioning = false} : (tensor<128x10xf32>, tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>)
       tf_device.return %1, %2 : tensor<*xi32>, tensor<*xi1>
     }
@@ -165,6 +164,7 @@ TEST(XLAShardingUtilTest, NotDivisibleShardingSplitOpTest) {
   int num_cores_per_replica = 4;
   mlir::OpBuilder builder(&context);
   bool use_xla_nd_ops = true;
+
   llvm::SmallVector<llvm::SmallVector<mlir::Value, 4>, 4> input_list;
   auto result = tensorflow::ExtractInputsForLogicalDevices(
       num_cores_per_replica, cluster_func_op, &builder, use_xla_nd_ops,
@@ -194,9 +194,30 @@ TEST(XLAShardingUtilTest, NotDivisibleShardingSplitOpTest) {
   // will appropriately add the values to the block.
   op->destroy();
 
+  input_list.clear();
+
   // Expect error when use_xla_nd_ops is false.
   result = tensorflow::ExtractInputsForLogicalDevices(
       num_cores_per_replica, cluster_func_op, &builder, false, &input_list);
-  ASSERT_TRUE(failed(result));
+  ASSERT_TRUE(succeeded(result));
+  auto* split_op = input_list.front().front().getDefiningOp();
+  ASSERT_TRUE(mlir::isa<mlir::TF::SplitOp>(split_op));
+
+  llvm::SmallVector<mlir::Value, 4> split_inputs(split_op->getOperands());
+  // Constant op for the split dimension
+  auto* const_op = split_inputs[0].getDefiningOp();
+  ASSERT_TRUE(mlir::isa<mlir::TF::ConstOp>(const_op));
+  // Pad op for the padding value to make it divisible by num_splits.
+  auto* pad_op = split_inputs[1].getDefiningOp();
+  ASSERT_TRUE(mlir::isa<mlir::TF::PadOp>(pad_op));
+  llvm::SmallVector<mlir::Value, 4> pad_inputs(pad_op->getOperands());
+  auto* const_pad_value = pad_inputs[1].getDefiningOp();
+  ASSERT_TRUE(mlir::isa<mlir::TF::ConstOp>(const_pad_value));
+  // Destroy the ops to avoid error during block deletion (Same as above):
+  // use_empty() && "Cannot destroy a value that still has uses!"
+  split_op->destroy();
+  const_op->destroy();
+  pad_op->destroy();
+  const_pad_value->destroy();
 }
 }  // namespace
