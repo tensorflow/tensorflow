@@ -16,13 +16,12 @@ limitations under the License.
 #ifndef XLA_SERVICE_HLO_LEXER_H_
 #define XLA_SERVICE_HLO_LEXER_H_
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/strings/string_view.h"
-#include "xla/shape.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/regexp.h"
