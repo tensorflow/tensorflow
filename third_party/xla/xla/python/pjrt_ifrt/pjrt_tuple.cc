@@ -20,12 +20,19 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
-#include "llvm/Support/ExtensibleRTTI.h"
-#include "xla/python/ifrt/array.h"
-#include "xla/python/ifrt/client.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/python/ifrt/future.h"
+#include "xla/python/ifrt/value.h"
+#include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace ifrt {

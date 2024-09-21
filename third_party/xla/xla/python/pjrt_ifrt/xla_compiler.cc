@@ -24,8 +24,11 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/python/ifrt/compiler.h"
+#include "xla/python/ifrt/executable_serdes.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.pb.h"
+#include "xla/util.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {

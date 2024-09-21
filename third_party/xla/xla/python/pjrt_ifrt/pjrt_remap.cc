@@ -26,7 +26,6 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/python/ifrt/array.h"
-#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"

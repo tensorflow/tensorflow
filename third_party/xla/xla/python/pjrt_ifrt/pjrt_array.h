@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"  // IWYU pragma: keep  // TODO(hyeontaek): Remove this include once downstream users are migrated to use the new header directly.
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace ifrt {
