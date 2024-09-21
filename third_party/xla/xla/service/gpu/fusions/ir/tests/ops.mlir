@@ -56,19 +56,13 @@ func.func @caller(%a: f32, %b: f32) -> f32 {
 
 // -----
 
-#map0 = #xla_gpu.indexing_map<
-(d0, d1)[s0] -> (d0, d1 + s0),
- domain:
- d0 in [1, 2],
- d1 in [5, 8],
- s0 in [0, 32],
- is_simplified: false
->
+#map0 = #xla_gpu.indexing_map<"(d0, d1)[s0] -> (d0, d1 + s0),"
+  "domain: d0 in [1, 2], d1 in [5, 8], s0 in [0, 32], is_simplified: false">
 func.func @apply_indexing(%d0: index, %d1: index, %s0: index) -> (index, index) {
   %0:2 = xla_gpu.apply_indexing #map0 (%d0, %d1)[%s0]
   func.return %0#0, %0#1 : index, index
 }
-// CHECK: #[[$MAP0:.*]] = #xla_gpu.indexing_map<
+// CHECK: #[[$MAP0:.*]] = #xla_gpu.indexing_map<"
 // CHECK-SAME:              (d0, d1)[s0] -> (d0, d1 + s0)
 // CHECK-SAME:              domain:
 // CHECK-SAME:              d0 in [1, 2]
@@ -83,18 +77,13 @@ func.func @apply_indexing(%d0: index, %d1: index, %s0: index) -> (index, index) 
 
 // -----
 
-#map0 = #xla_gpu.indexing_map<
-(d0, d1) -> (d0, d1),
- domain:
- d0 in [0, 2],
- d1 in [1, 3],
- is_simplified: false
->
+#map0 = #xla_gpu.indexing_map<"(d0, d1) -> (d0, d1),"
+  "domain: d0 in [0, 2], d1 in [1, 3], is_simplified: false">
 func.func @apply_indexing_no_symbols(%d0: index, %d1: index) -> (index, index) {
   %0:2 = xla_gpu.apply_indexing #map0 (%d0, %d1)
   func.return %0#0, %0#1 : index, index
 }
-// CHECK: #[[$MAP0:.*]] = #xla_gpu.indexing_map<
+// CHECK: #[[$MAP0:.*]] = #xla_gpu.indexing_map<"
 // CHECK-SAME:              (d0, d1) -> (d0, d1)
 // CHECK-SAME:              domain:
 // CHECK-SAME:              d0 in [0, 2]
@@ -108,17 +97,13 @@ func.func @apply_indexing_no_symbols(%d0: index, %d1: index) -> (index, index) {
 
 // -----
 
-#map0 = #xla_gpu.indexing_map<
- ()[s0] -> (s0, s0),
- domain:
- s0 in [2, 4],
- is_simplified: false
->
+#map0 = #xla_gpu.indexing_map<"()[s0] -> (s0, s0),"
+  "domain: s0 in [2, 4], is_simplified: false">
 func.func @apply_indexing_no_dims(%s0: index) -> (index, index) {
   %0:2 = xla_gpu.apply_indexing #map0 [%s0]
   func.return %0#0, %0#1 : index, index
 }
-// CHECK: #[[$MAP0:.*]] = #xla_gpu.indexing_map<
+// CHECK: #[[$MAP0:.*]] = #xla_gpu.indexing_map<"
 // CHECK-SAME:              ()[s0] -> (s0, s0)
 // CHECK-SAME:              domain:
 // CHECK-SAME:              s0 in [2, 4]
@@ -130,8 +115,8 @@ func.func @apply_indexing_no_dims(%s0: index) -> (index, index) {
 
 // -----
 
-#map = #xla_gpu.indexing_map<(d0)[s0, s1] -> (s0, s1),
-         domain: d0 in [0, 3], s0 in [0, 1024], s1 in [0, 32], is_simplified: false>
+#map = #xla_gpu.indexing_map<"(d0)[s0, s1] -> (s0, s1), "
+  "domain: d0 in [0, 3], s0 in [0, 1024], s1 in [0, 32], is_simplified: false">
 func.func @loop_op(%input: tensor<1024x32xf32>, %init: f32,
                    %dim: index) -> (f32) {
   %sum = xla_gpu.loop (%dim)[%i, %j] -> (%r0, %r1)
@@ -155,15 +140,12 @@ func.func @loop_op(%input: tensor<1024x32xf32>, %init: f32,
 
 func.func private @exp(%p0: tensor<32x64xf32>, %i: index, %j: index) -> f32
 
-#map = #xla_gpu.indexing_map<(d0, d1)[s0, s1] -> (d0 + s0, d1 + s1),
-  domain: d0 in [0, 32], d1 in [0, 2], s0 in [0, 1024], s1 in [0, 32],
-  is_simplified: false>
-#map1 = #xla_gpu.indexing_map<(d0, d1)[s0, s1] -> (s0, s1),
-  domain: d0 in [0, 32], d1 in [0, 2], s0 in [0, 1024], s1 in [0, 32],
-  is_simplified: false>
-#map2 = #xla_gpu.indexing_map<(d0, d1) -> (d0, d1),
-  domain: d0 in [0, 32], d1 in [0, 2],
-  is_simplified: false>
+#map = #xla_gpu.indexing_map<"(d0, d1)[s0, s1] -> (d0 + s0, d1 + s1),"
+  "domain: d0 in [0, 32], d1 in [0, 2], s0 in [0, 1024], s1 in [0, 32], is_simplified: false">
+#map1 = #xla_gpu.indexing_map<"(d0, d1)[s0, s1] -> (s0, s1),"
+  "domain: d0 in [0, 32], d1 in [0, 2], s0 in [0, 1024], s1 in [0, 32], is_simplified: false">
+#map2 = #xla_gpu.indexing_map<"(d0, d1) -> (d0, d1),"
+  "domain: d0 in [0, 32], d1 in [0, 2], is_simplified: false">
 
 func.func @materialize_and_insert(%input: tensor<32x64xf32>, %i: index,
     %j: index, %output: tensor<32x64xf32>) -> tensor<32x64xf32> {
@@ -174,11 +156,11 @@ func.func @materialize_and_insert(%input: tensor<32x64xf32>, %i: index,
   func.return %1 : tensor<32x64xf32>
 }
 
-// CHECK: #[[$MAP:.*]] = #xla_gpu.indexing_map<(d0, d1)[s0, s1] -> (d0 + s0, d1 + s1)
+// CHECK: #[[$MAP:.*]] = #xla_gpu.indexing_map<"(d0, d1)[s0, s1] -> (d0 + s0, d1 + s1)
 // CHECK-SAME: d0 in [0, 32], d1 in [0, 2], s0 in [0, 1024], s1 in [0, 32]
-// CHECK: #[[$MAP1:.*]] = #xla_gpu.indexing_map<(d0, d1)[s0, s1] -> (s0, s1)
+// CHECK: #[[$MAP1:.*]] = #xla_gpu.indexing_map<"(d0, d1)[s0, s1] -> (s0, s1)
 // CHECK-SAME: d0 in [0, 32], d1 in [0, 2], s0 in [0, 1024], s1 in [0, 32]
-// CHECK: #[[$MAP2:.*]] = #xla_gpu.indexing_map<(d0, d1) -> (d0, d1)
+// CHECK: #[[$MAP2:.*]] = #xla_gpu.indexing_map<"(d0, d1) -> (d0, d1)
 // CHECK-SAME: d0 in [0, 32], d1 in [0, 2],
 // CHECK-LABEL: @materialize_and_insert
 // CHECK: %[[MATERIALIZED:.*]] = xla_gpu.materialize @exp(%{{.*}}) at
@@ -233,13 +215,14 @@ func.func @reduce_middle_dim(%in: tensor<16x8x4xf32>, %init: f32)
 
 // -----
 
-#map = #xla_gpu.indexing_map<(d0, d1) -> (d0 * 64 + d1), domain: d0 in [0, 15], d1 in [0, 63], is_simplified: false>
+#map = #xla_gpu.indexing_map<"(d0, d1) -> (d0 * 64 + d1),"
+  "domain: d0 in [0, 15], d1 in [0, 63], is_simplified: false">
 func.func @reindex(%in0: tensor<1024xf32>) -> tensor<16x64xf32> {
   %0 = xla_gpu.reindex %in0 at #map : tensor<1024xf32> -> tensor<16x64xf32>
   func.return %0 : tensor<16x64xf32>
 }
 
-// CHECK: #[[$MAP:.*]] = #xla_gpu.indexing_map<(d0, d1) -> (d0 * 64 + d1)
+// CHECK: #[[$MAP:.*]] = #xla_gpu.indexing_map<"(d0, d1) -> (d0 * 64 + d1)
 // CHECK-LABEL: func.func @reindex(
 // CHECK-SAME:    %[[IN1:.*]]: tensor<1024xf32>
 // CHECK:         xla_gpu.reindex %[[IN1]] at #[[$MAP]] :
@@ -247,7 +230,8 @@ func.func @reindex(%in0: tensor<1024xf32>) -> tensor<16x64xf32> {
 
 // -----
 
-#map = #xla_gpu.indexing_map<(d0, d1) -> (d0 * 64 + d1), domain: d0 in [0, 15], d1 in [0, 63], is_simplified: false>
+#map = #xla_gpu.indexing_map<"(d0, d1) -> (d0 * 64 + d1),"
+  "domain: d0 in [0, 15], d1 in [0, 63], is_simplified: false">
 func.func @reindex_pad(%in0: tensor<1022xf32>) -> tensor<16x64xf32> {
   %c0 = arith.constant 0.0 : f32
   %0 = xla_gpu.reindex %in0 at #map default %c0
@@ -255,7 +239,7 @@ func.func @reindex_pad(%in0: tensor<1022xf32>) -> tensor<16x64xf32> {
   func.return %0 : tensor<16x64xf32>
 }
 
-// CHECK: #[[$MAP:.*]] = #xla_gpu.indexing_map<(d0, d1) -> (d0 * 64 + d1)
+// CHECK: #[[$MAP:.*]] = #xla_gpu.indexing_map<"(d0, d1) -> (d0 * 64 + d1)
 // CHECK-LABEL: func.func @reindex_pad(
 // CHECK-SAME:    %[[IN1:.*]]: tensor<1022xf32>
 // CHECK:         %[[C0:.*]] = arith.constant 0.00

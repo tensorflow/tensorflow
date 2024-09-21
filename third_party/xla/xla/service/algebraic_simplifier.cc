@@ -530,7 +530,8 @@ bool AlgebraicSimplifierVisitor::IsNonNegative(
       return hlo->operand(0) == hlo->operand(1);
     }
     case HloOpcode::kAbs:
-    case HloOpcode::kExp: {
+    case HloOpcode::kExp:
+    case HloOpcode::kIota: {
       return true;
     }
     case HloOpcode::kBroadcast: {
