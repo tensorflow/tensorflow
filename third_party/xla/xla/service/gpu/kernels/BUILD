@@ -177,7 +177,6 @@ gpu_kernel_library(
     compatible_with = [],
     deps = [
         "//xla:types",
-        "//xla/stream_executor/gpu:gpu_types_header",
         "//xla/tsl/lib/math:math_util",
     ],
 )
