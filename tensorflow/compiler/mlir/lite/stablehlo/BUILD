@@ -354,9 +354,9 @@ cc_library(
 )
 
 cc_library(
-    name = "fold_broadcast_to_pass",
+    name = "fold_broadcasting_op_pass",
     srcs = [
-        "transforms/fold_broadcast_to_pass.cc",
+        "transforms/fold_broadcasting_op_pass.cc",
     ],
     hdrs = [
         "transforms/passes.h",
@@ -1000,7 +1000,7 @@ tf_cc_binary(
     deps = [
         ":compose_uniform_quantized_type_pass",
         ":fold_broadcast_pass",
-        ":fold_broadcast_to_pass",
+        ":fold_broadcasting_op_pass",
         ":fuse_convolution_pass",
         ":legalize_stablehlo_composite_to_tfl_custom",
         ":legalize_stablehlo_custom_call_to_composite",

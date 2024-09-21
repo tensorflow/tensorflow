@@ -287,12 +287,12 @@ void AddPostQuantizationStableHloToTfPasses(
     // TODO: b/354280588 - Rewrite this pass into a pattern in PrepareHloPass.
     pass_manager.addPass(mlir::odml::CreateUnfoldSplatConstantPass());
     pass_manager.addPass(mlir::odml::CreateLegalizeHloToTfLitePass());
-    // Folds tfl.BroadcastTo ops with subsequent ops if they have built in
+    // Folds TFL broadcasting ops with subsequent ops if they have built in
     // broadcasting support. This needs to be run immediately after HLO->TFL
     // legalization, otherwise the newly generated TFL broadcast ops can fold
     // and materialize the weights.
     pass_manager.addNestedPass<mlir::func::FuncOp>(
-        mlir::odml::CreateFoldBroadcastToPass());
+        mlir::odml::CreateFoldBroadcastingOpPass());
   }
   // folds tf.BroadcastTo ops with subsequent ops if they have built in
   // broadcasting support. This needs to be run immediately after HLO->TF
