@@ -116,9 +116,7 @@ bool IsRemovableWhile(HloInstruction* instruction,
       // Update the users of the old fusion instruction.
       if (tuple_shapes.size() > 1) {
         for (HloInstruction* gte : fusion_instruction->users()) {
-          auto it =
-              std::lower_bound(used_tuple_elements.begin(),
-                               used_tuple_elements.end(), gte->tuple_index());
+          auto it = used_tuple_elements.lower_bound(gte->tuple_index());
           int64_t new_tuple_index =
               std::distance(used_tuple_elements.begin(), it);
           gte->set_tuple_index(new_tuple_index);
