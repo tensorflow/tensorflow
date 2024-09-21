@@ -120,7 +120,7 @@ Status PyArrayDescr_to_TF_DataType(PyArray_Descr* descr,
     } else {
       return errors::Internal("Unsupported numpy data type");
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
   return errors::Internal("Unsupported numpy data type");
 }
@@ -227,7 +227,7 @@ Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
       return errors::Internal("Unsupported numpy type: ",
                               numpy_type_name(pyarray_type));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status PyObjectToString(PyObject* obj, const char** ptr, Py_ssize_t* len,
@@ -239,11 +239,11 @@ Status PyObjectToString(PyObject* obj, const char** ptr, Py_ssize_t* len,
       return errors::Internal("Unable to get element as bytes.");
     }
     *ptr = buf;
-    return OkStatus();
+    return absl::OkStatus();
   } else if (PyUnicode_Check(obj)) {
 #if (PY_MAJOR_VERSION > 3 || (PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION >= 3))
     *ptr = PyUnicode_AsUTF8AndSize(obj, len);
-    if (*ptr != nullptr) return OkStatus();
+    if (*ptr != nullptr) return absl::OkStatus();
 #else
     PyObject* utemp = PyUnicode_AsUTF8String(obj);
     char* buf;
@@ -280,7 +280,7 @@ Status PyBytesArrayMap(PyArrayObject* array, F f) {
     Py_XDECREF(ptr_owner);
     PyArray_ITER_NEXT(iter.get());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Encode the strings in 'array' into a contiguous buffer and return the base of
@@ -299,7 +299,7 @@ Status EncodePyBytesArray(PyArrayObject* array, int64_t nelems, size_t* size,
         dst++;
       }));
   *buffer = base_ptr.release();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status CopyTF_TensorStringsToPyArray(const TF_Tensor* src, uint64 nelems,
@@ -330,7 +330,7 @@ Status CopyTF_TensorStringsToPyArray(const TF_Tensor* src, uint64 nelems,
     }
     PyArray_ITER_NEXT(iter.get());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Determine the dimensions of a numpy ndarray to be created to represent an
@@ -354,7 +354,7 @@ Status GetPyArrayDimensionsForTensor(const TF_Tensor* tensor,
       *nelems *= dims->back();
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Determine the type description (PyArray_Descr) of a numpy ndarray to be
@@ -385,7 +385,7 @@ Status GetPyArrayDescrForTensor(const TF_Tensor* tensor,
     *descr = PyArray_DescrFromType(type_num);
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 inline void FastMemcpy(void* dst, const void* src, size_t size) {
@@ -450,7 +450,7 @@ Status TF_TensorToPyArray(Safe_TF_TensorPtr tensor, PyObject** out_ndarray) {
   if (tensor == nullptr) {
     Py_INCREF(Py_None);
     *out_ndarray = Py_None;
-    return OkStatus();
+    return absl::OkStatus();
   }
   int64_t nelems = -1;
   absl::InlinedVector<npy_intp, 4UL> dims;
@@ -466,7 +466,7 @@ Status TF_TensorToPyArray(Safe_TF_TensorPtr tensor, PyObject** out_ndarray) {
             static_cast<DataType>(TF_TensorType(moved)),
             [moved] { TF_DeleteTensor(moved); }, out_ndarray)
             .ok()) {
-      return OkStatus();
+      return absl::OkStatus();
     }
   }
   tensor.reset(original);
@@ -510,7 +510,7 @@ Status TF_TensorToPyArray(Safe_TF_TensorPtr tensor, PyObject** out_ndarray) {
   }
 
   *out_ndarray = safe_out_array.release();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status NdarrayToTensor(TFE_Context* ctx, PyObject* ndarray,
@@ -586,7 +586,7 @@ Status NdarrayToTensor(TFE_Context* ctx, PyObject* ndarray,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
