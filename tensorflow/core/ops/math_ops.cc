@@ -1511,7 +1511,7 @@ Status RangeSize(const Tensor* start_t, const Tensor* limit_t,
     return errors::InvalidArgument("Requires delta != 0");
   }
 
-  int64_t size;
+  uint64_t size;
   if (std::is_integral<T>::value) {
     uint64_t range;
     if ((limit > 0 && start < 0) || (limit < 0 && start > 0)) {
@@ -1530,10 +1530,10 @@ Status RangeSize(const Tensor* start_t, const Tensor* limit_t,
       return errors::InvalidArgument("Requires ((limit - start) / delta) <= ",
                                      std::numeric_limits<int64_t>::max());
     }
-    size = static_cast<int64_t>(size_auto);
+    size = static_cast<uint64_t>(size_auto);
   }
 
-  c->set_output(0, c->Vector(static_cast<int64_t>(size)));
+  c->set_output(0, c->Vector(static_cast<uint64_t>(size)));
   return absl::OkStatus();
 }
 
