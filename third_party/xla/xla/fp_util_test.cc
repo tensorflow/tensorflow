@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 
+#include <gtest/gtest.h>
 #include "absl/base/casts.h"
 #include "absl/numeric/bits.h"
 #include "xla/bit_cast.h"
