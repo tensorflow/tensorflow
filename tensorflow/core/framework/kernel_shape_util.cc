@@ -17,7 +17,11 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/util/padding.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 Status GetWindowedOutputSizeVerbose(int64_t input_size, int64_t filter_size,

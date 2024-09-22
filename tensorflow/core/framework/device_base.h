@@ -20,8 +20,12 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/base/macros.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "unsupported/Eigen/CXX11/src/Tensor/TensorForwardDeclarations.h"  // from @eigen_archive
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"

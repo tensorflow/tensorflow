@@ -15,12 +15,17 @@ limitations under the License.
 
 #include "tensorflow/core/framework/device.h"
 
+#include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/device_factory.h"
-#include "tensorflow/core/framework/op_segment.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/graph/types.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 
