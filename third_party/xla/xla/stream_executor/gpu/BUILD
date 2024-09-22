@@ -499,7 +499,7 @@ gpu_only_cc_library(
         "//xla/service/gpu:__subpackages__",
         "//xla/stream_executor:__subpackages__",
         "//tensorflow/core/kernels:__subpackages__",
-    ]),
+    ]) + ["//tensorflow/compiler/mlir/tools/kernel_gen/transforms:__pkg__"],
     deps = [
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/log",
