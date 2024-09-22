@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace {
 
