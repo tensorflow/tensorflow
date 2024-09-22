@@ -1301,7 +1301,6 @@ cc_library(
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "xla_data_proto_py_pb2",
-#     api_version = 2,
 #     visibility = internal_visibility([":friends"]),
 #     deps = [":xla_data_proto"],
 # )
@@ -1309,7 +1308,6 @@ cc_library(
 # py_proto_library(
 #     name = "xla_py_pb2",
 #     testonly = 0,
-#     api_version = 2,
 #     compatible_with = get_compatible_with_portable(),
 #     visibility = internal_visibility([":friends"]),
 #     deps = [":xla_proto"],
