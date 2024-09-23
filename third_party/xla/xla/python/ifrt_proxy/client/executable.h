@@ -75,10 +75,10 @@ class LoadedExecutable final
 
   std::optional<std::vector<OpSharding>> GetParameterShardings() const override;
   std::optional<std::vector<OpSharding>> GetOutputShardings() const override;
-  absl::StatusOr<std::vector<std::unique_ptr<Layout>>> GetParameterLayouts()
-      const override;
-  absl::StatusOr<std::vector<std::unique_ptr<Layout>>> GetOutputLayouts()
-      const override;
+  absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtLayout>>>
+  GetParameterLayouts() const override;
+  absl::StatusOr<std::vector<std::unique_ptr<xla::PjRtLayout>>>
+  GetOutputLayouts() const override;
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>
   GetOutputMemoryKinds() const override;
   absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()

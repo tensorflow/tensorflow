@@ -225,8 +225,9 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // single-shard dimensions `dims`.
   // TODO(hyeontaek): Change the API to take `Shape` and `Sharding` instead of
   // single-shard dimensions and device.
-  virtual absl::StatusOr<std::unique_ptr<PjRtLayout>> GetDefaultLayoutForDevice(
-      DType dtype, absl::Span<const int64_t> dims, Device* device) const = 0;
+  virtual absl::StatusOr<std::unique_ptr<xla::PjRtLayout>>
+  GetDefaultLayoutForDevice(DType dtype, absl::Span<const int64_t> dims,
+                            Device* device) const = 0;
 
   static char ID;  // NOLINT
 };
