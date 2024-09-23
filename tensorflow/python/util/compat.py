@@ -121,8 +121,8 @@ def as_str(bytes_or_text, encoding='utf-8'):
   Raises:
     TypeError: If bytes_or_text is not a bytes or unicode object.
     UnicodeDecodeError: If bytes_or_text is a bytes object and cannot be decoded using the specified encoding.
- """    
-return as_text(bytes_or_text, encoding)
+  """    
+  return as_text(bytes_or_text, encoding)
 
 tf_export('compat.as_text')(as_text)
 tf_export('compat.as_bytes')(as_bytes)
