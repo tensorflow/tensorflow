@@ -82,8 +82,8 @@ cc_library(
     srcs = ["cutlass_gemm_fusion.cc"],
     hdrs = ["cutlass_gemm_fusion.h"],
     tags = [
+        "cuda-only",
         "gpu",
-        "no_rocm",
     ],
     deps = [
         ":custom_kernel",
@@ -115,7 +115,7 @@ xla_test(
     backends = ["gpu"],
     # TODO(b/332820384): Enable when it passes on H100.
     disabled_backends = DEFAULT_DISABLED_BACKENDS + ["gpu_h100"],
-    tags = ["no_rocm"],
+    tags = ["cuda-only"],
     deps = [
         ":custom_kernel_fusion_pattern",
         ":cutlass_gemm_custom_kernel",
@@ -264,8 +264,8 @@ cc_library(
     srcs = ["cutlass_gemm_custom_kernel.cc"],
     hdrs = ["cutlass_gemm_custom_kernel.h"],
     tags = [
+        "cuda-only",
         "gpu",
-        "no_rocm",
     ],
     deps = [
         ":custom_kernel",
@@ -288,7 +288,7 @@ xla_test(
     srcs = ["cutlass_gemm_custom_kernel_test.cc"],
     backends = ["gpu"],
     data = [":cutlass_gemm_kernel_f32xf32_to_f32.so"],
-    tags = ["no_rocm"],
+    tags = ["cuda-only"],
     deps = [
         ":cutlass_gemm_custom_kernel",
         "//xla:xla_data_proto_cc",
@@ -309,8 +309,8 @@ xla_cc_binary(
     testonly = 1,
     srcs = ["cutlass_gemm_custom_kernel_benchmarks.cc"],
     tags = [
+        "cuda-only",
         "gpu",
-        "no_rocm",
     ],
     deps = [
         ":cutlass_gemm_custom_kernel",
@@ -346,7 +346,7 @@ cuda_library(
         [],
         ["-Wno-unknown-attributes"],
     ),  # __grid_constant__ is not supported by clang
-    tags = ["no_rocm"],
+    tags = ["cuda-only"],
     deps = [
         ":cutlass_gemm",
         "@cutlass_archive//:cutlass",
@@ -355,7 +355,7 @@ cuda_library(
 
 cuda_library(
     name = "cutlass_gemm_epilogue",
-    tags = ["no_rocm"],
+    tags = ["cuda-only"],
     # TODO(ezhulenev): Update to regular hdrs after fixing CUTLASS headers.
     textual_hdrs = ["cutlass_gemm_epilogue.cu.h"],
     deps = ["@cutlass_archive//:cutlass"],
@@ -371,8 +371,8 @@ cuda_library(
 cc_library(
     name = "cutlass_gemm_kernels",
     tags = [
+        "cuda-only",
         "gpu",
-        "no_rocm",
     ],
     deps = [
         ":cutlass_gemm_kernel_bf16xbf16_to_bf16",
@@ -399,7 +399,7 @@ cuda_library(
         [],
         ["-Wno-unknown-attributes"],
     ),
-    tags = ["no_rocm"],
+    tags = ["cuda-only"],
     deps = [
         ":cutlass_gemm_adaptor",
         "@cutlass_archive//:cutlass",
@@ -414,7 +414,7 @@ cuda_library(
         [],
         ["-Wno-unknown-attributes"],
     ),
-    tags = ["no_rocm"],
+    tags = ["cuda-only"],
     deps = [
         ":cutlass_gemm_adaptor",
         "@cutlass_archive//:cutlass",
@@ -432,7 +432,7 @@ cuda_library(
         [],
         ["-Wno-unknown-attributes"],
     ),
-    tags = ["no_rocm"],
+    tags = ["cuda-only"],
     deps = [
         ":cutlass_gemm_adaptor",
         "@cutlass_archive//:cutlass",
@@ -450,7 +450,7 @@ cuda_library(
         [],
         ["-Wno-unknown-attributes"],
     ),
-    tags = ["no_rocm"],
+    tags = ["cuda-only"],
     deps = [
         ":cutlass_gemm_adaptor",
         "@cutlass_archive//:cutlass",
@@ -463,8 +463,8 @@ cuda_library(
     srcs = ["cutlass_gemm_kernel_bf16xs8_to_f32.cu.cc"],
     copts = ["-Wno-unknown-attributes -mllvm -unroll-threshold=100000"],
     tags = [
+        "cuda-only",
         "gpu",
-        "no_rocm",
     ],
     deps = [
         ":cutlass_gemm_adaptor",
@@ -483,8 +483,8 @@ cc_binary(
     linkshared = True,
     linkstatic = False,
     tags = [
+        "cuda-only",
         "gpu",
-        "no_rocm",
     ],
     deps = [":cutlass_gemm"],
 )

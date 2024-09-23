@@ -879,7 +879,7 @@ xla_test(
     ],
     tags = [
         "config-cuda-only",
-        "no_rocm",
+        "cuda-only",
     ],
     deps = [
         ":xla_compile_lib",

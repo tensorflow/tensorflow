@@ -1216,7 +1216,7 @@ xla_test(
     ],
     shard_count = 50,
     tags = [
-        "no_rocm",
+        "cuda-only",
         "optonly",
     ],
     deps = CONVOLUTION_TEST_DEPS + [
@@ -1235,7 +1235,7 @@ xla_test(
     ],
     shard_count = 50,
     tags = [
-        "no_rocm",
+        "cuda-only",
         "optonly",
         "test_xla_cpu_thunks",
     ],
@@ -1256,7 +1256,7 @@ xla_test(
     backends = ["gpu"],
     shard_count = 40,
     tags = [
-        "no_rocm",
+        "cuda-only",
         "optonly",
     ],
     deps = CONVOLUTION_TEST_DEPS + [
@@ -1273,7 +1273,7 @@ xla_test(
     backends = ["gpu"],
     shard_count = 40,
     tags = [
-        "no_rocm",
+        "cuda-only",
         "optonly",
     ],
     deps = CONVOLUTION_TEST_DEPS + [
@@ -1302,7 +1302,7 @@ xla_test(
     backend_args = {"gpu": ["--xla_backend_extra_options=xla_gpu_experimental_conv_disable_layout_heuristic"]},
     backends = ["gpu"],
     shard_count = 25,
-    tags = ["no_rocm"],
+    tags = ["cuda-only"],
     deps = CONVOLUTION_TEST_DEPS + [
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
