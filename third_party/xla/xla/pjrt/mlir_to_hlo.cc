@@ -58,12 +58,12 @@ limitations under the License.
 #include "stablehlo/dialect/Version.h"
 #include "stablehlo/transforms/Passes.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/utils.h"
-#include "xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
 

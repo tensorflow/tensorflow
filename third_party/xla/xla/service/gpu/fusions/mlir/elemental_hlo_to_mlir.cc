@@ -66,6 +66,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/map_mhlo_to_scalar_op.h"
 #include "xla/primitive_util.h"
@@ -77,7 +78,6 @@ limitations under the License.
 #include "xla/service/gpu/model/indexing_map.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 

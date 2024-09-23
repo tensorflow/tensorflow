@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/global_device_id.h"
@@ -48,7 +49,6 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
