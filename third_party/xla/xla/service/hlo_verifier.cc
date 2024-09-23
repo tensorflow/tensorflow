@@ -2368,6 +2368,26 @@ absl::Status VerifyAsynchronousInstructionPairs(const HloModule& module) {
               instruction, {HloOpcode::kCollectivePermuteStart}));
           break;
         }
+        case HloOpcode::kSend: {
+          TF_RETURN_IF_ERROR(VerifySingleUser(
+              instruction, {HloOpcode::kSendDone, HloOpcode::kTuple}));
+          break;
+        }
+        case HloOpcode::kSendDone: {
+          TF_RETURN_IF_ERROR(VerifySingleOperand(
+              instruction, {HloOpcode::kSend, HloOpcode::kGetTupleElement}));
+          break;
+        }
+        case HloOpcode::kRecv: {
+          TF_RETURN_IF_ERROR(VerifySingleUser(
+              instruction, {HloOpcode::kRecvDone, HloOpcode::kTuple}));
+          break;
+        }
+        case HloOpcode::kRecvDone: {
+          TF_RETURN_IF_ERROR(VerifySingleOperand(
+              instruction, {HloOpcode::kRecv, HloOpcode::kGetTupleElement}));
+          break;
+        }
         default:
           break;
       }

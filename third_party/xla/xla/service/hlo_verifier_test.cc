@@ -3428,5 +3428,39 @@ TEST_F(HloVerifierTest, NoErrorOnDuplicateChannelId) {
   ASSERT_IS_OK(verifier.Run(module.get()).status());
 }
 
+TEST_F(HloVerifierTest, ChannelVerifierAsyncSend) {
+  const char* const kModuleStr = R"(
+    HloModule test
+
+    ENTRY main_spmd {
+      data = f32[16] parameter(0)
+      after_all = token[] after-all()
+      send = (f32[16], u32[], token[]) send(after_all, data), channel_id=1,
+          frontend_attributes={
+            _xla_send_send_source_target_pairs={{0,1},{1,2},{2,3}}}
+      ROOT send_done = (f32[16], token[]) send-done(send), channel_id=1
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+  TF_ASSERT_OK(verifier().Run(module.get()));
+}
+
+TEST_F(HloVerifierTest, ChannelVerifierAsyncRecv) {
+  const char* const kModuleStr = R"(
+    HloModule test
+
+    ENTRY main_spmd {
+      after_all = token[] after-all()
+      recv = (f32[16], u32[], token[]) recv(after_all), channel_id=1,
+          frontend_attributes={
+            _xla_send_send_source_target_pairs={{0,1},{1,2},{2,3}}}
+      recv_done = (f32[16], token[]) recv-done(recv), channel_id=1
+      ROOT result = f32[16] get-tuple-element(recv_done), index=0
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+  TF_ASSERT_OK(verifier().Run(module.get()));
+}
+
 }  // namespace
 }  // namespace xla
