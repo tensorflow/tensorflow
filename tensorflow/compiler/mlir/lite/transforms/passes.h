@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/tf_legalizations/analyze_variables_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/tf_legalizations/legalize_tensorlist_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/tf_legalizations/while_loop_outline_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/tflite_passes/runtime_verify_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/tflite_passes/split_merged_operands_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/tflite_passes/unfold_large_splat_constants_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/unfreeze_global_constants.h"
@@ -212,7 +213,9 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateIfOutlinePass();
 std::unique_ptr<OperationPass<func::FuncOp>> CreateReduceWhileOperandsPass();
 
 // Verifies runtime constraints.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateRuntimeVerifyPass();
+inline std::unique_ptr<mlir::Pass> CreateRuntimeVerifyPass() {
+  return Create<RuntimeVerifyPass>();
+}
 
 // Creates raise custom ops pass, which legalize custom ops to TFL::CustomOp
 std::unique_ptr<OperationPass<func::FuncOp>> CreateRaiseCustomOpsPass();
@@ -345,6 +348,7 @@ inline void registerTensorFlowLitePasses() {
   // Other TFLite Passes
   Register<UnfoldLargeSplatConstantPass>();
   Register<SplitMergedOperandsPass>();
+  Register<RuntimeVerifyPass>();
 }
 
 }  // namespace TFL

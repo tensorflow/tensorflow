@@ -562,6 +562,7 @@ cc_library(
         "transforms/tf_legalizations/analyze_variables_pass.h",
         "transforms/tf_legalizations/legalize_tensorlist_pass.h",
         "transforms/tf_legalizations/while_loop_outline_pass.h",
+        "transforms/tflite_passes/runtime_verify_pass.h",
         "transforms/tflite_passes/split_merged_operands_pass.h",
         "transforms/tflite_passes/unfold_large_splat_constants_pass.h",
         "transforms/unfreeze_global_constants.h",
@@ -591,6 +592,7 @@ cc_library(
         ":tensorflow_lite_optimize",
         ":tensorflow_lite_passes_inc_gen",
         ":tensorflow_lite_push_transpose_through_ewise_pass",
+        ":tensorflow_lite_runtime_verify",
         ":tensorflow_lite_split_merged_operands",
         ":tensorflow_lite_tf_unfreeze_global_tensors",
         ":tensorflow_lite_unfold_large_splat_constants",
@@ -1017,6 +1019,23 @@ cc_library(
 )
 
 cc_library(
+    name = "tensorflow_lite_runtime_verify",
+    srcs = [
+        "transforms/tflite_passes/runtime_verify_pass.cc",
+    ],
+    hdrs = [
+        "ir/tfl_ops_interface.h.inc",
+        "transforms/tflite_passes/runtime_verify_pass.h",
+    ],
+    deps = [
+        ":pass",
+        ":tensorflow_lite_ops",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
     name = "tensorflow_lite_legalize_tf",
     srcs = [
         "transforms/dilated_conv.cc",
@@ -1041,11 +1060,9 @@ cc_library(
         "transforms/raise_custom_ops.cc",
         "transforms/reduce_type_precision.cc",
         "transforms/reduce_while_operands.cc",
-        "transforms/runtime_verify.cc",
         "transforms/trim_functions_tf.cc",
     ],
     hdrs = [
-        "ir/tfl_ops_interface.h.inc",
         "transforms/dilated_conv.h",
         "transforms/passes.h",
     ],

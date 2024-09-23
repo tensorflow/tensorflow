@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/ir/transforms/multi_threaded_atom_program_compiler.h"
+#include "xla/python/ifrt/ir/transforms/passes.h"
 #include "xla/python/ifrt/ir/transforms/utils.h"
 #include "xla/python/ifrt/support/sharding_conversions.h"
 #include "xla/service/hlo.pb.h"

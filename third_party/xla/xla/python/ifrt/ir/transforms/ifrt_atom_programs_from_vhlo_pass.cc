@@ -27,6 +27,7 @@ limitations under the License.
 #include "stablehlo/dialect/Register.h"
 #include "stablehlo/dialect/Serialization.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.pb.h"
+#include "xla/python/ifrt/ir/transforms/passes.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {

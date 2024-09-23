@@ -363,11 +363,6 @@ def ReduceWhileOperandsPass : Pass<"tfl-reduce-while", "mlir::func::FuncOp"> {
   let dependentDialects = ["TFL::TensorFlowLiteDialect", "TF::TensorFlowDialect"];
 }
 
-def RuntimeVerifyPass : Pass<"tfl-runtime-verify", "mlir::func::FuncOp"> {
-  let summary = "TFLite runtime verification";
-  let constructor = "CreateRuntimeVerifyPass()";
-}
-
 def TrimFunctionsPass : Pass<"tfl-trim-funcs-tf", "mlir::ModuleOp"> {
   let summary = "Trim functions to restrict them to a specified allowlist prior to legalization to TensorFlow lite dialect";
   let constructor = "CreateTrimFunctionsPass()";
