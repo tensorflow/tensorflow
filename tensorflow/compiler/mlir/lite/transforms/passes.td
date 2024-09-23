@@ -52,35 +52,6 @@ def DecomposeHybridQuantizationPass : Pass<"tfl-decompose-hybrid-quantization", 
   let dependentDialects = ["TFL::TensorFlowLiteDialect"];
 }
 
-def DenseToSparsePass : Pass<"tfl-dense-to-sparse", "mlir::func::FuncOp"> {
-  let summary = "Convert dense tensor to sparse format.";
-  let description = [{
-      This pass encodes sparse weights in the model in the proper format, and adds
-      Densify() op if necessary. The general algorithm is:
-        1. Get list of operands (weights) of an op that can be sparse.
-        2. Get list of supported block configurations of the op.
-        3. Calculate random sparsity of the weight.
-          3.1. If sparsity level is below the encoding threshold, keep in dense.
-          3.2. If sparsity level is above the encoding threshold, go to 4.
-        4. Try to encode the weight with supported block configurations. If the
-           weight was pruned with the same block config, the blocked sparsity level
-           should match the random sparsity.
-          4.1. Return the matching block config if found.
-          4.2. If no matching block config is found, encode the weight with random
-               sparsity, and add Densify() op to fall back to dense execution.
-  }];
-  let constructor = "CreateDenseToSparsePass()";
-  let dependentDialects = ["TFL::TensorFlowLiteDialect"];
-  let options = [
-    Option<"default_min_", "default-min", "double", "-1.0",
-               "Default minimum value for TFLite quantization">,
-    Option<"default_max_", "default-max", "double", "1.0",
-               "Default maximum value for TFLite quantization">,
-    Option<"is_signed_", "is-signed", "bool", "false",
-               "Is the corresponding integer signed">,
-  ];
-}
-
 def IdentifyDilatedConvPass : Pass<"tfl-identify-dilated-conv", "mlir::func::FuncOp"> {
   let summary = "Convert dense tensor to sparse format.";
   let constructor = "CreateIdentifyDilatedConvPass()";

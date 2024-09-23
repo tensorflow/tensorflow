@@ -181,10 +181,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateDefaultQuantParamsPass();
 // Creates an instance of the IdentifyDilatedConvPass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateIdentifyDilatedConvPass();
 
-// Creates an instance of the TensorFlow Lite dialect pass to convert dense
-// tensor to sparse format.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateDenseToSparsePass();
-
 // Creates function pass to legalize TF While to TFL While.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFWhilePass();
 
@@ -267,7 +263,6 @@ std::unique_ptr<OperationPass<func::FuncOp>>
 CreatePartitionedTopologicalSortPass();
 
 #define GEN_PASS_DECL_DEFAULTQUANTPARAMSPASS
-#define GEN_PASS_DECL_DENSETOSPARSEPASS
 #define GEN_PASS_DECL_LEGALIZETFPASS
 #define GEN_PASS_DECL_LOWERSTATICTENSORLISTPASS
 #define GEN_PASS_DECL_MODIFYIONODESPASS

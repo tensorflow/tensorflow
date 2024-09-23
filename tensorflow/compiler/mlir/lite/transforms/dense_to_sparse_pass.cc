@@ -14,18 +14,17 @@ limitations under the License.
 ==============================================================================*/
 
 // This transformation pass convert dense tensor to sparse format.
+#include "tensorflow/compiler/mlir/lite/transforms/dense_to_sparse_pass.h"
 
 #include "absl/memory/memory.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/kernels/internal/utils/sparsity_format_converter.h"
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 
 //===----------------------------------------------------------------------===//
 // The DenseToSparse Pass.
@@ -34,9 +33,6 @@ namespace mlir {
 namespace TFL {
 
 namespace {
-
-#define GEN_PASS_DEF_DENSETOSPARSEPASS
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // If sparsity level is below this threshold, keep the tensor in dense format.
 constexpr float kMinSparsityLevel = 0.3;
@@ -277,13 +273,7 @@ std::vector<T> BuildSparsityParameterAttribute(
 
   return compressed_data;
 }
-
-struct DenseToSparsePass
-    : public impl::DenseToSparsePassBase<DenseToSparsePass> {
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(DenseToSparsePass)
-
-  void runOnOperation() override;
-};
+}  // namespace
 
 void DenseToSparsePass::runOnOperation() {
   func::FuncOp func = getOperation();
@@ -418,7 +408,6 @@ void DenseToSparsePass::runOnOperation() {
   });
 }
 
-}  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect DenseToSparse pass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateDenseToSparsePass() {
