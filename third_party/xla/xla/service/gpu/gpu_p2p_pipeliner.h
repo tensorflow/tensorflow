@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GPU_P2P_PIPELINER_H_
 #define XLA_SERVICE_GPU_GPU_P2P_PIPELINER_H_
 
-#include "xla/service/hlo_pass_pipeline.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
 
 namespace xla {
 namespace gpu {

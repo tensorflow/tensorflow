@@ -649,12 +649,6 @@ PyClient::GetEmitPythonCallbackDescriptor(nb::callable callable,
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM("xla_python_cpu_callback",
                                              &XlaPythonCpuCallback);
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM || TENSORFLOW_USE_SYCL
-XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(
-    "xla_python_gpu_callback", &XlaPythonGpuCallback,
-    absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value()));
-#endif
-
 /* static */ int PyClient::tp_traverse(PyObject* self, visitproc visit,
                                        void* arg) {
   PyClient* c = nb::inst_ptr<PyClient>(self);

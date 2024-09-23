@@ -101,6 +101,7 @@ tf_python_pybind_extension(
     deps = [
         ":pywrap_tensorflow_to_stablehlo_lib_header_only",
         "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/strings:string_view",
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",
         "@pybind11_abseil//pybind11_abseil:status_casters",

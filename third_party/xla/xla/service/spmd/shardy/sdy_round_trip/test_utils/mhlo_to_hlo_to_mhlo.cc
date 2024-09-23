@@ -36,13 +36,13 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
+#include "xla/hlo/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
-#include "xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
-#include "xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {

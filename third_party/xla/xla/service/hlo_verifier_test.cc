@@ -3408,5 +3408,25 @@ TEST_F(HloVerifierTestLayoutSensitive,
               HasSubstr("Instruction has mismatched minor-to-major size and "
                         "dimension size: "));
 }
+
+TEST_F(HloVerifierTest, NoErrorOnDuplicateChannelId) {
+  const char* const hlo_string = R"(
+  HloModule m
+
+  ENTRY main {
+    data_param = f32[2048,2048]{1,0} parameter(0)
+    cp1 = f32[2048,2048]{1,0} collective-permute(data_param), source_target_pairs={{0,1},{1,2},{2,3}}, channel_id=1
+    cp2 = f32[2048,2048]{1,0} collective-permute(data_param), source_target_pairs={{0,1}}, channel_id=1
+
+    ROOT tuple = (f32[2048,2048]{1,0}, f32[2048,2048]{1,0}) tuple(cp1, cp2)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  HloVerifierOpts opts{};
+  opts.verify_unique_channel_ids = false;
+  HloVerifier verifier(std::move(opts));
+  ASSERT_IS_OK(verifier.Run(module.get()).status());
+}
+
 }  // namespace
 }  // namespace xla

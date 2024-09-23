@@ -33,8 +33,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/map_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/lib/gtl/map_util.h"
 #include "xla/util.h"
-#include "tsl/lib/gtl/map_util.h"
 
 namespace xla {
 

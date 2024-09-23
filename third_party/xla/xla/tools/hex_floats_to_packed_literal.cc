@@ -20,9 +20,9 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/lib/io/buffered_inputstream.h"
+#include "xla/tsl/lib/io/random_inputstream.h"
 #include "xla/tsl/util/command_line_flags.h"
-#include "tsl/lib/io/buffered_inputstream.h"
-#include "tsl/lib/io/random_inputstream.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/file_system.h"
 #include "tsl/platform/init_main.h"

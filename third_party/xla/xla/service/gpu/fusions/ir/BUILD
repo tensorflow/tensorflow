@@ -69,6 +69,14 @@ gentbl_cc_library(
     strip_include_prefix = ".",
     tbl_outs = [
         (
+            ["-gen-enum-decls"],
+            "xla_gpu_enums.h.inc",
+        ),
+        (
+            ["-gen-enum-defs"],
+            "xla_gpu_enums.cc.inc",
+        ),
+        (
             [
                 "-gen-attrdef-decls",
             ],

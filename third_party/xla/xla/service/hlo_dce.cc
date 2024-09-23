@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <iterator>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -79,11 +80,9 @@ bool IsRemovableWhile(HloInstruction* instruction,
       !computation->root_instruction()->has_sharding() &&
       fusion_instruction->output_operand_aliasing().empty() &&
       !fusion_instruction->HasControlDependencies() &&
-      fusion_instruction->user_count() <
-          computation->root_instruction()->operand_count() &&
       !fusion_instruction->IsCustomFusion()) {
-    std::vector<int64_t> used_tuple_elements;
-    used_tuple_elements.reserve(fusion_instruction->user_count());
+    // The order of the used outputs is relevant for the algorithm below.
+    std::set<int64_t> used_tuple_elements;
     // We only support this cleanup if all users of the fusion instruction are
     // GetTupleElement ops, and there is at least one user of
     // 'fusion_instruction'.
@@ -93,10 +92,16 @@ bool IsRemovableWhile(HloInstruction* instruction,
         supported = false;
         break;
       }
-      used_tuple_elements.push_back(gte->tuple_index());
+      used_tuple_elements.insert(gte->tuple_index());
     }
+
+    // If all outputs are used, nothing to clean up.
+    if (used_tuple_elements.size() ==
+        computation->root_instruction()->operand_count()) {
+      supported = false;
+    }
+
     if (supported) {
-      std::sort(used_tuple_elements.begin(), used_tuple_elements.end());
       std::vector<Shape> tuple_shapes;
       tuple_shapes.reserve(used_tuple_elements.size());
       for (int64_t tuple_index : used_tuple_elements) {
@@ -119,18 +124,23 @@ bool IsRemovableWhile(HloInstruction* instruction,
           gte->set_tuple_index(new_tuple_index);
         }
       } else {
-        HloInstruction* gte = fusion_instruction->users()[0];
-        // Replace and change control successors to be dependent on the fusion
-        // instruction itself.
-        TF_ASSIGN_OR_RETURN(bool replaced,
-                            gte->parent()->ReplaceInstruction(
-                                gte, fusion_instruction,
-                                /*preserve_sharding=*/true,
-                                /*relay_control_dependency=*/true));
-        if (replaced) {
-          changed |= replaced;
+        // Since we iterate over users while removing them .. make a local copy
+        // first.
+        std::vector<HloInstruction*> users(fusion_instruction->users());
+        for (HloInstruction* gte : users) {
+          // Replace and change control successors to be dependent on the fusion
+          // instruction itself.
+          TF_ASSIGN_OR_RETURN(bool replaced,
+                              gte->parent()->ReplaceInstruction(
+                                  gte, fusion_instruction,
+                                  /*preserve_sharding=*/true,
+                                  /*relay_control_dependency=*/true));
+          if (replaced) {
+            changed |= replaced;
+          }
         }
       }
+
       // Update the root of the fusion computation.
       if (tuple_shapes.size() > 1) {
         std::vector<HloInstruction*> new_operands;
@@ -147,7 +157,7 @@ bool IsRemovableWhile(HloInstruction* instruction,
         TF_RETURN_IF_ERROR(
             computation->root_instruction()->ReplaceAllUsesWithDifferentShape(
                 computation->root_instruction()->mutable_operand(
-                    used_tuple_elements[0])));
+                    *used_tuple_elements.begin())));
       }
     }
   }

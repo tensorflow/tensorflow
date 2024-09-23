@@ -44,4 +44,4 @@ fusion {
 
 // reduce0 again, in the context of its status as a fusion hero:
 // CHECK:     tensor.extract %[[P1]][%[[RC]]]
-// CHECK:     shuffle_reduce @add_add(%{{.*}}) to 2
+// CHECK: shuffle_reduce(%{{.*}}) to 2 combiner=@add_add

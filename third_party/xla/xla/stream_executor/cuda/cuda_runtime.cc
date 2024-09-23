@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/stream_executor/cuda/cuda_runtime.h"
+
 #include <cstdint>
 
 #include "absl/base/optimization.h"
@@ -23,8 +25,6 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
-#include "xla/stream_executor/gpu/gpu_runtime.h"
-#include "xla/stream_executor/gpu/gpu_types.h"
 #include "tsl/platform/logging.h"
 
 namespace stream_executor::gpu {
@@ -42,7 +42,7 @@ static const char* ToString(cudaError_t error) {
     }                                                       \
   } while (0)
 
-absl::StatusOr<GpuFunctionHandle> GpuRuntime::GetFuncBySymbol(void* symbol) {
+absl::StatusOr<CUfunction> CudaRuntime::GetFuncBySymbol(void* symbol) {
   VLOG(2) << "Get CUDA function from a symbol: " << symbol;
   cudaFunction_t func;
   RETURN_IF_CUDA_RES_ERROR(cudaGetFuncBySymbol(&func, symbol),
@@ -50,7 +50,7 @@ absl::StatusOr<GpuFunctionHandle> GpuRuntime::GetFuncBySymbol(void* symbol) {
   return reinterpret_cast<CUfunction>(func);
 }
 
-absl::StatusOr<int32_t> GpuRuntime::GetRuntimeVersion() {
+absl::StatusOr<int32_t> CudaRuntime::GetRuntimeVersion() {
   VLOG(2) << "Get CUDA runtime version";
   int32_t version;
   RETURN_IF_CUDA_RES_ERROR(cudaRuntimeGetVersion(&version),

@@ -84,11 +84,6 @@ struct AutoShardingOption {
   bool force_override_reduce_scatter_cost = false;
   double reduce_scatter_cost = 0;
 
-  // Forcibly split the batch dimension and map it to a mesh dimension.
-  // This can force the auto-sharding pass to generate the data parallel
-  // strategy.
-  int force_batch_dim_to_mesh_dim = -1;
-
   // If true, allow replicated parameters.
   bool allow_replicated_parameters = true;
 
@@ -124,10 +119,6 @@ struct AutoShardingOption {
   // false, solve N-D sharding directly, i.e., generating all possible sharding
   // strategies for N-D mesh shape.
   bool solve_nd_sharding_iteratively = true;
-
-  // If it is not empty, forcibly use simple heuristic strategies
-  // instead of the ILP solver. This is used for ablation study.
-  std::string force_simple_heuristic;
 
   // If true, forcibly set the strategy of some instructions.
   bool force_strategy = false;

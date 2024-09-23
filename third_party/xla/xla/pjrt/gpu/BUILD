@@ -277,7 +277,6 @@ cc_library(
     ]) + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
         "//xla/stream_executor/cuda:cuda_platform_id",
-        "//xla/stream_executor/cuda:cuda_activation_header",
         "//xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
         "//xla/service/gpu:nvptx_compiler_impl",
     ]) + if_rocm([
@@ -293,9 +292,9 @@ cc_library(
     srcs = ["gpu_metrics.cc"],
     hdrs = ["gpu_metrics.h"],
     deps = [
+        "//xla/tsl/lib/monitoring:gauge",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/lib/monitoring:gauge",
     ],
 )
 

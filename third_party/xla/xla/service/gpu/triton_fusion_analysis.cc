@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 

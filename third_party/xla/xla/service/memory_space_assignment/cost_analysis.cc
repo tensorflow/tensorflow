@@ -76,8 +76,10 @@ float HloCostAnalysisCosts::BytesPerSecond() {
 
 float HloCostAnalysisCosts::ComputeSeconds(const HloInstruction& instruction) {
   return std::max(
-      static_cast<float>(hlo_cost_analysis_.flop_count(instruction)) /
-          hlo_cost_analysis_.per_second_rate(HloCostAnalysis::kFlopsKey),
+      std::max(
+          hlo_cost_analysis_.min_latency_seconds(HloCostAnalysis::kFlopsKey),
+          static_cast<float>(hlo_cost_analysis_.flop_count(instruction)) /
+              hlo_cost_analysis_.per_second_rate(HloCostAnalysis::kFlopsKey)),
       static_cast<float>(hlo_cost_analysis_.transcendental_count(instruction)) /
           hlo_cost_analysis_.per_second_rate(
               HloCostAnalysis::kTranscendentalsKey));

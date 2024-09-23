@@ -38,7 +38,7 @@ pybind_extension(
         "_src/common.h",
         "_src/custom_float.h",
         "_src/dtypes.cc",
-        "_src/int4_numpy.h",
+        "_src/intn_numpy.h",
         "_src/numpy.cc",
         "_src/numpy.h",
         "_src/ufuncs.h",

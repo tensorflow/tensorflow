@@ -17,20 +17,19 @@ package(
     default_visibility = ["//tensorflow/compiler/mlir/lite/experimental/lrt:__subpackages__"],
 )
 
-cc_library(
-    name = "lite_rt_common",
-    srcs = ["lite_rt_common.cc"],
-    hdrs = ["lite_rt_common.h"],
-)
-
-cc_library(
-    name = "lite_rt_support",
-    hdrs = ["lite_rt_support.h"],
-    deps = [":lite_rt_common"],
-)
-
-cc_library(
-    name = "lite_rt_op_code",
-    hdrs = ["lite_rt_op_code.h"],
-    deps = ["//tensorflow/lite:builtin_ops"],
+cc_binary(
+    name = "apply_plugin",
+    srcs = [
+        "apply_plugin.cc",
+        # TODO: b/366821557 - Support pre-compiled plugins as data dependencies.
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/examples:mul_op_plugin_so",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/core:algo",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/core:api_internal",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/core:lite_rt_model_init",
+        "//tensorflow/compiler/mlir/lite/experimental/lrt/core:model",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@llvm-project//llvm:Support",
+    ],
 )

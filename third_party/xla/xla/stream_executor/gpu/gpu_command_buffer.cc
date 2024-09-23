@@ -853,40 +853,59 @@ absl::Status GpuCommandBuffer::IfElse(ExecutionScopeId execution_scope_id,
 absl::Status GpuCommandBuffer::Case(ExecutionScopeId execution_scope_id,
                                     DeviceMemory<int32_t> index,
                                     std::vector<Builder> branches) {
-  // TODO(ezhulenev): Relax this constraint, we can launch multiple back to back
-  // kernels to update conditional handles in batches of size 8.
-  if (branches.size() > 8) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Case command supports only up to 8 branches, got: ", branches.size()));
-  }
-
   TF_ASSIGN_OR_RETURN(SetCaseConditionKernel * set_case_condition,
                       GetSetCaseConditionKernel());
 
-  auto set_cond_fn = [&](ExecutionScopeId id, ConditionalHandles handles) {
-    int32_t num_handles = handles.size();
+  constexpr size_t kBranchBatchSize = 8;
+  int32_t batch_offset = 0;
+  while (batch_offset < branches.size()) {
+    // Conditionals will by default run branches[branchs.size()-1] if index is
+    // <0 or >= branches.size(). See
+    // https://openxla.org/xla/operation_semantics#conditional.
+    // To break down a large case with back to back ConditionalCommands, only
+    // the last batch should accept this default case.
+    int32_t remaining_branches = branches.size() - batch_offset;
+    int32_t batch_size;
+    bool enable_conditional_default;
+    if (remaining_branches <= kBranchBatchSize) {
+      batch_size = remaining_branches;
+      enable_conditional_default = true;
+    } else {
+      batch_size = kBranchBatchSize;
+      enable_conditional_default = false;
+    }
 
-    // Pad handles up to size 8 with a default initialized handle.
-    std::vector<GpuGraphConditionalHandle> padded_handles(handles.begin(),
-                                                          handles.end());
-    padded_handles.resize(8);
+    auto set_cond_fn = [&, batch_offset, enable_conditional_default](
+                           ExecutionScopeId id, ConditionalHandles handles) {
+      int32_t num_handles = handles.size();
 
-    return CommandBuffer::Launch(
-        *set_case_condition, id, ThreadDim(), BlockDim(), padded_handles[0],
-        padded_handles[1], padded_handles[2], padded_handles[3],
-        padded_handles[4], padded_handles[5], padded_handles[6],
-        padded_handles[7], index, num_handles);
-  };
+      // Pad handles up to size 8 with a default initialized handle.
+      std::vector<GpuGraphConditionalHandle> padded_handles(handles.begin(),
+                                                            handles.end());
+      padded_handles.resize(kBranchBatchSize);
 
-  // Wrap all branches into conditional command buffer builders.
-  absl::InlinedVector<ConditionBuilder, 8> builders;
-  builders.reserve(branches.size());
-  for (auto& branch : branches) {
-    builders.push_back(ToConditionBuilder(std::move(branch)));
+      return CommandBuffer::Launch(
+          *set_case_condition, id, ThreadDim(), BlockDim(), padded_handles[0],
+          padded_handles[1], padded_handles[2], padded_handles[3],
+          padded_handles[4], padded_handles[5], padded_handles[6],
+          padded_handles[7], index, batch_offset, num_handles,
+          enable_conditional_default);
+    };
+
+    // Wrap all branches into conditional command buffer builders.
+    absl::InlinedVector<ConditionBuilder, kBranchBatchSize> builders;
+    builders.reserve(batch_size);
+    for (int z = 0; z < batch_size; ++z) {
+      int branch_offset = z + batch_offset;
+      builders.push_back(
+          ToConditionBuilder(std::move(branches[branch_offset])));
+    }
+
+    TF_RETURN_IF_ERROR(CreateConditionalCommand(
+        execution_scope_id, ConditionType::kIf, set_cond_fn, builders));
+    batch_offset += batch_size;
   }
-
-  return CreateConditionalCommand(execution_scope_id, ConditionType::kIf,
-                                  set_cond_fn, builders);
+  return absl::OkStatus();
 }
 
 absl::Status GpuCommandBuffer::For(ExecutionScopeId execution_scope_id,

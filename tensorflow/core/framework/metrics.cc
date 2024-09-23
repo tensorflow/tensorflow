@@ -22,10 +22,10 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/lib/monitoring/counter.h"
+#include "xla/tsl/lib/monitoring/gauge.h"
+#include "xla/tsl/lib/monitoring/sampler.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
-#include "tsl/lib/monitoring/counter.h"
-#include "tsl/lib/monitoring/gauge.h"
-#include "tsl/lib/monitoring/sampler.h"
 #include "tsl/platform/types.h"
 #include "tsl/protobuf/error_codes.pb.h"
 

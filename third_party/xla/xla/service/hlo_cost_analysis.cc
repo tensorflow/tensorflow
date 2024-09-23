@@ -35,17 +35,21 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/lib/gtl/map_util.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
-#include "tsl/lib/gtl/map_util.h"
 #include "tsl/platform/errors.h"
 
 namespace xla {
 
 HloCostAnalysis::HloCostAnalysis(const Options& options) : options_(options) {}
+// TODO(mehrdadk): merge all constructors into HloCostAnalysis(const Options&
+// options)
 HloCostAnalysis::HloCostAnalysis(ShapeSizeFunction shape_size,
-                                 const Properties& per_second_rates)
-    : HloCostAnalysis(Options{shape_size, per_second_rates}) {}
+                                 const Properties& per_second_rates,
+                                 const Properties& min_latencies_seconds)
+    : HloCostAnalysis(
+          Options{shape_size, per_second_rates, min_latencies_seconds}) {}
 
 absl::Status HloCostAnalysis::Preprocess(const HloInstruction* hlo) {
   // Set current instruction cost values to reasonable default values. Each
@@ -82,7 +86,9 @@ absl::Status HloCostAnalysis::Postprocess(const HloInstruction* hlo) {
       }
       float per_second_rate = options_.per_second_rate(key);
       if (per_second_rate != 0) {
-        optimal_seconds = std::max(optimal_seconds, val / per_second_rate);
+        float time_for_key =
+            std::max(val / per_second_rate, options_.min_latency_seconds(key));
+        optimal_seconds = std::max(optimal_seconds, time_for_key);
       }
     });
     current_properties_[kOptimalSecondsKey] = optimal_seconds;

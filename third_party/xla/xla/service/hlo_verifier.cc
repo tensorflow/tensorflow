@@ -2414,7 +2414,8 @@ absl::Status VerifyLayoutConstrainedAllReduce(const HloModule& module) {
 
 // Checks various invariants of channel instructions (send/recv and
 // collectives).
-absl::Status VerifyChannels(const HloModule& module) {
+absl::Status VerifyChannels(const HloModule& module,
+                            const HloVerifierOpts& opts) {
   absl::flat_hash_map<int64_t, std::vector<const HloInstruction*>>
       channel_instructions;
 
@@ -2533,9 +2534,11 @@ absl::Status VerifyChannels(const HloModule& module) {
         } else {
           opcode_to_count[instr->opcode()] = 1;
         }
-        TF_RET_CHECK(DynCast<HloSendRecvInstruction>(instr) != nullptr)
-            << "channel " << pair.first
-            << " is used for different types of channel instructions";
+        if (opts.verify_unique_channel_ids) {
+          TF_RET_CHECK(DynCast<HloSendRecvInstruction>(instr) != nullptr)
+              << "channel " << pair.first
+              << " is used for different types of channel instructions";
+        }
       }
 
       int count = opcode_to_count.begin()->second;
@@ -2571,9 +2574,11 @@ absl::Status VerifyChannels(const HloModule& module) {
       }
     } else {
       for (const HloInstruction* instr : instructions) {
-        TF_RET_CHECK(first->opcode() == instr->opcode())
-            << "channel " << pair.first
-            << " is used for different types of channel instructions";
+        if (opts.verify_unique_channel_ids) {
+          TF_RET_CHECK(first->opcode() == instr->opcode())
+              << "channel " << pair.first
+              << " is used for different types of channel instructions";
+        }
       }
     }
   }
@@ -3082,7 +3087,8 @@ absl::StatusOr<bool> HloVerifier::Run(
 
     TF_RETURN_IF_ERROR(VerifyHloStructure(module));
     TF_RETURN_IF_ERROR(VerifyAsynchronousInstructionPairs(*module));
-    TF_RETURN_IF_ERROR(VerifyChannels(*module));
+    TF_RETURN_IF_ERROR(
+        VerifyChannels(*module, target_metadata_->GetVerifierOpts()));
     TF_RETURN_IF_ERROR(VerifyInstructionNameUnchanged(
         *module, target_metadata_->GetVerifierOpts()));
 

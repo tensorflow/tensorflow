@@ -34,10 +34,12 @@ namespace xla {
 namespace gpu {
 
 CuDnnThunk::CuDnnThunk(std::string fingerprint, ThunkInfo thunk_info,
-                       absl::Span<const KernelArgument> kernel_arguments)
+                       absl::Span<const KernelArgument> kernel_arguments,
+                       std::optional<int64_t> sdpa_dropout_seed)
     : Thunk(Kind::kCuDnn, std::move(thunk_info)),
       fingerprint_(std::move(fingerprint)),
-      graph_(std::make_shared<se::dnn::LazyDnnGraph>(nullptr)) {
+      graph_(std::make_shared<se::dnn::LazyDnnGraph>(nullptr)),
+      sdpa_dropout_seed_(sdpa_dropout_seed) {
   args_.reserve(kernel_arguments.size());
   for (const KernelArgument& kernel_argument : kernel_arguments) {
     args_.push_back(kernel_argument.slice());
@@ -52,6 +54,10 @@ absl::Status CuDnnThunk::Initialize(const InitializeParams& params) {
     std::string().swap(fingerprint_);
     if (result.ok()) {
       graph_->swap(*result);
+      if (sdpa_dropout_seed_.has_value()) {
+        graph_->get()->InitDropoutState(params.local_device_count,
+                                        *sdpa_dropout_seed_, 16);
+      }
     }
     ret = result.status();
   });
@@ -68,7 +74,8 @@ absl::Status CuDnnThunk::ExecuteOnStream(const ExecuteParams& params) {
     buffer_args.push_back(params.buffer_allocations->GetDeviceAddress(arg));
   }
   return graph_->get()->Execute(*params.stream,
-                                absl::Span<se::DeviceMemoryBase>(buffer_args));
+                                absl::Span<se::DeviceMemoryBase>(buffer_args),
+                                params.collective_params->local_device_ordinal);
 }
 
 }  // namespace gpu

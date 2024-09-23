@@ -1449,13 +1449,9 @@ TEST_F(SmallDotGemmFusionTest, Int4WithMinorBatchDimIsNotRewritten) {
   module->mutable_config()
       .mutable_debug_options()
       .set_xla_gpu_enable_triton_gemm_int4(true);
-  auto result = GemmFusion(gpu_version_).Run(module.get());
-  EXPECT_THAT(
-      result.status(),
-      tsl::testing::StatusIs(
-          absl::StatusCode::kInvalidArgument,
-          ::testing::HasSubstr("Fusion is not possible because the parameter "
-                               "with the type S4 has minor batch dimension")));
+  TF_ASSERT_OK_AND_ASSIGN(auto result,
+                          GemmFusion(gpu_version_).Run(module.get()));
+  EXPECT_FALSE(result);
 }
 
 }  // namespace

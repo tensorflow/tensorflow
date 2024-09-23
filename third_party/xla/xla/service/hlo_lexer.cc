@@ -15,17 +15,22 @@ limitations under the License.
 
 #include "xla/service/hlo_lexer.h"
 
+#include <cstdint>
 #include <cstring>
-#include <limits>
 #include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/base/casts.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/escaping.h"
+#include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/string_view.h"
+#include "xla/primitive_util.h"
 #include "xla/util.h"
 #include "tsl/platform/numbers.h"
 

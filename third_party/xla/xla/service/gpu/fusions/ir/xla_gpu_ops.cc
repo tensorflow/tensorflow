@@ -23,7 +23,6 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallBitVector.h"
-#include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: keep
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -31,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Builders.h"  // IWYU pragma: keep
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectImplementation.h"  // IWYU pragma: keep
 #include "mlir/IR/MLIRContext.h"  // IWYU pragma: keep
 #include "mlir/IR/OpDefinition.h"
@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/TypeRange.h"
 #include "mlir/IR/TypeUtilities.h"  // IWYU pragma: keep
+#include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
@@ -55,16 +56,19 @@ using llvm::ArrayRef;
 using mlir::AffineExpr;
 using mlir::AffineMap;
 using mlir::Block;
+using mlir::DenseI64ArrayAttr;
 using mlir::failure;
 using mlir::getAffineConstantExpr;
 using mlir::getAffineDimExpr;
 using mlir::getAffineSymbolExpr;
+using mlir::Location;
 using mlir::LogicalResult;
 using mlir::MLIRContext;
 using mlir::OpAsmParser;
 using mlir::OpAsmPrinter;
 using mlir::OpBuilder;
 using mlir::OperationState;
+using mlir::ParseResult;
 using mlir::PatternRewriter;
 using mlir::RankedTensorType;
 using mlir::Region;
@@ -143,7 +147,7 @@ void ApplyIndexingOp::build(OpBuilder& builder, OperationState& result,
 }
 
 // Parses a comma-separated list of operands, ex: %d1, %d2.
-mlir::ParseResult parseOperands(
+ParseResult parseOperands(
     OpAsmParser& parser,
     SmallVector<OpAsmParser::UnresolvedOperand, 4>* operands) {
   OpAsmParser::UnresolvedOperand operand;
@@ -151,8 +155,8 @@ mlir::ParseResult parseOperands(
       [&]() { return parser.parseOperand(operands->emplace_back()); });
 }
 
-mlir::ParseResult ApplyIndexingOp::parse(OpAsmParser& parser,
-                                         OperationState& result) {
+ParseResult ApplyIndexingOp::parse(OpAsmParser& parser,
+                                   OperationState& result) {
   mlir::Builder& builder = parser.getBuilder();
   auto index_type = builder.getIndexType();
 
@@ -508,7 +512,7 @@ struct FoldApplyIndexingResults
 
   LogicalResult matchAndRewrite(ApplyIndexingOp indexing_op,
                                 PatternRewriter& rewriter) const override {
-    mlir::Location loc = indexing_op.getLoc();
+    Location loc = indexing_op.getLoc();
     IndexingMap indexing_map = indexing_op.getIndexingMap();
     if (indexing_map.IsKnownEmpty()) {
       return rewriter.notifyMatchFailure(indexing_op,
@@ -728,7 +732,7 @@ void LoopOp::build(OpBuilder& builder, OperationState& result,
         bodyBuilder);
 }
 
-mlir::ParseResult LoopOp::parse(OpAsmParser& parser, OperationState& result) {
+ParseResult LoopOp::parse(OpAsmParser& parser, OperationState& result) {
   SmallVector<OpAsmParser::Argument, 4> region_args, ivs, map_results,
       iter_args;
   SmallVector<OpAsmParser::UnresolvedOperand, 4> dim_operands;
@@ -1051,6 +1055,188 @@ LogicalResult InsertOp::verify() {
                             "map's dimension count";
   }
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ReindexOp
+//===----------------------------------------------------------------------===//
+
+void ReindexOp::build(mlir::OpBuilder& builder, mlir::OperationState& result,
+                      mlir::Type type, mlir::Value operand, mlir::Value padding,
+                      const xla::gpu::IndexingMap& indexing_map) {
+  IndexingMapAttr indexing_map_attr =
+      IndexingMapAttr::get(builder.getContext(), indexing_map);
+  build(builder, result, type, operand, padding, indexing_map_attr);
+}
+
+//===----------------------------------------------------------------------===//
+// ReduceOp
+//===----------------------------------------------------------------------===//
+
+SmallVector<Type, 2> inferReductionResultTypes(TypeRange input_types,
+                                               ArrayRef<int64_t> reduced_dims) {
+  auto input_shape =
+      mlir::cast<RankedTensorType>(input_types.front()).getShape();
+  auto num_reduced_dims = reduced_dims.size();
+  SmallVector<int64_t, 4> output_shape;
+  output_shape.reserve(input_shape.size() - num_reduced_dims);
+  int reduce_dim = 0;
+  for (int64_t i = 0; i < input_shape.size(); ++i) {
+    if (reduce_dim < num_reduced_dims && i == reduced_dims[reduce_dim]) {
+      ++reduce_dim;
+      continue;
+    }
+    output_shape.push_back(input_shape[i]);
+  }
+  SmallVector<Type, 2> result_types;
+  result_types.reserve(input_types.size());
+  for (auto input_type : input_types) {
+    result_types.push_back(RankedTensorType::get(
+        output_shape,
+        mlir::cast<RankedTensorType>(input_type).getElementType()));
+  }
+  return result_types;
+}
+
+SmallVector<Type, 2> inferReductionInitTypes(TypeRange input_types) {
+  SmallVector<Type, 2> init_types;
+  init_types.reserve(input_types.size());
+  for (auto input_type : input_types) {
+    init_types.push_back(
+        mlir::cast<RankedTensorType>(input_type).getElementType());
+  }
+  return init_types;
+}
+
+LogicalResult ReduceOp::inferReturnTypes(
+    MLIRContext* context, std::optional<Location> location, ValueRange operands,
+    mlir::DictionaryAttr attributes, mlir::OpaqueProperties properties,
+    mlir::RegionRange regions,
+    mlir::SmallVectorImpl<Type>& inferredReturnTypes) {
+  ReduceOp::Adaptor adaptor(operands, attributes, properties, regions);
+  inferredReturnTypes.append(inferReductionResultTypes(
+      TypeRange{adaptor.getInputs()}, adaptor.getDimensions()));
+  return success();
+}
+
+ParseResult ReduceOp::parse(OpAsmParser& parser, OperationState& result) {
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> inputs;
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> inits;
+  SmallVector<int64_t, 2> dimensions;
+  mlir::StringAttr combiner;
+  SmallVector<Type, 2> input_types;
+  SmallVector<Type, 2> result_types;
+
+  if (parser.parseLParen() || parseOperands(parser, &inputs) ||
+      parser.parseRParen() || parser.parseKeyword("inits") ||
+      parser.parseLParen() || parseOperands(parser, &inits) ||
+      parser.parseRParen() || parser.parseKeyword("dimensions") ||
+      parser.parseEqual() ||
+      parser.parseCommaSeparatedList(OpAsmParser::Delimiter::Square,
+                                     [&]() -> ParseResult {
+                                       return parser.parseInteger(
+                                           dimensions.emplace_back());
+                                     }) ||
+      parser.parseKeyword("combiner") || parser.parseEqual() ||
+      parser.parseSymbolName(combiner) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
+      parser.parseColonTypeList(input_types) || parser.parseKeyword("to") ||
+      parser.parseTypeList(result_types)) {
+    return failure();
+  }
+  auto ctx = result.getContext();
+  mlir::OperationName opname(ReduceOp::getOperationName(), ctx);
+  result.addAttribute(ReduceOp::getDimensionsAttrName(opname),
+                      DenseI64ArrayAttr::get(ctx, dimensions));
+  result.addAttribute(ReduceOp::getCombinerAttrName(opname),
+                      mlir::FlatSymbolRefAttr::get(ctx, combiner));
+  result.addTypes(result_types);
+
+  auto init_types = inferReductionInitTypes(input_types);
+  mlir::SMLoc loc = parser.getCurrentLocation();
+  if (parser.resolveOperands(inputs, input_types, loc, result.operands) ||
+      parser.resolveOperands(inits, init_types, loc, result.operands)) {
+    return failure();
+  }
+  return success();
+}
+
+void ReduceOp::print(OpAsmPrinter& p) {
+  p << '(' << getInputs() << ") inits(" << getInits() << ") dimensions=["
+    << getDimensions() << "] combiner=@" << getCombiner();
+  p.printOptionalAttrDict((*this)->getAttrs(),
+                          {getCombinerAttrName(), getDimensionsAttrName()});
+  p << " : " << TypeRange(getInputs()) << " to " << TypeRange(getResults());
+}
+
+LogicalResult ReduceOp::verify() {
+  // Check init types.
+  auto inferred_init_types = inferReductionInitTypes(TypeRange(getInputs()));
+  for (auto [inferred_init_type, init_type] :
+       llvm::zip(inferred_init_types, TypeRange(getInits()))) {
+    if (inferred_init_type != init_type) {
+      return emitOpError() << "init type " << init_type
+                           << " does not match inferred type "
+                           << inferred_init_type;
+    }
+  }
+  // Check combiner.
+  auto module = this->getOperation()->getParentOfType<mlir::ModuleOp>();
+  auto combiner = module.lookupSymbol<mlir::func::FuncOp>(getCombinerAttr());
+  if (!combiner) {
+    return emitOpError() << "combiner `@" << getCombiner() << "` not found";
+  }
+  SmallVector<Type, 2> combiner_operand_types;
+  combiner_operand_types.reserve(getNumOperands());
+  combiner_operand_types.append(inferred_init_types);
+  combiner_operand_types.append(inferred_init_types);
+  auto expected_combiner_type = mlir::FunctionType::get(
+      getContext(), combiner_operand_types, inferred_init_types);
+  if (expected_combiner_type != combiner.getFunctionType()) {
+    return emitOpError() << "provided combiner `@" << getCombiner()
+                         << " expected to have type " << expected_combiner_type
+                         << " but got " << combiner.getFunctionType();
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ShuffleReduceOp
+//===----------------------------------------------------------------------===//
+
+ParseResult ShuffleReduceOp::parse(OpAsmParser& parser,
+                                   OperationState& result) {
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> inputs;
+  mlir::StringAttr combiner;
+  int64_t max_distance;
+  SmallVector<Type, 2> operand_types;
+  mlir::SMLoc loc = parser.getCurrentLocation();
+  if (parser.parseLParen() || parseOperands(parser, &inputs) ||
+      parser.parseRParen() || parser.parseKeyword("to") ||
+      parser.parseInteger(max_distance) || parser.parseKeyword("combiner") ||
+      parser.parseEqual() || parser.parseSymbolName(combiner) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
+      parser.parseColonTypeList(operand_types) ||
+      parser.resolveOperands(inputs, operand_types, loc, result.operands)) {
+    return failure();
+  }
+  auto ctx = result.getContext();
+  mlir::OperationName opname(ShuffleReduceOp::getOperationName(), ctx);
+  result.addAttribute(ShuffleReduceOp::getCombinerAttrName(opname),
+                      mlir::FlatSymbolRefAttr::get(ctx, combiner));
+  result.addAttribute(
+      ShuffleReduceOp::getMaxDistanceAttrName(opname),
+      mlir::IntegerAttr::get(mlir::IntegerType::get(ctx, 64), max_distance));
+  result.addTypes(operand_types);
+  return success();
+}
+
+void ShuffleReduceOp::print(OpAsmPrinter& p) {
+  p << '(' << getOperands() << ") to " << getMaxDistance() << " combiner=@"
+    << getCombiner();
+  p.printOptionalAttrDict((*this)->getAttrs(),
+                          {getCombinerAttrName(), getMaxDistanceAttrName()});
+  p << " : " << TypeRange(getResultTypes());
 }
 
 }  // namespace gpu

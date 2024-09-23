@@ -1,12 +1,12 @@
 // RUN: mlir_fusions_opt %s -xla-gpu-lower-xla-gpu-to-scf --split-input-file  \
 // RUN: | FileCheck %s
 
-func.func @reducer(%a: f32, %b: i32, %c: f32, %d: i32) -> (f32, i32) {
+func.func @combiner(%a: f32, %b: i32, %c: f32, %d: i32) -> (f32, i32) {
   return %a, %b : f32, i32
 }
 
 func.func @shuffler(%a: f32, %b: i32) -> (f32, i32) {
-  %ret:2 = xla_gpu.shuffle_reduce @reducer(%a, %b) to 4 : f32, i32
+  %ret:2 = xla_gpu.shuffle_reduce (%a, %b) to 4 combiner=@combiner: f32, i32
   return %ret#0, %ret#1 : f32, i32
 }
 // CHECK: @shuffler(%[[A:.*]]: f32, %[[B:.*]]: i32)
@@ -16,23 +16,23 @@ func.func @shuffler(%a: f32, %b: i32) -> (f32, i32) {
 // CHECK-DAG: %[[C32:.*]] = arith.constant 32
 // CHECK: %[[A4H:.*]], {{.*}} = gpu.shuffle down %[[A]], %[[C4]], %[[C32]]
 // CHECK: %[[B4H:.*]], {{.*}} = gpu.shuffle down %[[B]], %[[C4]], %[[C32]]
-// CHECK: %[[AB4_0:.*]], %[[AB4_1:.*]] = xla_gpu.pure_call @reducer(%[[A]], %[[B]], %[[A4H]], %[[B4H]])
+// CHECK: %[[AB4_0:.*]], %[[AB4_1:.*]] = xla_gpu.pure_call @combiner(%[[A]], %[[B]], %[[A4H]], %[[B4H]])
 // CHECK: %[[A2H:.*]], {{.*}} = gpu.shuffle down %[[AB4_0]], %[[C2]], %[[C32]]
 // CHECK: %[[B2H:.*]], {{.*}} = gpu.shuffle down %[[AB4_1]], %[[C2]], %[[C32]]
-// CHECK: %[[AB2_0:.*]], %[[AB2_1:.*]] = xla_gpu.pure_call @reducer(%[[AB4_0]], %[[AB4_1]], %[[A2H]], %[[B2H]])
+// CHECK: %[[AB2_0:.*]], %[[AB2_1:.*]] = xla_gpu.pure_call @combiner(%[[AB4_0]], %[[AB4_1]], %[[A2H]], %[[B2H]])
 // CHECK: %[[A1H:.*]], {{.*}} = gpu.shuffle down %[[AB2_0]], %[[C1]], %[[C32]]
 // CHECK: %[[B1H:.*]], {{.*}} = gpu.shuffle down %[[AB2_1]], %[[C1]], %[[C32]]
-// CHECK: %[[AB1_0:.*]], %[[AB1_1:.*]] = xla_gpu.pure_call @reducer(%[[AB2_0]], %[[AB2_1]], %[[A1H]], %[[B1H]])
+// CHECK: %[[AB1_0:.*]], %[[AB1_1:.*]] = xla_gpu.pure_call @combiner(%[[AB2_0]], %[[AB2_1]], %[[A1H]], %[[B1H]])
 // CHECK: return %[[AB1_0]], %[[AB1_1]]
 
 // -----
 
-func.func @reducer(%a: f64, %b: f64) -> f64 {
+func.func @combiner(%a: f64, %b: f64) -> f64 {
   return %a : f64
 }
 
 func.func @shuffler(%a: f64) -> f64 {
-  %ret = xla_gpu.shuffle_reduce @reducer(%a) to 1 : f64
+  %ret = xla_gpu.shuffle_reduce(%a) to 1 combiner=@combiner : f64
   return %ret : f64
 }
 // CHECK: @shuffler(%[[A:.*]]: f64
@@ -41,12 +41,12 @@ func.func @shuffler(%a: f64) -> f64 {
 
 // -----
 
-func.func @reducer(%a: complex<f64>, %b: complex<f64>) -> complex<f64> {
+func.func @combiner(%a: complex<f64>, %b: complex<f64>) -> complex<f64> {
   return %a : complex<f64>
 }
 
 func.func @shuffler(%a: complex<f64>) -> complex<f64> {
-  %ret = xla_gpu.shuffle_reduce @reducer(%a) to 1 : complex<f64>
+  %ret = xla_gpu.shuffle_reduce(%a) to 1 combiner=@combiner : complex<f64>
   return %ret : complex<f64>
 }
 // CHECK: @shuffler
@@ -54,12 +54,12 @@ func.func @shuffler(%a: complex<f64>) -> complex<f64> {
 
 // -----
 
-func.func @reducer(%a: ui64, %b: ui64) -> ui64 {
+func.func @combiner(%a: ui64, %b: ui64) -> ui64 {
   return %a : ui64
 }
 
 func.func @shuffler(%a: ui64) -> ui64 {
-  %ret = xla_gpu.shuffle_reduce @reducer(%a) to 1 : ui64
+  %ret = xla_gpu.shuffle_reduce (%a) to 1 combiner=@combiner : ui64
   return %ret : ui64
 }
 // CHECK: @shuffler
@@ -68,12 +68,12 @@ func.func @shuffler(%a: ui64) -> ui64 {
 
 // -----
 
-func.func @reducer(%a: i8, %b: i8) -> i8 {
+func.func @combiner(%a: i8, %b: i8) -> i8 {
   return %a : i8
 }
 
 func.func @shuffler_i8(%a: i8) -> i8 {
-  %ret = xla_gpu.shuffle_reduce @reducer(%a) to 1 : i8
+  %ret = xla_gpu.shuffle_reduce (%a) to 1 combiner=@combiner : i8
   return %ret : i8
 }
 // CHECK: @shuffler_i8(

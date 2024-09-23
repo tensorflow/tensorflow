@@ -69,6 +69,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
 #include "xla/python/pjrt_ifrt/pjrt_device.h"
+#include "xla/python/pjrt_ifrt/pjrt_dtype.h"
 #include "xla/python/pjrt_ifrt/pjrt_memory.h"
 #include "xla/python/pjrt_ifrt/pjrt_remap.h"
 #include "xla/python/pjrt_ifrt/pjrt_topology.h"

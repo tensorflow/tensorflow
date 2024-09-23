@@ -178,7 +178,7 @@ class GpuCommandBuffer : public CommandBuffer {
                   GpuGraphConditionalHandle, GpuGraphConditionalHandle,
                   GpuGraphConditionalHandle, GpuGraphConditionalHandle,
                   GpuGraphConditionalHandle, GpuGraphConditionalHandle,
-                  DeviceMemory<int32_t>, int32_t>;
+                  DeviceMemory<int32_t>, int32_t, int32_t, bool>;
 
   using SetForConditionKernel =
       TypedKernel<GpuGraphConditionalHandle, DeviceMemory<int32_t>, int32_t>;

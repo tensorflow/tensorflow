@@ -31,6 +31,8 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/tpu/kernels:cross_replica_ops",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_xla//xla:shape_util",

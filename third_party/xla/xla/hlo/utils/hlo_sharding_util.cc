@@ -1369,22 +1369,24 @@ namespace {
 absl::InlinedVector<int64_t, 1> GetGatherScatterOperandPassthroughOperandDims(
     const Shape& operand_shape,
     absl::Span<const int64_t> collapsed_or_inserted_dims,
+    absl::Span<const int64_t> operand_batching_dims,
     absl::Span<const int64_t> index_map,
     absl::Span<const int64_t> offset_or_window_dims,
     absl::Span<const int64_t> slice_size) {
   absl::InlinedVector<int64_t, 1> passthrough_dims;
-  int64_t collapsed = 0;
-  for (int64_t i = 0; i != operand_shape.rank(); ++i) {
-    if (absl::c_linear_search(collapsed_or_inserted_dims, i)) {
-      collapsed++;
+  int64_t collapsed_or_batching = 0;
+  for (int64_t i = 0; i < operand_shape.rank(); ++i) {
+    if (absl::c_linear_search(collapsed_or_inserted_dims, i) ||
+        absl::c_linear_search(operand_batching_dims, i)) {
+      collapsed_or_batching++;
       continue;
     }
     if (slice_size[i] != operand_shape.dimensions(i)) {
       continue;
     }
-    int64_t offset_dim = offset_or_window_dims[i - collapsed];
-    if (i - collapsed > 0 &&
-        offset_dim < offset_or_window_dims[i - collapsed - 1]) {
+    if (i - collapsed_or_batching > 0 &&
+        offset_or_window_dims[i - collapsed_or_batching] <
+            offset_or_window_dims[i - collapsed_or_batching - 1]) {
       // Output offsets are transposed, we do not support this case.
       continue;
     }
@@ -1397,22 +1399,25 @@ absl::InlinedVector<int64_t, 1>
 GetGatherScatterOperandPassthroughOutputOrUpdateDims(
     const int64_t output_or_update_rank, const Shape& operand_shape,
     absl::Span<const int64_t> collapsed_or_inserted_dims,
+    absl::Span<const int64_t> operand_batching_dims,
     absl::Span<const int64_t> index_map,
     absl::Span<const int64_t> offset_or_window_dims,
     absl::Span<const int64_t> slice_size) {
   auto operand_passthrough_dims = GetGatherScatterOperandPassthroughOperandDims(
-      operand_shape, collapsed_or_inserted_dims, index_map,
-      offset_or_window_dims, slice_size);
+      operand_shape, collapsed_or_inserted_dims, operand_batching_dims,
+      index_map, offset_or_window_dims, slice_size);
   absl::InlinedVector<int64_t, 1> passthrough_dims;
-  int64_t collapsed = 0;
+  int64_t collapsed_or_batching = 0;
   for (int64_t i = 0; i < operand_shape.rank(); ++i) {
-    if (absl::c_linear_search(collapsed_or_inserted_dims, i)) {
-      collapsed++;
+    if (absl::c_linear_search(collapsed_or_inserted_dims, i) ||
+        absl::c_linear_search(operand_batching_dims, i)) {
+      collapsed_or_batching++;
+      continue;
     }
     if (!absl::c_linear_search(operand_passthrough_dims, i)) {
       continue;
     }
-    int64_t offset_dim = offset_or_window_dims[i - collapsed];
+    int64_t offset_dim = offset_or_window_dims[i - collapsed_or_batching];
     passthrough_dims.push_back(offset_dim);
   }
   return passthrough_dims;
@@ -1426,6 +1431,7 @@ std::optional<HloSharding> PassthroughOperandToGatherOutputOrScatterUpdate(
     const Shape& operand_shape, const HloSharding& operand_sharding,
     const int64_t output_or_update_rank,
     absl::Span<const int64_t> collapsed_or_inserted_dims,
+    absl::Span<const int64_t> operand_batching_dims,
     absl::Span<const int64_t> index_map,
     absl::Span<const int64_t> offset_or_window_dims,
     absl::Span<const int64_t> slice_size, const int64_t index_vector_dim) {
@@ -1433,18 +1439,20 @@ std::optional<HloSharding> PassthroughOperandToGatherOutputOrScatterUpdate(
     return std::nullopt;
   }
   auto operand_passthrough_dims = GetGatherScatterOperandPassthroughOperandDims(
-      operand_shape, collapsed_or_inserted_dims, index_map,
-      offset_or_window_dims, slice_size);
+      operand_shape, collapsed_or_inserted_dims, operand_batching_dims,
+      index_map, offset_or_window_dims, slice_size);
   DimensionVector passthrough_tile(output_or_update_rank, 1);
-  int64_t collapsed = 0;
+  int64_t collapsed_or_batching = 0;
   for (int64_t i = 0; i < operand_shape.rank(); ++i) {
-    if (absl::c_linear_search(collapsed_or_inserted_dims, i)) {
-      collapsed++;
+    if (absl::c_linear_search(collapsed_or_inserted_dims, i) ||
+        absl::c_linear_search(operand_batching_dims, i)) {
+      collapsed_or_batching++;
+      continue;
     }
     if (!absl::c_linear_search(operand_passthrough_dims, i)) {
       continue;
     }
-    int64_t offset_dim = offset_or_window_dims[i - collapsed];
+    int64_t offset_dim = offset_or_window_dims[i - collapsed_or_batching];
     passthrough_tile[offset_dim] = operand_sharding.tile_assignment().dim(i);
   }
   HloSharding replicate_non_passthrough_dims =
@@ -1475,6 +1483,7 @@ std::optional<HloSharding> PassthroughOperandToGatherOutputOrScatterUpdate(
 std::optional<HloSharding> PassthroughGatherOutputOrScatterUpdateToOperand(
     const Shape& operand_shape, const HloSharding& output_or_update_sharding,
     absl::Span<const int64_t> collapsed_or_inserted_dims,
+    absl::Span<const int64_t> operand_batching_dims,
     absl::Span<const int64_t> index_map,
     absl::Span<const int64_t> offset_or_window_dims,
     absl::Span<const int64_t> slice_size) {
@@ -1483,20 +1492,22 @@ std::optional<HloSharding> PassthroughGatherOutputOrScatterUpdateToOperand(
     return output_or_update_sharding;
   }
   auto operand_passthrough_dims = GetGatherScatterOperandPassthroughOperandDims(
-      operand_shape, collapsed_or_inserted_dims, index_map,
-      offset_or_window_dims, slice_size);
+      operand_shape, collapsed_or_inserted_dims, operand_batching_dims,
+      index_map, offset_or_window_dims, slice_size);
   DimensionVector passthrough_tile(operand_shape.rank(), 1);
-  int64_t collapsed = 0;
+  int64_t collapsed_or_batching = 0;
   // Relevant dims have shardings passed to the operand.
   DimensionVector relevant_output_or_update_dims;
   for (int64_t i = 0; i < operand_shape.rank(); ++i) {
-    if (absl::c_linear_search(collapsed_or_inserted_dims, i)) {
-      collapsed++;
+    if (absl::c_linear_search(collapsed_or_inserted_dims, i) ||
+        absl::c_linear_search(operand_batching_dims, i)) {
+      collapsed_or_batching++;
+      continue;
     }
     if (!absl::c_linear_search(operand_passthrough_dims, i)) {
       continue;
     }
-    int64_t offset_dim = offset_or_window_dims[i - collapsed];
+    int64_t offset_dim = offset_or_window_dims[i - collapsed_or_batching];
     passthrough_tile[i] =
         output_or_update_sharding.tile_assignment().dim(offset_dim);
     relevant_output_or_update_dims.push_back(offset_dim);
@@ -1533,7 +1544,7 @@ std::optional<HloSharding> GatherOperandShardingFromOutputParallelDimensions(
     auto output_parallel_dims =
         GetGatherParallelOutputDims(gather, *parallel_dims);
     auto output_aligned_operand_parallel_dims =
-        IndexAlignedOperandParallelDims(*parallel_dims);
+        parallel_dims->operand_parallel_dims;
     const Shape gather_shape = gather.shape();
     CHECK_EQ(output_parallel_dims.size(),
              output_aligned_operand_parallel_dims.size());
@@ -1609,27 +1620,17 @@ GatherOutputShardingFromOperandOperandPassthroughDimensions(
     const Shape& operand_shape, const HloSharding& operand_sharding,
     const HloInstruction& hlo, absl::Span<const int64_t> slice_sizes) {
   const auto& dnums = hlo.gather_dimension_numbers();
-  std::vector<int64_t> collapsed_slice_dims(
-      dnums.collapsed_slice_dims().begin(), dnums.collapsed_slice_dims().end());
-  std::vector<int64_t> start_index_map(dnums.start_index_map().begin(),
-                                       dnums.start_index_map().end());
-  std::vector<int64_t> offset_dims(dnums.offset_dims().begin(),
-                                   dnums.offset_dims().end());
   return PassthroughOperandToGatherOutputOrScatterUpdate(
-      operand_shape, operand_sharding, hlo.shape().rank(), collapsed_slice_dims,
-      start_index_map, offset_dims, slice_sizes, dnums.index_vector_dim());
+      operand_shape, operand_sharding, hlo.shape().rank(),
+      dnums.collapsed_slice_dims(), dnums.operand_batching_dims(),
+      dnums.start_index_map(), dnums.offset_dims(), slice_sizes,
+      dnums.index_vector_dim());
 }
 
 std::optional<HloSharding> GatherOperandShardingFromOutput(
     const HloSharding& output_sharding, const HloInstruction& hlo,
     const CallGraph& call_graph) {
   const auto& dnums = hlo.gather_dimension_numbers();
-  std::vector<int64_t> collapsed_slice_dims(
-      dnums.collapsed_slice_dims().begin(), dnums.collapsed_slice_dims().end());
-  std::vector<int64_t> start_index_map(dnums.start_index_map().begin(),
-                                       dnums.start_index_map().end());
-  std::vector<int64_t> offset_dims(dnums.offset_dims().begin(),
-                                   dnums.offset_dims().end());
   // Prioritize parallel sharding first as this is how it is in
   // spmd_partitioner.
   std::optional<HloSharding> parallel_sharding =
@@ -1637,8 +1638,10 @@ std::optional<HloSharding> GatherOperandShardingFromOutput(
                                                         call_graph);
   std::optional<HloSharding> passthrough_sharding =
       PassthroughGatherOutputOrScatterUpdateToOperand(
-          hlo.operand(0)->shape(), output_sharding, collapsed_slice_dims,
-          start_index_map, offset_dims, hlo.gather_slice_sizes());
+          hlo.operand(0)->shape(), output_sharding,
+          dnums.collapsed_slice_dims(), dnums.operand_batching_dims(),
+          dnums.start_index_map(), dnums.offset_dims(),
+          hlo.gather_slice_sizes());
   // Try to merge the two shardings or return the one that is present if only
   // one of the two is.
   if (!passthrough_sharding) {
@@ -1677,19 +1680,13 @@ std::vector<int64_t> GetScatterSliceSize(const Shape& operand_shape,
 std::optional<HloSharding> ScatterOutputShardingFromUpdate(
     const HloSharding& update_sharding, const HloScatterInstruction& scatter) {
   const auto& dnums = scatter.scatter_dimension_numbers();
-  std::vector<int64_t> inserted_window_dims(
-      dnums.inserted_window_dims().begin(), dnums.inserted_window_dims().end());
-  std::vector<int64_t> scatter_dims_to_operand_dims(
-      dnums.scatter_dims_to_operand_dims().begin(),
-      dnums.scatter_dims_to_operand_dims().end());
-  std::vector<int64_t> update_window_dims(dnums.update_window_dims().begin(),
-                                          dnums.update_window_dims().end());
   std::vector<int64_t> slice_size =
       GetScatterSliceSize(scatter.scatter_operands()[0]->shape(),
                           scatter.scatter_updates()[0]->shape(), dnums);
   return PassthroughGatherOutputOrScatterUpdateToOperand(
       scatter.scatter_operands()[0]->shape(), update_sharding,
-      inserted_window_dims, scatter_dims_to_operand_dims, update_window_dims,
+      dnums.inserted_window_dims(), dnums.input_batching_dims(),
+      dnums.scatter_dims_to_operand_dims(), dnums.update_window_dims(),
       slice_size);
 }
 
@@ -1744,18 +1741,12 @@ ScatterUpdateShardingFromOutputOperandPassthroughDimensions(
   const HloScatterInstruction* scatter = DynCast<HloScatterInstruction>(&hlo);
   CHECK(scatter);
   const auto& dnums = scatter->scatter_dimension_numbers();
-  std::vector<int64_t> inserted_window_dims(
-      dnums.inserted_window_dims().begin(), dnums.inserted_window_dims().end());
-  std::vector<int64_t> scatter_dims_to_operand_dims(
-      dnums.scatter_dims_to_operand_dims().begin(),
-      dnums.scatter_dims_to_operand_dims().end());
-  std::vector<int64_t> update_window_dims(dnums.update_window_dims().begin(),
-                                          dnums.update_window_dims().end());
   return PassthroughOperandToGatherOutputOrScatterUpdate(
       output_shape, output_sharding,
-      scatter->scatter_updates()[0]->shape().rank(), inserted_window_dims,
-      scatter_dims_to_operand_dims, update_window_dims, slice_sizes,
-      dnums.index_vector_dim());
+      scatter->scatter_updates()[0]->shape().rank(),
+      dnums.inserted_window_dims(), dnums.input_batching_dims(),
+      dnums.scatter_dims_to_operand_dims(), dnums.update_window_dims(),
+      slice_sizes, dnums.index_vector_dim());
 }
 
 std::optional<HloSharding> ScatterUpdateShardingFromOutputParallelDimensions(
@@ -1769,7 +1760,7 @@ std::optional<HloSharding> ScatterUpdateShardingFromOutputParallelDimensions(
     auto update_parallel_dims =
         GetScatterParallelUpdateDims(scatter, *parallel_dims);
     auto index_aligned_operand_parallel_dims =
-        IndexAlignedOperandParallelDims(*parallel_dims);
+        parallel_dims->operand_parallel_dims;
     auto operand_parallel_dims_sorted = index_aligned_operand_parallel_dims;
     absl::c_sort(operand_parallel_dims_sorted);
     auto operand_aligned_update_parallel_dims = AlignSmallContainers(
@@ -2247,8 +2238,7 @@ std::optional<GatherScatterParallelDims> GetGatherScatterBatchParallelDims(
   //   %indices = concatenate(..., %iota.1, ...)
   //   ... = gather(..., %indices)
   // is common for tf.reverse_sequence and would match this case.
-  const int num_indices = index_map.size();
-  std::vector<int64_t> index_parallel_in_dim(num_indices, -1);
+  std::vector<int64_t> index_parallel_in_dim(index_map.size(), -1);
 
   // looks through any copies to find the concatenate.
   auto findConcatenate = [&](const HloInstruction* indices) {
@@ -2319,10 +2309,9 @@ std::optional<GatherScatterParallelDims> GetGatherScatterBatchParallelDims(
       index_parallel_in_dim[i] = -1;
     }
   }
-  absl::c_sort(indices_parallel_dims);
   if (!indices_parallel_dims.empty()) {
-    return GatherScatterParallelDims{
-        indices_parallel_dims, operand_parallel_dims, index_parallel_in_dim};
+    return GatherScatterParallelDims{indices_parallel_dims,
+                                     operand_parallel_dims};
   }
   return std::nullopt;
 }
@@ -2358,19 +2347,21 @@ std::optional<GatherScatterParallelDims> GetScatterParallelBatchDims(
 
 static absl::InlinedVector<int64_t, 1>
 GetGatherOutputOrScatterUpdateParallelDims(
-    const Shape& shape, const GatherScatterParallelDims& parallel_dim,
+    const Shape& shape, absl::Span<const int64_t> indices_parallel_dims,
     int64_t index_vector_dim, absl::Span<const int64_t> offset_or_window_dims) {
   absl::InlinedVector<int64_t, 1> output_parallel_dims;
-  auto indices_parallel_dims = parallel_dim.indices_parallel_dims;
-  for (int i = 0, idx_dim = 0; i < shape.dimensions_size(); ++i) {
-    if (absl::c_linear_search(offset_or_window_dims, i)) {
-      continue;
+  for (int64_t indices_parallel_dim : indices_parallel_dims) {
+    for (int i = 0, idx_dim = 0; i < shape.dimensions_size(); ++i) {
+      if (absl::c_linear_search(offset_or_window_dims, i)) {
+        continue;
+      }
+      const int index_dim = idx_dim < index_vector_dim ? idx_dim : idx_dim + 1;
+      if (indices_parallel_dim == index_dim) {
+        output_parallel_dims.push_back(i);
+        break;
+      }
+      ++idx_dim;
     }
-    const int index_dim = idx_dim < index_vector_dim ? idx_dim : idx_dim + 1;
-    if (absl::c_binary_search(indices_parallel_dims, index_dim)) {
-      output_parallel_dims.push_back(i);
-    }
-    ++idx_dim;
   }
   return output_parallel_dims;
 }
@@ -2383,7 +2374,8 @@ absl::InlinedVector<int64_t, 1> GetGatherParallelOutputDims(
   int64_t index_vector_dim = dnums.index_vector_dim();
   const auto& offset_dims = dnums.offset_dims();
   return GetGatherOutputOrScatterUpdateParallelDims(
-      output_shape, parallel_dim, index_vector_dim, offset_dims);
+      output_shape, parallel_dim.indices_parallel_dims, index_vector_dim,
+      offset_dims);
 }
 
 absl::InlinedVector<int64_t, 1> GetScatterParallelUpdateDims(
@@ -2395,53 +2387,38 @@ absl::InlinedVector<int64_t, 1> GetScatterParallelUpdateDims(
   int64_t index_vector_dim = dnums.index_vector_dim();
   const auto& window_dims = dnums.update_window_dims();
   return GetGatherOutputOrScatterUpdateParallelDims(
-      update_shape, parallel_dim, index_vector_dim, window_dims);
+      update_shape, parallel_dim.indices_parallel_dims, index_vector_dim,
+      window_dims);
 }
 
 absl::InlinedVector<int64_t, 1> GetGatherOperandPassthroughOperandDims(
     const Shape& operand_shape, const HloInstruction& hlo,
     absl::Span<const int64_t> slice_sizes) {
   const auto& dnums = hlo.gather_dimension_numbers();
-  std::vector<int64_t> collapsed_slice_dims(
-      dnums.collapsed_slice_dims().begin(), dnums.collapsed_slice_dims().end());
-  std::vector<int64_t> start_index_map(dnums.start_index_map().begin(),
-                                       dnums.start_index_map().end());
-  std::vector<int64_t> offset_dims(dnums.offset_dims().begin(),
-                                   dnums.offset_dims().end());
   return GetGatherScatterOperandPassthroughOperandDims(
-      operand_shape, collapsed_slice_dims, start_index_map, offset_dims,
-      slice_sizes);
+      operand_shape, dnums.collapsed_slice_dims(),
+      dnums.operand_batching_dims(), dnums.start_index_map(),
+      dnums.offset_dims(), slice_sizes);
 }
 
 absl::InlinedVector<int64_t, 1> GetScatterOperandPassthroughOperandDims(
     const Shape& operand_shape, const HloSharding& operand_sharding,
     const HloInstruction& hlo, absl::Span<const int64_t> slice_sizes) {
   const auto& dnums = hlo.scatter_dimension_numbers();
-  std::vector<int64_t> inserted_window_dims(
-      dnums.inserted_window_dims().begin(), dnums.inserted_window_dims().end());
-  std::vector<int64_t> scatter_dims_to_operand_dims(
-      dnums.scatter_dims_to_operand_dims().begin(),
-      dnums.scatter_dims_to_operand_dims().end());
-  std::vector<int64_t> update_window_dims(dnums.update_window_dims().begin(),
-                                          dnums.update_window_dims().end());
   return GetGatherScatterOperandPassthroughOperandDims(
-      operand_shape, inserted_window_dims, scatter_dims_to_operand_dims,
-      update_window_dims, slice_sizes);
+      operand_shape, dnums.inserted_window_dims(), dnums.input_batching_dims(),
+      dnums.scatter_dims_to_operand_dims(), dnums.update_window_dims(),
+      slice_sizes);
 }
 
 absl::InlinedVector<int64_t, 1> GetGatherOperandPassthroughOutputDims(
     const Shape& output_shape, const Shape& operand_shape,
     const HloInstruction& hlo, absl::Span<const int64_t> slice_sizes) {
   const auto& dnums = hlo.gather_dimension_numbers();
-  std::vector<int64_t> collapsed_slice_dims(
-      dnums.collapsed_slice_dims().begin(), dnums.collapsed_slice_dims().end());
-  std::vector<int64_t> start_index_map(dnums.start_index_map().begin(),
-                                       dnums.start_index_map().end());
-  std::vector<int64_t> offset_dims(dnums.offset_dims().begin(),
-                                   dnums.offset_dims().end());
   return GetGatherScatterOperandPassthroughOutputOrUpdateDims(
-      output_shape.rank(), operand_shape, collapsed_slice_dims, start_index_map,
-      offset_dims, slice_sizes);
+      output_shape.rank(), operand_shape, dnums.collapsed_slice_dims(),
+      dnums.operand_batching_dims(), dnums.start_index_map(),
+      dnums.offset_dims(), slice_sizes);
 }
 
 absl::InlinedVector<int64_t, 1> GetScatterOperandPassthroughUpdateDims(
@@ -2449,16 +2426,10 @@ absl::InlinedVector<int64_t, 1> GetScatterOperandPassthroughUpdateDims(
     const HloSharding& operand_sharding, const HloInstruction& hlo,
     absl::Span<const int64_t> slice_sizes) {
   const auto& dnums = hlo.scatter_dimension_numbers();
-  std::vector<int64_t> inserted_window_dims(
-      dnums.inserted_window_dims().begin(), dnums.inserted_window_dims().end());
-  std::vector<int64_t> scatter_dims_to_operand_dims(
-      dnums.scatter_dims_to_operand_dims().begin(),
-      dnums.scatter_dims_to_operand_dims().end());
-  std::vector<int64_t> update_window_dims(dnums.update_window_dims().begin(),
-                                          dnums.update_window_dims().end());
   return GetGatherScatterOperandPassthroughOutputOrUpdateDims(
-      update_shape.rank(), operand_shape, inserted_window_dims,
-      scatter_dims_to_operand_dims, update_window_dims, slice_sizes);
+      update_shape.rank(), operand_shape, dnums.inserted_window_dims(),
+      dnums.input_batching_dims(), dnums.scatter_dims_to_operand_dims(),
+      dnums.update_window_dims(), slice_sizes);
 }
 
 absl::InlinedVector<int64_t, 1> GetGatherScatterIndexPassthroughIndexDims(
@@ -2533,23 +2504,6 @@ HloSharding InferGatherScatterParallelShardingFromOperandSharding(
                    output_tile_assignment,
                    replicate_non_parallel_dims.subgroup_types(),
                    replicate_non_parallel_dims.metadata());
-}
-
-absl::InlinedVector<int64_t, 1> IndexAlignedOperandParallelDims(
-    const GatherScatterParallelDims& parallel_dims) {
-  CHECK_EQ(parallel_dims.indices_parallel_dims.size(),
-           parallel_dims.operand_parallel_dims.size());
-  std::vector<int64_t> index_parallel_in_dim =
-      parallel_dims.index_parallel_in_dim;
-  // Remove all -1s in `index_parallel_in_dim`.
-  index_parallel_in_dim.erase(std::remove(index_parallel_in_dim.begin(),
-                                          index_parallel_in_dim.end(), -1),
-                              index_parallel_in_dim.end());
-  // Populate the operand parallel dimensions based on the order of the index
-  // batch dims (which is the same order as the output).
-  return AlignSmallContainers(parallel_dims.operand_parallel_dims,
-                              index_parallel_in_dim,
-                              parallel_dims.indices_parallel_dims);
 }
 
 std::string GroupedSharding::ToString() const {

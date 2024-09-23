@@ -183,6 +183,8 @@ absl::Status BFloat16ConversionFoldingVisitor::DefaultAction(
       hlo->opcode() == HloOpcode::kCustomCall ||                 //
       hlo->opcode() == HloOpcode::kWhile ||                      //
       hlo->opcode() == HloOpcode::kConditional ||                //
+      hlo->opcode() == HloOpcode::kAsyncStart ||                 //
+      hlo->opcode() == HloOpcode::kAsyncDone ||                  //
       HloDataflowAnalysis::IsInPlaceOperation(hlo->opcode()) ||  //
       hlo->HasSideEffectNoRecurse()) {
     return absl::OkStatus();

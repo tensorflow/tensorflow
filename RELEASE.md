@@ -62,6 +62,10 @@
       that is based on the number of cores on the machine. This can improve 
       throughput for map functions which perform IO or otherwise release the 
       CPU.
+    * Add [`tf.data.experimental.get_model_proto`](https://www.tensorflow.org/api_docs/python/tf/data/experimental/get_model_proto)
+      to allow users to peek into the analytical model inside of a dataset
+      iterator.
+
 * `tf.lite`
     * `Dequantize` op supports `TensorType_INT4`.
         * This change includes per-channel dequantization.

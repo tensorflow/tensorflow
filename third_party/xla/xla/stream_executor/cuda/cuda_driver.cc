@@ -295,14 +295,6 @@ void GpuDriver::DestroyContext(Context* context) {
   GetContextMap()->Remove(cuda_context->context());
 }
 
-absl::Status GpuDriver::FuncGetAttribute(CUfunction_attribute attribute,
-                                         CUfunction func,
-                                         int* attribute_value) {
-  return cuda::ToStatus(
-      cuFuncGetAttribute(attribute_value, attribute, func),
-      absl::StrCat("Failed to query kernel attribute: ", attribute));
-}
-
 absl::Status GpuDriver::CreateGraph(CUgraph* graph) {
   VLOG(2) << "Create new CUDA graph";
   TF_RETURN_IF_ERROR(cuda::ToStatus(cuGraphCreate(graph, /*flags=*/0),

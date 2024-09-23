@@ -21,6 +21,7 @@ cc_library(
         "//tensorflow/core/tfrt/utils:gpu_variables_table",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@tf_runtime//:hostcontext",

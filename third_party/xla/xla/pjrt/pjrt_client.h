@@ -675,12 +675,18 @@ class PjRtClient {
   // buffers' definition events will automatically become ready, unblocking
   // downstream consumers of the buffers.
   //
-  // A single call to CreateBuffersForAsyncHostToDevice creates a "batch" of
-  // buffers that share a single definition event, which may amortize some
-  // performance overheads, but means that none of the buffers are available to
-  // downstream consumers until all the transfers have completed. Multiple calls
-  // to CreateBuffersForAsyncHostToDevice should be made if it is desirable for
-  // buffers to become available as soon as transfers into them complete.
+  // Depending on the backend's implementation, a single call to
+  // CreateBuffersForAsyncHostToDevice may either:
+  //   - Create a "batch" of buffers that share a single definition event, which
+  //   may amortize some performance overheads, but means that none of the
+  //   buffers are available to downstream consumers until all the transfers
+  //   have completed, in which case multiple calls to
+  //   CreateBuffersForAsyncHostToDevice should be made if it is desirable for
+  //   buffers to become available as soon as transfers into them complete.
+  //
+  //   - Create a "batch" of buffers with multiple underlying definitions
+  //   events, and individual buffers become available to downstream consumers
+  //   as soon as transfers into them complete.
 
   // Helper class to all clients to asynchronously transfer data into buffers
   // that are created uninitialized, see comments immediately above.

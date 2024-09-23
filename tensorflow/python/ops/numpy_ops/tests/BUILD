@@ -221,6 +221,7 @@ py_strict_test(
         "//tensorflow/python/ops/numpy_ops:np_config",
         "//tensorflow/python/ops/numpy_ops:numpy",
         "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:numpy_compat",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
     ],

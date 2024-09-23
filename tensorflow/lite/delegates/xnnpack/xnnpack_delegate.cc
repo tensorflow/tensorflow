@@ -1149,9 +1149,26 @@ class Subgraph {
     if (context->profiler) {
       flags |= XNN_FLAG_BASIC_PROFILING;
     }
+
+    if (delegate.weight_cache_provider_.IsActive() &&
+        delegate.weight_cache_provider_.CanStartBuildStep()) {
+      if (!delegate.weight_cache_provider_.StartBuildStep()) {
+        TF_LITE_KERNEL_LOG(
+            context, "XNNPack delegate failed to start cache build step.");
+        return nullptr;
+      }
+    }
     status = xnn_create_runtime_v4(subgraph.get(), delegate.weights_cache(),
                                    delegate.workspace(), delegate.threadpool(),
                                    flags, &runtime_ptr);
+    if (delegate.weight_cache_provider_.IsActive() &&
+        delegate.weight_cache_provider_.CanStartBuildStep()) {
+      if (!delegate.weight_cache_provider_.StopBuildStep()) {
+        TF_LITE_KERNEL_LOG(context,
+                           "XNNPack delegate failed to stop cache build step.");
+        return nullptr;
+      }
+    }
     if (status != xnn_status_success) {
       TF_LITE_KERNEL_LOG(context, "failed to create XNNPACK runtime");
       return nullptr;
@@ -1164,17 +1181,6 @@ class Subgraph {
   TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node,
                        bool enable_subgraph_reshaping, Delegate* delegate) {
     std::lock_guard<std::mutex> lock(delegate->workspace_mutex_);
-
-    // The weights cache needs to be finalized only once. Prepare will be called
-    // for each partition after all the partitions have been created (therefore
-    // all the weights are known and have been packed).
-    if (delegate->weight_cache_provider_.IsActive()) {
-      if (!delegate->weight_cache_provider_.Finalize()) {
-        TF_LITE_KERNEL_LOG(context,
-                           "XNNPack delegate failed to finalize cache.");
-        return kTfLiteError;
-      }
-    }
 
     if (enable_subgraph_reshaping) {
       xnn_status status = xnn_status_invalid_state;
@@ -1232,6 +1238,7 @@ class Subgraph {
   TfLiteStatus Invoke(TfLiteContext* context, bool enable_subgraph_reshaping,
                       Delegate* delegate) {
     std::lock_guard<std::mutex> lock(delegate->workspace_mutex_);
+
     bool any_pointers_changed = false;
     for (std::pair<int, void*> io_info : externals_) {
       const TfLiteTensor& tensor = context->tensors[io_info.first];

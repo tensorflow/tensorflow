@@ -230,7 +230,7 @@ FusionDecision ShouldProceedWithSymbolicTileDerivation(
   // issues to be resolved in the current implementation.
   if (hlo->opcode() == HloOpcode::kDot ||
       hlo->opcode() == HloOpcode::kConcatenate) {
-    return FusionDecision{} << "Bailing out on " << hlo->ToString();
+    return FusionDecision::Forbid("Bailing out on ") << hlo->ToString();
   }
 
   // Due to the issue highlighted in b/365727080, and the related workaround
@@ -254,13 +254,13 @@ FusionDecision ShouldProceedWithSymbolicTileDerivation(
         SymbolicTile::FromIndexingMap(reshape_indexing_map);
 
     if (!reshape_symbolic_tile.has_value()) {
-      return FusionDecision{} << "Bailing out on reshape " << hlo->ToString()
-                              << " with indexing map "
-                              << reshape_indexing_map.ToString();
+      return FusionDecision::Forbid("Bailing out on reshape ")
+             << hlo->ToString() << " with indexing map "
+             << reshape_indexing_map.ToString();
     }
   }
 
-  return {};
+  return FusionDecision::Allow();
 }
 
 // Sets a SymbolicTile for each tiled hlo instruction and computes their
@@ -292,16 +292,14 @@ SetSymbolicTilesAndComputeConstraints(
 
     auto symbolic_tile = SymbolicTile::FromIndexingMap(indexing_map);
     if (!symbolic_tile.has_value()) {
-      return FusionDecision{} << "Failed to compute symbolic tile for "
-                              << indexing_map.ToString() << " for HLO "
-                              << hlo->ToString();
+      return FusionDecision::Forbid("Failed to compute symbolic tile for ")
+             << indexing_map.ToString() << " for HLO " << hlo->ToString();
     }
 
     if (!symbolic_tile->is_satisfiable()) {
-      return FusionDecision{} << "Symbolic tile " << symbolic_tile->ToString()
-                              << " is not satisfiable for "
-                              << indexing_map.ToString() << " for HLO "
-                              << hlo->ToString();
+      return FusionDecision::Forbid("Symbolic tile ")
+             << symbolic_tile->ToString() << " is not satisfiable for "
+             << indexing_map.ToString() << " for HLO " << hlo->ToString();
     }
 
     constraints = ConstraintExpression::And(std::move(constraints),
@@ -309,7 +307,7 @@ SetSymbolicTilesAndComputeConstraints(
     constraints.Simplify();
 
     if (!constraints.is_satisfiable()) {
-      return FusionDecision{} << "Fusion has unsatisfiable constraints";
+      return FusionDecision::Forbid("Fusion has unsatisfiable constraints");
     }
 
     tiled_hlo_instruction->set_symbolic_tile(*std::move(symbolic_tile));
@@ -365,8 +363,8 @@ void SortTiledHloInstructionsInPostOrder(
 
   auto roots = fusion.GetRoots();
   if (roots.size() > 1) {
-    return FusionDecision{} << "Multi-output fusions are not supported. "
-                            << fusion.ToString();
+    return FusionDecision::Forbid("Multi-output fusions are not supported. ")
+           << fusion.ToString();
   }
   auto& root = roots[0];
 
@@ -399,8 +397,8 @@ void SortTiledHloInstructionsInPostOrder(
           ComposeIndexingMaps(tiled_hlo_instruction->indexing_map(),
                               *operand_indexing_map_set.begin());
       if (operand_indexing_map.IsUndefined()) {
-        return FusionDecision{}
-               << "Couldn't derive indexing map for instruction "
+        return FusionDecision::Forbid(
+                   "Couldn't derive indexing map for instruction ")
                << tiled_hlo_instruction->hlo()->ToString() << " and operand "
                << operand.instruction().ToString();
       }

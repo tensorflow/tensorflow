@@ -405,6 +405,11 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
     // property is bytes accessed, this is the number of bytes that can be
     // processed per second. Is empty if no rates have been set.
     Properties per_second_rates = {};
+    // The minimum amount of time (in seconds) required to process per each
+    // property. Hardware design choices (e.g., clock speeds, memory access
+    // latencies) impose a lower bound on the duration of any operation, even
+    // the simplest ones.
+    Properties min_latencies_seconds;
     // Operations like broadcast with reused inputs are not handled
     // efficiently on some platforms. Depending on the goal of the analysis
     // we may need to count or ignore them.
@@ -414,11 +419,17 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
     void set_flops_per_second(float value) {
       per_second_rates[kFlopsKey] = value;
     }
+    void set_flops_min_latency_second(float value) {
+      min_latencies_seconds[kFlopsKey] = value;
+    }
     void set_transcendentals_per_second(float value) {
       per_second_rates[kTranscendentalsKey] = value;
     }
     void set_bytes_per_second(float value) {
       per_second_rates[kBytesAccessedKey] = value;
+    }
+    void set_bytes_min_latency_second(float value) {
+      min_latencies_seconds[kBytesAccessedKey] = value;
     }
 
     // Returns the specified per-second rate used by cost analysis.
@@ -426,19 +437,26 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
       return per_second_rates[key];
     }
 
+    float min_latency_seconds(absl::string_view key) const {
+      return min_latencies_seconds[key];
+    }
+
     std::string ToString() const {
       return absl::StrFormat(
           "HloCostAnalysis::Options{\n"
           " per_second_rates: %s\n"
+          " min_latency_seconds: %s\n"
           " count_multiple_input_accesses: %d\n"
           "}",
-          per_second_rates.ToString(), count_multiple_input_accesses);
+          per_second_rates.ToString(), min_latencies_seconds.ToString(),
+          count_multiple_input_accesses);
     }
   };
 
   explicit HloCostAnalysis(const Options& options);
   explicit HloCostAnalysis(ShapeSizeFunction shape_size,
-                           const Properties& per_second_rates = {});
+                           const Properties& per_second_rates = {},
+                           const Properties& min_latency_seconds = {});
 
   // For all element-wise instruction we call HandleElementwiseOp. If necessary,
   // override HandleElementwiseOp instead.
@@ -593,6 +611,10 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // Returns the specified per-second rate used by cost analysis.
   float per_second_rate(absl::string_view key) const {
     return options_.per_second_rate(key);
+  }
+  // Returns the specified minimum latency used by cost analysis.
+  float min_latency_seconds(absl::string_view key) const {
+    return options_.min_latency_seconds(key);
   }
 
   // Return the key that is used to index into Properties for the specified

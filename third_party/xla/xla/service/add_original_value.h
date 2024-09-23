@@ -17,7 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_ADD_ORIGINAL_VALUE_H_
 
 #include "absl/status/statusor.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
 

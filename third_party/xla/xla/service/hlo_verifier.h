@@ -23,7 +23,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
 
@@ -148,6 +148,9 @@ struct HloVerifierOpts {
   // Should enforce no function renames unless the name instruction has been
   // cloned (".clone" suffix) or rematted (".remat");
   bool verify_instruction_name_unchanged = false;
+
+  // Check if channel instructions all have unique channel ids.
+  bool verify_unique_channel_ids = true;
 
   HloPredicate instruction_can_change_layout;
 

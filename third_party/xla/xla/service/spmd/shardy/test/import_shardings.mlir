@@ -125,8 +125,8 @@ func.func @unknown_sharding(%arg0: tensor<8x8xf32> {mhlo.sharding = "{devices=[4
 
 // -----
 
-// CHECK-LABEL: sdy.mesh @mesh = <>
-// CHECK-LABEL: sdy.mesh @maximal_mesh_0 = <device_ids=[0]>
+// CHECK-LABEL: sdy.mesh @mesh = <[]>
+// CHECK-LABEL: sdy.mesh @maximal_mesh_0 = <[], device_ids=[0]>
 
 // CHECK-LABEL: func @one_maximal_mesh(
 // CHECK-SAME:      %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@maximal_mesh_0, [{}, {}]>}
@@ -138,8 +138,8 @@ func.func @one_maximal_mesh(%arg0: tensor<8x8xf32> {mhlo.sharding = "{maximal de
 
 // -----
 
-// CHECK-LABEL: sdy.mesh @maximal_mesh_0 = <device_ids=[0]>
-// CHECK-LABEL: sdy.mesh @maximal_mesh_4 = <device_ids=[4]>
+// CHECK-LABEL: sdy.mesh @maximal_mesh_0 = <[], device_ids=[0]>
+// CHECK-LABEL: sdy.mesh @maximal_mesh_4 = <[], device_ids=[4]>
 
 // CHECK-LABEL: func @two_maximal_shardings_should_be_sorted(
 // CHECK-SAME:      %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@maximal_mesh_4, [{}, {}]>},
@@ -151,7 +151,7 @@ func.func @two_maximal_shardings_should_be_sorted(%arg0: tensor<8x8xf32> {mhlo.s
 }
 
 // -----
-// CHECK-COUNT-1: sdy.mesh @maximal_mesh_0 = <device_ids=[0]>
+// CHECK-COUNT-1: sdy.mesh @maximal_mesh_0 = <[], device_ids=[0]>
 
 // CHECK-LABEL: func @duplicate_maximal_sharding_should_be_deduped(
 // CHECK-SAME:      %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@maximal_mesh_0, [{}, {}]>},
@@ -165,7 +165,7 @@ func.func @duplicate_maximal_sharding_should_be_deduped(%arg0: tensor<8x8xf32> {
 // -----
 
 // CHECK-LABEL: sdy.mesh @mesh = <["axis_0"=8, "axis_1"=4]>
-// CHECK-LABEL: sdy.mesh @maximal_mesh_0 = <device_ids=[0]>
+// CHECK-LABEL: sdy.mesh @maximal_mesh_0 = <[], device_ids=[0]>
 
 // CHECK-LABEL: func @two_meshes(
 // CHECK-SAME:      %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"axis_1"}, {}]>},
@@ -180,7 +180,7 @@ func.func @two_meshes(%arg0: tensor<8x8xf32> {mhlo.sharding = "{devices=[4,1,8]<
 
 // -----
 // CHECK-LABEL: sdy.mesh @mesh = <["axis_0"=8, "axis_1"=4]>
-// CHECK-LABEL: sdy.mesh @maximal_mesh_0 = <device_ids=[0]>
+// CHECK-LABEL: sdy.mesh @maximal_mesh_0 = <[], device_ids=[0]>
 
 // CHECK-LABEL: func @maximal_sharding_on_op(
 // CHECK-SAME:      %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"axis_1"}, {}]>},

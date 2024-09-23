@@ -44,6 +44,8 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/pass/hlo_pass_fix.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/algebraic_simplifier.h"
 #include "xla/service/call_inliner.h"
@@ -86,8 +88,6 @@ limitations under the License.
 #include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_dce.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_pass_fix.h"
-#include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/reshape_mover.h"
@@ -207,13 +207,17 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddPass<FloatNormalization>(&matmul_bf16_support);
 
   pipeline.AddPass<GpusolverRewriter>();
-  pipeline.AddPass<ConvRewriter>(cuda_compute_capability);
-  pipeline.AddPass<CudnnFusedConvRewriter>(cuda_compute_capability, dnn_version,
-                                           toolkit_version);
-  pipeline.AddPass<ConvPaddingLegalization>();
-  pipeline.AddPass<CudnnPadForConvolutions>(cuda_compute_capability);
-  pipeline.AddPass<CudnnVectorizeConvolutions>(cuda_compute_capability,
-                                               dnn_version);
+  if (!hlo_module->config()
+           .debug_options()
+           .xla_gpu_experimental_disable_binary_libraries()) {
+    pipeline.AddPass<ConvRewriter>(cuda_compute_capability);
+    pipeline.AddPass<CudnnFusedConvRewriter>(cuda_compute_capability,
+                                             dnn_version, toolkit_version);
+    pipeline.AddPass<ConvPaddingLegalization>();
+    pipeline.AddPass<CudnnPadForConvolutions>(cuda_compute_capability);
+    pipeline.AddPass<CudnnVectorizeConvolutions>(cuda_compute_capability,
+                                                 dnn_version);
+  }
   // The conv padding/vectorization passes which we need to get rid of.  They
   // also leave behind unnecessary tuple/get-tuple-element pairs that
   // TupleSimplifier fixes.
@@ -228,12 +232,16 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddPass<HloPassFix<GpuAlgebraicSimplifier>>(algsimp_options,
                                                        gpu_version);
 
-  // CudnnSimplifyPadding gets rid of some padding introduced by
-  // CudnnPadForConvolutions and used by CudnnVectorizeConvolutions.  The
-  // pattern-matches in this pass need to be run after inlining and simplifying
-  // tuples from CudnnVectorizeConvolutions.  We also need to run algsimp to
-  // e.g. clean up unnecessary nop `convert`s.
-  pipeline.AddPass<CudnnSimplifyPadding>();
+  if (!hlo_module->config()
+           .debug_options()
+           .xla_gpu_experimental_disable_binary_libraries()) {
+    // CudnnSimplifyPadding gets rid of some padding introduced by
+    // CudnnPadForConvolutions and used by CudnnVectorizeConvolutions.  The
+    // pattern-matches in this pass need to be run after inlining and
+    // simplifying tuples from CudnnVectorizeConvolutions.  We also need to run
+    // algsimp to e.g. clean up unnecessary nop `convert`s.
+    pipeline.AddPass<CudnnSimplifyPadding>();
+  }
 
   // tf2xla bridge, DepthwiseConvolutionConverter, ConvRewriter, and
   // CudnnSimplifyPadding introduce reshapes and transposes.  Run ReshapeMover
@@ -275,7 +283,10 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   auto cuda_compute_capability = std::get<se::CudaComputeCapability>(
       gpu_target_config.device_description.gpu_compute_capability());
 
-  if (hlo_module->config().debug_options().xla_gpu_enable_cudnn_fmha()) {
+  if (hlo_module->config().debug_options().xla_gpu_enable_cudnn_fmha() &&
+      !hlo_module->config()
+           .debug_options()
+           .xla_gpu_experimental_disable_binary_libraries()) {
     HloPassPipeline mha_fusion_pipeline(
         "nvptx cudnn multi-headed attention fusion");
     // The LayoutAssignment pass may leave behind kCopy instructions which are
@@ -314,7 +325,10 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   }
 
   HloPassPipeline pre_pipeline("nvptx post-layout_assignment part 1");
-  if (hlo_module->config().debug_options().xla_gpu_enable_cudnn_layer_norm()) {
+  if (hlo_module->config().debug_options().xla_gpu_enable_cudnn_layer_norm() &&
+      !hlo_module->config()
+           .debug_options()
+           .xla_gpu_experimental_disable_binary_libraries()) {
     // Rewrite normalization patterns into cuDNN Custom Calls.
     pre_pipeline.AddPass<CudnnNormRewriter>(cuda_compute_capability);
   }
@@ -322,12 +336,17 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   pre_pipeline.AddPass<DotDimensionMerger>();
   pre_pipeline.AddPass<DotSparsityRewriter>();
 
-  for (const CublasPaddingRequirement& requirement :
-       CublasPaddingRequirements) {
-    if (cuda_compute_capability.IsAtLeast(requirement.min_compute_capability)) {
-      pre_pipeline.AddPass<CublasPadForGemms>(cuda_compute_capability,
-                                              requirement.data_type,
-                                              requirement.multiple_of);
+  if (!hlo_module->config()
+           .debug_options()
+           .xla_gpu_experimental_disable_binary_libraries()) {
+    for (const CublasPaddingRequirement& requirement :
+         CublasPaddingRequirements) {
+      if (cuda_compute_capability.IsAtLeast(
+              requirement.min_compute_capability)) {
+        pre_pipeline.AddPass<CublasPadForGemms>(cuda_compute_capability,
+                                                requirement.data_type,
+                                                requirement.multiple_of);
+      }
     }
   }
   // Padding a gemm operand that's a constant results in pad(constant).  Run
@@ -367,12 +386,25 @@ bool NVPTXCompiler::RequiresCollectiveScheduleLinearizer(
 }
 
 absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
-    HloPassPipeline* pipeline, HloModule* hlo_module,
+    HloPassPipeline* pipeline, const se::GpuComputeCapability& gpu_version,
+    const CompileOptions& options, HloModule* hlo_module,
     AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
+  if (hlo_module->config()
+          .debug_options()
+          .xla_gpu_experimental_disable_binary_libraries()) {
+    return absl::OkStatus();
+  }
   if (GpuConvAlgorithmPicker::IsEnabled(hlo_module)) {
     pipeline->AddPass<GpuConvAlgorithmPicker>(autotune_config);
   }
-  pipeline->AddPass<GemmAlgorithmPicker>(autotune_config);
+  // On Ampere or later, GemmAlgorithmPicker just provides a way to "warmup" the
+  // execution. But we already do that during GemmFusionAutotuner pass. In that
+  // case, we do a recursive compilation call that has
+  // 'is_autotuning_compilation' set to true.
+  if (!std::get<se::CudaComputeCapability>(gpu_version).IsAtLeastAmpere() ||
+      options.is_autotuning_compilation) {
+    pipeline->AddPass<GemmAlgorithmPicker>(autotune_config);
+  }
   return absl::OkStatus();
 }
 
@@ -397,6 +429,11 @@ absl::Status NVPTXCompiler::AddCustomKernelReplacementPasses(
 absl::Status NVPTXCompiler::RunCudnnCompilerPasses(
     HloModule* module, se::StreamExecutor* stream_exec,
     BinaryMap* dnn_compiled_graphs) {
+  if (module->config()
+          .debug_options()
+          .xla_gpu_experimental_disable_binary_libraries()) {
+    return absl::OkStatus();
+  }
   tsl::profiler::ScopedAnnotation annotation([&] {
     return absl::StrFormat("XlaCompileCudnnFusion:#module=%s,program_id=%d#",
                            module->name(), module->unique_id());

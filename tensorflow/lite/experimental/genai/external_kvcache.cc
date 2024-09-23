@@ -63,7 +63,7 @@ TfLiteStatus ExternalKVCachePrepare(TfLiteContext* context, TfLiteNode* node) {
 
   TF_LITE_ENSURE_EQ(context, k_cache->type, kTfLiteFloat32);
   TF_LITE_ENSURE_EQ(context, v_cache->type, kTfLiteFloat32);
-  TF_LITE_ENSURE_EQ(context, position->type, kTfLiteInt64);
+  TF_LITE_ENSURE_EQ(context, position->type, kTfLiteInt32);
   TF_LITE_ENSURE_EQ(context, k_slice->type, kTfLiteFloat32);
   TF_LITE_ENSURE_EQ(context, v_slice->type, kTfLiteFloat32);
   TF_LITE_ENSURE_EQ(context, updated_k_cache->type, kTfLiteFloat32);
@@ -128,8 +128,8 @@ TfLiteStatus ExternalKVCacheEval(TfLiteContext* context, TfLiteNode* node) {
       GetTensorShape(k_cache).Dims(2) * GetTensorShape(k_cache).Dims(3);
   const int32_t cache_size = GetTensorShape(k_cache).Dims(1);
   int32_t last_update_position = -1;
-  for (int i = 0; i < position->bytes / sizeof(int64_t); ++i) {
-    const int32_t update_position = static_cast<int32_t>(position->data.i64[i]);
+  for (int i = 0; i < position->bytes / sizeof(int32_t); ++i) {
+    const int32_t update_position = position->data.i32[i];
     // We are making the assumption that the positions are in increasing order
     // and a decrease or equal value shows exhaustion of update slices.
     // This assumption can be relaxed once we switch to dynamic shapes.

@@ -462,7 +462,7 @@ string StepStatsCollector::ReportAllocsOnResourceExhausted(
             std::make_pair(dev_stat.first, alloc.first->allocator_name());
         AllocStats& dev_allocs_stats = allocs_map[dev_allocator];
         TrackingAllocator* tracking_alloc = alloc.second;
-        gtl::InlinedVector<AllocRecord, 4> cur_records =
+        absl::InlinedVector<AllocRecord, 4UL> cur_records =
             tracking_alloc->GetCurrentRecords();
         int64_t cur_bytes = 0;
         for (const auto& r : cur_records) {

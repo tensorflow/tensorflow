@@ -20,10 +20,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "llvm/IR/Module.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_pass_pipeline.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/dnn.h"
@@ -55,7 +55,8 @@ class AMDGPUCompiler : public GpuCompiler {
       const HloModule* module, se::StreamExecutor* stream_exec) override;
 
   absl::Status AddConvAndGemmAutotuningPasses(
-      HloPassPipeline* pipeline, HloModule* hlo_module,
+      HloPassPipeline* pipeline, const se::GpuComputeCapability& gpu_version,
+      const CompileOptions& options, HloModule* hlo_module,
       AutotuneConfig& autotune_config,
       tsl::thread::ThreadPool* thread_pool) override;
 

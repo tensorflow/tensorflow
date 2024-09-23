@@ -41,6 +41,7 @@ def _mock_wrapped_convert(
     conversion_flags_str="",
     unused_input_data_str="",
     unused_debug_info_str="",
+    unused_enable_mlir_converter=True,
 ):
   # Simulate the converter throwing and error when
   # `guarantee_all_funcs_one_use` is not set.
@@ -97,6 +98,7 @@ class ConvertTest(test_util.TensorFlowTestCase):
         sess.graph_def,
         input_tensors=[in_tensor],
         output_tensors=[out_tensor],
+        enable_mlir_converter=False,
     )
     mock_func.assert_called_once()
 
@@ -123,6 +125,7 @@ class ConvertTest(test_util.TensorFlowTestCase):
         sess.graph_def,
         input_tensors=[in_tensor],
         output_tensors=[out_tensor],
+        enable_mlir_converter=True,
         guarantee_all_funcs_one_use=False,
     )
     self.assertTrue(str(model, encoding="utf-8"), "A model")
@@ -161,6 +164,7 @@ class ConvertTest(test_util.TensorFlowTestCase):
         output_arrays=["add"],
         control_output_arrays=None,
         inference_type=dtypes.float32,
+        enable_mlir_converter=False,
     )
     self.assertTrue(tflite_model)
 
@@ -205,6 +209,7 @@ class ConvertTest(test_util.TensorFlowTestCase):
         control_output_arrays=None,
         inference_type=dtypes.uint8,
         quantized_input_stats=[(0.0, 1.0), (0.0, 1.0)],
+        enable_mlir_converter=False,
     )
     self.assertTrue(tflite_model)
 
@@ -258,6 +263,7 @@ class ConvertTest(test_util.TensorFlowTestCase):
           output_arrays=["output"],
           control_output_arrays=None,
           inference_type=dtypes.uint8,
+          enable_mlir_converter=False,
       )
     self.assertEqual(
         "The `quantized_input_stats` flag must be defined when either "

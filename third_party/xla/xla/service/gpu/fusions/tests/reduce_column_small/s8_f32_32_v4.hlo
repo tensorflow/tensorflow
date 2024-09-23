@@ -14,4 +14,4 @@ fusion {
 
 // CHECK: vector<4xf32>
 // CHECK: allocate_shared : tensor<16x33xf32>
-// CHECK: shuffle_reduce @add_add{{.*}} to 8 : f32
+// CHECK: shuffle_reduce(%{{.*}}) to 8 combiner=@add_add

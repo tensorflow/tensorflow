@@ -870,8 +870,8 @@ ENTRY main {
       "block_level_fusion_config":{"output_tile_sizes":["2","2","2","2"],
                                    "num_warps":"1"}}}
 })";
-  TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText,
-                                          "triton_computation", R"(
+  TF_EXPECT_OK(
+      CreateTritonIrAndFileCheck(this, kHloText, "triton_computation", R"(
 CHECK: tt.reshape
 )"));
 
@@ -896,9 +896,150 @@ ENTRY main {
       "block_level_fusion_config":{"output_tile_sizes":["4","2","8","2"],
                                    "num_warps":"1"}}}
 })";
-  TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText,
-                                          "triton_computation", R"(
+  TF_EXPECT_OK(
+      CreateTritonIrAndFileCheck(this, kHloText, "triton_computation", R"(
 CHECK: tt.reshape
+)"));
+
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+}
+
+TEST_F(TritonEmitterTest, BitcastNormalizedLayoutsIsLoweredCorrectly) {
+  const std::string kHloText = R"(
+triton_computation {
+  p = s8[5,42] parameter(0)
+  ROOT bitcast = s8[5,6,7] bitcast(p)
+}
+
+ENTRY entry_computation {
+  p = s8[5,42] parameter(0)
+  ROOT fusion = s8[5,6,7] fusion(p), kind=kCustom, calls=triton_computation,
+    backend_config={
+      "fusion_backend_config":{ "kind":"__triton", "block_level_fusion_config":{
+          "output_tile_sizes":["2","4","1"], "num_warps":"1"}}
+    }
+})";
+  TF_EXPECT_OK(
+      CreateTritonIrAndFileCheck(this, kHloText, "triton_computation", R"(
+CHECK:     tt.load
+CHECK-NOT: tt.trans
+CHECK:     tt.reshape
+CHECK-NOT: tt.trans
+CHECK:     tt.store
+)"));
+
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+}
+
+TEST_F(TritonEmitterTest, BitcastNonNormalizedInputLayoutIsLoweredCorrectly) {
+  const std::string kHloText = R"(
+triton_computation {
+  p = s8[42,5]{0,1} parameter(0)
+  ROOT bitcast = s8[5,6,7] bitcast(p)
+}
+
+ENTRY entry_computation {
+  p = s8[42,5]{0,1} parameter(0)
+  ROOT fusion = s8[5,6,7] fusion(p), kind=kCustom, calls=triton_computation,
+    backend_config={
+      "fusion_backend_config":{ "kind":"__triton", "block_level_fusion_config":{
+          "output_tile_sizes":["2","4","1"], "num_warps":"1"}}
+    }
+})";
+  TF_EXPECT_OK(
+      CreateTritonIrAndFileCheck(this, kHloText, "triton_computation", R"(
+CHECK:     tt.load
+CHECK:     tt.trans
+CHECK:     tt.reshape
+CHECK-NOT: tt.trans
+CHECK:     tt.store
+)"));
+
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+}
+
+TEST_F(TritonEmitterTest, BitcastNonNormalizedOutputLayoutIsLoweredCorrectly) {
+  const std::string kHloText = R"(
+triton_computation {
+  p = s8[5,42] parameter(0)
+  ROOT bitcast = s8[5,6,7]{1,2,0} bitcast(p)
+}
+
+ENTRY entry_computation {
+  p = s8[5,42] parameter(0)
+  ROOT fusion = s8[5,6,7]{1,2,0} fusion(p), kind=kCustom, calls=triton_computation,
+    backend_config={
+      "fusion_backend_config":{ "kind":"__triton", "block_level_fusion_config":{
+          "output_tile_sizes":["2","4","1"], "num_warps":"1"}}
+    }
+})";
+  TF_EXPECT_OK(
+      CreateTritonIrAndFileCheck(this, kHloText, "triton_computation", R"(
+CHECK:     tt.load
+CHECK-NOT: tt.trans
+CHECK:     tt.reshape
+CHECK:     tt.trans
+CHECK:     tt.store
+)"));
+
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+}
+
+TEST_F(TritonEmitterTest,
+       BitcastNonNormalizedInputOutputLayoutIsLoweredCorrectly) {
+  const std::string kHloText = R"(
+triton_computation {
+  p = s8[42,5]{0,1} parameter(0)
+  ROOT bitcast = s8[5,6,7]{1,2,0} bitcast(p)
+}
+
+ENTRY entry_computation {
+  p = s8[42,5]{0,1} parameter(0)
+  ROOT fusion = s8[5,6,7]{1,2,0} fusion(p), kind=kCustom, calls=triton_computation,
+    backend_config={
+      "fusion_backend_config":{ "kind":"__triton", "block_level_fusion_config":{
+          "output_tile_sizes":["2","4","1"], "num_warps":"1"}}
+    }
+})";
+  TF_EXPECT_OK(
+      CreateTritonIrAndFileCheck(this, kHloText, "triton_computation", R"(
+CHECK:     tt.load
+CHECK:     tt.trans
+CHECK:     tt.reshape
+CHECK:     tt.trans
+CHECK:     tt.store
+)"));
+
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(kHloText, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+}
+
+TEST_F(TritonEmitterTest, BitcastTransposeOnlyIsLoweredCorrectly) {
+  const std::string kHloText = R"(
+triton_computation {
+  p = s8[42,5]{0,1} parameter(0)
+  ROOT bitcast = s8[5,42] bitcast(p)
+}
+
+ENTRY entry_computation {
+  p = s8[42,5]{0,1} parameter(0)
+  ROOT fusion = s8[5,42] fusion(p), kind=kCustom, calls=triton_computation,
+    backend_config={
+      "fusion_backend_config":{ "kind":"__triton", "block_level_fusion_config":{
+          "output_tile_sizes":["4","1"], "num_warps":"1"}}
+    }
+})";
+  TF_EXPECT_OK(
+      CreateTritonIrAndFileCheck(this, kHloText, "triton_computation", R"(
+CHECK:     tt.load
+CHECK:     tt.trans
+CHECK-NOT: tt.reshape
+CHECK-NOT: tt.trans
+CHECK:     tt.store
 )"));
 
   EXPECT_TRUE(

@@ -34,6 +34,7 @@ cc_library(
         ":execution_trace_proto_cc",
         ":execution_trace_proto_cc_impl",
         "//xla:literal",
+        "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/mlir/tools/mlir_interpreter/framework",
         "@com_google_absl//absl/status",

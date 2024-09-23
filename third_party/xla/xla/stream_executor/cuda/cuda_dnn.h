@@ -64,14 +64,24 @@ class CudnnGraph : public dnn::DnnGraph {
   // Builds single plan of the graph with given ID.
   absl::Status Build(dnn::DnnSupport&, std::optional<int64_t> plan_id) override;
   // Builds all the plans
-  absl::Status Execute(Stream& stream,
-                       absl::Span<DeviceMemoryBase> operands) const override;
+  absl::Status Execute(Stream& stream, absl::Span<DeviceMemoryBase> operands,
+                       int64_t local_device_ordinal) const override;
   const cudnn_frontend::graph::Graph& Graph() const { return graph_; }
+  void InitDropoutState(int64_t local_device_count, int64_t seed,
+                        int64_t increment) {
+    dropout_rng_seed_ = seed;
+    current_dropout_rng_offset_ = std::vector<int64_t>(local_device_count, 0);
+    dropout_rng_offset_increment_ = increment;
+  }
+  void UpdateDropoutState(int64_t local_device_ordinal) const {
+    current_dropout_rng_offset_[local_device_ordinal] +=
+        dropout_rng_offset_increment_;
+  }
 
  private:
   cudnn_frontend::graph::Graph graph_;
   int64_t dropout_rng_seed_;
-  mutable int64_t current_dropout_rng_offset_;
+  mutable std::vector<int64_t> current_dropout_rng_offset_;
   int64_t dropout_rng_offset_increment_ = 0;
 };
 #endif  // CUDNN_VERSION >= 8100

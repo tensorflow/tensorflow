@@ -211,7 +211,7 @@ FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
   // merge.
   if (producer->users().empty()) {
     ++num_fail_no_users_;
-    return "fusion has no users";
+    return FusionDecision::Forbid("fusion has no users");
   }
 
   // Skip 'producer' instruction if it is not a loop fusion. Library fusion
@@ -220,7 +220,7 @@ FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
   // kReduce), so they shouldn't be further fused either.
   if (!producer->IsLoopFusion()) {
     ++num_fail_not_loop_fusion_;
-    return "not a loop fusion";
+    return FusionDecision::Forbid("not a loop fusion");
   }
 
   auto producer_hero = GetRealHeroForMultiOutputFusion(*producer);
@@ -229,11 +229,11 @@ FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
   for (const HloInstruction* user : producer->users()) {
     if (user->opcode() == HloOpcode::kBitcast) {
       ++num_fail_merge_all_users_;
-      return "not fusing bitcast ops";
+      return FusionDecision::Forbid("not fusing bitcast ops");
     }
     if (user->IsCustomFusion()) {
       ++num_fail_merge_all_users_;
-      return "not fusing custom fusions";
+      return FusionDecision::Forbid("not fusing custom fusions");
     }
     auto consumer_hero = GetRealHeroForMultiOutputFusion(*user);
     if (auto compatible =
@@ -256,7 +256,7 @@ FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
   // it to a producer which transposes most data.
   if (has_reduction_user && TransposesMostData(*producer)) {
     ++num_fail_uncoalesced_read_;
-    return "would read mostly uncoalesced";
+    return FusionDecision::Forbid("would read mostly uncoalesced");
   }
 
   for (const HloInstruction* user : producer->users()) {
@@ -276,6 +276,7 @@ FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
     cost_analysis_.emplace(
         GpuHloCostAnalysis::Options{shape_size_function_,
                                     /*per_second_rates=*/{},
+                                    /*min_latencies_seconds=*/{},
                                     /*count_multiple_input_accesses=*/true},
         gpu_device_info_);
     TF_CHECK_OK(computation_->Accept(&cost_analysis_.value()));
@@ -284,8 +285,8 @@ FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
   for (const HloInstruction* user : producer->users()) {
     if (cost_analysis_->ProducerConsumerMergedTooLarge(*producer, *user)) {
       ++num_fail_inefficient_fusion_emitter_;
-      return FusionDecision{} << "if merged with " << user->name()
-                              << " will generate huge IR";
+      return FusionDecision::Forbid("if merged with ")
+             << user->name() << " will generate huge IR";
     }
   }
 
@@ -294,10 +295,10 @@ FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
       GpuPerformanceModelOptions::Default(), producer->users());
   if (t.time_fused > t.time_unfused) {
     ++num_fail_slower_if_fused_;
-    return "will execute slower if fused";
+    return FusionDecision::Forbid("will execute slower if fused");
   }
 
-  return {};
+  return FusionDecision::Allow();
 }
 
 absl::StatusOr<bool> FusionMerger::Run(

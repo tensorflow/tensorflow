@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_OP_EXPANDER_PASS_H_
 #define XLA_SERVICE_OP_EXPANDER_PASS_H_
 
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
 

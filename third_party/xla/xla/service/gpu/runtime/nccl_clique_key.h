@@ -29,7 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/service/global_device_id.h"
-#include "tsl/lib/gtl/int_type.h"
+#include "xla/tsl/lib/gtl/int_type.h"
 
 namespace xla::gpu {
 

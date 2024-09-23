@@ -129,7 +129,6 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
   };
   State* state = new State;
 
-  DeviceAttributes server_attributes;
   Status s = dev_resolver_->GetDeviceAttributes(peer_device,
                                                 &state->server_attributes);
   if (!s.ok()) {

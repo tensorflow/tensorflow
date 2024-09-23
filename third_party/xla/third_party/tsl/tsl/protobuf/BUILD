@@ -62,7 +62,6 @@ tf_proto_library(
     name = "coordination_service_proto",
     srcs = ["coordination_service.proto"],
     has_services = 1,
-    cc_stubby_versions = ["2"],
     create_grpc_library = True,
     create_java_proto = False,
     create_service = True,

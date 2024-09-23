@@ -220,6 +220,50 @@ TEST_F(BFloat16ConversionFoldingTest, DoNotFoldTuple) {
   EXPECT_EQ(tuple->operand(1), convert0);
 }
 
+TEST_F(BFloat16ConversionFoldingTest, DoNotFoldAsyncOp) {
+  Shape f32_shape = ShapeUtil::MakeShape(F32, {2, 4});
+  Shape bf16_shape = ShapeUtil::MakeShape(BF16, {2, 4});
+
+  auto module = CreateNewVerifiedModule();
+
+  auto async_computation_builder = HloComputation::Builder("async_computation");
+  HloInstruction* async_a = async_computation_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, f32_shape, "async_a"));
+  HloInstruction* async_b = async_computation_builder.AddInstruction(
+      HloInstruction::CreateParameter(1, f32_shape, "async_b"));
+  HloInstruction* add =
+      async_computation_builder.AddInstruction(HloInstruction::CreateBinary(
+          f32_shape, HloOpcode::kAdd, async_a, async_b));
+  HloComputation* async_computation =
+      module->AddEmbeddedComputation(async_computation_builder.Build());
+
+  auto builder = HloComputation::Builder(TestName());
+  HloInstruction* a = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, f32_shape, "a"));
+  HloInstruction* b = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, bf16_shape, "b"));
+  HloInstruction* convert0 =
+      builder.AddInstruction(HloInstruction::CreateConvert(f32_shape, b));
+  HloInstruction* async_start =
+      builder.AddInstruction(HloInstruction::CreateAsyncStart(
+          ShapeUtil::MakeTupleShape(
+              {ShapeUtil::MakeTupleShape({f32_shape, f32_shape}), f32_shape,
+               ShapeUtil::MakeScalarShape(U32)}),
+          {a, convert0}, async_computation));
+  HloInstruction* async_done = builder.AddInstruction(
+      HloInstruction::CreateAsyncDone(f32_shape, async_start));
+  HloInstruction* convert1 = builder.AddInstruction(
+      HloInstruction::CreateConvert(bf16_shape, async_done));
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_FALSE(FoldConversions(module.get()));
+
+  EXPECT_EQ(async_computation->root_instruction(), add);
+  EXPECT_EQ(computation->root_instruction(), convert1);
+  EXPECT_EQ(async_done->shape().element_type(), F32);
+  EXPECT_EQ(async_start->operand(1), convert0);
+}
+
 TEST_F(BFloat16ConversionFoldingTest, FoldAllReduceTupleOutput) {
   auto builder = HloComputation::Builder(TestName());
 

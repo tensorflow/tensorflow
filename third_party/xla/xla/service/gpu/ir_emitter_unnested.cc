@@ -961,9 +961,16 @@ absl::Status IrEmitterUnnested::EmitCuDnnThunk(
                               instr->operands()));
   TF_ASSIGN_OR_RETURN(const std::string fingerprint,
                       FingerprintWithBackendConfig<GpuBackendConfig>(*instr));
+  // check if sdpa dropout is enabled
+  std::optional<int64_t> dropout_seed = std::nullopt;
+  if (MHACallHasDropout(instr->custom_call_target())) {
+    TF_ASSIGN_OR_RETURN(const auto gpu_config,
+                        instr->backend_config<xla::gpu::GpuBackendConfig>());
+    dropout_seed = gpu_config.cudnn_fmha_backend_config().seed();
+  }
   AddThunkToThunkSequence(std::make_unique<CuDnnThunk>(
       fingerprint, Thunk::ThunkInfo::WithProfileAnnotation(instr),
-      kernel_arguments.args()));
+      kernel_arguments.args(), dropout_seed));
   return absl::OkStatus();
 }
 

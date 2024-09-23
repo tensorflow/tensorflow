@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/transforms/double_buffer_loop_unrolling.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <iterator>
 #include <optional>
@@ -39,9 +41,12 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/flatten_call_graph.h"
+#include "xla/service/hlo_parser.h"
+#include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -466,8 +471,8 @@ absl::StatusOr<bool> DoubleBufferingUnroll(HloInstruction* while_instr,
   absl::flat_hash_map<HloInstruction*, HloInstruction*> old_to_new_map;
   absl::flat_hash_set<HloInstruction*> skip_control_dep_injection;
 
-  bool is_peeled = exact_trip_count % 2;
-  if (is_peeled) {
+  bool peel_one_iteration = exact_trip_count % 2;
+  if (peel_one_iteration) {
     VLOG(2) << "Found loops with odd trip count, 1 iteration will be peeled "
                "outside of the main body.";
     TF_RETURN_IF_ERROR(PeelInstructionsForOddTripCount(module, while_instr));
@@ -496,7 +501,8 @@ absl::StatusOr<bool> DoubleBufferingUnroll(HloInstruction* while_instr,
       skip_control_dep_injection.insert(old_instr);
     }
     SetChannelIdForNewCollective(new_instr, module);
-    TF_CHECK_OK(SetSendRecvValidation(old_instr, new_instr, is_peeled));
+    TF_CHECK_OK(SetSendRecvValidation(old_instr, new_instr,
+                                      /*is_peeled=*/peel_one_iteration));
     old_to_new_map[old_instr] = new_instr;
     VLOG(2) << "Added instruction " << new_instr->ToString();
   }
@@ -533,10 +539,15 @@ absl::StatusOr<bool> DoubleBufferLoopUnrolling::Run(
   for (HloInstruction* while_instr : while_instrs) {
     TF_ASSIGN_OR_RETURN(WhileLoopBackendConfig config,
                         while_instr->backend_config<WhileLoopBackendConfig>());
-    if (!config.has_known_trip_count() || config.known_trip_count().n() == 1) {
+    if (!config.has_known_trip_count()) {
       VLOG(2) << while_instr->ToString()
-              << " doesn't have exact trip count, skipping loop unrolling "
-                 "for now";
+              << " doesn't have exact trip count, skipping loop unrolling.";
+      continue;
+    }
+
+    if (config.known_trip_count().n() == 1) {
+      VLOG(2) << while_instr->ToString()
+              << " has an iteration count of one, skipping unrolling.";
       continue;
     }
 

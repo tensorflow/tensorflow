@@ -63,12 +63,12 @@ cc_library(
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/client:xla_computation",
         "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/hlo/translate/mhlo_to_hlo:layout_util",
+        "@local_xla//xla/hlo/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
+        "@local_xla//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
         "@local_xla//xla/mlir_hlo",
         "@local_xla//xla/mlir_hlo:hlo_dialect_registration",
         "@local_xla//xla/mlir_hlo:mhlo_passes",
-        "@local_xla//xla/translate/mhlo_to_hlo:layout_util",
-        "@local_xla//xla/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
-        "@local_xla//xla/translate/mhlo_to_hlo:type_to_shape",
         "@stablehlo//:register",
     ],
 )
@@ -179,14 +179,14 @@ tf_cc_test(
         "//tensorflow/core/tpu/kernels:tpu_compile_op_support",
         "//tensorflow/core/tpu/kernels/xla:host_compute_ops",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/lib/monitoring:test_utils",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla:shape_util",
         "@local_xla//xla/client:client_library",
+        "@local_xla//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
         "@local_xla//xla/stream_executor:platform_manager",
-        "@local_xla//xla/translate/mhlo_to_hlo:type_to_shape",
         "@local_xla//xla/tsl/lib/core:status_test_util",
+        "@local_xla//xla/tsl/lib/monitoring:test_utils",
     ],
 )
 
@@ -276,9 +276,9 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
-        "@local_tsl//tsl/lib/monitoring:counter",
         "@local_tsl//tsl/platform:error_logging",
         "@local_tsl//tsl/platform:status",
+        "@local_xla//xla/tsl/lib/monitoring:counter",
     ],
 )
 

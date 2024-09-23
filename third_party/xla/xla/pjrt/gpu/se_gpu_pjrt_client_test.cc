@@ -1231,7 +1231,7 @@ TEST(StreamExecutorGpuClientTest,
   std::vector<int32_t> data{1, 2, 3, 4};
   // Build the input shape with the correct memory space set.
   Shape shape = ShapeUtil::MakeShapeWithDenseLayout(S32, {1, 4},
-                                                    /*major_to_minor=*/{1, 0});
+                                                    /*minor_to_major=*/{1, 0});
   shape.mutable_layout()->set_memory_space(Layout::kDefaultMemorySpace);
 
   auto device = client->addressable_devices()[0];

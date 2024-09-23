@@ -35,6 +35,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/nvPTXCompiler.h"
 #include "xla/stream_executor/cuda/ptx_compiler.h"
+#include "xla/stream_executor/cuda/ptx_compiler_support.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/semantic_version.h"
 
@@ -133,9 +134,8 @@ absl::StatusOr<std::vector<uint8_t>> CompileGpuAsmUsingLibNvPtxCompiler(
       return absl::UnimplementedError(absl::StrFormat(
           "Linked libnvptxcompiler is too old for %s.", architecture));
     }
-    if (absl::StrContains(error_log, "ptxas fatal") &&
-        absl::StrContains(error_log, "Register allocation failed")) {
-      return absl::ResourceExhaustedError("Register allocation failed");
+    if (IsPtxRegisterAllocationError(error_log)) {
+      return absl::ResourceExhaustedError(error_log);
     }
 
     return absl::InternalError(

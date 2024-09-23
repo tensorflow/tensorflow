@@ -66,6 +66,9 @@ constexpr PrimitiveType Component(PrimitiveType T) {
 template <PrimitiveType T, size_t N>
 class ExhaustiveOpTestTraits {
  public:
+  static constexpr PrimitiveType kT = T;
+  static constexpr size_t kN = N;
+
   static constexpr bool kIsComplex = primitive_util::IsComplexType(T);
   static constexpr PrimitiveType kRef = Ref(T);
 
@@ -107,21 +110,13 @@ class ExhaustiveOpTestTraits {
   using OutputRangeCheck = std::function<bool(NativeInputs, NativeT)>;
 
   using ErrorSpecGen = std::conditional_t<
+      N == 1, std::function<ErrorSpec(NativeT)>,
+      std::conditional_t<N == 2, std::function<ErrorSpec(NativeT, NativeT)>,
+                         std::enable_if_t<N == 1 || N == 2, void>>>;
+  using ErrorSpecGenFnPtr = std::conditional_t<
       N == 1, ErrorSpec (*)(NativeT),
       std::conditional_t<N == 2, ErrorSpec (*)(NativeT, NativeT),
                          std::enable_if_t<N == 1 || N == 2, void>>>;
-
-  static XlaOp BuildFromInputs(XlaInputs inputs, EnqueueOp op) {
-    if constexpr (N == 1) {
-      return op(inputs[0]);
-    } else if constexpr (N == 2) {
-      return op(inputs[0], inputs[1]);
-    } else {
-      static_assert(
-          N == 1 || N == 2,
-          "BuildFromInputs only supports N == 1 and N == 2 currently.");
-    }
-  }
 };
 
 template <PrimitiveType T, size_t N>
@@ -231,7 +226,9 @@ inline ErrorSpec DefaultSpecGenerator<BF16, 2>(bfloat16, bfloat16) {
 
 template <PrimitiveType T, size_t N>
 typename ExhaustiveOpTestTraits<T, N>::ErrorSpecGen GetDefaultSpecGenerator() {
-  return DefaultSpecGenerator<T, N>;
+  // Select overload by casting to fn ptr type.
+  return static_cast<typename ExhaustiveOpTestTraits<T, N>::ErrorSpecGenFnPtr>(
+      DefaultSpecGenerator<T, N>);
 }
 
 // Determines if the real component of the complex number is subnormal (either

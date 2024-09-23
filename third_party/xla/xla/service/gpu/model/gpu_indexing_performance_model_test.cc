@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 
@@ -380,9 +381,41 @@ ENTRY main {
       indexing_cost_model_.EstimateRunTimeForTiledFusion(
           *fusion_adaptor, launch_dimensions, /*output_tile_sizes=*/{1, 1}));
 
-  EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.read_time), 183, 1);
+  EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.read_time), 5863, 1);
   EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.compute_time), 39, 1);
-  EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.exec_time), 185, 1);
+  EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.exec_time), 5865, 1);
+}
+
+// TODO(b/351342921): Remove this test once there is no special filter for
+// concatenate in Cost Model.
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_ConcatenateOperandIsSupported) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+fusion {
+  param_0 = f32[32,64] parameter(0)
+  param_1 = f32[32,64] parameter(1)
+  ROOT subtract = f32[32,64] subtract(param_0, param_1)
+}
+
+ENTRY main {
+  param_0 = f32[32,16] parameter(0)
+  param_1 = f32[32,48] parameter(1)
+  param_2 = f32[32,64] parameter(2)
+  concatenate = f32[32,64] concatenate(param_0, param_1), dimensions={1}
+  ROOT fusion = f32[32,64] fusion(concatenate, param_2), kind=kCustom, calls=fusion
+})"));
+
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  LaunchDimensions launch_dimensions{8, WarpSize()};
+
+  auto result = indexing_cost_model_.EstimateRunTimeForTiledFusion(
+      *fusion_adaptor, launch_dimensions, /*output_tile_sizes=*/{16, 16});
+
+  TF_EXPECT_OK(result.status());
 }
 
 TEST_F(GpuIndexingPerformanceModelTest,
@@ -504,6 +537,51 @@ ENTRY main {
 }
 
 TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_UncoalescedReadsTakeMoreTime) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+triton_softmax_computation {
+  param_0 = f32[2048,512] parameter(0)
+  param_1 = f32[2048,512] parameter(1)
+  ROOT add = f32[2048,512] add(param_0, param_1)
+}
+
+ENTRY main {
+  param_0 = f32[2048,512] parameter(0)
+  param_1 = f32[2048,512] parameter(1)
+  ROOT triton_softmax = f32[2048,512] fusion(param_0, param_1), kind=kCustom, calls=triton_softmax_computation, backend_config={"fusion_backend_config": {"kind":"__triton"}}
+}
+)"));
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto tiling_result,
+      indexing_cost_model_.TryFindBestTilingForFusion(*fusion_adaptor));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto res_coalesced,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *fusion_adaptor, /*launch_dimensions=*/{8192, 2 * WarpSize()},
+          /*output_tile_sizes=*/{1, 128}));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto res_uncoalesced,
+      indexing_cost_model_.EstimateRunTimeForTiledFusion(
+          *fusion_adaptor, /*launch_dimensions=*/{8192, 2 * WarpSize()},
+          /*output_tile_sizes=*/{128, 1}));
+
+  constexpr int64_t kParamSizeBytes = 2048 * 512 * 4;
+  // The number of bytes read is the same for coalesced and uncoalesced reads.
+  EXPECT_EQ(res_coalesced.bytes_read, 2 * kParamSizeBytes);
+  EXPECT_EQ(res_uncoalesced.bytes_read, 2 * kParamSizeBytes);
+
+  EXPECT_NEAR(absl::ToDoubleMicroseconds(res_coalesced.read_time), 11, 1);
+  EXPECT_NEAR(absl::ToDoubleMicroseconds(res_uncoalesced.read_time), 175, 1);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
        GetLaunchDimensionsForTiledFusion_IsSupported) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
@@ -543,7 +621,6 @@ ENTRY main {
   // and corresponds to 4 warps.
   EXPECT_EQ(launch_dimensions.num_threads_per_block(), 4 * WarpSize());
 }
-
 class FlopsPerElementTest : public GpuIndexingPerformanceModelTest {
  public:
   void CompareFlopsModels(absl::string_view hlo_module_string) {
@@ -553,6 +630,7 @@ class FlopsPerElementTest : public GpuIndexingPerformanceModelTest {
     GpuHloCostAnalysis cost_analysis(
         GpuHloCostAnalysis::Options{ShapeSizeBytesFunction(),
                                     /*per_second_rates=*/{},
+                                    /*min_latencies_seconds=*/{},
                                     /*count_multiple_input_accesses=*/true},
         device_info_);
 

@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/autotune_results.pb.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/algebraic_simplifier.h"
 #include "xla/service/compiler.h"
@@ -41,7 +42,6 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/llvm_compiler.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
@@ -123,6 +123,9 @@ class GpuCompiler : public LLVMCompiler {
     return false;
   }
 
+  static AlgebraicSimplifierOptions GetAlgebraicSimplifierOptions(
+      const HloModuleConfig& config);
+
  protected:
   struct BackendCompileResult {
     std::string asm_text;
@@ -152,7 +155,8 @@ class GpuCompiler : public LLVMCompiler {
 
   // Add autotuning passes for convolution and gemm (except triton).
   virtual absl::Status AddConvAndGemmAutotuningPasses(
-      HloPassPipeline* pipeline, HloModule* hlo_module,
+      HloPassPipeline* pipeline, const se::GpuComputeCapability& gpu_version,
+      const CompileOptions& options, HloModule* hlo_module,
       AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
     return absl::OkStatus();
   }
@@ -178,9 +182,6 @@ class GpuCompiler : public LLVMCompiler {
                                               BinaryMap* dnn_compiled_graphs) {
     return absl::OkStatus();
   }
-
-  AlgebraicSimplifierOptions GetAlgebraicSimplifierOptions(
-      const HloModuleConfig& config);
 
  private:
   struct CompileResultWithMetadata {
@@ -212,6 +213,8 @@ class GpuCompiler : public LLVMCompiler {
 
   absl::Status RunPreSchedulingPasses(HloModule* module,
                                       se::StreamExecutor* stream_exec);
+  absl::Status RunCollectiveScheduleLinearizerPasses(
+      HloModule* hlo_module, se::StreamExecutor* stream_exec);
 
   // During compilation with device, stream_exec != null and autotune_results
   // == null. During deviceless AOT compilation, stream_exec == null and

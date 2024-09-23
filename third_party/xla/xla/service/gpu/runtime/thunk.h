@@ -46,7 +46,7 @@ limitations under the License.
 #include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "tsl/lib/gtl/int_type.h"
+#include "xla/tsl/lib/gtl/int_type.h"
 
 namespace xla {
 namespace gpu {

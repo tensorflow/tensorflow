@@ -52,8 +52,8 @@ class ShapedBuffer {
                int physical_device_ordinal = -1);
 
   // Movable, but not copyable.
-  ShapedBuffer(ShapedBuffer&& s);
-  ShapedBuffer& operator=(ShapedBuffer&&);
+  ShapedBuffer(ShapedBuffer&& s) noexcept;
+  ShapedBuffer& operator=(ShapedBuffer&&) noexcept;
   ShapedBuffer(const ShapedBuffer&) = delete;
   ShapedBuffer& operator=(const ShapedBuffer&) = delete;
 
@@ -170,8 +170,8 @@ class ScopedShapedBuffer : public ShapedBuffer {
                               se::DeviceMemoryAllocator* allocator);
 
   // Movable, but not copyable.
-  ScopedShapedBuffer(ScopedShapedBuffer&& s);
-  ScopedShapedBuffer& operator=(ScopedShapedBuffer&&);
+  ScopedShapedBuffer(ScopedShapedBuffer&& s) noexcept;
+  ScopedShapedBuffer& operator=(ScopedShapedBuffer&&) noexcept;
   ScopedShapedBuffer(const ScopedShapedBuffer&) = delete;
   ScopedShapedBuffer& operator=(const ScopedShapedBuffer&) = delete;
 

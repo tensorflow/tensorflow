@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla::gpu {
@@ -99,7 +99,9 @@ class CommandBufferScheduling : public HloModulePass {
   // the beginning of the computation. This simplifies the construction of
   // command buffer computations because we don't need to deal with parameters
   // and constants that have users outside of a command buffer.
-  static absl::Status MoveParametersAndConstantsToFront(
+  // Returns true if there is a change in the order of instructions, false
+  // otherwise.
+  static absl::StatusOr<bool> MoveParametersAndConstantsToFront(
       HloComputation* computation);
 
   struct CommandBuffer {

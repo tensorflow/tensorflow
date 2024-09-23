@@ -64,8 +64,8 @@ limitations under the License.
 #include "xla/service/name_uniquer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/lib/gtl/iterator_range.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 #include "tsl/platform/protobuf.h"
@@ -1808,8 +1808,9 @@ class HloInstruction {
   //
   // Precondition: The instruction is a Conditional instruction.
   const PtrVec<HloComputation*>& branch_computations() const;
-  int branch_count() const;
-  HloComputation* branch_computation(int b) const;
+  int32_t branch_count() const;
+  HloComputation* branch_computation(int32_t b) const;
+  int32_t branch_index(HloComputation* computation) const;
   // Sets a branch HloComputation for Conditional.
   // The setter should only be called by HloModule or HloComputation methods.
   //

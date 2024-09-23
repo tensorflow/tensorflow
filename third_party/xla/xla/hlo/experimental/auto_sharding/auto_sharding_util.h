@@ -300,8 +300,7 @@ std::optional<HloSharding> GetInputSharding(const HloInstruction* ins,
 // instruction. We also assign a much larger distance to heavy operators (e.g.,
 // dot, convolution).
 InstructionDepthMap BuildInstructionDepthMap(
-    const HloInstructionSequence& sequence,
-    const InstructionBatchDimMap& batch_dim_map);
+    const HloInstructionSequence& sequence);
 
 std::string GetBatchDimMapKey(const HloInstruction* ins, int64_t idx = -1);
 

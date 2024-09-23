@@ -701,6 +701,32 @@ TEST_F(HloCostAnalysisTest, MatmulAndConvolutionCanBeTheSameComputation) {
   EXPECT_EQ(conv_analysis.flop_count(), matmul_analysis.flop_count());
 }
 
+// No instruction can finish faster than the clock cycle
+TEST_F(HloCostAnalysisTest, LatencyBoundedOptimalTime) {
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  ENTRY Entry {
+    param0 = f32[1,1] parameter(0)
+    param1 = f32[1,1] parameter(1)
+    ROOT add = f32[1,1] add(param0, param1)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  const HloInstruction* add = module->entry_computation()->root_instruction();
+  HloCostAnalysis::Options options{ShapeSize};
+  const float clock_cycle_seconds = 10.0f;
+  options.set_flops_per_second(1024);
+  options.set_bytes_per_second(1024);
+  options.set_transcendentals_per_second(1024);
+  options.set_flops_min_latency_second(clock_cycle_seconds);
+  HloCostAnalysis cost_analysis(options);
+  ASSERT_IS_OK(add->Accept(&cost_analysis));
+  EXPECT_EQ(cost_analysis.optimal_seconds(), clock_cycle_seconds);
+}
+
 using FusionCostAnalysis = HloTestBase;
 
 TEST_F(FusionCostAnalysis, LoopFusionDynUpdateSlice) {

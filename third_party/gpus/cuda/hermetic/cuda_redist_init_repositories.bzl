@@ -160,13 +160,11 @@ def get_major_library_version(repository_ctx, lib_name_to_version_dict):
     # buildifier: disable=function-docstring-return
     # buildifier: disable=function-docstring-args
     """Returns the major library version provided the versions dict."""
-    major_version = ""
-    if len(lib_name_to_version_dict) == 0:
-        return major_version
     main_lib_name = _get_main_lib_name(repository_ctx)
     key = "%%{%s_version}" % main_lib_name
-    major_version = lib_name_to_version_dict[key]
-    return major_version
+    if key not in lib_name_to_version_dict:
+        return ""
+    return lib_name_to_version_dict[key]
 
 def create_build_file(
         repository_ctx,
@@ -210,8 +208,11 @@ def _create_libcuda_symlinks(
         repository_ctx,
         lib_name_to_version_dict):
     if repository_ctx.name == "cuda_driver":
+        key = "%{libcuda_version}"
+        if key not in lib_name_to_version_dict:
+            return
         nvidia_driver_path = "lib/libcuda.so.{}".format(
-            lib_name_to_version_dict["%{libcuda_version}"],
+            lib_name_to_version_dict[key],
         )
         if not repository_ctx.path(nvidia_driver_path).exists:
             fail("%s doesn't exist!" % nvidia_driver_path)

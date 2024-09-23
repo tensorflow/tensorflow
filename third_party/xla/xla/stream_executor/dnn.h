@@ -1236,7 +1236,10 @@ class DnnGraph {
   virtual absl::Status Prepare(DnnSupport&, const NumericOptions&) = 0;
   virtual absl::Status Build(DnnSupport&, std::optional<int64_t> plan_id) = 0;
   virtual absl::Status Execute(Stream& stream,
-                               absl::Span<DeviceMemoryBase> operands) const = 0;
+                               absl::Span<DeviceMemoryBase> operands,
+                               int64_t local_device_ordinal) const = 0;
+  virtual void InitDropoutState(int64_t local_device_count, int64_t seed,
+                                int64_t increment) = 0;
 };
 
 using LazyDnnGraph = std::unique_ptr<DnnGraph>;
