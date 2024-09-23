@@ -58,6 +58,15 @@ namespace xla {
 namespace gpu {
 namespace {
 
+// Information about an operand read.
+struct OperandReadInfo {
+  // Total number of bytes read from the operand.
+  int64_t total_bytes_read = 0;
+
+  // Whether the read is coalesced.
+  int64_t is_coalesced = true;
+};
+
 // Returns the number of elements in the tile after each dimension is padded to
 // the next power of 2.
 // TODO(b/353484968): Delete this function once we have constraints to only
@@ -347,7 +356,7 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledHloComputation(
     const HloFusionAdaptor& fusion_adaptor,
     const TiledHloComputation& tiled_hlo_computation,
     const LaunchDimensions& launch_dimensions) {
-  absl::flat_hash_map<const HloInstruction*, int64_t> n_bytes_total_map;
+  absl::flat_hash_map<const HloInstruction*, OperandReadInfo> n_bytes_total_map;
 
   int64_t flops = 0;
   int64_t bytes_read = 0;
@@ -405,19 +414,27 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledHloComputation(
       int64_t tile_bytes_read = element_type_size * num_elements;
 
       bytes_read += tile_bytes_read;
-      n_bytes_total_map[hlo] += tile_bytes_read;
+
+      bool is_coalesced =
+          IsTiledReadCoalescedHeuristic(*tiled_hlo, *device_info_);
+
+      OperandReadInfo& operand_read_info = n_bytes_total_map[hlo];
+      operand_read_info.total_bytes_read += tile_bytes_read;
+      operand_read_info.is_coalesced &= is_coalesced;
     }
   }
 
   absl::Duration read_time = absl::ZeroDuration();
-  for (const auto& [hlo, n_bytes_total] : n_bytes_total_map) {
+  for (const auto& [hlo, operand_read_info] : n_bytes_total_map) {
     int64_t operand_size = shape_size_(hlo->shape());
-    int64_t n_bytes_net = std::min(operand_size, n_bytes_total);
+    int64_t n_bytes_net =
+        std::min(operand_size, operand_read_info.total_bytes_read);
 
-    read_time += ReadTimeWithDRAMHeuristic(
-        *device_info_, num_blocks, n_bytes_net, n_bytes_total,
-        /*element_type=*/hlo->shape().element_type(),
-        /*coalesced=*/true);
+    read_time +=
+        ReadTimeWithDRAMHeuristic(*device_info_, num_blocks, n_bytes_net,
+                                  operand_read_info.total_bytes_read,
+                                  /*element_type=*/hlo->shape().element_type(),
+                                  /*coalesced=*/operand_read_info.is_coalesced);
   }
 
   int64_t bytes_written =
