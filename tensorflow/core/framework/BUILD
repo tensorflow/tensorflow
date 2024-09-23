@@ -842,6 +842,7 @@ tf_cuda_library(
         "//tensorflow/core/runtime_fallback:__subpackages__",
         "//tensorflow/core/tfrt:__subpackages__",
         "//tensorflow/core/util:__pkg__",
+        "//tensorflow/python/profiler/internal:__pkg__",
         "//tensorflow/security/fuzzing:__subpackages__",
     ],
     deps = [
@@ -1692,6 +1693,7 @@ tf_proto_library(
     visibility = [
         "//tensorflow/core:__subpackages__",
         "//tensorflow/python:__pkg__",
+        "//tensorflow/python/profiler/internal:__pkg__",
         "//tensorflow/security/fuzzing:__subpackages__",
         "//waymo/ml/deploy/benchmark:__subpackages__",
     ],
