@@ -1,4 +1,4 @@
-/* Copyright 2023 The OpenXLA Authors.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PYTHON_IFRT_IR_COMPILER_H_
-#define XLA_PYTHON_IFRT_IR_COMPILER_H_
+#ifndef XLA_PYTHON_IFRT_IR_IFRT_IR_PROGRAM_H_
+#define XLA_PYTHON_IFRT_IR_IFRT_IR_PROGRAM_H_
 
 #include <memory>
 #include <string>
@@ -58,13 +58,13 @@ struct IfrtIRCompileOptions
         loaded_exec_binding(std::move(loaded_exec_binding)),
         compile_options_overrides(std::move(compile_options_overrides)) {}
 
-  // Map from logical device ids in MLIR module to runtime device ids obtained
-  // from IFRT client.
+  // Mapping from logical device ids in IFRT IR MLIR module to runtime device
+  // ids obtained from IFRT client.
   std::vector<DeviceId> device_assignments;
 
-  // Map from `getSymName()` of declared LoadedExecutableOp in the `mlir_module`
-  // to pre-compiled LoadedExecutable instance. The LoadedExecutables must
-  // outlive the LoadedExecutable to be compiled.
+  // Map from symbol names of LoadedExecutableOp in the IFRT IR MLIR module
+  // to pre-compiled `LoadedExecutable` instance. The `LoadedExecutable`s must
+  // outlive the `LoadedExecutable` of the IFRT IR program.
   absl::flat_hash_map<std::string, std::shared_ptr<LoadedExecutable>>
       loaded_exec_binding;
 
@@ -85,4 +85,4 @@ absl::StatusOr<std::unique_ptr<IfrtIRCompileOptions>> GetIfrtIRCompileOptions(
 }  // namespace ifrt
 }  // namespace xla
 
-#endif  // XLA_PYTHON_IFRT_IR_COMPILER_H_
+#endif  // XLA_PYTHON_IFRT_IR_IFRT_IR_PROGRAM_H_

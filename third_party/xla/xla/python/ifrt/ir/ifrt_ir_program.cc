@@ -1,4 +1,4 @@
-/* Copyright 2023 The OpenXLA Authors.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,9 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/python/ifrt/ir/compiler.h"
+#include "xla/python/ifrt/ir/ifrt_ir_program.h"
 
 #include <memory>
+
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "llvm/Support/Casting.h"
+#include "xla/python/ifrt/compiler.h"
 
 namespace xla {
 namespace ifrt {

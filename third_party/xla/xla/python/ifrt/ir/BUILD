@@ -170,14 +170,15 @@ cc_library(
 )
 
 cc_library(
-    name = "compiler",
-    srcs = ["compiler.cc"],
-    hdrs = ["compiler.h"],
+    name = "ifrt_ir_program",
+    srcs = ["ifrt_ir_program.cc"],
+    hdrs = ["ifrt_ir_program.h"],
     compatible_with = get_compatible_with_portable(),
     visibility = ["//xla/python/ifrt:friends"],
     deps = [
         "//xla/python/ifrt",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
