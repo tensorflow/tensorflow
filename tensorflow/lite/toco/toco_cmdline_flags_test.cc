@@ -19,6 +19,8 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/testing/util.h"
+#include "tensorflow/lite/toco/args.h"
+#include "tensorflow/lite/toco/toco_port.h"
 
 namespace toco {
 namespace {

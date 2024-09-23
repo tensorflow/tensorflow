@@ -19,14 +19,15 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/strings/numbers.h"
-#include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
-#include "absl/strings/strip.h"
 #include "absl/types/optional.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/lite/toco/args.h"
+#include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/toco/toco_port.h"
+#include "tensorflow/lite/toco/types.pb.h"
 
 namespace toco {
 
