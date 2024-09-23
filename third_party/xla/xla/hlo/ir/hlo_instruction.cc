@@ -4094,20 +4094,7 @@ HloInstructionProto HloInstruction::ToProto() const {
   *proto.mutable_statistics_viz() = statistics_viz();
 
   if (original_value_) {
-    xla::OriginalValueProto* original_value_proto =
-        proto.mutable_original_value();
-    for (const auto& leaf : original_value_->leaves()) {
-      OriginalArrayProto* original_array_proto =
-          original_value_proto->add_leaves();
-      for (const auto& index : leaf.first) {
-        original_array_proto->add_leaf_shape_index(index);
-      }
-      *original_array_proto->mutable_instruction_name() =
-          leaf.second->instruction_name;
-      for (const auto& index : leaf.second->shape_index) {
-        original_array_proto->add_shape_index(index);
-      }
-    }
+    *proto.mutable_original_value() = OriginalValueToProto(*original_value_);
   }
 
   return proto;
