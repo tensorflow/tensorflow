@@ -726,7 +726,6 @@ tf_proto_library(
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "quantization_options_py_pb2",
-#     api_version = 2,
 #     visibility = [":internal_visibility_allowlist_package"],
 #     deps = [":quantization_options_proto"],
 # )
@@ -746,7 +745,6 @@ tf_proto_library(
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "quantization_config_py_pb2",
-#     api_version = 2,
 #     visibility = [
 #         ":internal_visibility_allowlist_package",
 #     ],
