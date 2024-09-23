@@ -34,12 +34,6 @@ limitations under the License.
 
 namespace xla {
 
-TileProto Tile::ToProto() const {
-  TileProto tile_proto;
-  SetProto(tile_proto);
-  return tile_proto;
-}
-
 void Tile::SetProto(TileProto& tile_proto) const {
   tile_proto.Clear();
   for (int64_t i : dimensions()) {
@@ -73,15 +67,6 @@ std::string Tile::ToString() const {
 Layout::Layout()
     : index_primitive_type_(PRIMITIVE_TYPE_INVALID),
       pointer_primitive_type_(PRIMITIVE_TYPE_INVALID) {}
-
-SplitConfigProto SplitConfig::ToProto() const {
-  SplitConfigProto split_config_proto;
-  split_config_proto.set_dimension(dimension_);
-  for (int64_t i : split_indices_) {
-    split_config_proto.add_split_indices(i);
-  }
-  return split_config_proto;
-}
 
 void SplitConfig::SetProto(SplitConfigProto& split_config_proto) const {
   split_config_proto.Clear();
