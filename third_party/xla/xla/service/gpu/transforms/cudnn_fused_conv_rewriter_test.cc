@@ -67,9 +67,9 @@ namespace m = match;
 using ::testing::HasSubstr;
 using ::testing::Not;
 
-constexpr std::initializer_list<absl::string_view> kf16f32f64{"f16", "f32",
-                                                              "f64"};
-constexpr std::initializer_list<absl::string_view> kf16f32{"f16", "f32"};
+static const std::initializer_list<absl::string_view> kf16f32f64{"f16", "f32",
+                                                                 "f64"};
+static const std::initializer_list<absl::string_view> kf16f32{"f16", "f32"};
 
 class CudnnFusedConvRewriterHloTest : public HloTestBase {
  public:
