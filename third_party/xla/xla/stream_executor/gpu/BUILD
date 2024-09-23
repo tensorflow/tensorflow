@@ -161,16 +161,6 @@ gpu_only_cc_library(
 )
 
 gpu_only_cc_library(
-    name = "gpu_collectives_header",
-    hdrs = ["gpu_collectives.h"],
-    deps = [
-        ":context",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-    ],
-)
-
-gpu_only_cc_library(
     name = "gpu_driver_header",
     hdrs = ["gpu_driver.h"],
     visibility = internal_visibility([

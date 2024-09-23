@@ -349,6 +349,8 @@ NcclApi* NcclApi::Default() {
   return nccl_api;
 }
 
+bool NcclApi::HasNcclSupport() { return true; }
+
 static_assert(NCCL_UNIQUE_ID_BYTES == NcclCliqueId::kSize,
               "size of nccl unique id must match the clique id size");
 

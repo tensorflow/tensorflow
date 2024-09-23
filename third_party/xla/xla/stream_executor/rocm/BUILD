@@ -108,19 +108,6 @@ cc_library(
 )
 
 cc_library(
-    name = "rocm_collectives",
-    srcs = if_rocm_is_configured(["rocm_collectives.cc"]),
-    deps = if_rocm_is_configured([
-        # keep sorted
-        "//xla/stream_executor/gpu:gpu_collectives_header",
-        "//xla/stream_executor/gpu:gpu_driver_header",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-    ]),
-)
-
-cc_library(
     name = "rocm_event",
     srcs = if_rocm_is_configured(["rocm_event.cc"]),
     hdrs = if_rocm_is_configured(["rocm_event.h"]),
@@ -141,7 +128,6 @@ cc_library(
     hdrs = if_rocm_is_configured(["rocm_executor.h"]),
     deps = if_rocm_is_configured([
         # keep sorted
-        ":rocm_collectives",
         ":rocm_diagnostics",
         ":rocm_driver",
         ":rocm_event",
@@ -164,7 +150,6 @@ cc_library(
         "//xla/stream_executor:plugin_registry",
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor/gpu:context",
-        "//xla/stream_executor/gpu:gpu_collectives_header",
         "//xla/stream_executor/gpu:gpu_command_buffer",
         "//xla/stream_executor/gpu:gpu_diagnostics_header",
         "//xla/stream_executor/gpu:gpu_driver_header",
@@ -227,7 +212,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = if_rocm_is_configured([
         # keep sorted
-        ":rocm_collectives",
         ":rocm_driver",
         ":rocm_executor",
         ":rocm_platform_id",

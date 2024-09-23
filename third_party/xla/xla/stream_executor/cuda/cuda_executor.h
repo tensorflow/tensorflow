@@ -22,6 +22,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <variant>
 
 #include "absl/base/thread_annotations.h"
@@ -34,13 +35,13 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/cuda/cuda_collectives.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/fft.h"
-#include "xla/stream_executor/gpu/gpu_collectives.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
@@ -66,11 +67,11 @@ class CudaExecutor : public GpuExecutor {
   bool SynchronizeAllActivity() override;
 
   absl::StatusOr<void*> CollectiveMemoryAllocate(uint64_t size) override {
-    return GpuCollectives::CollectiveMemoryAllocate(gpu_context(), size);
+    return CudaCollectives::CollectiveMemoryAllocate(gpu_context(), size);
   }
 
   absl::Status CollectiveMemoryDeallocate(void* location) override {
-    return GpuCollectives::CollectiveMemoryDeallocate(gpu_context(), location);
+    return CudaCollectives::CollectiveMemoryDeallocate(gpu_context(), location);
   }
 
   absl::StatusOr<std::unique_ptr<EventBasedTimer>> CreateEventBasedTimer(

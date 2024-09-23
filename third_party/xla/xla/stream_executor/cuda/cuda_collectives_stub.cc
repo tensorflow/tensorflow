@@ -17,21 +17,20 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "xla/stream_executor/gpu/gpu_collectives.h"
-#include "xla/stream_executor/gpu/gpu_driver.h"
+#include "xla/stream_executor/cuda/cuda_collectives.h"
+#include "xla/stream_executor/gpu/context.h"
 
 namespace stream_executor::gpu {
 
-absl::StatusOr<void*> GpuCollectives::CollectiveMemoryAllocate(Context* context,
-                                                               uint64_t bytes) {
-  return absl::UnimplementedError(
-      "Feature not supported on ROCm platform (CollectiveMemoryAllocate)");
+/* static */ absl::StatusOr<void*> CudaCollectives::CollectiveMemoryAllocate(
+    Context* context, uint64_t bytes) {
+  if (bytes == 0) return nullptr;
+  return absl::FailedPreconditionError("XLA was compiled without NCCL support");
 }
 
-absl::Status GpuCollectives::CollectiveMemoryDeallocate(Context* context,
-                                                        void* location) {
-  return absl::UnimplementedError(
-      "Feature not supported on ROCm platform (CollectiveMemoryDeallocate)");
+/* static */ absl::Status CudaCollectives::CollectiveMemoryDeallocate(
+    Context* context, void* location) {
+  return absl::FailedPreconditionError("XLA was compiled without NCCL support");
 }
 
 }  // namespace stream_executor::gpu

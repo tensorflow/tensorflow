@@ -39,6 +39,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/cuda/cuda_collectives.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/cuda_runtime.h"
@@ -52,7 +53,6 @@ limitations under the License.
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/gpu/context.h"
-#include "xla/stream_executor/gpu/gpu_collectives.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_event.h"
@@ -441,11 +441,12 @@ absl::Status CudaExecutor::GetKernelMetadata(GpuKernel* cuda_kernel,
 
 DeviceMemoryBase CudaExecutor::Allocate(uint64_t size, int64_t memory_space) {
   if (memory_space == 1) {
-    auto result = GpuCollectives::CollectiveMemoryAllocate(gpu_context(), size);
+    auto result =
+        CudaCollectives::CollectiveMemoryAllocate(gpu_context(), size);
     if (!result.ok()) {
       LOG(ERROR) << result.status();
     }
-    return DeviceMemoryBase(*result, size);
+    return DeviceMemoryBase(nullptr, 0);
   } else if (memory_space ==
              static_cast<int64_t>(stream_executor::MemoryType::kHost)) {
     return DeviceMemoryBase(GpuDriver::HostAllocate(gpu_context(), size), size);

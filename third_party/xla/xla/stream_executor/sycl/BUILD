@@ -47,7 +47,6 @@ cc_library(
         "//xla/stream_executor/gpu:gpu_types_header",
         "//xla/stream_executor/gpu:gpu_driver_header",
         "//xla/stream_executor/gpu:gpu_executor_header",
-        "//xla/stream_executor/gpu:gpu_collectives_header",
         "@local_tsl//tsl/platform:errors",
     ]),
     alwayslink = True,  # Registers itself with the PlatformManager.

@@ -47,7 +47,6 @@ limitations under the License.
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/gpu/context.h"
-#include "xla/stream_executor/gpu/gpu_collectives.h"
 #include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_diagnostics.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"

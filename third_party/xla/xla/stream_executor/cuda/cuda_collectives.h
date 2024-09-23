@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_STREAM_EXECUTOR_GPU_GPU_COLLECTIVES_H_
-#define XLA_STREAM_EXECUTOR_GPU_GPU_COLLECTIVES_H_
+#ifndef XLA_STREAM_EXECUTOR_CUDA_CUDA_COLLECTIVES_H_
+#define XLA_STREAM_EXECUTOR_CUDA_CUDA_COLLECTIVES_H_
 
 #include <cstdint>
 
@@ -24,7 +24,7 @@ limitations under the License.
 
 namespace stream_executor::gpu {
 
-struct GpuCollectives {
+struct CudaCollectives {
   // Allocates a collective device memory space of size bytes associated with
   // the given context.
   //
@@ -42,4 +42,4 @@ struct GpuCollectives {
 
 }  // namespace stream_executor::gpu
 
-#endif  // XLA_STREAM_EXECUTOR_GPU_GPU_COLLECTIVES_H_
+#endif  // XLA_STREAM_EXECUTOR_CUDA_CUDA_COLLECTIVES_H_
