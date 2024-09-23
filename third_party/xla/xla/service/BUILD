@@ -8363,9 +8363,9 @@ xla_cc_test(
         ":xla_aot_compile_test_gpu_executable_convolution_runtime_autotuning",
     ]),
     tags = [
+        "cuda-only",
         "gpu",
         "no_oss",
-        "no_rocm",
         "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false positives in msan.
         "requires-gpu-sm60-only",
     ],
