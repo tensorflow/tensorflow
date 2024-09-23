@@ -1,15 +1,100 @@
+diff --git a/shardy/dialect/sdy/transforms/import/apply_sharding_constraints.cc b/shardy/dialect/sdy/transforms/import/apply_sharding_constraints.cc
+index 21d2bea..0b4b9b7 100644
+--- a/shardy/dialect/sdy/transforms/import/apply_sharding_constraints.cc
++++ b/shardy/dialect/sdy/transforms/import/apply_sharding_constraints.cc
+@@ -105,26 +105,6 @@ ShardingConstraintOp getFirstShardingConstraintInChain(
+   return prevShardingConstraintOp;
+ }
+ 
+-void moveAfterValue(Operation* op, Value value) {
+-  if (Operation* defOp = value.getDefiningOp()) {
+-    op->moveAfter(defOp);
+-  } else {
+-    Block* block = cast<BlockArgument>(value).getOwner();
+-    op->moveBefore(block, block->begin());
+-  }
+-}
+-
+-// Moves a chain of `ShardingConstraintOp`s ending with `shardingConstraintOp`
+-// after `value`.
+-void moveChainAfterValue(ShardingConstraintOp shardingConstraintOp,
+-                         Value value) {
+-  while (shardingConstraintOp) {
+-    moveAfterValue(shardingConstraintOp, value);
+-    shardingConstraintOp =
+-        shardingConstraintOp.getInput().getDefiningOp<ShardingConstraintOp>();
+-  }
+-}
+-
+ struct ApplyShardingConstraintsPass
+     : public impl::ApplyShardingConstraintsPassBase<
+           ApplyShardingConstraintsPass> {
+@@ -151,10 +131,6 @@ struct ApplyShardingConstraintsPass
+                     firstInChain && firstInChain != shardingConstraintOp &&
+                     !isUsedByOtherShardingConstraint(firstInChain.getInput(),
+                                                      firstInChain)) {
+-                  // We need to move the chain right after its input, to make
+-                  // sure all other uses of the input are after the chain.
+-                  moveChainAfterValue(shardingConstraintOp,
+-                                      firstInChain.getInput());
+                   firstInChain.getInput().replaceAllUsesExcept(
+                       shardingConstraintOp.getResult(), firstInChain);
+                 }
+diff --git a/shardy/dialect/sdy/transforms/import/test/apply_sharding_constraints.mlir b/shardy/dialect/sdy/transforms/import/test/apply_sharding_constraints.mlir
+index 5b2c4f2..041e856 100644
+--- a/shardy/dialect/sdy/transforms/import/test/apply_sharding_constraints.mlir
++++ b/shardy/dialect/sdy/transforms/import/test/apply_sharding_constraints.mlir
+@@ -163,38 +163,6 @@ func.func @chain_of_three_sharding_constraints(%arg0: tensor<8x8xf32>) -> (tenso
+   return %2, %3 : tensor<8x8xf32>, tensor<8x8xf32>
+ }
+ 
+-// CHECK-LABEL: func @chain_on_block_arg_after_other_user
+-func.func @chain_on_block_arg_after_other_user(%arg0: tensor<8x8xf32>, %arg1: tensor<8x8xf32>) -> (tensor<8x8xf32>, tensor<8x8xf32>) {
+-  // CHECK-NEXT: %[[WSC_0:.*]] = sdy.sharding_constraint %arg0 <@mesh, [{"a"}, {}]>
+-  // CHECK-NEXT: %[[WSC_1:.*]] = sdy.sharding_constraint %[[WSC_0]] <@mesh, [{}, {"b"}]>
+-  // CHECK-NEXT: %[[WSC_2:.*]] = sdy.sharding_constraint %[[WSC_1]] <@mesh, [{}, {}]>
+-  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %[[WSC_2]], %[[WSC_2]]
+-  // CHECK-NEXT: return %[[ADD]], %[[WSC_2]]
+-  %0 = sdy.sharding_constraint %arg0 <@mesh, [{"a"}, {}]> :  tensor<8x8xf32>
+-  %1 = stablehlo.add %arg0, %arg0 :  tensor<8x8xf32>
+-  %2 = sdy.sharding_constraint %0 <@mesh, [{}, {"b"}]> :  tensor<8x8xf32>
+-  %3 = sdy.sharding_constraint %2 <@mesh, [{}, {}]> :  tensor<8x8xf32>
+-  return %1, %3 : tensor<8x8xf32>, tensor<8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @chain_on_op_result_after_other_user
+-func.func @chain_on_op_result_after_other_user(%arg0: tensor<8x8xf32>, %arg1: tensor<8x8xf32>) -> (tensor<8x8xf32>, tensor<8x8xf32>) {
+-  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %arg0, %arg0
+-  // CHECK-NEXT: %[[WSC_0:.*]] = sdy.sharding_constraint %[[ADD]] <@mesh, [{"a"}, {}]>
+-  // CHECK-NEXT: %[[WSC_1:.*]] = sdy.sharding_constraint %[[WSC_0]] <@mesh, [{}, {"b"}]>
+-  // CHECK-NEXT: %[[WSC_2:.*]] = sdy.sharding_constraint %[[WSC_1]] <@mesh, [{}, {}]>
+-  // CHECK-NEXT: %[[DIV:.*]] = stablehlo.divide %[[WSC_2]], %[[WSC_2]]
+-  // CHECK-NEXT: %[[MUL:.*]] = stablehlo.multiply %[[WSC_2]], %[[DIV]]
+-  // CHECK-NEXT: return %[[MUL]], %[[WSC_2]]
+-  %0 = stablehlo.add %arg0, %arg0 :  tensor<8x8xf32>
+-  %1 = stablehlo.divide %0, %0 :  tensor<8x8xf32>
+-  %2 = sdy.sharding_constraint %0 <@mesh, [{"a"}, {}]> :  tensor<8x8xf32>
+-  %3 = sdy.sharding_constraint %2 <@mesh, [{}, {"b"}]> :  tensor<8x8xf32>
+-  %4 = stablehlo.multiply %0, %1 :  tensor<8x8xf32>
+-  %5 = sdy.sharding_constraint %3 <@mesh, [{}, {}]> :  tensor<8x8xf32>
+-  return %4, %5 : tensor<8x8xf32>, tensor<8x8xf32>
+-}
+-
+ // CHECK-LABEL: func @first_constraint_in_chain_has_multiple_uses
+ func.func @first_constraint_in_chain_has_multiple_uses(%arg0: tensor<8x8xf32>) -> (tensor<8x8xf32>, tensor<8x8xf32>, tensor<8x8xf32>) {
+   // CHECK-NEXT: %[[WSC_0:.*]] = sdy.sharding_constraint %arg0 <@mesh, [{"a"}, {}]>
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index c011aab..55290bf 100644
+index 55290bf..726a367 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "94c024adedcb53059c29d7c2d62982053b60e86a"
--    LLVM_SHA256 = "204cedeaab86f065ef64cb3889dd2e92ddd4a8f5d5b6bc1cb4b276694fb6a798"
-+    LLVM_COMMIT = "42b696d7b9942fdf07d65267da40ab178464adaa"
-+    LLVM_SHA256 = "4f0d2053b381d3f074c64b2e460792cab11a02333f1c88bbc22b01686cf2fcb0"
+-    LLVM_COMMIT = "42b696d7b9942fdf07d65267da40ab178464adaa"
+-    LLVM_SHA256 = "4f0d2053b381d3f074c64b2e460792cab11a02333f1c88bbc22b01686cf2fcb0"
++    LLVM_COMMIT = "8b4b7d28f7c344c728a9812aa99d9ad24edb40a2"
++    LLVM_SHA256 = "f585b8955f66849929bbe0b657ea7ff5fe8f49880066a58b2a744065ddd4a521"
  
      tf_http_archive(
          name = name,
