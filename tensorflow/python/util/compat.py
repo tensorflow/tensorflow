@@ -113,14 +113,16 @@ def as_str(bytes_or_text, encoding='utf-8'):
  
   Args:
     bytes_or_text: The input value to be converted. A bytes or unicode object.
-    encoding: Optional string. The encoding to use if bytes_or_text is a bytes object. Defaults to 'utf-8'.
+    encoding: Optional string. The encoding to use if bytes_or_text is 
+              a bytes object. Defaults to 'utf-8'.
 
   Returns:
     A unicode string.
     
   Raises:
     TypeError: If bytes_or_text is not a bytes or unicode object.
-    UnicodeDecodeError: If bytes_or_text is a bytes object and cannot be decoded using the specified encoding.
+    UnicodeDecodeError: If bytes_or_text is a bytes object and cannot be 
+                        decoded using the specified encoding.
   """    
   return as_text(bytes_or_text, encoding)
 
