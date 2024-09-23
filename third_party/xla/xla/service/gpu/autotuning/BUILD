@@ -30,8 +30,8 @@ cc_library(
     srcs = ["gemm_fusion_autotuner.cc"],
     hdrs = ["gemm_fusion_autotuner.h"],
     tags = [
+        "cuda-only",
         "gpu",
-        "no_rocm",
     ],
     deps = [
         ":autotuner_compile_util",
@@ -109,8 +109,8 @@ xla_test(
         "gpu_h100",
     ],
     tags = [
+        "cuda-only",
         "no_mac",
-        "no_rocm",
     ],
     deps = [
         ":autotuner_compile_util",
@@ -398,7 +398,7 @@ xla_test(
         "gpu_amd_any",
     ],
     tags = [
-        "no_rocm",
+        "cuda-only",
         "noasan",
         "nomsan",
     ],
@@ -473,7 +473,7 @@ xla_test(
     backends = [
         "gpu",
     ],
-    tags = ["no_rocm"],
+    tags = ["cuda-only"],
     deps = [
         ":autotuner_util",
         ":custom_kernel_fusion_autotuner",
@@ -509,7 +509,6 @@ xla_cc_test(
     ],
     tags = [
         "gpu",
-        "no_rocm",
     ],
     deps = [
         ":autotuner_util",

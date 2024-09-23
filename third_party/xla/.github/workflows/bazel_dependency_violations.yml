@@ -29,7 +29,7 @@ jobs:
   dependency-violations:
     strategy:
       matrix:
-        tag: [gpu, no_rocm]
+        tag: [gpu, cuda-only]
     name: no-${{ matrix.tag }}-targets-in-cpu-build
     runs-on: ubuntu-22.04
     defaults:
@@ -45,7 +45,9 @@ jobs:
       - name: "Run bazel cquery ... //xla/..."
         run: |
           set -euo pipefail
-          OUTPUT=$(bazelisk cquery --aspects build_tools/dependencies/aspects.bzl%validate_${{ matrix.tag }}_tag //xla/... 2>&1)
+          TAG_WITH_UNDERSCORES="${{ matrix.tag }}"
+          TAG_WITH_UNDERSCORES="${TAG_WITH_UNDERSCORES/-/_}"
+          OUTPUT=$(bazelisk cquery --aspects build_tools/dependencies/aspects.bzl%validate_${TAG_WITH_UNDERSCORES}_tag //xla/... 2>&1)
           if echo "$OUTPUT" | grep 'Violation' >/dev/null; then
             echo "The following dependency violations were found:"
             echo "$OUTPUT" | grep 'Violation' | sed -e 's/^.*\[Violation\]/ -/'

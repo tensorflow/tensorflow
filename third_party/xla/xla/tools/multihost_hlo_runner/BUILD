@@ -83,9 +83,9 @@ xla_cc_binary(
     name = "hlo_runner_main_gpu",
     testonly = True,
     tags = [
+        "cuda-only",
         "gpu",
         "no_mac",
-        "no_rocm",
     ] + tf_gpu_tests_tags(),
     deps = [
         ":hlo_runner_main_lib",

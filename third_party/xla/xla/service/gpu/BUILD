@@ -1695,9 +1695,9 @@ cc_library(
         "nvptx_compiler_registration.cc",
     ],
     tags = [
+        "cuda-only",
         "gpu",
         "manual",
-        "no_rocm",
     ],
     deps = [
         ":nvptx_compiler_impl",
@@ -1717,9 +1717,9 @@ cc_library(
         "nvptx_compiler.h",
     ],
     tags = [
+        "cuda-only",
         "gpu",
         "manual",
-        "no_rocm",
     ],
     deps = [
         ":buffer_sharing",
@@ -1829,7 +1829,7 @@ xla_test(
         "gpu_a100",
     ],
     tags = [
-        "no_rocm",
+        "cuda-only",
         "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false positives in msan.
     ],
     deps = [
@@ -1867,7 +1867,7 @@ xla_test(
         "gpu",
     ],
     tags = [
-        "no_rocm",
+        "cuda-only",
         "nomsan",  # Pulls in precompiled NVIDIA libraries which cause false positives in msan.
     ],
     deps = [
@@ -2261,7 +2261,7 @@ xla_cc_test(
 cuda_library(
     name = "stream_executor_util_kernel",
     srcs = ["stream_executor_util_kernel.cu.cc"],
-    tags = ["no_rocm"],
+    tags = ["cuda-only"],
     deps = ["@local_config_cuda//cuda:cuda_headers"],
 )
 
