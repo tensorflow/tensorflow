@@ -425,6 +425,27 @@ absl::Status AddDestinationBufferSynchronization(
   return absl::OkStatus();
 }
 
+// We wait for events that the compute stream didn't already wait for. Based on
+// our heuristics, for usage events, this rare case should only occur when a
+// buffer was copied to a device and then never used there. In that case we get
+// a new stream and use it to hold onto a reference to the buffer until the
+// events are complete.
+void MaybeWaitForEventOnStream(BufferSequencingEvent* event,
+                               LocalDeviceState* local_device_state,
+                               se::Stream*& stream) {
+  if (!event->IsPredeterminedErrorOrDefinedOn(
+          local_device_state->compute_stream()) &&
+      !event->IsComplete()) {
+    if (stream == nullptr) {
+      stream = local_device_state->GetFixedSizePoolUsageStream();
+    }
+    VLOG(2) << "Waiting for event: " << event
+            << "; is_predetermined_error: " << event->IsPredeterminedError()
+            << "; on stream: " << stream;
+    event->WaitForEventOnStream(stream);
+  }
+}
+
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<PjRtStreamExecutorBuffer>>
@@ -1492,6 +1513,24 @@ PjRtStreamExecutorBuffer::Release(bool wait_for_operations_to_complete) {
     if (local_device_state->allocation_model() ==
         LocalDeviceState::kComputeSynchronized) {
       se::Stream* block_stream = nullptr;
+      // If an event is not defined yet, we wait for it to be defined in a new
+      // thread in the thread pool.
+      // This allows the host to schedule:
+      //   create buffer -> use -> delete -> fulfill
+      absl::InlinedVector<std::shared_ptr<BufferSequencingEvent>, 5>
+          events_to_wait_for_in_a_different_thread;
+      auto maybe_wait_for_event_on_block_stream_or_add_to_events_to_wait =
+          [&events_to_wait_for_in_a_different_thread, local_device_state,
+           &block_stream](const std::shared_ptr<BufferSequencingEvent>& event) {
+            if (local_device_state->allow_delete_before_fulfill() &&
+                !event->IsDefined()) {
+              // Wait for the event to be defined in a different thread.
+              events_to_wait_for_in_a_different_thread.push_back(event);
+            } else {
+              MaybeWaitForEventOnStream(event.get(), local_device_state,
+                                        block_stream);
+            }
+          };
       for (const auto& stream_and_event : events) {
         VLOG(2)
             << "Checking whether need to wait for stream_and_event: stream: "
@@ -1501,25 +1540,11 @@ PjRtStreamExecutorBuffer::Release(bool wait_for_operations_to_complete) {
             << "; is_predetermined_error: "
             << stream_and_event.event->IsPredeterminedError();
         // We only need to do something for events that didn't already acquire a
-        // reference to the buffer, and also which the compute stream didn't
-        // already wait for. Based on our heuristics this rare case should only
-        // occur when a buffer was copied to a device and then never used there.
-        // In that case we get a new stream and use it to hold onto a reference
-        // to the buffer until the events are complete.
-        if (!stream_and_event.reference_held &&
-            !stream_and_event.event->IsPredeterminedErrorOrDefinedOn(
-                local_device_state->compute_stream()) &&
-            !stream_and_event.event->IsComplete()) {
-          if (block_stream == nullptr) {
-            block_stream = local_device_state->GetFixedSizePoolUsageStream();
-          }
-          VLOG(2) << "Waiting for stream_and_event: stream: "
-                  << stream_and_event.stream
-                  << "; event: " << stream_and_event.event.get()
-                  << "; reference_held: " << stream_and_event.reference_held
-                  << "; is_predetermined_error: "
-                  << stream_and_event.event->IsPredeterminedError();
-          stream_and_event.event->WaitForEventOnStream(block_stream);
+        // reference to the buffer and for other situations described in the
+        // comment of MaybeWaitForEventOnStream()
+        if (!stream_and_event.reference_held) {
+          maybe_wait_for_event_on_block_stream_or_add_to_events_to_wait(
+              stream_and_event.event);
         }
       }
       for (const auto& definition_event : device_buffer->definition_events()) {
@@ -1527,31 +1552,34 @@ PjRtStreamExecutorBuffer::Release(bool wait_for_operations_to_complete) {
                 << definition_event.get() << "; is_predetermined_error: "
                 << definition_event->IsPredeterminedError();
         // Here we wait for the definition events to complete on block_stream as
-        // well, if they are not on the compute stream and not also recorded as
-        // usage events.
-        //
-        // Since it's possible that definition_event.SetSequencingEvent()
-        // is called on a different host thread than this host thread, when in
-        // future more conditions are added to this check, we should be careful
-        // about whether we put them before the IsPredeterminedErrorOrDefinedOn
-        // check or after it. For example, we shouldn't add an IsDefined() check
-        // before the IsPredeterminedErrorOrDefinedOn() check here because that
-        // could potentially cause a shortcut where we don't wait for
-        // definition_event.SetSequencingEvent() on the other thread and
-        // eventually cause memory corruption.
-        if (!definition_event->IsPredeterminedErrorOrDefinedOn(
-                local_device_state->compute_stream()) &&
-            !definition_event->IsComplete()) {
-          if (block_stream == nullptr) {
-            block_stream = local_device_state->GetFixedSizePoolUsageStream();
-          }
-          VLOG(2) << "Waiting for definition_event: " << definition_event.get()
-                  << "; is_predetermined_error: "
-                  << definition_event->IsPredeterminedError();
-          definition_event->WaitForEventOnStream(block_stream);
-        }
+        // well, in case they are not also usage events.
+        maybe_wait_for_event_on_block_stream_or_add_to_events_to_wait(
+            definition_event);
       }
-      if (block_stream != nullptr) {
+      if (!events_to_wait_for_in_a_different_thread.empty()) {
+        VLOG(1) << "Going to wait for "
+                << events_to_wait_for_in_a_different_thread.size()
+                << " events in a different thread.";
+        // We always use the cleanup_thread instead of using the
+        // client->thread_pool() here to avoid exhausting the client thread
+        // pool.
+        local_device_state->cleanup_thread()->Schedule(
+            [events_to_wait_for_in_a_different_thread =
+                 std::move(events_to_wait_for_in_a_different_thread),
+             local_device_state, device_buffer, block_stream]() mutable {
+              for (const auto& event :
+                   events_to_wait_for_in_a_different_thread) {
+                MaybeWaitForEventOnStream(event.get(), local_device_state,
+                                          block_stream);
+              }
+              if (block_stream != nullptr) {
+                TF_CHECK_OK(local_device_state->ThenExecuteCallback(
+                    block_stream, [device_buffer]() {
+                      // Drops device_buffer shared pointer.
+                    }));
+              }
+            });
+      } else if (block_stream != nullptr) {
         TF_RETURN_IF_ERROR(local_device_state->ThenExecuteCallback(
             block_stream, [device_buffer]() {
               // Drops device_buffer shared pointer.

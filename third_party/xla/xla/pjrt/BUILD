@@ -151,6 +151,7 @@ cc_library(
         "//xla:util",
         "//xla/client:local_client",
         "//xla/stream_executor",
+        "//xla/tsl/util:env_var",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",

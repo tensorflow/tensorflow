@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/util/env_var.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -51,6 +52,16 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
       prng_seed_generator_(prng_seed_device_()),
       prng_seed_distribution_(std::numeric_limits<int>::min(),
                               std::numeric_limits<int>::max()) {
+  // Setting XLA_PJRT_GPU_ALLOW_DELETE_BEFORE_FULFILL to false will:
+  // 1. disallow the host to schedule `create buffer -> use -> delete ->
+  // fulfill`, which is a use case unit tested in
+  // StreamExecutorGpuClientTest.DeleteBufferThenFulfillBufferNoDeadLock.
+  // 2. potentially reduce spikes in HBM usage because the host will wait for
+  // buffer fulfillment to be scheduled before destructing it.
+  absl::Status status =
+      tsl::ReadBoolFromEnvVar("XLA_PJRT_GPU_ALLOW_DELETE_BEFORE_FULFILL", true,
+                              &allow_delete_before_fulfill_);
+
   local_hardware_id_ = executor_->device_ordinal();
   local_device_id_ =
       device_ordinal != -1 ? device_ordinal : executor_->device_ordinal();
@@ -103,6 +114,8 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
       std::make_unique<WorkerThread>(tsl::Env::Default(), "py_xla_execute");
   callback_thread_ =
       std::make_unique<WorkerThread>(tsl::Env::Default(), "py_xla_callback");
+  cleanup_thread_ =
+      std::make_unique<WorkerThread>(tsl::Env::Default(), "py_xla_cleanup");
 }
 
 LocalDeviceState::~LocalDeviceState() {
