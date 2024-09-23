@@ -1018,12 +1018,25 @@ def set_global_generator(generator):
 
   For most use cases, avoid calling `set_global_generator` after program
   initialization, and prefer to reset the state of the existing global generator
-  instead, such as,
-
+  instead, as given in the example code,
+  
+  Example Code:
+  
+  >>> import tensorflow as tf
+  >>> 
+  >>> # Create a custom generator with a specific seed
+  >>> generator = tf.random.Generator.from_seed(42)
+      print(generator)
+  <tensorflow.python.ops.stateful_random_ops.Generator object at 0x322f3e610>
+  >>> 
+  >>> # Set the custom generator as the global generator
+  >>> tf.random.set_global_generator(generator)
+  >>> 
   >>> rng = tf.random.get_global_generator()
   >>> rng.reset_from_seed(30)
-
-
+  >>> print(rng)
+  <tensorflow.python.ops.stateful_random_ops.Generator object at 0x322f3e610>
+  
   Args:
     generator: the new `Generator` object.
   """
