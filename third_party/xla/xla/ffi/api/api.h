@@ -888,7 +888,7 @@ struct CtxDecoding;
 //     XLA_FFI_Error* Encode(const XLA_FFI_Api* api,
 //                           XLA_FFI_ExecutionContext* ctx,
 //                           absl::Status status) {...}
-//   }
+//   };
 //
 // Result encoding is execution stage specific, for example at instantiation
 // stage FFI handler can return an FFI handler state, while at execution stage
@@ -907,7 +907,7 @@ struct CtxDecoding;
 //     std::variant<XLA_FFI_Error*, XLA_FFI_Future*> Encode(
 //       const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx,
 //       xla::ffi::Future future) {...}
-//   }
+//   };
 //
 template <ExecutionStage stage, typename T>
 struct ResultEncoding;
@@ -1744,13 +1744,14 @@ auto DictionaryDecoder(Members... m) {
 // binding specification inference from a callable signature.
 //
 #define XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(T, ...)                         \
+  namespace xla::ffi {                                                        \
   template <>                                                                 \
-  struct ::xla::ffi::AttrsBinding<T> {                                        \
+  struct AttrsBinding<T> {                                                    \
     using Attrs = T;                                                          \
   };                                                                          \
                                                                               \
   template <>                                                                 \
-  struct ::xla::ffi::AttrDecoding<T> {                                        \
+  struct AttrDecoding<T> {                                                    \
     using Type = T;                                                           \
     static std::optional<T> Decode(XLA_FFI_AttrType type, void* attr,         \
                                    DiagnosticEngine& diagnostic) {            \
@@ -1765,13 +1766,17 @@ auto DictionaryDecoder(Members... m) {
           reinterpret_cast<const XLA_FFI_Attrs*>(attr),                       \
           internal::StructMemberNames(__VA_ARGS__), diagnostic);              \
     }                                                                         \
-  }
+  };                                                                          \
+  } /* namespace xla::ffi */                                                  \
+  static_assert(std::is_class_v<::xla::ffi::AttrsBinding<T>>);                \
+  static_assert(std::is_class_v<::xla::ffi::AttrDecoding<T>>)
 
 // Registers decoding for a user-defined enum class type. Uses enums underlying
 // type to decode the attribute as a scalar value and cast it to the enum type.
 #define XLA_FFI_REGISTER_ENUM_ATTR_DECODING(T)                                \
+  namespace xla::ffi {                                                        \
   template <>                                                                 \
-  struct ::xla::ffi::AttrDecoding<T> {                                        \
+  struct AttrDecoding<T> {                                                    \
     using Type = T;                                                           \
     using U = std::underlying_type_t<Type>;                                   \
     static_assert(std::is_enum<Type>::value, "Expected enum class");          \
@@ -1784,7 +1789,8 @@ auto DictionaryDecoder(Members... m) {
       }                                                                       \
                                                                               \
       auto* scalar = reinterpret_cast<XLA_FFI_Scalar*>(attr);                 \
-      auto expected_dtype = internal::NativeTypeToCApiDataType<U>();          \
+      auto expected_dtype =                                                   \
+          ::xla::ffi::internal::NativeTypeToCApiDataType<U>();                \
       if (XLA_FFI_PREDICT_FALSE(scalar->dtype != expected_dtype)) {           \
         return diagnostic.Emit("Wrong scalar data type: expected ")           \
                << expected_dtype << " but got " << scalar->dtype;             \
@@ -1793,7 +1799,9 @@ auto DictionaryDecoder(Members... m) {
       auto underlying = *reinterpret_cast<U*>(scalar->value);                 \
       return static_cast<Type>(underlying);                                   \
     }                                                                         \
-  };
+  };                                                                          \
+  } /* namespace xla::ffi */                                                  \
+  static_assert(std::is_class_v<::xla::ffi::AttrDecoding<T>>)
 
 //===----------------------------------------------------------------------===//
 // Helper macro for registering FFI implementations
