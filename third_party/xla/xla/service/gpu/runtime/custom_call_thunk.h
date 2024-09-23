@@ -120,8 +120,7 @@ class CustomCallThunk : public Thunk {
 
   absl::Status ExecuteFfiHandler(XLA_FFI_Handler* handler,
                                  XLA_FFI_ExecutionStage stage,
-                                 int32_t device_ordinal, se::Stream* stream,
-                                 se::DeviceMemoryAllocator* allocator,
+                                 se::Stream* stream,
                                  const ffi::ExecutionContext* execution_context,
                                  const BufferAllocations* buffer_allocations);
 
