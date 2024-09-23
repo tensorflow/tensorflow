@@ -1589,5 +1589,15 @@ TEST(StreamExecutorGpuClientTest,
             nullptr);
 }
 
+TEST(StreamExecutorGpuClientTest, GetDefaultLayout) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  auto shape = ShapeUtil::MakeShape(S4, {2, 2});
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto layout,
+      client->GetDefaultLayout(shape.element_type(), shape.dimensions()));
+  EXPECT_EQ(layout.element_size_in_bits(), 4);
+}
+
 }  // namespace
 }  // namespace xla
