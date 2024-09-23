@@ -196,19 +196,6 @@ gpu_only_cc_library(
 )
 
 gpu_only_cc_library(
-    name = "gpu_runtime_header",
-    hdrs = ["gpu_runtime.h"],
-    visibility = internal_visibility([
-        "//xla/service/gpu:__subpackages__",
-        "//xla/stream_executor:__subpackages__",
-    ]),
-    deps = [
-        ":gpu_types_header",
-        "@com_google_absl//absl/status:statusor",
-    ],
-)
-
-gpu_only_cc_library(
     name = "gpu_command_buffer",
     srcs = ["gpu_command_buffer.cc"],
     hdrs = ["gpu_command_buffer.h"],

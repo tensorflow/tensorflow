@@ -213,9 +213,8 @@ cuda_only_cc_library(
 cuda_only_cc_library(
     name = "cuda_runtime",
     srcs = ["cuda_runtime.cc"],
+    hdrs = ["cuda_runtime.h"],
     deps = [
-        "//xla/stream_executor/gpu:gpu_runtime_header",
-        "//xla/stream_executor/gpu:gpu_types_header",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -223,7 +222,6 @@ cuda_only_cc_library(
         "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -831,7 +829,7 @@ cuda_only_cc_library(
         ":cuda_event",  # buildcleaner: keep
         ":cuda_kernel",  # buildcleaner: keep
         ":cuda_platform_id",
-        ":cuda_runtime",  # buildcleaner: keep
+        ":cuda_runtime",
         ":cuda_status",
         ":cuda_version_parser",
         "//xla/stream_executor",
@@ -856,7 +854,6 @@ cuda_only_cc_library(
         "//xla/stream_executor/gpu:gpu_event_header",
         "//xla/stream_executor/gpu:gpu_executor_header",
         "//xla/stream_executor/gpu:gpu_kernel_header",
-        "//xla/stream_executor/gpu:gpu_runtime_header",
         "//xla/stream_executor/gpu:gpu_semaphore",
         "//xla/stream_executor/gpu:gpu_stream_header",
         "//xla/stream_executor/gpu:gpu_timer",

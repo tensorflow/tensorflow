@@ -15,13 +15,13 @@ limitations under the License.
 
 // CUDA/ROCm runtime library wrapper functionality.
 
-#ifndef XLA_STREAM_EXECUTOR_GPU_GPU_RUNTIME_H_
-#define XLA_STREAM_EXECUTOR_GPU_GPU_RUNTIME_H_
+#ifndef XLA_STREAM_EXECUTOR_CUDA_CUDA_RUNTIME_H_
+#define XLA_STREAM_EXECUTOR_CUDA_CUDA_RUNTIME_H_
 
 #include <cstdint>
 
 #include "absl/status/statusor.h"
-#include "xla/stream_executor/gpu/gpu_types.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 
 namespace stream_executor::gpu {
 
@@ -39,10 +39,10 @@ namespace stream_executor::gpu {
 //
 //===----------------------------------------------------------------------===//
 
-// Gpu runtime returns types defined in the stream_executor::gpu namespace, and
+// Cuda runtime returns types defined in the stream_executor::gpu namespace, and
 // they usually correspond to the driver types, as driver API is the primary
 // integration API of Gpus into StreamExecutor.
-class GpuRuntime {
+class CudaRuntime {
  public:
   // Get pointer to device entry function that matches entry function `symbol`.
   //
@@ -52,7 +52,7 @@ class GpuRuntime {
   // current device (and create it if it doesn't exist yet).
   //
   // https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__DRIVER.html#group__CUDART__DRIVER_1gaba6f8d01e745f0c8d8776ceb18be617
-  static absl::StatusOr<GpuFunctionHandle> GetFuncBySymbol(void* symbol);
+  static absl::StatusOr<CUfunction> GetFuncBySymbol(void* symbol);
 
   // Returns the Gpu Runtime version.
   // https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART____VERSION.html#group__CUDART____VERSION_1g0e3952c7802fd730432180f1f4a6cdc6
@@ -61,4 +61,4 @@ class GpuRuntime {
 
 }  // namespace stream_executor::gpu
 
-#endif  // XLA_STREAM_EXECUTOR_GPU_GPU_RUNTIME_H_
+#endif  // XLA_STREAM_EXECUTOR_CUDA_CUDA_RUNTIME_H_

@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/stream_executor/cuda/cuda_runtime.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/cuda/cuda_version_parser.h"
 #include "xla/stream_executor/cuda/delay_kernel.h"
@@ -56,7 +57,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_kernel.h"
-#include "xla/stream_executor/gpu/gpu_runtime.h"
 #include "xla/stream_executor/gpu/gpu_semaphore.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_timer.h"
@@ -230,7 +230,7 @@ absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
             << " from symbol pointer: " << symbol;
     TF_ASSIGN_OR_RETURN(
         GpuFunctionHandle function,
-        GpuRuntime::GetFuncBySymbol(spec.in_process_symbol().symbol()));
+        CudaRuntime::GetFuncBySymbol(spec.in_process_symbol().symbol()));
     cuda_kernel->set_gpu_function(function);
 
   } else {
@@ -678,7 +678,7 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
       ParseCudaVersion(GpuDriver::GetDriverVersion().value_or(0))
           .value_or(SemanticVersion{0, 0, 0}));
   desc.set_runtime_version(
-      ParseCudaVersion(GpuRuntime::GetRuntimeVersion().value_or(0))
+      ParseCudaVersion(CudaRuntime::GetRuntimeVersion().value_or(0))
           .value_or(SemanticVersion{0, 0, 0}));
   desc.set_compile_time_toolkit_version(
       ParseCudaVersion(CUDA_VERSION).value_or(SemanticVersion{0, 0, 0}));
