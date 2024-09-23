@@ -1808,9 +1808,8 @@ class HloInstruction {
   //
   // Precondition: The instruction is a Conditional instruction.
   const PtrVec<HloComputation*>& branch_computations() const;
-  int32_t branch_count() const;
-  HloComputation* branch_computation(int32_t b) const;
-  int32_t branch_index(HloComputation* computation) const;
+  int branch_count() const;
+  HloComputation* branch_computation(int b) const;
   // Sets a branch HloComputation for Conditional.
   // The setter should only be called by HloModule or HloComputation methods.
   //
