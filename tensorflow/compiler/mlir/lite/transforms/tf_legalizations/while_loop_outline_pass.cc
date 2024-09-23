@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/compiler/mlir/lite/transforms/tf_legalizations/while_loop_outline_pass.h"
 
 #include <string>
 
@@ -19,7 +20,6 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -27,44 +27,17 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
+#include "mlir/IR/Region.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
-#include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
 namespace TFL {
 namespace {
-#define GEN_PASS_DEF_WHILEOUTLINEPASS
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
-
-// This pass outlines the cond/body region of the TFL WhileOp into functions and
-// replaces the regions with calls to these outlined functions.
-class WhileOutlinePass : public impl::WhileOutlinePassBase<WhileOutlinePass> {
- public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(WhileOutlinePass)
-  explicit WhileOutlinePass() {}
-
- private:
-  void runOnOperation() override;
-
-  // Outlines the regions of the WhileOp's cond and body and insert function
-  // calls instead,
-  void OutlineWhile(WhileOp while_op);
-
-  // Get unique name by using the loc to name mapping.
-  std::string GetName(Operation* op, StringRef suffix);
-
-  tensorflow::OpOrArgLocNameMapper mapper_;
-};
-
-std::string WhileOutlinePass::GetName(Operation* op, StringRef suffix) {
-  return (mapper_.GetUniqueName(op) + suffix).str();
-}
 
 // Returns whether the WhileOp is already outlined (e.g., only consists of calls
 // to functions).
@@ -190,6 +163,7 @@ void ReplaceRegionWithCall(StringRef name, Region& region,
   auto call = b.create<func::CallOp>(loc, func, new_operands);
   b.create<YieldOp>(loc, call.getResults());
 }
+}  // namespace
 
 void WhileOutlinePass::OutlineWhile(WhileOp while_op) {
   OpBuilder builder(&getContext());
@@ -283,15 +257,13 @@ void WhileOutlinePass::OutlineWhile(WhileOp while_op) {
   while_op.erase();
 }
 
+std::string WhileOutlinePass::GetName(Operation* op, StringRef suffix) {
+  return (mapper_.GetUniqueName(op) + suffix).str();
+}
+
 void WhileOutlinePass::runOnOperation() {
   getOperation().walk(
       [&](mlir::TFL::WhileOp while_op) { OutlineWhile(while_op); });
-}
-}  // namespace
-
-// Creates an instance of the TensorFlow Lite dialect WhileOp outline pass.
-std::unique_ptr<OperationPass<ModuleOp>> CreateWhileOutlinePass() {
-  return std::make_unique<WhileOutlinePass>();
 }
 
 }  // namespace TFL

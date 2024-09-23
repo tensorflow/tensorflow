@@ -20,6 +20,7 @@ namespace mlir {
 namespace TFL {
 
 class OptimizePassOptions;
+class PrepareTFPassOptions;
 class EmptyPassOptions;
 
 // Interface for setting options for TFLite Converter Pass/Pipeline Options.
@@ -27,6 +28,7 @@ class PassOptionsSetter {
  public:
   virtual ~PassOptionsSetter() = default;
   virtual void SetOptions(OptimizePassOptions& options) const = 0;
+  virtual void SetOptions(PrepareTFPassOptions& options) const = 0;
   virtual void SetOptions(EmptyPassOptions& options) const = 0;
 };
 }  // namespace TFL

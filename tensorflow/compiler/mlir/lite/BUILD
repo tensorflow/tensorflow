@@ -78,15 +78,16 @@ td_library(
         "transforms/optimize_batch_matmul.td",
         "transforms/optimize_patterns.td",
         "transforms/post_quantize_patterns.td",
-        "transforms/prepare_patterns.td",
         "transforms/quantize_patterns.td",
         "transforms/tensorlist_patterns.td",
+        "transforms/tf_legalizations/prepare_tf_patterns.td",
         "utils/utils.td",
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:private"],
     deps = [
         ":tensorflow_lite_ops_td_files",
+        ":tensorflow_lite_utils_inc_gen",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_optimize_td_files",
         "@llvm-project//mlir:ArithOpsTdFiles",
@@ -202,12 +203,19 @@ gentbl_cc_library(
     tbl_outs = [
         (
             ["-gen-rewriters"],
-            "transforms/generated_prepare_tf.inc",
+            "transforms/tf_legalizations/generated_prepare_tf.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "transforms/prepare_patterns.td",
-    deps = [":tensorflow_lite_patterns_td_files"],
+    td_file = "transforms/tf_legalizations/prepare_tf_patterns.td",
+    deps = [
+        ":tensorflow_lite_ops_td_files",
+        ":tensorflow_lite_utils_td_files",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_optimize_td_files",
+        "@llvm-project//mlir:ArithOpsTdFiles",
+        "@llvm-project//mlir:FuncTdFiles",
+    ],
 )
 
 gentbl_cc_library(
@@ -359,10 +367,39 @@ gentbl_cc_library(
     deps = [":tensorflow_lite_patterns_td_files"],
 )
 
+td_library(
+    name = "tensorflow_lite_utils_td_files",
+    srcs = ["utils/utils.td"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "@llvm-project//mlir:FuncTdFiles",
+        "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:PassBaseTdFiles",
+    ],
+)
+
+gentbl_cc_library(
+    name = "tensorflow_lite_utils_inc_gen",
+    compatible_with = get_compatible_with_portable(),
+    tbl_outs = [
+        (
+            ["-gen-rewriters"],
+            "utils/generated_utils.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "utils/utils.td",
+    deps = [
+        ":tensorflow_lite_utils_td_files",
+    ],
+)
+
 cc_library(
     name = "utils",
+    srcs = ["utils/generated_utils.inc"],
     hdrs = ["utils/utils.h"],
     deps = [
+        ":tensorflow_lite_utils_inc_gen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
@@ -422,12 +459,12 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
+        ":common",
+        ":converter_flags_proto_cc",
+        ":optimize_pass_options",
         ":pass_options",
         ":pass_options_setter",
-        "//tensorflow/compiler/mlir/lite:common",
-        "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc",
-        "//tensorflow/compiler/mlir/lite:optimize_pass_options",
-        "@llvm-project//llvm:Support",
+        ":prepare_tf_pass_options",
     ],
 )
 
@@ -509,29 +546,52 @@ cc_library(
     ],
     hdrs = [
         "ir/tfl_ops.h",
+        "transforms/canonicalize_boundary_value_pass.h",
+        "transforms/optimize_batch_matmul_pass.h",
         "transforms/optimize_pass.h",
         "transforms/pass_registry_utils.h",
         "transforms/passes.h",
+        "transforms/push_transpose_through_ewise_pass.h",
+        "transforms/tf_legalizations/analyze_variables_pass.h",
+        "transforms/tf_legalizations/legalize_tensorlist_pass.h",
+        "transforms/tf_legalizations/while_loop_outline_pass.h",
+        "transforms/tflite_passes/reduce_type_precision_pass.h",
+        "transforms/tflite_passes/reduce_while_operands_pass.h",
+        "transforms/tflite_passes/runtime_verify_pass.h",
+        "transforms/tflite_passes/split_merged_operands_pass.h",
+        "transforms/tflite_passes/unfold_large_splat_constants_pass.h",
         "transforms/unfreeze_global_constants.h",
         "utils/attribute_utils.h",
         "utils/utils.h",
     ],
     deps = [
         ":attribute_utils",
+        ":canonicalize_boundary_value",
         ":converter_inc",
         ":cost_estimators",
         ":optimize_pass_options",
         ":pass",
+        ":pass_options",
         ":pass_registry_utils",
         ":size_utils",
         ":tensorflow_lite_canonicalize_inc_gen",
+        ":tensorflow_lite_legalize_tf_analyze_variables",
+        ":tensorflow_lite_legalize_tf_legalize_tensorlist",
+        ":tensorflow_lite_legalize_tf_while_loop_outline",
         ":tensorflow_lite_op_enums_inc_gen",
         ":tensorflow_lite_op_interfaces_inc_gen",
         ":tensorflow_lite_ops",
         ":tensorflow_lite_ops_inc_gen",
         ":tensorflow_lite_optimize",
         ":tensorflow_lite_passes_inc_gen",
+        ":tensorflow_lite_push_transpose_through_ewise_pass",
+        ":tensorflow_lite_reduce_type_precision",
+        ":tensorflow_lite_reduce_while_operands",
+        ":tensorflow_lite_runtime_verify",
+        ":tensorflow_lite_split_merged_operands",
         ":tensorflow_lite_tf_unfreeze_global_tensors",
+        ":tensorflow_lite_unfold_large_splat_constants",
+        "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
@@ -561,6 +621,7 @@ cc_library(
         "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 
@@ -776,7 +837,8 @@ cc_library(
         "utils/stateful_ops_utils.h",
     ],
     deps = [
-        ":tensorflow_lite",
+        ":tensorflow_lite_ops",
+        ":utils",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
@@ -825,20 +887,17 @@ cc_library(
         "transforms/canonicalize_boundary_value_pass.cc",
     ],
     hdrs = [
-        "transforms/passes.h",
+        "transforms/canonicalize_boundary_value_pass.h",
     ],
     deps = [
-        ":tensorflow_lite",
-        ":tensorflow_lite_passes_inc_gen",
-        "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
+        ":pass",
+        ":utils",
         "//tensorflow/compiler/mlir/tensorflow",
-        "@com_google_absl//absl/container:flat_hash_set",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:DialectUtils",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@stablehlo//:stablehlo_ops",
@@ -846,21 +905,248 @@ cc_library(
 )
 
 cc_library(
+    name = "tensorflow_lite_legalize_tf_analyze_variables",
+    srcs = [
+        "transforms/tf_legalizations/analyze_variables_pass.cc",
+    ],
+    hdrs = [
+        "transforms/tf_legalizations/analyze_variables_pass.h",
+    ],
+    deps = [
+        ":pass",
+        ":tensorflow_lite_ops",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "tensorflow_lite_legalize_tf_legalize_tensorlist",
+    srcs = [
+        "transforms/tf_legalizations/legalize_tensorlist_pass.cc",
+    ],
+    hdrs = [
+        "transforms/tf_legalizations/legalize_tensorlist_pass.h",
+    ],
+    deps = [
+        ":convert_type",
+        ":pass",
+        ":tensorflow_lite_legalize_tensorlist_inc_gen",
+        ":tensorflow_lite_ops",
+        ":utils",
+        "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+cc_library(
+    name = "tensorflow_lite_legalize_tf_while_loop_outline",
+    srcs = [
+        "transforms/tf_legalizations/while_loop_outline_pass.cc",
+    ],
+    hdrs = [
+        "transforms/tf_legalizations/while_loop_outline_pass.h",
+    ],
+    deps = [
+        ":pass",
+        ":tensorflow_lite_ops",
+        "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+cc_library(
+    name = "tensorflow_lite_unfold_large_splat_constants",
+    srcs = [
+        "transforms/tflite_passes/unfold_large_splat_constants_pass.cc",
+    ],
+    hdrs = [
+        "transforms/tflite_passes/unfold_large_splat_constants_pass.h",
+    ],
+    deps = [
+        ":pass",
+        ":tensorflow_lite_ops",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+cc_library(
+    name = "tensorflow_lite_split_merged_operands",
+    srcs = [
+        "transforms/tflite_passes/split_merged_operands_pass.cc",
+    ],
+    hdrs = [
+        "transforms/tflite_passes/split_merged_operands_pass.h",
+    ],
+    deps = [
+        ":pass",
+        ":pass_options",
+        ":stateful_ops_utils",
+        ":tensorflow_lite_ops",
+        ":utils",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "tensorflow_lite_runtime_verify",
+    srcs = [
+        "transforms/tflite_passes/runtime_verify_pass.cc",
+    ],
+    hdrs = [
+        "ir/tfl_ops_interface.h.inc",
+        "transforms/tflite_passes/runtime_verify_pass.h",
+    ],
+    deps = [
+        ":pass",
+        ":tensorflow_lite_ops",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "tensorflow_lite_reduce_while_operands",
+    srcs = [
+        "transforms/tflite_passes/reduce_while_operands_pass.cc",
+    ],
+    hdrs = [
+        "transforms/tflite_passes/reduce_while_operands_pass.h",
+    ],
+    deps = [
+        ":pass",
+        ":pass_options",
+        ":tensorflow_lite_ops",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:SideEffectInterfaces",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "tensorflow_lite_reduce_type_precision",
+    srcs = [
+        "transforms/tflite_passes/reduce_type_precision_pass.cc",
+    ],
+    hdrs = [
+        "transforms/tflite_passes/reduce_type_precision_pass.h",
+    ],
+    deps = [
+        ":convert_type",
+        ":pass",
+        ":tensorflow_lite_ops",
+        ":utils",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+cc_library(
+    name = "prepare_tf_pass_options",
+    srcs = [
+        "transforms/tf_legalizations/prepare_tf_pass_options.h",
+    ],
+    hdrs = [
+        "transforms/tf_legalizations/prepare_tf_pass_options.h",
+    ],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+cc_library(
+    name = "tensorflow_lite_prepare_tf",
+    srcs = [
+        "transforms/tf_legalizations/generated_prepare_tf.inc",
+        "transforms/tf_legalizations/prepare_tf_pass.cc",
+    ],
+    hdrs = [
+        "transforms/tf_legalizations/prepare_tf_pass.h",
+    ],
+    deps = [
+        ":attribute_utils",
+        ":constant_utils",
+        ":fake_quant_utils",
+        ":pass",
+        ":pass_options",
+        ":prepare_tf_pass_options",
+        ":size_utils",
+        ":tensorflow_lite_legalize_tf",
+        ":tensorflow_lite_ops",
+        ":tensorflow_lite_prepare_tf_inc_gen",
+        ":utils",
+        ":validators",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
+        "//tensorflow/compiler/mlir/lite/stablehlo:prepare_hlo",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
+        "//tensorflow/compiler/mlir/tensorflow:verification_utils",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:unroll_batch_matmul_pass",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:verify_no_outside_compilation_markers_pass",
+        "//tensorflow/compiler/mlir/tf2xla/transforms:xla_legalize_tf_with_tf2xla",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/numeric:bits",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AffineAnalysis",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:Dialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@local_xla//xla/mlir_hlo",
+    ],
+)
+
+cc_library(
     name = "tensorflow_lite_legalize_tf",
     srcs = [
-        "transforms/analyze_variables.cc",
         "transforms/dilated_conv.cc",
-        "transforms/generated_legalize_tensorlist.inc",
         "transforms/generated_legalize_tf.inc",
         "transforms/generated_legalize_variables.inc",
         "transforms/generated_lower_static_tensor_list.inc",
-        "transforms/generated_prepare_tf.inc",
         "transforms/get_arithmetic_count.cc",
         "transforms/if_outline.cc",
         "transforms/insert_call_once_op.cc",
         "transforms/legalize_hashtables.cc",
         "transforms/legalize_jax_random.cc",
-        "transforms/legalize_tensorlist.cc",
         "transforms/legalize_tf.cc",
         "transforms/legalize_tf_while.cc",
         "transforms/legalize_variables.cc",
@@ -869,18 +1155,10 @@ cc_library(
         "transforms/partitioned_topological_sort.cc",
         "transforms/pin_ops_with_side_effects.cc",
         "transforms/prepare_composite_functions_tf.cc",
-        "transforms/prepare_tf.cc",
         "transforms/raise_custom_ops.cc",
-        "transforms/reduce_type_precision.cc",
-        "transforms/reduce_while_operands.cc",
-        "transforms/runtime_verify.cc",
-        "transforms/split_merged_operands.cc",
         "transforms/trim_functions_tf.cc",
-        "transforms/unfold_large_splat_constant.cc",
-        "transforms/while_loop_outline.cc",
     ],
     hdrs = [
-        "ir/tfl_ops_interface.h.inc",
         "transforms/dilated_conv.h",
         "transforms/passes.h",
     ],
@@ -896,8 +1174,9 @@ cc_library(
         ":size_utils",
         ":stateful_ops_utils",
         ":tensorflow_lite",
-        ":tensorflow_lite_legalize_tensorlist_inc_gen",
+        ":tensorflow_lite_legalize_tf_analyze_variables",
         ":tensorflow_lite_legalize_tf_inc_gen",
+        ":tensorflow_lite_legalize_tf_legalize_tensorlist",
         ":tensorflow_lite_legalize_variables_inc_gen",
         ":tensorflow_lite_lower_static_tensor_list_inc_gen",
         ":tensorflow_lite_passes_inc_gen",
@@ -1002,16 +1281,19 @@ cc_library(
     name = "tensorflow_lite_optimize_batch_matmul",
     srcs = [
         "transforms/generated_optimize_batch_matmul.inc",
-        "transforms/optimize_batch_matmul.cc",
+        "transforms/optimize_batch_matmul_pass.cc",
     ],
     hdrs = [
-        "transforms/passes.h",
+        "transforms/optimize_batch_matmul_pass.h",
     ],
     deps = [
         ":convert_type",
-        ":tensorflow_lite",
+        ":pass",
+        ":pass_options",
+        ":tensorflow_lite_ops",
         ":tensorflow_lite_optimize_batch_matmul_inc_gen",
         ":tensorflow_lite_passes_inc_gen",
+        ":utils",
         ":validators",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -1030,23 +1312,21 @@ cc_library(
 )
 
 cc_library(
-    name = "tensorflow_lite_push_transpose_through_ewise",
+    name = "tensorflow_lite_push_transpose_through_ewise_pass",
     srcs = [
-        "transforms/push_transpose_through_ewise.cc",
+        "transforms/push_transpose_through_ewise_pass.cc",
     ],
     hdrs = [
-        "transforms/passes.h",
+        "transforms/push_transpose_through_ewise_pass.h",
     ],
     deps = [
-        ":tensorflow_lite",
-        ":tensorflow_lite_passes_inc_gen",
-        "//tensorflow/compiler/mlir/quantization/common/quantization_lib:quantization_config",
-        "@com_google_absl//absl/container:flat_hash_set",
+        ":pass",
+        ":tensorflow_lite_ops",
+        ":utils",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
     ],
@@ -1629,11 +1909,12 @@ cc_library(
         ":fake_quant_utils",
         ":pass",
         ":pass_registry_utils",
+        ":prepare_tf_pass_options",
         ":tensorflow_lite_d2s",  # buildcleaner: keep
         ":tensorflow_lite_legalize_tf",  # buildcleaner: keep
         ":tensorflow_lite_optimize",  # buildcleaner: keep
         ":tensorflow_lite_optimize_batch_matmul",  # buildcleaner: keep
-        ":tensorflow_lite_push_transpose_through_ewise",  # buildcleaner: keep
+        ":tensorflow_lite_push_transpose_through_ewise_pass",  # buildcleaner: keep
         ":tensorflow_lite_quantize",  # buildcleaner: keep
         ":tensorflow_lite_tf_unfreeze_global_tensors",
         "//tensorflow/compiler/mlir/lite/core:macros",

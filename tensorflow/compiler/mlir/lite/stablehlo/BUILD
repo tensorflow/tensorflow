@@ -291,7 +291,6 @@ cc_library(
         ":tf_stablehlo",
         ":unfold_splat_constant_pass",
         ":unfuse_batch_norm_pass",
-        "//tensorflow/compiler/mlir/lite:canonicalize_boundary_value",
         "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_saved_model_passes",

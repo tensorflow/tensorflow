@@ -19,6 +19,8 @@ limitations under the License.
 // available in TF such as INT4, and ideally should be removed in favor of
 // stronger type propagation.
 
+#include "tensorflow/compiler/mlir/lite/transforms/tflite_passes/reduce_type_precision_pass.h"
+
 #include <cstdint>
 #include <memory>
 #include <utility>
@@ -38,7 +40,6 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
 
@@ -49,9 +50,6 @@ namespace mlir {
 namespace TFL {
 
 namespace {
-
-#define GEN_PASS_DEF_REDUCETYPEPRECISIONPASS
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // This pattern checks if an i8 arith::ConstantOp tensor has all values within
 // the INT4 range, i.e. [-8,7] and converts it into i4 if so. This assumes that
@@ -117,25 +115,13 @@ class SanitizeGatherOpOutputToI4 : public OpRewritePattern<TFL::GatherOp> {
     return success();
   }
 };
-
-class ReduceTypePrecisionPass
-    : public impl::ReduceTypePrecisionPassBase<ReduceTypePrecisionPass> {
- public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ReduceTypePrecisionPass)
-  void runOnOperation() override;
-};
+}  // namespace
 
 void ReduceTypePrecisionPass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   patterns.add<CheckRangeAndConvertI8ToI4, SanitizeGatherOpOutputToI4>(
       &getContext());
   (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
-}
-
-}  // namespace
-
-std::unique_ptr<OperationPass<ModuleOp>> CreateReduceTypePrecisionPass() {
-  return std::make_unique<ReduceTypePrecisionPass>();
 }
 
 }  // namespace TFL

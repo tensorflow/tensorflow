@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_pass_options.h"
 #include "tensorflow/compiler/mlir/lite/transforms/pass_options.h"
+#include "tensorflow/compiler/mlir/lite/transforms/tf_legalizations/prepare_tf_pass_options.h"
 
 namespace mlir {
 namespace TFL {
@@ -25,6 +26,14 @@ void ConverterPassOptionsSetter::SetOptions(
     OptimizePassOptions& options) const {
   options.enable_canonicalization = true;
   options.disable_fuse_mul_and_fc = converter_flags_.disable_fuse_mul_and_fc();
+}
+
+void ConverterPassOptionsSetter::SetOptions(
+    PrepareTFPassOptions& options) const {
+  options.unfold_batch_matmul = pass_config_.unfold_batch_matmul;
+  options.allow_bf16_and_f16_type_legalization =
+      !pass_config_.runtime_verification;
+  options.use_fake_quant_num_bits = converter_flags_.use_fake_quant_num_bits();
 }
 
 void ConverterPassOptionsSetter::SetOptions(EmptyPassOptions& options) const {}

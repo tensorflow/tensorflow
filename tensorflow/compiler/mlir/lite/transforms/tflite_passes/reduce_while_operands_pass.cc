@@ -15,56 +15,34 @@ limitations under the License.
 
 // This is a pass to reduce operands without changing the outcome.
 
+#include "tensorflow/compiler/mlir/lite/transforms/tflite_passes/reduce_while_operands_pass.h"
+
+#include <cstdint>
 #include <vector>
 
-#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Casting.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
 namespace TFL {
 namespace {
-#define GEN_PASS_DEF_REDUCEWHILEOPERANDSPASS
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
-
-struct ReduceWhileOperandsPass
-    : public impl::ReduceWhileOperandsPassBase<ReduceWhileOperandsPass> {
- public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ReduceWhileOperandsPass)
-
-  void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<TFL::TensorFlowLiteDialect, TF::TensorFlowDialect>();
-  }
-  void runOnOperation() override;
-};
 
 LogicalResult FindImplicityProducers(
     const std::vector<uint64_t> &explicitly_consumed_ids,
@@ -285,17 +263,11 @@ bool ReduceWhileOperands(TFL::WhileOp while_op) {
   while_op.erase();
   return erase_indices.any();
 }
+}  // namespace
 
 void ReduceWhileOperandsPass::runOnOperation() {
   auto fn = getOperation();
   fn.walk([&](TFL::WhileOp while_op) { ReduceWhileOperands(while_op); });
-}
-
-static PassRegistration<ReduceWhileOperandsPass> pass;
-}  // namespace
-
-std::unique_ptr<OperationPass<func::FuncOp>> CreateReduceWhileOperandsPass() {
-  return std::make_unique<ReduceWhileOperandsPass>();
 }
 
 }  // namespace TFL

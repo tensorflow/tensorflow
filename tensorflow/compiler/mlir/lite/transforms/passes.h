@@ -22,8 +22,19 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/lite/transforms/canonicalize_boundary_value_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/optimize_batch_matmul_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/pass_registry_utils.h"
+#include "tensorflow/compiler/mlir/lite/transforms/push_transpose_through_ewise_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/tf_legalizations/analyze_variables_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/tf_legalizations/legalize_tensorlist_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/tf_legalizations/while_loop_outline_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/tflite_passes/reduce_type_precision_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/tflite_passes/reduce_while_operands_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/tflite_passes/runtime_verify_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/tflite_passes/split_merged_operands_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/tflite_passes/unfold_large_splat_constants_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/unfreeze_global_constants.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 
@@ -79,7 +90,9 @@ inline std::unique_ptr<mlir::Pass> CreateOptimizePass() {
 }
 
 // Creates an instance of the Tensorflow Lite batch matmul Optimize pass.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateOptimizeBatchMatmulPass();
+inline std::unique_ptr<mlir::Pass> CreateOptimizeBatchMatmulPass() {
+  return Create<OptimizeBatchMatmulPass>();
+}
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareTFPass(
@@ -157,7 +170,9 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTrimFunctionsPass(
 std::unique_ptr<OperationPass<ModuleOp>> CreatePrepareCompositeFunctionsPass();
 
 // Creates an instance of the TensorFlow Lite dialect SplitMergedOperandsPass.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateSplitMergedOperandsPass();
+inline std::unique_ptr<mlir::Pass> CreateSplitMergedOperandsPass() {
+  return Create<SplitMergedOperandsPass>();
+}
 
 // Creates an instance of the TensorFlow Lite dialect OptimizeFunctionalOpsPass.
 std::unique_ptr<OperationPass<ModuleOp>> CreateOptimizeFunctionalOpsPass();
@@ -188,16 +203,22 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFWhilePass();
 std::unique_ptr<OperationPass<func::FuncOp>> CreateLiftTfliteFlexOpsPass();
 
 // Creates an instance of the TensorFlow Lite dialect WhileOp outline pass.
-std::unique_ptr<OperationPass<ModuleOp>> CreateWhileOutlinePass();
+inline std::unique_ptr<mlir::Pass> CreateWhileOutlinePass() {
+  return Create<WhileOutlinePass>();
+}
 
 // Creates an instance of the TensorFlow Lite dialect IfOp outline pass.
 std::unique_ptr<OperationPass<ModuleOp>> CreateIfOutlinePass();
 
 // Creates a pass to remove operands of TFL WhileOp without changing outcomes.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateReduceWhileOperandsPass();
+inline std::unique_ptr<mlir::Pass> CreateReduceWhileOperandsPass() {
+  return Create<ReduceWhileOperandsPass>();
+}
 
 // Verifies runtime constraints.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateRuntimeVerifyPass();
+inline std::unique_ptr<mlir::Pass> CreateRuntimeVerifyPass() {
+  return Create<RuntimeVerifyPass>();
+}
 
 // Creates raise custom ops pass, which legalize custom ops to TFL::CustomOp
 std::unique_ptr<OperationPass<func::FuncOp>> CreateRaiseCustomOpsPass();
@@ -221,7 +242,9 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeVariablesPass();
 
 // Creates a pass which analyze the model whether it is safe to use
 // native TFLite variables or not.
-std::unique_ptr<OperationPass<ModuleOp>> CreateAnalyzeVariablesPass();
+inline std::unique_ptr<mlir::Pass> CreateAnalyzeVariablesPass() {
+  return Create<AnalyzeVariablesPass>();
+}
 
 // Creates a pass which is responsible for legalizing TensorFlow static hash
 // tables to TensorFlow Lite hash tables.
@@ -233,7 +256,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateGetArithmeticCountPass();
 
 // Creates unfold large constant pass, which will replace large splat constant
 // tensors with fill op.
-std::unique_ptr<OperationPass<ModuleOp>> CreateUnfoldLargeSplatConstantPass();
+inline std::unique_ptr<mlir::Pass> CreateUnfoldLargeSplatConstantPass() {
+  return Create<UnfoldLargeSplatConstantPass>();
+}
 
 // Creates a pass which is responsible for unfreezing mutable global tensors.
 inline std::unique_ptr<mlir::Pass> CreateUnfreezeMutableGlobalTensorsPass() {
@@ -245,18 +270,26 @@ inline std::unique_ptr<mlir::Pass> CreateUnfreezeMutableGlobalTensorsPass() {
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePinOpsWithSideEffectsPass();
 
 // Legalize TensorList Ops iff all of them are supported.
-std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTensorListPass();
+inline std::unique_ptr<mlir::Pass> CreateLegalizeTensorListPass() {
+  return Create<LegalizeTensorListPass>();
+}
 
 // Reduce the type precision of some tensor types if all values within that
 // tensor are within the range of the reduced precision.
-std::unique_ptr<OperationPass<ModuleOp>> CreateReduceTypePrecisionPass();
+inline std::unique_ptr<mlir::Pass> CreateReduceTypePrecisionPass() {
+  return Create<ReduceTypePrecisionPass>();
+}
 
-// Convervatively pushes transposes through elementwise ops to prepare
-// so redudant ones may be grouped and removed.
-std::unique_ptr<OperationPass<ModuleOp>> CreatePushTransposeThroughEwisePass();
+// Conservatively pushes transposes through element-wise ops to prepare
+// so redundant ones may be grouped and removed.
+inline std::unique_ptr<mlir::Pass> CreatePushTransposeThroughEwisePass() {
+  return Create<PushTransposeThroughEwisePass>();
+}
 
 // Create a pass that canonicalize the boundary values.
-std::unique_ptr<OperationPass<ModuleOp>> CreateCanonicalizeBoundaryValuePass();
+inline std::unique_ptr<mlir::Pass> CreateCanonicalizeBoundaryValuePass() {
+  return Create<CanonicalizeBoundaryValuePass>();
+}
 
 // Creates a pass that brings operations into the same order as graph_info.cc.
 std::unique_ptr<OperationPass<func::FuncOp>>
@@ -302,8 +335,25 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateDefaultQuantParamsPass(
 inline void registerTensorFlowLitePasses() {
   registerTensorFlowLiteTdPasses();
   // Register TFLite Converter Passes
-  Register<OptimizePass, OptimizePassOptions>();
   Register<UnfreezeMutableGlobalTensorsPass>();
+
+  // TF Legalization Passes
+  Register<AnalyzeVariablesPass>();
+  Register<LegalizeTensorListPass>();
+  Register<WhileOutlinePass>();
+
+  // TFL Optimization Passes
+  Register<OptimizePass, OptimizePassOptions>();
+  Register<OptimizeBatchMatmulPass>();
+  Register<PushTransposeThroughEwisePass>();
+  Register<CanonicalizeBoundaryValuePass>();
+
+  // Other TFLite Passes
+  Register<UnfoldLargeSplatConstantPass>();
+  Register<SplitMergedOperandsPass>();
+  Register<RuntimeVerifyPass>();
+  Register<ReduceWhileOperandsPass>();
+  Register<ReduceTypePrecisionPass>();
 }
 
 }  // namespace TFL

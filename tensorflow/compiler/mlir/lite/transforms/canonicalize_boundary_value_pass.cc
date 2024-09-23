@@ -13,7 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
+#include "tensorflow/compiler/mlir/lite/transforms/canonicalize_boundary_value_pass.h"
+
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
@@ -23,18 +24,15 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -43,15 +41,6 @@ namespace TFL {
 namespace {
 
 #define DEBUG_TYPE "canonicalize-boundary-value"
-
-#define GEN_PASS_DEF_CANONICALIZEBOUNDARYVALUEPASS
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
-
-class CanonicalizeBoundaryValuePass
-    : public impl::CanonicalizeBoundaryValuePassBase<
-          CanonicalizeBoundaryValuePass> {
-  void runOnOperation() override;
-};
 
 // Clamp constant -Inf/Inf to MIN/MAX float value.
 template <typename OpTy>
@@ -98,6 +87,7 @@ struct ClampInfToMinMaxFloat : public OpRewritePattern<OpTy> {
     return success();
   }
 };
+}  // end namespace
 
 void CanonicalizeBoundaryValuePass::runOnOperation() {
   auto* ctx = &getContext();
@@ -110,12 +100,6 @@ void CanonicalizeBoundaryValuePass::runOnOperation() {
           applyPatternsAndFoldGreedily(getOperation(), std::move(patterns)))) {
     return signalPassFailure();
   }
-}
-
-}  // end namespace
-
-std::unique_ptr<OperationPass<ModuleOp>> CreateCanonicalizeBoundaryValuePass() {
-  return std::make_unique<CanonicalizeBoundaryValuePass>();
 }
 
 }  // end namespace TFL

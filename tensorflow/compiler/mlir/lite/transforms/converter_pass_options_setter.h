@@ -24,6 +24,7 @@ namespace mlir {
 namespace TFL {
 
 class OptimizePass;
+class PrepareTFPassOptions;
 class EmptyPassOptions;
 
 // PassOptionsSetter to set TFLite Converter Pass/Pipeline Options based on
@@ -37,6 +38,7 @@ class ConverterPassOptionsSetter : public PassOptionsSetter {
   ~ConverterPassOptionsSetter() override = default;
 
   void SetOptions(OptimizePassOptions& options) const override;
+  void SetOptions(PrepareTFPassOptions& options) const override;
   void SetOptions(EmptyPassOptions& options) const override;
 
  private:

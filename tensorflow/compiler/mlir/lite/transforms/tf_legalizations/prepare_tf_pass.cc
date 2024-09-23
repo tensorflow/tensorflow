@@ -13,40 +13,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This transformation pass prepares for legalization to the TFLite dialect by
-// converting operations in TensorFlow dialect into operations that can be
-// legalized to TensorFlow Lite dialect with simple replacements.  The newly
-// created operations are in the TensorFlow dialect if the operation can be
-// represented using a TensorFlow op.  Otherwise, TensorFlow Lite dialect op is
-// used.  For example, Conv2D in TFLite which uses OHWI data format for filters
-// is not supported in TensorFlow because TensorFlow requires filters in the
-// HWIO data format.
-//
-// Motivation to prepare for the TFLite legalization before the actual
-// legalization is to exploit constant folding opportunities in any newly
-// created ops by leveraging constant folding support for the TensorFlow ops.
-// This way TFLite can be used as a serialization format only and does not
-// require access to the TFLite runtime for optimizations as required by the
-// TFLite team.
+#include "tensorflow/compiler/mlir/lite/transforms/tf_legalizations/prepare_tf_pass.h"
 
-#include <climits>
 #include <cstdint>
 #include <limits>
-#include <memory>
 #include <utility>
 
 #include "absl/algorithm/container.h"
-#include "absl/memory/memory.h"
 #include "absl/numeric/bits.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringSwitch.h"
-#include "llvm/Support/Debug.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
+#include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -57,18 +42,13 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
-#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_tf_passes.h"
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/dilated_conv.h"
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
-#include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/constant_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/fake_quant_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/size_utils.h"
@@ -76,7 +56,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/einsum.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/unroll_batch_matmul.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/verification_utils.h"
@@ -109,35 +88,6 @@ static Value CreateTFCastOpI32(OpBuilder *builder, Location loc, Value x,
 // TODO(hinsu): Add and use TensorFlow dialect ops for the ops created in this
 // pass.
 namespace {
-#define GEN_PASS_DEF_PREPARETFPASS
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
-
-// Prepare TF operations in functions for subsequent legalization.
-class PrepareTFPass : public impl::PrepareTFPassBase<PrepareTFPass> {
- public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PrepareTFPass)
-
-  PrepareTFPass() = default;
-  PrepareTFPass(const PrepareTFPass &) {}
-  explicit PrepareTFPass(bool unfold_batch_matmul,
-                         bool allow_bf16_and_f16_type_legalization,
-                         bool use_fake_quant_num_bits = false) {
-    this->unfold_batch_matmul_ = unfold_batch_matmul;
-    this->allow_bf16_and_f16_type_legalization_ =
-        allow_bf16_and_f16_type_legalization;
-    this->use_fake_quant_num_bits_ = use_fake_quant_num_bits;
-  }
-
-  explicit PrepareTFPass(const PrepareTFPassOptions &options) {
-    this->unfold_batch_matmul_ = options.unfold_batch_matmul_;
-    this->allow_bf16_and_f16_type_legalization_ =
-        options.allow_bf16_and_f16_type_legalization_;
-    this->use_fake_quant_num_bits_ = options.use_fake_quant_num_bits_;
-  }
-
-  void runOnOperation() override;
-};
-
 // Transient state for preserving data from match to rewrite
 struct ConvertTFConvOpMatchState {
   IntegerAttr dilation_height_factor;
@@ -1335,7 +1285,7 @@ struct ReorderFakeQuantPattern : public RewritePattern {
   };
 };
 
-#include "tensorflow/compiler/mlir/lite/transforms/generated_prepare_tf.inc"
+#include "tensorflow/compiler/mlir/lite/transforms/tf_legalizations/generated_prepare_tf.inc"
 
 // Returns success if all the operations in the `op`'s regions including `op`
 // itself are legal in a TFLite pipeline.
@@ -1613,83 +1563,7 @@ class QuantizeConcatResult : public OpRewritePattern<TF::ConcatV2Op> {
  private:
   bool use_fake_quant_num_bits_;
 };
-
-// Quantizes Mean ops where the inputs are quantized with fake quant but the
-// result is not explicitly quantized. Propagating the quant parameters from the
-// input to the output allow proper quantization later.
-// Note that this pass is intended to work around a shortcoming of TF QAT in
-// which some models do not have FQ ops generated for the output of this op.
-class QuantizeMeanResult : public OpRewritePattern<TF::MeanOp> {
- public:
-  QuantizeMeanResult(MLIRContext *context, bool use_fake_quant_num_bits)
-      : OpRewritePattern<TF::MeanOp>(context),
-        use_fake_quant_num_bits_(use_fake_quant_num_bits) {}
-
-  LogicalResult matchAndRewrite(TF::MeanOp mean,
-                                PatternRewriter &rewriter) const override {
-    // Skip ops where the output is already quantized.
-    for (auto *user : mean->getUsers()) {
-      if (mlir::dyn_cast_or_null<TFL::QuantizeOp>(user) ||
-          mlir::dyn_cast_or_null<TF::FakeQuantWithMinMaxVarsOp>(user)) {
-        return failure();
-      }
-    }
-
-    // At this point, all pre-existing FakeQuantWithMinMaxVarsOps should have
-    // had qdq ops generated so we'll need to follow up the chain to get to the
-    // fake quants.
-    Value operand_value = mean.getInput();
-    auto dq = mlir::dyn_cast_or_null<TFL::DequantizeOp>(
-        operand_value.getDefiningOp());
-
-    if (!dq) {
-      return failure();
-    }
-
-    auto q =
-        mlir::dyn_cast_or_null<TFL::QuantizeOp>(dq.getInput().getDefiningOp());
-
-    if (!q) {
-      return failure();
-    }
-
-    auto fq = mlir::dyn_cast_or_null<TF::FakeQuantWithMinMaxVarsOp>(
-        q.getInput().getDefiningOp());
-
-    if (!fq) {
-      return failure();
-    }
-
-    Value mean_result = mean.getResult();
-    llvm::SmallVector<OpOperand *> uses;
-    for (OpOperand &use : mean_result.getUses()) {
-      uses.push_back(&use);
-    }
-
-    llvm::SmallVector<Value, 4> inputs{mean_result, fq.getMin(), fq.getMax()};
-
-    rewriter.setInsertionPointAfter(mean.getOperation());
-    auto new_fake_quant_op = rewriter.create<TF::FakeQuantWithMinMaxVarsOp>(
-        mean.getLoc(), mean->getResultTypes(), inputs, fq->getAttrs());
-
-    for (OpOperand *use : uses) {
-      use->assign(new_fake_quant_op);
-    }
-
-    // Rather than directly generating qdq ops ourselves we leverage existing
-    // logic to do it for us.
-    (void)InsertTFLQuantOpsAfterTFFakeQuantOp<
-        TF::FakeQuantWithMinMaxVarsOp, /*PerAxis=*/false,
-        FetchConstantMinMaxInputs<TF::FakeQuantWithMinMaxVarsOp>>(
-        use_fake_quant_num_bits_)
-        .matchAndRewrite(new_fake_quant_op, rewriter);
-
-    return success();
-  }
-
- private:
-  bool use_fake_quant_num_bits_;
-};
+}  // namespace
 
 void PrepareTFPass::runOnOperation() {
   MLIRContext *ctx = &getContext();
@@ -1740,7 +1614,8 @@ void PrepareTFPass::runOnOperation() {
   // min/max operands of the tf.FakeQuant* are constants to be matched. The
   // following round of optimization will folding the unwrapped
   // tf.FakeQuant* ops with the weight constants.
-  if (failed(ConvertFakeQuantOps(func, ctx, use_fake_quant_num_bits_))) {
+  if (failed(ConvertFakeQuantOps(func, ctx,
+                                 GetOptions().use_fake_quant_num_bits))) {
     signalPassFailure();
     return;
   }
@@ -1752,44 +1627,21 @@ void PrepareTFPass::runOnOperation() {
   // folding hook of tfl.transpose and tfl.reshape are implemented.
   phase_2_patterns.add<ReorderFakeQuantPattern<TF::ReshapeOp>,
                        ReorderFakeQuantPattern<TF::TransposeOp>>(ctx);
-  if (unfold_batch_matmul_) {
+  if (GetOptions().unfold_batch_matmul) {
     TF::PopulateUnrollTfBatchMatMul(ctx, phase_2_patterns);
   }
   phase_2_patterns.add<TF::ConvertTFEinsumOp, ConvertTFStridedSlice,
                        ConvertRfftToRfft2d, RemoveIdentity>(ctx);
   phase_2_patterns.add<ConvertTFConv2D, ConvertTFDepthwiseConv2dNative>(
-      ctx, allow_bf16_and_f16_type_legalization_);
+      ctx, GetOptions().allow_bf16_and_f16_type_legalization);
   // Remove redundant reshape ops.
   TF::ReshapeOp::getCanonicalizationPatterns(phase_2_patterns, ctx);
 
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
 
-  phase_3_patterns.add<QuantizeConcatResult>(ctx, use_fake_quant_num_bits_);
-  phase_3_patterns.add<QuantizeMeanResult>(ctx, use_fake_quant_num_bits_);
+  phase_3_patterns.add<QuantizeConcatResult>(
+      ctx, GetOptions().use_fake_quant_num_bits);
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_3_patterns));
 }
-
-}  // namespace
-
-// Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
-std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareTFPass(
-    bool unfold_batch_matmul, bool allow_bf16_and_f16_type_legalization,
-    bool use_fake_quant_num_bits) {
-  return std::make_unique<PrepareTFPass>(unfold_batch_matmul,
-                                         allow_bf16_and_f16_type_legalization,
-                                         use_fake_quant_num_bits);
-}
-
-// Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
-std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareTFPass(
-    const PrepareTFPassOptions &options) {
-  return std::make_unique<PrepareTFPass>(options);
-}
-
-// Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
-std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareTFPass() {
-  return std::make_unique<PrepareTFPass>();
-}
-
 }  // namespace TFL
 }  // namespace mlir

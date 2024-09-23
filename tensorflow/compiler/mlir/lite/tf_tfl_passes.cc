@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/pass_registry_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/lite/transforms/tf_legalizations/prepare_tf_pass_options.h"
 #include "tensorflow/compiler/mlir/lite/transforms/unfreeze_global_constants.h"
 #include "tensorflow/compiler/mlir/lite/utils/fake_quant_utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
@@ -491,11 +492,11 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
     // Prepare for TFLite dialect, rerun canonicalization, and then legalize to
     // the TFLite dialect.
     mlir::TFL::PrepareTFPassOptions prepare_tf_pass_options;
-    prepare_tf_pass_options.unfold_batch_matmul_ =
+    prepare_tf_pass_options.unfold_batch_matmul =
         pass_config.unfold_batch_matmul;
-    prepare_tf_pass_options.allow_bf16_and_f16_type_legalization_ =
+    prepare_tf_pass_options.allow_bf16_and_f16_type_legalization =
         !pass_config.runtime_verification;
-    prepare_tf_pass_options.use_fake_quant_num_bits_ =
+    prepare_tf_pass_options.use_fake_quant_num_bits =
         converter_flags.use_fake_quant_num_bits();
     pass_manager->addNestedPass<mlir::func::FuncOp>(
         mlir::TFL::CreatePrepareTFPass(prepare_tf_pass_options));
