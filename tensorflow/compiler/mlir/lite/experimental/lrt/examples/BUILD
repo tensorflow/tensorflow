@@ -37,7 +37,6 @@ cc_shared_library(
 cc_test(
     name = "mul_op_plugin_test",
     srcs = ["mul_op_plugin_test.cc"],
-    tags = ["no_oss"],
     deps = [
         ":mul_op_plugin",  # buildcleaner: keep
         "//tensorflow/compiler/mlir/lite/experimental/lrt/c:lite_rt_c_api",

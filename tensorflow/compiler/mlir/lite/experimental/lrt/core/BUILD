@@ -70,7 +70,6 @@ cc_library(
 cc_test(
     name = "model_test",
     srcs = ["model_test.cc"],
-    tags = ["no_oss"],
     deps = [
         ":api_internal",
         ":graph_tools",
@@ -98,7 +97,6 @@ cc_library(
 cc_test(
     name = "algo_test",
     srcs = ["algo_test.cc"],
-    tags = ["no_oss"],
     deps = [
         ":algo",
         ":api_internal",
