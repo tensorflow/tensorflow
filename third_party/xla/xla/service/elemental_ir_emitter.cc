@@ -471,8 +471,8 @@ llvm::Value* EmitF16ToF8e4m3b11fnuz(llvm::Value* f16_value,
   auto type = f16_value->getType();
   auto f16_abs_value = llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs,
                                                     {f16_value}, {type}, b);
-  auto f16_zero = llvm::ConstantFP::getZero(type);
-  auto is_zero = b->CreateFCmpOEQ(f16_abs_value, f16_zero);
+  auto f16_zero_or_underflow = llvm::ConstantFP::get(type, 0x1.004p-14);
+  auto is_zero = b->CreateFCmpOLT(f16_abs_value, f16_zero_or_underflow);
   auto f8_overflow_threshold = llvm::ConstantFP::get(type, 0x1.fp+4);
   auto no_overflow = b->CreateFCmpOLT(f16_abs_value, f8_overflow_threshold);
 
