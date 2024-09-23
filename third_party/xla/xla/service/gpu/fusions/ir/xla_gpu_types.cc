@@ -15,8 +15,10 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "llvm/ADT/STLFunctionalExtras.h"
 #include "mlir/IR/Attributes.h"  // IWYU pragma: keep
 #include "mlir/IR/BuiltinTypes.h"  // IWYU pragma: keep
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Dialect.h"  // IWYU pragma: keep
 #include "mlir/IR/OpImplementation.h"  // IWYU pragma: keep
 #include "mlir/IR/Types.h"
@@ -46,6 +48,20 @@ void IndexedVectorType::print(mlir::AsmPrinter& printer) const {
   printer << "<";
   printer.printDimensionList(getShape());
   printer << "x" << getElementType() << ", " << getIndexingMapAttr() << ">";
+}
+
+mlir::LogicalResult IndexedVectorType::verify(
+    llvm::function_ref<mlir::InFlightDiagnostic()> emit_error,
+    llvm::ArrayRef<int64_t> shape, mlir::Type element_type,
+    xla::gpu::IndexingMapAttr indexing_map) {
+  if (indexing_map.getNumResults() != shape.size()) {
+    return emit_error() << "indexing map result count ("
+                        << indexing_map.getNumResults()
+                        << ") must equal vector type's "
+                           "dimension count ("
+                        << shape.size() << ")";
+  }
+  return mlir::success();
 }
 
 }  // namespace gpu

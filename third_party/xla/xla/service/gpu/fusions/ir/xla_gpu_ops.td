@@ -371,6 +371,22 @@ def LoopOp : XLAGPU_Op<"loop", [
 def XLAGPU_MaterializeOp : XLAGPU_Op<"materialize",
     [AttrSizedOperandSegments, CallOpInterface]> {
   let summary = "Reads a tensor into registers";
+  let description = [{
+    The `xla_gpu.materialize` op materializes the results of a computation into
+    registers. The computation is given as a function. The function is invoked
+    for each element of the resulting indexed vector. The map is used to
+    transform vector indices to tensor indices.
+
+    For example, given
+    - an indexed_vector<32x2x2xf32, (th, bl)[s0, s1] -> (th, s0, s1)>
+    - and a map (th, bl)[s0, s1, s2] -> (bl * 64 + s0 * 2 + s1, s2)
+
+    The op will evaluate four elements for each thread, given by the range of
+    s0 nd s1 in the indexed_vector's encoding. The function indices
+    corresponding to a vector index are given by map. For example, element
+    (14, 1, 0) in the vector corresponds to the tensor coordinates
+    (bl * 64 + 14 * 2 + 1, 0).
+  }];
   let arguments = (ins Variadic<AnyType>:$input,
                        Variadic<Index>:$indices,
                        FlatSymbolRefAttr:$callee,

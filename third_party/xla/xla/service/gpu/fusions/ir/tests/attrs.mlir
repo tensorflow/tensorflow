@@ -1,7 +1,7 @@
 // RUN: mlir_fusions_opt %s -split-input-file | mlir_fusions_opt -split-input-file | FileCheck %s
 
 // CHECK: #[[$INDEX_MAP:.*]] = #xla_gpu.indexing_map<
-// CHECK-SAME: (d0, d1, d2)[s0] -> (d0),
+// CHECK-SAME: (d0, d1, d2)[s0] -> (d0, d1, d2),
 // CHECK-SAME: domain:
 // CHECK-SAME: d0 in [1, 2],
 // CHECK-SAME: d1 in [5, 8],
@@ -11,7 +11,7 @@
 // CHECK-SAME: d0 mod 2 in [0, 1],
 // CHECK-SAME: is_simplified: true
 // CHECK-SAME: >
-#map = #xla_gpu.indexing_map<(d0, d1, d2)[s0] -> (d0),
+#map = #xla_gpu.indexing_map<(d0, d1, d2)[s0] -> (d0, d1, d2),
                             domain:
                             d0 in [1, 2],
                             d1 in [5, 8],
@@ -53,9 +53,9 @@ func.func private @indexing_map_attr(!xla_gpu.indexed_vector<64x64x32xf64, #map>
                             d1 + s1 + s2 in [1, 32],
                             is_simplified: false
                             >
-func.func private @more_range_vars(!xla_gpu.indexed_vector<100x32xf64, #map>)
+func.func private @more_range_vars(!xla_gpu.indexed_vector<100x32x64xf64, #map>)
 // CHECK-LABEL: @more_range_vars
-// CHECK: !xla_gpu.indexed_vector<100x32xf64, #[[$INDEX_MAP]]>
+// CHECK: !xla_gpu.indexed_vector<100x32x64xf64, #[[$INDEX_MAP]]>
 
 // -----
 
@@ -135,16 +135,6 @@ func.func private @no_dimensions(!xla_gpu.indexed_vector<100xf64, #map>)
                             >
 func.func private @no_symbols(!xla_gpu.indexed_vector<100xf64, #map>)
 // CHECK-LABEL: @no_symbols
-// CHECK: !xla_gpu.indexed_vector<100xf64, #[[$INDEX_MAP]]>
-
-// -----
-
-// CHECK: #[[$INDEX_MAP:.*]] = #xla_gpu.indexing_map<
-// CHECK-SAME: () -> ()
-// CHECK-SAME: >
-#map = #xla_gpu.indexing_map<() -> ()>
-func.func private @empty(!xla_gpu.indexed_vector<100xf64, #map>)
-// CHECK-LABEL: @empty
 // CHECK: !xla_gpu.indexed_vector<100xf64, #[[$INDEX_MAP]]>
 
 // -----

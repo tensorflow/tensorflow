@@ -282,11 +282,16 @@ struct RewriteMaterialize : mlir::OpRewritePattern<MaterializeOp> {
     }
 
     auto loop = b.create<LoopOp>(
-        op.getMapAttr(), op.getIndices(), ValueRange{init_vec},
-        [&](OpBuilder&, Location, ValueRange ivs, ValueRange map_results,
+        op.getResult().getType().getIndexingMapAttr(), op.getIndices(),
+        ValueRange{init_vec},
+        [&](OpBuilder&, Location, ValueRange ivs, ValueRange vector_indices,
             ValueRange iter_args) {
+          llvm::SmallVector<Value> tensor_indices =
+              mlir_converter::ApplyIndexing(op.getMap().getIndexingMap(),
+                                            op.getIndices(), vector_indices, b);
+
           auto args = SmallVector<Value, 4>(op.getInput());
-          args.insert(args.end(), map_results.begin(), map_results.end());
+          args.append(tensor_indices);
           SmallVector<mlir::Type, 1> types{maybe_complex_data_type};
           auto call_result =
               b.create<PureCallOp>(op.getCalleeAttr(), ValueRange{args}, types)
@@ -335,7 +340,7 @@ struct RewriteInsert : mlir::OpRewritePattern<InsertOp> {
     auto source_map = op.getSource().getType().getIndexingMapAttr();
     auto loop = b.create<LoopOp>(
         source_map, op.getIndices(), ValueRange{op.getDest()},
-        [&](OpBuilder&, Location, ValueRange ivs, ValueRange map_results,
+        [&](OpBuilder&, Location, ValueRange ivs, ValueRange vector_indices,
             ValueRange iter_args) {
           SmallVector<mlir::OpFoldResult> vector_offset(ivs);
           Value scalar;
@@ -353,10 +358,10 @@ struct RewriteInsert : mlir::OpRewritePattern<InsertOp> {
             scalar = b.create<mlir::vector::ExtractOp>(convert, vector_offset)
                          .getResult();
           }
-          auto tensor_indices = b.create<ApplyIndexingOp>(
-              map_results, ValueRange(), op.getMap().getIndexingMap());
+          auto tensor_indices = mlir_converter::ApplyIndexing(
+              op.getMap().getIndexingMap(), op.getIndices(), vector_indices, b);
           Value new_tensor = b.create<mlir::tensor::InsertOp>(
-              scalar, iter_args.back(), tensor_indices.getResults());
+              scalar, iter_args.back(), tensor_indices);
           b.create<YieldOp>(new_tensor);
         });
     rewriter.replaceOp(op, loop->getResults());

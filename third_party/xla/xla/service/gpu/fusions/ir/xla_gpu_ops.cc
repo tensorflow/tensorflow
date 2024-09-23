@@ -967,74 +967,27 @@ VariableConstraints GetConstraintsForVariables(const IndexingMap& map) {
 }
 
 LogicalResult MaterializeOp::verify() {
-  IndexingMap map_in = getMap().getIndexingMap();
-  IndexingMap map_out =
+  IndexingMap vector_to_tensor_map = getMap().getIndexingMap();
+  IndexingMap encoding_map =
       getResult().getType().getIndexingMapAttr().getIndexingMap();
-  if (getIndices().size() != map_in.GetDimVarsCount()) {
+  if (getIndices().size() != vector_to_tensor_map.GetDimVarsCount() ||
+      getIndices().size() != encoding_map.GetDimVarsCount()) {
     return emitOpError() << "number of indices must match number of dimensions "
-                            "of indexing map";
+                            "of the map and the encoding";
   }
 
-  // The thread dimension must have the same domain (range and constraints)
-  if (map_in.GetDimVarsCount() == 0 || map_out.GetDimVarsCount() == 0) {
+  // The map's symbols must match the encoding's results.
+  if (vector_to_tensor_map.GetRangeVarsCount() !=
+      getResult().getType().getRank()) {
     return emitOpError()
-           << "must have thread_id dimension in both indexing maps";
+           << "number of symbols in map must match rank of vector";
   }
-  if (map_in.GetDimVars(0) != map_out.GetDimVars(0)) {
-    return emitOpError() << "thread_id dimension must have the same bounds in "
-                            "both indexing maps";
-  }
-
-  auto variable_constraints_in = GetConstraintsForVariables(map_in);
-  auto variable_constraints_out = GetConstraintsForVariables(map_out);
-  if (variable_constraints_in.constraints_for_dims[0] !=
-      variable_constraints_out.constraints_for_dims[0]) {
-    return emitOpError() << "constraints of indexing maps must be equal for "
-                         << "the thread_id dimension";
-  }
-
-  // The two maps must have the same symbols and they must have the same domain
-  if (map_in.GetRangeVarsCount() != map_out.GetRangeVarsCount()) {
-    return emitOpError()
-           << "number of symbols in both indexing_maps must match";
-  }
-  for (auto const& [range_in, range_out] :
-       llvm::zip(map_in.GetRangeVars(), map_out.GetRangeVars())) {
-    if (range_in.range != range_out.range) {
-      return emitOpError() << "domain of symbols of indexing_maps must match";
+  for (auto const& [range_in, size] :
+       llvm::zip(vector_to_tensor_map.GetRangeVars(),
+                 getResult().getType().getShape())) {
+    if (range_in.range != Interval{0, size - 1}) {
+      return emitOpError() << "domain of symbols of map must match vector size";
     }
-  }
-  if (variable_constraints_in.constraints_for_symbols !=
-      variable_constraints_out.constraints_for_symbols) {
-    return emitOpError()
-           << "constraints of indexing maps must be equal for all symbols";
-  }
-
-  // The vector mapping indices must not depend on the block ID
-  if (map_out.GetDimVarsCount() > 1) {
-    for (auto expr : map_out.GetAffineMap().getResults()) {
-      if (expr.isFunctionOfDim(1)) {
-        return emitOpError() << "vector mapping indices must not depend on the "
-                             << "block ID";
-      }
-    }
-  }
-  // If there are constraints on the block ID, they must be the same in both
-  // maps
-  if (map_in.GetDimVarsCount() > 1 && map_out.GetDimVarsCount() > 1) {
-    if (variable_constraints_in.constraints_for_dims[1] !=
-        variable_constraints_out.constraints_for_dims[1]) {
-      return emitOpError() << "constraints of indexing maps must be equal for "
-                           << "the block_id dimension";
-    }
-  } else if (map_in.GetDimVarsCount() > 1 &&
-             !variable_constraints_in.constraints_for_dims[1].empty()) {
-    return emitOpError() << "constraints of indexing maps must be equal for "
-                         << "the block_id dimension";
-  } else if (map_out.GetDimVarsCount() > 1 &&
-             !variable_constraints_out.constraints_for_dims[1].empty()) {
-    return emitOpError() << "constraints of indexing maps must be equal for "
-                         << "the block_id dimension";
   }
 
   return success();
@@ -1045,14 +998,13 @@ LogicalResult MaterializeOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult InsertOp::verify() {
-  if (!getMap().getRangeVars().empty()) {
-    return emitOpError() << "insert_op map must not have any symbols";
+  if (getMap().getRangeVars().size() != getSource().getType().getRank()) {
+    return emitOpError() << "source map symbol count must equal vector rank";
   }
-  int64_t vector_map_num_results =
-      getSource().getType().getIndexingMapAttr().getNumResults();
-  if (vector_map_num_results != getMap().getDimVars().size()) {
-    return emitOpError() << "source map result count must equal insert_op's "
-                            "map's dimension count";
+  if (getMap().getDimVars() !=
+      getSource().getType().getIndexingMapAttr().getDimVars()) {
+    return emitOpError()
+           << "source map dim vars must equal vector encoding dim vars";
   }
   return success();
 }

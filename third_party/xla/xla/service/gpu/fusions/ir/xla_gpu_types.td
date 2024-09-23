@@ -36,6 +36,7 @@ def XLAGPU_IndexedVectorType : XLAGPU_Type<"IndexedVector", "indexed_vector",
     XLAGPU_IndexingMapAttr:$indexing_map_attr
   );
   let hasCustomAssemblyFormat = 1;
+  let genVerifyDecl = 1;
   let extraClassDeclaration = [{
     IndexedVectorType cloneWith(std::optional<llvm::ArrayRef<int64_t>> shape,
                                 mlir::Type elementType) const {

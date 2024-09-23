@@ -155,36 +155,36 @@ func.func @loop_op(%input: tensor<1024x32xf32>, %init: f32,
 
 func.func private @exp(%p0: tensor<32x64xf32>, %i: index, %j: index) -> f32
 
-#map = #xla_gpu.indexing_map<(d0, d1)[s0, s1] -> (d0 + s0, d1 + s1),
-  domain: d0 in [0, 32], d1 in [0, 2], s0 in [0, 1024], s1 in [0, 32],
+#map = #xla_gpu.indexing_map<(d0, d1)[s0, s1, s2] -> (d1*32+s0, s1*2 + s2),
+  domain: d0 in [0, 31], d1 in [0, 8], s0 in [0, 31], s1 in [0, 1], s2 in [0, 1],
   is_simplified: false>
-#map1 = #xla_gpu.indexing_map<(d0, d1)[s0, s1] -> (s0, s1),
-  domain: d0 in [0, 32], d1 in [0, 2], s0 in [0, 1024], s1 in [0, 32],
+#map1 = #xla_gpu.indexing_map<(d0, d1)[s0, s1, s2] -> (s0, s0, s1),
+  domain: d0 in [0, 31], d1 in [0, 8], s0 in [0, 31], s1 in [0, 1], s2 in [0, 1],
   is_simplified: false>
-#map2 = #xla_gpu.indexing_map<(d0, d1) -> (d0, d1),
-  domain: d0 in [0, 32], d1 in [0, 2],
+#map2 = #xla_gpu.indexing_map<(d0, d1)[s0, s1, s2] -> (s0, s1 * 2 + s2),
+  domain: d0 in [0, 31], d1 in [0, 8], s0 in [0, 31], s1 in [0, 1], s2 in [0, 1],
   is_simplified: false>
 
 func.func @materialize_and_insert(%input: tensor<32x64xf32>, %i: index,
     %j: index, %output: tensor<32x64xf32>) -> tensor<32x64xf32> {
   %0 = xla_gpu.materialize @exp(%input) at #map(%i, %j)
-    : (tensor<32x64xf32>) -> !xla_gpu.indexed_vector<32x64xf32, #map1>
+    : (tensor<32x64xf32>) -> !xla_gpu.indexed_vector<32x2x2xf32, #map1>
   %1 = xla_gpu.insert %0(%i, %j) into %output at #map2
-    : !xla_gpu.indexed_vector<32x64xf32, #map1> -> tensor<32x64xf32>
+    : !xla_gpu.indexed_vector<32x2x2xf32, #map1> -> tensor<32x64xf32>
   func.return %1 : tensor<32x64xf32>
 }
 
-// CHECK: #[[$MAP:.*]] = #xla_gpu.indexing_map<(d0, d1)[s0, s1] -> (d0 + s0, d1 + s1)
-// CHECK-SAME: d0 in [0, 32], d1 in [0, 2], s0 in [0, 1024], s1 in [0, 32]
-// CHECK: #[[$MAP1:.*]] = #xla_gpu.indexing_map<(d0, d1)[s0, s1] -> (s0, s1)
-// CHECK-SAME: d0 in [0, 32], d1 in [0, 2], s0 in [0, 1024], s1 in [0, 32]
-// CHECK: #[[$MAP2:.*]] = #xla_gpu.indexing_map<(d0, d1) -> (d0, d1)
-// CHECK-SAME: d0 in [0, 32], d1 in [0, 2],
+// CHECK: #[[$MAP:.*]] = #xla_gpu.indexing_map<(d0, d1)[s0, s1, s2] -> (d1 * 32 + s0, s1 * 2 + s2),
+// CHECK-SAME: d0 in [0, 31], d1 in [0, 8], s0 in [0, 31], s1 in [0, 1], s2 in [0, 1]
+// CHECK: #[[$MAP1:.*]] = #xla_gpu.indexing_map<(d0, d1)[s0, s1, s2] -> (s0, s0, s1),
+// CHECK-SAME: d0 in [0, 31], d1 in [0, 8], s0 in [0, 31], s1 in [0, 1], s2 in [0, 1]
+// CHECK: #[[$MAP2:.*]] = #xla_gpu.indexing_map<(d0, d1)[s0, s1, s2] -> (s0, s1 * 2 + s2),
+// CHECK-SAME: d0 in [0, 31], d1 in [0, 8], s0 in [0, 31], s1 in [0, 1], s2 in [0, 1]
 // CHECK-LABEL: @materialize_and_insert
 // CHECK: %[[MATERIALIZED:.*]] = xla_gpu.materialize @exp(%{{.*}}) at
 // CHECK-SAME: #[[$MAP]](%{{.*}}, %{{.*}})
 // CHECK: xla_gpu.insert %[[MATERIALIZED]](%{{.*}}, %{{.*}}) into
-// CHECK-SAME: at #[[$MAP2]] : <32x64xf32, #[[$MAP1]]>
+// CHECK-SAME: at #[[$MAP2]] : <32x2x2xf32, #[[$MAP1]]>
 
 // -----
 
