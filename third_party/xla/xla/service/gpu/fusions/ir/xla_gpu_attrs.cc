@@ -18,8 +18,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/str_format.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: keep
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
@@ -28,11 +28,8 @@ limitations under the License.
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/service/gpu/fusions/ir/xla_gpu_ops.h"
 #include "xla/service/gpu/model/indexing_map.h"
-
-#define GET_ATTRDEF_LIST
-#define GET_ATTRDEF_CLASSES
-#include "xla/service/gpu/fusions/ir/xla_gpu_attrs.h.inc"
 
 namespace xla {
 namespace gpu {
@@ -114,9 +111,9 @@ void PrintConstraints(AsmPrinter& p,
   }
 }
 
-mlir::Attribute IndexingMapAttr::parse(mlir::AsmParser& parser, mlir::Type) {
+mlir::Attribute parseIndexingMapImpl(mlir::AsmParser& parser) {
   mlir::AffineMap map;
-  if (parser.parseLess() || parser.parseAffineMap(map)) {
+  if (parser.parseAffineMap(map)) {
     return {};
   }
 
@@ -175,6 +172,13 @@ mlir::Attribute IndexingMapAttr::parse(mlir::AsmParser& parser, mlir::Type) {
                               constraints, is_simplified);
 }
 
+mlir::Attribute IndexingMapAttr::parse(mlir::AsmParser& parser, mlir::Type) {
+  if (parser.parseLess()) {
+    return {};
+  }
+  return parseIndexingMapImpl(parser);
+}
+
 void IndexingMapAttr::print(mlir::AsmPrinter& printer) const {
   printer << "<" << getIndexingMap().ToString() << ">";
 }
@@ -213,6 +217,31 @@ IndexingMap IndexingMapAttr::getIndexingMap() const {
 
 int64_t IndexingMapAttr::getNumResults() const {
   return getMap().getNumResults();
+}
+
+mlir::Attribute LayoutAttr::parse(mlir::AsmParser& parser, mlir::Type) {
+  mlir::StringAttr memory_space_str;
+  if (parser.parseLess() || parser.parseAttribute(memory_space_str) ||
+      parser.parseComma()) {
+    return {};
+  }
+  std::optional<MemorySpace> memspace =
+      symbolizeMemorySpace(memory_space_str.getValue());
+  if (!memspace.has_value()) {
+    return {};
+  }
+  auto thread_map = mlir::cast<IndexingMapAttr>(parseIndexingMapImpl(parser));
+  if (!thread_map) {
+    return {};
+  }
+  mlir::MLIRContext* context = parser.getContext();
+  auto memory_space_attr = MemorySpaceAttr::get(context, *memspace);
+  return LayoutAttr::get(context, memory_space_attr, thread_map);
+}
+
+void LayoutAttr::print(mlir::AsmPrinter& printer) const {
+  printer << "<\"" << stringifyMemorySpace(getMemorySpace().getValue())
+          << "\", " << getThreadMap().getIndexingMap().ToString() << '>';
 }
 
 }  // namespace gpu

@@ -69,6 +69,14 @@ gentbl_cc_library(
     strip_include_prefix = ".",
     tbl_outs = [
         (
+            ["-gen-enum-decls"],
+            "xla_gpu_enums.h.inc",
+        ),
+        (
+            ["-gen-enum-defs"],
+            "xla_gpu_enums.cc.inc",
+        ),
+        (
             [
                 "-gen-attrdef-decls",
             ],
@@ -138,7 +146,6 @@ cc_library(
         "@llvm-project//mlir:InliningUtils",
         "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",
-        "@stablehlo//:stablehlo_type_inference",
     ],
 )
 
