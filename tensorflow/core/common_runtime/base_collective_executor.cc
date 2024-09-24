@@ -331,11 +331,12 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
   // Run on an unbounded work queue that can handle blocking work so as to not
   // starve executor threads.
   col_impl->Ref();
-  profiler::TraceMeProducer producer("BaseCollectiveExecutor::ExecuteAsync");
+  tsl::profiler::TraceMeProducer producer(
+      "BaseCollectiveExecutor::ExecuteAsync");
   RunClosure([col_impl, col_ctx, done_safe, ctx,
               context_id = producer.GetContextId()]() {
     core::ScopedUnref unref(col_impl);
-    profiler::TraceMeConsumer consumer(
+    tsl::profiler::TraceMeConsumer consumer(
         [ctx, col_ctx] {
           string op = profiler::TraceMeOp(ctx->op_kernel().name_view(),
                                           ctx->op_kernel().type_string_view());
@@ -367,7 +368,7 @@ void BaseCollectiveExecutor::CompleteParamsAsync(
   // timeout callback executes, done_safe will become a no-op and the timeout
   // callback is responsible for invoking done() at the end.
   const auto is_callback_called = std::make_shared<std::atomic<bool>>(false);
-  int64_t trace_id = profiler::TraceMe::ActivityStart([cp]() {
+  int64_t trace_id = tsl::profiler::TraceMe::ActivityStart([cp]() {
     return profiler::TraceMeEncode("CollectiveExecutor::CompleteParams",
                                    {{"group_key", cp->group.group_key},
                                     {"group_size", cp->group.group_size}});
@@ -375,7 +376,7 @@ void BaseCollectiveExecutor::CompleteParamsAsync(
 
   auto done_safe = [this, is_callback_called, cancel_mgr, trace_id,
                     done](const Status& s) {
-    profiler::TraceMe::ActivityEnd(trace_id);
+    tsl::profiler::TraceMe::ActivityEnd(trace_id);
     bool called = is_callback_called->exchange(true);
     if (!called) {
       if (!s.ok() && !IsCancelled(cancel_mgr)) {
