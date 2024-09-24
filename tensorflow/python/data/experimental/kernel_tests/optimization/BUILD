@@ -196,6 +196,7 @@ tf_py_strict_test(
     size = "medium",
     srcs = ["optimization_test.py"],
     shard_count = 2,
+    tags = ["nomsan"],  # Runs out of memory.
     deps = [
         "//tensorflow/python/data/experimental/ops:batching",
         "//tensorflow/python/data/experimental/ops:grouping",
