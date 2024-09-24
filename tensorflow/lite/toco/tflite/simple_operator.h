@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOCO_TFLITE_SIMPLE_OPERATOR_H_
 #define TENSORFLOW_LITE_TOCO_TFLITE_SIMPLE_OPERATOR_H_
 
+#include "tensorflow/compiler/mlir/lite/tools/versioning/op_version.h"
 #include "tensorflow/lite/toco/tflite/operator.h"
 
 namespace toco {
