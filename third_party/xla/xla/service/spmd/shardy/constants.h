@@ -38,13 +38,22 @@ inline constexpr llvm::StringRef kSPMDShardToFullShapeCallTargetName =
 // The attribute name for backend config.
 inline constexpr llvm::StringRef kXlaBackendConfigAttr = "backend_config";
 
-// Attribute name for temporarily storing the Shardonnay sharding during HLO
-// round-trip. It cannot match the name kShardingAttr ("sdy.sharding"), as
+// Attribute name for temporarily storing the Shardy sharding during HLO
+// round-trip. It cannot match the name `kShardingAttr` ("sdy.sharding"), as
 // during round-trip, going from HLO to MHLO, the code removes attributes
 // in the `frontend_attributes` field, making them top level. And Shardonnay
 // verification expects `kShardingAttr` to be of type
 // TensorShardingAttr/TensorShardingPerValueAttr - not a StringAttr.
 inline constexpr llvm::StringRef kShardingRoundTripAttr = "xla.sdy.sharding";
+
+// Attribute name for temporarily storing the Shardy sharding rule during HLO
+// round-trip. It cannot match the name `kShardingRuleAttr`
+// ("sdy.sharding_rule"), as during round-trip, going from HLO to MHLO, the code
+// removes attributes in the `frontend_attributes` field, making them top level.
+// And Shardy verification expects `kShardingRuleAttr` to be of type
+// OpShardingRuleAttr - not a StringAttr.
+inline constexpr llvm::StringRef kShardingRuleRoundTripAttr =
+    "xla.sdy.sharding_rule";
 
 // Attribute name for temporarily storing the Shardonnay meshes during HLO
 // round-trip.
