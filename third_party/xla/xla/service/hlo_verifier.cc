@@ -2439,40 +2439,8 @@ absl::Status VerifyChannels(const HloModule& module,
   absl::flat_hash_map<int64_t, std::vector<const HloInstruction*>>
       channel_instructions;
 
-  // For Async operations, we need to make sure:
-  // (1) AsyncStart and AsyncDone are used in pairs
-  // (2) AsynStart and Asyndone are connected, that is, an AsynDone has an
-  //     AsyncStart as its only operand, and an AsynStart has an AsyncDone as
-  //     its only user
-  // (3) the channel ID used by a pair of Async operations is unique
-  //
-  // Send and SendDone, Recv and RecvDone are such pairs of Async operations.
-  // Different from other Async operations, a channel ID can be used by one
-  // Send-SendDone pair and one Recv-RecvDone pair. As such, we verify the
-  // above three invariants for Send/Recv related instructions with adjustment
-  // to (3):
-  // (3*) the channel ID used by a pair of Send-SendDone can be shared by at
-  //       most one pair of Recv-RecvDone.
-  //
-  // Currently, the GPU compiler can decomposed collective-permute into a group
-  // of instructions with a pair of Send-SendDone and a pair of Recv-RecvDone
-  // that use the same channel ID. When a while-body contains such instructions,
-  // the GPU compiler can also peel off Send and Recv, and statically order
-  // SendDone/RecvDone inside the while-body before Send/Recv. This breaks
-  // invariants (2) and (3*) for the pipelined Send/Recv case. We verify the
-  // following for a group of instructions using the same channel ID but don't
-  // satisfy invariants (1)(2)(3*):
-  // (4) All instructions in the group are annotated with frontend attributes.
-  //     We avoid verifying the content of such a frontend attribute to avoid
-  //     making the general HLO instruction verifier depend on the compiler pass
-  //     that performs the transformation.
-  // (5) the group should contain equal number uses of each Send/Recv related
-  //     instructions.
-  //
-  // Comparing the verification of unpipelined Send/Recv with the verification
-  // of pipelined, what we missing verifying is that the direct connection
-  // between Send/Recv and SendDone/RecvDone through operands.
-  //
+  // Send/recv instruction must have a unique user. If it is the corresponding
+  // send-done/recv-done operation, channel IDs must match.
   for (const HloComputation* computation : module.computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
       auto channel_instr = DynCast<HloChannelInstruction>(instruction);
@@ -2483,55 +2451,27 @@ absl::Status VerifyChannels(const HloModule& module,
 
       switch (instruction->opcode()) {
         case HloOpcode::kSend: {
-          bool pipelined = true;
-          if (instruction->users().size() == 1) {
-            const HloInstruction* send_user = instruction->users().front();
-            if (send_user->opcode() == HloOpcode::kSendDone) {
-              TF_RETURN_IF_ERROR(CheckSameChannel(instruction, send_user));
-              TF_RETURN_IF_ERROR(
-                  CheckSameIsHostTransfer(instruction, send_user));
-              pipelined = false;
-            }
+          TF_RET_CHECK(instruction->users().size() == 1);
+          const HloInstruction* send_done = instruction->users().front();
+          if (send_done->opcode() == HloOpcode::kSendDone) {
+            TF_RETURN_IF_ERROR(CheckSameChannel(instruction, send_done));
+            TF_RETURN_IF_ERROR(CheckSameIsHostTransfer(instruction, send_done));
           }
-          // Pipelined Send should be annotated with frontend attributes.
-          TF_RET_CHECK(pipelined == false ||
-                       !instruction->frontend_attributes().map().empty());
           break;
         }
         case HloOpcode::kRecv: {
-          bool pipelined = true;
-          if (instruction->users().size() == 1) {
-            const HloInstruction* recv_user = instruction->users().front();
-            if (recv_user->opcode() == HloOpcode::kRecvDone) {
-              TF_RETURN_IF_ERROR(CheckSameChannel(instruction, recv_user));
-              TF_RETURN_IF_ERROR(
-                  CheckSameIsHostTransfer(instruction, recv_user));
-              pipelined = false;
-            }
+          TF_RET_CHECK(instruction->users().size() == 1);
+          const HloInstruction* recv_done = instruction->users().front();
+          if (recv_done->opcode() == HloOpcode::kRecvDone) {
+            TF_RETURN_IF_ERROR(CheckSameChannel(instruction, recv_done));
+            TF_RETURN_IF_ERROR(CheckSameIsHostTransfer(instruction, recv_done));
           }
-          // Pipelined Recv should be annotated with frontend attributes.
-          TF_RET_CHECK(pipelined == false ||
-                       !instruction->frontend_attributes().map().empty());
           break;
         }
-        case HloOpcode::kSendDone: {
+        case HloOpcode::kSendDone:
+        case HloOpcode::kRecvDone:
           TF_RET_CHECK(instruction->operands().size() == 1);
-          const HloInstruction* send_done_operand = instruction->operand(0);
-          // If the operand is not a Send, the Send-done is pipelined and should
-          // have frontend attributes.
-          TF_RET_CHECK(send_done_operand->opcode() == HloOpcode::kSend ||
-                       !instruction->frontend_attributes().map().empty());
           break;
-        }
-        case HloOpcode::kRecvDone: {
-          TF_RET_CHECK(instruction->operands().size() == 1);
-          const HloInstruction* recv_done_operand = instruction->operand(0);
-          // If the operand is not a Recv, the Recv-done is pipelined and should
-          // have frontend attributes.
-          TF_RET_CHECK(recv_done_operand->opcode() == HloOpcode::kRecv ||
-                       !instruction->frontend_attributes().map().empty());
-          break;
-        }
         default:
           break;
       }
@@ -2542,55 +2482,19 @@ absl::Status VerifyChannels(const HloModule& module,
   for (auto& pair : channel_instructions) {
     auto& instructions = pair.second;
     const HloInstruction* first = instructions[0];
-    auto sendrecv = DynCast<HloSendRecvInstruction>(first);
-    if (sendrecv) {
-      // Check that all instructions are Send/Recv related and count the
-      // appearance of each opcode in the group.
-      absl::flat_hash_map<HloOpcode, int> opcode_to_count;
+    if (const auto* sendrecv = DynCast<HloSendRecvInstruction>(first)) {
+      absl::flat_hash_set<HloOpcode> opcodes;
       for (const HloInstruction* instr : instructions) {
-        auto it = opcode_to_count.find(instr->opcode());
-        if (it != opcode_to_count.end()) {
-          it->second++;
-        } else {
-          opcode_to_count[instr->opcode()] = 1;
-        }
-        if (opts.verify_unique_channel_ids) {
-          TF_RET_CHECK(DynCast<HloSendRecvInstruction>(instr) != nullptr)
-              << "channel " << pair.first
-              << " is used for different types of channel instructions";
-        }
+        opcodes.insert(instr->opcode());
+        auto cast = DynCast<HloSendRecvInstruction>(instr);
+        TF_RET_CHECK(cast != nullptr)
+            << "channel " << pair.first
+            << " is used for different types of channel instructions";
       }
-
-      int count = opcode_to_count.begin()->second;
-      bool consistent_count =
-          absl::c_all_of(opcode_to_count, [count](const auto& opcode_count) {
-            return opcode_count.second == count;
-          });
-      // A pipelined group of Send/Recv should all have frontend attributes.
-      bool maybe_pipelined =
-          absl::c_all_of(instructions, [](const HloInstruction* inst) {
-            return !inst->frontend_attributes().map().empty();
-          });
-
       if (sendrecv->is_host_transfer()) {
-        TF_RET_CHECK(consistent_count && count == 1 && instructions.size() == 2)
+        TF_RET_CHECK(instructions.size() == 2)
             << "channel " << pair.first
             << " is used for multiple host send/recv instructions";
-      } else {
-        if (consistent_count && count == 1) {
-          TF_RET_CHECK(instructions.size() == opcode_to_count.size())
-              << "channel " << pair.first
-              << " is used for multiple send/recv instructions";
-        } else {
-          TF_RET_CHECK(maybe_pipelined) << "channel " << pair.first
-                                        << " is used for multiple send/recv "
-                                           "instructions but not pipelined";
-          TF_RET_CHECK(consistent_count && opcode_to_count.size() % 2 == 0)
-              << "channel " << pair.first
-              << " is pipelined. Not all Send/Recv related instructions are"
-                 " used the same number of times or channel is used for other "
-                 "instructions";
-        }
       }
     } else {
       for (const HloInstruction* instr : instructions) {

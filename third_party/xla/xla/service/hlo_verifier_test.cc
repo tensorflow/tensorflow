@@ -997,7 +997,7 @@ TEST_F(HloVerifierTest, CopyStartMultipleCopyDone) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(hlo_string));
 
-  auto status = verifier().Run(module.get()).status();
+  absl::Status status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(
       status.message(),
@@ -2263,93 +2263,153 @@ TEST_F(HloVerifierTest, ChannelVerifier) {
               HasSubstr("used for different types of channel instructions"));
 }
 
-TEST_F(HloVerifierTest, ChannelVerifierPipelinedMissingDones) {
+TEST_F(HloVerifierTest, ChannelVerifierPartiallyPipelinedAsyncRecv) {
   const char* const kModuleStr = R"(
-  HloModule test
-  cond {
-    param = (u32[], (u32[2], u32[], token[]), (u32[2], u32[], token[])) parameter(0)
-    count = get-tuple-element(%param), index=0
-    ub = u32[] constant(1)
-    ROOT result = pred[] compare(count, ub), direction=LT
-  }
+    HloModule test
 
-  body {
-    param = (u32[], (u32[2], u32[], token[]), (u32[2], u32[], token[])) parameter(0)
-    count = get-tuple-element(%param), index=0
+    while_body {
+      param = ((f32[16], u32[], token[])) parameter(0)
+      prev_recv = (f32[16], u32[], token[]) get-tuple-element(param), index=0
+      recv_done = (f32[16], token[]) recv-done(prev_recv), channel_id=1
+      after_all = token[] after-all()
+      recv = (f32[16], u32[], token[]) recv(after_all), channel_id=1,
+          frontend_attributes={
+            _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
+      ROOT tuple = ((f32[16], u32[], token[])) tuple(recv)
+    }
 
-    recv.0 = (u32[2], u32[], token[]) get-tuple-element(param), index=1
-    recv-done.0 = (u32[2], token[]) recv-done(recv.0), channel_id=1,
-      frontend_attributes={
-        _xla_send_recv_pipeline="0"
-      }
-    recv-data.0 = u32[2] get-tuple-element(recv-done.0), index=0
+    // Infinite loop to keep IR small.
+    while_condition {
+      param = ((f32[16], u32[], token[])) parameter(0)
+      ROOT infinite_loop = pred[] constant(true)
+    }
 
-    c1 = u32[] constant(1)
-    new_count = u32[] add(count, c1)
-
-    send.0 = (u32[2], u32[], token[]) get-tuple-element(param), index=2
-    send-done.0 = (u32[2], token[]) recv-done(send.0), channel_id=1,
-      frontend_attributes={
-        _xla_send_recv_pipeline="0"
-      }
-
-    after-all.0.n = token[] after-all()
-    recv.0.n = (u32[2], u32[], token[]) recv(after-all.0.n), channel_id=1,
-      frontend_attributes={
-        _xla_send_recv_source_target_pairs="{{1,0}}",
-        _xla_send_recv_pipeline="0"
-      }
-
-
-    after-all.1.n = token[] after-all()
-    send.0.n = (u32[2], u32[], token[]) send(recv-data.0, after-all.1.n),
-      channel_id=1,
-      frontend_attributes={
-        _xla_send_recv_source_target_pairs="{{1,0}}",
-        _xla_send_recv_pipeline="0"
-      }
-
-    ROOT result = (u32[], (u32[2], u32[], token[]), (u32[2], u32[], token[]))
-      tuple(new_count, recv.0.n, send.0.n)
-  }
-
-  ENTRY test_computation {
-    c0 = u32[] constant(0)
-    init = u32[2] broadcast(c0), dimensions={}
-    after-all.0.p = token[] after-all()
-    recv.0.p = (u32[2], u32[], token[]) recv(after-all.0.p), channel_id=1,
-      frontend_attributes={
-        _xla_send_recv_source_target_pairs="{{1,0}}",
-        _xla_send_recv_pipeline="0"
-      }
-
-    after-all.1.p = token[] after-all()
-    send.0.p = (u32[2], u32[], token[]) send(init, after-all.1.p),
-      channel_id=1,
-      frontend_attributes={
-        _xla_send_recv_source_target_pairs="{{1,0}}",
-        _xla_send_recv_pipeline="0"
-      }
-
-    while_init = (u32[], (u32[2], u32[], token[]), (u32[2], u32[], token[]))
-      tuple(c0, recv.0.p, send.0.p)
-    while_result = (u32[], (u32[2], u32[], token[]), (u32[2], u32[], token[]))
-      while(while_init), body=body, condition=cond
-
-    recv.0.q = (u32[2], u32[], token[]) get-tuple-element(while_result), index=1
-    recv-done.0.q = (u32[2], token[]) recv-done(recv.0.q), channel_id=1,
-      frontend_attributes={
-        _xla_send_recv_pipeline="0"
-      }
-
-    ROOT recv-data.0.q = u32[2] get-tuple-element(recv-done.0.q), index=0
-      })";
+    ENTRY main_spmd {
+      after_all = token[] after-all()
+      recv = (f32[16], u32[], token[]) recv(after_all), channel_id=1,
+          frontend_attributes={
+            _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
+      init = ((f32[16], u32[], token[])) tuple(recv)
+      while = ((f32[16], u32[], token[])) while(init),
+          condition=while_condition, body=while_body
+      recv_ctx = (f32[16], u32[], token[]) get-tuple-element(while), index=0
+      recv_done = (f32[16], token[]) recv-done(recv_ctx), channel_id=1
+      ROOT result = f32[16] get-tuple-element(recv_done), index=0
+    })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(kModuleStr));
-  EXPECT_THAT(
-      verifier().Run(module.get()).status().message(),
-      HasSubstr("is pipelined. Not all Send/Recv related instructions are used"
-                " the same number of times"));
+  TF_ASSERT_OK(verifier().Run(module.get()));
+}
+
+TEST_F(HloVerifierTest, ChannelVerifierPartiallyPipelinedAsyncSend) {
+  const char* const kModuleStr = R"(
+    HloModule test
+
+    while_body {
+      param = ((f32[16], u32[], token[]), f32[16]) parameter(0)
+      prev_send = (f32[16], u32[], token[]) get-tuple-element(param), index=0
+      data = f32[16] get-tuple-element(param), index=1
+      send_done = (f32[16], token[]) send-done(prev_send), channel_id=1
+      after_all = token[] after-all()
+      send = (f32[16], u32[], token[]) send(data, after_all), channel_id=1,
+          frontend_attributes={
+            _xla_send_send_source_target_pairs={{0,1},{1,2},{2,3}}}
+      ROOT tuple = ((f32[16], u32[], token[]), f32[16]) tuple(send, data)
+    }
+
+    // Infinite loop to keep IR small.
+    while_condition {
+      param = ((f32[16], u32[], token[]), f32[16]) parameter(0)
+      ROOT infinite_loop = pred[] constant(true)
+    }
+
+    ENTRY main_spmd {
+      data = f32[16] parameter(0)
+      after_all = token[] after-all()
+      send = (f32[16], u32[], token[]) send(data, after_all), channel_id=1,
+          frontend_attributes={
+            _xla_send_send_source_target_pairs={{0,1},{1,2},{2,3}}}
+      init = ((f32[16], u32[], token[]), f32[16]) tuple(send, data)
+      while = ((f32[16], u32[], token[]), f32[16]) while(init),
+          condition=while_condition, body=while_body
+      send_ctx = (f32[16], u32[], token[]) get-tuple-element(while), index=0
+      ROOT send_done = (f32[16], token[]) send-done(send_ctx), channel_id=1
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+  TF_ASSERT_OK(verifier().Run(module.get()));
+}
+
+TEST_F(HloVerifierTest, ChannelVerifierAsyncSend) {
+  const char* const kModuleStr = R"(
+    HloModule test
+
+    ENTRY main_spmd {
+      data = f32[16] parameter(0)
+      after_all = token[] after-all()
+      send = (f32[16], u32[], token[]) send(after_all, data), channel_id=1,
+          frontend_attributes={
+            _xla_send_send_source_target_pairs={{0,1},{1,2},{2,3}}}
+      ROOT send_done = (f32[16], token[]) send-done(send), channel_id=1
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+  TF_ASSERT_OK(verifier().Run(module.get()));
+}
+
+TEST_F(HloVerifierTest, ChannelVerifierAsyncRecv) {
+  const char* const kModuleStr = R"(
+    HloModule test
+
+    ENTRY main_spmd {
+      after_all = token[] after-all()
+      recv = (f32[16], u32[], token[]) recv(after_all), channel_id=1,
+          frontend_attributes={
+            _xla_send_send_source_target_pairs={{0,1},{1,2},{2,3}}}
+      recv_done = (f32[16], token[]) recv-done(recv), channel_id=1
+      ROOT result = f32[16] get-tuple-element(recv_done), index=0
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+  TF_ASSERT_OK(verifier().Run(module.get()));
+}
+
+TEST_F(HloVerifierTest, ChannelVerifierMultipleSendUsers) {
+  const char* const kModuleStr = R"(
+    HloModule test
+
+    ENTRY main_spmd {
+      data = f32[16] parameter(0)
+      after_all = token[] after-all()
+      send = (f32[16], u32[], token[]) send(data, after_all), channel_id=1,
+          frontend_attributes={
+            _xla_send_send_source_target_pairs={{0,1},{1,2},{2,3}}}
+      send_done = (f32[16], token[]) send-done(send), channel_id=1
+      ROOT result = ((f32[16], u32[], token[]), f32[16]) tuple(send, send_done)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
+              HasSubstr("send instruction requires one consumer, found 2"));
+}
+
+TEST_F(HloVerifierTest, ChannelVerifierMultipleRecvUsers) {
+  const char* const kModuleStr = R"(
+    HloModule test
+
+    ENTRY main_spmd {
+      after_all = token[] after-all()
+      recv = (f32[16], u32[], token[]) recv(after_all), channel_id=1,
+          frontend_attributes={
+            _xla_send_send_source_target_pairs={{0,1},{1,2},{2,3}}}
+      recv_done = (f32[16], token[]) recv-done(recv), channel_id=1
+      ROOT result = (((f32[16], u32[], token[])), f32[16])
+          tuple(recv, recv_done)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+  EXPECT_THAT(verifier().Run(module.get()).status().message(),
+              HasSubstr("recv instruction requires one consumer, found 2"));
 }
 
 TEST_F(HloVerifierTest, CollectiveChannelVerifier) {
@@ -3426,40 +3486,6 @@ TEST_F(HloVerifierTest, NoErrorOnDuplicateChannelId) {
   opts.verify_unique_channel_ids = false;
   HloVerifier verifier(std::move(opts));
   ASSERT_IS_OK(verifier.Run(module.get()).status());
-}
-
-TEST_F(HloVerifierTest, ChannelVerifierAsyncSend) {
-  const char* const kModuleStr = R"(
-    HloModule test
-
-    ENTRY main_spmd {
-      data = f32[16] parameter(0)
-      after_all = token[] after-all()
-      send = (f32[16], u32[], token[]) send(after_all, data), channel_id=1,
-          frontend_attributes={
-            _xla_send_send_source_target_pairs={{0,1},{1,2},{2,3}}}
-      ROOT send_done = (f32[16], token[]) send-done(send), channel_id=1
-    })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
-  TF_ASSERT_OK(verifier().Run(module.get()));
-}
-
-TEST_F(HloVerifierTest, ChannelVerifierAsyncRecv) {
-  const char* const kModuleStr = R"(
-    HloModule test
-
-    ENTRY main_spmd {
-      after_all = token[] after-all()
-      recv = (f32[16], u32[], token[]) recv(after_all), channel_id=1,
-          frontend_attributes={
-            _xla_send_send_source_target_pairs={{0,1},{1,2},{2,3}}}
-      recv_done = (f32[16], token[]) recv-done(recv), channel_id=1
-      ROOT result = f32[16] get-tuple-element(recv_done), index=0
-    })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnUnverifiedModule(kModuleStr));
-  TF_ASSERT_OK(verifier().Run(module.get()));
 }
 
 }  // namespace
