@@ -8543,4 +8543,39 @@ xla_cc_test(
     ],
 )
 
+cc_library(
+    name = "infeed_token_propagation",
+    srcs = ["infeed_token_propagation.cc"],
+    hdrs = ["infeed_token_propagation.h"],
+    deps = [
+        ":hlo_dce",
+        ":tuple_simplifier",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "infeed_token_propagation_test",
+    srcs = ["infeed_token_propagation_test.cc"],
+    deps = [
+        ":infeed_token_propagation",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_matchers",
+        "//xla/tests:hlo_test_base",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
 exports_files(["xla_aot_compile_test_gpu_target_config.prototxt"])

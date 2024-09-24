@@ -1493,9 +1493,13 @@ class HloInstruction {
   // within the operand vector.
   InstructionVector unique_operands() const;
 
-  // Returns the index of 'target' in the operands sequence.
+  // Returns the first index of 'target' that occurs in the operands sequence.
   // Precondition: target must be an operand (or a fatal error will occur).
   int64_t operand_index(const HloInstruction* target) const;
+
+  // Returns all indices of 'target' that occur in the operands sequence.
+  // Precondition: target must be an operand (or a fatal error will occur).
+  std::vector<int64_t> operand_indices(const HloInstruction* target) const;
 
   // Returns the number of users of this instruction.
   int64_t user_count() const { return users_.size(); }
@@ -1808,8 +1812,9 @@ class HloInstruction {
   //
   // Precondition: The instruction is a Conditional instruction.
   const PtrVec<HloComputation*>& branch_computations() const;
-  int branch_count() const;
-  HloComputation* branch_computation(int b) const;
+  int32_t branch_count() const;
+  HloComputation* branch_computation(int32_t b) const;
+  int32_t branch_index(HloComputation* computation) const;
   // Sets a branch HloComputation for Conditional.
   // The setter should only be called by HloModule or HloComputation methods.
   //

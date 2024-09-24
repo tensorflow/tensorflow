@@ -2759,6 +2759,20 @@ int64_t HloInstruction::operand_index(const HloInstruction* target) const {
   LOG(FATAL) << "target was not an operand: " << target->ToString();
 }
 
+std::vector<int64_t> HloInstruction::operand_indices(
+    const HloInstruction* target) const {
+  std::vector<int64_t> indices;
+  for (int64_t i = 0; i < operand_count(); ++i) {
+    if (target == operand(i)) {
+      indices.push_back(i);
+    }
+  }
+  if (indices.empty()) {
+    LOG(FATAL) << "target was not an operand: " << target->ToString();
+  }
+  return indices;
+}
+
 HloInstruction::InstructionVector HloInstruction::unique_operands() const {
   InstructionVector unique;
   absl::flat_hash_set<const HloInstruction*> seen;
@@ -3399,16 +3413,28 @@ const PtrVec<HloComputation*>& HloInstruction::branch_computations() const {
   return called_computations();
 }
 
-int HloInstruction::branch_count() const {
+int32_t HloInstruction::branch_count() const {
   CHECK(HloOpcode::kConditional == opcode_);
   return called_computations().size();
 }
 
-HloComputation* HloInstruction::branch_computation(int b) const {
-  CHECK(HloOpcode::kConditional == opcode_);
+HloComputation* HloInstruction::branch_computation(int32_t b) const {
+  CHECK_EQ(HloOpcode::kConditional, opcode_);
   CHECK_GE(b, 0);
   CHECK_LT(b, called_computations().size());
   return called_computations()[b];
+}
+
+int32_t HloInstruction::branch_index(HloComputation* computation) const {
+  CHECK_EQ(HloOpcode::kConditional, opcode_);
+  CHECK_NE(computation, nullptr);
+  for (int32_t idx = 0; idx < branch_count(); idx++) {
+    if (branch_computation(idx) == computation) {
+      return idx;
+    }
+  }
+  LOG(FATAL) << absl::StrFormat("Conditional %s does not contain branch %s",
+                                name(), computation->name());
 }
 
 void HloInstruction::set_branch_computation(int b,
