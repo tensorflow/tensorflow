@@ -399,6 +399,81 @@ TEST_F(AlgebraicSimplifierTest, MultiplyBroadcastReassoc) {
                                        m::Parameter(1), m::Constant())))));
 }
 
+// Mul(Add(Conv(input, filter), bias), Broadcast(constant)) => Conv(input,
+// Mul(filter, Broadcast(constant))), Mul(bias, Broadcast(constant)))
+TEST_F(AlgebraicSimplifierTest, ReorderConvAddMul) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      input = f32[5,4,4,1] parameter(0)
+      filter = f32[2,2,1,2] constant({{{{1.1, 1.2}}, {{2.1, 2.2}}},
+                                      {{{3.1, 3.2}}, {{4.1, 4.2}}}})
+      conv = f32[5,3,3,2] convolution(input, filter),
+               window={size=2x2}, dim_labels=b01f_01io->b01f
+      bias = f32[5,3,3,2] parameter(1)
+      add = f32[5,3,3,2] add(conv, bias)
+      constant = f32[2] constant({1.0, 1.1})
+      bcast = f32[5,3,3,2] broadcast(constant), dimensions={3}
+      ROOT multiply = f32[5,3,3,2] multiply(add, bcast)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions opts = default_options_;
+  opts.set_enable_conv_add_multiply_reorder(true);
+  ASSERT_TRUE(AlgebraicSimplifier(opts).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::AddAnyOrder(
+                  m::Convolution(
+                      m::Parameter(0),
+                      m::Multiply(m::Constant(), m::Broadcast(m::Constant()))),
+                  m::Multiply(m::Parameter(1), m::Broadcast(m::Constant())))));
+}
+
+TEST_F(AlgebraicSimplifierTest, DoNotReorderConvAddMulWhenDisabled) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      input = f32[5,4,4,1] parameter(0)
+      filter = f32[2,2,1,2] constant({{{{1.1, 1.2}}, {{2.1, 2.2}}},
+                                      {{{3.1, 3.2}}, {{4.1, 4.2}}}})
+      conv = f32[5,3,3,2] convolution(input, filter),
+               window={size=2x2}, dim_labels=b01f_01io->b01f
+      bias = f32[5,3,3,2] parameter(1)
+      add = f32[5,3,3,2] add(conv, bias)
+      constant = f32[2] constant({1.0, 1.1})
+      bcast = f32[5,3,3,2] broadcast(constant), dimensions={3}
+      ROOT multiply = f32[5,3,3,2] multiply(add, bcast)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions opts = default_options_;
+  opts.set_enable_conv_add_multiply_reorder(false);
+  EXPECT_FALSE(AlgebraicSimplifier(opts).Run(m.get()).value());
+}
+
+TEST_F(AlgebraicSimplifierTest,
+       DoNotReorderConvAddMulWithUnmatchingOutputFeatureDimension) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      input = f32[5,3,3,1] parameter(0)
+      filter = f32[2,2,1,2] constant({{{{1.1, 1.2}}, {{2.1, 2.2}}},
+                                      {{{3.1, 3.2}}, {{4.1, 4.2}}}})
+      conv = f32[5,2,2,2] convolution(input, filter),
+               window={size=2x2}, dim_labels=b01f_01io->b01f
+      bias = f32[5,2,2,2] parameter(1)
+      add = f32[5,2,2,2] add(conv, bias)
+      constant = f32[2] constant({1.0, 1.1})
+      bcast = f32[5,2,2,2] broadcast(constant), dimensions={2}
+      ROOT multiply = f32[5,2,2,2] multiply(add, bcast)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions opts = default_options_;
+  opts.set_enable_conv_add_multiply_reorder(true);
+  EXPECT_FALSE(AlgebraicSimplifier(opts).Run(m.get()).value());
+}
+
 // A*C + B*C => (A+B)*C if C is a broadcast of a floating-point power of 2.
 TEST_F(AlgebraicSimplifierTest, FactorFpAdditionWithBroadcast) {
   const char* kModuleStr = R"(

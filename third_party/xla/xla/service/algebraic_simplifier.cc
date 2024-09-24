@@ -4488,6 +4488,51 @@ absl::Status AlgebraicSimplifierVisitor::HandleClamp(HloInstruction* clamp) {
   return absl::OkStatus();
 }
 
+absl::Status AlgebraicSimplifierVisitor::TryToReorderConvAddMultiply(
+    HloInstruction* multiply) {
+  if (!options_.enable_conv_add_multiply_reorder()) return absl::OkStatus();
+  HloInstruction *input, *filter, *bias, *constant, *convolution, *broadcast,
+      *add;
+  // We conservatively only consider the case where the multiplier is a
+  // broadcast of a 1D constant to the output feature dimension and the filter
+  // is a constant so that they can be constant-folded.
+  if (!Match(multiply,
+             m::MultiplyAnyOrder(
+                 m::AddAnyOrder(&add,
+                                m::Convolution(&convolution, m::Op(&input),
+                                               m::Constant(&filter))
+                                    .WithOneUser(),
+                                m::Op(&bias).WithOneUser()),
+                 m::Broadcast(&broadcast, m::Constant(&constant).WithShape(
+                                              m::Shape().WithRank(1)))
+                     .WithOneUser()))) {
+    return absl::OkStatus();
+  }
+  const ConvolutionDimensionNumbers& dnums =
+      convolution->convolution_dimension_numbers();
+  if (broadcast->dimensions().size() != 1 ||
+      broadcast->dimensions()[0] != dnums.output_feature_dimension()) {
+    return absl::OkStatus();
+  }
+
+  HloInstruction* bcast_to_filter_dim =
+      multiply->AddInstruction(HloInstruction::CreateBroadcast(
+          filter->shape(), constant,
+          {dnums.kernel_output_feature_dimension()}));
+  HloInstruction* filter_multiply =
+      multiply->AddInstruction(HloInstruction::CreateBinary(
+          filter->shape(), HloOpcode::kMultiply, filter, bcast_to_filter_dim));
+  HloInstruction* new_conv =
+      multiply->AddInstruction(convolution->CloneWithNewOperands(
+          convolution->shape(), {input, filter_multiply}));
+  HloInstruction* bias_multiply =
+      multiply->AddInstruction(HloInstruction::CreateBinary(
+          bias->shape(), HloOpcode::kMultiply, bias, broadcast));
+  std::unique_ptr<HloInstruction> new_add =
+      add->CloneWithNewOperands(add->shape(), {new_conv, bias_multiply});
+  return ReplaceWithNewInstruction(multiply, std::move(new_add));
+}
+
 absl::Status AlgebraicSimplifierVisitor::HandleMultiply(
     HloInstruction* multiply) {
   HloInstruction *lhs, *rhs;
@@ -4694,7 +4739,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleMultiply(
                                      MakeScalarLike(lhs, 1), lhs));
   }
 
-  return absl::OkStatus();
+  return TryToReorderConvAddMultiply(multiply);
 }
 
 absl::Status AlgebraicSimplifierVisitor::HandleNegate(HloInstruction* negate) {
