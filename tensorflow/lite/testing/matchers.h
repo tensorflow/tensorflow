@@ -257,6 +257,7 @@ struct SimpleConstTensor : public TfLiteTensor {
     std::memcpy(dims->data, shape.data(), shape.size() * sizeof(int));
     data = {.data = buf.data()};
     bytes = buf.size() * sizeof(T);
+    sparsity = nullptr;
   }
   ~SimpleConstTensor() { TfLiteIntArrayFree(dims); }
 };
