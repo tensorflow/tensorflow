@@ -21,11 +21,13 @@ limitations under the License.
 #include <string_view>
 #include <tuple>
 
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_custom_partitioner_extension.h"
 #include "xla/service/custom_call_sharding_helper.h"
+#include "xla/shape.h"
 
 namespace jax {
 
