@@ -1,4 +1,5 @@
-numpy ~= 2.0.0
+# Note that numpy 2.1.0 does not support python 3.9
+numpy >= 2.0.0, < 2.2.0
 wheel ~= 0.41.2
 h5py >= 3.11.0
 lit ~= 17.0.2
@@ -21,7 +22,7 @@ tb-nightly ~= 2.18.0.a
 # Test dependencies
 grpcio >= 1.24.3, < 2.0
 portpicker == 1.6.0
-scipy ~= 1.13.0
+scipy >= 1.13.0
 requests >= 2.31.0
 packaging==23.2
 setuptools==70.0.0
