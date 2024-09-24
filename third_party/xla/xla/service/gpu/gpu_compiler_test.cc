@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_compiler.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -25,6 +27,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
@@ -55,6 +58,7 @@ limitations under the License.
 #include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tests/verified_hlo_module.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
@@ -1049,6 +1053,50 @@ ENTRY main {
 
   EXPECT_EQ(custom_kernel_fusion_rewriter_has_run,
             expect_custom_kernel_fusion_rewriter_has_run);
+}
+
+struct PassRunIndex {
+  int first_run = std::numeric_limits<int>::max();
+  int last_run = std::numeric_limits<int>::min();
+};
+
+// Checks that both passes have actually run and that the first run of the
+// `after` pass is after the last run of the `before` pass.
+void VerifyPassOrder(
+    const absl::flat_hash_map<std::string, PassRunIndex>& passes,
+    absl::string_view before, absl::string_view after) {
+  EXPECT_TRUE(passes.contains(before))
+      << "Expected pass did not run: " << before;
+  EXPECT_TRUE(passes.contains(after)) << "Expected pass did not run: " << after;
+  EXPECT_LT(passes.at(before).last_run, passes.at(after).first_run)
+      << "Pass " << before << " ran after " << after;
+}
+
+TEST_F(GpuCompilerPassTest, PassesAreRunInCorrectOrder) {
+  constexpr absl::string_view constant_module = R"(
+ENTRY main {
+  ROOT constant = f32[] constant(0)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(constant_module));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                          GetOptimizedModule(std::move(module)));
+
+  // Maps a pass name to its first and last index.
+  absl::flat_hash_map<std::string, PassRunIndex> passes;
+  int run_index = 0;
+  for (const HloPassMetadata& pass_metadata :
+       optimized_module->metadata()->proto().pass_metadata()) {
+    auto& pass = passes[pass_metadata.pass_name()];
+    pass.first_run = std::min(pass.first_run, run_index);
+    pass.last_run = std::max(pass.last_run, run_index);
+    ++run_index;
+  }
+
+  // This test captures known dependencies between passes.
+  VerifyPassOrder(passes, "layout-assignment", "priority-fusion");
+  VerifyPassOrder(passes, "layout-assignment", "layout_normalization");
 }
 
 }  // namespace
