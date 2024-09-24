@@ -129,13 +129,33 @@ bool BinaryOpHasTraitsForSharding(Operation* op) {
   return false;
 }
 
-bool DoTypesHaveSameShape(Value value_0, Value value_1) {
+bool DoTypesHavePartialSameShape(Value value_0, Value value_1) {
   auto shape_0 =
       mlir::dyn_cast_or_null<mlir::RankedTensorType>(value_0.getType());
   auto shape_1 =
       mlir::dyn_cast_or_null<mlir::RankedTensorType>(value_1.getType());
   if (shape_0 && shape_1) {
-    return shape_0.getShape() == shape_1.getShape();
+    if (shape_0.hasStaticShape() && shape_1.hasStaticShape())
+      return shape_0.getShape() == shape_1.getShape();
+    int i = 0, j = 0;
+    while (i < shape_0.getShape().size() && j < shape_1.getShape().size()) {
+      if (shape_0.getShape()[i] != shape_1.getShape()[j] &&
+          !shape_0.isDynamicDim(i) && !shape_1.isDynamicDim(j)) {
+        return false;
+      }
+      if (shape_0.getShape()[i] == shape_1.getShape()[j]) {
+        i++;
+        j++;
+      } else {
+        if (shape_0.isDynamicDim(i)) {
+          i++;
+        }
+        if (shape_1.isDynamicDim(j)) {
+          j++;
+        }
+      }
+    }
+    return i == shape_0.getShape().size() && j == shape_1.getShape().size();
   }
   return false;
 }
@@ -337,7 +357,8 @@ std::optional<llvm::StringRef> GetXlaShardingFromArg(
         }
 
         if (BinaryOpHasTraitsForSharding(owner)) {
-          if (DoTypesHaveSameShape(value_to_visit, owner->getResult(0))) {
+          if (DoTypesHavePartialSameShape(value_to_visit,
+                                          owner->getResult(0))) {
             next_values_to_visit.push_back(use.getOwner()->getResult(0));
             continue;
           }
