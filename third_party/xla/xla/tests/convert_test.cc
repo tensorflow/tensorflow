@@ -779,14 +779,14 @@ XLA_TEST_F(ConvertTest, ConvertF16F8e5m2Roundtrip) {
       {0x1.Cp-15, 0x1p-14},    // Smallest number rounding up to normal
 
       // Denormal tests
-      {0x1.0p-15, 0x1.0p-15},   // Denormal without rounding
-      {0x1.4p-15, 0x1.0p-15},   // Round-to-even down
-      {0x1.Cp-15, 0x1.0p-14},   // Round-to-even up
-      {0x1.3p-15, 0x1.0p-15},   // Round-to-nearest down
-      {0x1.5p-15, 0x1.8p-15},   // Round-to-nearest up
-      {0x1p-17, 0},             // Largest number that underflows
-      {0x1.04p-17, 0x1p-16},    // Smallest number that doesn't underflow
-      {0x1.BFp-15, 0x1.8p-15},  // Largest number that rounds to denormal
+      {0x0.8p-14, 0x0.8p-14},    // Denormal without rounding
+      {0x0.Ap-14, 0x0.8p-14},    // Round-to-even down
+      {0x0.Ep-14, 0x1.0p-14},    // Round-to-even up
+      {0x0.98p-14, 0x0.8p-14},   // Round-to-nearest down
+      {0x0.A8p-14, 0x0.Cp-14},   // Round-to-nearest up
+      {0x0.2p-14, 0},            // Largest number that underflows
+      {0x0.204p-14, 0x0.4p-14},  // Smallest number that doesn't underflow
+      {0x0.DFCp-14, 0x0.Cp-14},  // Largest number that rounds to denormal
   };
 
   std::vector<Eigen::half> inputs;
@@ -831,14 +831,14 @@ XLA_TEST_F(ConvertTest, DISABLED_ON_CPU(ConvertF32F8e5m2Roundtrip)) {
       {0x1.Cp-15, 0x1p-14},       // Smallest number rounding up to normal
 
       // Denormal tests
-      {0x1.0p-15, 0x1.0p-15},       // Denormal without rounding
-      {0x1.4p-15, 0x1.0p-15},       // Round-to-even down
+      {0x1.0p-15, 0x0.8p-14},       // Denormal without rounding
+      {0x1.4p-15, 0x0.8p-14},       // Round-to-even down
       {0x1.Cp-15, 0x1.0p-14},       // Round-to-even up
-      {0x1.3p-15, 0x1.0p-15},       // Round-to-nearest down
-      {0x1.5p-15, 0x1.8p-15},       // Round-to-nearest up
+      {0x1.3p-15, 0x0.8p-14},       // Round-to-nearest down
+      {0x1.5p-15, 0x0.Cp-14},       // Round-to-nearest up
       {0x1p-17, 0},                 // Largest number that underflows
-      {0x1.000002p-17, 0x1p-16},    // Smallest number that doesn't underflow
-      {0x1.BFFFFEp-15, 0x1.8p-15},  // Largest number that rounds to denormal
+      {0x1.000002p-17, 0x0.4p-14},  // Smallest number that doesn't underflow
+      {0x1.BFFFFEp-15, 0x0.Cp-14},  // Largest number that rounds to denormal
   };
 
   std::vector<float> inputs;
@@ -943,14 +943,14 @@ XLA_TEST_F(ConvertTest, ConvertF16F8e4m3fnRoundtrip) {
       {0x1.Ep-7, 0x1p-6},  // Smallest number rounding up to normal
 
       // Denormal tests
-      {0x1.0p-8, 0x1.0p-8},    // Denormal without rounding
-      {0x1.4p-8, 0x1.0p-8},    // Round-to-even down
-      {0x1.Cp-8, 0x1.0p-7},    // Round-to-even up
-      {0x1.3p-8, 0x1.0p-8},    // Round-to-nearest down
-      {0x1.5p-8, 0x1.8p-8},    // Round-to-nearest up
-      {0x1p-10, 0},            // Largest number that underflows
-      {0x1.004p-10, 0x1p-9},   // Smallest number that doesn't underflow
-      {0x1.DFCp-7, 0x1.Cp-7},  // Largest number that rounds to denormal
+      {0x1.0p-8, 0x0.4p-6},     // Denormal without rounding
+      {0x1.4p-8, 0x0.4p-6},     // Round-to-even down
+      {0x1.Cp-8, 0x0.8p-6},     // Round-to-even up
+      {0x1.3p-8, 0x0.4p-6},     // Round-to-nearest down
+      {0x1.5p-8, 0x0.6p-6},     // Round-to-nearest up
+      {0x1p-10, 0},             // Largest number that underflows
+      {0x1.004p-10, 0x0.2p-6},  // Smallest number that doesn't underflow
+      {0x1.DFCp-7, 0x0.Ep-6},   // Largest number that rounds to denormal
   };
 
   std::vector<Eigen::half> inputs;
@@ -994,14 +994,14 @@ XLA_TEST_F(ConvertTest, DISABLED_ON_CPU(ConvertF32F8e4m3fnRoundtrip)) {
       {0x1.Ep-7, 0x1p-6},   // Smallest number rounding up to normal
 
       // Denormal tests
-      {0x1.0p-8, 0x1.0p-8},       // Denormal without rounding
-      {0x1.4p-8, 0x1.0p-8},       // Round-to-even down
-      {0x1.Cp-8, 0x1.0p-7},       // Round-to-even up
-      {0x1.3p-8, 0x1.0p-8},       // Round-to-nearest down
-      {0x1.5p-8, 0x1.8p-8},       // Round-to-nearest up
-      {0x1p-10, 0},               // Largest number that underflows
-      {0x1.000002p-10, 0x1p-9},   // Smallest number that doesn't underflow
-      {0x1.DFFFFEp-7, 0x1.Cp-7},  // Largest number that rounds to denormal
+      {0x1.0p-8, 0x0.4p-6},        // Denormal without rounding
+      {0x1.4p-8, 0x0.4p-6},        // Round-to-even down
+      {0x1.Cp-8, 0x0.8p-6},        // Round-to-even up
+      {0x1.3p-8, 0x0.4p-6},        // Round-to-nearest down
+      {0x1.5p-8, 0x0.6p-6},        // Round-to-nearest up
+      {0x1p-10, 0},                // Largest number that underflows
+      {0x1.000002p-10, 0x0.2p-6},  // Smallest number that doesn't underflow
+      {0x1.DFFFFEp-7, 0x0.Ep-6},   // Largest number that rounds to denormal
   };
 
   std::vector<float> inputs;
@@ -1106,14 +1106,14 @@ XLA_TEST_F(ConvertTest, ConvertF16F8e4m3b11fnuzRoundtrip) {
       {0x1.Ep-11, 0x1p-10},  // Smallest number rounding up to normal
 
       // Denormal tests
-      {0x1.0p-12, 0x1.0p-12},    // Denormal without rounding
-      {0x1.4p-12, 0x1.0p-12},    // Round-to-even down
-      {0x1.Cp-12, 0x1.0p-11},    // Round-to-even up
-      {0x1.3p-12, 0x1.0p-12},    // Round-to-nearest down
-      {0x1.5p-12, 0x1.8p-12},    // Round-to-nearest up
+      {0x1.0p-12, 0x0.4p-10},    // Denormal without rounding
+      {0x1.4p-12, 0x0.4p-10},    // Round-to-even down
+      {0x1.Cp-12, 0x0.8p-10},    // Round-to-even up
+      {0x1.3p-12, 0x0.4p-10},    // Round-to-nearest down
+      {0x1.5p-12, 0x0.6p-10},    // Round-to-nearest up
       {0x1p-14, 0},              // Largest number that underflows
-      {0x1.004p-14, 0x1p-13},    // Smallest number that doesn't underflow
-      {0x1.DFCp-11, 0x1.Cp-11},  // Largest number that rounds to denormal
+      {0x1.004p-14, 0x0.2p-10},  // Smallest number that doesn't underflow
+      {0x1.DFCp-11, 0x0.Ep-10},  // Largest number that rounds to denormal
   };
 
   std::vector<Eigen::half> inputs;
@@ -1157,14 +1157,14 @@ XLA_TEST_F(ConvertTest, DISABLED_ON_CPU(ConvertF32F8e4m3b11fnuzRoundtrip)) {
       {0x1.Ep-11, 0x1p-10},     // Smallest number rounding up to normal
 
       // Denormal tests
-      {0x1.0p-12, 0x1.0p-12},       // Denormal without rounding
-      {0x1.4p-12, 0x1.0p-12},       // Round-to-even down
-      {0x1.Cp-12, 0x1.0p-11},       // Round-to-even up
-      {0x1.3p-12, 0x1.0p-12},       // Round-to-nearest down
-      {0x1.5p-12, 0x1.8p-12},       // Round-to-nearest up
+      {0x1.0p-12, 0x0.4p-10},       // Denormal without rounding
+      {0x1.4p-12, 0x0.4p-10},       // Round-to-even down
+      {0x1.Cp-12, 0x0.8p-10},       // Round-to-even up
+      {0x1.3p-12, 0x0.4p-10},       // Round-to-nearest down
+      {0x1.5p-12, 0x0.6p-10},       // Round-to-nearest up
       {0x1p-14, 0},                 // Largest number that underflows
-      {0x1.000002p-14, 0x1p-13},    // Smallest number that doesn't underflow
-      {0x1.DFFFFEp-11, 0x1.Cp-11},  // Largest number that rounds to denormal
+      {0x1.000002p-14, 0x0.2p-10},  // Smallest number that doesn't underflow
+      {0x1.DFFFFEp-11, 0x0.Ep-10},  // Largest number that rounds to denormal
   };
 
   std::vector<float> inputs;
@@ -1271,14 +1271,14 @@ XLA_TEST_F(ConvertTest, ConvertF16F8e5m2fnuzRoundtrip) {
       {0x1.Cp-16, 0x1p-15},    // Smallest number rounding up to normal
 
       // Denormal tests
-      {0x1.0p-16, 0x1.0p-16},   // Denormal without rounding
-      {0x1.4p-16, 0x1.0p-16},   // Round-to-even down
-      {0x1.Cp-16, 0x1.0p-15},   // Round-to-even up
-      {0x1.3p-16, 0x1.0p-16},   // Round-to-nearest down
-      {0x1.5p-16, 0x1.8p-16},   // Round-to-nearest up
-      {0x1p-18, 0},             // Largest number that underflows
-      {0x1.04p-18, 0x1p-17},    // Smallest number that doesn't underflow
-      {0x1.BFp-16, 0x1.8p-16},  // Largest number that rounds to denormal
+      {0x0.4p-14, 0x0.8p-15},    // Denormal without rounding
+      {0x0.5p-14, 0x0.8p-15},    // Round-to-even down
+      {0x0.7p-14, 0x1.0p-15},    // Round-to-even up
+      {0x0.4Cp-14, 0x0.8p-15},   // Round-to-nearest down
+      {0x0.54p-14, 0x0.Cp-15},   // Round-to-nearest up
+      {0x0.1p-14, 0},            // Largest number that underflows
+      {0x0.104p-14, 0x0.4p-15},  // Smallest number that doesn't underflow
+      {0x0.6FCp-14, 0x0.Cp-15},  // Largest number that rounds to denormal
   };
 
   std::vector<Eigen::half> inputs;
@@ -1323,14 +1323,14 @@ XLA_TEST_F(ConvertTest, ConvertF32F8e5m2fnuzRoundtrip) {
       {0x1.Cp-16, 0x1p-15},       // Smallest number rounding up to normal
 
       // Denormal tests
-      {0x1.0p-16, 0x1.0p-16},       // Denormal without rounding
-      {0x1.4p-16, 0x1.0p-16},       // Round-to-even down
+      {0x1.0p-16, 0x0.8p-15},       // Denormal without rounding
+      {0x1.4p-16, 0x0.8p-15},       // Round-to-even down
       {0x1.Cp-16, 0x1.0p-15},       // Round-to-even up
-      {0x1.3p-16, 0x1.0p-16},       // Round-to-nearest down
-      {0x1.5p-16, 0x1.8p-16},       // Round-to-nearest up
+      {0x1.3p-16, 0x0.8p-15},       // Round-to-nearest down
+      {0x1.5p-16, 0x0.Cp-15},       // Round-to-nearest up
       {0x1p-18, 0},                 // Largest number that underflows
-      {0x1.000002p-18, 0x1p-17},    // Smallest number that doesn't underflow
-      {0x1.BFFFFEp-16, 0x1.8p-16},  // Largest number that rounds to denormal
+      {0x1.000002p-18, 0x0.4p-15},  // Smallest number that doesn't underflow
+      {0x1.BFFFFEp-16, 0x0.Cp-15},  // Largest number that rounds to denormal
   };
 
   std::vector<float> inputs;
@@ -1435,14 +1435,14 @@ XLA_TEST_F(ConvertTest, ConvertF16F8e4m3fnuzRoundtrip) {
       {0x1.Ep-8, 0x1p-7},    // Smallest number rounding up to normal
 
       // Denormal tests
-      {0x1.0p-9, 0x1.0p-9},    // Denormal without rounding
-      {0x1.4p-9, 0x1.0p-9},    // Round-to-even down
-      {0x1.Cp-9, 0x1.0p-8},    // Round-to-even up
-      {0x1.3p-9, 0x1.0p-9},    // Round-to-nearest down
-      {0x1.5p-9, 0x1.8p-9},    // Round-to-nearest up
-      {0x1p-11, 0},            // Largest number that underflows
-      {0x1.004p-11, 0x1p-10},  // Smallest number that doesn't underflow
-      {0x1.DFCp-8, 0x1.Cp-8},  // Largest number that rounds to denormal
+      {0x1.0p-9, 0x0.4p-7},     // Denormal without rounding
+      {0x1.4p-9, 0x0.4p-7},     // Round-to-even down
+      {0x1.Cp-9, 0x0.8p-7},     // Round-to-even up
+      {0x1.3p-9, 0x0.4p-7},     // Round-to-nearest down
+      {0x1.5p-9, 0x0.6p-7},     // Round-to-nearest up
+      {0x1p-11, 0},             // Largest number that underflows
+      {0x1.004p-11, 0x0.2p-7},  // Smallest number that doesn't underflow
+      {0x1.DFCp-8, 0x0.Ep-7},   // Largest number that rounds to denormal
   };
 
   std::vector<Eigen::half> inputs;
@@ -1486,14 +1486,14 @@ XLA_TEST_F(ConvertTest, ConvertF32F8e4m3fnuzRoundtrip) {
       {0x1.Ep-8, 0x1p-7},       // Smallest number rounding up to normal
 
       // Denormal tests
-      {0x1.0p-9, 0x1.0p-9},       // Denormal without rounding
-      {0x1.4p-9, 0x1.0p-9},       // Round-to-even down
-      {0x1.Cp-9, 0x1.0p-8},       // Round-to-even up
-      {0x1.3p-9, 0x1.0p-9},       // Round-to-nearest down
-      {0x1.5p-9, 0x1.8p-9},       // Round-to-nearest up
-      {0x1p-11, 0},               // Largest number that underflows
-      {0x1.000002p-11, 0x1p-10},  // Smallest number that doesn't underflow
-      {0x1.DFFFFEp-8, 0x1.Cp-8},  // Largest number that rounds to denormal
+      {0x1.0p-9, 0x0.4p-7},        // Denormal without rounding
+      {0x1.4p-9, 0x0.4p-7},        // Round-to-even down
+      {0x1.Cp-9, 0x0.8p-7},        // Round-to-even up
+      {0x1.3p-9, 0x0.4p-7},        // Round-to-nearest down
+      {0x1.5p-9, 0x0.6p-7},        // Round-to-nearest up
+      {0x1p-11, 0},                // Largest number that underflows
+      {0x1.000002p-11, 0x0.2p-7},  // Smallest number that doesn't underflow
+      {0x1.DFFFFEp-8, 0x0.Ep-7},   // Largest number that rounds to denormal
   };
 
   std::vector<float> inputs;
