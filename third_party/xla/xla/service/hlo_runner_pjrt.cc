@@ -125,11 +125,11 @@ class PjRtWrappedExecutable : public Executable {
       HloExecutionProfile* hlo_execution_profile) override;
 
   PjRtLoadedExecutable* GetPjRtLoadedExecutable() const {
-    return pjrt_loaded_executable_;
+    return pjrt_loaded_executable_.get();
   }
 
  private:
-  PjRtLoadedExecutable* pjrt_loaded_executable_;
+  std::unique_ptr<PjRtLoadedExecutable> pjrt_loaded_executable_;
 };
 
 absl::StatusOr<ExecutionOutput> PjRtWrappedExecutable::ExecuteAsyncOnStream(
@@ -373,9 +373,7 @@ absl::StatusOr<std::unique_ptr<Executable>> HloRunnerPjRt::CreateExecutable(
           std::move(pjrt_executable->GetHloModules().value()[0])),
       pjrt_executable.release());
 
-  std::unique_ptr<Executable> exec =
-      static_cast<std::unique_ptr<Executable>>(executable.release());
-  return exec;
+  return executable;
 }
 
 absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
