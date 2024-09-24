@@ -86,6 +86,24 @@ int64_t GetPaddedTileSize(absl::Span<int64_t const> tile_sizes) {
 // heuristic tries to be safe and increase recall at the cost of precision.
 bool DoesTileFitsInRegisters(int64_t tile_size,
                              const se::DeviceDescription& device_info) {
+  // This is a conservative estimate to make sure that we don't get a tile that
+  // is too big and results in register spills.
+  //
+  // We had the following reasoning for the value of this constant:
+  //  * Whenever a block needs to use a tile more than once, it needs to
+  //    either (1) load the tile from HBM several times, or (2) store the tile
+  //    in registers at the same time as some of the results. That is the case
+  //    for normalization diamonds for instance, where the input tile is used
+  //    twice.
+  //  * We expect kernels without reuse to benefit from smaller tile sizes
+  //    anyway.
+  //  * We use around 20% of the registers as working memory for indexing
+  //    computations and expensive instructions like exponential or cosine.
+  //
+  // This value was empirically determined in September 2024 and may change in
+  // the future.
+  constexpr double kFractionOfRegistersAvailableToStoreTile = 0.4;
+
   // Register allocation happens at PTX->SASS level, so we can't know the exact
   // number of registers used by a kernel. We make a few assumptions about the
   // kernel we will generate (this may not hold in the future):
@@ -104,7 +122,8 @@ bool DoesTileFitsInRegisters(int64_t tile_size,
   // data type. `registers_per_block_limit()` returns the number of 32-bit
   // registers. Check if 64-bit types need twice as many registers. Check if
   // smaller types can fit into one register.
-  return tile_size <= device_info.registers_per_block_limit();
+  return tile_size <= kFractionOfRegistersAvailableToStoreTile *
+                          device_info.registers_per_block_limit();
 }
 
 // Returns the number of warps to use based on the tile size. The numbers were
