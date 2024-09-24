@@ -113,6 +113,10 @@ PyLoadedExecutable::~PyLoadedExecutable() {
   if (next_) {
     next_->prev_ = prev_;
   }
+  {
+    nb::gil_scoped_release gil_release;
+    ifrt_loaded_executable_ = nullptr;
+  }
 }
 
 std::vector<nb_class_ptr<PyDevice>> PyLoadedExecutable::AddressableDevices()
