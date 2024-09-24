@@ -452,12 +452,30 @@ func.func @test_div(%arg0: tensor<13x21x3xi32>, %arg1: tensor<i32>) -> tensor<*x
 
 // -----
 
-// CHECK-LABEL: test_floor_div
-// CHECK-DAG: %[[RESHAPE:.*]] = tosa.reshape %arg1
-// CHECK: %[[VAR0:.*]] = tosa.int_div %arg0, %[[RESHAPE]]
-func.func @test_floor_div(%arg0: tensor<13x21x3xi32>, %arg1: tensor<i32>) -> tensor<*xi32> {
-  %0 = "tfl.floor_div"(%arg0, %arg1)  {fused_activation_function = "NONE"}  : (tensor<13x21x3xi32>, tensor<i32>) -> tensor<*xi32>
-  func.return %0 : tensor<*xi32>
+// CHECK-LABEL:   func.func @test_floor_div(
+// CHECK-SAME:                              %[[VAL_0:.*]]: tensor<13x21x3xi32>,
+// CHECK-SAME:                              %[[VAL_1:.*]]: tensor<i32>) -> tensor<13x21x3xi32> {
+// CHECK:           %[[VAL_2:.*]] = "tosa.const"() <{value = dense<0> : tensor<i8>}> : () -> tensor<i8>
+// CHECK:           %[[VAL_3:.*]] = "tosa.const"() <{value = dense<0> : tensor<1x1x1xi32>}> : () -> tensor<1x1x1xi32>
+// CHECK:           %[[VAL_4:.*]] = "tosa.const"() <{value = dense<1> : tensor<1x1x1xi32>}> : () -> tensor<1x1x1xi32>
+// CHECK:           %[[VAL_5:.*]] = tosa.const_shape  {value = dense<1> : tensor<3xindex>} : () -> !tosa.shape<3>
+// CHECK:           %[[VAL_6:.*]] = tosa.reshape %[[VAL_1]], %[[VAL_5]] : (tensor<i32>, !tosa.shape<3>) -> tensor<1x1x1xi32>
+// CHECK:           %[[VAL_7:.*]] = tosa.int_div %[[VAL_0]], %[[VAL_6]] : (tensor<13x21x3xi32>, tensor<1x1x1xi32>) -> tensor<13x21x3xi32>
+// CHECK:           %[[VAL_8:.*]] = tosa.reshape %[[VAL_1]], %[[VAL_5]] : (tensor<i32>, !tosa.shape<3>) -> tensor<1x1x1xi32>
+// CHECK:           %[[VAL_9:.*]] = tosa.mul %[[VAL_0]], %[[VAL_8]], %[[VAL_2]] : (tensor<13x21x3xi32>, tensor<1x1x1xi32>, tensor<i8>) -> tensor<13x21x3xi32>
+// CHECK:           %[[VAL_10:.*]] = tosa.reshape %[[VAL_1]], %[[VAL_5]] : (tensor<i32>, !tosa.shape<3>) -> tensor<1x1x1xi32>
+// CHECK:           %[[VAL_11:.*]] = tosa.mul %[[VAL_10]], %[[VAL_7]], %[[VAL_2]] : (tensor<1x1x1xi32>, tensor<13x21x3xi32>, tensor<i8>) -> tensor<13x21x3xi32>
+// CHECK:           %[[VAL_12:.*]] = tosa.equal %[[VAL_0]], %[[VAL_11]] : (tensor<13x21x3xi32>, tensor<13x21x3xi32>) -> tensor<13x21x3xi1>
+// CHECK:           %[[VAL_13:.*]] = tosa.logical_not %[[VAL_12]] : (tensor<13x21x3xi1>) -> tensor<13x21x3xi1>
+// CHECK:           %[[VAL_14:.*]] = tosa.greater %[[VAL_3]], %[[VAL_9]] : (tensor<1x1x1xi32>, tensor<13x21x3xi32>) -> tensor<13x21x3xi1>
+// CHECK:           %[[VAL_15:.*]] = tosa.sub %[[VAL_7]], %[[VAL_4]] : (tensor<13x21x3xi32>, tensor<1x1x1xi32>) -> tensor<13x21x3xi32>
+// CHECK:           %[[VAL_16:.*]] = tosa.logical_and %[[VAL_13]], %[[VAL_14]] : (tensor<13x21x3xi1>, tensor<13x21x3xi1>) -> tensor<13x21x3xi1>
+// CHECK:           %[[VAL_17:.*]] = tosa.select %[[VAL_16]], %[[VAL_15]], %[[VAL_7]] : (tensor<13x21x3xi1>, tensor<13x21x3xi32>, tensor<13x21x3xi32>) -> tensor<13x21x3xi32>
+// CHECK:           return %[[VAL_17]] : tensor<13x21x3xi32>
+// CHECK:         }
+func.func @test_floor_div(%arg0: tensor<13x21x3xi32>, %arg1: tensor<i32>) -> tensor<13x21x3xi32> {
+  %0 = "tfl.floor_div"(%arg0, %arg1)  {fused_activation_function = "NONE"}  : (tensor<13x21x3xi32>, tensor<i32>) -> tensor<13x21x3xi32>
+  func.return %0 : tensor<13x21x3xi32>
 }
 
 // -----

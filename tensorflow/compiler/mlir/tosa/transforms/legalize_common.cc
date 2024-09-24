@@ -2742,17 +2742,114 @@ std::optional<Value> convertStridedSliceOp(
   return reverseNegativeStride(rewriter, op, a4_reshape_op, strides);
 }
 
+// Helper function to perform division with floor rounding mode (rounding result
+// down) for integer type inputs.
+Value floorIntDiv(PatternRewriter& rewriter, Operation* op,
+                  ShapedType output_type, Value lhs_value, Value rhs_value) {
+  // To implement floor div int input, utilize tosa::IntDivOp (trunc div
+  // result - rounds towards zero) with the following formula elementwise:
+  // floor_value = trunc_value - ((trunc_value * rhs_value != lhs_value)
+  //                                && (sign(lhs_value) != sign(rhs_value)))
+  //
+  // a1 = intdiv(lhs_value, rhs_value); // IntDivOp return truncated result
+  // a2 = mul(lhs_value, rhs_value);
+  // a3 = mul(rhs_value, a1);
+  // a4 = eq(lhs_value, a3);
+  // a5 = not(a4); // (trunc_value * rhs_value != lhs_value)
+  // a6 = gt(zero, a2); // (sign(lhs_value) != sign(rhs_value))
+  // a7 = sub(a1, one);
+  // a8 = and(a5, a6); // (trunc_value * rhs_value != lhs_value) &&
+  //                                  (sign(lhs_value) != sign(rhs_value))
+  // a9 = select(a8, a7, a1);
+  // return a9;
+
+  ShapedType lhs_type = dyn_cast<ShapedType>(lhs_value.getType());
+  ShapedType rhs_type = dyn_cast<ShapedType>(rhs_value.getType());
+
+  ImplicitLocOpBuilder builder(op->getLoc(), rewriter);
+
+  ShapedType output_i32_type = output_type.clone(rewriter.getIntegerType(32));
+  ShapedType output_bool_type = output_type.clone(rewriter.getIntegerType(1));
+
+  Value zero =
+      getTosaConstTensorSingleI32(rewriter, op, 0, output_type.getRank());
+  Value one =
+      getTosaConstTensorSingleI32(rewriter, op, 1, output_type.getRank());
+
+  auto output_shape_value = getTosaConstShape(
+      rewriter, op->getLoc(),
+      tensorflow::ConvertMlirShapeToTF(output_type.getShape()));
+
+  Value lhs_value_casted = CreateOpAndInfer<tosa::CastOp>(
+      rewriter, op->getLoc(), lhs_type.clone(rewriter.getIntegerType(32)),
+      lhs_value);
+
+  Value lhs_value_reshaped =
+      CreateOpAndInfer<tosa::ReshapeOp>(rewriter, op->getLoc(), output_i32_type,
+                                        lhs_value_casted, output_shape_value);
+
+  Value rhs_value_casted = CreateOpAndInfer<tosa::CastOp>(
+      rewriter, op->getLoc(), rhs_type.clone(rewriter.getIntegerType(32)),
+      rhs_value);
+
+  // TOSA IntDiv requires inputs to be i32
+  auto a1_int_div_op =
+      CreateOpAndInfer<tosa::IntDivOp>(rewriter, op->getLoc(), output_i32_type,
+                                       lhs_value_casted, rhs_value_casted);
+
+  auto a1_int_div_op_casted = CreateOpAndInfer<tosa::CastOp>(
+      rewriter, op->getLoc(), output_type, a1_int_div_op.getResult());
+
+  auto a2_lhs_mul_rhs_op =
+      CreateMulOpAndInfer(rewriter, op, output_type, lhs_value, rhs_value);
+
+  auto a3_rhs_mul_a1_op = CreateMulOpAndInfer(
+      rewriter, op, output_type, rhs_value, a1_int_div_op_casted.getResult());
+
+  auto a4_lhs_eq_a3_op = CreateOpAndInfer<tosa::EqualOp>(
+      rewriter, op->getLoc(), output_bool_type, lhs_value_reshaped,
+      a3_rhs_mul_a1_op.getResult());
+
+  // (trunc_value * rhs_value != lhs_value)
+  auto a5_not_a4_op = CreateOpAndInfer<tosa::LogicalNotOp>(
+      rewriter, op->getLoc(), output_bool_type, a4_lhs_eq_a3_op.getResult());
+
+  // (sign(lhs_value) != sign(rhs_value))
+  auto a6_zero_gt_a2_op = CreateOpAndInfer<tosa::GreaterOp>(
+      rewriter, op->getLoc(), output_bool_type, zero,
+      a2_lhs_mul_rhs_op.getResult());
+
+  auto a7_a1_sub_one_op =
+      CreateOpAndInfer<tosa::SubOp>(rewriter, op->getLoc(), output_type,
+                                    a1_int_div_op_casted.getResult(), one);
+
+  // (trunc_value * rhs_value != lhs_value)
+  //                      && (sign(lhs_value) != sign(rhs_value))
+  auto a8_a5_and_a6_op = CreateOpAndInfer<tosa::LogicalAndOp>(
+      rewriter, op->getLoc(), output_bool_type, a5_not_a4_op.getResult(),
+      a6_zero_gt_a2_op.getResult());
+
+  auto a9_select_op = CreateOpAndInfer<tosa::SelectOp>(
+      rewriter, op->getLoc(), output_type, a8_a5_and_a6_op.getResult(),
+      a7_a1_sub_one_op.getResult(), a1_int_div_op_casted.getResult());
+
+  return a9_select_op.getResult();
+}
+
 // Lowers FloorDiv to a sequence of TOSA operators.
 std::optional<Value> convertFloorDivOp(PatternRewriter& rewriter, Operation* op,
                                        Value result_value, Value lhs_value,
                                        Value rhs_value) {
-  // FloorDiv lowering:
+  // FloorDiv lowering for float type:
   // floor(1/rhs * lhs)
   //
   // a1 = reciprocal(rhs);
   // a2 = mul(lhs, a1);
   // a3 = floor(a2);
   // return a3;
+  //
+  // FloorDiv lowering for integer type:
+  // See floorIntDiv() function for details
   ShapedType output_type = dyn_cast<ShapedType>(result_value.getType());
   // Not a shaped tensor output
   if (!output_type) return std::nullopt;
@@ -2760,9 +2857,7 @@ std::optional<Value> convertFloorDivOp(PatternRewriter& rewriter, Operation* op,
   Type element_type = output_type.getElementType();
 
   if (mlir::isa<IntegerType>(element_type)) {
-    return CreateOpAndInfer<tosa::IntDivOp>(rewriter, op->getLoc(), output_type,
-                                            lhs_value, rhs_value)
-        .getResult();
+    return floorIntDiv(rewriter, op, output_type, lhs_value, rhs_value);
   }
 
   auto a1_reciprocal_rhs_op = CreateOpAndInfer<tosa::ReciprocalOp>(
