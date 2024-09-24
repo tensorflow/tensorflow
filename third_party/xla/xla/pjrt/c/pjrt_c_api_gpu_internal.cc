@@ -293,14 +293,17 @@ PJRT_Error* PJRT_Gpu_Register_Custom_Call(
   switch (args->api_version) {
     case 0:
       xla::CustomCallTargetRegistry::Global()->Register(
-          function_name, args->custom_call_function,
-          PJRT_GPU_PLUGIN_PLATFORM_NAME);
+          function_name, args->handler_execute, PJRT_GPU_PLUGIN_PLATFORM_NAME);
       return nullptr;
     case 1:
       xla::ffi::Ffi::RegisterStaticHandler(
           xla::ffi::GetXlaFfiApi(), function_name,
           PJRT_GPU_PLUGIN_PLATFORM_NAME,
-          reinterpret_cast<XLA_FFI_Handler*>(args->custom_call_function));
+          XLA_FFI_Handler_Bundle{
+              reinterpret_cast<XLA_FFI_Handler*>(args->handler_instantiate),
+              reinterpret_cast<XLA_FFI_Handler*>(args->handler_prepare),
+              reinterpret_cast<XLA_FFI_Handler*>(args->handler_initialize),
+              reinterpret_cast<XLA_FFI_Handler*>(args->handler_execute)});
       return nullptr;
     default:
       return new PJRT_Error{absl::UnimplementedError(

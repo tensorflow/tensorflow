@@ -461,7 +461,10 @@ TEST(PjrtCApiGpuExtensionTest, CustomCallUntyped) {
   args.function_name = function_name.c_str();
   args.function_name_size = function_name.size();
   args.api_version = 0;
-  args.custom_call_function = reinterpret_cast<void*>(&TestCustomCallV2);
+  args.handler_instantiate = nullptr;
+  args.handler_prepare = nullptr;
+  args.handler_initialize = nullptr;
+  args.handler_execute = reinterpret_cast<void*>(&TestCustomCallV2);
   auto api = GetPjrtApi();
   const PJRT_Extension_Base* next =
       reinterpret_cast<const PJRT_Extension_Base*>(api->extension_start);
@@ -491,7 +494,10 @@ TEST(PjrtCApiGpuExtensionTest, CustomCallTyped) {
   args.function_name = function_name.c_str();
   args.function_name_size = function_name.size();
   args.api_version = 1;
-  args.custom_call_function = reinterpret_cast<void*>(kNoop);
+  args.handler_instantiate = nullptr;
+  args.handler_prepare = nullptr;
+  args.handler_initialize = nullptr;
+  args.handler_execute = reinterpret_cast<void*>(kNoop);
   auto api = GetPjrtApi();
   const PJRT_Extension_Base* next =
       reinterpret_cast<const PJRT_Extension_Base*>(api->extension_start);
