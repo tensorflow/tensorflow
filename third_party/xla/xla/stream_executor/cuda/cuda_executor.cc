@@ -473,6 +473,19 @@ bool CudaExecutor::SynchronizeAllActivity() {
   return GpuDriver::SynchronizeContext(gpu_context()).ok();
 }
 
+bool GpuExecutor::HostMemoryRegister(void* location, uint64_t size) {
+  VLOG(1) << "Called StreamExecutor::HostMemoryRegister(data=" << location
+          << ")";
+
+  return GpuDriver::HostRegister(context_, location, size);
+}
+
+bool GpuExecutor::HostMemoryUnregister(void* location) {
+  VLOG(1) << "Called StreamExecutor::HostUnregister(data=" << location << ")";
+
+  return GpuDriver::HostUnregister(context_, location);
+}
+
 absl::Status CudaExecutor::SynchronousMemZero(DeviceMemoryBase* location,
                                               uint64_t size) {
   if (reinterpret_cast<uintptr_t>(location->opaque()) % 4 == 0 &&

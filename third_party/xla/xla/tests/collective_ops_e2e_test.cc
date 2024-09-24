@@ -449,6 +449,46 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllToAllWithSplitDim) {
   LiteralTestUtil::ExpectR1Equal<uint32_t>({15, 16}, results[1]);
 }
 
+TEST_F(CollectiveOpsTestE2E, AsyncAllToAllMemCpy) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    id = u32[] replica-id()
+    id2 = u32[2, 2] broadcast(id), dimensions={}
+    a0 = u32[2, 2] constant({{10, 15}, {20, 25}})
+    a1 = u32[2, 2] add(id2, a0)
+    all2all = u32[2, 2] all-to-all(a1), dimensions={0}
+    ROOT out = u32[4] reshape(all2all)
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_use_memcpy_local_p2p(true);
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
+  ASSERT_TRUE(executable->has_module());
+  HloModule* executable_module = &executable->module();
+
+  // Verify that the all-to-all is not decomposed into a tuple all-to-all.
+  const HloInstruction* all_to_all =
+      FindInstruction(executable_module, HloOpcode::kAllToAll);
+  EXPECT_THAT(all_to_all, op::Shape("u32[2, 2]"));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                          ExecuteReplicated(executable.get(), kNumReplicas));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16}, results[0]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({20, 25, 21, 26}, results[1]);
+}
+
 XLA_TEST_P(AsyncCollectiveOps, AsyncAllToAllWithoutSplitDim) {
   const absl::string_view kModuleStr = R"(
   HloModule test

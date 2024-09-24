@@ -825,6 +825,7 @@ cc_library(
         "//xla/service:collective_ops_utils",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/stream_executor",
+        "//xla/tsl/concurrency:async_value",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:IR",

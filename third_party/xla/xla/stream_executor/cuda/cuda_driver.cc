@@ -1264,6 +1264,30 @@ void GpuDriver::HostDeallocate(Context* context, void* location) {
   }
 }
 
+bool GpuDriver::HostRegister(Context* context, void* location, uint64_t bytes) {
+  ScopedActivateContext activation(context);
+  // "Portable" memory is visible to all CUDA contexts. Safe for our use model.
+  auto status = cuda::ToStatus(
+      cuMemHostRegister(location, bytes, CU_MEMHOSTREGISTER_PORTABLE));
+  if (!status.ok()) {
+    LOG(ERROR) << "error registering host memory at " << location << ": "
+               << status;
+    return false;
+  }
+  return true;
+}
+
+bool GpuDriver::HostUnregister(Context* context, void* location) {
+  ScopedActivateContext activation(context);
+  auto status = cuda::ToStatus(cuMemHostUnregister(location));
+  if (!status.ok()) {
+    LOG(ERROR) << "error unregistering host memory at " << location << ": "
+               << status;
+    return false;
+  }
+  return true;
+}
+
 int GpuDriver::GetGpuStreamPriority(
     Context* context, stream_executor::StreamPriority stream_priority) {
   ScopedActivateContext activation(context);

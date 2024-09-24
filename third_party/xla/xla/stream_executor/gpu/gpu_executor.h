@@ -91,6 +91,9 @@ class GpuExecutor : public StreamExecutorCommon {
 
   uint64_t GetArgumentLoggingMode() const { return argument_logging_mode_; }
 
+  bool HostMemoryRegister(void* location, uint64_t size);
+  bool HostMemoryUnregister(void* location);
+
  protected:
   // Sets the context.
   void set_context(Context* context) { context_ = context; }

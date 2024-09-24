@@ -156,7 +156,8 @@ NcclAllReduceReduceScatterThunkBase::NcclAllReduceReduceScatterThunkBase(
 
 NcclAllReduceStartThunk::NcclAllReduceStartThunk(
     ThunkInfo thunk_info, NcclApi* nccl_api,
-    const HloAllReduceInstruction* inst, std::vector<Buffer> buffers)
+    const HloAllReduceInstruction* inst, std::vector<Buffer> buffers,
+    bool p2p_memcpy_enabled)
     : NcclAllReduceReduceScatterThunkBase(
           Thunk::kNcclAllReduceStart, thunk_info, nccl_api,
           impl::GetNcclAllReduceConfigInst(inst), std::move(buffers),
@@ -189,7 +190,8 @@ absl::Status NcclAllReduceStartThunk::RunNcclCollective(
 
 NcclReduceScatterStartThunk::NcclReduceScatterStartThunk(
     ThunkInfo thunk_info, NcclApi* nccl_api,
-    const HloReduceScatterInstruction* inst, std::vector<Buffer> buffers)
+    const HloReduceScatterInstruction* inst, std::vector<Buffer> buffers,
+    bool p2p_memcpy_enabled)
     : NcclAllReduceReduceScatterThunkBase(
           Thunk::kNcclReduceScatterStart, thunk_info, nccl_api,
           impl::GetNcclAllReduceConfigInst(inst), std::move(buffers),
