@@ -331,7 +331,10 @@ message FullyReplicatedShardResponse {
 // Deletes the given Array. Response contains the handle for a Future that
 // becomes ready when the deletion completes.
 message DeleteArrayRequest {
-  fixed64 array_handle = 1;
+  // TODO(b/296144873): Remove after compatibility window.
+  optional fixed64 array_handle_deprecated = 1 [deprecated = true];
+
+  repeated fixed64 array_handle = 2;
 }
 message DeleteArrayResponse {
   fixed64 deletion_future_handle = 1;
@@ -345,7 +348,10 @@ message IsArrayDeletedResponse {
 }
 
 message DestructArrayRequest {
-  fixed64 array_handle = 1;
+  // TODO(b/296144873): Remove after compatibility window.
+  optional fixed64 array_handle_deprecated = 1 [deprecated = true];
+
+  repeated fixed64 array_handle = 2;
 }
 message DestructArrayResponse {}
 

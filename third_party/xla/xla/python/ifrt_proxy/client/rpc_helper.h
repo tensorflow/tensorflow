@@ -28,6 +28,7 @@
 #include "xla/python/ifrt_proxy/client/client_session.h"
 #include "xla/python/ifrt_proxy/client/host_buffer.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
+#include "xla/python/ifrt_proxy/common/types.h"
 
 namespace xla {
 namespace ifrt {
@@ -41,14 +42,13 @@ namespace proxy {
 // specify the necessary dependency.
 class RpcHelper {
  public:
-  RpcHelper(IfrtProxyVersion version, std::shared_ptr<ClientSession> session)
-      : version_(std::move(version)), session_(std::move(session)) {}
+  RpcHelper(IfrtProxyVersion version, std::shared_ptr<ClientSession> session);
 
   void Disconnect();
 
   RpcHelper(const RpcHelper&) = delete;
   RpcHelper& operator=(const RpcHelper&) = delete;
-  ~RpcHelper() { Disconnect(); }
+  ~RpcHelper();
 
   // IFRT Proxy version negotiated between the client and the server.
   const IfrtProxyVersion& version() const { return version_; }
@@ -68,6 +68,15 @@ class RpcHelper {
 
   template <typename T>
   using ResponseFuture = Future<std::shared_ptr<T>>;
+
+  class Batcher;
+  enum BatchOperation { kDeleteArray, kDestructArray, kSentinelDoNotUse };
+
+  // Adds the given operation to an impending batch of operations and returns
+  // immediately. The batch of operation is sent later (as a single logical
+  // RPC).  The RPC is guaranteed to be sent before any unbatched RPCs resulting
+  // from the wrapper functions below.
+  void Batch(BatchOperation op, ArrayHandle handle);
 
   // Wrapper function for various logical RPCs defined in ifrt_service.proto.
   // Whenever the RPC finishes, `on_done` will be called with the result or the
@@ -135,8 +144,9 @@ class RpcHelper {
   Future<> CheckFuture(uint64_t handle);
 
  private:
+  const std::unique_ptr<Batcher> batcher_;
+
   const IfrtProxyVersion version_;
-  const std::shared_ptr<ClientSession> session_;
   std::shared_ptr<ClientHostBufferStore> host_buffer_store_;
 
   absl::Mutex mu_;

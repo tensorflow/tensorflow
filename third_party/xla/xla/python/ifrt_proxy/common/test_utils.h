@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_PYTHON_IFRT_PROXY_COMMON_TEST_UTILS_H_
 
 #include <deque>
+#include <functional>
 #include <optional>
 #include <utility>
 
@@ -88,6 +89,23 @@ class TestQueue {
   std::deque<T> queue_ ABSL_GUARDED_BY(mu_);
   bool allow_non_empty_destruction_ ABSL_GUARDED_BY(mu_) = false;
 };
+
+// TestHook provides a lightweight mechanism to modify the behavior of
+// production code from tests.
+// TODO(b/266635130): Extend for more hook types (as of Sep 2023, only allows
+// `void(bool*)`) and make more lightweight.
+enum class TestHookName {
+  kRpcBatcherPausePeriodicFlush,
+};
+
+// Allows test code to override the default noop behavior for hook `h`.
+void TestHookSet(TestHookName h, std::function<void(bool*)> fn);
+
+// Resets hook `h` to the default noop behavior.
+void TestHookClear(TestHookName h);
+
+// Calls hook `h` if it has been overridden by test setup; noop otherwise.
+void TestHookCall(TestHookName h, bool* param1);
 
 }  // namespace proxy
 }  // namespace ifrt

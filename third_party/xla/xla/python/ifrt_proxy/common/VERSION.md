@@ -24,3 +24,9 @@
 *   Changes:
     *   Changed the serialization of client and device attributes to use `xla.ifrt.AttributeMapProto` instead of `map<string, xla.ifrt.proto.Variant>`.
 
+## Version 4
+
+*   Added date: 2024-09-20.
+*   Changes:
+    *   Batch array deletions and destruction on client before sending to server.
+

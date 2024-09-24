@@ -178,7 +178,6 @@ ifrt_proxy_cc_test(
         "//xla/python/ifrt:serdes",
         "//xla/python/ifrt:sharding_serdes",
         "//xla/python/ifrt_proxy/common:ifrt_service_proto_cc",
-        "//xla/python/ifrt_proxy/common:types",
         "//xla/python/ifrt_proxy/common:types_proto_cc",
         "//xla/python/pjrt_ifrt:xla_ifrt",
         "//xla/service:computation_placer_hdr",

@@ -345,6 +345,9 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
   }
 
   absl::Status CheckFuture(uint64_t handle) {
+    if (handle == 0) {
+      return absl::InternalError("Test error, future handle is 0");
+    }
     auto request = NewIfrtRequest(NewOpId());
     request->mutable_check_future_request()->set_future_handle(handle);
     TF_ASSIGN_OR_RETURN(std::shared_ptr<IfrtResponse> response,
@@ -913,26 +916,46 @@ TEST_P(IfrtBackendHandlerTest,
 }
 
 TEST_P(IfrtBackendHandlerTest, DeleteArraySuccess) {
-  tsl::RCReference<xla::ifrt::MockArray> mock_array =
-      tsl::MakeRef<xla::ifrt::MockArray>();
-  EXPECT_CALL(*mock_array, Delete())
+  auto mock_array1 = tsl::MakeRef<xla::ifrt::MockArray>();
+  EXPECT_CALL(*mock_array1, Delete())
       .WillOnce(Return(Future<>(absl::OkStatus())));
-  TF_ASSERT_OK_AND_ASSIGN(auto array_handle,
-                          MakeTestArray(std::move(mock_array)));
+  auto mock_array2 = tsl::MakeRef<xla::ifrt::MockArray>();
+  EXPECT_CALL(*mock_array2, Delete())
+      .WillOnce(Return(Future<>(absl::OkStatus())));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto array_handle1,
+                          MakeTestArray(std::move(mock_array1)));
+  TF_ASSERT_OK_AND_ASSIGN(auto array_handle2,
+                          MakeTestArray(std::move(mock_array2)));
 
   uint64_t op_id = NewOpId();
   auto ifrt_request = NewIfrtRequest(op_id);
-  ifrt_request->mutable_delete_array_request()->set_array_handle(array_handle);
+  ifrt_request->mutable_delete_array_request()->add_array_handle(array_handle1);
+  ifrt_request->mutable_delete_array_request()->add_array_handle(array_handle2);
   TF_ASSERT_OK_AND_ASSIGN(auto resp, CallBackend(std::move(ifrt_request)));
   EXPECT_THAT(tsl::StatusFromProto(resp->response_metadata().status()), IsOk());
-  EXPECT_NE(resp->delete_array_response().deletion_future_handle(), 0);
+  TF_EXPECT_OK(
+      CheckFuture(resp->delete_array_response().deletion_future_handle()));
 }
 
-TEST_P(IfrtBackendHandlerTest, DeleteArrayFailsWithNonExistentArrayHandle) {
+TEST_P(IfrtBackendHandlerTest,
+       DeleteArrayReturnsFutureWithNonExistentArrayHandle) {
+  // Create one existing array.
+  auto mock_array1 = tsl::MakeRef<xla::ifrt::MockArray>();
+  EXPECT_CALL(*mock_array1, Delete())
+      .WillOnce(Return(Future<>(absl::OkStatus())));
+  TF_ASSERT_OK_AND_ASSIGN(auto real_handle,
+                          MakeTestArray(std::move(mock_array1)));
+
+  constexpr int kBadHandle = 400;
   auto ifrt_request = NewIfrtRequest(NewOpId());
-  ifrt_request->mutable_delete_array_request()->set_array_handle(0);
-  EXPECT_THAT(CallBackend(std::move(ifrt_request)),
-              StatusIs(absl::StatusCode::kNotFound));
+  ifrt_request->mutable_delete_array_request()->add_array_handle(real_handle);
+  ifrt_request->mutable_delete_array_request()->add_array_handle(kBadHandle);
+  TF_ASSERT_OK_AND_ASSIGN(auto resp, CallBackend(std::move(ifrt_request)));
+
+  EXPECT_THAT(
+      CheckFuture(resp->delete_array_response().deletion_future_handle()),
+      StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST_P(IfrtBackendHandlerTest,
@@ -968,14 +991,20 @@ TEST_P(IfrtBackendHandlerTest, IsDeleteFailsForNonExistentArrays) {
 }
 
 TEST_P(IfrtBackendHandlerTest, DestructArrayTest) {
-  tsl::RCReference<xla::ifrt::MockArray> mock_array =
+  tsl::RCReference<xla::ifrt::MockArray> mock_array1 =
       tsl::MakeRef<xla::ifrt::MockArray>();
-  TF_ASSERT_OK_AND_ASSIGN(auto array_handle,
-                          MakeTestArray(std::move(mock_array)));
+  TF_ASSERT_OK_AND_ASSIGN(auto array_handle1,
+                          MakeTestArray(std::move(mock_array1)));
+  tsl::RCReference<xla::ifrt::MockArray> mock_array2 =
+      tsl::MakeRef<xla::ifrt::MockArray>();
+  TF_ASSERT_OK_AND_ASSIGN(auto array_handle2,
+                          MakeTestArray(std::move(mock_array2)));
 
   auto ifrt_request = NewIfrtRequest(NewOpId());
-  ifrt_request->mutable_destruct_array_request()->set_array_handle(
-      array_handle);
+  ifrt_request->mutable_destruct_array_request()->add_array_handle(
+      array_handle1);
+  ifrt_request->mutable_destruct_array_request()->add_array_handle(
+      array_handle2);
   TF_ASSERT_OK_AND_ASSIGN(auto ifrt_resp, CallBackend(std::move(ifrt_request)));
   EXPECT_TRUE(ifrt_resp->has_destruct_array_response());
 
@@ -983,8 +1012,8 @@ TEST_P(IfrtBackendHandlerTest, DestructArrayTest) {
   // handle no longer exists on the server, (2) DestructArray fails for
   // non-existent arrays and (3) DestructArray is not idempotent.
   ifrt_request = NewIfrtRequest(NewOpId());
-  ifrt_request->mutable_destruct_array_request()->set_array_handle(
-      array_handle);
+  ifrt_request->mutable_destruct_array_request()->add_array_handle(
+      array_handle1);
   EXPECT_THAT(CallBackend(std::move(ifrt_request)),
               StatusIs(absl::StatusCode::kNotFound));
 }
