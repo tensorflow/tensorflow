@@ -1,5 +1,4 @@
-/* Copyright 2023 The StableHLO Authors.
-
+/* Copyright 2024 The StableHLO Authors.
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -13,32 +12,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef STABLEHLO_EXT_TRANSFORMS_PASSES_H
-#define STABLEHLO_EXT_TRANSFORMS_PASSES_H
-
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "mlir/Pass/Pass.h"
-#include "mlir/Pass/PassOptions.h"
-#include "mlir/Transforms/DialectConversion.h"
+#include "stablehlo/transforms/Passes.h"
+#include "stablehlo_ext/transforms/passes.h"
 
 namespace mlir {
 namespace stablehlo_ext {
 
-#define GEN_PASS_DECL
-#define GEN_PASS_REGISTRATION
-#include "stablehlo_ext/transforms/passes.h.inc"
+// TODO(b/369406385): remove this method (and file) once issue is resolved.
 
-void createChloLegalizeToStablehloPipeline(OpPassManager &pm);
-
-// Expand backward compatibility with the given StableHLO version by decomposing
-// newer StableHLO operations into equivalent operations supported by that older
-// version.
-std::unique_ptr<Pass> createStablehloCreateCompatibilityExpanderPass(
-    std::string targetVersionOption);
+std::unique_ptr<::mlir::Pass> createStablehloCreateCompatibilityExpanderPass(
+    std::string targetVersionOption) {
+  return mlir::stablehlo::createStablehloCreateCompatibilityExpanderPass(
+      {std::move(targetVersionOption)});
+}
 
 }  // namespace stablehlo_ext
 }  // namespace mlir
-
-#endif  // STABLEHLO_EXT_TRANSFORMS_PASSES_H
