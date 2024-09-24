@@ -1779,7 +1779,6 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexRsqrt(
     llvm::Value* neg_one = llvm::ConstantFP::get(type, -1);
     llvm::Value* inf = llvm::ConstantFP::getInfinity(type);
     llvm::Value* nan = llvm::ConstantFP::getNaN(type);
-    // llvm::Value* neg_inf = llvm::ConstantFP::getInfinity(type, true);
     llvm::Value* a_signed_zero = llvm_ir::EmitCallToIntrinsic(
         llvm::Intrinsic::copysign, {zero, a}, {a->getType()}, b_);
     llvm::Value* b_signed_zero = llvm_ir::EmitCallToIntrinsic(
