@@ -21,7 +21,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/status/statusor.h"
-#include "rocm/include/hip/hip_runtime.h"
+#include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 
 namespace stream_executor::gpu {
 
