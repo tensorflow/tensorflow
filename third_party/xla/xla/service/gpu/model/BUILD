@@ -522,6 +522,35 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "indexing_map_serialization",
+    srcs = ["indexing_map_serialization.cc"],
+    hdrs = ["indexing_map_serialization.h"],
+    deps = [
+        ":indexing_analysis",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AsmParser",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "indexing_map_serialization_test",
+    srcs = ["indexing_map_serialization_test.cc"],
+    deps = [
+        ":indexing_map_serialization",
+        ":indexing_test_utils",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+        "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
+cc_library(
     name = "indexing_test_utils",
     testonly = True,
     srcs = ["indexing_test_utils.cc"],
