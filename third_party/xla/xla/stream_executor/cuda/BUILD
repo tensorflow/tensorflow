@@ -228,6 +228,7 @@ cuda_only_cc_library(
 cuda_only_cc_library(
     name = "cuda_collectives",
     hdrs = ["cuda_collectives.h"],
+    tags = ["gpu"],
     deps = if_nccl(
         [":cuda_collectives_impl"],
         [":cuda_collectives_stub"],
