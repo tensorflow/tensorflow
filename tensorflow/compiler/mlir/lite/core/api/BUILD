@@ -52,3 +52,35 @@ tf_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "flatbuffer_conversions",
+    srcs = ["flatbuffer_conversions.cc"],
+    hdrs = [
+        "flatbuffer_conversions.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    deps = [
+        "//tensorflow/compiler/mlir/lite/core/c:tflite_common",
+        "//tensorflow/compiler/mlir/lite/kernels/internal:compatibility_macros",
+        "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+        "@flatbuffers//:runtime_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "flatbuffer_conversions_test",
+    size = "small",
+    srcs = ["flatbuffer_conversions_test.cc"],
+    deps = [
+        ":flatbuffer_conversions",
+        "//tensorflow/compiler/mlir/lite/core/c:tflite_common",
+        "//tensorflow/compiler/mlir/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest_main",
+        "@flatbuffers//:runtime_cc",
+    ],
+)

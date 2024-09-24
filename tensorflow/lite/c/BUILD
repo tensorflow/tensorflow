@@ -416,6 +416,7 @@ filegroup(
         "c_api.h",
         "c_api_types.h",
         "common.h",
+        "//tensorflow/compiler/mlir/lite/core/c:tflite_types.h",
     ],
 )
 
