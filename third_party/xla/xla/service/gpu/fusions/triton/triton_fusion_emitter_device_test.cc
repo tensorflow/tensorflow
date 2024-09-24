@@ -59,7 +59,7 @@ class TritonEmitterTest : public GpuCodegenTest {
 };
 
 TEST_F(TritonEmitterTest, ReductionOnMinormostAxisIsEmittedCorrectly) {
-  const std::string kHloText = R"(
+  constexpr std::string_view kHloText = R"(
 HloModule t
 maximum {
   Arg_0 = f32[] parameter(0)
@@ -87,7 +87,7 @@ CHECK:  "tt.reduce"(%[[LOAD:.*]]) <{axis = 1 : i32}>
 }
 
 TEST_F(TritonEmitterTest, ReductionOnMajormostAxisIsEmittedCorrectly) {
-  const std::string kHloText = R"(
+  constexpr std::string_view kHloText = R"(
 HloModule t
 maximum {
   Arg_0 = f32[] parameter(0)
@@ -115,7 +115,7 @@ CHECK:  "tt.reduce"(%[[LOAD:.*]]) <{axis = 0 : i32}>
 }
 
 TEST_F(TritonEmitterTest, ReductionOnIntermediateAxisIsEmittedCorrectly) {
-  const std::string kHloText = R"(
+  constexpr std::string_view kHloText = R"(
 HloModule t
 maximum {
   Arg_0 = f32[] parameter(0)
@@ -145,7 +145,7 @@ CHECK:  "tt.reduce"(%[[SELECT:.*]]) <{axis = 2 : i32}>
 }
 
 TEST_F(TritonEmitterTest, TestReductionWithTileSizeLargerThanSourceTensor) {
-  const std::string kHloText = R"(
+  constexpr std::string_view kHloText = R"(
 HloModule t
 maximum {
   Arg_0 = f32[] parameter(0)
@@ -186,7 +186,7 @@ CHECK:  })
 // TODO(b/353484968): Tests that don't run RunAndCompareNoHloPasses should be
 // moved to deviceless test file.
 TEST_F(TritonEmitterTest, TestGenericEmitterWithSoftMaxSingleParameter) {
-  const std::string kHloText = R"(
+  constexpr std::string_view kHloText = R"(
 HloModule t
 add {
   Arg_0 = f32[] parameter(0)
@@ -247,7 +247,7 @@ CHECK:        }
 // TODO(b/353484968): Tests that don't run RunAndCompareNoHloPasses should be
 // moved to deviceless test file.
 TEST_F(TritonEmitterTest, TestGenericEmitterWithMultipleParameters) {
-  const std::string kHloText = R"(
+  constexpr std::string_view kHloText = R"(
 HloModule t
 
 add {
@@ -312,7 +312,7 @@ CHECK-DAG:        tt.store {{.*}} : !tt.ptr<tensor<1x128xf32>>
 }
 
 TEST_F(TritonEmitterTest, TestGenericEmitterWithMultipleTiledDimensions) {
-  const std::string kHloText = R"(
+  constexpr std::string_view kHloText = R"(
 HloModule t
 
 max {
@@ -395,7 +395,7 @@ CHECK-NEXT:       tt.store {{.*}} : !tt.ptr<tensor<1x1x128xf32>>
 TEST_F(
     TritonEmitterTest,
     DiamondWithAdditionalDiamondParameterBroadcastedAlongReductionDimProducesAccurateResults) {  // NOLINT(whitespace/line_length)
-  const std::string kHloText = R"(
+  constexpr std::string_view kHloText = R"(
 HloModule h1
 
 max_computation {
@@ -433,7 +433,7 @@ TEST_F(TritonEmitterTest, NestedReducerFusionGetsCodegenedCorrectly) {
     GTEST_SKIP() << "BF16 not supported.";
   }
 
-  const std::string kHloText = R"(
+  constexpr std::string_view kHloText = R"(
 HloModule softmax
 
 fused_convert {
@@ -472,7 +472,7 @@ ENTRY main {
 TEST_F(
     TritonEmitterTest,
     DiamondWithAdditionalDiamondParameterBroadcastedAlongBatchDimProducesAccurateResults) {  // NOLINT(whitespace/line_length)
-  const std::string kHloText = R"(
+  constexpr std::string_view kHloText = R"(
 HloModule h1
 
 max_computation {
@@ -505,7 +505,7 @@ ENTRY main {
 TEST_F(
     TritonEmitterTest,
     DiamondWithAdditionalSplatDiamondScalarParameterProducesAccurateResults) {  // NOLINT(whitespace/line_length)
-  const std::string kHloText = R"(
+  constexpr std::string_view kHloText = R"(
 HloModule h1
 
 max_computation {
@@ -560,7 +560,7 @@ ENTRY main {
 TEST_F(
     TritonEmitterTest,
     DiamondWithAdditionalBroadcastOf1DParameterAlongNonReductionDimensionsProducesAccurateResults) {  // NOLINT(whitespace/line_length)
-  const std::string kHloText = R"(
+  constexpr std::string_view kHloText = R"(
 HloModule h1
 
 max_computation {
@@ -594,7 +594,7 @@ ENTRY main {
 // TODO(b/353484968): Tests that don't run RunAndCompareNoHloPasses should be
 // moved to deviceless test file.
 TEST_F(TritonEmitterTest, EmitterFailsIfComputeCapabilityIsBelowAmpere) {
-  const std::string kHloText = R"(
+  constexpr std::string_view kHloText = R"(
 triton_computation {
   p0 = f32[10,10] parameter(0)
   p1 = f32[10,10] parameter(1)
@@ -694,7 +694,7 @@ ENTRY entry_computation {
 // TODO(b/353484968): Tests that don't run RunAndCompareNoHloPasses should b
 // moved to deviceless test file.
 TEST_F(TritonEmitterTest, TestGenericEmitterReductionFusion) {
-  const std::string kHloText = R"(
+  constexpr std::string_view kHloText = R"(
 HloModule t
 add {
   Arg_0 = f32[] parameter(0)
@@ -736,7 +736,7 @@ CHECK:            tt.store {{.*}} : !tt.ptr<tensor<1xf32>>
 
 TEST_F(TritonEmitterTest,
        TestGenericEmitterWithReductonAndMultidimensionalTile) {
-  const std::string kHloText = R"(
+  constexpr std::string_view kHloText = R"(
 HloModule t
 max {
   Arg_0 = f32[] parameter(0)
@@ -764,7 +764,7 @@ ENTRY main {
 }
 
 TEST_F(TritonEmitterTest, TestSoftMaxWithTileElementsNotAllContiguous) {
-  const std::string kHloText = R"(
+  constexpr std::string_view kHloText = R"(
 HloModule m
 
 region {
@@ -793,7 +793,7 @@ ENTRY entry_computation {
 }
 
 TEST_F(TritonEmitterTest, TestSliceWithTileThatNeedsMasking) {
-  const std::string kHloText = R"(
+  constexpr std::string_view kHloText = R"(
 HloModule m
 
 fused_computation {
@@ -812,7 +812,7 @@ ENTRY entry_computation {
 }
 
 TEST_F(TritonEmitterTest, TestSliceWithTileElementsNotAllContiguous) {
-  const std::string kHloText = R"(
+  constexpr std::string_view kHloText = R"(
 HloModule m
 
 fused_computation {
@@ -831,7 +831,7 @@ ENTRY entry_computation {
 }
 
 TEST_F(TritonEmitterTest, TestSliceWithTileElementsNotAllContiguousUnaligned) {
-  const std::string kHloText = R"(
+  constexpr std::string_view kHloText = R"(
 HloModule m
 
 fused_computation {
@@ -854,7 +854,7 @@ ENTRY entry_computation {
 }
 
 TEST_F(TritonEmitterTest, ReshapeIntoBroadcastIsLoweredCorrectly) {
-  const std::string kHloText = R"(
+  constexpr std::string_view kHloText = R"(
 triton_computation {
   param_0 = f32[128,256]{1,0} parameter(0)
   reshape = f32[64,2,256]{2,1,0} reshape(param_0)
@@ -880,7 +880,7 @@ CHECK: tt.reshape
 }
 
 TEST_F(TritonEmitterTest, BitcastIntoBroadcastIsLoweredCorrectly) {
-  const std::string kHloText = R"(
+  constexpr std::string_view kHloText = R"(
 triton_computation {
   param_0 = f32[128,256]{1,0} parameter(0)
   bitcast = f32[64,2,256]{2,1,0} bitcast(param_0)
@@ -906,7 +906,7 @@ CHECK: tt.reshape
 }
 
 TEST_F(TritonEmitterTest, BitcastNormalizedLayoutsIsLoweredCorrectly) {
-  const std::string kHloText = R"(
+  constexpr std::string_view kHloText = R"(
 triton_computation {
   p = s8[5,42] parameter(0)
   ROOT bitcast = s8[5,6,7] bitcast(p)
@@ -934,7 +934,7 @@ CHECK:     tt.store
 }
 
 TEST_F(TritonEmitterTest, BitcastNonNormalizedInputLayoutIsLoweredCorrectly) {
-  const std::string kHloText = R"(
+  constexpr std::string_view kHloText = R"(
 triton_computation {
   p = s8[42,5]{0,1} parameter(0)
   ROOT bitcast = s8[5,6,7] bitcast(p)
@@ -962,7 +962,7 @@ CHECK:     tt.store
 }
 
 TEST_F(TritonEmitterTest, BitcastNonNormalizedOutputLayoutIsLoweredCorrectly) {
-  const std::string kHloText = R"(
+  constexpr std::string_view kHloText = R"(
 triton_computation {
   p = s8[5,42] parameter(0)
   ROOT bitcast = s8[5,6,7]{1,2,0} bitcast(p)
@@ -991,7 +991,7 @@ CHECK:     tt.store
 
 TEST_F(TritonEmitterTest,
        BitcastNonNormalizedInputOutputLayoutIsLoweredCorrectly) {
-  const std::string kHloText = R"(
+  constexpr std::string_view kHloText = R"(
 triton_computation {
   p = s8[42,5]{0,1} parameter(0)
   ROOT bitcast = s8[5,6,7]{1,2,0} bitcast(p)
@@ -1019,7 +1019,7 @@ CHECK:     tt.store
 }
 
 TEST_F(TritonEmitterTest, BitcastTransposeOnlyIsLoweredCorrectly) {
-  const std::string kHloText = R"(
+  constexpr std::string_view kHloText = R"(
 triton_computation {
   p = s8[42,5]{0,1} parameter(0)
   ROOT bitcast = s8[5,42] bitcast(p)
@@ -1048,7 +1048,7 @@ CHECK:     tt.store
 
 // TODO(b/353484968): move this test to a deviceless file.
 TEST_F(TritonEmitterTest, GenericEmitterLowersBroadcastFrom0dOperandCorrectly) {
-  const std::string kHloText = R"(
+  constexpr std::string_view kHloText = R"(
 triton_computation {
   // TODO(b/348565795): make this a 0D scalar directly once this is known to be
   // supported.
@@ -1076,7 +1076,7 @@ CHECK-SAME:    tensor<1x1xf32> -> tensor<8x4xf32>
 TEST_F(TritonEmitterTest, PredOutputIsStoredCorrectly) {
   // The 'pred' element type in XLA is unpacked and uses i8 for storage.  This
   // is the only sub-byte type to have this behavior.
-  const std::string kHloText = R"(
+  constexpr std::string_view kHloText = R"(
 HloModule m
 
 triton_computation {
@@ -1109,7 +1109,7 @@ CHECK:      tt.store {{.*}} %[[CASTED_OUT]]
 TEST_F(TritonEmitterTest, PredInputIsLoadedCorrectly) {
   // The 'pred' element type in XLA is unpacked and uses i8 for storage.  This
   // is the only sub-byte type to have this behavior.
-  const std::string kHloText = R"(
+  constexpr std::string_view kHloText = R"(
 HloModule m
 
 triton_computation {
@@ -1145,7 +1145,7 @@ CHECK:      arith.trunci %[[I8_PARAM]] : tensor<4xi8> to tensor<4xi1>
 }
 
 TEST_F(TritonEmitterTest, Transpose3D) {
-  const std::string kHloText = R"(
+  constexpr std::string_view kHloText = R"(
 HloModule m
 
 triton_computation {
@@ -1175,7 +1175,7 @@ CHECK:      tt.trans %[[TILE]] {order = array<i32: 2, 0, 1>} : tensor<8x4x1xf32>
 // TODO(b/353484968): Delete this test once we have constraints to only
 // propagate tile sizes that are a power of 2.
 TEST_F(TritonEmitterTest, Transpose3D_TileFullDimThatIsNotPowerOf2) {
-  const std::string kHloText = R"(
+  constexpr std::string_view kHloText = R"(
 HloModule m
 
 triton_computation {
