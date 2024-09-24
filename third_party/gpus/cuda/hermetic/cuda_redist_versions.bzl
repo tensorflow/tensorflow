@@ -145,6 +145,7 @@ REDIST_VERSIONS_TO_BUILD_TEMPLATES = {
     "nvidia_driver": {
         "repo_name": "cuda_driver",
         "version_to_template": {
+            "560": "//third_party/gpus/cuda/hermetic:cuda_driver.BUILD.tpl",
             "555": "//third_party/gpus/cuda/hermetic:cuda_driver.BUILD.tpl",
             "550": "//third_party/gpus/cuda/hermetic:cuda_driver.BUILD.tpl",
             "545": "//third_party/gpus/cuda/hermetic:cuda_driver.BUILD.tpl",
