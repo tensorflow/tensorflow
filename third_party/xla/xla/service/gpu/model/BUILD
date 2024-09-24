@@ -506,6 +506,7 @@ xla_cc_test(
     deps = [
         ":affine_map_printer",
         ":indexing_analysis",
+        ":indexing_map_serialization",
         ":indexing_test_utils",
         "//xla/hlo/ir:hlo",
         "//xla/tests:hlo_test_base",
@@ -513,6 +514,7 @@ xla_cc_test(
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/hash:hash_testing",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@llvm-project//mlir:IR",

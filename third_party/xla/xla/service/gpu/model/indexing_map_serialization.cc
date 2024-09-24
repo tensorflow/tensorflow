@@ -209,20 +209,25 @@ bool Parser::ParseInterval(Interval* interval) {
 bool Parser::ParseAffineExprString(std::string* affine_expr_str) {
   unsigned num_unmatched_parens = 0;
   while (true) {
-    if (!IsPartOfAffineExpr(current_token_)) {
-      if (ConsumeToken(Token::Kind::kLParen)) {
-        ++num_unmatched_parens;
-      } else if (current_token_.kind == Token::Kind::kRParen &&
-                 num_unmatched_parens > 0) {
-        --num_unmatched_parens;
-        Advance();
-      } else {
-        break;
-      }
+    if (IsPartOfAffineExpr(current_token_)) {
+      affine_expr_str->append(current_token_.spelling);
+      affine_expr_str->push_back(' ');
+      Advance();
+      continue;
     }
-    affine_expr_str->append(current_token_.spelling);
-    affine_expr_str->push_back(' ');
-    Advance();
+    if (ConsumeToken(Token::Kind::kLParen)) {
+      affine_expr_str->push_back('(');
+      ++num_unmatched_parens;
+      continue;
+    }
+    if (current_token_.kind == Token::Kind::kRParen &&
+        num_unmatched_parens > 0) {
+      affine_expr_str->push_back(')');
+      --num_unmatched_parens;
+      Advance();
+      continue;
+    }
+    break;
   }
   return current_token_.kind != Token::Kind::kError;
 }
@@ -302,11 +307,20 @@ Token Parser::GetNextTokenImpl() {
   }
   if (*it_ == '-') {
     ++it_;
-    if (it_ != input_.end() && *it_ == '>') {
-      ++it_;
-      return Token{"->", Token::Kind::kArrow};
-    } else {
-      return Token{"-", Token::Kind::kMinus};
+    if (it_ != input_.end()) {
+      if (*it_ == '>') {
+        ++it_;
+        return Token{"->", Token::Kind::kArrow};
+      } else if (std::isdigit(*it_)) {
+        auto start = it_ - 1;
+        while (it_ != input_.end() && std::isdigit(*it_)) {
+          ++it_;
+        }
+        StringRef spelling = input_.substr(start - input_.data(), it_ - start);
+        return Token{spelling, Token::Kind::kIntLiteral};
+      } else {
+        return Token{"-", Token::Kind::kMinus};
+      }
     }
   }
   StringRef spelling = input_.substr(start - input_.data(), 1);
@@ -407,6 +421,7 @@ std::optional<IndexingMap> ParseIndexingMap(llvm::StringRef input,
   if (!parser.ConsumeToken(Token::Kind::kComma) ||
       !parser.ConsumeToken(Token::Kind::kKeywordDomain) ||
       !parser.ConsumeToken(Token::Kind::kColon)) {
+    llvm::errs() << "Failed to parse domain keyword\n";
     return std::nullopt;
   }
   // Parse dimension variables.
@@ -418,9 +433,11 @@ std::optional<IndexingMap> ParseIndexingMap(llvm::StringRef input,
         !parser.ConsumeToken(Token::Kind::kKeywordIn) ||
         !parser.ParseInterval(&interval) ||
         !parser.ConsumeToken(Token::Kind::kComma)) {
+      llvm::errs() << "Failed to parse DimVar\n";
       return std::nullopt;
     }
     if (var_name != dim_name) {
+      llvm::errs() << "Dimension name mismatch\n";
       return std::nullopt;
     }
     dim_vars.push_back(DimVar{interval});
@@ -434,9 +451,11 @@ std::optional<IndexingMap> ParseIndexingMap(llvm::StringRef input,
         !parser.ConsumeToken(Token::Kind::kKeywordIn) ||
         !parser.ParseInterval(&interval) ||
         !parser.ConsumeToken(Token::Kind::kComma)) {
+      llvm::errs() << "Failed to parse RangeVar\n";
       return std::nullopt;
     }
     if (var_name != symbol_var) {
+      llvm::errs() << "Symbol name mismatch\n";
       return std::nullopt;
     }
     range_vars.push_back(RangeVar{interval});
@@ -450,6 +469,7 @@ std::optional<IndexingMap> ParseIndexingMap(llvm::StringRef input,
         !parser.ConsumeToken(Token::Kind::kKeywordIn) ||
         !parser.ParseInterval(&interval) ||
         !parser.ConsumeToken(Token::Kind::kComma)) {
+      llvm::errs() << "Failed to parse constraint\n";
       return std::nullopt;
     }
     affine_expr_strs.push_back(affine_expr_str);
@@ -459,6 +479,7 @@ std::optional<IndexingMap> ParseIndexingMap(llvm::StringRef input,
   bool is_simplified;
   if (!parser.ConsumeToken(Token::Kind::kColon) ||
       !parser.ParseBool(&is_simplified)) {
+    llvm::errs() << "Failed to parse is_simplified\n";
     return std::nullopt;
   }
   // Check that the input is consumed.
