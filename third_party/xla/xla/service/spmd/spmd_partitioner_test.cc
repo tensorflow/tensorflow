@@ -8256,6 +8256,100 @@ ENTRY entry {
             op::Shape("f32[2,9,8]")));
 }
 
+TEST_P(SpmdPartitioningTest, ScatterExplicitBatchDims) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+min (lhs: f32[], rhs: f32[]) -> f32[] {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT min = f32[] minimum(lhs, rhs)
+}
+
+ENTRY entry {
+  %input = f32[10,6,14,4] parameter(0), sharding={devices=[2,1,2,1]<=[4]}
+  %indices = s32[14,10,6,2] parameter(1), sharding={devices=[2,2,1,1]<=[2,2]T(1,0)}
+  %updates = f32[14,10,6,2] parameter(2), sharding={devices=[2,2,1,1]<=[2,2]T(1,0)}
+  ROOT %scatter = f32[10,6,14,4] scatter(%input, %indices, %updates),
+    to_apply=min, update_window_dims={3}, inserted_window_dims={1},
+    scatter_dims_to_operand_dims={1,3}, input_batching_dims={0,2},
+    scatter_indices_batching_dims={1,0}, index_vector_dim=3, sharding={devices=[2,1,2,1]<=[4]}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  auto input = AllOf(op::Shape("f32[5,6,7,4]"), op::Parameter(0));
+  auto indices = AllOf(op::Shape("s32[7,5,6,2]"), op::Parameter(1));
+  auto updates = AllOf(op::Shape("f32[7,5,6,2]"), op::Parameter(2));
+  auto scatter =
+      AllOf(op::Shape("f32[5,6,7,4]"), op::Scatter(input, indices, updates));
+  EXPECT_THAT(module->entry_computation()->root_instruction(), scatter);
+}
+
+TEST_P(SpmdPartitioningTest, ScatterExplicitBatchAndOperandPassthroughDims) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+min (lhs: f32[], rhs: f32[]) -> f32[] {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT min = f32[] minimum(lhs, rhs)
+}
+
+ENTRY entry {
+  %input = f32[10,6,14,4] parameter(0), sharding={devices=[1,1,2,2]<=[4]}
+  %indices = s32[14,10,6,2] parameter(1), sharding={devices=[2,1,1,1,2]<=[4] last_tile_dim_replicate}
+  %updates = f32[14,10,6,4] parameter(2), sharding={devices=[2,1,1,2]<=[4]}
+  ROOT %scatter = f32[10,6,14,4] scatter(%input, %indices, %updates),
+    to_apply=min, update_window_dims={3}, inserted_window_dims={1},
+    scatter_dims_to_operand_dims={1,3}, input_batching_dims={0,2},
+    scatter_indices_batching_dims={1,0}, index_vector_dim=3, sharding={devices=[1,1,2,2]<=[4]}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  auto input = AllOf(op::Shape("f32[10,6,7,2]"), op::Parameter(0));
+  auto indices = AllOf(op::Shape("s32[7,10,6,2]"), op::Parameter(1));
+  auto updates = AllOf(op::Shape("f32[7,10,6,2]"), op::Parameter(2));
+  auto scatter =
+      AllOf(op::Shape("f32[10,6,7,2]"), op::Scatter(input, indices, updates));
+  EXPECT_THAT(module->entry_computation()->root_instruction(), scatter);
+}
+
+TEST_P(SpmdPartitioningTest, ScatterExplicitBatchAndIndexPassthroughDims) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+min (lhs: f32[], rhs: f32[]) -> f32[] {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT min = f32[] minimum(lhs, rhs)
+}
+
+ENTRY entry {
+  %input = f32[10,6,14,4] parameter(0), sharding={devices=[1,1,2,1,2]<=[4] last_tile_dim_replicate}
+  %indices = s32[14,10,6,2] parameter(1), sharding={devices=[2,1,2,1]<=[4]}
+  %updates = f32[14,10,6,2] parameter(2), sharding={devices=[2,1,2,1]<=[4]}
+  ROOT %scatter = f32[10,6,14,4] scatter(%input, %indices, %updates),
+    to_apply=min, update_window_dims={3}, inserted_window_dims={1},
+    scatter_dims_to_operand_dims={1,3}, input_batching_dims={0,2},
+    scatter_indices_batching_dims={1,0}, index_vector_dim=3, sharding={devices=[1,1,2,1,2]<=[4] last_tile_dim_replicate}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  auto input =
+      AllOf(op::Shape("f32[10,6,7,4]"), op::Select(_, _, op::Parameter(0)));
+  auto indices = AllOf(op::Shape("s32[7,10,3,2]"), op::Parameter(1));
+  auto updates = AllOf(op::Shape("f32[7,10,3,2]"), op::Parameter(2));
+  auto scatter = AllOf(op::Shape("f32[10,6,7,4]"),
+                       op::AllReduce(op::Scatter(input, indices, updates)));
+  EXPECT_THAT(module->entry_computation()->root_instruction(), scatter);
+}
+
 TEST_P(SpmdPartitioningTest, ScatterPartitionedOnTrivialSliceDims) {
   absl::string_view hlo_string = R"(
 HloModule module

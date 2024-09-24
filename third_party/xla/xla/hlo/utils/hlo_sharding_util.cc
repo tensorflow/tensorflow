@@ -1667,7 +1667,8 @@ std::vector<int64_t> GetScatterSliceSize(const Shape& operand_shape,
   std::vector<int64_t> slice_size(operand_shape.rank(), 1);
   int64_t num_update_window_dims = 0;
   for (int64_t i = 0; i < operand_shape.rank(); ++i) {
-    if (absl::c_linear_search(dnums.inserted_window_dims(), i)) {
+    if (absl::c_linear_search(dnums.inserted_window_dims(), i) ||
+        absl::c_linear_search(dnums.input_batching_dims(), i)) {
       continue;
     }
     slice_size[i] = update_shape.dimensions(
