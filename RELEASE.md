@@ -20,6 +20,10 @@
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 *   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
 
+*   TensorFlow now supports and is compiled with NumPy 2.0 by default.
+    Compatibility with NumPy 1.26 will be maintained until 2025, aligning with
+    community standard deprecation timeline [here](https://scientific-python.org/specs/spec-0000/).
+
 ### Bug Fixes and Other Changes
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
