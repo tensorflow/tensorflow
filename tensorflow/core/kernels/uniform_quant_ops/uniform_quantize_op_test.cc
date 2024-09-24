@@ -65,8 +65,7 @@ class UniformQuantizeOpsTest : public OpsTestBase {
 
     TF_ASSERT_OK(RunOpKernel());
     Tensor expected(allocator(), DataTypeToEnum<Tout>::v(), TensorShape(shape));
-    // Input element -27.0 is quantized to -127 (not -128) because
-    // output_quantization_min_val is -127.
+
     test::FillValues<Tout>(&expected, expected_result);
     test::ExpectTensorEqual<Tout>(expected, *GetOutput(0));
   }
