@@ -5134,6 +5134,46 @@ CHECK-NOT: mma.sync.aligned.{{.*}}.row.col.f32.tf32.tf32.f32
                                                 /*arel=*/1e-5}));
 }
 
+class TritonBF16BF16F32GemmTest : public TritonTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = TritonTest::GetDebugOptionsForTest();
+    // Do not fall back to cuBLAS, we are testing Triton.
+    debug_options.set_xla_gpu_cublas_fallback(false);
+    // Do not autotune split-k by default, since this prevents deterministically
+    // matching the optimized HLO.
+    debug_options.set_xla_gpu_enable_split_k_autotuning(false);
+    return debug_options;
+  }
+
+ protected:
+  void SetUp() override {
+    if (!SupportsBF16(GpuComputeComp())) {
+      GTEST_SKIP() << "BF16 not supported.";
+    }
+  }
+};
+
+TEST_F(TritonBF16BF16F32GemmTest, WorkWithF32InputAndAlgorithm_BF16_BF16_F32) {
+  const std::string kHloText = R"(
+    HloModule t
+
+    ENTRY main {
+      lhs = f32[32,64]{1,0} parameter(0)
+      rhs = f32[64,16]{1,0} parameter(1)
+      ROOT dot = f32[32,16]{1,0} dot(lhs, rhs),
+          algorithm=dot_bf16_bf16_f32,
+          lhs_contracting_dims={1},
+          rhs_contracting_dims={0}
+    }
+  )";
+  const std::string pattern =
+      R"(CHECK: "kind":"__triton_gemm","triton_gemm_config")";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
+  TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), pattern));
+  EXPECT_TRUE(ok);
+}
+
 // This test could be modified to allow TF32 once this bug is fixed.
 // TODO(b/320659359) Allow TF32 for 8-bit or less types with F32.
 TEST_F(TritonTest, NoTF32For8BitOrLessWithF32) {

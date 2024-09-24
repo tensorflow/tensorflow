@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/strings/str_format.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -274,8 +275,9 @@ CodegenDecision CanTritonHandleGEMM(
   } else {
     if (!IsDotAlgorithmSupportedByTriton(dot.precision_config().algorithm(),
                                          gpu_version)) {
-      return CodegenDecision::Forbid(
-          "Unsupported algorithm on the current device(s).");
+      return CodegenDecision::Forbid(absl::StrFormat(
+          "Unsupported algorithm on the current device(s): %s",
+          PrecisionConfig::Algorithm_Name(dot.precision_config().algorithm())));
     }
   }
 

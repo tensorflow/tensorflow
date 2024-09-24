@@ -740,6 +740,7 @@ absl::StatusOr<Decision> CreateDotFusion(
       dot.precision_config().algorithm();
   if (algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6 ||
       algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3 ||
+      algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32 ||
       dot.GetModule()->config().debug_options().xla_gpu_triton_gemm_any() ||
       dot.sparse_operands()) {
     return Decision::Allow();
@@ -757,9 +758,9 @@ absl::StatusOr<Decision> CreateDotFusion(
     }
     return absl::OkStatus();
   });
-  if (is_pure_matmul) {
-    return Decision::NotProfitable("Pure Matmul");
-  }
+
+  if (is_pure_matmul) return Decision::NotProfitable("Pure Matmul");
+
   return Decision::Allow();
 }
 

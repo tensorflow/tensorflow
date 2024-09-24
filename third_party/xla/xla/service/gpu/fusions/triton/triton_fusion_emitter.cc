@@ -2658,6 +2658,18 @@ absl::Status EmitMatMul(mlir::OpBuilder builder,
           IsTf32Allowed(dot_instr) && !is_unsupported_bitwidth
               ? mt::InputPrecision::TF32
               : mt::InputPrecision::IEEE;
+
+      // Cast F32 inputs to BF16 if the algorithm is BF16_BF16_F32.
+      if (dot_instr->precision_config().algorithm() ==
+          PrecisionConfig::ALG_DOT_BF16_BF16_F32) {
+        if (dot_instr->operand(0)->shape().element_type() == F32) {
+          dot_input_lhs = Cast(b, dot_input_lhs, b.getBF16Type());
+        }
+        if (dot_instr->operand(1)->shape().element_type() == F32) {
+          dot_input_rhs = Cast(b, dot_input_rhs, b.getBF16Type());
+        }
+      }
+
       // For fp8 matmuls, disable accumulator promotion, as it's what cublas
       // does. It may make sense to enable frequent accumulator promotion at
       // higher matmul precisions set in the config.
