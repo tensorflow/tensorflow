@@ -229,6 +229,11 @@ void SetScalarAtIndexImpl(MutableLiteralBase& literal,
       ShapeUtil::MakeShape(primitive_type, dimensions));
 }
 
+/* static */ Literal LiteralUtil::ConvertS8ToF32(
+    const LiteralSlice& s8_literal) {
+  return ConvertType<int8_t, float>(s8_literal);
+}
+
 /* static */ Literal LiteralUtil::ConvertBF16ToF32(
     const LiteralSlice& bf16_literal) {
   return ConvertType<bfloat16, float>(bf16_literal);
