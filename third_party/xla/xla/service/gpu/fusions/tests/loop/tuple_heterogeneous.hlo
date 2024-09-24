@@ -12,8 +12,8 @@ fusion {
   ROOT tuple = (f64[8], f64[2,4]) tuple(minimum, bc)
 }
 
-// CHECK: #[[MAJOR:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 floordiv 4),
-// CHECK: #[[MINOR:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 mod 4),
+// CHECK: #[[MAJOR:.*]] = #xla_gpu.indexing_map<"(d0) -> (d0 floordiv 4),
+// CHECK: #[[MINOR:.*]] = #xla_gpu.indexing_map<"(d0) -> (d0 mod 4),
 
 // CHECK:     xla_gpu.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]]) in
 // CHECK-DAG:   %[[MAJOR_IDX:.*]] = xla_gpu.apply_indexing #[[MAJOR]]

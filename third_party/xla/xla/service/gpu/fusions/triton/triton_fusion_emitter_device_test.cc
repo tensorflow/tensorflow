@@ -213,7 +213,7 @@ ENTRY main {
                                    "num_warps":"1"}}}})";
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText,
                                           "triton_softmax_computation", R"(
-CHECK:        #indexing_map = #xla_gpu.indexing_map<(d0) -> (d0 * 127), domain: d0 in [0, 124], is_simplified: true>
+CHECK:        #indexing_map = #xla_gpu.indexing_map<"(d0) -> (d0 * 127), domain: d0 in [0, 124], is_simplified: true">
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
 CHECK-DAG:        %[[ZERO:.*]] = arith.constant 0 : i32
 CHECK-DAG:        %[[C125:.*]] = arith.constant 125 : i64
@@ -278,7 +278,7 @@ ENTRY main {
                                    "num_warps":"1"}}}})";
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText,
                                           "triton_softmax_computation", R"(
-CHECK:         #indexing_map = #xla_gpu.indexing_map<(d0) -> (d0 * 127), domain: d0 in [0, 124], is_simplified: true>
+CHECK:         #indexing_map = #xla_gpu.indexing_map<"(d0) -> (d0 * 127), domain: d0 in [0, 124], is_simplified: true">
 CHECK:         tt.func @triton_fn(
 CHECK-SAME:                      %[[P0:[A-Za-z0-9_]*]]: !tt.ptr<f32>
 CHECK-SAME:                      %[[P1:[A-Za-z0-9_]*]]: !tt.ptr<f32>
@@ -349,9 +349,9 @@ ENTRY main {
 
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText,
                                           "triton_softmax_computation", R"(
-CHECK:        #[[MAP:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 floordiv 125), domain: d0 in [0, 1249], is_simplified: true>
-CHECK:        #[[MAP1:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 mod 125), domain: d0 in [0, 1249], is_simplified: true>
-CHECK:        #[[MAP2:.*]] = #xla_gpu.indexing_map<(d0) -> (d0 * 127), domain: d0 in [0, 1249], is_simplified: true>
+CHECK:        #[[MAP:.*]] = #xla_gpu.indexing_map<"(d0) -> (d0 floordiv 125), domain: d0 in [0, 1249], is_simplified: true">
+CHECK:        #[[MAP1:.*]] = #xla_gpu.indexing_map<"(d0) -> (d0 mod 125), domain: d0 in [0, 1249], is_simplified: true">
+CHECK:        #[[MAP2:.*]] = #xla_gpu.indexing_map<"(d0) -> (d0 * 127), domain: d0 in [0, 1249], is_simplified: true">
 CHECK:        tt.func @triton_fn(%[[P0:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P1:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P2:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[P3:[^:]*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
 CHECK-DAG:        %[[ZERO:.*]] = arith.constant 0 : i32
 CHECK-DAG:        %[[ZERO_64:.*]] = arith.constant 0 : i64
@@ -542,8 +542,8 @@ ENTRY main {
 
   TF_ASSERT_OK(CreateTritonIrAndFileCheck(this, kHloText,
                                           "triton_softmax_computation", R"(
-// CHECK:         #xla_gpu.indexing_map<(d0) -> (d0 floordiv 32), domain: d0 in [0, 2047], is_simplified: true>
-// CHECK:         #xla_gpu.indexing_map<(d0) -> (d0 mod 32), domain: d0 in [0, 2047], is_simplified: true>
+// CHECK:         #xla_gpu.indexing_map<"(d0) -> (d0 floordiv 32), domain: d0 in [0, 2047], is_simplified: true">
+// CHECK:         #xla_gpu.indexing_map<"(d0) -> (d0 mod 32), domain: d0 in [0, 2047], is_simplified: true">
 // CHECK-LABEL:   tt.func @triton_fn(
 // CHECK-SAME:                       %[[P0:[A-Za-z0-9_]*]]: !tt.ptr<f32>
 // CHECK-SAME:                       %[[P1:[A-Za-z0-9_]*]]: !tt.ptr<f32>

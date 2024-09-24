@@ -203,5 +203,44 @@ Verify that each `!ifrt.array` has sharding attribute that is not of type
   let constructor = "CreateIfrtVerifyShardingSpecifiedPass()";
 }
 
+def IfrtReshardToCopyArraysPass :
+    Pass<"ifrt-reshard-to-copy-arrays", "mlir::ModuleOp"> {
+  let summary = "Replaces `ifrt.Reshard` with `ifrt.CopyArrays`";
+  let description = [{
+Replaces each `ifrt.Reshard` op with an `ifrt.Reshard` op with inputs only
+the arrays that are being resharded, and several `ifrt.CopyArrays` ops to copy
+the arrays that are not being resharded. An `ifrt.CopyArrays` op is added for
+unique output `ifrt.DevicesAttr`.
+
+For example, the following code
+```mlir
+!array0 = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
+                     [0,1]>
+!array1 = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
+                     [2,3]>
+!array2 = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
+                     [2,3]>
+func.func @main(%arg0: !array0, %arg1: !array1) -> (!array1, !array2)
+    attributes {ifrt.function} {
+  %0, %1, %ctrl_0 = ifrt.Reshard(%arg0, %arg1)
+      : (!array0, !array1) -> (!array1, !array2)
+  return %0, %1: !array1, !array2
+}
+```
+
+will be replaced by:
+
+```mlir
+func.func @main(%arg0: !array0, %arg1: !array1) -> (!array1, !array2)
+    attributes {ifrt.function} {
+  %0, %ctrl_0 = ifrt.Reshard(%arg1) : (!array1) -> !array2
+  %1, %ctrl_1 = ifrt.CopyArrays(%arg0) : (!array0) -> !array1
+  return %0, %1: !array1, !array2
+}
+```
+  }];
+
+  let constructor = "CreateIfrtReshardToCopyArraysPass()";
+}
 
 #endif  // XLA_PYTHON_IFRT_IR_TRANSFORMS_PASSES_TD_

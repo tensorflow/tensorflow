@@ -8,7 +8,7 @@ func.func @tensor_extract(
       : tensor<2x3xf32, dense<[0, 1]> : tensor<2xi64>>
   func.return %v : f32
 }
-// CHECK: #[[$MAP:.+]] = #xla_gpu.indexing_map<(d0, d1) -> (d1 * 2 + d0), domain: d0 in [0, 1], d1 in [0, 2], is_simplified: true>
+// CHECK: #[[$MAP:.+]] = #xla_gpu.indexing_map<"(d0, d1) -> (d1 * 2 + d0), domain: d0 in [0, 1], d1 in [0, 2], is_simplified: true">
 
 // CHECK-LABEL: func.func @tensor_extract(
 // CHECK-SAME:      %[[SRC:.*]]: tensor<6xf32>,
@@ -67,7 +67,7 @@ func.func @atomic_rmw(%in: tensor<2x4xf32>, %i: index, %j: index)
   }
   return %ret : tensor<2x4xf32>
 }
-// CHECK: #[[$MAP:.+]] = #xla_gpu.indexing_map<(d0, d1) -> (d0 * 4 + d1), domain: d0 in [0, 1], d1 in [0, 3], is_simplified: true>
+// CHECK: #[[$MAP:.+]] = #xla_gpu.indexing_map<"(d0, d1) -> (d0 * 4 + d1), domain: d0 in [0, 1], d1 in [0, 3], is_simplified: true">
 // CHECK-LABEL: func.func @atomic_rmw(
 // CHECK-SAME:      %[[TENSOR:.*]]: tensor<8xf32>, %[[I:.*]]: index,
 // CHECK-SAME:      %[[J:.*]]: index) -> tensor<8xf32> {
@@ -93,8 +93,8 @@ func.func @for_loop(%t0: tensor<32x1024xf32>, %t1: tensor<64x8x4xf32>)
   } {some_attr}
     return %for#0, %for#1, %c0_f32 : tensor<32x1024xf32>, tensor<64x8x4xf32>, f32
 }
-// CHECK: #[[$MAP0:.+]] = #xla_gpu.indexing_map<(d0) -> (d0 + 1024)
-// CHECK: #[[$MAP1:.+]] = #xla_gpu.indexing_map<(d0) -> (d0 * 32 + 5)
+// CHECK: #[[$MAP0:.+]] = #xla_gpu.indexing_map<"(d0) -> (d0 + 1024)
+// CHECK: #[[$MAP1:.+]] = #xla_gpu.indexing_map<"(d0) -> (d0 * 32 + 5)
 // CHECK-LABEL: func.func @for_loop(
 // CHECK-SAME:      %[[T0:.*]]: tensor<32768xf32>,
 // CHECK-SAME:      %[[T1:.*]]: tensor<2048xf32>) -> (tensor<32768xf32>, tensor<2048xf32>, f32) {
@@ -114,12 +114,9 @@ func.func @for_loop(%t0: tensor<32x1024xf32>, %t1: tensor<64x8x4xf32>)
 
 // -----
 
-#map = #xla_gpu.indexing_map<(d0, d1) -> ((d1 * 128 + d0) floordiv 36),
-  domain: d0 in [0, 127], d1 in [0, 393749], is_simplified: true>
-#map1 = #xla_gpu.indexing_map<(d0, d1) -> (((d1 * 128 + d0) floordiv 9) mod 4),
-  domain: d0 in [0, 127], d1 in [0, 393749], is_simplified: true>
-#map2 = #xla_gpu.indexing_map<(d0, d1) -> ((d1 * 128 + d0) mod 9),
-  domain: d0 in [0, 127], d1 in [0, 393749], is_simplified: true>
+#map = #xla_gpu.indexing_map<"(d0, d1) -> ((d1 * 128 + d0) floordiv 36), domain: d0 in [0, 127], d1 in [0, 393749], is_simplified: true">
+#map1 = #xla_gpu.indexing_map<"(d0, d1) -> (((d1 * 128 + d0) floordiv 9) mod 4), domain: d0 in [0, 127], d1 in [0, 393749], is_simplified: true">
+#map2 = #xla_gpu.indexing_map<"(d0, d1) -> ((d1 * 128 + d0) mod 9), domain: d0 in [0, 127], d1 in [0, 393749], is_simplified: true">
 func.func @if_op(%arg0: tensor<4000x4x9xf32>, %arg1: tensor<1400x1xi32>,
     %arg2: tensor<1400x1x4x9xf32>, %arg3: tensor<4000x4x9xf32>)
      -> tensor<4000x4x9xf32> {
@@ -225,7 +222,7 @@ func.func @vector_extract(%arg0: vector<2x3xf32>, %arg1: index) -> f32 {
   %v = vector.extract %arg0[%arg1, 2] : f32 from vector<2x3xf32>
   func.return %v : f32
 }
-// CHECK: #[[$MAP:.+]] = #xla_gpu.indexing_map<(d0) -> (d0 * 3 + 2),
+// CHECK: #[[$MAP:.+]] = #xla_gpu.indexing_map<"(d0) -> (d0 * 3 + 2),
 // CHECK-SAME: domain: d0 in [0, 1]
 
 // CHECK-LABEL: func.func @vector_extract(
@@ -241,7 +238,7 @@ func.func @vector_insert(%arg0: vector<10x24xf32>, %i: index)
   %out = vector.insert %scalar, %arg0 [1, %i] : f32 into vector<10x24xf32>
   func.return %out : vector<10x24xf32>
 }
-// CHECK: #[[$MAP:.+]] = #xla_gpu.indexing_map<(d0) -> (d0 + 24),
+// CHECK: #[[$MAP:.+]] = #xla_gpu.indexing_map<"(d0) -> (d0 + 24),
 // CHECK-SAME: domain: d0 in [0, 23]
 // CHECK-LABEL: func.func @vector_insert(
 // CHECK-SAME:      %[[VECTOR:.*]]: vector<240xf32>, %[[I:.*]]: index) ->
@@ -290,8 +287,8 @@ func.func @for_loop_vector(%t0: vector<32x1024xf32>, %t1: vector<64x8x4xf32>)
     return %for#0, %for#1, %c0_f32 :
       vector<32x1024xf32>, vector<64x8x4xf32>, f32
 }
-// CHECK: #[[$MAP0:.+]] = #xla_gpu.indexing_map<(d0) -> (d0 + 1024)
-// CHECK: #[[$MAP1:.+]] = #xla_gpu.indexing_map<(d0) -> (d0 * 32 + 5)
+// CHECK: #[[$MAP0:.+]] = #xla_gpu.indexing_map<"(d0) -> (d0 + 1024)
+// CHECK: #[[$MAP1:.+]] = #xla_gpu.indexing_map<"(d0) -> (d0 * 32 + 5)
 // CHECK-LABEL: func.func @for_loop_vector(
 // CHECK-SAME:      %[[V0:.*]]: vector<32768xf32>,
 // CHECK-SAME:      %[[V1:.*]]: vector<2048xf32>) ->
