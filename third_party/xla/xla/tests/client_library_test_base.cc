@@ -331,7 +331,7 @@ absl::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
   const Literal* expected_ptr = &expected;
   Literal converted_expected;
   Shape layout_shape;
-  if (use_bfloat16_) {
+  if (use_bfloat16()) {
     converted_expected = LiteralUtil::ConvertF32ToBF16(expected);
     expected_ptr = &converted_expected;
     if (shape_with_layout != nullptr) {
@@ -389,7 +389,7 @@ absl::Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
   const Literal* expected_ptr = &expected;
   Literal converted_expected;
   Shape layout_shape;
-  if (use_bfloat16_) {
+  if (use_bfloat16()) {
     converted_expected = LiteralUtil::ConvertF32ToBF16(expected);
     expected_ptr = &converted_expected;
     if (shape_with_layout != nullptr) {
@@ -537,9 +537,9 @@ ClientLibraryTestBase::ComputeValueAndReference(
 
 XlaComputation ClientLibraryTestBase::CreateScalarRelu() {
   XlaBuilder builder("relu");
-  auto shape = ShapeUtil::MakeShape(use_bfloat16_ ? BF16 : F32, {});
+  auto shape = ShapeUtil::MakeShape(use_bfloat16() ? BF16 : F32, {});
   auto z_value = Parameter(&builder, 0, shape, "z_value");
-  auto zero = use_bfloat16_
+  auto zero = use_bfloat16()
                   ? ConstantR0<bfloat16>(&builder, static_cast<bfloat16>(0.0f))
                   : ConstantR0<float>(&builder, 0.0f);
   Max(z_value, zero);
@@ -550,7 +550,7 @@ XlaComputation ClientLibraryTestBase::CreateScalarRelu() {
 
 XlaComputation ClientLibraryTestBase::CreateScalarMax() {
   XlaBuilder builder("max");
-  auto shape = ShapeUtil::MakeShape(use_bfloat16_ ? BF16 : F32, {});
+  auto shape = ShapeUtil::MakeShape(use_bfloat16() ? BF16 : F32, {});
   auto x = Parameter(&builder, 0, shape, "x");
   auto y = Parameter(&builder, 1, shape, "y");
   Max(x, y);
@@ -561,10 +561,10 @@ XlaComputation ClientLibraryTestBase::CreateScalarMax() {
 
 XlaComputation ClientLibraryTestBase::CreateScalarReluSensitivity() {
   XlaBuilder builder("relu_sensitivity");
-  auto shape = ShapeUtil::MakeShape(use_bfloat16_ ? BF16 : F32, {});
+  auto shape = ShapeUtil::MakeShape(use_bfloat16() ? BF16 : F32, {});
   auto activation = Parameter(&builder, 0, shape, "activation");
   auto backprop = Parameter(&builder, 1, shape, "backprop");
-  auto zero = use_bfloat16_
+  auto zero = use_bfloat16()
                   ? ConstantR0<bfloat16>(&builder, static_cast<bfloat16>(0.0f))
                   : ConstantR0<float>(&builder, 0.0f);
   auto activation_gtz = Gt(activation, zero);
@@ -610,7 +610,7 @@ XlaOp ClientLibraryTestBase::AddParam(const Literal& argument,
 
 XlaOp ClientLibraryTestBase::CreateConstantFromLiteral(const Literal& literal,
                                                        XlaBuilder* builder) {
-  return ConstantLiteral(builder, use_bfloat16_
+  return ConstantLiteral(builder, use_bfloat16()
                                       ? LiteralUtil::ConvertF32ToBF16(literal)
                                       : LiteralSlice(literal));
 }
@@ -624,7 +624,7 @@ ClientLibraryTestBase::CreateParameterAndTransferLiteral(
 }
 
 Shape ClientLibraryTestBase::MaybeConvertShapeToBfloat16(const Shape& shape) {
-  if (!use_bfloat16_) {
+  if (!use_bfloat16()) {
     return shape;
   }
   Shape new_shape = shape;
@@ -639,7 +639,7 @@ Shape ClientLibraryTestBase::MaybeConvertShapeToBfloat16(const Shape& shape) {
 
 Literal ClientLibraryTestBase::MaybeConvertLiteralToBfloat16(
     const Literal& literal) {
-  if (use_bfloat16_) {
+  if (use_bfloat16()) {
     return LiteralUtil::ConvertF32ToBF16(literal);
   }
   return literal.Clone();
