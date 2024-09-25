@@ -1097,6 +1097,7 @@ ENTRY main {
   // This test captures known dependencies between passes.
   VerifyPassOrder(passes, "layout-assignment", "priority-fusion");
   VerifyPassOrder(passes, "layout-assignment", "layout_normalization");
+  VerifyPassOrder(passes, "host-offload-legalize", "layout_normalization");
 }
 
 }  // namespace
