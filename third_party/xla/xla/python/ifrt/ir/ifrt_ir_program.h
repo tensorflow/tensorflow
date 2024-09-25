@@ -25,6 +25,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OwningOpRef.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/executable.h"
@@ -37,10 +39,19 @@ struct IfrtIRProgram : llvm::RTTIExtends<IfrtIRProgram, Program> {
   IfrtIRProgram() = default;
   explicit IfrtIRProgram(mlir::ModuleOp mlir_module)
       : mlir_module(std::move(mlir_module)) {}
+  IfrtIRProgram(std::unique_ptr<mlir::MLIRContext> context,
+                mlir::OwningOpRef<mlir::ModuleOp> module)
+      : mlir_module(*module),
+        mlir_context(std::move(context)),
+        owning_mlir_module(std::move(module)) {}
 
   mlir::ModuleOp mlir_module;
 
   static char ID;  // NOLINT
+
+ private:
+  std::unique_ptr<mlir::MLIRContext> mlir_context;
+  mlir::OwningOpRef<mlir::ModuleOp> owning_mlir_module;
 };
 
 // CompileOptions for an IFRT IR program.
