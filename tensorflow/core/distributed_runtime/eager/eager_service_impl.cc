@@ -831,7 +831,7 @@ Status EagerServiceImpl::CleanupFunction(
 
 Status EagerServiceImpl::SendTensor(const SendTensorOp& send_tensor,
                                     EagerContext* eager_context) {
-  tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 2> tensors;
+  absl::InlinedVector<tensorflow::TensorHandle*, 2UL> tensors;
   for (const auto& tensor_proto : send_tensor.tensors()) {
     Tensor tensor;
     if (!tensor.FromProto(tensor_proto)) {
