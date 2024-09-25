@@ -59,7 +59,7 @@ class ConvertResultsBroadcastableShapeOp : public RewritePattern {
 // Determine op with shapes is valid. TODO: @lukeboyer - Move the
 // `TFL_OperandsHaveSameShapesOrBroadcastableShape` runtime verification trait
 // into a standard (not runtime verification) trait and change this function to
-// use only that interface. Currently there is no way to query derived runtime
+// use only that interface. Curently there is no way to query derived runtime
 // verification traits.
 bool IsRankSupported(Operation* op) {
   // These ops have no rank constraints.
@@ -73,14 +73,6 @@ bool IsRankSupported(Operation* op) {
 
   // Fallback, all implicit broadcast ops in tfl support at least rank 4.
   return llvm::cast<ShapedType>(op->getResultTypes()[0]).getRank() <= 4;
-}
-
-// Returns true when the op may be a broadcasting op. Broadcasting op is not
-// limited to TFL::BroadcastToOp, but also other ops that may change the shape
-// of a tensor to match the shape of another operand.
-bool MayBeBroadcastingOp(Operation* op) {
-  return op && llvm::isa<TFL::BroadcastToOp, TFL::ReshapeOp, TFL::ExpandDimsOp,
-                         TFL::SqueezeOp>(op);
 }
 
 LogicalResult ConvertResultsBroadcastableShapeOp::matchAndRewrite(
@@ -101,7 +93,7 @@ LogicalResult ConvertResultsBroadcastableShapeOp::RewriteOp(
   // Check that the result shape is fully defined.
   auto result_type =
       mlir::dyn_cast_or_null<RankedTensorType>(op->getResultTypes().front());
-  if (!result_type) return failure();
+  if (!result_type || !result_type.hasStaticShape()) return failure();
 
   if (!IsRankSupported(op)) {
     return failure();
@@ -110,39 +102,19 @@ LogicalResult ConvertResultsBroadcastableShapeOp::RewriteOp(
   bool changed = false;
   for (uint64_t i = 0, e = op->getNumOperands(); i < e; ++i) {
     // Check that the i'th operand is a broadcast.
-    auto broadcast = op->getOpOperand(i).get().getDefiningOp();
-    if (!broadcast || !MayBeBroadcastingOp(broadcast)) {
-      continue;
-    }
-
-    auto broadcast_input = broadcast->getOperand(0);
-    if (!broadcast_input) {
-      continue;
-    }
+    auto broadcast = llvm::dyn_cast_or_null<TFL::BroadcastToOp>(
+        op->getOpOperand(i).get().getDefiningOp());
+    if (!broadcast) continue;
 
     // Check that the operand of the broadcast has fully defined shape.
-    // Fusing dynamic broadcasting op (non static broadcast_arg_type shape)
-    // is experimental and theoretically unsafe, because checking equality on
-    // unknown dimensions in broadcasted shape is not reliable.
-    // TODO: Full dynamism support with symbolic shape comparisons.
-    auto broadcast_arg_type =
-        mlir::cast<RankedTensorType>(broadcast_input.getType());
-    if (!broadcast_arg_type) {
-      continue;
-    }
+    auto broadcast_arg_type = mlir::dyn_cast_or_null<RankedTensorType>(
+        broadcast.getInput().getType());
+    if (!broadcast_arg_type || !broadcast_arg_type.hasStaticShape()) continue;
 
     // Check that the other argument has fully defined shape.
-    auto argument = op->getOperand(1 - i);
-    auto argument_type = mlir::cast<RankedTensorType>(argument.getType());
-    // When two operands are both dynamic broadcasting op, it has high chance
-    // that the model is doing explicitly broadcasting. In this case, removing
-    // either broadcasting op may result in incorrect output shape in the
-    // runtime.
-    // TODO: Full dynamism support with symbolic shape comparisons.
-    if (!argument_type || (!broadcast_arg_type.hasStaticShape() &&
-                           MayBeBroadcastingOp(argument.getDefiningOp()))) {
-      continue;
-    }
+    auto argument_type = mlir::dyn_cast_or_null<RankedTensorType>(
+        op->getOpOperand(1 - i).get().getType());
+    if (!argument_type || !argument_type.hasStaticShape()) continue;
 
     // Get the unbroadcasted shapes in the operand order.
     std::array<llvm::ArrayRef<int64_t>, 2> operand_shapes;
@@ -162,7 +134,7 @@ LogicalResult ConvertResultsBroadcastableShapeOp::RewriteOp(
 
     // Update the operand of the op to be the operand of the broadcast.
     rewriter.modifyOpInPlace(
-        op, [&]() { op->getOpOperand(i).set(broadcast->getOperand(0)); });
+        op, [&]() { op->getOpOperand(i).set(broadcast.getInput()); });
     changed = true;
   }
   return success(changed);
@@ -238,12 +210,12 @@ LogicalResult ConvertResultsBroadcastableBatchMatMulShapeOp::RewriteOp(
 
 }  // namespace
 
-class FoldBroadcastingOpPass
-    : public PassWrapper<FoldBroadcastingOpPass, OperationPass<func::FuncOp>> {
+class FoldBroadcastToPass
+    : public PassWrapper<FoldBroadcastToPass, OperationPass<func::FuncOp>> {
  public:
-  StringRef getArgument() const final { return "fold-broadcasting-op-pass"; }
+  StringRef getArgument() const final { return "fold-broadcast-to-pass"; }
   StringRef getDescription() const final {
-    return "Folds TFL broadcasting/shape changing nodes with subsequent ops";
+    return "Folds tfl.BroadcastTo nodes with subsequent ops";
   }
 
   void runOnOperation() override {
@@ -261,11 +233,11 @@ class FoldBroadcastingOpPass
 };
 
 // TODO(weiyiw): Consider having this as canonicalization?
-std::unique_ptr<OperationPass<func::FuncOp>> CreateFoldBroadcastingOpPass() {
-  return std::make_unique<FoldBroadcastingOpPass>();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateFoldBroadcastToPass() {
+  return std::make_unique<FoldBroadcastToPass>();
 }
 
-static PassRegistration<FoldBroadcastingOpPass> pass;
+static PassRegistration<FoldBroadcastToPass> pass;
 
 }  // namespace odml
 }  // namespace mlir
