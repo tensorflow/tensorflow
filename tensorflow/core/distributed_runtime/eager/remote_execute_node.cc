@@ -27,8 +27,8 @@ namespace eager {
 void RemoteExecuteNode::RunAsync(StatusCallback done) {
   auto response = std::make_shared<EnqueueResponse>();
 
-  const gtl::InlinedVector<TensorHandle*, 4>& inputs = inputs_;
-  const gtl::InlinedVector<TensorHandle*, 2>& retvals = retvals_;
+  const absl::InlinedVector<TensorHandle*, 4UL>& inputs = inputs_;
+  const absl::InlinedVector<TensorHandle*, 2UL>& retvals = retvals_;
   Device* device = device_;
 
   // Filled and used only when VLOG(3) is on.
