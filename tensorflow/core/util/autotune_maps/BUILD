@@ -148,7 +148,6 @@ tf_proto_library(
 # py_proto_library(
 #     name = "autotune_map_py_pb2",
 #     has_services = 0,
-#     api_version = 2,
 #     visibility = ["//waymo/ml/deploy/system/autotuning:__subpackages__"],
 #     deps = [":autotune_map_proto"],
 # )

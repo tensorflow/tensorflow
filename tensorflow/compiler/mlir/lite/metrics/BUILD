@@ -93,7 +93,6 @@ tf_proto_library(
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "converter_error_data_proto_py",
-#     api_version = 2,
 #     visibility = [
 #         "//visibility:public",
 #     ],

@@ -1882,21 +1882,18 @@ tf_proto_library(
 # copybara:uncomment_begin(google-only)
 # py_proto_library(
 #     name = "types_py_proto",
-#     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":types_proto"],
 # )
 #
 # py_proto_library(
 #     name = "model_flags_py_proto",
-#     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":model_flags_proto"],
 # )
 #
 # py_proto_library(
 #     name = "converter_flags_py_proto",
-#     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":converter_flags_proto"],
 # )

@@ -1405,7 +1405,6 @@ py_strict_library(
 # py_proto_library(
 #     name = "protos_all_py_pb2",
 #     has_services = 0,
-#     api_version = 2,
 #     deps = [":protos_all"],
 # )
 #

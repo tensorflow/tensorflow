@@ -179,14 +179,12 @@ filegroup(
 # py_proto_library(
 #     name = "profiler_analysis_proto_py_pb2",
 #     has_services = 1,
-#     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":profiler_analysis_proto"],
 # )
 #
 # py_proto_library(
 #     name = "protos_all_py_pb2",
-#     api_version = 2,
 #     visibility = [":friends"],
 #     deps = [":protos_all"],
 # )

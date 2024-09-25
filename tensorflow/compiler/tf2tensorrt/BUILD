@@ -1112,7 +1112,6 @@ pybind_extension(
 # py_proto_library(
 #     name = "trt_engine_instance_proto_py_pb2",
 #     has_services = 0,
-#     api_version = 2,
 #     deps = [":trt_engine_instance_proto"],
 # )
 # copybara:uncomment_end

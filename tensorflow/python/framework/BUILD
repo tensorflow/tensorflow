@@ -3315,7 +3315,6 @@ tf_python_pybind_extension(
 # py_proto_library(
 #     name = "cpp_shape_inference_proto_py_pb2",
 #     has_services = 0,
-#     api_version = 2,
 #     deps = [":cpp_shape_inference_proto"],
 # )
 # copybara:uncomment_end

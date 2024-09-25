@@ -2032,7 +2032,6 @@ transitive_hdrs(
 # py_proto_library(
 #     name = "protos_all_py_pb2",
 #     has_services = 0,
-#     api_version = 2,
 #     visibility = ["//visibility:public"],
 #     deps = [":protos_all"],
 # )
