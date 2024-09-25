@@ -18,9 +18,11 @@ limitations under the License.
 
 #include <memory>
 
+#include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassOptions.h"
 
 namespace xla {
 namespace ifrt {
@@ -58,6 +60,23 @@ CreateIfrtReshardToCopyArraysPass();
 // Generated definitions. This should be placed after all Pass creations.
 #define GEN_PASS_REGISTRATION
 #include "xla/python/ifrt/ir/transforms/passes.h.inc"  // IWYU pragma: export
+
+struct IfrtToOutlinedAtomProgramsPipelineOptions
+    : mlir::PassPipelineOptions<IfrtToOutlinedAtomProgramsPipelineOptions> {
+  Option<bool> propagate_shardings{
+      *this, "propagate_shardings",
+      llvm::cl::desc("Whether to propagate shardings from executables for "
+                     "unspecified shardings.")};
+};
+
+// Creates pipeline of all the IFRT IR passes that do not require
+// compilation-time information (e.g., device assignments).
+void CreateIfrtToOutlinedAtomProgramsPipeline(
+    mlir::OpPassManager& pm,
+    const IfrtToOutlinedAtomProgramsPipelineOptions& options);
+
+// Registers passes and pipelines to ifrt-opt.
+void RegisterIfrtPassesAndPipelines();
 
 }  // namespace ifrt
 }  // namespace xla

@@ -27,6 +27,7 @@ int main(int argc, char** argv) {
   mlir::mhlo::registerAllMhloDialects(registry);
   registry.insert<xla::ifrt::IfrtDialect>();
   xla::ifrt::registerIfrtIrPasses();
+  xla::ifrt::RegisterIfrtPassesAndPipelines();
 
   xla::ifrt::AttachBuiltInSpmdExpansions(registry);
 
