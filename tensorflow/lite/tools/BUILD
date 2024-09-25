@@ -50,9 +50,9 @@ py_strict_test(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        ":test_utils",
         ":visualize_lib",
         #internal proto upb dep
+        "//tensorflow/compiler/mlir/lite/tools:test_utils",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
     ],
@@ -147,34 +147,7 @@ py_strict_library(
     srcs = ["flatbuffer_utils.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/lite/python:schema_py",
-        "//tensorflow/lite/python:schema_util",
-        "//tensorflow/python/platform:gfile",
-        "@flatbuffers//:runtime_py",
-    ],
-)
-
-py_strict_test(
-    name = "flatbuffer_utils_test",
-    srcs = ["flatbuffer_utils_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
-    deps = [
-        ":flatbuffer_utils",
-        ":test_utils",
-        #internal proto upb dep
-        "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/platform:client_testlib",
-    ],
-)
-
-py_strict_library(
-    name = "test_utils",
-    srcs = ["test_utils.py"],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/lite/python:schema_py",
-        "@flatbuffers//:runtime_py",
+        "//tensorflow/compiler/mlir/lite/tools:flatbuffer_utils",
     ],
 )
 

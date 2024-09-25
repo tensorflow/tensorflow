@@ -609,7 +609,7 @@ py_strict_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow/lite/schema:utils_friends"],
     deps = [
-        "//tensorflow/python/util:all_util",
+        "//tensorflow/compiler/mlir/lite/python:schema_util",
     ],
 )
 

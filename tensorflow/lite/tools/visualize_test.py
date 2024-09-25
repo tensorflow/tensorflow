@@ -16,7 +16,7 @@
 import os
 import re
 
-from tensorflow.lite.tools import test_utils
+from tensorflow.compiler.mlir.lite.tools import test_utils
 from tensorflow.lite.tools import visualize
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
