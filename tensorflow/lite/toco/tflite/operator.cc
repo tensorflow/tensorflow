@@ -31,8 +31,6 @@ limitations under the License.
 
 // graph_transformation module.
 #include "tensorflow/compiler/mlir/lite/delegates/flex/allowlisted_flex_ops.h"
-#include "tensorflow/compiler/mlir/lite/tools/versioning/op_signature.h"
-#include "tensorflow/compiler/mlir/lite/tools/versioning/op_version.h"
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -44,6 +42,8 @@ limitations under the License.
 #include "tensorflow/lite/toco/tflite/simple_operator.h"
 #include "tensorflow/lite/toco/tflite/types.h"
 #include "tensorflow/lite/toco/toco_types.h"
+#include "tensorflow/lite/tools/versioning/op_signature.h"
+#include "tensorflow/lite/tools/versioning/op_version.h"
 
 namespace toco {
 
