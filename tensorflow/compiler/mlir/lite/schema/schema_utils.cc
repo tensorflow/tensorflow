@@ -17,6 +17,7 @@ limitations under the License.
 #include <algorithm>
 
 #include "tensorflow/compiler/mlir/lite/kernels/internal/compatibility_macros.h"
+#include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 
 namespace tflite {
 
