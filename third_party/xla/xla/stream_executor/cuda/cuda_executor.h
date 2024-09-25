@@ -137,6 +137,9 @@ class CudaExecutor : public GpuExecutor {
     return GpuDriver::HostDeallocate(gpu_context(), location);
   }
 
+  bool HostMemoryRegister(void* location, uint64_t size) override;
+  bool HostMemoryUnregister(void* location) override;
+
   absl::StatusOr<MemoryType> GetPointerMemorySpace(const void* ptr) override {
     return GpuDriver::GetPointerMemorySpace(
         reinterpret_cast<GpuDevicePtr>(const_cast<void*>(ptr)));
