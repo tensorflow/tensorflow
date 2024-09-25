@@ -94,6 +94,12 @@ class PrefetchIntervalPicker {
   // Returns the latest time the prefetch interval picker will have pick.
   virtual int64_t latest_time() const = 0;
 
+  // Sets the shape override to use for async copy durations, unless we have set
+  // the shape_override_ in the constructor in order to treat all async copies
+  // the same duration.
+  virtual void SetShapeOverrideUnlessTreatingAllTheSame(
+      const Shape& shape_override) = 0;
+
   // The retry number can be used to modify the interval picking policies. The
   // first attempt will have a retry_number of 0, then 1, etc.
   virtual void SetRetryNumber(int retry_number) {
@@ -248,6 +254,15 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
       const GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval& interval)
       const override;
 
+  void SetShapeOverrideUnlessTreatingAllTheSame(
+      const Shape& shape_override) override {
+    if (!treat_all_async_copies_the_same_duration_) {
+      shape_override_ = shape_override;
+    }
+  }
+
+  const std::optional<Shape>& shape_override() const { return shape_override_; }
+
  private:
   // Finds the minimum nest level in the given interval.
   int GetMinWhileNestLevel(int64_t start_time, int64_t end_time) const;
@@ -255,6 +270,10 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
   // Given the elapsed time to copy this buffer to the alternate memory, returns
   // the longest time that this buffer may reside in the alternate memory space.
   float GetMaxElapsedInAlternateMemory(float async_copy_elapsed) const;
+
+  // Returns the shape_override_ if it is set, otherwise returns the given
+  // shape.
+  const Shape& MaybeOverriddenShape(const Shape& shape) const;
 
   // For each instruction in the flattened schedule, maintain their elapsed time
   // (in cumulative sum) and while nesting level.
@@ -280,6 +299,7 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
   int64_t decreasing_prefetch_time_iterator_;
 
   std::vector<float> while_execution_counts_;
+  bool treat_all_async_copies_the_same_duration_ = false;
   // Shape override is used to override the shape of the shape of the async copy
   // to treat all async copies the same duration. Having an override forces
   // prefetches to be scheduled roughly in FIFO order.
