@@ -222,7 +222,6 @@ xla_test(
         "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
         "//xla/service/gpu/tests:gpu_codegen_test",
         "//xla/stream_executor:device_description",
-        "//xla/stream_executor/cuda:cublas_plugin",
         "//xla/tests:filecheck",
         "//xla/tests:verified_hlo_module",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
@@ -268,7 +267,6 @@ xla_test(
         "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
         "//xla/service/gpu/tests:gpu_codegen_test",
         "//xla/stream_executor:device_description",
-        "//xla/stream_executor/cuda:cublas_plugin",
         "//xla/tests:verified_hlo_module",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/lib/core:status_test_util",
@@ -400,7 +398,6 @@ xla_test(
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu/tests:gpu_codegen_test",
         "//xla/stream_executor:device_description",
-        "//xla/stream_executor/cuda:cublas_plugin",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",

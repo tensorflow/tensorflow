@@ -1041,11 +1041,12 @@ cc_library(
 
 cc_library(
     name = "cusolver_context",
-    srcs = if_gpu_is_configured(["cusolver_context.cc"]),
-    hdrs = if_gpu_is_configured(["cusolver_context.h"]),
+    srcs = ["cusolver_context.cc"],
+    hdrs = ["cusolver_context.h"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
+    tags = ["gpu"],
     deps = [
         "//xla:comparison_util",
         "//xla:types",
@@ -2628,8 +2629,9 @@ cc_library(
 
 cc_library(
     name = "make_batch_pointers",
-    srcs = if_gpu_is_configured(["make_batch_pointers.cc"]),
-    hdrs = if_gpu_is_configured(["make_batch_pointers.h"]),
+    srcs = ["make_batch_pointers.cc"],
+    hdrs = ["make_batch_pointers.h"],
+    tags = ["gpu"],
     deps = [
         "//xla:types",
         "//xla:util",
@@ -2650,7 +2652,7 @@ cc_library(
 
 cuda_library(
     name = "make_batch_pointers_kernel",
-    srcs = if_cuda_is_configured(["make_batch_pointers.cu.cc"]),
+    srcs = ["make_batch_pointers.cu.cc"],
     deps = [
         "@local_config_cuda//cuda:cuda_headers",  # build_cleaner: keep
     ],

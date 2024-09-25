@@ -32,10 +32,6 @@ load(
     "gpu_kernel_library",
 )
 load(
-    "//xla/stream_executor:build_defs.bzl",
-    "gpu_only_cc_library",
-)
-load(
     "//xla/tests:build_defs.bzl",
     "xla_test",
 )
@@ -146,23 +142,26 @@ xla_cc_test(
     ],
 )
 
-gpu_only_cc_library(
+cc_library(
     name = "gpu_activation",
     hdrs = ["gpu_activation.h"],
+    tags = ["gpu"],
     deps = [
         ":scoped_activate_context",
     ],
 )
 
-gpu_only_cc_library(
+cc_library(
     name = "gpu_diagnostics_header",
     hdrs = ["gpu_diagnostics.h"],
+    tags = ["gpu"],
     deps = ["@com_google_absl//absl/status:statusor"],
 )
 
-gpu_only_cc_library(
+cc_library(
     name = "gpu_driver_header",
     hdrs = ["gpu_driver.h"],
+    tags = ["gpu"],
     visibility = internal_visibility([
         "//xla/service/gpu:__subpackages__",
         "//xla/stream_executor:__subpackages__",
@@ -185,13 +184,14 @@ gpu_only_cc_library(
     ),
 )
 
-gpu_only_cc_library(
+cc_library(
     name = "gpu_command_buffer",
     srcs = ["gpu_command_buffer.cc"],
     hdrs = ["gpu_command_buffer.h"],
     local_defines = if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
+    tags = ["gpu"],
     deps = [
         ":gpu_driver_header",
         ":gpu_executor_header",
@@ -228,9 +228,10 @@ gpu_only_cc_library(
     ]),
 )
 
-gpu_only_cc_library(
+cc_library(
     name = "gpu_event_header",
     hdrs = ["gpu_event.h"],
+    tags = ["gpu"],
     deps = [
         ":context",
         ":gpu_types_header",
@@ -239,10 +240,11 @@ gpu_only_cc_library(
     ],
 )
 
-gpu_only_cc_library(
+cc_library(
     name = "gpu_event",
     srcs = ["gpu_event.cc"],
     hdrs = ["gpu_event.h"],
+    tags = ["gpu"],
     deps = [
         ":context",
         ":gpu_driver_header",
@@ -280,9 +282,10 @@ cc_library(
     ],
 )
 
-gpu_only_cc_library(
+cc_library(
     name = "gpu_helpers_header",
     hdrs = ["gpu_helpers.h"],
+    tags = ["gpu"],
     deps = [
         "//xla/stream_executor:device_memory",
     ],
@@ -330,9 +333,10 @@ tsl_gpu_library(
     alwayslink = True,
 )
 
-gpu_only_cc_library(
+cc_library(
     name = "gpu_kernel_header",
     hdrs = ["gpu_kernel.h"],
+    tags = ["gpu"],
     deps = [
         ":context",
         ":gpu_executor_header",
@@ -343,9 +347,10 @@ gpu_only_cc_library(
     ],
 )
 
-gpu_only_cc_library(
+cc_library(
     name = "gpu_stream_header",
     hdrs = ["gpu_stream.h"],
+    tags = ["gpu"],
     deps = [
         ":gpu_event_header",
         ":gpu_executor_header",
@@ -364,10 +369,11 @@ gpu_only_cc_library(
     ],
 )
 
-gpu_only_cc_library(
+cc_library(
     name = "gpu_stream",
     srcs = ["gpu_stream.cc"],
     hdrs = ["gpu_stream.h"],
+    tags = ["gpu"],
     deps = [
         ":gpu_driver_header",
         ":gpu_event_header",
@@ -394,10 +400,11 @@ gpu_only_cc_library(
     ],
 )
 
-gpu_only_cc_library(
+cc_library(
     name = "gpu_semaphore",
     srcs = ["gpu_semaphore.cc"],
     hdrs = ["gpu_semaphore.h"],
+    tags = ["gpu"],
     deps = [
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:memory_allocation",
@@ -407,7 +414,7 @@ gpu_only_cc_library(
     ],
 )
 
-gpu_only_cc_library(
+cc_library(
     name = "gpu_timer",
     srcs = [
         "gpu_timer.cc",
@@ -415,6 +422,7 @@ gpu_only_cc_library(
     hdrs = [
         "gpu_timer.h",
     ],
+    tags = ["gpu"],
     deps = [
         ":context",
         ":gpu_driver_header",
@@ -434,7 +442,7 @@ gpu_only_cc_library(
     ],
 )
 
-gpu_only_cc_library(
+cc_library(
     name = "gpu_types_header",
     hdrs = ["gpu_types.h"],
     defines = if_rocm_is_configured([
@@ -442,6 +450,7 @@ gpu_only_cc_library(
     ]) + if_sycl_is_configured([
         "TENSORFLOW_USE_SYCL=1",
     ]),
+    tags = ["gpu"],
     deps = [
         "//xla/stream_executor/platform",
     ] + if_cuda_is_configured([
@@ -467,11 +476,12 @@ cc_library(
     ],
 )
 
-gpu_only_cc_library(
+cc_library(
     name = "asm_compiler",
     srcs = ["asm_compiler.cc"],
     hdrs = ["asm_compiler.h"],
     copts = tsl_copts(),
+    tags = ["gpu"],
     visibility = internal_visibility([
         "//xla/service/gpu:__subpackages__",
         "//xla/stream_executor:__subpackages__",
@@ -498,7 +508,11 @@ cc_library(
         "redzone_allocator_kernel.h",
         "redzone_allocator_kernel_cuda.cc",
     ],
-    tags = ["manual"],
+    tags = [
+        "cuda-only",
+        "gpu",
+        "manual",
+    ],
     deps = [
         ":gpu_asm_opts",
         "//xla/stream_executor",
@@ -537,13 +551,14 @@ gpu_kernel_library(
     ],
 )
 
-gpu_only_cc_library(
+cc_library(
     name = "redzone_allocator",
     srcs = [
         "redzone_allocator.cc",
         "redzone_allocator_kernel.h",
     ],
     hdrs = ["redzone_allocator.h"],
+    tags = ["gpu"],
     visibility = internal_visibility([
         "//xla/service/gpu:__subpackages__",
         "//xla/stream_executor:__subpackages__",
@@ -596,9 +611,12 @@ xla_test(
 
 cc_library(
     name = "gpu_cudamallocasync_allocator",
-    srcs = if_cuda_is_configured(["gpu_cudamallocasync_allocator.cc"]),
-    hdrs = if_cuda_is_configured(["gpu_cudamallocasync_allocator.h"]),
-    tags = ["gpu"],
+    srcs = ["gpu_cudamallocasync_allocator.cc"],
+    hdrs = ["gpu_cudamallocasync_allocator.h"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     deps = [
         ":gpu_init_impl",
         "//xla/stream_executor:stream_executor_h",
