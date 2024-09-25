@@ -9,19 +9,40 @@ package(
     licenses = ["notice"],
 )
 
+filegroup(
+    name = "tflite_types",
+    srcs = [
+        "tflite_types.h",
+    ],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+    ],
+)
+
+exports_files(
+    srcs = [
+        "builtin_op_data.h",
+        "tflite_types.h",
+    ],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+    ],
+)
+
 # LINT.IfChange(common)
 cc_library(
     name = "tflite_common",
     srcs = [],
     hdrs = [
         "builtin_op_data.h",
-        "dimension_type.h",
+        "tflite_types.h",
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     visibility = [
         "//tensorflow/compiler/mlir/lite:__subpackages__",
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:__pkg__",
+        "//tensorflow/lite/core/c:__subpackages__",
     ],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
