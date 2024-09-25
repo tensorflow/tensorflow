@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
-#include "xla/python/pjrt_ifrt/pjrt_dtype.h"  // IWYU pragma: keep  // TODO(hyeontaek): Remove this include once downstream users are migrated to use the new header directly.
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
