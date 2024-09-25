@@ -31,6 +31,7 @@ tf_cc_test(
     ],
     deps = [
         ":reduced_precision_support",
+        "//tensorflow/compiler/mlir/lite/tools/optimize:reduced_precision_metadata",
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:framework",
@@ -50,7 +51,10 @@ cc_library(
     hdrs = ["modify_model_interface.h"],
     deps = [
         ":model_utils",
+        "//tensorflow/compiler/mlir/lite/schema:schema_utils",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:string",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/internal:compatibility",
@@ -71,7 +75,9 @@ tf_cc_test(
     ],
     deps = [
         ":modify_model_interface",
+        "//tensorflow/compiler/mlir/lite/schema:schema_utils",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
@@ -87,6 +93,7 @@ cc_binary(
     deps = [
         ":modify_model_interface",
         ":quantize_model",
+        "//tensorflow/lite/schema:schema_fbs",
     ],
 )
 
@@ -97,6 +104,8 @@ cc_library(
     deps = [
         ":operator_property",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:string",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/schema:schema_fbs",
@@ -113,6 +122,7 @@ tf_cc_test(
     ],
     deps = [
         ":quantization_wrapper_utils",
+        "//tensorflow/compiler/mlir/lite/schema:schema_utils",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/schema:schema_fbs",
@@ -140,7 +150,10 @@ tf_cc_test(
     ],
     deps = [
         ":operator_property",
+        "//tensorflow/compiler/mlir/lite/schema:schema_utils",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:string",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/schema:schema_fbs",
@@ -159,6 +172,7 @@ cc_library(
     deps = [
         ":quantization_wrapper_utils",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools/optimize:quantize_model",
@@ -194,8 +208,12 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":operator_property",
+        "//tensorflow/compiler/mlir/lite/schema:schema_conversion_utils",
+        "//tensorflow/compiler/mlir/lite/schema:schema_utils",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:string",
         "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/schema:schema_conversion_utils",
@@ -203,6 +221,7 @@ cc_library(
         "//tensorflow/lite/schema:schema_utils",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@flatbuffers//:runtime_cc",
     ],
 )
 
@@ -243,9 +262,11 @@ tf_cc_test(
     deps = [
         ":quantization_utils",
         "//tensorflow/compiler/mlir/lite/quantization/lite:test_util",
+        "//tensorflow/compiler/mlir/lite/schema:schema_utils",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
@@ -266,11 +287,17 @@ cc_library(
         ":model_utils",
         ":operator_property",
         ":quantization_utils",
+        "//tensorflow/compiler/mlir/lite/schema:schema_utils",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:string",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:cppmath",
+        "//tensorflow/lite/kernels/internal:runtime_shape",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",
         "@com_google_absl//absl/strings",
@@ -324,9 +351,12 @@ tf_cc_test(
     deps = [
         ":quantize_model",
         "//tensorflow/compiler/mlir/lite/quantization/lite:test_util",
+        "//tensorflow/compiler/mlir/lite/schema:schema_utils",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:string",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_utils",

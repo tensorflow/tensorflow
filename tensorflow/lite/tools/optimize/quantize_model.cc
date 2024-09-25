@@ -24,15 +24,19 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "flatbuffers/flexbuffers.h"
 #include "absl/strings/str_cat.h"
+#include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
+#include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
 #include "tensorflow/compiler/mlir/lite/tools/optimize/operator_property.h"
-#include "tensorflow/lite/context.h"
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/core/model.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/cppmath.h"
+#include "tensorflow/lite/kernels/internal/runtime_shape.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/schema/schema_utils.h"
+#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/tools/optimize/model_utils.h"
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
 

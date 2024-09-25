@@ -15,8 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_OPTIMIZE_MODIFY_MODEL_INTERFACE_H_
 #define TENSORFLOW_LITE_TOOLS_OPTIMIZE_MODIFY_MODEL_INTERFACE_H_
 
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 namespace optimize {

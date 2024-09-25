@@ -20,15 +20,15 @@ limitations under the License.
 #include <unordered_set>
 #include <utility>
 
-#include "flatbuffers/flexbuffers.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/memory/memory.h"
+#include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
+#include "tensorflow/compiler/mlir/lite/schema/schema_utils.h"
 #include "tensorflow/lite/core/c/common.h"
-#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/error_reporter.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/schema/schema_utils.h"
+#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/tools/optimize/model_utils.h"
 
 namespace tflite {
