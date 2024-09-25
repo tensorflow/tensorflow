@@ -1045,6 +1045,43 @@ absl::Status RunFusionPasses(HloModule* hlo_module,
   return absl::OkStatus();
 }
 
+// Adds unrolling while loop optimization. Mostly to get rid of extra D2D
+// copies, but also there are some performance benefits (better comm-compute
+// overlap) when collectives are present within a while loop.
+void AddDoubleBufferingPasses(const DebugOptions& opts,
+                              HloPassPipeline& pipeline) {
+  std::optional<DoubleBufferLoopUnrolling::UnrollStrategy> unroll_strategy =
+      std::nullopt;
+  // Support old flag.
+  if (opts.xla_gpu_enable_while_loop_double_buffering()) {
+    unroll_strategy = DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer;
+  }
+  // Support new flag setting style, override the old one.
+  if (opts.xla_gpu_enable_while_loop_unrolling() ==
+      DebugOptions::WHILE_LOOP_UNROLLING_DOUBLE_BUFFER) {
+    unroll_strategy = DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer;
+  }
+  if (opts.xla_gpu_enable_while_loop_unrolling() ==
+      DebugOptions::WHILE_LOOP_UNROLLING_FULL_UNROLL) {
+    LOG_IF(WARNING, unroll_strategy != std::nullopt)
+        << "Overriding double buffering set via "
+           "`xla_gpu_enable_while_loop_double_buffering` flag.";
+    unroll_strategy = DoubleBufferLoopUnrolling::UnrollStrategy::kFullUnroll;
+  }
+  if (opts.xla_gpu_enable_while_loop_unrolling() ==
+          DebugOptions::WHILE_LOOP_UNROLLING_AUTO_UNROLL &&
+      opts.xla_gpu_enable_heuristic_pass_configuration() &&
+      !opts.xla_gpu_enable_while_loop_double_buffering()) {
+    unroll_strategy = DoubleBufferLoopUnrolling::UnrollStrategy::kAuto;
+  }
+  if (unroll_strategy != std::nullopt) {
+    pipeline.AddPass<WhileLoopSimplifier>();
+    pipeline.AddPass<DoubleBufferLoopUnrolling>(*unroll_strategy);
+    pipeline.AddPass<TupleSimplifier>();
+    pipeline.AddPass<HloDCE>();
+  }
+}
+
 absl::Status RunPostFusionPasses(
     HloModule* hlo_module,
     std::function<absl::Status(HloPassPipeline*, const DebugOptions&)>
@@ -1077,36 +1114,7 @@ absl::Status RunPostFusionPasses(
     pipeline.AddPass<AllReduceBlueConnect>(blueconnect_num_devices_per_host);
   }
 
-  std::optional<DoubleBufferLoopUnrolling::UnrollStrategy> unroll_strategy =
-      std::nullopt;
-  // Support old flag.
-  if (opts.xla_gpu_enable_while_loop_double_buffering()) {
-    unroll_strategy = DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer;
-  }
-  // Support new flag setting style, override the old one.
-  if (opts.xla_gpu_enable_while_loop_unrolling() ==
-      DebugOptions::WHILE_LOOP_UNROLLING_DOUBLE_BUFFER) {
-    unroll_strategy = DoubleBufferLoopUnrolling::UnrollStrategy::kDoubleBuffer;
-  }
-  if (opts.xla_gpu_enable_while_loop_unrolling() ==
-      DebugOptions::WHILE_LOOP_UNROLLING_FULL_UNROLL) {
-    LOG_IF(WARNING, unroll_strategy != std::nullopt)
-        << "Overriding double buffering set via "
-           "`xla_gpu_enable_while_loop_double_buffering` flag.";
-    unroll_strategy = DoubleBufferLoopUnrolling::UnrollStrategy::kFullUnroll;
-  }
-  if (opts.xla_gpu_enable_while_loop_unrolling() ==
-          DebugOptions::WHILE_LOOP_UNROLLING_AUTO_UNROLL &&
-      opts.xla_gpu_enable_heuristic_pass_configuration() &&
-      !opts.xla_gpu_enable_while_loop_double_buffering()) {
-    unroll_strategy = DoubleBufferLoopUnrolling::UnrollStrategy::kAuto;
-  }
-  if (unroll_strategy != std::nullopt) {
-    pipeline.AddPass<WhileLoopSimplifier>();
-    pipeline.AddPass<DoubleBufferLoopUnrolling>(*unroll_strategy);
-    pipeline.AddPass<TupleSimplifier>();
-    pipeline.AddPass<HloDCE>();
-  }
+  AddDoubleBufferingPasses(opts, pipeline);
 
   return pipeline.Run(hlo_module).status();
 }
