@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/client/xla_builder.h"
 #include "xla/literal.h"
 #include "xla/tests/exhaustive/error_spec.h"
+#include "xla/tests/exhaustive/exhaustive_op_test.h"
 #include "xla/tests/exhaustive/exhaustive_op_test_base.h"
 #include "xla/tests/exhaustive/exhaustive_op_test_utils.h"
 #include "xla/tests/test_macros.h"
@@ -160,7 +161,7 @@ UNARY_TEST_COMPLEX_64(Rsqrt, {
     return ErrorSpec::Builder().strict_signed_zeros().build();
   };
 
-  if (IsCpu(platform_)) {
+  if (IsCpu()) {
     error_spec_gen = +[](complex64 x) {
       return ErrorSpec::Builder()
           .abs_err(RsqrtCpuGpuAbsErr(x))
@@ -171,7 +172,7 @@ UNARY_TEST_COMPLEX_64(Rsqrt, {
     };
   }
 
-  if (IsGpu(platform_)) {
+  if (IsGpu()) {
     error_spec_gen = +[](complex64 x) {
       return ErrorSpec::Builder()
           .abs_err(RsqrtCpuGpuAbsErr(x))
@@ -251,7 +252,7 @@ UNARY_TEST_COMPLEX_128(Log, {
     return ErrorSpec::Builder().strict_signed_zeros().build();
   };
 
-  if (IsCpu(platform_) || IsGpu(platform_)) {
+  if (IsCpu() || IsGpu()) {
     error_spec_gen = +[](complex128 x) {
       // TODO(rmlarsen): see b/162664705 and b/138578594
       bool should_skip = std::isnan(x.real()) || std::isnan(x.imag());

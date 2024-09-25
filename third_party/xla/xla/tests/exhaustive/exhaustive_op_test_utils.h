@@ -22,6 +22,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <initializer_list>
 #include <iterator>
 #include <limits>
 #include <string>
@@ -117,6 +118,12 @@ class ExhaustiveOpTestTraits {
       N == 1, ErrorSpec (*)(NativeT),
       std::conditional_t<N == 2, ErrorSpec (*)(NativeT, NativeT),
                          std::enable_if_t<N == 1 || N == 2, void>>>;
+
+  // Returns an ErrorSpecGen that sets no error tolerances.
+  //
+  // The intention of this default is to force test writers to tighten bounds at
+  // least somewhat and not rely on overly large default tolerances.
+  static ErrorSpecGen FallbackErrorSpecGen();
 };
 
 template <PrimitiveType T, size_t N>
@@ -231,6 +238,21 @@ typename ExhaustiveOpTestTraits<T, N>::ErrorSpecGen GetDefaultSpecGenerator() {
       DefaultSpecGenerator<T, N>);
 }
 
+template <typename Traits>
+typename Traits::ErrorSpecGen PickFirstErrorSpecGenPresent(
+    std::initializer_list<typename Traits::ErrorSpecGen> error_specs) {
+  typename Traits::ErrorSpecGen ret = Traits::FallbackErrorSpecGen();
+  for (auto it = error_specs.begin(); it != error_specs.end(); it++) {
+    // Check if the ErrorSpecGen is nullptr to indicate it is not set. Replace
+    // ret with the first non-nullptr ErrorSpecGen.
+    if (*it != nullptr) {
+      ret = *it;
+      break;
+    }
+  }
+  return ret;
+}
+
 // Determines if the real component of the complex number is subnormal (either
 // sign).
 //
@@ -288,7 +310,7 @@ bool IsMinNormal(NativeT value) {
                 std::is_same_v<NativeT, xla::complex128>) {
     return IsMinNormalReal(value) || IsMinNormalImaginary(value);
   } else {
-    return std::abs(value) == std::numeric_limits<NativeT>::min();
+    return std::abs(value) == std::numeric_limits<NativeT>::min();  // NOLINT
   }
 }
 
@@ -800,7 +822,7 @@ T ReferenceMin(T x, T y) {
 inline std::function<XlaOp(XlaOp, XlaOp)> AddEmptyBroadcastDimension(
     std::function<XlaOp(XlaOp, XlaOp, absl::Span<const int64_t>)>
         build_method) {
-  return [&](XlaOp src0, XlaOp src1) -> XlaOp {
+  return [build_method](XlaOp src0, XlaOp src1) -> XlaOp {
     return build_method(src0, src1, {});
   };
 }

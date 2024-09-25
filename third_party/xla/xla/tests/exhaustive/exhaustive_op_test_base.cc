@@ -60,10 +60,6 @@ limitations under the License.
 namespace xla {
 namespace exhaustive_op_test {
 
-int eup_version = 0;
-
-int GetEupVersion() { return eup_version; }
-
 bool dump_values = false;
 
 bool ShouldDumpValues() { return dump_values; }
@@ -198,7 +194,6 @@ int GetCacheLocation(const std::array<NativeRefT, N>& input) {
 }
 
 // The inverse function of GetCacheLocation.
-
 template <typename RetT,
           typename std::enable_if<!is_complex_t<RetT>::value>::type* = nullptr>
 RetT FromCacheLocationComponent(int cache_loc) {
@@ -568,11 +563,11 @@ ExhaustiveOpTestBase<T, N>::GetTestValuesWithSubnormalSubstitutions(
     ComponentNativeRefT value) {
   std::vector<ComponentNativeRefT> test_values;
   if (std::fpclassify(value) == FP_SUBNORMAL) {
-    test_values.reserve(relaxed_denormal_signs_ ? 3 : 2);
+    test_values.reserve(RelaxedDenormalSigns() ? 3 : 2);
     test_values.push_back(std::copysign(0, value));
     test_values.push_back(
         std::copysign(std::numeric_limits<ComponentNativeRefT>::min(), value));
-    if (relaxed_denormal_signs_) {
+    if (RelaxedDenormalSigns()) {
       test_values.push_back(std::copysign(0, -value));
     }
   } else {
