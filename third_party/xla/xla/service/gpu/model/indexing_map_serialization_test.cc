@@ -45,7 +45,7 @@ TEST_F(IndexingMapSerializationTest, DimsOnly) {
     (d0, d1) -> (d0 mod 2 + d1),
     domain:
     d0 in [0, 3],
-    d1 in [0, 4],
+    d1 in [-4, 4],
     is_simplified: true
   )");
 }
@@ -84,6 +84,19 @@ TEST_F(IndexingMapSerializationTest, DimsAndSymbolsAndConstraints) {
     s2 in [0, 3],
     d0 mod 4 in [0, 0],
     d1 + s0 in [0, 45],
+    is_simplified: false
+  )");
+}
+
+TEST_F(IndexingMapSerializationTest, AffineExprsWithParens) {
+  ParseAndCheck(R"(
+    (d0, d1)[s0, s1] -> ((d0 + d0 mod 3) floordiv 3
+      + s0 + (s0 * 2) mod 3 + (d0 + s0) mod 3),
+    domain:
+    d0 in [0, 9],
+    d1 in [0, 19],
+    s0 in [0, 29],
+    s1 in [0, 39],
     is_simplified: false
   )");
 }
