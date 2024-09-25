@@ -906,8 +906,10 @@ bool IsFusibleAsMultiOutputFusionRoot(const HloInstruction& instr) {
   // with any other instruction.
   // Note that scatter cannot be the root of a multi-output fusion because
   // its emitter doesn't support it.
+  //
+  // Custom fusions cannot be fused with anything.
 
-  return instr.IsFusible() &&
+  return instr.IsFusible() && !instr.IsCustomFusion() &&
          (IsInputFusibleReduction(instr) || IsInputFusibleTranspose(instr) ||
           instr.IsLoopFusion() ||  // TODO(b/130013493): Use IsLoopFusible here.
           instr.IsElementwise());
