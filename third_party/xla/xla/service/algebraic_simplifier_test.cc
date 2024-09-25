@@ -10561,6 +10561,18 @@ TEST_F(AlgebraicSimplifierTest, AbsEliminationSelMaxBcast) {
                                      m::Broadcast(m::ConstantScalar())))));
 }
 
+TEST_F(AlgebraicSimplifierTest, AbsEliminationIota) {
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(R"(
+    e {
+      i = s32[3,2] iota(), iota_dimension=0
+      ROOT a = s32[3,2] abs(i)
+    }
+  )"));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Iota()));
+}
+
 TEST_F(AlgebraicSimplifierTest, SimplifyRedundantBitcastConvert) {
   const char* kModuleStr = R"(
     HloModule m
