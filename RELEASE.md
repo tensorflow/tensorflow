@@ -1,118 +1,50 @@
 # Release 2.18.0
 
-<REPLACE THIS TEXT WITH THE RELEASE NOTES>
-
-# Release 2.18.0
-
 ## TensorFlow
-
-<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
 
 ### Breaking Changes
 
-* <DOCUMENT BREAKING CHANGES HERE>
-* <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
-
 * `tf.lite`
     * C API:
-      * An optional, fourth parameter was added `TfLiteOperatorCreate` as a step
-        forward towards a cleaner API for `TfLiteOperator`. Function
-        `TfLiteOperatorCreate` was added recently, in TensorFlow Lite version 2.17.0,
-        released on 7/11/2024, and we do not expect there will be much code using this
-        function yet. Any code breakages can be easily resolved by passing nullptr as
-        the new, 4th parameter.
+      * An optional, fourth parameter was added `TfLiteOperatorCreate` as a step forward towards a cleaner API for `TfLiteOperator`. Function `TfLiteOperatorCreate` was added recently, in TensorFlow Lite version 2.17.0, released on 7/11/2024, and we do not expect there will be much code using this function yet. Any code breakages can be easily resolved by passing nullptr as the new, 4th parameter.
     * SignatureRunner is now supported for models with no signatures.
 
 * TensorRT support is disabled in CUDA builds for code health improvement.
 
 * Hermetic CUDA support is added.
 
-  Hermetic CUDA uses a specific downloadable version of CUDA instead of the
-  user’s locally installed CUDA. Bazel will download CUDA, CUDNN and NCCL
-  distributions, and then use CUDA libraries and tools as dependencies in
-  various Bazel targets. This enables more reproducible builds for Google ML
-  projects and supported CUDA versions.
+  Hermetic CUDA uses a specific downloadable version of CUDA instead of the user’s locally installed CUDA. Bazel will download CUDA, CUDNN and NCCL distributions, and then use CUDA libraries and tools as dependencies in various Bazel targets. This enables more reproducible builds for Google ML projects and supported CUDA versions. 
 
 ### Known Caveats
 
-* <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
-* <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
-* <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
-
 ### Major Features and Improvements
 
-*   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
-*   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
-
+* TensorFlow now supports and is compiled with NumPy 2.0 by default. Compatibility with NumPy 1.26 will be maintained until 2025, aligning with community standard deprecation timeline [here](https://scientific-python.org/specs/spec-0000/).
 *   `tf.lite`:
-    *   The LiteRT [repo](https://github.com/google-ai-edge/LiteRT) is
-    live (see [announcement](https://developers.googleblog.com/en/tensorflow-lite-is-now-litert/)), which means that in the coming months there will be changes to the development experience 
-    for TFLite. The TF Lite Runtime source will be moved later this year,
-    and sometime after that we will start accepting contributions through that repo.
+    *   The LiteRT [repo](https://github.com/google-ai-edge/LiteRT) is live (see [announcement](https://developers.googleblog.com/en/tensorflow-lite-is-now-litert/)), which means that in the coming months there will be changes to the development experience for TFLite. The TF Lite Runtime source will be moved later this year, and sometime after that we will start accepting contributions through that repo.
 
 ### Bug Fixes and Other Changes
 
-* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
-* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
-* <NOTES SHOULD BE GROUPED PER AREA>
-
 * `tf.data`
-    * Add optional `synchronous` argument to `map`, to specify that the `map`
-      should run synchronously, as opposed to be parallelizable when
-      `options.experimental_optimization.map_parallelization=True`. This saves
-      memory compared to setting `num_parallel_calls=1`.
-    * Add optional `use_unbounded_threadpool` argument to `map`, to specify that
-      the `map` should use an unbounded threadpool instead of the default pool
-      that is based on the number of cores on the machine. This can improve 
-      throughput for map functions which perform IO or otherwise release the 
-      CPU.
-    * Add [`tf.data.experimental.get_model_proto`](https://www.tensorflow.org/api_docs/python/tf/data/experimental/get_model_proto)
-      to allow users to peek into the analytical model inside of a dataset
-      iterator.
+    * Add optional `synchronous` argument to `map`, to specify that the `map` should run synchronously, as opposed to be parallelizable when `options.experimental_optimization.map_parallelization=True`. This saves memory compared to setting `num_parallel_calls=1`.
+    * Add optional `use_unbounded_threadpool` argument to `map`, to specify that the `map` should use an unbounded threadpool instead of the default pool that is based on the number of cores on the machine. This can improve throughput for map functions which perform IO or otherwise release the CPU.
+    * Add [`tf.data.experimental.get_model_proto`](https://www.tensorflow.org/api_docs/python/tf/data/experimental/get_model_proto) to allow users to peek into the analytical model inside of a dataset iterator.
 
 * `tf.lite`
     * `Dequantize` op supports `TensorType_INT4`.
         * This change includes per-channel dequantization.
     * Add support for `stablehlo.composite`.
-    * `EmbeddingLookup` op supports per-channel
-      quantization and `TensorType_INT4` values.
-    * `FullyConnected` op supports `TensorType_INT16` activation and
-      `TensorType_Int4` weight per-channel quantization.
+    * `EmbeddingLookup` op supports per-channel quantization and `TensorType_INT4` values.
+    * `FullyConnected` op supports `TensorType_INT16` activation and `TensorType_Int4` weight per-channel quantization.
 
 * `tf.tensor_scatter_update`, `tf.tensor_scatter_add` and of other reduce types.
     * Support `bad_indices_policy`.
-
-## Keras
-
-<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
-
-### Breaking Changes
-
-* <DOCUMENT BREAKING CHANGES HERE>
-* <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
-
-### Known Caveats
-
-* <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
-* <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
-* <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
-
-### Major Features and Improvements
-
-*   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
-*   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
-
-### Bug Fixes and Other Changes
-
-* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
-* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
-* <NOTES SHOULD BE GROUPED PER AREA>
 
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
 
-<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+Akhil Goel, akhilgoe, Alexander Pivovarov, Amir Samani, Andrew Goodbody, Andrey Portnoy, Anthony Platanios, bernardoArcari, Brett Taylor, buptzyb, Chao, Christian Clauss, Cocoa, Daniil Kutz, Darya Parygina, dependabot[bot], Dimitris Vardoulakis, Dragan Mladjenovic, Elfie Guo, eukub, Faijul Amin, flyingcat, Frédéric Bastien, ganyu.08, Georg Stefan Schmid, Grigory Reznikov, Harsha H S, Harshit Monish, Heiner, Ilia Sergachev, Jan, Jane Liu, Jaroslav Sevcik, Kaixi Hou, Kanvi Khanna, Kristof Maar, Kristóf Maár, LakshmiKalaKadali, Lbertho-Gpsw, lingzhi98, MarcoFalke, Masahiro Hiramori, Mmakevic-Amd, mraunak, Nobuo Tsukamoto, Notheisz57, Olli Lupton, Pearu Peterson, pemeliya, Peyara Nando, Philipp Hack, Phuong Nguyen, Pol Dellaiera, Rahul Batra, Ruturaj Vaidya, sachinmuradi, Sergey Kozub, Shanbin Ke, Sheng Yang, shengyu, Shraiysh, Shu Wang, Surya, sushreebarsa, Swatheesh-Mcw, syzygial, Tai Ly, terryysun, tilakrayal, Tj Xu, Trevor Morris, Tzung-Han Juang, wenchenvincent, wondertx, Xuefei Jiang, Ye Huang, Yimei Sun, Yunlong Liu, Zahid Iqbal, Zhan Lu, Zoranjovanovic-Ns, Zuri Obozuwa
 
 # Release 2.17.0
 
