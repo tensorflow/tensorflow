@@ -538,6 +538,9 @@ cc_library(
 xla_cc_test(
     name = "indexing_map_serialization_test",
     srcs = ["indexing_map_serialization_test.cc"],
+    tags = [
+        "nomsan",
+    ],
     deps = [
         ":indexing_map_serialization",
         ":indexing_test_utils",
