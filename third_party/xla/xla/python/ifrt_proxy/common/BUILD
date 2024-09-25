@@ -76,7 +76,7 @@ tf_proto_library(
         "//xla/python/ifrt:serdes_proto",
         "//xla/python/ifrt:shape_proto",
         "//xla/python/ifrt:sharding_proto",
-        "@local_tsl//tsl/protobuf:status_proto",
+        "//xla/tsl/protobuf:status_proto",
     ],
 )
 

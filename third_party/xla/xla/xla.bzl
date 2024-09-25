@@ -54,7 +54,7 @@ _XLA_SHARED_OBJECT_SENSITIVE_DEPS = if_static(extra_deps = [], otherwise = [
     "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc_impl",
     "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc_impl",
     "@local_tsl//tsl/profiler/utils:time_utils_impl",
-    "@local_tsl//tsl/protobuf:protos_all_cc_impl",
+    "//xla/tsl/protobuf:protos_all_cc_impl",
 ]) + if_cuda_is_configured([
     Label("//xla/stream_executor/cuda:all_runtime"),
     Label("//xla/stream_executor/cuda:stream_executor_cuda"),

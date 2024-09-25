@@ -73,7 +73,7 @@ tf_proto_library(
     protodeps = [
         "//xla:xla_data_proto",
         "//xla:autotuning_proto",
-        "@local_tsl//tsl/protobuf:dnn_proto",
+        "//xla/tsl/protobuf:dnn_proto",
     ],
 )
 
@@ -392,6 +392,7 @@ cc_library(
         "//xla/stream_executor:launch_dim",
         "//xla/stream_executor/gpu:gpu_blas_lt",
         "//xla/stream_executor/integrations:device_mem_allocator",
+        "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
@@ -419,7 +420,6 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:human_readable_json",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/protobuf:dnn_proto_cc",
         "@triton//:TritonDialects",
     ] + if_gpu_is_configured([
         "//xla/service/gpu/runtime:cholesky_thunk",
@@ -2290,6 +2290,7 @@ cc_library(
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:launch_dim",
         "//xla/stream_executor:typed_kernel_factory",
+        "//xla/tsl/protobuf:dnn_proto_cc",
         "//xla/tsl/util:env_var",
         "//xla/tsl/util/proto:proto_utils",
         "@com_google_absl//absl/algorithm:container",
@@ -2306,7 +2307,6 @@ cc_library(
         "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/protobuf:dnn_proto_cc",
     ] + if_cuda_is_configured([
         ":stream_executor_util_kernel",
     ]),

@@ -35,8 +35,8 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform/port.h"
+#include "xla/tsl/protobuf/dnn.pb.h"
 #include "tsl/platform/errors.h"
-#include "tsl/protobuf/dnn.pb.h"
 
 namespace Eigen {
 struct half;

@@ -612,7 +612,7 @@ tf_cc_test(
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/protobuf:protos_all_cc",
+        "@local_xla//xla/tsl/protobuf:protos_all_cc",
     ] + tf_protos_all(),
 )
 

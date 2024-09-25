@@ -323,7 +323,7 @@ cc_library(
     deps = [
         ":status",
         "//tsl/protobuf:error_codes_proto_impl_cc",
-        "//tsl/protobuf:status_proto_cc",
+        "@local_xla//xla/tsl/protobuf:status_proto_cc",
     ] + tf_platform_deps("status"),
 )
 
@@ -1349,10 +1349,10 @@ tsl_cc_test(
         ":test",
         ":test_main",
         "//tsl/protobuf:error_codes_proto_impl_cc",
-        "//tsl/protobuf:status_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:str_format",
+        "@local_xla//xla/tsl/protobuf:status_proto_cc",
     ],
 )
 

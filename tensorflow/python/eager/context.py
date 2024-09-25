@@ -26,6 +26,7 @@ import threading
 from absl import logging
 import numpy as np
 
+from xla.tsl.protobuf import coordination_config_pb2
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import graph_debug_info_pb2
 from tensorflow.core.protobuf import config_pb2
@@ -46,7 +47,6 @@ from tensorflow.python.util import is_in_graph_mode
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
-from tsl.protobuf import coordination_config_pb2
 
 
 # TODO(b/307794935): Remove after a solution is found.

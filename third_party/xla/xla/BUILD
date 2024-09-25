@@ -1248,7 +1248,7 @@ tf_proto_library(
     srcs = ["autotuning.proto"],
     make_default_target_header_only = True,
     protodeps = [
-        "@local_tsl//tsl/protobuf:dnn_proto",
+        "//xla/tsl/protobuf:dnn_proto",
     ] + if_google([
         "@com_google_protobuf//:any",
         "@com_google_protobuf//:duration",

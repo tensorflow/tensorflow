@@ -23,6 +23,9 @@ limitations under the License.
 
 #include "xla/tsl/distributed_runtime/coordination/coordination_service.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "xla/tsl/protobuf/coordination_config.pb.h"
+#include "xla/tsl/protobuf/coordination_service.pb.h"
+#include "xla/tsl/protobuf/distributed_runtime_payloads.pb.h"
 #include "tensorflow/core/activity_watcher/activity.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
@@ -35,9 +38,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/cluster.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tsl/protobuf/coordination_config.pb.h"
-#include "tsl/protobuf/coordination_service.pb.h"
-#include "tsl/protobuf/distributed_runtime_payloads.pb.h"
 
 namespace tensorflow {
 namespace {

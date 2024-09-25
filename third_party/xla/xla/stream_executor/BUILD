@@ -108,6 +108,7 @@ cc_library(
         "//xla/tsl/framework:device_id",
         "//xla/tsl/framework:device_type",
         "//xla/tsl/lib/gtl:int_type",
+        "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
@@ -130,7 +131,6 @@ cc_library(
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:thread_annotations",
         "@local_tsl//tsl/platform:types",
-        "@local_tsl//tsl/protobuf:dnn_proto_cc",
     ] + if_static([
         ":stream_executor_impl",
     ]) + if_google([
@@ -282,8 +282,8 @@ cc_library(
     name = "data_type",
     hdrs = ["data_type.h"],
     deps = [
+        "//xla/tsl/protobuf:dnn_proto_cc",
         "@local_tsl//tsl/platform:ml_dtypes",
-        "@local_tsl//tsl/protobuf:dnn_proto_cc",
     ],
 )
 
@@ -412,12 +412,12 @@ cc_library(
         ":device_memory",
         ":numeric_options",
         "//xla/stream_executor/platform",
+        "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/protobuf:dnn_proto_cc",
     ],
 )
 
@@ -432,6 +432,7 @@ cc_library(
         ":numeric_options",
         "//xla/stream_executor/platform",
         "//xla/tsl/lib/strings:proto_serialization",
+        "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -447,7 +448,6 @@ cc_library(
         "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/protobuf:dnn_proto_cc",
     ] + if_google(["@com_google_protobuf//:wrappers_cc_proto"]),
 )
 
@@ -466,11 +466,11 @@ cc_library(
         ":dnn",
         ":stream",
         ":stream_executor_h",
+        "//xla/tsl/protobuf:dnn_proto_cc",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/protobuf:dnn_proto_cc",
     ],
 )
 
@@ -791,7 +791,7 @@ cc_library(
         ":stream_common",
         ":stream_executor_common",
         ":stream_executor_h",
-    ] + if_oss(["@local_tsl//tsl/protobuf:dnn_proto_cc_impl"]),
+    ] + if_oss(["//xla/tsl/protobuf:dnn_proto_cc_impl"]),
 )
 
 #===--------------------------------------------------------------------------------------------===#
