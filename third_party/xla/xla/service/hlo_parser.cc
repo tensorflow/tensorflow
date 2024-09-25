@@ -249,10 +249,8 @@ class HloParserImpl : public HloParser {
   using BoolList = absl::InlinedVector<bool, 1>;
 
   explicit HloParserImpl(absl::string_view str,
-                         bool set_to_default_entry_computation_layout = true)
-      : lexer_(str),
-        set_to_default_entry_computation_layout_(
-            set_to_default_entry_computation_layout) {}
+                         const HloParserOptions& options = HloParserOptions())
+      : lexer_(str), options_(options) {}
 
   // Runs the parser and constructs the resulting HLO in the given (empty)
   // HloModule. Returns the error status in case an error occurred.
@@ -673,7 +671,7 @@ class HloParserImpl : public HloParser {
   // Used to generate names for anonymous instructions.
   NameUniquer name_uniquer_{/*separator=*/"."};
 
-  const bool set_to_default_entry_computation_layout_;
+  const HloParserOptions options_;
 };
 
 bool SplitToInt64s(absl::string_view s, char delim, std::vector<int64_t>* out) {
@@ -917,7 +915,7 @@ bool HloParserImpl::ParseComputationLayout(
   }
   while (lexer_.GetKind() != TokKind::kRparen) {
     Shape param;
-    if (!ParseShape(&param, set_to_default_entry_computation_layout_)) {
+    if (!ParseShape(&param, options_.fill_missing_module_parameter_layouts())) {
       return false;
     }
     computation_layout->add_parameter_layout(ShapeLayout(param));
@@ -937,7 +935,7 @@ bool HloParserImpl::ParseComputationLayout(
     return false;
   }
   Shape result;
-  if (!ParseShape(&result, set_to_default_entry_computation_layout_)) {
+  if (!ParseShape(&result, options_.fill_missing_module_parameter_layouts())) {
     return false;
   }
   *computation_layout->mutable_result_layout() = ShapeLayout(result);
@@ -6990,17 +6988,11 @@ bool HloParserImpl::ParseSingleInstruction(HloModule* module) {
 
 absl::StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
     absl::string_view str, const HloModuleConfig& config,
-    bool set_to_default_entry_computation_layout) {
+    const HloParserOptions& options) {
   auto module = std::make_unique<HloModule>(/*name=*/"_", config);
-  HloParserImpl parser(str, set_to_default_entry_computation_layout);
+  HloParserImpl parser(str, options);
   TF_RETURN_IF_ERROR(parser.Run(module.get()));
   return std::move(module);
-}
-
-absl::StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
-    absl::string_view str, bool set_to_default_entry_computation_layout) {
-  return ParseAndReturnUnverifiedModule(
-      str, HloModuleConfig(), set_to_default_entry_computation_layout);
 }
 
 absl::StatusOr<HloSharding> ParseSharding(absl::string_view str) {

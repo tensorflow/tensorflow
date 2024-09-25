@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -3434,10 +3435,69 @@ ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
 
   absl::StatusOr<std::unique_ptr<HloModule>> module =
       ParseAndReturnUnverifiedModule(
-          original, /*set_to_default_entry_computation_layout=*/false);
+          original, {},
+          HloParserOptions().set_fill_missing_module_parameter_layouts(false));
   TF_ASSERT_OK(module.status());
   // Do not set the default layout.
   EXPECT_FALSE(module.value()->entry_computation_layout().AnyLayoutSet());
+}
+
+TEST_F(HloParserTest, DoNotSetEntryComputationLayoutIfSet) {
+  const std::string original = R"(
+HloModule layout_defined, entry_computation_layout={(f32[8,16,256]{1,2,0}) -> f32[8,16]}
+
+add_F32.v3 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
+  input = f32[8,16,256]{0,1,2} parameter(0)
+  constant = f32[] constant(0)
+  ROOT reduce = f32[8,16]{0,1} reduce(input, constant), dimensions={2}, to_apply=add_F32.v3
+})";
+
+  absl::StatusOr<std::unique_ptr<HloModule>> module =
+      ParseAndReturnUnverifiedModule(
+          original, {},
+          HloParserOptions().set_fill_missing_module_parameter_layouts(true));
+  TF_ASSERT_OK(module.status());
+  EXPECT_THAT(module.value()
+                  ->entry_computation_layout()
+                  .parameter_layout(0)
+                  .layout()
+                  .minor_to_major(),
+              ElementsAre(1, 2, 0));
+}
+
+TEST_F(HloParserTest, SetEntryComputationLayoutIfNotSet) {
+  const std::string original = R"(
+HloModule layout_defined, entry_computation_layout={(f32[8,16,256]) -> f32[8,16]}
+
+add_F32.v3 {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY %Reduce (input: f32[8,16,256]) -> f32[8,16] {
+  input = f32[8,16,256]{0,1,2} parameter(0)
+  constant = f32[] constant(0)
+  ROOT reduce = f32[8,16]{0,1} reduce(input, constant), dimensions={2}, to_apply=add_F32.v3
+})";
+
+  absl::StatusOr<std::unique_ptr<HloModule>> module =
+      ParseAndReturnUnverifiedModule(
+          original, {},
+          HloParserOptions().set_fill_missing_module_parameter_layouts(true));
+  TF_ASSERT_OK(module.status());
+  EXPECT_THAT(module.value()
+                  ->entry_computation_layout()
+                  .parameter_layout(0)
+                  .layout()
+                  .minor_to_major(),
+              ElementsAre(2, 1, 0));
 }
 
 TEST_F(HloParserTest, NoEntry) {
