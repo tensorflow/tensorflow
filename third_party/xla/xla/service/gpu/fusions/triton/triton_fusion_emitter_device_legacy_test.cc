@@ -15,21 +15,16 @@ limitations under the License.
 
 #include <cstdlib>
 #include <iterator>
-#include <limits>
-#include <memory>
 #include <string>
 #include <utility>
 #include <variant>
-#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
-#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
-#include "absl/types/span.h"
 #include "llvm/IR/LLVMContext.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/PassManager.h"
@@ -66,6 +61,7 @@ namespace gpu {
 namespace {
 
 namespace m = ::xla::match;
+using tsl::testing::StatusIs;
 
 class TritonTest : public GpuCodegenTest {
  public:
@@ -151,6 +147,44 @@ class TritonGemmTestWithoutTritonGemmAny : public TritonGemmTest {
   }
 };
 
+TEST_F(TritonGemmTest, RejectDotInt4HLO) {
+  constexpr std::string_view kHloText = R"(
+    HloModule t
+
+    ENTRY main {
+      lhs = s4[16,32,64]{2,1,0} parameter(0)
+      rhs = s4[16,64,16]{2,1,0} parameter(1)
+      ROOT dot = s4[16,32,16]{2,1,0} dot(lhs, rhs),
+          lhs_contracting_dims={2},
+          rhs_contracting_dims={1},
+          lhs_batch_dims={0},
+          rhs_batch_dims={0}
+    }
+  )";
+  EXPECT_THAT(GetOptimizedModule(kHloText).status(),
+              StatusIs(tsl::error::INVALID_ARGUMENT));
+}
+
+TEST_F(TritonGemmTest, RejectInt4NegatePlusConvertHLO) {
+  constexpr std::string_view kHloText = R"(
+    HloModule t
+
+    ENTRY main {
+      lhs = s4[16,32,64]{2,1,0} parameter(0)
+      lhs_negated = s4[16,32,64]{2,1,0} negate(lhs)
+      lhs_converted = bf16[16,32,64]{2,1,0} convert(lhs_negated)
+      rhs = bf16[16,64,16]{2,1,0} parameter(1)
+      ROOT dot = bf16[16,32,16]{2,1,0} dot(lhs_converted, rhs),
+          lhs_contracting_dims={2},
+          rhs_contracting_dims={1},
+          lhs_batch_dims={0},
+          rhs_batch_dims={0}
+    }
+  )";
+  EXPECT_THAT(GetOptimizedModule(kHloText).status(),
+              StatusIs(tsl::error::INVALID_ARGUMENT));
+}
+
 TEST_F(TritonGemmTest, RejectTritonFusionForInt4WithMinorBatchDim) {
   constexpr std::string_view kHloText = R"(
     HloModule t
@@ -167,7 +201,7 @@ TEST_F(TritonGemmTest, RejectTritonFusionForInt4WithMinorBatchDim) {
     }
   )";
   const std::string pattern =
-      R"(CHECK-NOT: ""kind":"__triton_gemm","triton_gemm_config"")";
+      R"(CHECK-NOT: "kind":"__triton_gemm","triton_gemm_config")";
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
   TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), pattern));
   EXPECT_TRUE(ok);
@@ -1061,9 +1095,8 @@ ENTRY entry {
   EXPECT_THAT(
       TritonWrapper("test_fn", triton_dot_fusion, CudaAmpereOrRocm(), dev_info,
                     block_level_parameters, &llvm_module, mlir_context),
-      tsl::testing::StatusIs(
-          tsl::error::RESOURCE_EXHAUSTED,
-          ::testing::HasSubstr("Shared memory size limit exceeded")));
+      StatusIs(tsl::error::RESOURCE_EXHAUSTED,
+               ::testing::HasSubstr("Shared memory size limit exceeded")));
 
   config.set_block_m(64);
   config.set_block_n(128);
@@ -1647,9 +1680,8 @@ ENTRY entry {
   EXPECT_THAT(
       TritonWrapper("test_fn", triton_dot_fusion, CudaAmpereOrRocm(), dev_info,
                     block_level_parameters, &llvm_module, mlir_context),
-      tsl::testing::StatusIs(
-          tsl::error::RESOURCE_EXHAUSTED,
-          "Tiling complexity heuristic exceeded: 147456 > 9000"));
+      StatusIs(tsl::error::RESOURCE_EXHAUSTED,
+               "Tiling complexity heuristic exceeded: 147456 > 9000"));
 
   // Succeeds if the tiling is not too complex.
   config.set_block_m(32);

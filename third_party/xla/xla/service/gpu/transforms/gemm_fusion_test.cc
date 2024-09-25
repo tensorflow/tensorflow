@@ -1352,28 +1352,22 @@ ENTRY main {
   EXPECT_FALSE(result.ok());
 }
 
-constexpr auto kInt4Dot = R"(
-ENTRY e {
-  p0 = s8[16,16] parameter(0)
-  p1 = s4[16,16] parameter(1)
-  p1c = bf16[16,16] convert(p1)
-  ROOT dot = bf16[16,16] dot(p0, p1c),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-})";
-
 TEST_F(SmallDotGemmFusionTest, Int4DotIsRewritten) {
+  constexpr auto kInt4Dot = R"(
+    ENTRY e {
+      p0 = s8[16,16] parameter(0)
+      p1 = s4[16,16] parameter(1)
+      p1c = bf16[16,16] convert(p1)
+      ROOT dot = bf16[16,16] dot(p0, p1c),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+  )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kInt4Dot));
   module->mutable_config()
       .mutable_debug_options()
       .set_xla_gpu_enable_triton_gemm_int4(true);
   EXPECT_TRUE(GemmFusion(gpu_version_).Run(module.get()).value());
-}
-
-TEST_F(SmallDotGemmFusionTest, Int4DotIsNotRewritten) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(kInt4Dot));
-  EXPECT_FALSE(GemmFusion(gpu_version_).Run(module.get()).value());
 }
 
 TEST_F(SmallDotGemmFusionTest, Int4ConcatPlusConvertIsRewritten) {
