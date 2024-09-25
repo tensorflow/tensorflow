@@ -64,24 +64,23 @@ constexpr char kSpmdParametersShardings[] = "mhlo.spmd_parameters_shardings";
 constexpr char kUseAutoSpmdPartitioning[] = "mhlo.use_auto_spmd_partitioning";
 
 mlir::ArrayAttr ConvertCrossProgramPrefetches(
-    const absl::Span<const xla::HloModule::CrossProgramPrefetchInfo> prefetches,
-    const xla::HloComputation& entryComputation, mlir::Builder* builder,
+    const absl::Span<const HloModule::CrossProgramPrefetchInfo> prefetches,
+    const HloComputation& entryComputation, mlir::Builder* builder,
     bool flatten_computation_args_result) {
   llvm::SmallVector<mlir::Attribute, 4> shapes;
   shapes.reserve(prefetches.size());
   if (flatten_computation_args_result) {
-    llvm::SmallVector<absl::flat_hash_map<xla::ShapeIndex, int64_t>>
+    llvm::SmallVector<absl::flat_hash_map<ShapeIndex, int64_t>>
         original_param_index_to_flattened_arg_index;
     int64_t arg_index = 0;
-    for (xla::HloInstruction* param_instruction :
+    for (HloInstruction* param_instruction :
          entryComputation.parameter_instructions()) {
       auto& param_map =
           original_param_index_to_flattened_arg_index.emplace_back();
-      xla::ShapeUtil::ForEachLeafShape(
-          param_instruction->shape(),
-          [&](const xla::Shape&, const xla::ShapeIndex& index) {
-            param_map[index] = arg_index++;
-          });
+      ShapeUtil::ForEachLeafShape(param_instruction->shape(),
+                                  [&](const Shape&, const ShapeIndex& index) {
+                                    param_map[index] = arg_index++;
+                                  });
     }
     for (const auto& [parameter, index, alt_memory_offset] : prefetches)
       shapes.push_back(mlir::mhlo::CrossProgramPrefetchAttr::get(
@@ -100,7 +99,7 @@ mlir::ArrayAttr ConvertCrossProgramPrefetches(
 }
 
 void ImportEntryComputationParameterLayoutAndTiles(
-    const xla::HloModule& hlo_module, mlir::ModuleOp module,
+    const HloModule& hlo_module, mlir::ModuleOp module,
     const ComputationLayout& computation_layout, mlir::Builder builder) {
   llvm::SmallVector<mlir::Attribute> parameter_layouts;
   llvm::SmallVector<mlir::Attribute> parameter_tiles;
@@ -132,7 +131,7 @@ void ImportEntryComputationParameterLayoutAndTiles(
 }
 
 void ImportEntryComputationResultLayoutAndTiles(
-    const xla::HloModule& hlo_module, mlir::ModuleOp module,
+    const HloModule& hlo_module, mlir::ModuleOp module,
     const ComputationLayout& computation_layout, mlir::Builder builder) {
   if (computation_layout.result_layout().shape().IsTuple()) {
     llvm::SmallVector<mlir::Attribute> result_layouts;
@@ -162,7 +161,7 @@ void ImportEntryComputationResultLayoutAndTiles(
 
 }  // namespace
 
-void ImportCrossProgramPrefetches(const xla::HloModule& hlo_module,
+void ImportCrossProgramPrefetches(const HloModule& hlo_module,
                                   mlir::ModuleOp module,
                                   bool flatten_computation_args_result,
                                   mlir::Builder builder) {
@@ -173,7 +172,7 @@ void ImportCrossProgramPrefetches(const xla::HloModule& hlo_module,
                                     flatten_computation_args_result));
 }
 
-void ImportEntryComputationLayoutAndTiles(const xla::HloModule& hlo_module,
+void ImportEntryComputationLayoutAndTiles(const HloModule& hlo_module,
                                           mlir::ModuleOp module,
                                           mlir::Builder builder) {
   const auto& computation_layout = hlo_module.entry_computation_layout();
@@ -195,7 +194,7 @@ void ImportEntryComputationLayoutAndTiles(const xla::HloModule& hlo_module,
   }
 }
 
-void ImportFrontendAttributes(const xla::HloModule& hlo_module,
+void ImportFrontendAttributes(const HloModule& hlo_module,
                               mlir::ModuleOp module, mlir::Builder builder) {
   if (!hlo_module.frontend_attributes().map().empty()) {
     llvm::SmallVector<mlir::NamedAttribute, 4> frontend_attributes;
@@ -230,7 +229,7 @@ void ImportNumPartitions(const xla::HloModule& hlo_module,
   }
 }
 
-void ImportNumReplicas(const xla::HloModule& hlo_module, mlir::ModuleOp module,
+void ImportNumReplicas(const HloModule& hlo_module, mlir::ModuleOp module,
                        mlir::Builder builder) {
   const auto& config = hlo_module.config();
   if (config.replica_count() != 1) {
@@ -247,7 +246,7 @@ void ImportSpmdOutputSharding(const xla::HloModule& hlo_module,
         ConvertSharding(hlo_module.spmd_output_sharding(), &builder));
 }
 
-void ImportSpmdParametersShardings(const xla::HloModule& hlo_module,
+void ImportSpmdParametersShardings(const HloModule& hlo_module,
                                    mlir::ModuleOp module,
                                    bool flatten_computation_args_result,
                                    mlir::Builder builder) {
@@ -266,7 +265,7 @@ void ImportSpmdParametersShardings(const xla::HloModule& hlo_module,
   }
 }
 
-void ImportUseAutoSpmdPartitioning(const xla::HloModule& hlo_module,
+void ImportUseAutoSpmdPartitioning(const HloModule& hlo_module,
                                    mlir::ModuleOp module,
                                    mlir::Builder builder) {
   module->setAttr(kUseAutoSpmdPartitioning,
