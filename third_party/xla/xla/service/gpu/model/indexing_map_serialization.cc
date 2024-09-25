@@ -122,11 +122,17 @@ class Parser {
  public:
   explicit Parser(llvm::StringRef input) : input_(input), it_(input.begin()) {
     // Set the parser to the first token.
-    Advance();
+    current_token_ = GetNextTokenImpl();
   }
 
   const Token& GetCurrentToken() const { return current_token_; };
-  void Advance() { current_token_ = GetNextTokenImpl(); }
+  void Advance() {
+    if (current_token_.kind == Token::Kind::kError ||
+        current_token_.kind == Token::Kind::kEOF) {
+      return;
+    }
+    current_token_ = GetNextTokenImpl();
+  }
   Token GetNextToken() {
     Advance();
     return current_token_;
@@ -253,10 +259,6 @@ bool Parser::ConsumeToken(Token::Kind kind) {
 }
 
 Token Parser::GetNextTokenImpl() {
-  if (current_token_.kind == Token::Kind::kError ||
-      current_token_.kind == Token::Kind::kEOF) {
-    return current_token_;
-  }
   ConsumeWhitespace();
   if (it_ == input_.end()) {
     return Token{"", Token::Kind::kEOF};
