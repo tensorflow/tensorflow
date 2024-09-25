@@ -69,7 +69,8 @@ LaunchDimensions MlirInPlaceDynamicUpdateSliceFusion::launch_dimensions()
     const {
   const auto& update_shape =
       dus_ops_.front().GetOperand(kDUSUpdateIndex).shape();
-  return CalculateLaunchDimensions(update_shape, analysis_.device_info());
+  return CalculateLaunchDimensions(update_shape, analysis_.device_info(),
+                                   config_);
 }
 
 std::optional<IndexingMap>
@@ -84,7 +85,7 @@ MlirInPlaceDynamicUpdateSliceFusion::ComputeThreadIdToInputIndexing(
   // It is guaranteed that all DUS ops have the same output shape at this point.
   const auto& update_shape =
       dus_ops_.front().GetOperand(kDUSUpdateIndex).shape();
-  return GetDefaultThreadIdIndexingMap(launch_dims, /*unroll_factor=*/1,
+  return GetDefaultThreadIdIndexingMap(launch_dims, config_.unroll_factor,
                                        update_shape, indexing_context);
 }
 
