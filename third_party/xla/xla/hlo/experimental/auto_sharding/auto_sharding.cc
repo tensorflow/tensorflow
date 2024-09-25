@@ -3950,14 +3950,45 @@ absl::Status MoveComputationsFromModuleToModule(HloModule* from_module,
 AutoSharding::AutoSharding(const AutoShardingOption& option)
     : option_(option) {}
 
+absl::Time DumpModuleAndRecordPassStart(const HloModule* module) {
+  XLA_VLOG_LINES(6,
+                 absl::StrCat("Before auto sharding:\n", module->ToString()));
+  DumpHloModuleIfEnabled(*module, "before_auto_spmd_sharding");
+
+  // TODO(b/348372403) Explore replacing these with a runtime check, per
+  // go/no-ifdefs-in-xla
+#if !defined(__APPLE__)
+  // Streamz metrics.
+  metrics::RecordAutoShardingInvocations();
+#endif
+  return absl::Now();
+}
+
+void RecordPassEndAndDumpModule(absl::Time start_time,
+                                const HloModule* module) {
+  absl::Time end_time = absl::Now();
+  absl::Duration duration = end_time - start_time;
+  LOG(INFO) << "Auto Sharding took " << absl::ToInt64Seconds(duration)
+            << " seconds";
+  // TODO(b/348372403) Explore replacing these with a runtime check, per
+  // go/no-ifdefs-in-xla
+#if !defined(__APPLE__)
+  metrics::RecordAutoShardingCompilationTime(
+      absl::ToInt64Microseconds(duration));
+#endif
+
+  XLA_VLOG_LINES(6, absl::StrCat("After auto sharding:\n", module->ToString()));
+  DumpHloModuleIfEnabled(*module, "after_auto_spmd_sharding");
+}
+
 absl::StatusOr<bool> AutoSharding::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (!option_.enable) {
     return false;
   }
-  LOG(INFO) << "Starting the auto sharding pass";
 
+  LOG(INFO) << "Starting the auto sharding pass";
   // TODO(b/332951306): Remove this check once nested tuples are supported
   // everywhere
   if (HasUnsupportedNestedTuples(*module)) {
@@ -3967,15 +3998,7 @@ absl::StatusOr<bool> AutoSharding::Run(
     return false;
   }
 
-  XLA_VLOG_LINES(6,
-                 absl::StrCat("Before auto sharding:\n", module->ToString()));
-  DumpHloModuleIfEnabled(*module, "before_auto_spmd_sharding");
-
-  absl::Time start_time = absl::Now();
-#if !defined(__APPLE__)
-  // Streamz metrics.
-  metrics::RecordAutoShardingInvocations();
-#endif
+  absl::Time start_time = DumpModuleAndRecordPassStart(module);
 
   TF_RETURN_IF_ERROR(module->RemoveUnusedComputations());
   TF_RETURN_IF_ERROR(option_.CheckAndSetup());
@@ -4079,9 +4102,8 @@ absl::StatusOr<bool> AutoSharding::Run(
     }
   }
 
-  size_t num_meshes = mesh_shapes.size();
-  std::vector<absl::StatusOr<AutoShardingResult>> changed(
-      num_meshes, AutoShardingResult::kModuleUnchanged);
+  absl::StatusOr<AutoShardingResult> min_mesh_pass_result =
+      AutoShardingResult::kModuleUnchanged;
 
   VLOG(1) << "Original mesh shape "
           << spmd::ToString(option_.device_mesh_shape);
@@ -4104,15 +4126,14 @@ absl::StatusOr<bool> AutoSharding::Run(
     absl::StatusOr<AutoShardingResult> pass_result =
         pass->RunAutoSharding(module_clone.get(), replicated_small_tensors,
                               execution_threads, sharding_propagation_solution);
-
-    changed[i] = pass_result;
-    double this_mesh_objective_value = pass->GetSolverOptimalObjectiveValue();
     if (!pass_result.ok()) {
       VLOG(1) << "Mesh shape " << spmd::ToString(mesh_shapes[i])
               << " led to the following error: "
               << pass_result.status().message();
       continue;
     }
+
+    double this_mesh_objective_value = pass->GetSolverOptimalObjectiveValue();
     VLOG(1) << "Mesh shape " << spmd::ToString(mesh_shapes[i])
             << " has objective value " << this_mesh_objective_value;
     if (this_mesh_objective_value >= 0 &&
@@ -4120,6 +4141,7 @@ absl::StatusOr<bool> AutoSharding::Run(
       min_mesh_shape_index = i;
       min_mesh_shape_module = std::move(module_clone);
       min_objective_value = this_mesh_objective_value;
+      min_mesh_pass_result = pass_result;
     }
     if (*pass_result !=
         AutoShardingResult::kModuleUnchangedNoShardingPerformed) {
@@ -4127,59 +4149,45 @@ absl::StatusOr<bool> AutoSharding::Run(
     }
   }
 
-  absl::StatusOr<bool> module_is_changed;
   if (skip_auto_sharding) {
-    module_is_changed = false;  // The auto-sharding solver timed out.
-  } else {
-    std::string trying_to_find =
-        option_.try_multiple_mesh_shapes
-            ? "a device mesh (and the corresponding shardings)"
-            : "shardings";
-    CHECK_GE(min_mesh_shape_index, 0)
-        << "The auto-sharding pass could not find " << trying_to_find
-        << " that works for this input. This could be the result of a low "
-           "memory budget (please refer to the "
-           "`--xla_tpu_auto_spmd_partitioning_memory_budget_ratio` flag to set "
-           "a higher budget). If you think you have set a reasonably large "
-           "memory budget, please report this as a bug.";
-
-    if (!changed[min_mesh_shape_index].ok()) {
-      module_is_changed = changed[min_mesh_shape_index].status();
-    } else {
-      solver_optimal_objective_value_ = min_objective_value;
-      if (changed[min_mesh_shape_index].value() ==
-          AutoShardingResult::kModuleChangedShardingPerformed) {
-        VLOG(1) << "Choosing mesh shape "
-                << spmd::ToString(mesh_shapes[min_mesh_shape_index])
-                << " which had the minimal solver objective value of "
-                << min_objective_value;
-        chosen_mesh_shape_ = mesh_shapes[min_mesh_shape_index];
-        TF_RETURN_IF_ERROR(MoveComputationsFromModuleToModule(
-            min_mesh_shape_module.get(), module));
-        module_is_changed = true;
-      } else {
-        module_is_changed = false;
-      }
-    }
-  }
-
-  absl::Time end_time = absl::Now();
-  absl::Duration duration = end_time - start_time;
-  LOG(INFO) << "Auto Sharding took " << absl::ToInt64Seconds(duration)
-            << " seconds";
-#if !defined(__APPLE__)
-  metrics::RecordAutoShardingCompilationTime(
-      absl::ToInt64Microseconds(duration));
-#endif
-
-  XLA_VLOG_LINES(6, absl::StrCat("After auto sharding:\n", module->ToString()));
-  DumpHloModuleIfEnabled(*module, "after_auto_spmd_sharding");
-
-  if (skip_auto_sharding) {
+    RecordPassEndAndDumpModule(start_time, module);
     LOG(FATAL) << "The auto-sharding solver has timed out without a solution.";
   }
 
-  return module_is_changed;
+  std::string trying_to_find =
+      option_.try_multiple_mesh_shapes
+          ? "a device mesh (and the corresponding shardings)"
+          : "shardings";
+  CHECK_GE(min_mesh_shape_index, 0)
+      << "The auto-sharding pass could not find " << trying_to_find
+      << " that works for this input. This could be the result of a low memory "
+         "budget (please refer to the "
+         "`--xla_tpu_auto_spmd_partitioning_memory_budget_ratio` flag to set a "
+         "higher budget). If you think you have set a reasonably large memory "
+         "budget, please report this as a bug.";
+
+  if (!min_mesh_pass_result.ok()) {
+    RecordPassEndAndDumpModule(start_time, module);
+    return min_mesh_pass_result.status();
+  }
+
+  absl::StatusOr<bool> module_is_changed;
+  solver_optimal_objective_value_ = min_objective_value;
+  if (*min_mesh_pass_result !=
+      AutoShardingResult::kModuleChangedShardingPerformed) {
+    RecordPassEndAndDumpModule(start_time, module);
+    return false;
+  }
+
+  VLOG(1) << "Choosing mesh shape "
+          << spmd::ToString(mesh_shapes[min_mesh_shape_index])
+          << " which had the minimal solver objective value of "
+          << min_objective_value;
+  chosen_mesh_shape_ = mesh_shapes[min_mesh_shape_index];
+  TF_RETURN_IF_ERROR(
+      MoveComputationsFromModuleToModule(min_mesh_shape_module.get(), module));
+  RecordPassEndAndDumpModule(start_time, module);
+  return true;
 }
 
 }  // namespace xla
