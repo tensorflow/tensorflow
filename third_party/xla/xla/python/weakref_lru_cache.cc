@@ -51,8 +51,7 @@ class HashablePyDictValue {
   template <typename H>
   friend H AbslHashValue(H h, const HashablePyDictValue& value) {
     auto kv = *value.iter_;
-    return H::combine(std::move(h), xla::nb_hash(kv.first),
-                      xla::nb_hash(kv.second));
+    return H::combine(std::move(h), nb::hash(kv.first), nb::hash(kv.second));
   }
 
   explicit HashablePyDictValue(const Iter& iter) : iter_(iter) {}
@@ -93,8 +92,7 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
 
     template <typename H>
     friend H AbslHashValue(H h, const Key& key) {
-      h = H::combine(std::move(h), xla::nb_hash(key.context),
-                     xla::nb_hash(key.args));
+      h = H::combine(std::move(h), nb::hash(key.context), nb::hash(key.args));
       h = H::combine_unordered(std::move(h),
                                HashablePyDictIter(key.kwargs.begin()),
                                HashablePyDictIter(key.kwargs.end()));
@@ -192,7 +190,7 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
                   nb::kwargs kwargs) ABSL_NO_THREAD_SAFETY_ANALYSIS {
     nb::object context = cache_context_fn_();
     std::shared_ptr<Cache> cache_ptr = GetCache(UnboundWeakrefCacheEntry{
-        weakref_key, this, static_cast<size_t>(xla::nb_hash(weakref_key))});
+        weakref_key, this, static_cast<size_t>(nb::hash(weakref_key))});
     Cache& cache = *cache_ptr;
     ++total_queries_;
 

@@ -133,7 +133,7 @@ absl::StatusOr<PrimitiveType> DtypeToPrimitiveType(const nb_dtype& np_type) {
     }
   };
   struct DtypeHash {
-    ssize_t operator()(const nb_dtype& key) const { return nb_hash(key); }
+    ssize_t operator()(const nb_dtype& key) const { return nb::hash(key); }
   };
   static auto* custom_dtype_map = []() {
     const CustomDtypes& custom_dtypes = GetCustomDtypes();
