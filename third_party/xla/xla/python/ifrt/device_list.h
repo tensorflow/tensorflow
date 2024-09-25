@@ -18,12 +18,10 @@ limitations under the License.
 
 #include <atomic>
 #include <cstdint>
-#include <memory>
 #include <string>
-#include <type_traits>
-#include <variant>
 #include <vector>
 
+#include "absl/base/call_once.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
@@ -34,7 +32,6 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device.pb.h"
 #include "xla/tsl/concurrency/ref_count.h"
-#include "xla/tsl/lib/gtl/int_type.h"
 
 namespace xla {
 namespace ifrt {
@@ -72,6 +69,13 @@ class DeviceList : public tsl::ReferenceCounted<DeviceList>,
 
   // Returns a list of `Devices*` represented by this `DeviceList`.
   virtual absl::Span<Device* const> devices() const = 0;
+
+  // Returns a `DeviceList*` containing only addressable devices from this
+  // `DeviceList`. It returns itself if all devices are addressable. It points
+  // to a heap-allocated object; the pointer is valid at least until this
+  // `DeviceList` is destroyed, and it can be persisted beyond this
+  // `DeviceList`'s lifetime by using `tsl::FormRef()`.
+  virtual DeviceList* AddressableDeviceList() const = 0;
 
   virtual bool operator==(const DeviceList& other) const = 0;
   bool operator!=(const DeviceList& other) const { return !(*this == other); }
@@ -125,22 +129,20 @@ class BasicDeviceList : public llvm::RTTIExtends<BasicDeviceList, DeviceList> {
   // Returns a `DeviceListProto` representation.
   DeviceListProto ToProto() const;
 
-  absl::Span<Device* const> devices() const override { return state().devices; }
+  absl::Span<Device* const> devices() const override { return devices_; }
+
+  DeviceList* AddressableDeviceList() const override;
 
   bool operator==(const DeviceList& other) const override {
+    if (this == &other) {
+      return true;
+    }
     const auto* other_basic_device_list =
         llvm::dyn_cast<BasicDeviceList>(&other);
     if (other_basic_device_list == nullptr) {
       return false;
     }
-    const std::shared_ptr<State>* lhs =
-        std::get_if<std::shared_ptr<State>>(&state_);
-    const std::shared_ptr<State>* rhs =
-        std::get_if<std::shared_ptr<State>>(&other_basic_device_list->state_);
-    if (lhs != nullptr && rhs != nullptr && lhs->get() == rhs->get()) {
-      return true;
-    }
-    return devices() == other.devices();
+    return devices_ == other_basic_device_list->devices_;
   }
 
   uint64_t hash() const override;
@@ -153,40 +155,17 @@ class BasicDeviceList : public llvm::RTTIExtends<BasicDeviceList, DeviceList> {
   template <typename T, typename... Args>
   friend tsl::RCReference<T> tsl::MakeRef(Args&&... args);
 
-  // Internal state that may be shared across `DeviceList` instances.
-  struct State {
-    Devices devices;
-  };
-
-  State& state() {
-    return std::visit(
-        [](auto& state) -> State& {
-          using T = std::decay_t<decltype(state)>;
-          if constexpr (std::is_same_v<T, State>) {
-            return state;
-          } else if constexpr (std::is_same_v<T, std::shared_ptr<State>>) {
-            return *state;
-          }
-        },
-        state_);
-  }
-
-  const State& state() const {
-    return std::visit(
-        [](auto& state) -> const State& {
-          using T = std::decay_t<decltype(state)>;
-          if constexpr (std::is_same_v<T, State>) {
-            return state;
-          } else if constexpr (std::is_same_v<T, std::shared_ptr<State>>) {
-            return *state;
-          }
-        },
-        state_);
-  }
-
   std::string ToString() const override;
 
-  std::variant<State, std::shared_ptr<State>> state_;
+  Devices devices_;
+
+  // Addressable device list is dynamically computed and cached.
+  struct AddressableDeviceListCache {
+    absl::once_flag once_flag;
+    DeviceList* device_list = nullptr;
+    tsl::RCReference<DeviceList> device_list_holder;
+  };
+  mutable AddressableDeviceListCache addressable_device_list_cache_;
 
   // Cached hash. 0 indicates the hash needs to be computed and cached.
   // May be written multiple times with the same non-zero value.

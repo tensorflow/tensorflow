@@ -13,18 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 
 #include <algorithm>
 #include <cstdint>
+#include <memory>
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
-#include "absl/synchronization/blocking_counter.h"
+#include "absl/types/span.h"
+#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device.pb.h"
-#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/device_test_util.h"
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/env.h"
@@ -34,6 +36,8 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 namespace {
+
+using ::testing::ElementsAreArray;
 
 class DeviceListTest : public test_util::DeviceTest {};
 
@@ -48,23 +52,55 @@ TEST_P(DeviceListTest, ToFromProto) {
   EXPECT_EQ(*device_list_copy, *device_list);
 }
 
+TEST_P(DeviceListTest, AddressableDevices) {
+  auto device_list = GetDevices({0, 1});
+  std::vector<Device*> addressable_devices;
+  for (Device* device : device_list->devices()) {
+    if (device->IsAddressable()) {
+      addressable_devices.push_back(device);
+    }
+  }
+  EXPECT_THAT(device_list->AddressableDeviceList()->devices(),
+              ElementsAreArray(addressable_devices));
+}
+
+TEST_P(DeviceListTest, AddressableDevicesFromConcurrentCalls) {
+  auto device_list = GetDevices({0, 1});
+
+  const int num_threads = 16;
+  auto thread_pool = std::make_unique<tsl::thread::ThreadPool>(
+      tsl::Env::Default(), tsl::ThreadOptions(), "test_pool",
+      std::min(num_threads, tsl::port::MaxParallelism()));
+  std::vector<DeviceList*> addressable_device_lists(num_threads);
+  for (int i = 0; i < num_threads; ++i) {
+    thread_pool->Schedule([&, i]() {
+      addressable_device_lists[i] = device_list->AddressableDeviceList();
+      // Touch a device in the list so that tsan can verify access to the
+      // content of the addressable device list.
+      addressable_device_lists[i]->devices().front()->Id();
+    });
+  }
+
+  thread_pool.reset();
+  for (int i = 0; i < num_threads; ++i) {
+    EXPECT_EQ(*addressable_device_lists[i],
+              *device_list->AddressableDeviceList());
+  }
+}
+
 TEST_P(DeviceListTest, IdenticalHashFromConcurrentCalls) {
   auto device_list = GetDevices({0, 1});
 
   const int num_threads = 16;
-  absl::BlockingCounter counter(num_threads);
-  tsl::thread::ThreadPool thread_pool(
+  auto thread_pool = std::make_unique<tsl::thread::ThreadPool>(
       tsl::Env::Default(), tsl::ThreadOptions(), "test_pool",
       std::min(num_threads, tsl::port::MaxParallelism()));
   std::vector<uint64_t> hashes(num_threads);
   for (int i = 0; i < num_threads; ++i) {
-    thread_pool.Schedule([&, i]() {
-      hashes[i] = device_list->hash();
-      counter.DecrementCount();
-    });
+    thread_pool->Schedule([&, i]() { hashes[i] = device_list->hash(); });
   }
 
-  counter.Wait();
+  thread_pool.reset();
   for (int i = 0; i < num_threads; ++i) {
     EXPECT_EQ(hashes[i], device_list->hash());
   }
@@ -89,10 +125,12 @@ TEST_P(DeviceListTest, EqualityTest) {
   EXPECT_NE(*device_list1, *device_list6);
 }
 
-INSTANTIATE_TEST_SUITE_P(NumDevices, DeviceListTest,
-                         testing::Values(test_util::DeviceTestParam{
-                             /*num_devices=*/2,
-                             /*num_addressable_devices=*/2}));
+INSTANTIATE_TEST_SUITE_P(
+    NumDevices, DeviceListTest,
+    testing::Values(test_util::DeviceTestParam{/*num_devices=*/2,
+                                               /*num_addressable_devices=*/1},
+                    test_util::DeviceTestParam{/*num_devices=*/2,
+                                               /*num_addressable_devices=*/2}));
 
 }  // namespace
 }  // namespace ifrt
