@@ -31,6 +31,7 @@ LITE_RT_DEFINE_HANDLE(LrtStatus);
 typedef enum {
   kLrtStatusOk = 0,
 
+  // Generic errors.
   kLrtStatusErrorInvalidArgument = 1,
   kLrtStatusErrorMemoryAllocationFailure = 2,
   kLrtStatusErrorRuntimeFailure = 3,
@@ -38,9 +39,10 @@ typedef enum {
   kLrtStatusErrorUnsupported = 5,
   kLrtStatusErrorNotFound = 6,
 
-  // File related errors.
+  // File and loading related errors.
   kLrtStatusBadFileOp = 500,
   kLrtStatusFlatbufferFailedVerify = 501,
+  kLrtStatusDynamicLoadErr = 502,
 
   // IR related errors.
   kLrtParamIndexOOB = 1000,

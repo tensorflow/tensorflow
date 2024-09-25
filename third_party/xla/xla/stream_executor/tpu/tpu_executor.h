@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/allocator_stats.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
@@ -80,6 +81,7 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
   bool DeviceMemoryUsage(int64_t* free, int64_t* total) const override;
 
   void DequeueOutfeed(int32_t outfeed_queue_index, absl::Span<uint8_t> bytes,
+                      const std::optional<xla::Shape>& shape,
                       StatusCallback done);
 
   absl::Status EnqueueInfeed(int32_t infeed_queue_index,
